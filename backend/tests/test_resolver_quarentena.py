@@ -25,7 +25,7 @@ from app.social.contas_nossas import MARCADOR, foi_retirada, registrar_lapide
 from .conftest import Harness
 
 RETIRADA = "conta retirada (bloqueada)"
-FELIPE = "gilberto.vasconcelos517"
+GILBERTO = "gilberto.vasconcelos517"
 VIVA = "tadeu.quintela4821"
 URL = "/api/instances/android-02/locked-account/resolve"
 
@@ -68,10 +68,10 @@ def _eventos(h: Harness, kind: str) -> list[dict[str, object]]:
 async def test_rota_resolve_o_marcador_sincroniza_o_rotulo_e_emite_a_saida(h: Harness) -> None:
     s = h.state
     assert s is not None
-    _marcar(h, FELIPE)
+    _marcar(h, GILBERTO)
     antes = s.db.scalar("SELECT COUNT(*) FROM commands")
     rotulo = s.db.one("SELECT account_label, account_label_origin FROM instances WHERE id='android-02'")
-    assert (rotulo["account_label"], rotulo["account_label_origin"]) == (FELIPE, "marcador")
+    assert (rotulo["account_label"], rotulo["account_label_origin"]) == (GILBERTO, "marcador")
     async with await _cliente(h) as c:
         r = await c.post(URL, json={"nota": "app limpo com pm clear; conta retirada (29.23)"})
     assert r.status_code == 200, r.text
@@ -80,7 +80,7 @@ async def test_rota_resolve_o_marcador_sincroniza_o_rotulo_e_emite_a_saida(h: Ha
     linha = s.db.one("SELECT resolved_by, resolution FROM device_locked_accounts WHERE instance_id='android-02'")
     assert linha["resolved_by"] and "pm clear" in linha["resolution"]
     rotulo = s.db.one("SELECT account_label, account_label_origin FROM instances WHERE id='android-02'")
-    assert rotulo["account_label_origin"] != "marcador" and rotulo["account_label"] != FELIPE
+    assert rotulo["account_label_origin"] != "marcador" and rotulo["account_label"] != GILBERTO
     assert [e["acao"] for e in _eventos(h, "device.locked_account")] == ["marcado", "resolvido"]
     # Só banco: nenhum comando chegou ao aparelho (nem disco, nem app).
     assert s.db.scalar("SELECT COUNT(*) FROM commands") == antes
@@ -89,7 +89,7 @@ async def test_rota_resolve_o_marcador_sincroniza_o_rotulo_e_emite_a_saida(h: Ha
 async def test_nota_e_obrigatoria_e_o_marcador_continua_aberto(h: Harness) -> None:
     s = h.state
     assert s is not None
-    _marcar(h, FELIPE)
+    _marcar(h, GILBERTO)
     async with await _cliente(h) as c:
         assert (await c.post(URL, json={})).status_code == 422
         assert (await c.post(URL, json={"nota": ""})).status_code == 422
@@ -108,7 +108,7 @@ async def test_sem_marcador_aberto_e_404_com_codigo_e_aparelho_inexistente_tambe
 
 async def test_resolver_nao_reativa_o_perfil_nem_resolve_duas_vezes(h: Harness) -> None:
     async with await _cliente(h) as c:
-        _marcar(h, FELIPE)
+        _marcar(h, GILBERTO)
         assert (await c.post(URL, json={"nota": "primeira"})).status_code == 200
         r = await c.post(URL, json={"nota": "segunda"})
         assert r.status_code == 404 and r.json()["detail"]["code"] == "no_locked_account"
@@ -117,33 +117,33 @@ async def test_resolver_nao_reativa_o_perfil_nem_resolve_duas_vezes(h: Harness) 
 async def test_aviso_de_conta_retirada_sai_sem_o_arroba_e_o_de_conta_viva_com_ele(h: Harness) -> None:
     s = h.state
     assert s is not None
-    _marcar(h, FELIPE)
-    _retirar(h, FELIPE)
-    assert foi_retirada(s.db, FELIPE) and not foi_retirada(s.db, VIVA)
+    _marcar(h, GILBERTO)
+    _retirar(h, GILBERTO)
+    assert foi_retirada(s.db, GILBERTO) and not foi_retirada(s.db, VIVA)
     # A frase da quarentena (409 do painel, porta do despacho, histórico do comando).
     frase = s.quarentena("android-02")
-    assert frase is not None and RETIRADA in frase and FELIPE not in frase
+    assert frase is not None and RETIRADA in frase and GILBERTO not in frase
     # Recusa de start: o motivo gravado no histórico do comando.
     assert despacho.pedir_ciclo_de_vida(s, "android-02", "restart", "teste", requested_by="saude") is None
     motivo = s.db.one("SELECT reason FROM commands WHERE instance_id='android-02' ORDER BY created_at DESC, id DESC"
                       " LIMIT 1")["reason"]
-    assert RETIRADA in motivo and FELIPE not in motivo
+    assert RETIRADA in motivo and GILBERTO not in motivo
     # Start confirmado pela pessoa: o aviso do log não traz o @ da conta retirada.
     async with await _cliente(h) as c:
         r = await c.post("/api/instances/android-02/actions/home",
                          json={"idempotency_key": "r-29-24-a", "confirm_locked_account": True})
         assert r.status_code == 202, r.text
         r = await c.post("/api/instances/android-02/actions/start", json={"idempotency_key": "r-29-24-b"})
-        assert r.status_code == 409 and FELIPE not in r.text and RETIRADA in r.text, r.text
+        assert r.status_code == 409 and GILBERTO not in r.text and RETIRADA in r.text, r.text
     avisos = [e["message"] for e in s.db.query("SELECT message FROM events WHERE instance_id='android-02'"
                                                 " AND level='warn' ORDER BY id")]
     confirmado = [m for m in avisos if "confirmado explicitamente" in m]
-    assert confirmado and all(RETIRADA in m and FELIPE not in m for m in confirmado), avisos
+    assert confirmado and all(RETIRADA in m and GILBERTO not in m for m in confirmado), avisos
     # A saída da quarentena (evento NOVO, depois da retirada) também não leva o @, nem no texto nem nos dados.
     s.social_repo.resolver_conta_travada("android-02", por="dono", nota="app limpo")
     saida = _eventos(h, "device.locked_account")[-1]
     assert saida["acao"] == "resolvido" and RETIRADA in str(saida["message"])
-    assert FELIPE not in json.dumps(saida) and saida["handle"] == MARCADOR
+    assert GILBERTO not in json.dumps(saida) and saida["handle"] == MARCADOR
 
 
 async def test_aviso_de_conta_viva_continua_com_o_arroba(h: Harness) -> None:
@@ -168,9 +168,9 @@ async def test_retirada_tira_o_arroba_do_aparelho_e_da_saude_e_a_quarentena_segu
     s = h.state
     assert s is not None
     s.db.execute("UPDATE instances SET app_id='instagram' WHERE id='android-02'")
-    s.social.create_profile(ProfileCreate(username=FELIPE))
-    _marcar(h, FELIPE)                       # origem `declarado`: retira a conta (29.23) e mascara (29.24)
-    assert foi_retirada(s.db, FELIPE)
+    s.social.create_profile(ProfileCreate(username=GILBERTO))
+    _marcar(h, GILBERTO)                       # origem `declarado`: retira a conta (29.23) e mascara (29.24)
+    assert foi_retirada(s.db, GILBERTO)
     marcador = s.social_repo.conta_travada_no_aparelho("android-02")
     assert marcador is not None and marcador["handle"] == MARCADOR                  # a quarentena segue ABERTA
     rotulo = s.db.one("SELECT account_label, account_label_origin FROM instances WHERE id='android-02'")
@@ -178,7 +178,7 @@ async def test_retirada_tira_o_arroba_do_aparelho_e_da_saude_e_a_quarentena_segu
     async with await _cliente(h) as c:
         for url in ("/api/instances", "/api/health"):
             r = await c.get(url)
-            assert r.status_code == 200 and FELIPE not in r.text, url
+            assert r.status_code == 200 and GILBERTO not in r.text, url
         saude = (await c.get("/api/health")).json()
         assert any(p["code"] == "locked_account_on_device" and "retirada" in p["message"] for p in saude["problems"])
         r = await c.post(URL, json={"nota": "app limpo"})                            # resolve com o handle mascarado
@@ -190,13 +190,13 @@ async def test_dado_antigo_com_o_arroba_e_mascarado_na_subida_e_o_rotulo_de_conf
     s = h.state
     assert s is not None
     s.db.execute("UPDATE instances SET app_id='instagram' WHERE id='android-02'")
-    _marcar(h, FELIPE)
-    _retirar(h, FELIPE)                      # a lápide nasce DEPOIS: o marcador e o rótulo ainda têm o @
-    assert s.social_repo.conta_travada_no_aparelho("android-02")["handle"] == FELIPE
-    s.db.execute("UPDATE instances SET account_label=?, account_label_origin=NULL WHERE id='android-01'", (FELIPE,))
+    _marcar(h, GILBERTO)
+    _retirar(h, GILBERTO)                      # a lápide nasce DEPOIS: o marcador e o rótulo ainda têm o @
+    assert s.social_repo.conta_travada_no_aparelho("android-02")["handle"] == GILBERTO
+    s.db.execute("UPDATE instances SET account_label=?, account_label_origin=NULL WHERE id='android-01'", (GILBERTO,))
     s.social_repo.sincronizar_rotulos()                                              # a varredura da partida
     assert s.social_repo.conta_travada_no_aparelho("android-02")["handle"] == MARCADOR
     assert s.db.one("SELECT account_label FROM instances WHERE id='android-02'")["account_label"] == MARCADOR
     # Configuração (origem nula) não é nossa para mexer: só é contada.
-    assert s.db.one("SELECT account_label FROM instances WHERE id='android-01'")["account_label"] == FELIPE
+    assert s.db.one("SELECT account_label FROM instances WHERE id='android-01'")["account_label"] == GILBERTO
     assert s.social_repo.mascarar_contas_retiradas() == {"marcadores": 0, "rotulos": 0, "rotulo_de_configuracao": 1}

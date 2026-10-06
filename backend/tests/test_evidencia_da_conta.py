@@ -12,17 +12,17 @@ SELETOR = "pós-condição comprovada pela árvore local, sem IA (selector:id=ac
 
 
 def test_prova_por_seletor_cru_grava_a_pos_condicao_que_nomeia_a_conta() -> None:
-    assert evidencia_da_conta("lucas.teste", "Perfil de @lucas.teste aberto", SELETOR) == "Perfil de @lucas.teste aberto"
+    assert evidencia_da_conta("tadeu.teste", "Perfil de @tadeu.teste aberto", SELETOR) == "Perfil de @tadeu.teste aberto"
 
 
 def test_prova_que_nomeia_a_conta_e_a_evidencia() -> None:
-    texto = "a tela mostra o perfil @lucas.teste"
-    assert evidencia_da_conta("lucas.teste", "perfil aberto", texto) == texto
+    texto = "a tela mostra o perfil @tadeu.teste"
+    assert evidencia_da_conta("tadeu.teste", "perfil aberto", texto) == texto
 
 
 def test_sem_rotulo_ou_sem_a_conta_nada_e_gravado() -> None:
-    assert evidencia_da_conta(None, "Perfil de @lucas.teste aberto", SELETOR) is None
-    assert evidencia_da_conta("bruno", "Perfil de @lucas.teste aberto", SELETOR) is None
+    assert evidencia_da_conta(None, "Perfil de @tadeu.teste aberto", SELETOR) is None
+    assert evidencia_da_conta("quillon", "Perfil de @tadeu.teste aberto", SELETOR) is None
 
 
 # ------------------------------------------------------------------ I2 da validação do deploy 9
@@ -35,7 +35,7 @@ def test_prova_por_seletor_com_o_rotulo_vira_conta_vista_na_tela() -> None:
     assert evidencia_da_conta("qa-user-10", pos, PROVA_QA) == "qa-user-10 visto na tela"
     assert evidencia_legivel("qa-user-10", PROVA_QA) == "qa-user-10 visto na tela"
     # o seletor cru da pós-condição (a prova não trouxe o rótulo) também não vai para a tela
-    assert evidencia_da_conta("andre.c", "id=action_bar_title|text==andre.c", SELETOR) == "andre.c visto na tela"
+    assert evidencia_da_conta("ottilie.c", "id=action_bar_title|text==ottilie.c", SELETOR) == "ottilie.c visto na tela"
 
 
 def test_prova_por_seletor_sem_o_rotulo_nao_e_observacao_de_conta() -> None:
@@ -46,11 +46,11 @@ def test_prova_por_seletor_sem_o_rotulo_nao_e_observacao_de_conta() -> None:
 
 
 def test_frase_que_nomeia_a_conta_fica_e_a_conta_trocada_segue_diferente() -> None:
-    assert evidencia_legivel("lucas.teste", "Perfil de @lucas.teste aberto") == "Perfil de @lucas.teste aberto"
+    assert evidencia_legivel("tadeu.teste", "Perfil de @tadeu.teste aberto") == "Perfil de @tadeu.teste aberto"
     # o rótulo mudou depois da observação: a frase fica, e o painel a lê como conta diferente do rótulo
-    assert evidencia_legivel("bruno", "Perfil de @lucas.teste aberto") == "Perfil de @lucas.teste aberto"
-    assert evidencia_legivel("lucas.teste", "Perfil de @lucas.teste aberto (selector:id=x)") == "Perfil de @lucas.teste aberto"
-    assert evidencia_legivel("lucas.teste", None) is None and evidencia_legivel("lucas.teste", "  ") is None
+    assert evidencia_legivel("quillon", "Perfil de @tadeu.teste aberto") == "Perfil de @tadeu.teste aberto"
+    assert evidencia_legivel("tadeu.teste", "Perfil de @tadeu.teste aberto (selector:id=x)") == "Perfil de @tadeu.teste aberto"
+    assert evidencia_legivel("tadeu.teste", None) is None and evidencia_legivel("tadeu.teste", "  ") is None
 
 
 async def test_o_cartao_le_a_evidencia_antiga_ja_legivel(harness: Harness) -> None:

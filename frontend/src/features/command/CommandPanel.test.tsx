@@ -80,12 +80,12 @@ describe('Comando sem credencial (ADR-040)', () => {
  * /runs/targets/resolve`), com a origem de cada alvo e as perguntas, e o envio ecoa em `targets` o que a prévia
  * mostrou. No modo por aparelho, o 409 `alvos_nao_confirmados` abre a mesma prévia para confirmar. Prova `simulated`.
  */
-const MARINA = makePersona('ig-1', 'Marina Costa', {
+const MARINA = makePersona('ig-1', 'Marina Bastos', {
   username: 'marina.fotografa',
   devices: [makeBinding('android-01', { is_primary: true }), makeBinding('android-03')],
 });
-const ANDRE_LIMA = makePersona('ig-2', 'André Lima', { devices: [makeBinding('android-02', { is_primary: true })] });
-const ANDRE_SOUZA = makePersona('ig-3', 'André Souza', { devices: [makeBinding('android-04', { is_primary: true })] });
+const ANDRE_LIMA = makePersona('ig-2', 'Ravenna Lima', { devices: [makeBinding('android-02', { is_primary: true })] });
+const ANDRE_SOUZA = makePersona('ig-3', 'Ravenna Souza', { devices: [makeBinding('android-04', { is_primary: true })] });
 
 function previa(over: Partial<ResolveTargetsResponse> = {}): ResolveTargetsResponse {
   return { targets: [], questions: [], command_sem_destinos: 'abra o app', warnings: [], ...over };
@@ -98,7 +98,7 @@ const envios = () => backend.callsTo('POST', /^\/api\/runs$/);
 async function modoPorPersona(): Promise<void> {
   backend.on('GET', /^\/api\/personas$/, () => json([MARINA, ANDRE_LIMA, ANDRE_SOUZA]));
   await click(byRole('button', /Por persona/));
-  await waitFor(() => expect(text(container)).toContain('André Souza'));
+  await waitFor(() => expect(text(container)).toContain('Ravenna Souza'));
 }
 
 describe('Comando "Por persona"', () => {
@@ -111,7 +111,7 @@ describe('Comando "Por persona"', () => {
       warnings: ['A mesma persona age em mais de um aparelho (ig-1): o que a tarefa faz acontece uma vez em CADA um.'],
     })));
     await modoPorPersona();
-    await click(byRole('button', /Marina Costa/));
+    await click(byRole('button', /Marina Bastos/));
     await click(byRole('button', /Todos os aparelhos dela/));
     await setValue(campo(), 'abra o app e curta a última foto');
     const alvos = await waitFor(() => {
@@ -121,7 +121,7 @@ describe('Comando "Por persona"', () => {
     });
     expect(text(alvos)).toContain('origem: vínculo');
     expect(text(alvos)).toContain('uma vez em CADA um');
-    expect(text(alvos)).toContain('mais de um aparelho (Marina Costa)');   // o aviso cita pelo nome, não pelo id
+    expect(text(alvos)).toContain('mais de um aparelho (Marina Bastos)');   // o aviso cita pelo nome, não pelo id
     // A prévia foi pedida com a seleção de agora: a persona e a política.
     const pedido = resolucoes().at(-1)!.body as ResolveTargetsRequest;
     expect(pedido).toMatchObject({ command: 'abra o app e curta a última foto', profile_ids: ['ig-1'], device_policy: 'all' });
@@ -142,7 +142,7 @@ describe('Comando "Por persona"', () => {
       targets: [{ instance_id: 'android-01', profile_id: 'ig-1', app_id: 'qa', app_ids: ['qa', 'notes'], origem: 'vinculo' }],
     })));
     await modoPorPersona();
-    await click(byRole('button', /Marina Costa/));
+    await click(byRole('button', /Marina Bastos/));
     await click(byRole('button', /Todos os aparelhos dela/));
     await setValue(campo(), 'leia a última nota e comente no QA Messenger');
     const alvos = await waitFor(() => {
@@ -160,20 +160,20 @@ describe('Comando "Por persona"', () => {
         return json(previa({ targets: [{ instance_id: 'android-04', profile_id: 'ig-3', app_id: null, origem: 'texto' }],
                              warnings: ['Há destino tirado do texto do comando: confira antes de executar.'] }));
       }
-      return json(previa({ questions: [{ code: 'persona_ambigua', question: '“o André” pode ser André Lima, André Souza: qual delas?',
+      return json(previa({ questions: [{ code: 'persona_ambigua', question: '“o Ravenna” pode ser Ravenna Lima, Ravenna Souza: qual delas?',
                                          field: 'profile_id', options: ['ig-2', 'ig-3'], instance_id: null, profile_id: null }] }));
     });
     await modoPorPersona();
-    await click(byRole('button', /André Lima/));
-    await click(byRole('button', /André Souza/));
-    await setValue(campo(), 'peça para o André abra o app');
+    await click(byRole('button', /Ravenna Lima/));
+    await click(byRole('button', /Ravenna Souza/));
+    await setValue(campo(), 'peça para o Ravenna abra o app');
     const perguntas = await waitFor(() => byRole('group', 'Perguntas da prévia'));
-    expect(text(perguntas)).toContain('pode ser André Lima, André Souza');
+    expect(text(perguntas)).toContain('pode ser Ravenna Lima, Ravenna Souza');
     // Pergunta pendente: nada executa.
     expect(byRole('button', /^Executar/).getAttribute('aria-disabled')).toBe('true');
     expect(text(container)).toContain('Responda às perguntas da prévia antes de executar.');
 
-    await click(byRole('button', /André Souza$/, perguntas));
+    await click(byRole('button', /Ravenna Souza$/, perguntas));
     await waitFor(() => expect((resolucoes().at(-1)!.body as ResolveTargetsRequest).profile_ids).toEqual(['ig-3']));
     const alvos = await waitFor(() => {
       const p = byRole('region', 'Prévia dos alvos');
@@ -185,16 +185,16 @@ describe('Comando "Por persona"', () => {
     expect(text(alvos)).toContain('abra o app');
     expect(text(alvos)).toContain('Há destino tirado do texto');
     // Só a persona escolhida fica marcada.
-    expect(byRole('button', /André Lima/, byRole('group', 'Personas')).getAttribute('aria-pressed')).toBe('false');
-    expect(byRole('button', /André Souza/, byRole('group', 'Personas')).getAttribute('aria-pressed')).toBe('true');
+    expect(byRole('button', /Ravenna Lima/, byRole('group', 'Personas')).getAttribute('aria-pressed')).toBe('false');
+    expect(byRole('button', /Ravenna Souza/, byRole('group', 'Personas')).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('recusa da prévia (sem interseção) fica na tela com o que fazer e bloqueia Executar', async () => {
     backend.on('POST', /^\/api\/runs\/targets\/resolve$/, () => json({ detail: {
-      code: 'sem_intersecao', message: 'Nenhum dos aparelhos escolhidos (android-03) é de André Lima (vinculada a android-02).',
+      code: 'sem_intersecao', message: 'Nenhum dos aparelhos escolhidos (android-03) é de Ravenna Lima (vinculada a android-02).',
     } }, 409));
     await modoPorPersona();
-    await click(byRole('button', /André Lima/));
+    await click(byRole('button', /Ravenna Lima/));
     await setValue(campo(), 'abra o app');
     await waitFor(() => expect(text(container)).toContain('Nenhum aparelho em comum'));
     expect(text(container)).toContain('Tire o filtro de aparelhos');
@@ -219,7 +219,7 @@ describe('Comando "Por persona"', () => {
     await setValue(campo(), 'no android-03 abra o app');
     await click(byRole('button', /^Executar/));
     const caixa = await waitFor(() => byRole('alert', 'Confirmar os destinos do comando'));
-    await waitFor(() => expect(text(caixa)).toContain('Marina Costa'));
+    await waitFor(() => expect(text(caixa)).toContain('Marina Bastos'));
     expect(text(caixa)).toContain('android-03');
     expect(text(caixa)).toContain('origem: texto');
     // A prévia inteira foi pedida com a seleção do modo por aparelho.

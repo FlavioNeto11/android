@@ -29,9 +29,9 @@ def _sem_espacamento() -> LimitsCfg:
 
 def _mundo(tmp_path: Path, politica: str = SEM_ESPERA) -> tuple[Any, Any, PolicyEngine, str, str, str]:
     svc, repo, _p, _db = build(tmp_path)
-    a = perfil(svc, "ana.silva91182", "android-01")
-    b = perfil(svc, "bia.souza91182", "android-02")
-    c = svc.create_profile(ProfileCreate(username="caio.lima91182", password=SENHA)).id      # sem aparelho
+    a = perfil(svc, "ana.silva40517", "android-01")
+    b = perfil(svc, "bia.souza40517", "android-02")
+    c = svc.create_profile(ProfileCreate(username="caio.lima40517", password=SENHA)).id      # sem aparelho
     for p in (a, b, c):
         repo.update_profile(p, {"automation_policy": politica})
     return svc, repo, PolicyEngine(repo, settings_getter=_sem_espacamento), a, b, c
@@ -101,7 +101,7 @@ def test_no_pedido_efeito_em_pessoa_real_sem_conversa_pede_aprovacao(tmp_path: P
 def test_alvo_que_e_conta_nossa_nao_ganha_o_piso_da_pessoa_real(tmp_path: Path) -> None:
     _svc, _repo, policies, a, b, _c = _mundo(tmp_path, AUTONOMO)
     pedido = ContextoDoPedido(raiz="r-1", familia=frozenset({a}))
-    veredito = policies.check(a, _curtir(), counterparty="@bia.souza91182", pedido=pedido)
+    veredito = policies.check(a, _curtir(), counterparty="@bia.souza40517", pedido=pedido)
     assert "30.62" not in veredito.reason
 
 

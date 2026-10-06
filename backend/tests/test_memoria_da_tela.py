@@ -20,7 +20,7 @@ def _el(text: str = "", desc: str = "", rid: str = "", *, editable: bool = False
                      password=password)
 
 
-# A caixa de mensagens do André em 24/09, como a hierarquia real mostrou (resumida).
+# A caixa de mensagens do Ravenna em 24/09, como a hierarquia real mostrou (resumida).
 CAIXA = [
     _el("rene.sampaio381524", rid="igds_action_bar_title"), _el(desc="New Message"), _el(desc="Search"),
     _el("Search or ask Meta AI", rid="ig_text"), _el(desc="Add note", rid="pog_root_view"),
@@ -64,7 +64,7 @@ async def test_tela_vira_memoria_uma_vez_e_aparece_marcada_no_contexto(tmp_path:
     await h.boot()
     try:
         s = h.state.social
-        perfil = s.create_profile(ProfileCreate(username="andre.teste", instance_id="android-01"))
+        perfil = s.create_profile(ProfileCreate(username="ottilie.teste", instance_id="android-01"))
         for _ in range(2):           # a mesma tela no mesmo dia: um fato só, visto 2x
             item = s.remember_screen(perfil.id, step_title="Abrir as mensagens", bindings={}, elements=CAIXA)
         assert item is not None and item.source == "observation" and item.occurrences == 2
@@ -115,7 +115,7 @@ async def test_caminho_completo_simulado_da_execucao_ate_memoria_habilidades_e_c
     h.cfg.file.ai.flows = True        # como em produção: comando repetido reaproveita o plano
     st = await h.boot()
     try:
-        perfil = st.social.create_profile(ProfileCreate(username="andre.simulado", instance_id="android-01"))
+        perfil = st.social.create_profile(ProfileCreate(username="ottilie.simulado", instance_id="android-01"))
         rodadas = []
         for i in range(2):
             run = st.runs.create(RunCreate(command=COMMAND.replace("Teste POC", f"Rodada {i}"),

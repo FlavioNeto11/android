@@ -93,7 +93,7 @@ def test_membros_nome_validacao_e_grupo_a_partir_de_um_perfil(tmp_path: Path) ->
     svc, _, _, _ = build(tmp_path)
     a, b = perfil(svc), perfil(svc, "outro.perfil", "android-01")
     svc.set_policy(a, ProfilePolicyPatch(capabilities={"SEND_MESSAGE": "autonomous"}, limits={"dms_per_hour": 4}))
-    g = svc.create_policy_group(PolicyGroupCreate(name="Como a Mariana", from_profile_id=a))
+    g = svc.create_policy_group(PolicyGroupCreate(name="Como a Luciana", from_profile_id=a))
     assert g.capabilities == {"SEND_MESSAGE": "autonomous"} and g.limits == {"dms_per_hour": 4}
     assert g.loosened == ["SEND_MESSAGE"]                         # risco alto afrouxado fica marcado no grupo
     # a lista de membros é a COMPLETA
@@ -102,9 +102,9 @@ def test_membros_nome_validacao_e_grupo_a_partir_de_um_perfil(tmp_path: Path) ->
     g = svc.update_policy_group(g.id, PolicyGroupPatch(profile_ids=[b]))
     assert [m.id for m in g.members] == [b]
     # o perfil também entra/sai pelo próprio cadastro
-    assert svc.update_profile(a, ProfilePatch(policy_group_id=g.id)).policy_group_name == "Como a Mariana"
+    assert svc.update_profile(a, ProfilePatch(policy_group_id=g.id)).policy_group_name == "Como a Luciana"
     assert svc.update_profile(a, ProfilePatch(policy_group_id=None)).policy_group_id is None
-    for ruim in (PolicyGroupCreate(name="como a mariana"),                                # nome repetido
+    for ruim in (PolicyGroupCreate(name="como a luciana"),                                # nome repetido
                  PolicyGroupCreate(name="X", capabilities={"VOAR": "autonomous"}),       # ação inexistente
                  PolicyGroupCreate(name="Y", limits={"likes_per_hour": -1}),             # limite negativo
                  PolicyGroupCreate(name="Z", profile_ids=["ig-nao-existe"])):            # membro inexistente
@@ -119,10 +119,10 @@ def test_membro_sem_conta_traz_o_nome_da_pessoa(tmp_path: Path) -> None:
     o painel não desenhar um chip "@" sozinho. Com conta e sem nome próprio, o nome cai no @."""
     svc, repo, _, _ = build(tmp_path)
     a, b = perfil(svc), perfil(svc, "outro.perfil", "android-01")
-    repo.db.execute("UPDATE instagram_profiles SET username='', display_name='Beatriz Rocha' WHERE id=?", (a,))
+    repo.db.execute("UPDATE instagram_profiles SET username='', display_name='Sueli Barreto' WHERE id=?", (a,))
     g = svc.create_policy_group(PolicyGroupCreate(name="Sem arroba", profile_ids=[a, b]))
     por_id = {m.id: m for m in g.members}
-    assert not por_id[a].username and por_id[a].name == "Beatriz Rocha"
+    assert not por_id[a].username and por_id[a].name == "Sueli Barreto"
     assert por_id[b].username == "outro.perfil" and por_id[b].name
 
 

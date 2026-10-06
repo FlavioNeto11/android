@@ -203,7 +203,7 @@ def test_persona_sem_vinculo_com_o_aparelho_e_recusada_sem_push() -> None:
 
 
 def test_vinculo_secundario_basta() -> None:
-    """android-13 é também do André: pertencer ao aparelho basta, não precisa ser a única persona dele."""
+    """android-13 é também do Ravenna: pertencer ao aparelho basta, não precisa ser a única persona dele."""
     aparelho = FakeInstagram()
     ex, rt, _repo = _executor(_Imagens(), aparelho)
     vistos: list[tuple[str, str]] = []

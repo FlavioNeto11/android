@@ -108,7 +108,7 @@ def test_hit_test_e_janela_do_dump_deixam_de_fora_sobreposicao_e_outra_camada() 
 
 
 def test_rotulo_que_muda_com_o_estado_ou_arroba_literal_nao_vira_seletor() -> None:
-    for rotulo in ("Active now", "2h", "Following", "10:42", "Yesterday", "@lucas", "por @lucas", "Foto de @lucas",
+    for rotulo in ("Active now", "2h", "Following", "10:42", "Yesterday", "@tadeu", "por @tadeu", "Foto de @tadeu",
                    "Online", "offline", "typing…", "digitando...", "New", "Nova"):
         tree = parse_hierarchy(XML.replace('text="QA-001"', f'text="{rotulo}"'))
         alvo = _safe_target(_linha(tree), tree) or {}

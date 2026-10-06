@@ -257,7 +257,7 @@ def test_seletor_com_username_sem_arroba_vira_parametro_e_reproduz_para_outra_pe
     xml = ('<hierarchy>'
            '<node class="android.widget.TextView" text="ana" resource-id="com.instagram.android:id/row_inbox_username" clickable="true" bounds="[0,100][700,160]"/>'
            '<node class="android.widget.TextView" text="bia" resource-id="com.instagram.android:id/row_inbox_username" clickable="true" bounds="[0,200][700,260]"/>'
-           '<node class="android.widget.TextView" text="Mariana" resource-id="com.instagram.android:id/row_inbox_username" clickable="true" bounds="[0,300][700,360]"/>'
+           '<node class="android.widget.TextView" text="Luciana" resource-id="com.instagram.android:id/row_inbox_username" clickable="true" bounds="[0,300][700,360]"/>'
            '</hierarchy>')
     tree = parse_hierarchy(xml)
     ana = tree.elements[0]
@@ -270,7 +270,7 @@ def test_seletor_com_username_sem_arroba_vira_parametro_e_reproduz_para_outra_pe
     assert all(s.get("text") in (None, "{username}") for s in actions[0]["selectors"]), actions[0]["selectors"]
     el = resolve_selectors(tree, actions[0]["selectors"], {"username": "@bia"})
     assert el is not None and el.text == "bia"
-    # um pedaço do nome nunca vira parâmetro: "Mariana" não é "@ana"
+    # um pedaço do nome nunca vira parâmetro: "Luciana" não é "@ana"
     from app.taskqueue.recipes import build_selectors
     mari = {**tree.elements[2].to_dict(), "unique": unique_selectors(tree, tree.elements[2])}
     assert all(s.get("text") != "{username}" for s in build_selectors(mari, variables))
@@ -298,7 +298,7 @@ def test_detemplate_so_troca_o_valor_inteiro_como_o_fluxo_e_o_hash() -> None:
 def test_seletor_de_texto_com_o_valor_dentro_de_outra_palavra_e_descartado_como_antes() -> None:
     """31.109 (F1 da leitura): a borda deixou de trocar o valor dentro de palavra maior, e o texto de OUTRA pessoa
     caía no rótulo fixo e virava seletor literal. Mutação: tirar o corte de `_usable_text` quebra os dois primeiros."""
-    assert _usable_text("Mariana Silva", {"alvo": "Maria"}) is None
+    assert _usable_text("Luciana Silva", {"alvo": "Luci"}) is None
     assert _usable_text("@ana_silva", {"p": "@ana"}) is None
     assert _usable_text("Maria", {"alvo": "Maria"}) == "{alvo}"                  # inteiro: continua trocando
     assert _usable_text("ana", {"p": "@ana"}) == "{p}"                          # a tela sem a arroba: continua

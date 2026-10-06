@@ -52,8 +52,8 @@ class _Frota:
 
 def _frota(tmp_path: Path, **over: Any) -> tuple[SocialService, SocialRepository, PolicyEngine, dict[str, str]]:
     svc, repo, _pol, _db = build(tmp_path)
-    contas = {"lucas": perfil(svc, "tadeu.quintela4821", "android-01"),
-              "mariana": perfil(svc, "luciana.bastos73519", "android-02")}
+    contas = {"tadeu": perfil(svc, "tadeu.quintela4821", "android-01"),
+              "luciana": perfil(svc, "luciana.bastos73519", "android-02")}
     for pid in contas.values():
         # sem aquecimento e sem intervalo entre ações: o que se mede aqui é só a regra de frota
         repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0, '
@@ -73,8 +73,8 @@ def _fez(svc: SocialService, pid: str, tipo: InteractionType, alvo: str = ALVO, 
 @pytest.mark.parametrize("acao", ["FOLLOW", "SEND_MESSAGE", "CREATE_COMMENT", "REPLY_COMMENT"])
 def test_segunda_conta_no_mesmo_alvo_e_recusada_com_o_motivo(tmp_path: Path, acao: str) -> None:
     svc, _repo, policies, contas = _frota(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.dm_sent)
-    veredito = policies.check(contas["mariana"], capability_of(IG, acao), run_id="run-2", counterparty=ALVO)
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent)
+    veredito = policies.check(contas["luciana"], capability_of(IG, acao), run_id="run-2", counterparty=ALVO)
     # RECUSA, não espera: o excedente não é adiado para daqui a uma hora — ele não acontece
     assert not veredito.allowed and veredito.retry_at is None and not veredito.is_wait
     assert "uma conta por alvo" in veredito.reason and ALVO in veredito.reason
@@ -84,27 +84,27 @@ def test_segunda_conta_no_mesmo_alvo_e_recusada_com_o_motivo(tmp_path: Path, aca
 def test_todos_os_baldes_contam_uma_curtida_de_outra_conta_ja_ocupa_o_alvo(tmp_path: Path) -> None:
     """Antes, FOLLOW só olhava `followed`/`unfollowed`: a conta que curtiu a publicação não contava para quem seguia."""
     svc, _repo, policies, contas = _frota(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.post_liked)
-    assert not policies.check(contas["mariana"], capability_of(IG, "FOLLOW"), counterparty=ALVO).allowed
+    _fez(svc, contas["tadeu"], InteractionType.post_liked)
+    assert not policies.check(contas["luciana"], capability_of(IG, "FOLLOW"), counterparty=ALVO).allowed
     # a própria conta que já fala com a pessoa segue sendo a conta daquele alvo
-    assert policies.check(contas["lucas"], capability_of(IG, "FOLLOW"), counterparty=ALVO).allowed
+    assert policies.check(contas["tadeu"], capability_of(IG, "FOLLOW"), counterparty=ALVO).allowed
 
 
 def test_janela_e_em_dias_e_nao_de_uma_hora(tmp_path: Path) -> None:
     svc, _repo, policies, contas = _frota(tmp_path, dias=30)
-    _fez(svc, contas["lucas"], InteractionType.followed, dias_atras=10)
-    # dez dias depois, o alvo continua sendo da conta do lucas (a janela antiga era de 3600 s)
-    assert not policies.check(contas["mariana"], capability_of(IG, "FOLLOW"), counterparty=ALVO).allowed
+    _fez(svc, contas["tadeu"], InteractionType.followed, dias_atras=10)
+    # dez dias depois, o alvo continua sendo da conta do tadeu (a janela antiga era de 3600 s)
+    assert not policies.check(contas["luciana"], capability_of(IG, "FOLLOW"), counterparty=ALVO).allowed
     _svc2, _repo2, curta, contas2 = _frota(tmp_path / "curta", dias=5)
-    _fez(_svc2, contas2["lucas"], InteractionType.followed, dias_atras=10)
-    assert curta.check(contas2["mariana"], capability_of(IG, "FOLLOW"), counterparty=ALVO).allowed
+    _fez(_svc2, contas2["tadeu"], InteractionType.followed, dias_atras=10)
+    assert curta.check(contas2["luciana"], capability_of(IG, "FOLLOW"), counterparty=ALVO).allowed
 
 
 def test_o_alvo_e_comparado_normalizado(tmp_path: Path) -> None:
     """O histórico grava `@minusculo`; a porta recebia o argumento cru do plano e `@Ana` nunca casava com `@ana`."""
     svc, _repo, policies, contas = _frota(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.followed, alvo="@Ana.Silva")
-    assert not policies.check(contas["mariana"], capability_of(IG, "FOLLOW"), counterparty="Ana.Silva").allowed
+    _fez(svc, contas["tadeu"], InteractionType.followed, alvo="@Ana.Silva")
+    assert not policies.check(contas["luciana"], capability_of(IG, "FOLLOW"), counterparty="Ana.Silva").allowed
 
 
 def test_pedido_de_aprovacao_em_aberto_de_outra_conta_ja_reserva_o_alvo(tmp_path: Path) -> None:
@@ -113,19 +113,19 @@ def test_pedido_de_aprovacao_em_aberto_de_outra_conta_ja_reserva_o_alvo(tmp_path
     svc, repo, policies, contas = _frota(tmp_path)
     repo.db.execute("INSERT INTO pending_approvals(id, profile_id, capability, target, summary, status, created_at)"
                     " VALUES ('ap-1', ?, 'SEND_MESSAGE', ?, 'Enviar', 'pending', ?)",
-                    (contas["lucas"], "@AnaRabottiniPsicopedagoga", to_iso(now())))
-    veredito = policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO)
+                    (contas["tadeu"], "@AnaRabottiniPsicopedagoga", to_iso(now())))
+    veredito = policies.check(contas["luciana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO)
     assert not veredito.allowed and veredito.retry_at is None
     # rejeitado ou expirado não reserva nada
     repo.db.execute("UPDATE pending_approvals SET status='rejected' WHERE id='ap-1'")
-    assert policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO).allowed
+    assert policies.check(contas["luciana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO).allowed
 
 
 def test_acao_de_frota_sem_alvo_conhecido_e_recusada(tmp_path: Path) -> None:
     """Sem saber de quem é a publicação, a regra de uma conta por alvo não tem como ser conferida: não se age."""
     _svc, _repo, policies, contas = _frota(tmp_path)
     for acao in ("LIKE_POST", "CREATE_COMMENT", "FOLLOW"):
-        veredito = policies.check(contas["mariana"], capability_of(IG, acao), counterparty=None)
+        veredito = policies.check(contas["luciana"], capability_of(IG, acao), counterparty=None)
         assert not veredito.allowed and veredito.retry_at is None, acao
         assert "alvo" in veredito.reason and veredito.hint, acao
 
@@ -133,12 +133,12 @@ def test_acao_de_frota_sem_alvo_conhecido_e_recusada(tmp_path: Path) -> None:
 # ============================================================================ 2. curtida: teto configurável
 def test_curtida_conta_para_o_teto_de_contas_por_alvo(tmp_path: Path) -> None:
     svc, _repo, policies, contas = _frota(tmp_path, curtidas=2)
-    contas["bruno"] = svc.create_profile(ProfileCreate(username="valdir.teixeira6352", password=SENHA)).id
-    _fez(svc, contas["lucas"], InteractionType.post_liked)
+    contas["quillon"] = svc.create_profile(ProfileCreate(username="valdir.teixeira6352", password=SENHA)).id
+    _fez(svc, contas["tadeu"], InteractionType.post_liked)
     like = capability_of(IG, "LIKE_POST")
-    assert policies.check(contas["mariana"], like, counterparty=ALVO).allowed          # 1 outra < teto 2
-    _fez(svc, contas["mariana"], InteractionType.post_liked)
-    veredito = policies.check(contas["bruno"], like, counterparty=ALVO)                # 2 outras = teto
+    assert policies.check(contas["luciana"], like, counterparty=ALVO).allowed          # 1 outra < teto 2
+    _fez(svc, contas["luciana"], InteractionType.post_liked)
+    veredito = policies.check(contas["quillon"], like, counterparty=ALVO)                # 2 outras = teto
     assert not veredito.allowed and veredito.retry_at is None
     assert "2 outra(s) conta(s)" in veredito.reason
 
@@ -146,7 +146,7 @@ def test_curtida_conta_para_o_teto_de_contas_por_alvo(tmp_path: Path) -> None:
 # ============================================================================ 3. DM fria: sempre com aprovação
 def test_dm_fria_sai_approval_required_mesmo_com_grupo_autonomo(tmp_path: Path) -> None:
     svc, _repo, policies, contas = _frota(tmp_path)
-    pid = contas["mariana"]
+    pid = contas["luciana"]
     svc.create_policy_group(PolicyGroupCreate(name="Operação", capabilities={"SEND_MESSAGE": "autonomous"},
                                               profile_ids=[pid]))
     dm = capability_of(IG, "SEND_MESSAGE")
@@ -163,7 +163,7 @@ def test_dm_fria_sai_approval_required_mesmo_com_grupo_autonomo(tmp_path: Path) 
 
 def test_com_conversa_previa_a_politica_autonoma_vale(tmp_path: Path) -> None:
     svc, _repo, policies, contas = _frota(tmp_path)
-    pid = contas["mariana"]
+    pid = contas["luciana"]
     svc.set_policy(pid, ProfilePolicyPatch(capabilities={"SEND_MESSAGE": "autonomous"}), package=IG)
     svc.record_inbound(pid, texts=["oi! tudo bem?"], counterparty="@amiga", type=InteractionType.dm_received.value)
     veredito = policies.check(pid, capability_of(IG, "SEND_MESSAGE"), counterparty="@Amiga")

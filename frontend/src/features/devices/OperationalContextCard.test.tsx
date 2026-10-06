@@ -24,7 +24,7 @@ function contexto(over: Partial<OperationalContext> = {}): OperationalContext {
     apps: [{ app_id: 'instagram', name: 'Instagram', package: 'com.instagram.android', presence: 'installed', state: 'ready',
              installed_version_name: '448.0', installed_version_code: 448, verified_at: null, pending_op: null, detail: null,
              promoted_release_id: 'rel-448', promoted_version_name: '448.0', promoted_version_code: 448 }],
-    profiles: [{ profile_id: 'ig-1', username: 'mariana', display_name: 'Mariana', persona_id: null, persona_name: null,
+    profiles: [{ profile_id: 'ig-1', username: 'luciana', display_name: 'Luciana', persona_id: null, persona_name: null,
                  credential_configured: true, credential_status: 'active',
                  session: { status: 'auth_required', instance_id: 'android-06', observed_username: null, verified_at: null,
                             detail: null, stale: false },

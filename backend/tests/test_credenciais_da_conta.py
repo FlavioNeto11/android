@@ -204,13 +204,13 @@ def test_login_identifier_igual_ao_handle_nao_substitui_o_email_gravado(harness:
     """Relatório 01 §10.1: a aba Contas mandava `login_identifier: handle` e trocava o e-mail pelo @ (que o Instagram
     recusa). Transitório: com provedor, o handle que chega igual ao gravado não substitui o identificador."""
     s = harness.state
-    pid = s.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01",
-                                                email="lucas@exemplo.test", password=SecretStr(_valor()))).id
+    pid = s.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id="android-01",
+                                                email="tadeu@exemplo.test", password=SecretStr(_valor()))).id
     ig = next(c for c in s.social.list_accounts(pid) if c.app_id == "instagram")
-    assert s.social_repo.credential_row(pid)["login_identifier"] == "lucas@exemplo.test"
+    assert s.social_repo.credential_row(pid)["login_identifier"] == "tadeu@exemplo.test"
     s.social.set_account_credential(pid, ig.id, CredentialUpdate(password=SecretStr(_valor()),
-                                                                login_identifier="lucas.teste", consent=True), by=DONO)
-    assert s.social_repo.credential_row(pid)["login_identifier"] == "lucas@exemplo.test"
+                                                                login_identifier="tadeu.teste", consent=True), by=DONO)
+    assert s.social_repo.credential_row(pid)["login_identifier"] == "tadeu@exemplo.test"
     s.social.set_account_credential(pid, ig.id, CredentialUpdate(password=SecretStr(_valor()),
                                                                 login_identifier="outro@exemplo.test"), by=DONO)
     assert s.social_repo.credential_row(pid)["login_identifier"] == "outro@exemplo.test"   # explícito, muda

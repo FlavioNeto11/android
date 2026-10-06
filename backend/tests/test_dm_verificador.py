@@ -2,7 +2,7 @@
 
 19/09: o verificador por modelo (`model_judged`) errou nos dois sentidos numa bateria de DMs. Cinco falsos negativos
 (os prints mostram a bolha enviada; num deles o modelo disse "apenas parte do texto" com o texto inteiro na tela) e um
-falso positivo: a DM da beatriz dada por ENVIADA com "Sending…" congelado debaixo da bolha. A correção é o critério
+falso positivo: a DM da sueli dada por ENVIADA com "Sending…" congelado debaixo da bolha. A correção é o critério
 objetivo pela árvore, declarado no catálogo (dado, ADR-052) e conferido ANTES do modelo:
 
 - "Sending…"/"Enviando…" na tela = pendente. Nunca enviada, nem pela prova local nem pelo "sim" do modelo — e o
@@ -144,7 +144,7 @@ async def _verificar(ex: StepExecutor, etapa: StepDTO) -> tuple[bool, str]:
 
 # ==================================================================== "Sending…" é pendente, nunca enviada
 async def test_sending_na_tela_e_pendente_nunca_enviada_e_o_modelo_nao_e_perguntado(tmp_path: Path) -> None:
-    """A DM da beatriz (19/09): a bolha na conversa, o campo de escrita limpo e "Sending…" congelado. A prova local de
+    """A DM da sueli (19/09): a bolha na conversa, o campo de escrita limpo e "Sending…" congelado. A prova local de
     hoje (bolha + campo sem o texto) e o modelo davam a mensagem por enviada. Pendente não é enviada: a verificação
     espera o prazo inteiro sem perguntar ao modelo e devolve "não comprovado" — o efeito disparado vira incerto."""
     verificador = _VerificadorQueDizSim()

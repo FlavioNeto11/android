@@ -580,7 +580,7 @@ async def test_cancelamento_e_um_sinal_por_episodio(harness: Harness) -> None:
     # com a execução ainda em `cancelling` não grava
     st.runs.cancel(run.id, por=NOME)
     assert st.repo.run_row(run.id)["status"] == "cancelling"
-    st.runs.cancel(run.id, por="Bruno Lima")
+    st.runs.cancel(run.id, por="Quillon Lima")
     st.runs.cancel(run.id, por=NOME)
     assert len(cancelamentos()) == 1
     # assentada: o item falho não se cancela (`_finish_cancel` só fecha o que estava aberto), e a execução volta a
@@ -647,7 +647,7 @@ async def test_gestos_do_a2_pela_rota_levam_o_operador_da_sessao_e_sem_sessao_pa
         assert (await c.post(f"/api/runs/{parado.id}/objectives/{item}/resolve",
                              json={"resolution": "abandon"})).status_code == 200
     async with _cliente(harness) as c:
-        await _logado(c, "Bruno Lima")
+        await _logado(c, "Quillon Lima")
         assert (await c.post(f"/api/runs/{parado.id}/objectives/{item}/resolve",
                              json={"resolution": "abandon"})).status_code == 200
     abandonos = _sinais(harness, "abandonou_item")
@@ -691,7 +691,7 @@ async def test_tomada_de_controle_pela_rota_leva_o_operador_e_e_uma_por_tentativ
         assert pedido["status"] == "pending"
         assert (await c.post(f"{rota}/release", json={"lease_id": pedido["lease_id"]})).status_code == 200
     async with _cliente(harness) as c:
-        await _logado(c, "Bruno Lima")
+        await _logado(c, "Quillon Lima")
         assert (await c.post(f"{rota}/take")).json()["status"] == "pending"
     [s] = _sinais(harness, "tomou_controle")
     assert (s["source_ref"], s["created_by"], s["polarity"]) == (f"takeover:{etapa}:a1", NOME, "negative")

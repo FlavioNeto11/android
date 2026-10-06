@@ -24,10 +24,10 @@ from .test_avisos_servico import AQUI, CanalFalso, Relogio, _backend, _cfg
 
 REDIGIR = TriagemDeCredencial().redigir
 #: Uma persona (nome de exibição, primeiro, último e @) e um terceiro conhecido, plantados em todo campo de texto livre.
-PERSONA = ["Bruno Lima", "Bruno", "Lima", "bruno.qa"]
+PERSONA = ["Quillon Lima", "Quillon", "Lima", "quillon.qa"]
 TERCEIRO = "@maria.souza, maria@exemplo.com, +55 11 98888-7777, 192.168.1.19"
-LIVRE = f"Comentar como Bruno Lima (@bruno.qa) para {TERCEIRO}"
-PROIBIDOS = ("Bruno", "Lima", "bruno.qa", "maria.souza", "maria@exemplo.com", "98888", "192.168.1.19")
+LIVRE = f"Comentar como Quillon Lima (@quillon.qa) para {TERCEIRO}"
+PROIBIDOS = ("Quillon", "Lima", "quillon.qa", "maria.souza", "maria@exemplo.com", "98888", "192.168.1.19")
 PAINEL = "https://painel.exemplo/central"
 
 
@@ -45,7 +45,7 @@ EVENTOS: list[tuple[str, dict[str, object]]] = [
                              "started_at": "2026-10-04T14:02:11.000Z",
                              "instance_ids": ["android-12"], "command": LIVRE, "status_detail": LIVRE}}),
     ("session.needs_person", {"active": True, "instance_id": "android-03", "status": "auth_challenge",
-                              "detail": LIVRE, "profile_id": "p-bruno"}),
+                              "detail": LIVRE, "profile_id": "p-quillon"}),
     ("learning.needs_person", {"aguardando": True, "faixa": "C", "kind": "receita", "ref": LIVRE,
                                "desde": "2026-10-04T19:00:00+00:00"}),
     *[("pedido.aviso", _evento_de_pedido(sub)) for sub in TIPOS_DO_PEDIDO],

@@ -150,7 +150,7 @@ class Mundo:
         _fluxo(db, "fluxo-aprendido", status="candidate", origem=RUN)
         _fluxo(db, "fluxo-alheio", status="active", origem="r-outra")
         _execucao(db, RUN, flow_id="fluxo-usado", skill=("ig.abrir", 1))
-        self.ok = _objetivo(db, RUN, "android-06", "succeeded", perfil="p-lucas")
+        self.ok = _objetivo(db, RUN, "android-06", "succeeded", perfil="p-tadeu")
         self.falhou = _objetivo(db, RUN, "android-07", "failed")
         self.receita_usada = _receita(db, "abrir", status="active", aprendida_em="r-antiga:android-06:v1:abrir")
         self.receita_alheia = _receita(db, "voltar", status="active", aprendida_em="r-outra:android-01:v1:voltar")
@@ -305,7 +305,7 @@ async def test_errado_de_navegacao_rebaixa_o_usado_e_o_aprendido(mundo: Mundo, c
         "feedback", "errado", "alvo_errado", "negative")
     assert sinal["source_ref"] == f"objective:{mundo.ok}" and sinal["created_by"] == "panel"
     assert sinal["note"] == "abriu o perfil de outra pessoa" and sinal["simulated"] is False
-    assert (sinal["instance_id"], sinal["profile_id"], sinal["app_package"]) == ("android-06", "p-lucas", PACOTE)
+    assert (sinal["instance_id"], sinal["profile_id"], sinal["app_package"]) == ("android-06", "p-tadeu", PACOTE)
     # Etapas comprovadas pela tela: falso positivo do verificador, que o relatório do A3 lê do próprio sinal.
     assert sinal["step_verified"] is True and sinal["data"]["verificador"] == "falso_positivo"
     efeitos = _por_acao(corpo)
@@ -464,8 +464,8 @@ async def test_texto_ruim_so_alimenta_a_voz(mundo: Mundo, cliente: httpx.AsyncCl
     r = await cliente.post(f"/api/runs/{RUN}/feedback",
                            json={"objective_id": mundo.ok, "verdict": "errado", "reason": "texto_ruim"})
     assert r.status_code == 201, r.text
-    assert _por_acao(r.json()) == {("voz", "voz", "p-lucas")}
-    assert r.json()["signal"]["reason"] == "texto_ruim" and r.json()["signal"]["profile_id"] == "p-lucas"
+    assert _por_acao(r.json()) == {("voz", "voz", "p-tadeu")}
+    assert r.json()["signal"]["reason"] == "texto_ruim" and r.json()["signal"]["profile_id"] == "p-tadeu"
     assert mundo.status("flows", "fluxo-usado") == "active" and mundo.status("recipes", mundo.receita_usada) == "active"
     assert mundo.db.scalar("SELECT COUNT(*) FROM learning_evidence") == 0
     assert mundo.db.scalar("SELECT COUNT(*) FROM learning_transitions WHERE item_ref NOT LIKE 'li-%'") == 0

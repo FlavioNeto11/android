@@ -34,8 +34,8 @@ const SENHA = 'senha-secreta-9!Zk';
 
 function perfil(over: Partial<InstagramProfile> = {}): InstagramProfile {
   return {
-    id: 'ig-1', username: 'luciana.bastos73519', display_name: 'Mariana Costa', first_name: 'Mariana',
-    last_name: 'Costa', birth_date: null, email: null, persona_id: 'persona-1', persona_name: 'Mariana — fotografia',
+    id: 'ig-1', username: 'luciana.bastos73519', display_name: 'Luciana Bastos', first_name: 'Luciana',
+    last_name: 'Bastos', birth_date: null, email: null, persona_id: 'persona-1', persona_name: 'Luciana — fotografia',
     status: 'active', instance_id: 'android-02',
     locality: { worker_id: null, worker_name: 'este servidor', worker_state: 'online', known: true,
                 available: true, moved: false, physical_id: null, detail: null },
@@ -151,10 +151,10 @@ it('trocar de seção avisa a tela pela guia (a URL guarda a guia, não a seçã
 it('o cabeçalho tem a identidade UMA vez: nome e @ não se repetem na Visão geral', async () => {
   await abrir();
   const t = text();
-  expect((t.match(/Mariana Costa/g) ?? []).length).toBe(1);
+  expect((t.match(/Luciana Bastos/g) ?? []).length).toBe(1);
   expect((t.match(/@luciana\.bastos73519/g) ?? []).length).toBe(1);
   expect(container.querySelectorAll('h1')).toHaveLength(1);
-  expect(container.querySelector('h1')?.textContent).toBe('Mariana Costa');
+  expect(container.querySelector('h1')?.textContent).toBe('Luciana Bastos');
   // O cartão "Identidade" ficou só com atributos.
   expect(text()).toContain('Idade');
   expect(text()).toContain('Cidade');
@@ -237,12 +237,12 @@ const SEM_SENHA = { configured: false, login_identifier: null, status: null, fai
 function conta(over: Partial<ProfileAccount> = {}): ProfileAccount {
   return {
     id: 'acc-1', profile_id: 'ig-1', app_id: 'instagram', app_name: 'Instagram', package: 'com.instagram.android',
-    handle: 'luciana.bastos73519', host: null, login_identifier: 'mariana@exemplo.com', status: 'active',
+    handle: 'luciana.bastos73519', host: null, login_identifier: 'luciana@exemplo.com', status: 'active',
     session_status: 'unknown', session_detail: null, session_verified_at: null,
     session: { status: 'unknown', instance_id: 'android-02', observed_username: null, verified_at: null, detail: null,
                stale: false },
     session_actions: null, automated_login: true, credential_configured: true,
-    credential: { configured: true, login_identifier: 'mariana@exemplo.com', status: 'active', failed_attempts: 0,
+    credential: { configured: true, login_identifier: 'luciana@exemplo.com', status: 'active', failed_attempts: 0,
                   blocked_until: null, updated_at: '2026-09-17T10:00:00Z', last_used_at: null,
                   consent_at: '2026-09-27T10:00:00Z', consent_by: 'Ana' },
     consent_at: '2026-09-27T10:00:00Z', notes: '', created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
@@ -311,7 +311,7 @@ it('conta que já consentiu mostra quando e por quem, e troca a senha sem remarc
 /** A conta Outlook da persona, sem senha e sem login automático (23.9). */
 const OUTLOOK: Partial<ProfileAccount> = {
   id: 'acc-2', app_id: 'outlook', app_name: 'Outlook', package: 'com.microsoft.office.outlook',
-  handle: 'mariana@outlook.com', automated_login: false, ...CONTA_SEM_SENHA,
+  handle: 'luciana@outlook.com', automated_login: false, ...CONTA_SEM_SENHA,
 };
 
 it('conta sem senha usa a senha de outra conta da persona: POST …/credential/clone só com o id, sem valor nem consent', async () => {
@@ -341,7 +341,7 @@ it('adicionar conta com a senha de outra conta: o campo de senha some e o POST l
   await click(byRole('button', /Adicionar conta/i));
   // O formulário espera o catálogo de apps: o seletor só aparece quando ele chega (29.104).
   await setValue(await waitFor(() => byRole('combobox', /Aplicativo/i)) as HTMLSelectElement, 'outlook');
-  await setValue(byRole('textbox', /Usuário na conta/i) as HTMLInputElement, 'mariana@outlook.com');
+  await setValue(byRole('textbox', /Usuário na conta/i) as HTMLInputElement, 'luciana@outlook.com');
   const senhas = container.querySelectorAll('input[type="password"]').length;
   await setValue(byRole('combobox', /^Usar a senha de outra conta/i) as HTMLSelectElement, 'acc-1');
   expect(container.querySelectorAll('input[type="password"]').length).toBe(senhas - 1);
@@ -349,15 +349,15 @@ it('adicionar conta com a senha de outra conta: o campo de senha some e o POST l
   await click(byRole('button', /^Adicionar$/i));
   await waitFor(() => backend.callsTo('POST', /\/accounts$/).length === 1);
   expect(backend.callsTo('POST', /\/accounts$/)[0]?.body).toEqual({
-    app_id: 'outlook', handle: 'mariana@outlook.com', host: null, login_identifier: null, clonar_de: 'acc-1',
+    app_id: 'outlook', handle: 'luciana@outlook.com', host: null, login_identifier: null, clonar_de: 'acc-1',
   });
 });
 
 it('o identificador de login mostra o valor GRAVADO, nunca o handle por padrão', async () => {
   await abrirContas([conta()]);
   const login = byRole('textbox', /Identificador de login/i) as HTMLInputElement;
-  expect(login.value).toBe('mariana@exemplo.com');
-  expect(text()).toContain('Identificador de login gravado: mariana@exemplo.com');
+  expect(login.value).toBe('luciana@exemplo.com');
+  expect(text()).toContain('Identificador de login gravado: luciana@exemplo.com');
 
   await act(async () => root.unmount());
   root = createRoot(container);
@@ -508,7 +508,7 @@ it('a memória lista o que o perfil sabe e deixa ensinar um fato novo', async ()
 
   // "Ensinar um fato" é um botão que abre o formulário — ele não fica exposto o tempo todo.
   await click(byRole('button', /Ensinar um fato/i));
-  await setValue(byRole('textbox', /Sobre quem/i) as HTMLInputElement, '@bruno');
+  await setValue(byRole('textbox', /Sobre quem/i) as HTMLInputElement, '@quillon');
   await setValue(byRole('textbox', /^Fato$/i) as HTMLTextAreaElement, 'Mudou para Lisboa');
   await click(byRole('button', /Guardar/i));
   await waitFor(() => backend.callsTo('POST', /\/memory$/).length === 1);
@@ -773,7 +773,7 @@ it('o limite mostra um medidor com o uso de hoje contado das interações confir
 
 it('Completar com IA manda a instrução do dono ao enrich e mostra a persona completada', async () => {
   const base = {
-    id: 'ig-1', name: 'Mariana — fotografia', summary: null, persona_prompt: null,
+    id: 'ig-1', name: 'Luciana — fotografia', summary: null, persona_prompt: null,
     traits: { tone: 'calmo' }, voice_gaps: ['slang'], profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   };
@@ -793,7 +793,7 @@ it('Completar com IA manda a instrução do dono ao enrich e mostra a persona co
 
 it('Completar com IA sem instrução não manda corpo, e sem lacuna avisa que não havia nada a completar', async () => {
   const base = {
-    id: 'ig-1', name: 'Mariana — fotografia', summary: 'x', persona_prompt: 'y', traits: { tone: 'calmo' },
+    id: 'ig-1', name: 'Luciana — fotografia', summary: 'x', persona_prompt: 'y', traits: { tone: 'calmo' },
     voice_gaps: [], profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   };
@@ -809,7 +809,7 @@ it('Completar com IA sem instrução não manda corpo, e sem lacuna avisa que n�
 
 it('avisa quais campos de voz faltam na persona e deixa preencher cada um', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => json({
-    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+    id: 'ig-1', name: 'Luciana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
     traits: { tone: 'calmo', formality: 'neutro', typical_length: 'curta', emojis: 'raro',
               personality: 'calma', humor: 'leve', interests: ['fotografia'] },
     // O backend calcula: é a MESMA lista que vai ao modelo. A tela não recalcula nada.
@@ -834,7 +834,7 @@ it('avisa quais campos de voz faltam na persona e deixa preencher cada um', asyn
 
 it('testar persona aceita a INTENÇÃO, não só a mensagem recebida', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => json({
-    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+    id: 'ig-1', name: 'Luciana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
     traits: { tone: 'calmo' }, voice_gaps: [], profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
@@ -858,7 +858,7 @@ it('testar persona aceita a INTENÇÃO, não só a mensagem recebida', async () 
 
 it('testar persona mostra o rascunho e não publica nada', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => json({
-    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+    id: 'ig-1', name: 'Luciana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
     traits: { tone: 'calmo' }, profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
@@ -876,7 +876,7 @@ it('testar persona mostra o rascunho e não publica nada', async () => {
 
 it('29.57: a recusa da prévia se identifica como ANA, e o rascunho não aparece', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => json({
-    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+    id: 'ig-1', name: 'Luciana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
     traits: { tone: 'calmo' }, profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
@@ -894,7 +894,7 @@ it('29.57: a recusa da prévia se identifica como ANA, e o rascunho não aparece
 // ---------------------------------------------------------------- item 11.6: persona como montagem
 it('a persona marca o valor certo nas réguas e mostra Diz × Nunca diz e os exemplos como balões', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => json({
-    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fotógrafa de retratos.', persona_prompt: 'Responda com calma.',
+    id: 'ig-1', name: 'Luciana — fotografia', summary: 'Fotógrafa de retratos.', persona_prompt: 'Responda com calma.',
     traits: {
       tone: 'calmo', formality: 'formal', typical_length: 'longa', emojis: 'raro', personality: 'Observadora e gentil',
       interests: ['fotografia', 'trilhas'], common_phrases: ['bom dia!'], forbidden_phrases: ['mano'],
@@ -931,7 +931,7 @@ it('a memória agrupa os fatos por assunto e ordena por importância', async () 
     { id: 'mem-2', profile_id: 'ig-1', subject: '@ana', content: 'Fato B — mora em Lisboa', source: 'taught',
       interaction_id: null, importance: 0.6, confidence: 0.5, occurrences: 1, expires_at: null,
       created_at: '2026-09-11T10:00:00Z', updated_at: '2026-09-11T10:00:00Z', last_used_at: null },
-    { id: 'mem-3', profile_id: 'ig-1', subject: '@bruno', content: 'Fato C — gosta de futebol', source: 'taught',
+    { id: 'mem-3', profile_id: 'ig-1', subject: '@quillon', content: 'Fato C — gosta de futebol', source: 'taught',
       interaction_id: null, importance: 0.3, confidence: 0.4, occurrences: 1, expires_at: null,
       created_at: '2026-09-09T10:00:00Z', updated_at: '2026-09-09T10:00:00Z', last_used_at: null },
   ]));
@@ -941,7 +941,7 @@ it('a memória agrupa os fatos por assunto e ordena por importância', async () 
 
   const html = container.innerHTML;
   const anaIdx = html.indexOf('>@ana<');
-  const brunoIdx = html.indexOf('>@bruno<');
+  const brunoIdx = html.indexOf('>@quillon<');
   const fatoAIdx = html.indexOf('Fato A');
   const fatoBIdx = html.indexOf('Fato B');
   const fatoCIdx = html.indexOf('Fato C');
@@ -1162,7 +1162,7 @@ it('aba Persona com a API caída mostra o erro com "Tentar de novo" em vez de ca
   expect(text()).toContain('banco indisponível');
 
   backend.on('GET', /\/personas\/ig-1$/, () => json({
-    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+    id: 'ig-1', name: 'Luciana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
     traits: {}, voice_gaps: [], profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
@@ -1237,7 +1237,7 @@ it('guia Contas e acesso com a API caída mostra o erro com "Tentar de novo", n�
 
 // ---------------------------------------------------------------- evolução 2, onda E1: biografia por seção
 const PESSOA = {
-  id: 'ig-1', name: 'Mariana Costa', summary: 'Fotógrafa de retratos.', persona_prompt: '', username: 'luciana.bastos73519',
+  id: 'ig-1', name: 'Luciana Bastos', summary: 'Fotógrafa de retratos.', persona_prompt: '', username: 'luciana.bastos73519',
   traits: { tone: 'calmo' }, voice_gaps: [],
   biography: {
     schema_version: 1,
@@ -1503,7 +1503,7 @@ it('Aparelhos sem vínculo diz onde vincular: ali mesmo, com o formulário abert
 /** Marina em dois aparelhos: o principal (Instagram, conectado) e um do Notebook da LAN (Chrome, sem conta). */
 const EM_DOIS = perfil({
   devices: [
-    makeBinding('android-02', { is_primary: true, session: { ...makeSession('session_ready', 'android-02'), detail: '@mariana confirmado' } }),
+    makeBinding('android-02', { is_primary: true, session: { ...makeSession('session_ready', 'android-02'), detail: '@luciana confirmado' } }),
     makeBinding('android-05', { app_id: 'chrome', state: 'stopped', worker_id: 'worker-lan-01', session: null }),
   ],
 });
@@ -1532,7 +1532,7 @@ it('Aparelhos lista os N vínculos com estado, servidor, app do vínculo, sessã
   expect(principal).toContain('Principal');
   expect(principal).toContain('Instagram');
   expect(principal).toContain('Conectado');
-  expect(principal).toContain('@mariana confirmado');
+  expect(principal).toContain('@luciana confirmado');
   expect(allByRole('button', /Tornar principal/, cartao('android-02'))).toHaveLength(0);
   const outro = text(cartao('android-05'));
   expect(outro).not.toContain('Principal');
@@ -1553,7 +1553,7 @@ it('Tornar principal manda PUT …/primary; Desvincular confirma, manda ?app_id=
   await waitFor(() => expect(relidas).toBe(1));
 
   await click(byRole('button', /^Desvincular/, cartao('android-05')));
-  const dialogo = await waitFor(() => byRole('dialog', /Desvincular Mariana Costa de android-05/));
+  const dialogo = await waitFor(() => byRole('dialog', /Desvincular Luciana Bastos de android-05/));
   expect(backend.callsTo('DELETE', /\/devices\//)).toHaveLength(0);          // nada sem confirmar
   await click(byRole('button', 'Desvincular', dialogo));
   await waitFor(() => expect(backend.callsTo('DELETE', /\/devices\/android-05$/)).toHaveLength(1));
@@ -1567,7 +1567,7 @@ it('Vincular a um aparelho: a recusa D2-a diz de quem é a conta do app naquele 
   backend.on('POST', /\/personas\/ig-1\/devices$/, () => apiError(409, 'conta_do_app_ja_no_aparelho',
     'a persona ig-7 já usa instagram em android-03; duas contas do mesmo app no mesmo aparelho não convivem.'));
   backend.on('GET', /\/instances\/android-03\/personas$/, () => json([
-    { profile_id: 'ig-7', username: 'rafa.corre', display_name: 'Rafael Lima', name: 'Rafael Lima', status: 'active',
+    { profile_id: 'ig-7', username: 'rafa.corre', display_name: 'Nelson Lima', name: 'Nelson Lima', status: 'active',
       app_id: 'instagram', is_primary: true, bound_at: null, session: null },
   ]));
   await abrirAparelhos();
@@ -1575,7 +1575,7 @@ it('Vincular a um aparelho: a recusa D2-a diz de quem é a conta do app naquele 
   await setValue(byRole('combobox', 'Aparelho') as HTMLSelectElement, 'android-03');
   await setValue(byRole('combobox', 'App do vínculo') as HTMLSelectElement, 'instagram');
   await click(byRole('button', /^Vincular$/));
-  await waitFor(() => expect(text()).toContain('O aparelho android-03 já tem a conta do Instagram de Rafael Lima'));
+  await waitFor(() => expect(text()).toContain('O aparelho android-03 já tem a conta do Instagram de Nelson Lima'));
   expect(text()).toContain('um aparelho tem uma conta por app');
   expect(backend.callsTo('POST', /\/personas\/ig-1\/devices$/)[0]!.body)
     .toEqual({ instance_id: 'android-03', app_id: 'instagram', primary: false });

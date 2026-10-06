@@ -103,7 +103,7 @@ def build(tmp_path: Path, app: FakeInstagram, **conf: Any) -> tuple[SessaoDeclar
 def cadastrar(social: SocialService, *, username: str = USUARIO, senha: str = SENHA,
               instance_id: str = "android-02") -> str:
     return social.create_profile(ProfileCreate(username=username, password=senha, instance_id=instance_id,
-                                               first_name="Mariana", last_name="Costa")).id
+                                               first_name="Luciana", last_name="Bastos")).id
 
 
 # ---------------------------------------------------------------- classificação de tela
