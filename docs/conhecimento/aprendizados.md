@@ -2774,3 +2774,28 @@ caminhos com barra invertida por heredoc no shell: ele reduz a barra e o arquivo
 
 **Aplicabilidade.** Vigente. Antes de abrir um item porque "o canal não recebe X", leia a tabela do armazém do canal; a linha de entrada sem texto não prova que o
 anexo se perdeu. O repasse ao dono ou à orquestradora tem de existir para todo tipo guardado que importe, mesmo sem legenda.
+
+### K-106 — Medir a abertura de um app depois de um fluxo nascido de prova: o fluxo fica desligado, o run cai no planejador e gasta IA
+
+**Data:** 06/10/2026 · **Área:** medida de latência (31.137), aprendizado, execução
+
+**Sintoma.** Para medir a abertura das Configurações no android-04 depois do deploy 52, criei runs com o mesmo comando do cebae7. Quatro runs (`5b6644`, `d550cf`,
+`f255eb`, `727d42`) terminaram em `needs_input` ou `failed` sem tocar no aparelho, e dois gastaram IA do planejador (US$ 0,01604 e US$ 0,004377) por uma recusa
+(31.33: "buscar wifi nas configurações não está disponível no Instagram"). Sem o `app_id` no alvo, a persona do aparelho (Instagram) decidia o app.
+
+**Causa.** O fluxo nascido de prova fica **desligado no fim** da prova (31.130): os cinco fluxos de busca das Configurações estavam `disabled`, então o mesmo comando
+não reaproveitava plano nenhum e ia ao planejador, que recusa com a persona do Instagram. Um run de medida com o mesmo comando não é gratuito.
+
+**O que funcionou.** Medir a latência de abertura por controle manual, sem IA: `POST /api/instances/{id}/actions/open_app` e ler `created_at`/`finished_at` do comando
+(`GET /api/commands/{id}`), com o `adb` só para preparar o estado (a busca na frente, o app parado à força). Custo zero, o mesmo `DeviceManager.open_app` da prova. Ou
+religar um fluxo de busca por um motivo registrado e desligar depois.
+
+**O que não funcionou.** Criar run com o comando do fluxo desligado; indicar a persona como alvo sem `app_id` do app do run.
+
+**E o achado que a medida trouxe.** A primeira medida manual (`c-20261006152209-ada35d`) falhou em 0,6 s com "Unknown option: --activity-new-task": o `am start` do
+Android 34 tem `--activity-clear-task` e não tem `--activity-new-task`. O 31.137 do deploy 52 estava quebrado e o `ae97e2` não provava nada dele (o ponto de partida
+falhava em silêncio e a receita abria o app pelo `open_app` comum). Opção de linha de comando de aparelho se confere no aparelho (`am help`) antes de entrar no código, e
+um teste guarda as opções usadas.
+
+**Aplicabilidade.** Vigente. Medida de latência de uma etapa: por controle manual ou fluxo religado com motivo, nunca por um run que depende de um fluxo desligado.
+Comando `adb`/`am` novo: ler o `help` do aparelho e travar as opções num teste.

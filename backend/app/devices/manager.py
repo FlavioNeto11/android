@@ -465,6 +465,8 @@ class DeviceRuntime:
         # controle
         self.control = ControlOwner.none
         self.control_since: str | None = None
+        #: 29.163: o trabalho curto que pegou o aparelho (a conferência periódica da rede) não anuncia "IA assumiu/liberou".
+        self.controle_silencioso = False
         self.lease_id: str | None = None
         self.lease_expires_mono: float = 0
         self.takeover_requested = False
@@ -4252,12 +4254,17 @@ class DeviceManager:
             return None
 
     # ------------------------------------------------------------------ controle (IA × usuário)
-    def ai_begin(self, rt: DeviceRuntime) -> bool:
-        """O worker da IA pede o aparelho. Negado se o usuário tem (ou pediu) o controle."""
+    def ai_begin(self, rt: DeviceRuntime, *, silencioso: bool = False) -> bool:
+        """O worker da IA pede o aparelho. Negado se o usuário tem (ou pediu) o controle.
+
+        `silencioso` (29.163): o trabalho curto de rotina (a conferência periódica da rede) segura o aparelho como qualquer outro,
+        mas não publica "IA assumiu/liberou": o painel mostrava isso a cada ~16 min em aparelhos sem execução nenhuma."""
         if rt.control != ControlOwner.none or rt.takeover_requested or rt.executor.has_zombie:
             return False
         rt.control, rt.control_since = ControlOwner.ai, now_iso()
-        self._control_event(rt, "IA assumiu o aparelho")
+        rt.controle_silencioso = silencioso
+        if not silencioso:
+            self._control_event(rt, "IA assumiu o aparelho")
         return True
 
     def ia_no_controle(self, rt: DeviceRuntime) -> bool:
@@ -4275,10 +4282,13 @@ class DeviceManager:
         if rt.control != ControlOwner.ai:
             return
         if rt.takeover_requested and rt.pending_lease_id:
+            rt.controle_silencioso = False
             self._grant_user(rt, rt.pending_lease_id, dono=rt.pending_dono or "panel")
         else:
             rt.control, rt.control_since = ControlOwner.none, None
-            self._control_event(rt, "IA liberou o aparelho")
+            silencioso, rt.controle_silencioso = rt.controle_silencioso, False
+            if not silencioso:
+                self._control_event(rt, "IA liberou o aparelho")
 
     def _grant_user(self, rt: DeviceRuntime, lease_id: str, *, dono: str,
                     mensagem: str = "Controle manual concedido ao usuário", **extra: str) -> None:
