@@ -324,6 +324,13 @@ release com as notas geradas. É no melhor esforço: sem `gh`, sem rede ou sem p
 histórico leva o aviso em `motivo` e o deploy segue (a tag não desfaz nem atrasa nada). `-SemTag` pula a tag e o release; a
 linha do histórico sai sempre. A tag não dispara o `conteiner.yml` (29.157: ele só roda em push da `main`).
 
+**Notas do release** (29.156, fatia 5): a release da tag `deploy-*` leva como notas as entradas NOVAS do `CHANGELOG.md` desde o deploy
+anterior (os títulos `## …` que não existiam no `commit_antes`, até 40), a migração de antes para depois, a contagem de commits e o link de
+comparação `dono/repositório/compare/<antes>...<depois>` (a URL da origem, que pode carregar credencial, nunca entra no texto). Sem
+deploy anterior, sem `CHANGELOG.md` num dos commits ou qualquer falha, cai nas notas que o `gh --generate-notes` monta, como antes.
+O texto passa por `Remove-DadosDaMaquina` (IP, `WIN-…`, `worker-…-NN`, caminho `C:\…`, e-mail, chaves `sk-`/`ghp_`/`github_pat_` e
+sequências de 40+ caracteres em base64); só os títulos sobem, nunca o corpo das entradas.
+
 **Rollback: o que muda com a migração.** Primeiro responda uma pergunta: o deploy que se quer desfazer trouxe migração
 (`migracao_antes` diferente de `migracao_depois`)? Migração aplicada não se edita, e o código antigo sobre um banco mais
 novo não é um estado testado (o `deploy.ps1` confere código e banco e recusa a subida que não bate: "o banco está em X e o código traz até Y").
