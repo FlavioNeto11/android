@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F5c B: o resto do `AppState.__init__` vai para `bootstrap.montar` (branch feat/15-15-f5c-b, corte 58)
+
+- O corpo do `AppState.__init__` passa a ser `app/bootstrap.py::montar(self, cfg, …)`, e os atributos ficam declarados
+  na classe. Conferido por script contra o `__init__` da a330e29f:
+  - as linhas de código são as mesmas, sem comentários nem linhas vazias;
+  - só as anotações de atributo subiram para a classe.
+- `SettingsStore` e `_FontesDoEspelhoDoTrello` passam a morar em `app.bootstrap`, os dois imports tardios do treino
+  (`TrainingRecorder`, `TrainingSkills`) vão junto, e `bootstrap` não importa `app.state` em tempo de execução.
+- Catracas com as bases baixadas: imports tardios de `app.state` 3→1 (com `app.bootstrap` 2) e `Any` de `app.state`
+  13→10 (`app.bootstrap` 0).
+- Destrava a janela de `state.py` e `bootstrap.py` para o 31.151 a 31.153 (Aprendizado).
+- Prova `simulated`: dirigidos de 175 arquivos (o padrão `bootstrap|AppState|create_app|state.<peça>`), mais
+  `test_revisao_previa`, `test_trello_espelho`, `test_desligamento_sombras` e as catracas. mypy 257; docs-check 0.
+
 ## 2026-10-06 — 31.154: revisão dos PRs 479 e 483 (branch feat/corte57-jev, corte 57)
 
 - Nome fixo em conflito: quando o plano usa um nome fixo da operação com OUTRO valor (`username` = A no plano e B na

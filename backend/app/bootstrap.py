@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import asyncio
 import time
 from collections.abc import Callable
-from typing import Any, Callable
+from typing import Callable
 
 from . import marca_de_partida
 from .automation.appium_server import AppiumServer
@@ -146,7 +146,7 @@ class SettingsStore:
                 log.exception("falha ao reler limites; seguindo com os últimos conhecidos")
         return self._value
 
-    def update(self, patch: dict[str, Any]) -> LimitsCfg:
+    def update(self, patch: dict[str, object]) -> LimitsCfg:
         self._value = LimitsCfg.model_validate({**self._value.model_dump(), **patch})
         self.db.execute("INSERT INTO settings(key, value) VALUES ('limits', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                         (dumps(self._value.model_dump()),))
@@ -449,6 +449,7 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
     # 29.143: a tomada explícita encerra a gravação de quem ensinava (sem salvar nem descartar) antes do lease novo.
     self.devices.on_lease_taken = self._controle_tomado
     # Modo treinamento (item 13.1): cada entrada manual do Foco, com a tela de antes, vai para a gravação.
+    from .training.recorder import TrainingRecorder  # noqa: PLC0415
     # A persona do treino é a que a pessoa escolheu; sem escolha, a ÚNICA do aparelho para o app (com duas, o
     # gravador recusa: não adivinha de quem é a demonstração).
     self.training = TrainingRecorder(
@@ -456,6 +457,7 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
         lambda iid, app: [str(v["profile_id"]) for v in self.social_repo.profiles_of_instance(iid, app)],
         owner_id=cfg.owner_id, variaveis_da_persona=self.repo.variaveis_da_persona)
     self.devices.on_training_input = self.training.record
+    from .training.skills import TrainingSkills  # noqa: PLC0415
     self.skills = TrainingSkills(self)
     # Apagar os dados do aparelho apaga também o app: sem isto o central seguia dizendo "pronto" para um
     # aparelho vazio, a porta do app deixava passar e "Distribuir" recusava reinstalar.
