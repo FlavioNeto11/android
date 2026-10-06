@@ -152,6 +152,15 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     ],
   },
   {
+    soSeOServidorManda: true,
+    title: 'Regra da frota sobre o mesmo alvo',
+    description: 'Quantas contas nossas podem mexer com o mesmo perfil e por quantos dias a regra lembra disso (ADR-081). Vale na hora, sem reiniciar.',
+    fields: [
+      int('frota_max_contas_por_alvo', 'Contas da frota por alvo', 'contas', 'Quantas contas da frota podem ter mexido com o mesmo perfil dentro da janela; passando disso, a próxima conta para com o motivo "já mexeram". Padrão 10; vai de 1 a 64.', 1, 64),
+      int('frota_janela_dias', 'Janela da regra da frota', 'dias', 'Há quantos dias a regra olha para trás ao contar as contas que já mexeram com o mesmo perfil ou têm pedido em aberto para ele. Padrão 30; vai de 1 a 365.', 1, 365),
+    ],
+  },
+  {
     title: 'Sinais e limites do Instagram',
     description: 'Quando parar de insistir sozinho e como a frota se coordena sobre o mesmo alvo (item 8.3).',
     fields: [

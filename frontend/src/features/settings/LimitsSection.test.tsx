@@ -132,3 +132,50 @@ it('J1: cada limite explica o que é, o padrão e o teto, e a recusa do backend 
   await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'Não foi possível salvar os limites' && String(t.message).includes('deve ser menor ou igual a 64'))).toBe(true));
   expect(campo('Personas escolhidas por operação').value).toBe('50');
 });
+
+// ADR-081: a regra da frota sobre o mesmo alvo (dois campos novos, lidos ao vivo pelo servidor).
+it('ADR-081: o grupo "Regra da frota sobre o mesmo alvo" mostra os dois campos com a ajuda em português e salva só o que mudou', async () => {
+  backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...useAppStore.getState().settings!, ...(c.body as Partial<Settings>) }));
+  await act(async () => { root.render(<LimitsSection />); });
+  expect(container.textContent).toContain('Regra da frota sobre o mesmo alvo');
+  expect(campo('Contas da frota por alvo').value).toBe('10');
+  expect(campo('Janela da regra da frota').value).toBe('30');
+  expect(container.textContent).toMatch(/Janela da regra da frota\s*dias/);                 // a unidade ao lado do rótulo
+  expect(container.textContent).toMatch(/Contas da frota por alvo\s*contas/);
+  expect(container.textContent).toContain('Padrão 10; vai de 1 a 64.');
+  expect(container.textContent).toContain('Padrão 30; vai de 1 a 365.');
+  await setValue(campo('Contas da frota por alvo'), '15');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ frota_max_contas_por_alvo: 15 });
+});
+
+it.each([['Contas da frota por alvo', '0'], ['Contas da frota por alvo', '65'], ['Janela da regra da frota', '0'], ['Janela da regra da frota', '366'], ['Janela da regra da frota', '3,5']])(
+  'ADR-081: %s = %s não salva e o erro cai no próprio campo', async (rotulo, valor) => {
+    await act(async () => { root.render(<LimitsSection />); });
+    await setValue(campo(rotulo), valor);
+    await click(byRole('button', /^Salvar limites/));
+    await waitFor(() => expect(container.textContent).toMatch(/entre|inteiro|mínimo|máximo|maior|menor|Informe/i));
+    expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(0);
+  },
+);
+
+it('ADR-081: backend anterior (sem os dois campos) não mostra o grupo, e a recusa do backend aparece sem perder o valor', async () => {
+  backend.on('PUT', /^\/api\/settings$/, () => apiError(422, 'validation_error', 'frota_janela_dias: deve ser menor ou igual a 365'));
+  await act(async () => { root.render(<LimitsSection />); });
+  await setValue(campo('Janela da regra da frota'), '300');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'Não foi possível salvar os limites' && String(t.message).includes('frota_janela_dias'))).toBe(true));
+  expect(campo('Janela da regra da frota').value).toBe('300');
+  await act(async () => root.unmount());
+  container.remove();
+  container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  const sem = { ...useAppStore.getState().settings! } as Partial<Settings>;
+  delete sem.frota_max_contas_por_alvo;
+  delete sem.frota_janela_dias;
+  useAppStore.setState({ settings: sem as Settings });
+  await act(async () => { root.render(<LimitsSection />); });
+  expect(container.textContent).not.toContain('Regra da frota sobre o mesmo alvo');
+});
