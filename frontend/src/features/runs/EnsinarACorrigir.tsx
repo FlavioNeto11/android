@@ -29,6 +29,16 @@ import styles from './EnsinarACorrigir.module.css';
  */
 export const ETAPA_CORRIGIVEL: ReadonlySet<StepStatus> = new Set<StepStatus>(['failed', 'uncertain', 'waiting_user']);
 
+/**
+ * A linha da causa pelo CÓDIGO do diagnóstico (v1.82), nunca pela frase: `null` = sem linha (o diagnóstico falhou),
+ * `indeterminada` = "não deu para saber". Sem o campo (backend anterior ao v1.82) vale o rótulo, como no v1.80.
+ */
+export function linhaDaCausa(s: Pick<EnsinoSugerido, 'rotulo' | 'causa'>): string | null {
+  if (s.causa === null) return null;
+  if (s.causa === 'indeterminada') return 'Causa: não deu para saber.';
+  return s.rotulo ? `Causa provável: ${s.rotulo}.` : null;
+}
+
 /** O texto de abertura que o backend usaria sozinho (adendo v1.75): só se manda quando a pessoa o reescreve. */
 export function intencaoDaCorrecao(titulo: string): string {
   return `Corrigir a etapa «${titulo}»`.slice(0, 400);
@@ -126,9 +136,10 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
     }
   };
 
-  const dica = lendoSugestao ? 'Lendo a sugestão…' : sugestao && (sugestao.rotulo || sugestao.pergunta) ? (
+  const causa = sugestao ? linhaDaCausa(sugestao) : null;
+  const dica = lendoSugestao ? 'Lendo a sugestão…' : sugestao && (causa || sugestao.pergunta) ? (
     <>
-      {sugestao.rotulo ? <>Causa provável: {sugestao.rotulo}. </> : null}
+      {causa ? <>{causa} </> : null}
       O texto é uma sugestão da plataforma; o que você escrever vale no lugar.
     </>
   ) : null;

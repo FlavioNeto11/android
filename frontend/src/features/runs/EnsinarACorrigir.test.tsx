@@ -201,6 +201,7 @@ describe('31.116 parte 2 (adendo v1.80): a intenção sugerida pelo diagnóstico
     intent: 'Corrigir a etapa «Abrir o app»: o app mudou de versão',
     pergunta: 'Mostre o caminho nesta versão do app.',
     rotulo: 'o app mudou de versão',
+    causa: 'versao_nova',
   };
   const campo = () => byRole('textbox', /O que você vai ensinar/) as HTMLInputElement;
   const enviar = async () => {
@@ -282,7 +283,7 @@ describe('31.116 parte 2 (adendo v1.80): a intenção sugerida pelo diagnóstico
 
   it('diagnóstico que falhou (pergunta e rótulo nulos): o campo vem com a intenção, sem dica', async () => {
     comControleNaAba();
-    backend.on('GET', /ensino-sugerido$/, () => json({ intent: 'Corrigir a etapa «Abrir o app»', pergunta: null, rotulo: null }));
+    backend.on('GET', /ensino-sugerido$/, () => json({ intent: 'Corrigir a etapa «Abrir o app»', pergunta: null, rotulo: null, causa: null }));
     await montar();
     await abrirFormulario();
     await waitFor(() => expect(campo().value).toBe('Corrigir a etapa «Abrir o app»'));
@@ -364,5 +365,44 @@ describe('31.116 parte 2 (adendo v1.80): a intenção sugerida pelo diagnóstico
     await setValue(campo(), 'meu texto');
     expect(allByRole('button', /^Voltar à sugestão$/)).toHaveLength(0);
     expect(text()).not.toContain('Lendo a sugestão…');                                          // a espera termina também sem sugestão
+  });
+
+  it('v1.82: causa indeterminada diz "não deu para saber", sem "provável", pelo código e não pela frase do rótulo', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json({ intent: 'Corrigir a etapa «Abrir o app»', pergunta: 'O que a etapa devia ter feito nesta tela?', rotulo: 'a causa não ficou clara', causa: 'indeterminada' }));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(text()).toContain('Causa: não deu para saber.'));
+    expect(text()).not.toContain('Causa provável');
+    expect(text()).not.toContain('a causa não ficou clara');                                    // o rótulo desse código não aparece
+    expect(text()).toContain('O que mostrar: O que a etapa devia ter feito nesta tela?');
+  });
+
+  it('v1.82: causa nula (o diagnóstico falhou) não tem linha de causa, mas a pergunta do estado aparece como vem (waiting_user)', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json({ intent: 'Corrigir a etapa «Abrir o app»', pergunta: 'A etapa parou esperando você: o que ensinar, a partir desta tela, para ela seguir?', rotulo: null, causa: null }));
+    await montar('waiting_user');
+    await abrirFormulario();
+    await waitFor(() => expect(text()).toContain('O que mostrar: A etapa parou esperando você'));
+    expect(text()).not.toContain('Causa');
+    expect(text()).toContain('O texto é uma sugestão');                                          // a pergunta sozinha já é sugestão
+  });
+
+  it('v1.82: o código manda — causa nula sem linha de causa mesmo que um rótulo venha junto', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json({ intent: SUGESTAO.intent, pergunta: SUGESTAO.pergunta, rotulo: SUGESTAO.rotulo, causa: null }));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(campo().value).toBe(SUGESTAO.intent));
+    expect(text()).toContain('O que mostrar: Mostre o caminho nesta versão do app.');
+    expect(text()).not.toContain('Causa provável');
+  });
+
+  it('backend anterior ao v1.82 (sem o campo causa): vale o rótulo como "Causa provável", como no v1.80', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json({ intent: SUGESTAO.intent, pergunta: SUGESTAO.pergunta, rotulo: SUGESTAO.rotulo }));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(text()).toContain('Causa provável: o app mudou de versão.'));
   });
 });

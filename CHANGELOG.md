@@ -30,12 +30,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Ajustes da leitura de UX (decididos pela orquestradora): "O que mostrar" vira uma linha em destaque ACIMA do campo (a dica fica só com a causa); enquanto a
   resposta não chega a dica diz "Lendo a sugestão…" (e some também quando não há sugestão), sem nunca trocar o que a pessoa já digitou; "Voltar à sugestão"
   aparece só depois de editar, havendo sugestão; o campo passa a ser uma caixa de duas linhas (Enter envia como antes, Shift+Enter não, quebra de linha colada
-  vira espaço). Causa indeterminada e a pergunta própria da etapa `waiting_user` ficam para o adendo v1.82 (a rota devolverá `causa` como código); até lá o painel
-  mostra o rótulo e a pergunta como vêm, sem comparar texto.
+  vira espaço).
+- Adendo v1.82 (Aprendizado, `feat/31-116-ensino-sugerido-causa`): a resposta ganha `causa`, o código do diagnóstico, e a `pergunta` passa a ser a do estado da etapa
+  (em `waiting_user`, a própria dela, mesmo com o diagnóstico em erro). O painel escolhe a linha da causa pelo CÓDIGO, nunca pela frase: `indeterminada` diz
+  "Causa: não deu para saber."; `null` não tem linha de causa (mesmo que um rótulo venha junto); os demais dizem "Causa provável: <rótulo>."; sem o campo (backend
+  anterior ao v1.82) vale o rótulo, como no v1.80. A pergunta aparece como vier, em "O que mostrar". `EnsinoSugerido.causa?` em `types.ts`.
 - `api.ensinoSugerido` e `EnsinoSugerido` em `client.ts` e `types.ts`.
-- Prova `simulated`: `EnsinarACorrigir.test.tsx` (10 novos, fixture de resposta) com onze mutações que derrubam o teste (sobrescrever o que a pessoa escreveu,
+- Prova `simulated`: `EnsinarACorrigir.test.tsx` (14 novos, fixture de resposta) com catorze mutações que derrubam o teste (sobrescrever o que a pessoa escreveu,
   comparar com o padrão em vez da sugestão, mandar `intent` sempre, não zerar ao reabrir, tirar o `aria-describedby`, sem o estado de leitura, a pergunta de volta
-  na dica, o "Voltar" sempre visível, Enter que não envia, quebra de linha mantida, o "Voltar" que não devolve a sugestão). Prova `real`: `not_run`; depende
+  na dica, o "Voltar" sempre visível, Enter que não envia, quebra de linha mantida, o "Voltar" que não devolve a sugestão, a indeterminada decidida pelo rótulo, a causa nula com rótulo, a linha sem causa nem rótulo). Prova `real`: `not_run`; depende
   da rota no ar (deploy 48) e de uma falha real para ver a sugestão na tela.
 
 ## 2026-10-06 — K-104: a caracterização da saúde não fotografa o dialeto do banco (branch fix/saude-caracterizacao-dialeto)
