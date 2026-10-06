@@ -1101,6 +1101,7 @@ campo.
 | `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
+| `POST /api/training/from-run` | `TrainingDeFalhaBody {run_id, step_id, lease_id, intent?, app_id?, profile_id?}` | `TrainingSession` (201) com `origin {run_id, step_id, step_key, attempt_id, motivo}`: abre o ensino a partir de uma etapa que falhou (31.111 F1 e F2, adendo v1.75); 404 `step_not_found`, 409 `step_not_failed` e as recusas de `POST /instances/{id}/training` |
 | `POST /api/training/{session_id}/undo` | `TrainingUndoBody {lease_id, seq?}` | `TrainingSession` com `undone: {seq, type}`: tira a última entrada da gravação viva (31.90-D, adendo v1.70) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
@@ -6798,3 +6799,35 @@ selo, porque a entrada não levava o campo do adendo v1.65.
 - **O que o painel precisa mudar:** o Livro mostra o `SeloEmProva` (o mesmo de `GuiaHabilidades` e da cobertura) quando o
   item tem `ensinado_em_prova`.
 - **Prova:** `simulated` (`backend/tests/test_livro_selo_em_prova.py`); `real`: `not_run`.
+
+## Adendo v1.75 (06/10/2026; número da orquestradora; item 31.111 F1 e F2) — ensinar a corrigir a partir de uma etapa que falhou
+
+Uma rota nova e um campo novo na sessão de treino; migração 119 (três colunas). Nada muda nas rotas que existem nem no
+`save`: a correção é uma sessão de treino comum, só que ligada à etapa que falhou.
+- **`POST /api/training/from-run`**, corpo `{run_id, step_id, lease_id, intent?, app_id?, profile_id?}` (`extra=forbid`;
+  `run_id`, `step_id` e `lease_id` obrigatórios, senão **422**). O aparelho é o da etapa. Responde **201** com a sessão
+  (igual a `POST /api/instances/{id}/training`) mais `origin`.
+  - A etapa precisa ter `failed` ou `uncertain`: outra coisa é **409** `step_not_failed`; etapa que não é daquela execução,
+    ou que não existe, é **404** `step_not_found`. Etapa de aparelho que já não existe: **404** `not_found`.
+  - Vale para qualquer aparelho, com as MESMAS travas do treino de hoje: só quem está com o controle (`lease_id`) abre
+    (**409** `control_required`), a loja não é aparelho de treino, e persona de outro aparelho é **400**
+    `profile_not_on_device`. Nada é automático: a falha só oferece o botão, quem abre é a pessoa.
+  - Sem `intent`, o texto é "Corrigir a etapa «<título da etapa>»"; a pessoa pode reescrever.
+- **`origin`** em `GET /api/training/{id}`, em `GET /api/training` e na resposta do `POST`: `null` na gravação comum, ou
+  `{run_id, step_id, step_key, attempt_id, motivo}`. `attempt_id` é a última tentativa da etapa (pode ser `null` se nunca
+  rodou). `motivo` é o literal do executor lido da etapa AGORA, sem segredo reconhecível e com no máximo 400 caracteres
+  (`null` se a limpeza de execuções velhas apagou a etapa; os ids ficam como rótulo). As colunas `origin_*` não saem.
+- **`origin.context`** SÓ no `GET /api/training/{id}` (a lista fica leve): `{disponivel, trilha[], esperado, tentativa,
+  evidencias[]}`. `disponivel: false` (e nada mais) se a etapa foi apagada.
+  - `trilha`: as etapas da execução NAQUELE aparelho e versão do plano, por ordem (até 60): `{step_id, step_key, titulo,
+    status, motivo, falhou}`; `motivo` só nas que falharam ou ficaram incertas; `falhou: true` na etapa de origem.
+  - `esperado`: a pós-condição da etapa, `{kind, value, description}`.
+  - `tentativa`: `{number, status, erro, failure_kind, failure_screen, strategy}` da tentativa de origem, ou `null`.
+  - `evidencias` (até 10): `{id, kind, nota, disponivel}`; a imagem se lê em `GET /api/evidence/{id}`, que recusa a que foi
+    redigida; `disponivel` já diz isso.
+  - Todo texto do executor, da etapa e da evidência passa pelo mascaramento de segredo antes de sair.
+- **Reservado ao F4 (Aprendizado):** `origin.diagnostico {causa, fatos, proposta}`, que pré-preenche o `intent` e a pergunta.
+  Este adendo não o devolve.
+- **O que o painel precisa mudar (F5):** um botão "Ensinar a corrigir" na etapa que falhou, que pede o controle do aparelho
+  e chama `POST /api/training/from-run`; o Foco abre com `origin.context` (a trilha, o esperado e as imagens).
+- **Prova:** `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.

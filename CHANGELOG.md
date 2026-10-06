@@ -31,6 +31,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   fica (cerca de 100 ocorrências em testes). Não foi mexido; fica para uma rodada própria se o dono quiser.
 - Prova: `simulated` (91 arquivos de backend, 3551 testes; `scripts/tests`, 684; frontend, 486; mypy 257; docs-check 0/0).
 
+## 2026-10-06 — 31.111 F1 e F2: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
+
+- `POST /api/training/from-run` `{run_id, step_id, lease_id, intent?, app_id?, profile_id?}` abre uma sessão de ensino ligada à
+  etapa que falhou (ou ficou incerta). O aparelho é o da etapa; as travas são as do treino de hoje: só a pessoa com o
+  controle do aparelho abre, nada é automático, a loja não é aparelho de treino. Etapa de outra execução: 404
+  `step_not_found`; etapa que deu certo ou foi cancelada: 409 `step_not_failed`. Sem `intent`, o texto sai do título da etapa.
+- A sessão guarda três ids opacos (migração 119, `origin_run_id`, `origin_step_id`, `origin_attempt_id`, sem chave
+  estrangeira) e `GET /api/training/{id}` e a lista passam a trazer `origin: {run_id, step_id, step_key, attempt_id, motivo}`
+  (`null` na gravação comum); o motivo é o literal do executor, lido da etapa na hora. As colunas `origin_*` não vazam.
+- F2: `GET /api/training/{id}` traz também `origin.context` (a lista não): a trilha da execução naquele aparelho, a
+  pós-condição esperada, a tentativa que falhou e as evidências dela (o `id` que `GET /api/evidence/{id}` serve; a imagem
+  redigida vem como indisponível). Só leitura, sem IA, e todo texto do executor passa pelo mascaramento de segredo, o
+  `motivo` do F1 também (o teste do F2 pegou o `motivo` saindo sem máscara). Adendo v1.75 do contrato.
+- Fica para o F4 (Aprendizado): `origin.diagnostico`.
+- Prova: `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
+
 ## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)
 
 - Une o painel do 31.89 já sobre a junção do corte 43 (`feat/31-89-painel-corte-44`, 5cb96676) e a tela do 30.85 (`feat/30-85-selo-no-livro`, b083e683, sobre a
