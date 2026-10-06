@@ -11,7 +11,7 @@ import { LoadErrorBanner, LoadErrorState } from '../../lib/loadError';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import {
-  EXISTENCIA_META, TIPOS_COM_MODO_POR_APP, abrirApp, abrirAprendidoDoApp, excecoesPorApp, linhaDeUso, modosDoAppEmTexto,
+  EXISTENCIA_META, NOME_DO_APP_NAO_IDENTIFICADO, PACOTE_NAO_RESOLVIDO, TIPOS_COM_MODO_POR_APP, abrirApp, abrirAprendidoDoApp, excecoesPorApp, linhaDeUso, modosDoAppEmTexto,
   modosEmTexto, modosProprios, trechoDeConfig, usoPorTipo, resumoDoAprendido, resumoDoDeclarado, rotuloDoArquivo, rotuloDoUso,
   provaDoArquivo, resumoDaProva, shaCurto, temMedidoNaoUsado, valoresDoModo, type Contagem,
   type DetalheDoApp, type ModosDoApp, type ProvaDoConhecimento, type ResumoDoApp, type VisaoDeApps,
@@ -23,8 +23,8 @@ import { ChipsDeSaude, FalhasDoApp, FilaDeAtencao, quantosPedemAtencao } from '.
 import { useCarga } from './useCarga';
 import styles from './Aprendizado.module.css';
 
-/** O nome do balde `nao_resolvido` (o que o backend não conseguiu ligar a um pacote). */
-const NAO_RESOLVIDO = 'nao_resolvido';
+/** O balde `nao_resolvido` (o que o backend não conseguiu ligar a um pacote). */
+const NAO_RESOLVIDO = PACOTE_NAO_RESOLVIDO;
 
 function LinhaDeContagem({ rotulo, c }: { rotulo: string; c: Contagem }) {
   const linhas = resumoDoAprendido(c);
@@ -50,7 +50,7 @@ function CartaoDoApp({ app, balde, itens }: { app: ResumoDoApp; balde?: boolean;
   return (
     <li className={vazio ? `${styles.cartao} ${styles.cartaoVazio}` : styles.cartao} data-app={app.pacote}>
       <div className={styles.cartaoHead}>
-        <span className={styles.cartaoNome}>{balde ? 'App não resolvido' : app.nome}</span>
+        <span className={styles.cartaoNome}>{balde ? NOME_DO_APP_NAO_IDENTIFICADO : app.nome}</span>
         {meta ? <Badge tone={meta.tone} size="sm" title={meta.dica}>{meta.label}</Badge>
           : balde ? <Badge tone="warning" size="sm" title="Itens do Livro que o sistema não conseguiu ligar a um pacote.">sem pacote</Badge> : null}
         {app.declarado?.login_gerenciado ? <Badge tone="info" size="sm" title="O login deste app é feito fora da IA.">login gerenciado</Badge> : null}
@@ -420,7 +420,7 @@ function DetalheDeUmApp({ pacote }: { pacote: string }) {
   const doLivro = useMemo(() => (livro.dado && Array.isArray(livro.dado.itens) ? livro.dado.itens : undefined), [livro.dado]);
   const saudePorItem = useMemo(() => new Map((doLivro ?? []).map((e) => [chaveDoItem(e), e.saude ?? null] as const)), [doLivro]);
   const aprendido = useMemo(() => (d?.aprendido ?? []).map((e) => (e.saude ? e : { ...e, saude: saudePorItem.get(chaveDoItem(e)) ?? null })), [d, saudePorItem]);
-  const nome = d ? (balde ? 'App não resolvido' : d.app.nome) : balde ? 'App não resolvido' : pacote;
+  const nome = d ? (balde ? NOME_DO_APP_NAO_IDENTIFICADO : d.app.nome) : balde ? NOME_DO_APP_NAO_IDENTIFICADO : pacote;
   const meta = d?.app.existencia ? EXISTENCIA_META[d.app.existencia] : null;
   return (
     <section className={styles.secao} aria-label={`Aplicativo ${nome}`}>

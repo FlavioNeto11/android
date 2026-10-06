@@ -31,3 +31,20 @@
 }
 
 .erro { color: var(--danger-text); font-size: var(--fs-sm); flex: 1 1 100%; }
+
+/* 31.124: o que já foi ensinado desta etapa, antes do campo: a pessoa decide se ensina de novo. */
+.aviso {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  font-size: var(--fs-sm);
+}
+.avisoTitulo { margin: 0; color: var(--text-1); }
+.avisoLista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.avisoLista li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-3); min-width: 0; }
+.avisoLink { color: var(--accent-text, var(--accent)); }

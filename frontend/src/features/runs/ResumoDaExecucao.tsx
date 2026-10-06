@@ -1,5 +1,5 @@
 import { HelpCircle } from 'lucide-react';
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { RunSummary } from '../../api/types';
 import { Tooltip } from '../../components/Tooltip';
 import { cx, formatUsd4, plural } from '../../lib/format';
@@ -82,6 +82,8 @@ interface Props {
   terminal: boolean;
   /** Leva a uma guia do detalhe (as linhas de "O que precisa de você" são atalhos). */
   irParaAba: (aba: AbaDaExecucao) => void;
+  /** 31.125: o atalho "Ensinar a corrigir" da primeira etapa que falhou; quem sabe das etapas é o detalhe, não o resumo. */
+  ensinar?: ReactNode;
 }
 
 /**
@@ -89,7 +91,7 @@ interface Props {
  * frase e o que depende da pessoa. A terceira só existe quando há algo a decidir.
  */
 export function ResumoDaExecucao({
-  run, repetidos = [], perguntas, sensivel = null, bloqueados, textosParaAprovar, terminal, irParaAba,
+  run, repetidos = [], perguntas, sensivel = null, bloqueados, textosParaAprovar, terminal, irParaAba, ensinar = null,
 }: Props) {
   const now = useNow();
   const idPedido = useId();
@@ -151,6 +153,7 @@ export function ResumoDaExecucao({
               ? <VereditoDaValidacao runId={run.id} />
               : <LegendaDeSucessoComprovado />}</>
           ) : null}
+          {ensinar ? <span className={styles.ensinar}>{ensinar}</span> : null}
         </dd>
       </div>
       <div className={styles.linha}>

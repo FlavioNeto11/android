@@ -416,6 +416,28 @@ export function resumoDoDeclarado(d: DeclaradoDoApp | null): string | null {
   return `${arquivos} arquivo${arquivos === 1 ? '' : 's'} · ${d.acoes} ${d.acoes === 1 ? 'ação' : 'ações'} · ${d.telas} tela${d.telas === 1 ? '' : 's'}`;
 }
 
+/** O balde dos itens que o backend não conseguiu ligar a um aplicativo (30.2): não é um pacote de verdade. */
+export const PACOTE_NAO_RESOLVIDO = 'nao_resolvido';
+
+/** 31.126: como a pessoa lê o balde. O código `nao_resolvido` nunca aparece como nome de aplicativo. */
+export const NOME_DO_APP_NAO_IDENTIFICADO = 'App não identificado';
+export const EXPLICACAO_DO_APP_NAO_IDENTIFICADO =
+  'Ainda não foi ligado a um aplicativo: o pacote não foi identificado quando o item foi aprendido.';
+
+/**
+ * O nome de um app para a pessoa: o balde vira "App não identificado"; o resto, o nome conhecido ou, sem ele, o próprio
+ * pacote (que ainda é o melhor palpite). `nome` igual ao pacote conta como "sem nome".
+ */
+export function nomeDoApp(pacote: string, nome?: string | null): string {
+  if (pacote === PACOTE_NAO_RESOLVIDO) return NOME_DO_APP_NAO_IDENTIFICADO;
+  return nome && nome !== pacote ? nome : pacote;
+}
+
+/** O texto de apoio ao passar o mouse num link de app: no balde, a explicação em vez do código. */
+export function dicaDoApp(pacote: string): string {
+  return pacote === PACOTE_NAO_RESOLVIDO ? EXPLICACAO_DO_APP_NAO_IDENTIFICADO : `Abrir este aplicativo (${pacote})`;
+}
+
 /** Abre o detalhe de um app (`#/aprendizado?aba=apps&app=<pacote>`); "voltar" do navegador retorna de onde veio. */
 export function abrirApp(pacote: string): void {
   useUiStore.getState().navegar({ tela: 'aprendizado', query: { aba: 'apps', app: pacote } });

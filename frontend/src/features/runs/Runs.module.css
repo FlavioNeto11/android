@@ -406,6 +406,15 @@
   text-align: right;
 }
 
+/* 31.125: o atalho "Ensinar a corrigir" na faixa do aparelho, fora do botão que recolhe e abre o objetivo. */
+.objAtalho {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: 0 14px 10px 42px;
+}
+
 .objBody {
   display: flex;
   flex-direction: column;
