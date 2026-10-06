@@ -31,6 +31,23 @@ function Get-NomeDaTagDeDeploy {
   throw "99 tags $base já existem; algo está errado."
 }
 
+# Tempo por etapa do deploy (29.156, fatia 2): latência por etapa é métrica de primeira classe. `New-EstadoDeEtapas` guarda a
+# marca de início; `Close-EtapaDoDeploy` soma ao `Nome` o tempo desde a marca anterior e move a marca (mesmo nome duas vezes
+# soma). Só medição: nunca lança, nunca muda o rumo do deploy.
+function New-EstadoDeEtapas {
+  param([datetime]$Agora = (Get-Date))
+  return @{ marca = $Agora; etapas = [ordered]@{} }
+}
+
+function Close-EtapaDoDeploy {
+  param([Parameter(Mandatory)]$Estado, [Parameter(Mandatory)][string]$Nome, [datetime]$Agora = (Get-Date))
+  try {
+    $s = [math]::Max(0.0, ($Agora - $Estado.marca).TotalSeconds)
+    $Estado.marca = $Agora
+    if ($Estado.etapas.Contains($Nome)) { $Estado.etapas[$Nome] = $Estado.etapas[$Nome] + $s } else { $Estado.etapas[$Nome] = $s }
+  } catch { }
+}
+
 function New-RegistroDeDeploy {
   param(
     [Parameter(Mandatory)][ValidateSet('ok', 'falhou')][string]$Resultado,
@@ -44,12 +61,13 @@ function New-RegistroDeDeploy {
     [string]$Tag,
     [string]$Motivo,
     [double]$DuracaoS = 0,
-    [string[]]$Opcoes = @()
+    [string[]]$Opcoes = @(),
+    [System.Collections.IDictionary]$EtapasS
   )
   # A mensagem de falha não pode virar canal de saída de comando: uma linha, no máximo 300 caracteres.
   $curto = if ($Motivo) { (($Motivo -replace '\s+', ' ').Trim()) } else { $null }
   if ($curto -and $curto.Length -gt 300) { $curto = $curto.Substring(0, 300) }
-  return [ordered]@{
+  $registro = [ordered]@{
     ts_utc          = $UtcAgora.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [cultureinfo]::InvariantCulture)
     resultado       = $Resultado
     commit_antes    = if ($CommitAntes) { $CommitAntes } else { $null }
@@ -63,6 +81,13 @@ function New-RegistroDeDeploy {
     duracao_s       = [math]::Round($DuracaoS, 1)
     opcoes          = @($Opcoes)
   }
+  # Só aparece quando o deploy mediu etapas: o formato das linhas antigas não muda.
+  if ($EtapasS -and $EtapasS.Count -gt 0) {
+    $etapas = [ordered]@{}
+    foreach ($k in $EtapasS.Keys) { $etapas[[string]$k] = [math]::Round([double]$EtapasS[$k], 1) }
+    $registro['etapas_s'] = $etapas
+  }
+  return $registro
 }
 
 function Add-RegistroDeDeploy {

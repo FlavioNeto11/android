@@ -312,7 +312,9 @@ instala na máquina dele.
 **O que cada subida deixa.** Uma subida de verdade (a que parou o backend) acrescenta UMA linha a `data\deploys.jsonl`
 (fora do Git, como o resto de `data\`): `ts_utc`, `resultado` (`ok` ou `falhou`), `commit_antes`/`migracao_antes` (o que
 estava no ar), `commit_depois`/`migracao_depois`, `backup` (a pasta em `data\backups` que vale para voltar),
-`backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s` e `opcoes`. Ensaio, recusa
+`backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s`, `opcoes` e `etapas_s` (29.156: segundos de cada etapa na ordem do deploy, `backup`, `site`, `docs_check`,
+`painel`, `parada`, `dependencias`, `subida`, `conferencia`, `tag`; numa falha, `interrompida` é o tempo da etapa que quebrou;
+linhas anteriores ao campo não têm; a mesma lista sai na tela como "tempo por etapa"). Ensaio, recusa
 do portão do `-PularBackup` e falha do build do painel (antes de parar) não entram: não mudaram nada no ar. Ler:
 `Get-Content data\deploys.jsonl | ConvertFrom-Json | Select-Object ts_utc, resultado, commit_antes, commit_depois, backup, tag`.
 
