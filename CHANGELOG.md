@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.143: a marca de prova na lista do Livro (branch feat/31-142-sugestao-pronta)
+
+- Achado do percurso 52 da Portal: `nascido_de_prova` (31.130) só saía em `conteudo.origem` do detalhe, e o selo e o filtro "Prova" da lista (31.131) ficavam sem dado.
+- Adendo v1.92: cada `Entrada` do livro (lista, `/pendentes`, `/revisar` e o `item` do detalhe) traz `nascido_de_prova` (só o fluxo tem a marca; os outros tipos vêm `false`), e `GET /api/aprendizado?nascido_de_prova=true|false` filtra antes da contagem, somando com os outros filtros.
+- Prova `simulated`: `tests/test_livro_nascido_de_prova.py` (1, a rota nos dois valores). Real: `not_run`.
+
 ## 2026-10-06 — 31.142: a sugestão de pós-condição sai pronta e a prévia mostra o comando repetido (branch feat/31-142-sugestao-pronta)
 
 - Achados da prova F2 (06/10, deploy 51). A única sugestão ("Back") era a descrição do botão voltar: com `element_present`, trocar só o valor deixaria um seletor que só olha o texto. E a prévia parava no 409 `duplicate_command`, escondendo as pós-condições que já valem.
