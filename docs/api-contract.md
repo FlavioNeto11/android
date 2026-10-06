@@ -1846,7 +1846,7 @@ Fases H (parte 2) e K2 da evolução arquitetural
 ([execution](dominios/execution.md#modeplan-o-planreport-servido-fase-h-parte-2)). Tudo aditivo. Nada implantado;
 prova `simulated`.
 
-**`POST /api/runs` com `mode: "plan"`** (`api.py::create_run`):
+**`POST /api/runs` com `mode: "plan"`** (`modules/execution/presentation/router.py::create_run`):
 
 - Corpo: o mesmo `RunCreate`.
 - Resposta: o `RunSummary` de sempre, campo a campo, **mais** `plan_report`, o relatório dos recursos que a skill
@@ -3852,7 +3852,7 @@ rascunho do comando, às vezes com e-mail, ia na query string e ficava na linha 
 habilidade, ou `null` sem casamento) e o painel (`api.flowsMatch`) já chama o POST; quem usava o GET por fora precisa migrar.
 
 Conferido (nada mudado fora do escopo): `POST /api/skills/resolve` e `POST /api/runs/targets/suggest` já recebem o comando no corpo. **Pendente, fora
-deste item:** `GET /api/runs/distribution?command=` (prévia da distribuição, `api.py::preview_distribution`) ainda leva o texto do comando na query
+deste item:** `GET /api/runs/distribution?command=` (prévia da distribuição, `modules/execution/presentation/router.py::preview_distribution`) ainda leva o texto do comando na query
 e portanto no log de acesso; é o mesmo vazamento e pede o mesmo tratamento (POST com corpo).
 
 Adição (compatível): `members[]` de `PolicyGroup` (`GET/POST/PATCH /api/instagram/policy-groups`) ganha `name` (nome da pessoa: exibição, nome e

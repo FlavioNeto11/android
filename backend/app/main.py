@@ -60,6 +60,7 @@ from .modules.avisos.presentation.webhook_trello import router as trello_webhook
 from .modules.context_retrieval.presentation.router import router as context_retrieval_router
 from .modules.learning.presentation.fluxos import router as fluxos_router
 from .modules.learning.presentation.treino import router as treino_router
+from .modules.execution.presentation.router import router as execucoes_router
 from .modules.learning.presentation.router import router as learning_router
 from .modules.pedidos.presentation.router import router as pedidos_router
 from .modules.portal.presentation.contato import METODOS_DO_CONTATO, ROTA_DO_CONTATO
@@ -361,6 +362,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
         app.include_router(router)
         app.include_router(fluxos_router)        # `/api/flows*` (15.15 F4): saiu de `api.py`, no mesmo lugar do `router`
         app.include_router(treino_router)        # `/api/training*` e `/api/instances/{id}/training` (15.15 F4): saiu de `api.py`
+        app.include_router(execucoes_router)     # `/api/runs*` (15.15 F4): saiu de `api.py`; o coringa `{op}` continua por último dele
         # Depois do `router`: `/api/skills/resolve` (fase I) mora lá e precisa casar antes de `/api/skills/{id}`.
         app.include_router(skills_router)
         app.include_router(context_retrieval_router)   # só leitura (ADR-063)

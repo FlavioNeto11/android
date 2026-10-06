@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F4, corte 3: as 16 rotas de execuções saem de `api.py` (branch feat/15-15-f4c-router-execucoes, sobre o corte 2)
+
+- `POST /api/runs`, `GET /api/runs`, `POST /runs/targets/resolve|suggest`, `POST /runs/distribution` (e o `GET` escondido do OpenAPI que responde 405 `metodo_removido`), `GET /runs/{id}` e `/projection|events|report|porta`, `POST /runs/{id}/aprovar-plano|porta/item|porta/renovar|successor`, o coringa `POST /runs/{id}/{op}` e `POST /runs/{id}/objectives/{oid}/resolve` passam de `backend/app/api.py` para `backend/app/modules/execution/presentation/router.py`, montado em `main.py` depois dos routers de fluxos e de treino. São 16 rotas no OpenAPI mais o `GET` escondido (o plano dizia 17: `POST /api/commands/refine` estava no meio do bloco e FICOU em `api.py`, não é de execução). A ordem interna é a de antes: as literais e as específicas antes do coringa `{op}`, e o `GET /runs/distribution` antes de `GET /runs/{run_id}`.
+- Dois nomes que `api.py` e o módulo novo dividem foram para `modules/execution/presentation/comum.py` (`autor_do_sinal` e `run_error`), importados pelos dois lados; nenhum módulo importa `app.api`. `api.py` perdeu `_autor_do_sinal` e `_run_error` (os usos viraram `autor_do_sinal(` e `run_error(`).
+- Nenhum caminho, método, corpo ou resposta muda: o conjunto método+caminho do OpenAPI é idêntico (270 operações), e só o título automático do schema de 7 respostas some (`{}`). Catraca de `Any` de `app.api` baixada: 130→122.
+- Prova `simulated`: 1290 testes (os 61 arquivos que tocam `/api/runs`, `/api/commands` ou o `RunService`, contrato HTTP, cobertura de rotas, arquitetura, ordem das rotas, `models_fatiado` e as catracas); mypy 257. `real`: `not_run`. Sem migração e sem adendo.
+
 ## 2026-10-06 — 15.15 F4, corte 2: as 11 rotas do modo treinamento saem de `api.py` (branch feat/15-15-f4b-router-treino, sobre o corte 1)
 
 - `POST /api/instances/{id}/training`, `POST /api/training/from-run`, `GET /api/training`, `GET /api/training/{id}` e `POST /api/training/{id}/stop|propose|save|preview|recipes|discard|undo` passam de `backend/app/api.py` para `backend/app/modules/learning/presentation/treino.py`, montado em `main.py` logo depois do router dos fluxos. São 11 rotas (o plano dizia 10: faltava o `POST /instances/{id}/training`, que mora no caminho de aparelhos). `/training/from-run` continua antes de `/training/{session_id}`.
