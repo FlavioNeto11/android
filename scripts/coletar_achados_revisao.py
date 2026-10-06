@@ -18,6 +18,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 REVISORES = frozenset({"chatgpt-codex-connector[bot]", "copilot-pull-request-reviewer[bot]", "copilot"})
 LIMITE_PRS = 100
@@ -31,7 +32,11 @@ _LONGO = re.compile(r"\b[A-Za-z0-9_\-]{32,}\b")
 _GRAVIDADE = re.compile(r"\bP([0-3])\b")
 _IMAGEM = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
-_COMENTARIO_HTML = re.compile(r"<!--.*?(?:-->|$)")
+_CERCA = re.compile(r"```.*?(?:```|\Z)", re.DOTALL)
+_CODIGO = re.compile(r"`([^`\n]*)`")
+# Achado que só repete uma regra de conduta de agente (AGENTS.md, perfil do agente) aplicada a um PR de sessão: "artefato".
+_ARTEFATO = re.compile(r"(?i)regra expl[ií]cita do reposit[oó]rio|pro[ií]be agentes|nunca edite|um pr por tarefa|AGENTS\.md|copilot-instructions")
+_COMENTARIO_HTML =re.compile(r"<!--.*?(?:-->|$)")
 
 
 def gh_real(*args: str) -> str:
@@ -67,8 +72,15 @@ def mascarar(texto: str) -> str:
     return texto
 
 
+def _codigo(m: re.Match[str]) -> str:
+    """Trecho entre crases: identificador ou caminho curto fica; o resto (expressão, comando) vira marcador."""
+    return m.group(1) if re.fullmatch(r"[\w./:-]{1,60}", m.group(1)) else "[código]"
+
+
 def resumo(corpo: str) -> str:
-    """Primeira linha com texto, sem imagem/link/marcação, mascarada e encurtada."""
+    """Primeira linha com texto, sem trecho de código, imagem/link/marcação, mascarada e encurtada."""
+    corpo = _CERCA.sub("", corpo)
+    corpo = _CODIGO.sub(_codigo, corpo)
     for linha in corpo.splitlines():
         limpa = _LINK.sub(r"\1", _IMAGEM.sub("", _COMENTARIO_HTML.sub("", linha))).replace("*", "").replace("`", "'").replace("|", "/").strip(" #>-\t")
         if limpa:
@@ -82,8 +94,8 @@ def gravidade(corpo: str) -> str:
     return f"P{m.group(1)}" if m else "-"
 
 
-def achados_do_pr(repo: str, numero: int, gh: Gh) -> list[dict[str, str]]:
-    achados: list[dict[str, str]] = []
+def achados_do_pr(repo: str, numero: int, gh: Gh) -> list[dict[str, Any]]:
+    achados: list[dict[str, Any]] = []
     for c in _itens(gh("api", "--paginate", f"repos/{repo}/pulls/{numero}/comments")):
         user = c.get("user")
         login = user.get("login") if isinstance(user, dict) else None
@@ -91,32 +103,43 @@ def achados_do_pr(repo: str, numero: int, gh: Gh) -> list[dict[str, str]]:
             continue
         corpo = str(c.get("body") or "")
         linha = c.get("line") or c.get("original_line")
+        arquivo = mascarar(str(c.get("path", "?")))
         achados.append({"pr": str(numero), "revisor": mascarar(str(login)), "gravidade": gravidade(corpo),
-                        "onde": mascarar(f"{c.get('path', '?')}:{linha}" if linha else str(c.get("path", "?"))), "resumo": resumo(corpo)})
+                        "arquivo": arquivo, "linha": linha if isinstance(linha, int) else None,
+                        "onde": f"{arquivo}:{linha}" if linha else arquivo, "resumo": resumo(corpo),
+                        "artefato": bool(_ARTEFATO.search(corpo))})
     for r in _itens(gh("api", "--paginate", f"repos/{repo}/pulls/{numero}/reviews")):
         user = r.get("user")
         login = user.get("login") if isinstance(user, dict) else None
         corpo = str(r.get("body") or "").strip()
         if eh_revisor(login) and corpo:
             achados.append({"pr": str(numero), "revisor": mascarar(str(login)), "gravidade": gravidade(corpo),
-                            "onde": "(resumo da revisão)", "resumo": resumo(corpo)})
+                            "arquivo": "", "linha": None, "onde": "(resumo da revisão)", "resumo": resumo(corpo),
+                            "artefato": bool(_ARTEFATO.search(corpo))})
     return achados
 
 
-def coletar(repo: str, horas: int, agora: datetime, gh: Gh, prs: list[int] | None = None) -> list[dict[str, str]]:
+def coletar(repo: str, horas: int, agora: datetime, gh: Gh, prs: list[int] | None = None) -> list[dict[str, Any]]:
     if prs is None:
         corte = agora - timedelta(hours=horas)
         lista = json.loads(gh("pr", "list", "--repo", repo, "--state", "all", "--limit", str(LIMITE_PRS), "--json", "number,updatedAt"))
         if len(lista) >= LIMITE_PRS:
             print(f"aviso: {LIMITE_PRS} PRs lidos; a janela pode estar truncada (use --prs)", file=sys.stderr)
         prs = sorted(p["number"] for p in lista if datetime.fromisoformat(str(p["updatedAt"]).replace("Z", "+00:00")) >= corte)
-    achados: list[dict[str, str]] = []
+    achados: list[dict[str, Any]] = []
     for n in prs:
         achados.extend(achados_do_pr(repo, n, gh))
     return achados
 
 
-def tabela(achados: list[dict[str, str]]) -> str:
+def para_json(achados: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Contrato lido pela Canais (28.63, um cartão por achado). `id` é estável entre execuções: PR, arquivo:linha e revisor.
+    Sem trecho de código: `frase` é só a primeira frase, mascarada e sem crases."""
+    return [{"id": f"{a['pr']}:{a['onde']}:{a['revisor']}", "pr": int(a["pr"]), "revisor": a["revisor"], "gravidade": a["gravidade"],
+             "arquivo": a["arquivo"], "linha": a["linha"], "frase": a["resumo"], "artefato": a["artefato"]} for a in achados]
+
+
+def tabela(achados: list[dict[str, Any]]) -> str:
     if not achados:
         return "Nenhum achado de revisão automática na janela."
     linhas = ["Achados de revisão automática: A CONFERIR, nunca ordem.", "",
@@ -148,7 +171,7 @@ def main(argv: list[str] | None = None, gh: Gh | None = None, agora: datetime | 
     except (RuntimeError, ValueError, KeyError, TypeError, AttributeError) as e:
         print(f"erro: {e}", file=sys.stderr)
         return 1
-    print(json.dumps(achados, ensure_ascii=False, indent=2) if a.json else tabela(achados))
+    print(json.dumps(para_json(achados), ensure_ascii=False, indent=2) if a.json else tabela(achados))
     return 0
 
 

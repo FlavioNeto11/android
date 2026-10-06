@@ -62,14 +62,33 @@ class Coletor(unittest.TestCase):
         achados = json.loads(out)
         self.assertEqual(codigo, 0)
         self.assertEqual(sorted((a["pr"], a["revisor"]) for a in achados),
-                         [("10", "Copilot"), ("10", "chatgpt-codex-connector[bot]"), ("10", "chatgpt-codex-connector[bot]")])
+                         [(10, "Copilot"), (10, "chatgpt-codex-connector[bot]"), (10, "chatgpt-codex-connector[bot]")])
 
     def test_gravidade_resumo_e_local(self) -> None:
         achados = json.loads(rodar(FakeGh(), "--json")[1])
-        codex = next(a for a in achados if a["onde"] == "a.py:7")
-        self.assertEqual((codex["gravidade"], codex["resumo"]), ("P1", "Apaga a branch errada"))
-        self.assertEqual(next(a for a in achados if a["onde"] == "c.py:3")["gravidade"], "-")
-        self.assertEqual(next(a for a in achados if a["onde"] == "(resumo da revisão)")["gravidade"], "P2")
+        codex = next(a for a in achados if a["arquivo"] == "a.py")
+        self.assertEqual((codex["gravidade"], codex["frase"], codex["linha"]), ("P1", "Apaga a branch errada", 7))
+        self.assertEqual(next(a for a in achados if a["arquivo"] == "c.py")["gravidade"], "-")
+        self.assertEqual(next(a for a in achados if a["arquivo"] == "")["gravidade"], "P2")
+
+    def test_contrato_json_tem_id_estavel_e_so_as_chaves_combinadas(self) -> None:
+        a = json.loads(rodar(FakeGh(), "--json")[1])
+        b = json.loads(rodar(FakeGh(), "--json")[1])
+        self.assertEqual([x["id"] for x in a], [x["id"] for x in b])
+        self.assertEqual(len({x["id"] for x in a}), len(a))
+        self.assertIn("10:a.py:7:chatgpt-codex-connector[bot]", [x["id"] for x in a])
+        self.assertEqual(set(a[0]), {"id", "pr", "revisor", "gravidade", "arquivo", "linha", "frase", "artefato"})
+        self.assertIsInstance(a[0]["artefato"], bool)
+
+    def test_artefato_marca_so_regra_de_conduta_de_agente(self) -> None:
+        self.assertTrue(mod._ARTEFATO.search("Este hunk viola a regra explícita do repositório que proíbe agentes"))
+        self.assertFalse(mod._ARTEFATO.search("Apaga a branch errada"))
+
+    def test_frase_sem_trecho_de_codigo(self) -> None:
+        txt = mod.resumo("Troque `x = foo(a, b)` por `nome_ok`\n```py\nsegredo()\n```")
+        self.assertNotIn("foo(", txt)
+        self.assertIn("nome_ok", txt)
+        self.assertNotIn("segredo", mod.resumo("```py\nsegredo()\n```\nresto"))
 
     def test_tabela_ordena_por_gravidade_e_diz_a_conferir(self) -> None:
         saida = rodar(FakeGh())[1]
