@@ -504,7 +504,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   }
 
   // "Depois", Esc e o clique no fundo passam por aqui: com edição pendente, a pessoa confirma antes de perder.
-  async function fechar() {
+  async function fechar(): Promise<boolean> {
     if ((editado || escopoMudou) && proposta && !resultado) {
       const { confirmed } = await confirm({
         title: 'Sair sem salvar o fluxo?',
@@ -513,9 +513,15 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         cancelLabel: 'Voltar',
         body: 'O que você mudou na proposta (comando, etapas, destino das entradas, quem recebe) se perde. A gravação continua na lista "Para revisar".',
       });
-      if (!confirmed) return;
+      if (!confirmed) return false;
     }
     onClose();
+    return true;
+  }
+
+  // 31.119: o selo "corrige uma falha" abre a execução de origem; a revisão sai primeiro (com a confirmação de sempre se há edição).
+  async function abrirExecucao(href: string) {
+    if (await fechar()) window.location.hash = href;
   }
 
   const alterna = (set: Set<string>, id: string) => {
@@ -662,7 +668,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         </div>
       ) : (
         <div className={styles.review}>
-          {sessao.origin ? <div className={styles.origemLinha}><OrigemDoTreino origin={sessao.origin} /></div> : null}
+          {sessao.origin ? <div className={styles.origemLinha}><OrigemDoTreino origin={sessao.origin} aoAbrirExecucao={(href) => void abrirExecucao(href)} /></div> : null}
           <div className={styles.recordingCol}>
             <h4 className={styles.sub}>O que você fez ({plural(sessao.inputs?.length ?? 0, 'entrada', 'entradas')})</h4>
             <ol className={styles.inputList}>
@@ -690,7 +696,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
               <div className={styles.ask}>
                 <p>A IA vai ler a gravação e propor o fluxo: o comando com o que varia, as etapas com o objetivo de cada
                   uma e o que foi engano. Uma chamada do modelo do planejador (poucos centavos).</p>
-                <Button variant="primary" icon={WandSparkles} loading={pensando} onClick={() => void pedirProposta()}>Pedir proposta à IA</Button>
+                <Button variant="primary" icon={WandSparkles} loading={pensando}
+                        disabledReason={(sessao.inputs ?? []).length ? null : 'Nada foi gravado: só dá para descartar.'} onClick={() => void pedirProposta()}>Pedir proposta à IA</Button>
               </div>
             ) : (
               <>

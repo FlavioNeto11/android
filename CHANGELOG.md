@@ -38,7 +38,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   entradas), chama `POST /api/training/{id}/discard` e, se o controle do aparelho é desta aba, avisa "O controle de <aparelho> volta para a IA." e o devolve
   depois do descarte (`release`). Recusa do backend avisa, mantém a sessão na lista e NÃO devolve o controle. Descartada, a revisão fecha e a lista se relê.
   O "Descartar" da gravação viva fica como era (o controle continua com a pessoa). `features/training/descartarSessao.ts` divide a lógica entre os dois lugares.
-- Prova `simulated`: `DescartarSessao.test.tsx` (6) com sete mutações (seis derrubadas; a que tira a guarda "só com o lease desta aba" é equivalente, porque
+- Leitura de UX da lista "Para revisar" (decidida pela orquestradora, mesma branch): **uma linha por sessão** (`<ul>`), com o nome, "sem proposta ainda" (antes "só
+  gravada") ou "proposta pronta", há quanto tempo e quantas entradas ("sem proposta ainda · há 3 h · 0 entradas"; o nome inteiro segue no rótulo do botão);
+  o selo "corrige uma falha" virou **link para a execução de origem** (`#/execucoes/<run_id>`), fora do botão "Revisar", na lista, na origem da barra e na revisão
+  (na revisão ela fecha primeiro, com a confirmação de sempre se há edição); gravação **sem nenhuma entrada** avisa "Nada gravado ainda", deixa "Concluir e
+  revisar" indisponível com o motivo (só se pode descartar) e, numa sessão já concluída sem entradas, "Pedir proposta à IA" também fica indisponível com o motivo.
+- Prova `simulated`: `DescartarSessao.test.tsx` (6) e `ParaRevisar.test.tsx` (5), com quinze mutações (catorze derrubadas; a que tira a guarda "só com o lease desta aba" é equivalente, porque
   `release` já não faz nada sem lease). Prova `real`: `not_run`, depende do deploy 49.
 
 ## 2026-10-06 — 31.116 parte 2 (painel): "Ensinar a corrigir" abre com a intenção que o diagnóstico sugere (branch feat/31-116-formulario-sugerido)
