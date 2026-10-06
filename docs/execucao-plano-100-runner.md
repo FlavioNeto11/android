@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-624 de 675 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+626 de 675 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -634,7 +634,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.84 | implemented | simulated | claude-opus-5-5 | — | #430, ponta 745641b0. Simulado: backend/tests/test_treino_teclas_na_destilacao.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backen… | None |
 | 31.85 | implemented | simulated | claude-opus-5-5 | — | #430, ponta 745641b0. Simulado: backend/tests/test_treino_quadro_velho.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite… | None |
 | 31.86 | implemented | real | claude-sonnet-5-5 | — | 05/10/2026 ~23:42Z a ~23:47Z, WIN-7S2UASNLFOP, commit cb6742d4, android-04. (1) Gravei 2 toques ("toque em Perfil salvo às 19:23" e "toque sem elemento identificado") no Modo treinamento e concluí; com o aparelho PARADO… | None |
-| 31.87 | partial | real | claude-opus-5-5 | — | Real, só leitura e sem IA (06/10 01:21Z, máquina central, backend no ar no commit f15ef2e1, migração 116; leitura do SQLite central em mode=ro pelo script .claude/handoffs/aprendizado/prova3187_mascara.py, que nunca imp… | Duas decisões para a orquestradora. (1) Escopo: o 31.87 pede o mascaramento também no registro da execução (etapas, ações e eventos)? Hoje o executor grava o v… |
+| 31.87 | implemented | real | claude-opus-5-5 | — | Real, 06/10/2026 07:05Z a 07:08Z, máquina central WIN-7S2UASNLFOP, backend no ar no commit d2d346cd (deploy 47), android-04 do worker-lan-01 (decisão (a) da orquestradora 07:01Z), persona de teste, só dentro de com.andr… | None |
 | 31.88 | implemented | real | claude-sonnet-5-5 | — | 31.88 F2: 06/10/2026 ~01:03Z a ~01:11Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (Configurações do Android, sem conta real, sem efeito externo), perso… |  |
 | 31.89 | implemented | real | claude-sonnet-5-5 | — | 06/10/2026 ~02:19Z a ~02:23Z, deploy 44. F4: no comando do Painel, 'pesquise nas configurações e ligue o histórico das notificações' (sem fluxo que case) mostrou 'Nenhum fluxo casa este comando. Isto parece com: “pesqui… | None |
 | 31.90 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 ~05:31Z, deploy 46. No treino aberto pelo F5, duas teclas Voltar geraram '2 entradas'; 'Desfazer a última' chamou POST /api/training/trn-cUIEX-M2QCTokWeA/undo -> 200 OK, o painel mostrou 'Entrada desfei… | None |
@@ -660,7 +660,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.110 | implemented | real | claude-sonnet-5-5 | — | 06/10/2026 ~02:21Z, deploy 44. Com o android-04 PARADO (Parar no Ciclo de vida; state stopped), a barra do Modo treinamento caiu no modo só revisão e 'Refazer receitas' da sessão salva trn-1nuBzRHaAkM09f6K devolveu 'Nen… | None |
 | 31.111 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 ~05:28Z a ~05:31Z, deploy 46 (325a04fb). F5 na tela: Execuções > r-20261006012340-d92795 > Por aparelho > android-04 > etapa 'Abrir Notificações' (Falhou): apareceu o botão 'Ensinar a corrigir'. O formu… | None |
 | 31.112 | implemented | real | claude-sonnet-5-5 | — | 06/10/2026 ~03:21Z, deploy 45. Leitura somente leitura de GET /api/training/trn-1nuBzRHaAkM09f6K (android-04, salva): proposal.answers[1].question = "A busca por '{perfil_nome_exibicao}' não deu resultados; ela é necess… | o painel só mostra a pergunta da IA na revisão de uma sessão com proposta nova (chamada paga de IA, não feita); a sessão salva não reabre na revisão |
-| 31.113 | partial | simulated | claude-sonnet-5-5 | — | F3 7969c74b (bindings com marcador, leitor único, chave da aprovação sobre o valor, approvals ao vivo, evento com marcador; adendo v1.79). Simulado: backend/tests/test_bindings_com_marcador_da_persona.py::*, backend/tes… | None |
+| 31.113 | implemented | real | claude-opus-5-5 | — | Real, mesma execução r-20261006070730-277418 (06/10/2026 07:07Z, deploy 47 d2d346cd). Varredura só leitura do SQLite central (mode=ro), contando o valor da persona sem imprimi-lo: em claro 0 em runs (command, plan, stat… | None |
 | 31.114 | implemented | simulated | claude-sonnet-5-5 | — | Arraste sem árvore vira receita no treino (Jev 2f5d807b, adendo v1.76). ID ainda fora do plano; a orquestradora aplica depois. Simulado: backend/tests/test_treino_arraste_vira_receita.py::*, backend/tests/test_treino_de… | None |
 | 31.115 | pendente | — | — | — |  |  |
 | 31.116 | pendente | — | — | — |  |  |
@@ -682,7 +682,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (51): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.122, 29.126, 29.145, 29.151, 29.152, 30.34, 31.11, 31.12, 31.26, 31.81, 31.87, 31.113, 31.115, 31.116, 31.117, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (49): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.122, 29.126, 29.145, 29.151, 29.152, 30.34, 31.11, 31.12, 31.26, 31.81, 31.115, 31.116, 31.117, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
