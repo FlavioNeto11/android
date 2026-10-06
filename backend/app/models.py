@@ -224,6 +224,10 @@ class PlanStep(BaseModel):
     #: Item 31.36: etapa que só limpa a tela (aviso, banner, cookies, dica). Falhar não derruba o objetivo: vira
     #: `skipped` e o objetivo segue. Só sem efeito, sem saídas, sem for_each e sem commit_guard (o parsing garante).
     opcional: bool = Field(default=False, exclude_if=lambda v: not v)
+    #: Item 31.123 (adendo v1.84): pacotes, além do app da etapa, em que a tela pode COMPROVAR a conclusão (a busca do
+    #: Configurações é de outro pacote). O ensino preenche com os vistos na demonstração. Fora da serialização quando
+    #: vazia, como `saidas`: o plano e o hash das etapas já gravadas não mudam. Pacote desconhecido nunca comprova.
+    pacotes_aceitos: list[str] = Field(default_factory=list, exclude_if=lambda v: not v)
 
     @field_validator("saidas")
     @classmethod
@@ -1924,6 +1928,8 @@ class StepDTO(BaseModel):
     for_each: str | None = None               # etapa-modelo ainda não expandida
     variables: dict[str, str] = {}            # variáveis próprias da etapa (item, item_index)
     opcional: bool = False                    # item 31.36: etapa de limpeza; falhar vira `skipped` e o objetivo segue
+    #: Item 31.123 (adendo v1.84): os pacotes vizinhos em que a etapa pode concluir. Omitido quando vazio.
+    pacotes_aceitos: list[str] = Field(default_factory=list, exclude_if=lambda v: not v)
     # Item 31.65: o motivo da RECUSA da persona ao escrever o texto desta etapa (texto do modelo). Só aqui, no detalhe
     # da etapa; a dica do bloqueio, que viaja para Pendências, aviso e Trello, é fixa. Ausente sem recusa.
     motivo_da_persona: str | None = None

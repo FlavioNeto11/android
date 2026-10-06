@@ -38,6 +38,38 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   origem", "Tentativa de origem" e "Sessão do treino" quando o fluxo nasceu de uma falha, e nada disso quando os campos vêm nulos ou faltam (backend anterior).
 - Prova `simulated`: `SessaoSalva.test.tsx` (3) e um caso novo em `DetalheRico.test.tsx`, com sete mutações derrubadas. Prova `real`: `not_run`, depende do deploy 49.
 
+## 2026-10-06 — 31.123: a etapa conclui no pacote vizinho que a demonstração mostrou (branch feat/31-123-pacote-vizinho)
+
+- Migração 120: `steps.pacotes_aceitos` (lista JSON, nula). `PlanStep`/`StepDTO.pacotes_aceitos` é omitido quando vazio,
+  e o hash da etapa e da receita não muda. `StepExecutor._tela_fora_do_app` aceita esses pacotes como o do app; pacote
+  desconhecido continua não comprovando. O ensino preenche a lista com os pacotes das entradas da etapa (sem o próprio
+  app, o systemui, o lançador e os apps cadastrados), e a prévia e o `save` avisam. Adendo v1.84. Achado da execução
+  r-20261006012340-d92795 (33 chamadas de IA, US$ 0,331, na busca do Configurações).
+- Funções tocadas (K-095): `PlanStep`, `StepDTO` (`models.py`), `Repository._insert_steps` e `step_dto`,
+  `StepExecutor._tela_fora_do_app`, `partida.pacotes_vizinhos` e `aviso_dos_vizinhos` (novas), `TrainingSkills._preparar`.
+- Prova `simulated`: `backend/tests/test_etapa_pacotes_aceitos.py` (5). Real: `not_run`.
+## 2026-10-06 — 31.118 F2: a tela gravada também guarda o marcador (branch feat/31-121-122-partida-e-pos-condicao)
+
+- Achado da conferência real do reparo (06/10 09:01Z): a tela gravada depois da digitação mostrava o campo preenchido,
+  e `GET /api/training/{id}` devolvia o valor em `screen_lines`. No `save` e no reparo único, todo dado não sigiloso
+  da persona troca pelo marcador, por palavra, em `screen_lines` e `screen_title`. O reparo continua idempotente e
+  ganha `telas_marcadas`. Ensaio no banco central: 1 sessão, 1 tela.
+- Funções tocadas (K-095): `reparo_da_gravacao.marcar_telas` (nova) e `marcar_gravacoes_salvas`, `TrainingSkills.save`,
+  `scripts/gravacao-com-marcador.py`.
+- Prova `simulated`: `backend/tests/test_treino_gravacao_com_marcador.py` (11; 2 novos). Real: o reparo roda de novo
+  depois do deploy 50.
+
+## 2026-10-06 — 31.121 e 31.122: a etapa ensinada começa onde a reprodução começa e só passa quando agiu (branch feat/31-121-122-partida-e-pos-condicao)
+
+- 31.121: a receita da etapa da 1ª entrada ganha `open_app` do app da sessão quando a gravação começou dentro dele sem
+  abri-lo (3 de 7 execuções de fluxos ensinados divergiam na etapa 1). A gravação não muda.
+- 31.122: a prévia avisa e o `save` recusa (400 `pos_condicao_ja_vale`, adendo v1.83) a pós-condição `text_visible` que
+  já vale na tela em que a etapa começa, com até três textos da tela seguinte. O dado da persona não é sugerido e sai
+  com o marcador.
+- Funções tocadas (K-095): `training/partida.py` (nova: `com_abertura`, `ja_valem`, `aviso`),
+  `dado_da_persona.com_marcador` (nova), `_destilar`, `TrainingSkills._preparar` e `save` (`training/skills.py`).
+- Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
+  para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
 ## 2026-10-06 — 29.151: a readoção espera o tempo que o aparelho leva (branch feat/29-151-readocao-espera-o-aparelho)
 
 - Depois do reinício do backend, o aparelho readotado esperava 60 s fixos pela primeira resposta do framework e ficava
@@ -907,6 +939,13 @@ Da leitura do 31.78.
 - `.claude/trello/reconciliar.py`: o item classificado na mesma rodada do registro do deploy deixou de ser dado como "no ar desde o deploy N" pela hora; vale o primeiro commit que
   pôs o cabeçalho dele no CHANGELOG e o menor deploy cujo commit do central o contém (no primeiro deploy conhecido: "o deploy 38 ou um anterior"), e a linha do concluído é refeita quando o deploy muda.
   Regra no C-28. Prova `simulated`: `.claude/trello/test_reconciliar.py` (30 passed). Prova `real` (06/10): ensaio contra os três quadros, 37 linhas de concluído com deploy corrigido.
+
+## 2026-10-06 — Deploy 49 (suíte 49: formulário do ensino sugerido com causa, descartar sessão concluída, gravação com a marca, evento do 409, router de releases, readoção pelo aparelho)
+
+- **Implantado** às 08:56Z: central em `1b86bd6b`, sem migração nova (mais alta 119), 8 pontas sobre `16858086` (mains até `95e9b07d` dentro). Itens: 31.116 fechado (formulário de "Ensinar a corrigir" com a pergunta sugerida, a causa por código e "o que mostrar" em destaque; adendo v1.82: `ensino-sugerido` devolve `causa` e a pergunta própria do `waiting_user`, coerente com `from-run`; Portal `8e8cf588`, Aprendizado `4d2ec6a1`), 31.119 ("Descartar" na revisão da sessão concluída e em "Para revisar", devolvendo o controle; Portal), 31.118 (`training_inputs.text` recebe a marca ao salvar o fluxo; a gravação aberta segue em claro; Aprendizado `25878b0a`), 15.15 F7 (o 409 `invalid_transition` deixa evento warn com o modelo da rota; Jev `61930aa2`) e F4d (7 rotas de `/api/releases*` em `modules/applications/presentation/releases.py`, OpenAPI idêntico; Jev `870fd7bd`), 29.151 (a readoção espera o `boot_seconds` do aparelho, 120 a 300 s; Android `8dc6bfed`), C-28 (o id que a seção do deploy diz "fica para o corte N" não conta como citado nele; Canais `64bfc633`). 29.152 observabilidade (o primeiro aviso de cada episódio de pressão traz os 3 processos mais pesados e o pacote em primeiro plano, só nomes; Android `a6d8cfdf`). UX da lista "Para revisar" (uma linha por sessão, "sem proposta ainda", hora e entradas, "Nada gravado ainda", selo que abre a execução de origem; Portal `8e8cf588`).
+- Prova `real`: deploy `deploy.ps1` (ensaio forçado pela trava de 60 min, backup `20261006-055448`); `GET /api/health` ok, migração 119, `problems` 0, `features` iguais; prova de fora como esperado; agente do notebook em `0.1.0+1b86bd6b`; A10: os 12 aparelhos ligados voltaram a online entre 08:55:34Z e 08:56:11Z e a ready às 08:57:06Z, nenhum `error` (29.151: nenhum passou de 60 s, o teto novo não foi exercitado); hooks ok; eventos warn do 409 e "(recusada)" desde 08:55Z: 0 (15.15 F7); reparo das sessões salvas do 31.118 ainda não rodado (vai com o backup `20261006-055448` e o sim da orquestradora); 29.152: o primeiro aviso de pressão depois do deploy (android-05, 08:56:48Z) já nomeia os 3 processos e o pacote em primeiro plano.
+- Prova `simulated` (suíte 49 sobre `1b86bd6b`): `scripts/tests` 684 passed; backend em SQLite inteiro 12282 passed e 13 skipped (08:04Z a 08:23Z); frontend 1746 passed e build; catracas 88 (backend) e 6 (scripts); docs-check 0; mypy 257; PostgreSQL dirigido em 2 partes, 3429 e 2937 passed (parte 2 com 1 falha e 1 erro de host, "No buffer space available (10055)", repetidos limpos: 26 passed); 0 falhas de código na ponta final.
+- `not_run`: percurso 49 no navegador (Portal, a seguir: formulário com causa e pergunta, Descartar, lista); 31.120 (corte 50).
 
 ## 2026-10-06 — Deploy 48 (suíte 48: ensino sugerido a partir da falha, diagnóstico no treino, observar B gera prova, origem do fluxo no Livro, reconciliação pelo git)
 

@@ -27,7 +27,8 @@ from ..planning.training import TrainingRequest
 from ..taskqueue.flows import PLACEHOLDER, RESERVED, ensinado_em_prova
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..util import now_iso
-from . import dado_da_persona
+from . import dado_da_persona, partida
+from .reparo_da_gravacao import marcar_telas
 from .recorder import TrainingError
 from .arraste import arrastes_finais, confirmou, pode_ser_receita
 from .arraste import pergunta as pergunta_do_arraste
@@ -280,6 +281,10 @@ class _Preparo:
     #: O escopo que o `save` grava (31.88 F2): o que a pessoa escolheu, ou a persona que ensinou (`quem_ensinou`).
     profile_ids: list[str] = field(default_factory=list)
     group_ids: list[str] = field(default_factory=list)
+    #: 31.122: as etapas cuja pós-condição `text_visible` já vale na tela de partida (a prévia avisa, o `save` recusa).
+    ja_valem: list[dict[str, object]] = field(default_factory=list)
+    #: Os dados da persona do treino, para a recusa do 31.122 sair com o marcador (nunca o valor).
+    persona: dict[str, str] = field(default_factory=dict)
 
 
 class _Destilada(NamedTuple):
@@ -421,9 +426,17 @@ class TrainingSkills:
             lambda st: bool(st.get("capability")) and (cat := _catalogo_da_etapa(st)) is not None and cat.has(st["capability"]))
         exemplos = {x["name"]: str(x.get("example") or "") for x in p.get("parameters") or [] if x.get("name")}
         passos: list[PlanStep] = []
+        # 31.123: os pacotes vizinhos em que a demonstração de cada etapa terminou (a busca do Configurações)
+        por_seq = {int(e["seq"]): e for e in sess["inputs"]}
+        fora = set(_inteiros([d.get("seq") for d in p.get("discarded") or [] if isinstance(d, dict)]))
+        cadastrados = [a["package"] for a in apps.values()]
+        vizinhos: list[tuple[str, list[str]]] = []
         for st in p["steps"]:
             app_da_etapa = st.get("app_id") or app_id
             pkg = apps[app_da_etapa]["package"] if app_da_etapa in apps else pacote
+            aceitos = partida.pacotes_vizinhos([por_seq[i] for i in _inteiros(st.get("inputs")) if i in por_seq
+                                                and i not in fora], pkg, cadastrados)
+            vizinhos.append((str(st.get("title") or st["key"]), aceitos))
             cat = load_catalog(pkg) if pkg else None
             cap = st.get("capability")
             if cat is not None and st.get("side_effect") and not (cap and cat.has(cap)):
@@ -436,27 +449,38 @@ class TrainingSkills:
             if cat is not None and cap and cat.has(cap):
                 vinculos = {b["name"]: b["value"] for b in st.get("bindings") or [] if b.get("name")}
                 passo = cat.build_step(CapabilityNode(key=st["key"], capability=cap, bindings=vinculos))
-                passos.append(passo.model_copy(update={"key": st["key"], "app_id": outro_app}))
+                passos.append(passo.model_copy(update={"key": st["key"], "app_id": outro_app, "pacotes_aceitos": aceitos}))
             else:
                 post = st.get("postcondition") or {}
                 passos.append(PlanStep(
                     key=st["key"], title=st.get("title") or st["key"], goal=st.get("goal") or st.get("title") or st["key"],
                     side_effect=bool(st.get("side_effect")), app_id=outro_app, max_attempts=1 if st.get("side_effect") else 3,
+                    pacotes_aceitos=aceitos,
                     postcondition=Postcondition(kind=post.get("kind") or "model_judged", value=post.get("value") or "",
                                                 description=post.get("description") or st.get("goal") or "")))
         avisos = [*avisos, *self.s.scheduler.flows.colisoes(comando, exemplos)]            # 31.89 F4: só avisa
+        # 31.122: a pós-condição que já vale na tela em que a etapa começa deixaria a etapa passar sem agir
+        # Nenhum dado da persona (nem o que não foi digitado) entra nas sugestões nem no texto (marca, como no 31.87 F2)
+        dados = self.s.repo.variaveis_da_persona(sess.get("profile_id"))
+        ja_valem = partida.ja_valem(p["steps"], sess["inputs"],
+                                    _inteiros([d.get("seq") for d in p.get("discarded") or [] if isinstance(d, dict)]),
+                                    evitar=dados.values())
         plano = Plan(summary=(p.get("summary") or sess["intent"])[:200], app_id=app_id, app_package=pacote,
                      parameters={n: "{" + n + "}" for n in exemplos}, steps=passos,
                      planner=PlannerInfo(provider="treinamento", model=f"treinamento:{session_id}", simulated=False))
         # A destilação troca o valor digitado pelo nome: os parâmetros da pessoa primeiro, a persona no que sobrar.
         variaveis = {**exemplos, **{k: v for k, v in persona.items() if k not in exemplos}}
-        return _Preparo({**p, "app_id": app_id}, [*avisos, *dado_da_persona.aviso(marcadores)], comando, plano,
-                        variaveis, apps, app_id, profile_ids, group_ids)
+        return _Preparo({**p, "app_id": app_id},
+                        [*avisos, *dado_da_persona.aviso(marcadores), *partida.aviso(ja_valem, dados),
+                         *(dado_da_persona.com_marcador(linha, dados) for linha in partida.aviso_dos_vizinhos(vizinhos))],
+                        comando, plano, variaveis, apps, app_id, profile_ids, group_ids, ja_valem, dados)
 
     async def save(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],
                    group_ids: list[str], scope_on_proof: str = ESCOPO_TODOS) -> dict[str, object]:
         sess = self.s.training.get(session_id)
         prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids, scope_on_proof)
+        if prep.ja_valem:                     # 31.122: pede outra pós-condição ANTES da primeira escrita
+            raise TrainingError("pos_condicao_ja_vale", " ".join(partida.aviso(prep.ja_valem, prep.persona)), 400)
         try:
             flow_id = self.s.scheduler.flows.learn_from_plan(prep.plano, prep.comando, source=f"training:{session_id}")
         except ValueError as exc:
@@ -472,6 +496,8 @@ class TrainingSkills:
         plano = prep.plano.model_dump_json()
         self.s.training.marcar_entradas(session_id, dado_da_persona.marcas_das_entradas(
             sess["inputs"], {n: v for n, v in persona.items() if "{" + n + "}" in plano}))
+        # 31.118 F2: a tela gravada também mostra o dado (o campo preenchido); todo dado da persona vira o marcador nela
+        marcar_telas(self.s.db, session_id, prep.persona)
         origem = {k: v for k, v in (sess.get("origin") or {}).items() if k in ("run_id", "step_id", "attempt_id")}
         self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento"
                                f"{' (correção de uma execução que falhou)' if origem else ''}",
@@ -693,8 +719,13 @@ def _destilar(sess: Sessao, p: Proposta, passos: list[PlanStep], exemplos: dict[
     guardada = sess.get("proposal") if isinstance(sess.get("proposal"), dict) else {}
     respostas = guardadas(guardada)
     tela = _tela_guardada(guardada)
+    # 31.121: a gravação que começou dentro do app (sem abri-lo) ganha a abertura na receita da etapa da 1ª entrada
+    vivas = sorted(s for s in por_seq if s not in descartadas)
+    primeira = por_seq[vivas[0]] if vivas else None
+    app_id = p.get("app_id") if isinstance(p.get("app_id"), str) else None
     for st, passo in zip(p["steps"], passos):
         entradas = [por_seq[i] for i in _inteiros(st.get("inputs")) if i in por_seq and i not in descartadas]
+        entradas = partida.com_abertura(entradas, primeira, app_id, pacotes.get(app_id or ""))
         # 31.114 F2: o arraste que termina a etapa só vira receita confirmado pela pessoa, com a tela conhecida e sem borda.
         final = confirmou(respostas, str(st.get("key"))) and pode_ser_receita(arrastes_finais(entradas), tela)
         acoes, motivo = distill_training(entradas, exemplos, side_effect=passo.side_effect, app_packages=pacotes,

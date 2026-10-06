@@ -10405,18 +10405,18 @@
    "id": "28.56",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "Reconciliação dos quadros do Trello da Canais, C-28: o deploy pelo Git (Canais b6020ebe, 30 testes). Simulado: .claude/trello/test_reconciliar.py::*. Suíte 48 sobre a integração 16858086 (main 397f548f dentro; Portal 31.116 painel d6b25630, Aprendizado 31.116 parte 2 278d44b6 e 30.34 bb37e590, Canais b6020ebe, Jev 31.117 3d3a9072; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); SQLite -n 6 dos 110 arquivos afetados desde a main 61a9722b 1705 passed, 0 falhas; frontend typecheck limpo, 1721 passed (131 arquivos), build ok (sobre 4120cc2d, sem mudança de frontend depois); catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 110 arquivos em 2 partes sobre c19d0ebc: 897 passed, 5 skipped e 803 passed, 0 falhas (fim 07:21:51Z); a ponta final só soma a main de estado do plano. No ar desde o deploy 48 (16858086, 06/10 07:24Z).",
+   "evidence": "Reconciliação do Trello da Canais com a exceção do corte adiado (64bfc633, 31 testes). Simulado: .claude/trello/test_reconciliar.py::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152 a6d8cfdf, Portal 8e8cf588, Canais 64bfc633, Aprendizado 4d2ec6a1 e 25878b0a, Jev 61930aa2 e 870fd7bd; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12282 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1746 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 353 arquivos em 2 partes: parte 1 3429 passed, 6 skipped; parte 2 2937 passed, 4 skipped, com 1 falha e 1 erro de infraestrutura do host (WSAENOBUFS 10055, 'No buffer space available', em test_pedidos_api e test_revisao_previa, arquivos que esta suíte não toca), e os dois arquivos repetidos sozinhos no PG: 26 passed, 0 falhas (08:53:43Z).",
    "blocker": null,
    "arquivos": [
     ".claude/trello/test_reconciliar.py"
    ],
    "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-48",
+   "grupo": "android-suite-49",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T07:30:39+00:00"
+   "quando": "2026-10-06T08:58:09+00:00"
   },
   "29.105": {
    "id": "29.105",
@@ -10496,14 +10496,14 @@
    "id": "15.15",
    "status": "partial",
    "proof": "real",
-   "evidence": "Parcial, três dos seis tópicos, todos mergeados com 8721158e e empurrados. F7 (impor as máquinas de estado), feat/15-15-f7-impor-maquinas 6c5a8c96: Repository._conferir recusa a transição fora das tabelas de execution/domain/states.py com InvalidTransition ANTES de escrever (set_run_status, set_objective, finish_attempt), main.py devolve 409 invalid_transition, aresta completed_with_issues->cancelled declarada, ADR-038, adendo v1.78; 1765 testes dirigidos verdes (76 arquivos). F4 (routers por contexto, 3 cortes sem mudar caminho, método, corpo nem resposta): fluxos 7 rotas (f4a 8e30a011), treino 11 rotas (f4b 6bf397a0), execuções 16 rotas mais a escondida (f4c 7a708220, ponta); main.py monta os três routers no lugar do api.router; OpenAPI contra a main: 270 método+caminho idênticos, schemas só diferem em 16 títulos automáticos de resposta 200, ordem protegida por tests/test_ordem_das_rotas.py (3 testes); 2230 testes dirigidos verdes (119 arquivos). F2 (saúde fora de state.py), feat/15-15-f2-saude f1d0b60b: app/saude.py com SaudeDoSistema (health, ai_status, ultima_migracao, checar e os 6 auxiliares), AppState só delega em uma linha; o teste de caracterização (31 cenários, golden) não mudou e passa igual antes e depois; 132 testes (caracterização, saude_ao_vivo, arquitetura, catracas) e 61 arquivos que chamam a saúde verdes; catraca Any de app.state 50->48. Em todas: catracas 88, mypy 257 no teto, docs-check 0/0, sem migração. Faltam do 15.15: cluster de apps e portões, bootstrap, adapters ai|android, identidade de receita por capability, ligar o apply no ciclo e a conversão dos fluxos reais (recomendação em avaliacao-15-15.md: tirar do 15.15). Prova real = not_run: depois do deploy, comparar GET /api/health (problems e features) antes e depois, e o 409 invalid_transition num pedido recusado. PROVA REAL (06/10/2026, central WIN-7S2UASNLFOP, deploy 47 = d2d346cd, migração 119, só leitura): GET /api/health com problems [] e features idênticos aos de antes do deploy (F2, registrado pela orquestradora); eventos '(recusada)' = 0 desde 06:30Z e 0 warns de transição fora da tabela em todo o histórico (F7). A contagem de 409 invalid_transition não é observável (sem access log e o handler não grava evento): fica 'nenhum caso visível', não 'zero 409'. F4: rotas movidas respondem no central em d2d346cd com o mesmo conjunto de 270 rotas (prova simulada do OpenAPI). Falha achada e corrigida depois: test_ref_do_fluxo_fora_do_log reprovava 2 _err(409) de presentation/fluxos.py (ajuste no commit do 31.117, 3d3a9072).",
-   "blocker": null,
+   "evidence": "Leitura real no central WIN-7S2UASNLFOP (só leitura), deploy 49 = 1b86bd6b às 08:56Z, migração 119, 06/10/2026 08:58Z. F7 (máquinas de estado impostas, deploy 47) e o evento do 409 (deploy 49): 0 eventos warn '409 invalid_transition' desde 08:55Z e 0 em todo o histórico (portanto, por modelo de rota: nenhum); 0 eventos '(recusada)' (execução, objetivo e tentativa) desde 08:55Z, por tipo: nenhum; GET /api/health com 0 problemas, commit 1b86bd6b. F2 (saúde em app/saude.py, deploy 47): /api/health com problems [] e features iguais aos de antes (leitura anterior da orquestradora). F4d (as 7 rotas de /api/releases* em modules/applications/presentation/releases.py, deploy 49): GET /api/releases 200 com a lista (6 releases); GET /api/releases/{id}/targets 200 application/json; GET /api/releases/{id}/icon 404 sem_icone (release sem ícone) e o mesmo código para release inexistente, como o desenho original. F4a, F4b e F4c (routers de fluxos, treino e execuções) no ar desde o deploy 47. Prova real: o central responde pelas rotas movidas; os 409 reais ainda não ocorreram para serem contados. Entregues e ainda sem deploy (corte 50): F4e workers/limites (2142b2a2, 10 rotas), F4f rede (32ccfb08, 10 rotas) e F4g aparelhos (807ac237, 18 rotas), com prova simulated. Faltam: routers de instagram (41 rotas), personas (19), proxies (4), commands (5), apps (6) e o resto de api.py; cluster de apps e portões de state.py; bootstrap; adapters ai e android; identidade de receita por capability (medir antes); ligar o apply no ciclo (decisão do dono); conversão dos fluxos reais (a recomendação é tirar do 15.15, ADR-078).",
+   "blocker": "Faltam os routers restantes e os itens listados na evidência; o corte 50 leva F4e, F4f e F4g e a prova real deles vem depois do deploy 50.",
    "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T07:03:58+00:00"
+   "quando": "2026-10-06T08:59:40+00:00"
   },
   "30.72": {
    "id": "30.72",
@@ -10602,17 +10602,23 @@
   },
   "31.116": {
    "id": "31.116",
-   "status": "partial",
-   "proof": "real",
-   "evidence": "Real, 06/10/2026 07:42Z, central 16858086 (deploy 48), android-04, sessão trn-2hGmYRzUYaZaI5Xk. Na barra do treino (Foco, gravando 'Corrigir a etapa «Confirmar item na tela»') a seção Origem do treino mostra o selo 'corrige uma falha', a etapa check_item e a execução r-20261006053318-c04149, o motivo literal, 'Causa: não deu para saber', 'O que mostrar: O que a etapa devia ter feito nesta tela?' e o recolhível 'Por que a plataforma acha isso' com o fato 'sem regra para o texto: o classificador devolveu `outro`'. Na revisão ('Concluir e revisar') a mesma origem aparece com o mesmo diagnóstico (captura vista), e o título da sessão segue 'Corrigir a etapa «Confirmar item na tela»': a intenção não foi alterada. A causa indeterminada não ganhou o rótulo 'provável', como esperado. GET /api/training/trn-2hGmYRzUYaZaI5Xk confirma origin.diagnostico.causa indeterminada. Falta: o formulário de 'Ensinar a corrigir' mostrando a pergunta sugerida e a causa (parte painel, Portal 87c08b32, corte 49).",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Real, 06/10/2026 07:42Z, central 16858086 (deploy 48), android-04, sessão trn-2hGmYRzUYaZaI5Xk. Na barra do treino (Foco, gravando 'Corrigir a etapa «Confirmar item na tela»') a seção Origem do treino mostra o selo 'corrige uma falha', a etapa check_item e a execução r-20261006053318-c04149, o motivo literal, 'Causa: não deu para saber', 'O que mostrar: O que a etapa devia ter feito nesta tela?' e o recolhível 'Por que a plataforma acha isso' com o fato 'sem regra para o texto: o classificador devolveu `outro`'. Na revisão ('Concluir e revisar') a mesma origem aparece com o mesmo diagnóstico (captura vista), e o título da sessão segue 'Corrigir a etapa «Confirmar item na tela»': a intenção não foi alterada. A causa indeterminada não ganhou o rótulo 'provável', como esperado. GET /api/training/trn-2hGmYRzUYaZaI5Xk confirma origin.diagnostico.causa indeterminada. Falta: o formulário de 'Ensinar a corrigir' mostrando a pergunta sugerida e a causa (parte painel, Portal 87c08b32, corte 49). Suíte 49 (simulado, Android): Formulário do ensino com a causa e a pergunta (Portal 8e8cf588) sobre o ensino-sugerido com causa e a pergunta do waiting_user (Aprendizado 4d2ec6a1, adendo v1.82). Simulado: backend/tests/test_ensino_sugerido.py::*, backend/tests/test_treino_diagnostico_da_falha.py::*, frontend/src/features/training/TrainingBar.test.tsx::*, frontend/src/features/runs/EnsinarACorrigir.test.tsx::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152 a6d8cfdf, Portal 8e8cf588, Canais 64bfc633, Aprendizado 4d2ec6a1 e 25878b0a, Jev 61930aa2 e 870fd7bd; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12282 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1746 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 353 arquivos em 2 partes: parte 1 3429 passed, 6 skipped; parte 2 2937 passed, 4 skipped, com 1 falha e 1 erro de infraestrutura do host (WSAENOBUFS 10055, 'No buffer space available', em test_pedidos_api e test_revisao_previa, arquivos que esta suíte não toca), e os dois arquivos repetidos sozinhos no PG: 26 passed, 0 falhas (08:53:43Z). No ar desde o deploy 49 (1b86bd6b, 06/10 08:56Z).",
    "blocker": null,
-   "nota": "Falta: o formulário 'Ensinar a corrigir' com a sugestão (87c08b32, corte 49). O formulário no ar (deploy 48) ainda é de uma linha com o texto padrão e sem chamar ensino-sugerido.",
-   "grupo": "portal-percurso-48b-diagnostico-na-tela",
+   "arquivos": [
+    "backend/tests/test_ensino_sugerido.py",
+    "backend/tests/test_treino_diagnostico_da_falha.py",
+    "frontend/src/features/training/TrainingBar.test.tsx",
+    "frontend/src/features/runs/EnsinarACorrigir.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-49",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T07:42:57+00:00"
+   "quando": "2026-10-06T08:58:09+00:00"
   },
   "31.117": {
    "id": "31.117",
@@ -10644,13 +10650,71 @@
    "id": "29.152",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real, 06/10/2026 07:47Z, notebook da LAN (worker-lan-01), só medida, nada alterado: CPU do host 33, 19, 29, 22, 38, 24 % (era 66 % com o Discord aberto; 15 a 32 % depois do fechamento, P-015); RAM livre 46999 de 65273 MB; 9 qemu em BelowNormal; Defender em tempo real sem exclusão das pastas dos AVDs e do SDK; eventos do central hoje (00:00Z a 07:48Z): 480 avisos de pressão de CPU (android-02 375, 05 40, 10 28, 13 19, 12 5), 6 quedas do system_server (android-10 e 13, 01:06Z a 01:08Z), android-02 com a automação em error de 07:28Z a 07:39Z (Appium Settings não subiu em 5 s). Relato: .claude/handoffs/android/notebook-29-152-medida47.md. Falta: diagnóstico do android-02 (375 dos 480 avisos), as alterações de desempenho autorizadas (uma por vez, fora de suíte, com medida antes e depois) e a decisão do dono sobre exclusões do Defender e prioridade do qemu (cartão pela Canais).",
-   "grupo": "android-fila-49",
-   "modelo": "sonnet",
+   "evidence": "Real, 06/10/2026 07:47Z, notebook da LAN (worker-lan-01), só medida, nada alterado: CPU do host 33, 19, 29, 22, 38, 24 % (era 66 % com o Discord aberto; 15 a 32 % depois do fechamento, P-015); RAM livre 46999 de 65273 MB; 9 qemu em BelowNormal; Defender em tempo real sem exclusão das pastas dos AVDs e do SDK; eventos do central hoje (00:00Z a 07:48Z): 480 avisos de pressão de CPU (android-02 375, 05 40, 10 28, 13 19, 12 5), 6 quedas do system_server (android-10 e 13, 01:06Z a 01:08Z), android-02 com a automação em error de 07:28Z a 07:39Z (Appium Settings não subiu em 5 s). Relato: .claude/handoffs/android/notebook-29-152-medida47.md. Falta: diagnóstico do android-02 (375 dos 480 avisos), as alterações de desempenho autorizadas (uma por vez, fora de suíte, com medida antes e depois) e a decisão do dono sobre exclusões do Defender e prioridade do qemu (cartão pela Canais). Suíte 49 (simulado, Android): Observabilidade: o primeiro aviso de cada episódio de pressão de CPU traz data.pressao com os 3 processos e o pacote em primeiro plano, só nomes (a6d8cfdf). Medida do depois: episódios com o campo contra episódios, no dia seguinte ao deploy. Simulado: backend/tests/test_pressao_nomeia_quem_pesa.py::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152 a6d8cfdf, Portal 8e8cf588, Canais 64bfc633, Aprendizado 4d2ec6a1 e 25878b0a, Jev 61930aa2 e 870fd7bd; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12282 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1746 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 353 arquivos em 2 partes: parte 1 3429 passed, 6 skipped; parte 2 2937 passed, 4 skipped, com 1 falha e 1 erro de infraestrutura do host (WSAENOBUFS 10055, 'No buffer space available', em test_pedidos_api e test_revisao_previa, arquivos que esta suíte não toca), e os dois arquivos repetidos sozinhos no PG: 26 passed, 0 falhas (08:53:43Z). Real, 06/10/2026 08:56:48Z, central 1b86bd6b (deploy 49): o primeiro aviso de pressão do android-05 depois do deploy já veio com data.pressao (3 processos por nome e o pacote em primeiro plano; 1 aviso, 1 com o campo). Falta: as alterações de desempenho no notebook (P-016 ao dono, cartão bLOOBUfZ) e a medida depois.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_pressao_nomeia_quem_pesa.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; falta a medida do depois",
+   "grupo": "android-suite-49",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T07:49:32+00:00"
+   "quando": "2026-10-06T08:58:09+00:00"
+  },
+  "31.119": {
+   "id": "31.119",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Descartar sessão e a lista Para revisar (Portal 8e8cf588). Simulado: frontend/src/features/training/DescartarSessao.test.tsx::*, frontend/src/features/training/ParaRevisar.test.tsx::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152 a6d8cfdf, Portal 8e8cf588, Canais 64bfc633, Aprendizado 4d2ec6a1 e 25878b0a, Jev 61930aa2 e 870fd7bd; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12282 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1746 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 353 arquivos em 2 partes: parte 1 3429 passed, 6 skipped; parte 2 2937 passed, 4 skipped, com 1 falha e 1 erro de infraestrutura do host (WSAENOBUFS 10055, 'No buffer space available', em test_pedidos_api e test_revisao_previa, arquivos que esta suíte não toca), e os dois arquivos repetidos sozinhos no PG: 26 passed, 0 falhas (08:53:43Z). No ar desde o deploy 49 (1b86bd6b, 06/10 08:56Z).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/training/DescartarSessao.test.tsx",
+    "frontend/src/features/training/ParaRevisar.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-49",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T08:58:09+00:00"
+  },
+  "31.118": {
+   "id": "31.118",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "training_inputs com a marca ao salvar e o script de reparo da gravação (Aprendizado 25878b0a, contém 80c9e39b). O reparo (--aplicar) NÃO faz parte do deploy: só depois, com o vai da orquestradora e o backup como argumento. Simulado: backend/tests/test_treino_gravacao_com_marcador.py::*, backend/tests/test_sempre_na_promovida.py::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152 a6d8cfdf, Portal 8e8cf588, Canais 64bfc633, Aprendizado 4d2ec6a1 e 25878b0a, Jev 61930aa2 e 870fd7bd; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12282 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1746 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 353 arquivos em 2 partes: parte 1 3429 passed, 6 skipped; parte 2 2937 passed, 4 skipped, com 1 falha e 1 erro de infraestrutura do host (WSAENOBUFS 10055, 'No buffer space available', em test_pedidos_api e test_revisao_previa, arquivos que esta suíte não toca), e os dois arquivos repetidos sozinhos no PG: 26 passed, 0 falhas (08:53:43Z). No ar desde o deploy 49 (1b86bd6b, 06/10 08:56Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_gravacao_com_marcador.py",
+    "backend/tests/test_sempre_na_promovida.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-49",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T08:58:09+00:00"
+  },
+  "29.151": {
+   "id": "29.151",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "A readoção espera a medida do próprio aparelho (boot_seconds), entre 120 e 300 s (8dc6bfed). A prova real é o A10 do deploy 49. Simulado: backend/tests/test_readocao_espera_o_aparelho.py::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152 a6d8cfdf, Portal 8e8cf588, Canais 64bfc633, Aprendizado 4d2ec6a1 e 25878b0a, Jev 61930aa2 e 870fd7bd; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12282 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1746 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 353 arquivos em 2 partes: parte 1 3429 passed, 6 skipped; parte 2 2937 passed, 4 skipped, com 1 falha e 1 erro de infraestrutura do host (WSAENOBUFS 10055, 'No buffer space available', em test_pedidos_api e test_revisao_previa, arquivos que esta suíte não toca), e os dois arquivos repetidos sozinhos no PG: 26 passed, 0 falhas (08:53:43Z). No ar desde o deploy 49 (1b86bd6b, 06/10 08:56Z). Leitura real no A10 do deploy 49 (08:55:34Z a 08:56:11Z): os 12 aparelhos ligados voltaram a online em menos de 60 s e a ready às 08:57:06Z, nenhum error; o teto novo (120 a 300 s) não foi exercitado, só se prova com um aparelho lento.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_readocao_espera_o_aparelho.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; real: a readoção medida no A10 do deploy 49",
+   "grupo": "android-suite-49",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T08:58:09+00:00"
   }
  },
  "rodadas": [
@@ -13889,6 +13953,30 @@
    ],
    "grupos": [
     "android-fila-49"
+   ]
+  },
+  {
+   "quando": "2026-10-06T08:58:09+00:00",
+   "itens": [
+    "31.116",
+    "31.119",
+    "31.118",
+    "15.15",
+    "29.151",
+    "29.152",
+    "28.56"
+   ],
+   "grupos": [
+    "android-suite-49"
+   ]
+  },
+  {
+   "quando": "2026-10-06T08:59:40+00:00",
+   "itens": [
+    "15.15"
+   ],
+   "grupos": [
+    "jev"
    ]
   }
  ]

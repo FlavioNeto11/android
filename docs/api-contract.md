@@ -1097,7 +1097,7 @@ campo.
 | `GET /api/training/{session_id}` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
-| `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[], scope_on_proof?}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo) |
+| `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[], scope_on_proof?}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo); 400 `pos_condicao_ja_vale` quando a `text_visible` de uma etapa já vale na tela em que ela começa (31.122, adendo v1.83) |
 | `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
@@ -6975,3 +6975,28 @@ fluxo ensinado a partir de uma falha (adendo v1.75), que `GET /api/flows[].origi
 - Compatível: só um campo a mais e um texto diferente num estado. Pedido da leitura de UX da Portal, que consome os dois.
   **Prova:** `simulated` (`backend/tests/test_ensino_sugerido.py`, 7; `backend/tests/test_treino_diagnostico_da_falha.py`,
   1 novo); `real`: `not_run`.
+
+## Adendo v1.83 (06/10/2026; número da orquestradora; item 31.122) — a pós-condição que já vale na tela de partida
+
+- **`POST /api/training/{session_id}/save`** ganha um 400 novo, no formato do adendo v1.57 (`detail: {code, message}`):
+  `pos_condicao_ja_vale`. Ele sai quando a pós-condição `text_visible` de uma etapa (literal, sem marcador) já aparece nos
+  `screen_lines` da 1ª entrada da etapa, pela regra do verificador (contém, sem caixa nem espaço repetido). Nesse caso a
+  etapa passaria sem agir. A `message` diz cada etapa e oferece até três textos da tela seguinte (a 1ª entrada depois
+  da última da etapa) que não estavam na de partida. A recusa vem antes de qualquer escrita (fluxo, escopo, receita,
+  status da sessão).
+- **`POST /api/training/{session_id}/preview`**: a mesma linha entra em `warnings`. A forma da resposta não muda.
+- O dado da persona nunca vai às sugestões, e o que sobrar dele no título ou no valor sai com o marcador (31.87 F2).
+  A etapa sem tela gravada, o valor curto (menos de 3 caracteres) e o valor com marcador não são conferidos.
+- **Prova:** `simulated` (`backend/tests/test_treino_partida_e_pos_condicao.py`); `real`: `not_run`.
+
+## Adendo v1.84 (06/10/2026; número da orquestradora; item 31.123, migração 120) — a etapa que conclui num pacote vizinho
+
+- **Etapa do plano** (o `plan` de `GET /api/flows` e as etapas de `GET /api/runs/{id}`): campo opcional
+  `pacotes_aceitos: string[]`, OMITIDO quando vazio. São os pacotes, além do app da etapa, em que a tela comprova a
+  conclusão (a busca do Configurações é de outro pacote). Quem preenche é o ensino, com os pacotes vistos na
+  demonstração da etapa, sem o próprio app, o systemui, o lançador e os apps cadastrados. O executor aceita esses
+  pacotes como o do app; pacote desconhecido continua não comprovando.
+- **`POST /api/training/{session_id}/preview` e `/save`**: uma linha em `warnings` por etapa que passou a aceitar um
+  pacote vizinho. A forma da resposta não muda.
+- Compatível: as etapas e os fluxos anteriores não têm o campo, e o hash da receita e da etapa não muda.
+  **Prova:** `simulated` (`backend/tests/test_etapa_pacotes_aceitos.py`); `real`: `not_run`.

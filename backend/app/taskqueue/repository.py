@@ -533,8 +533,8 @@ class Repository:
                 "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
                 " side_effect, commit_guard, precondition, postcondition, timeout_s, max_attempts, status, template_hash,"
                 " variables, for_each, capability, template_key, commit_selector, band_guard, bindings, app_id,"
-                " skill_id, skill_version, node_id, strategy, saidas, opcional)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " skill_id, skill_version, node_id, strategy, saidas, opcional, pacotes_aceitos)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (f"{run_id}:{iid}:v{version}:{s.key}", run_id, oid, iid, version, seq, s.key, s.title, s.goal,
                  dumps(s.depends_on), int(s.side_effect), dumps(s.commit_guard), s.precondition,
                  s.postcondition.model_dump_json(), s.timeout_s, s.max_attempts, StepStatus.pending.value,
@@ -543,7 +543,7 @@ class Repository:
                  dumps(s.bindings) if s.bindings else None, s.app_id,
                  o.skill_id if o else None, o.skill_version if o else None, o.node_id if o else None,
                  ">".join(o.strategies) if o and o.strategies else None, dumps(s.saidas) if s.saidas else None,
-                 1 if s.opcional else None))
+                 1 if s.opcional else None, dumps(s.pacotes_aceitos) if s.pacotes_aceitos else None))
 
     # ================================================================== etapas
     def step_row(self, step_id: str) -> Row:
@@ -1780,7 +1780,7 @@ class Repository:
             capability=r["capability"], commit_selector=r["commit_selector"],
             band_guard=loads(r["band_guard"], []) or [], bindings=loads(r["bindings"], {}) or {},
             for_each=r["for_each"], variables=loads(r["variables"], {}) or {}, app_id=_col(r, "app_id"),
-            opcional=bool(_col(r, "opcional")),
+            opcional=bool(_col(r, "opcional")), pacotes_aceitos=loads(_col(r, "pacotes_aceitos"), []) or [],
             motivo_da_persona=_motivo_da_recusa(_col(r, "draft_meta")))
 
     @staticmethod

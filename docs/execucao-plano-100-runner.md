@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-629 de 681 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+633 de 681 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -124,7 +124,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 15.12 | implemented | real | opus | — | 0b7950e, 99d851b, 40def91, 01d68b5, 15dfded, 88087d9, 3fbe9df: AppDefinition, SessionProvider, integrations/instagram/manifesto.py, teste AST sem comparação com 'instagram'; test_app_novo_pelo_manifesto.py (QA e cross-a… |  |
 | 15.13 | implemented | real | opus | — | e7af6f0, 48e76ae: modules/*/presentation/schemas.py, modules/execution/domain/states.py; testes test_models_fatiado.py e o fixture de transições (3.585 transições reais da suíte, todas na tabela). Real: 0 avisos de tran… |  |
 | 15.14 | implemented | real | opus | — | 27/09, central WIN-7S2UASNLFOP: deploy.ps1 -Ensaio (backup data/backups/20260927-194906, 119,7 MB, integridade ok), ensaio 042–046 na cópia, deploy.ps1 (health ok em 5c98735 / 046_versao_congelada, problems [], features… |  |
-| 15.15 | partial | real | claude-sonnet-5-5 | — | Parcial, três dos seis tópicos, todos mergeados com 8721158e e empurrados. F7 (impor as máquinas de estado), feat/15-15-f7-impor-maquinas 6c5a8c96: Repository._conferir recusa a transição fora das tabelas de execution/d… | None |
+| 15.15 | partial | real | claude-sonnet-5-5 | — | Leitura real no central WIN-7S2UASNLFOP (só leitura), deploy 49 = 1b86bd6b às 08:56Z, migração 119, 06/10/2026 08:58Z. F7 (máquinas de estado impostas, deploy 47) e o evento do 409 (deploy 49): 0 eventos warn '409 inval… | Faltam os routers restantes e os itens listados na evidência; o corte 50 leva F4e, F4f e F4g e a prova real deles vem depois do deploy 50. |
 | 16.1 | implemented | simulated | opus | — | 7631231, 1ae49e0, a2cf6fd (onda E1): components/Page.tsx, styles/tokens.css, Page.test.tsx, SettingsPage.test.tsx; vitest 612/612; aceite visual em 375/1024/1366/1920 com o Foco aberto e fechado contra backend simulado… |  |
 | 16.2 | implemented | real | opus | — | 4b95592 (onda B), 103320d (painel sem o campo): test_credenciais_da_conta.py. Real (28/09, WIN-7S2UASNLFOP, 07fce91): POST /api/runs com credentials → 422 extra_forbidden; o Comando da produção não tem o campo. |  |
 | 16.3 | implemented | real | opus | — | onda A + be65bd4/07fce91 (K-042): test_persona_geracao.py. Real (28/09, 07fce91): POST /api/personas/generate 200 em 21,9 s por claude-sonnet-5 (~US$ 0,02): fisioterapeuta de Florianópolis → Marina Cavalcanti, 1995-04-1… |  |
@@ -311,7 +311,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.53 | pendente | — | — | — |  |  |
 | 28.54 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 7e5fb245 (o teste do 28.54 da Canais). Simulado: backend/tests/test_canais_respostas_as_perguntas.py::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendi… | None |
 | 28.55 | pendente | — | — | — |  |  |
-| 28.56 | implemented | simulated | claude-sonnet-5-5 | — | Reconciliação dos quadros do Trello da Canais, C-28: o deploy pelo Git (Canais b6020ebe, 30 testes). Simulado: .claude/trello/test_reconciliar.py::*. Suíte 48 sobre a integração 16858086 (main 397f548f dentro; Portal 31… | None |
+| 28.56 | implemented | simulated | claude-sonnet-5-5 | — | Reconciliação do Trello da Canais com a exceção do corte adiado (64bfc633, 31 testes). Simulado: .claude/trello/test_reconciliar.py::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152… | None |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -457,8 +457,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.148 | implemented | real | claude-sonnet-5-5 | — | 05/10/2026 ~23:46Z, cb6742d4: Execuções carrega as 20 execuções, filtros e o detalhe de uma execução (r-20261005222326-913d4b: plano, progresso, eventos, relatório, validações); só 1 erro 404 no console: o quadro do and… | None |
 | 29.149 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 5c19f511: o teste usava data fixa como futuro e falhava em qualquer ramo desde 05/10 21:00Z. Simulado: frontend/src/features/runs/PortaDoPlano.test.tsx::*. Suíte 41 sobre a integração ac77742c (origin/main 6545296… | None |
 | 29.150 | implemented | real | claude-sonnet-5-5 | — | Mesma conferência do 29.148: a tela de execuções (datas relativas: "há 1 h", "há 6 h") renderiza sem erro no deploy 42. | None |
-| 29.151 | pendente | — | — | — |  |  |
-| 29.152 | partial | real | sonnet | — | Real, 06/10/2026 07:47Z, notebook da LAN (worker-lan-01), só medida, nada alterado: CPU do host 33, 19, 29, 22, 38, 24 % (era 66 % com o Discord aberto; 15 a 32 % depois do fechamento, P-015); RAM livre 46999 de 65273 M… |  |
+| 29.151 | implemented | simulated | claude-sonnet-5-5 | — | A readoção espera a medida do próprio aparelho (boot_seconds), entre 120 e 300 s (8dc6bfed). A prova real é o A10 do deploy 49. Simulado: backend/tests/test_readocao_espera_o_aparelho.py::*. Suíte 49 sobre a integração… | None |
+| 29.152 | partial | real | claude-sonnet-5-5 | — | Real, 06/10/2026 07:47Z, notebook da LAN (worker-lan-01), só medida, nada alterado: CPU do host 33, 19, 29, 22, 38, 24 % (era 66 % com o Discord aberto; 15 a 32 % depois do fechamento, P-015); RAM livre 46999 de 65273 M… | None |
 | 29.153 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 ~05:27Z, deploy 46 (325a04fb, backend do PR 465 no ar). GET /api/runs/{id} trouxe costs em todas as execuções do android-04 (ex.: r-20261006012340-d92795: spent_usd 0.33082, calls 33; r-20261005222326-9… | None |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
@@ -663,10 +663,10 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.113 | implemented | real | claude-opus-5-5 | — | Real, mesma execução r-20261006070730-277418 (06/10/2026 07:07Z, deploy 47 d2d346cd). Varredura só leitura do SQLite central (mode=ro), contando o valor da persona sem imprimi-lo: em claro 0 em runs (command, plan, stat… | None |
 | 31.114 | implemented | simulated | claude-sonnet-5-5 | — | Arraste sem árvore vira receita no treino (Jev 2f5d807b, adendo v1.76). ID ainda fora do plano; a orquestradora aplica depois. Simulado: backend/tests/test_treino_arraste_vira_receita.py::*, backend/tests/test_treino_de… | None |
 | 31.115 | pendente | — | — | — |  |  |
-| 31.116 | partial | real | claude-sonnet-5-5 | — | Real, 06/10/2026 07:42Z, central 16858086 (deploy 48), android-04, sessão trn-2hGmYRzUYaZaI5Xk. Na barra do treino (Foco, gravando 'Corrigir a etapa «Confirmar item na tela»') a seção Origem do treino mostra o selo 'cor… | None |
+| 31.116 | implemented | simulated | claude-sonnet-5-5 | — | Real, 06/10/2026 07:42Z, central 16858086 (deploy 48), android-04, sessão trn-2hGmYRzUYaZaI5Xk. Na barra do treino (Foco, gravando 'Corrigir a etapa «Confirmar item na tela»') a seção Origem do treino mostra o selo 'cor… | None |
 | 31.117 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 07:35Z, central 16858086: GET /api/aprendizado/fluxo/f-455f91437856 devolve conteudo.origem com tipo treino, fonte training:trn-4lukXbyHNxGubAK0, source_run_id e run_id r-20261006053318-c04149, session_… | None |
-| 31.118 | pendente | — | — | — |  |  |
-| 31.119 | pendente | — | — | — |  |  |
+| 31.118 | implemented | simulated | claude-sonnet-5-5 | — | training_inputs com a marca ao salvar e o script de reparo da gravação (Aprendizado 25878b0a, contém 80c9e39b). O reparo (--aplicar) NÃO faz parte do deploy: só depois, com o vai da orquestradora e o backup como argumen… | None |
+| 31.119 | implemented | simulated | claude-sonnet-5-5 | — | Descartar sessão e a lista Para revisar (Portal 8e8cf588). Simulado: frontend/src/features/training/DescartarSessao.test.tsx::*, frontend/src/features/training/ParaRevisar.test.tsx::*. Suíte 49 sobre a integração 1b86bd… | None |
 | 31.120 | pendente | — | — | — |  |  |
 | 31.121 | pendente | — | — | — |  |  |
 | 31.122 | pendente | — | — | — |  |  |
@@ -688,7 +688,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (52): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.151, 29.152, 31.11, 31.12, 31.26, 31.81, 31.115, 31.116, 31.118, 31.119, 31.120, 31.121, 31.122, 31.123, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (48): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.152, 31.11, 31.12, 31.26, 31.81, 31.115, 31.120, 31.121, 31.122, 31.123, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
