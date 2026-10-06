@@ -10711,6 +10711,18 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T09:32:58+00:00"
+  },
+  "33.2": {
+   "id": "33.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 09:40Z, máquina central WIN-7S2UASNLFOP: docs/integracao-autorizacao-externa.md (339 linhas, 9 seções: propósito, esquema, autenticação, estados, validade, modos, restrições, erros, fora do escopo) e linha no índice docs/README.md; docs-check 0 erros, 0 avisos; revisor-segredos sem achado após as correções. Só documento: nenhum código, nenhum domínio habilitado; os adaptadores são 33.3 a 33.7 e a sombra é 33.8.",
+   "grupo": "orquestradora-33-2",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T09:39:27+00:00"
   }
  },
  "rodadas": [
@@ -14010,6 +14022,15 @@
    ],
    "grupos": [
     "orquestradora-33-1"
+   ]
+  },
+  {
+   "quando": "2026-10-06T09:39:27+00:00",
+   "itens": [
+    "33.2"
+   ],
+   "grupos": [
+    "orquestradora-33-2"
    ]
   }
  ]
