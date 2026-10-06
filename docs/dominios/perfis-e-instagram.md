@@ -445,6 +445,16 @@ arrastando e a posição da tecla é o dígito. A rolagem comum guarda as quatro
 arraste perdem as coordenadas. Os leitores (`linha_da_entrada`, `distill_training`, `proposta_simulada`) tratam o arraste sem
 coordenada como entrada não gravada: a etapa não vira receita.
 
+**A partida e a pós-condição da etapa ensinada (31.121, 31.122).** A pessoa costuma abrir a gravação com o app já na
+frente, então a 1ª entrada é um toque dentro dele. Na reprodução o aparelho está em outra tela, e a receita da 1ª etapa
+divergia ("tela de partida diferente"): 3 de 7 execuções de fluxos ensinados em 06/10. A destilação (`_destilar`) agora
+põe `open_app` do app da sessão antes da 1ª entrada, quando a gravação começou dentro dele sem abri-lo
+(`training/partida.py::com_abertura`). A gravação não muda. A prévia e o `save` também conferem cada pós-condição
+`text_visible` contra os `screen_lines` da 1ª entrada da etapa (`partida.ja_valem`, a regra do verificador). Se o texto
+já está na tela de partida, a etapa passaria sem agir: a prévia avisa e o `save` recusa (400 `pos_condicao_ja_vale`,
+adendo v1.83), com até três textos da tela seguinte como sugestão. O dado da persona não é sugerido e sai com o
+marcador.
+
 **Teclas ao ensinar (31.84).** O texto digitado pelo painel acrescenta ao campo (`clear_first=false`), e quem ensina
 apagava um caractere por vez com "Apagar". Como a receita digita com `clear_first=True`, que já limpa o campo,
 `distill_training` trata assim as teclas gravadas na etapa:

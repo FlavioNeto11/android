@@ -1097,7 +1097,7 @@ campo.
 | `GET /api/training/{session_id}` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
-| `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[], scope_on_proof?}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo) |
+| `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[], scope_on_proof?}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo); 400 `pos_condicao_ja_vale` quando a `text_visible` de uma etapa já vale na tela em que ela começa (31.122, adendo v1.83) |
 | `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
@@ -6959,3 +6959,16 @@ fluxo ensinado a partir de uma falha (adendo v1.75), que `GET /api/flows[].origi
 - **O que o painel precisa mudar:** nada obrigatório; o Livro pode mostrar a execução de origem do fluxo ensinado.
 - **Prova:** `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`, `test_learning_conteudo.py`); `real`: `not_run` até o deploy, onde se
   lê `GET /api/aprendizado/fluxo/{ref}` de um fluxo com origem e compara com `GET /api/flows`.
+
+## Adendo v1.83 (06/10/2026; número da orquestradora; item 31.122) — a pós-condição que já vale na tela de partida
+
+- **`POST /api/training/{session_id}/save`** ganha um 400 novo, no formato do adendo v1.57 (`detail: {code, message}`):
+  `pos_condicao_ja_vale`. Ele sai quando a pós-condição `text_visible` de uma etapa (literal, sem marcador) já aparece nos
+  `screen_lines` da 1ª entrada da etapa, pela regra do verificador (contém, sem caixa nem espaço repetido). Nesse caso a
+  etapa passaria sem agir. A `message` diz cada etapa e oferece até três textos da tela seguinte (a 1ª entrada depois
+  da última da etapa) que não estavam na de partida. A recusa vem antes de qualquer escrita (fluxo, escopo, receita,
+  status da sessão).
+- **`POST /api/training/{session_id}/preview`**: a mesma linha entra em `warnings`. A forma da resposta não muda.
+- O dado da persona nunca vai às sugestões, e o que sobrar dele no título ou no valor sai com o marcador (31.87 F2).
+  A etapa sem tela gravada, o valor curto (menos de 3 caracteres) e o valor com marcador não são conferidos.
+- **Prova:** `simulated` (`backend/tests/test_treino_partida_e_pos_condicao.py`); `real`: `not_run`.

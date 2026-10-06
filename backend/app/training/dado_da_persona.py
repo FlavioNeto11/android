@@ -164,6 +164,13 @@ def com_valores(entradas: Iterable[Mapping[str, object]], persona: Mapping[str, 
     return saida
 
 
+def com_marcador(texto: str, persona: Mapping[str, str]) -> str:
+    """31.122: o texto que DESCREVE (aviso, recusa) com cada dado da persona trocado pelo marcador, por palavra, como o
+    título da etapa. Valor curto (menos de `MINIMO`) não é trocado."""
+    return _trocar(texto, {v: "{" + n + "}" for n, v in persona.items()
+                           if isinstance(v, str) and len(v.strip()) >= MINIMO})
+
+
 def aviso(usados: Iterable[str]) -> list[str]:
     """A linha que o painel mostra no salvar e na prévia: o que vem do perfil da persona de cada aparelho."""
     marcadores = ", ".join("{" + n + "}" for n in usados)
@@ -171,4 +178,4 @@ def aviso(usados: Iterable[str]) -> list[str]:
             ] if marcadores else []
 
 
-__all__ = ["MINIMO", "aviso", "com_valores", "demonstrados", "marcas_das_entradas", "na_proposta", "nas_perguntas"]
+__all__ = ["MINIMO", "aviso", "com_marcador", "com_valores", "demonstrados", "marcas_das_entradas", "na_proposta", "nas_perguntas"]

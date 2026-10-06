@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.121 e 31.122: a etapa ensinada começa onde a reprodução começa e só passa quando agiu (branch feat/31-121-122-partida-e-pos-condicao)
+
+- 31.121: a receita da etapa da 1ª entrada ganha `open_app` do app da sessão quando a gravação começou dentro dele sem
+  abri-lo (3 de 7 execuções de fluxos ensinados divergiam na etapa 1). A gravação não muda.
+- 31.122: a prévia avisa e o `save` recusa (400 `pos_condicao_ja_vale`, adendo v1.83) a pós-condição `text_visible` que
+  já vale na tela em que a etapa começa, com até três textos da tela seguinte. O dado da persona não é sugerido e sai
+  com o marcador.
+- Funções tocadas (K-095): `training/partida.py` (nova: `com_abertura`, `ja_valem`, `aviso`),
+  `dado_da_persona.com_marcador` (nova), `_destilar`, `TrainingSkills._preparar` e `save` (`training/skills.py`).
+- Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
+  para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
+
 ## 2026-10-06 — 31.118: a gravação salva guarda o marcador da persona (branch feat/31-118-gravacao-com-marcador)
 
 - No `save`, a entrada de `training_inputs` cujo texto inteiro é um dado da persona que a habilidade usa (marcador no
