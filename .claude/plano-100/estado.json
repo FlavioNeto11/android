@@ -11125,6 +11125,32 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T16:03:24+00:00"
+  },
+  "29.126": {
+   "id": "29.126",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Conferido no código de c0d2fd5f (06/10/2026 16:03Z), sem mudança nova: a readoção do Appium que o 29.126 pede já foi consertada pelo 29.132 e pelo 29.138 (CHANGELOG de 05/10, branch fix/29-131-sobras-supervisor-readocao): `AppiumServer._own_orphan` decide pelo DONO DA PORTA antes do PID gravado (todos os donos nossos para readotar; um alheio basta para ser externo), o órfão nosso sem mascaramento comprovado é trocado e não readotado, e a frase no log não prova se a porta é de outro. Testes simulated: tests/test_achados_29_138.py (7), tests/test_appium_start_pid_novo.py (dono da porta, externo com PID gravado nosso vivo, o caso do pid 13056 readotado que prova a máscara). A pergunta 'isso bloqueia a digitação de credencial?': sim, falha fechada: SensitiveInputChannel(lambda: appium.log_masking_active).fill levanta SensitiveInputUnavailable sem o mascaramento provado (app/security/sensitive_input.py), e a saúde acusa o problema (app/saude.py:121). Estado real agora: GET /api/health appium running, 'iniciado por este projeto (pid 52084)', sem problema de mascaramento. Real da readoção sob carga com o parque: not_run (pede reinício do backend com carga).",
+   "blocker": "Prova real da readoção sob carga (reinício do central com o Appium vivo e o disco saturado) fica not_run; só se o dono autorizar o reinício em condição de carga.",
+   "grupo": "jev",
+   "modelo": "sonnet-5.5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T16:05:07+00:00"
+  },
+  "29.122": {
+   "id": "29.122",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Mitigações já na main e no ar: 29.121 (o vigia guarda a pilha do backend antes do kill), 29.123 e 29.127 (readoção do Appium sem o log antigo), 29.124 (o supervisor espera a partida lenta e pausa depois de reinícios seguidos), 29.125 (só mata o backend). Real: desde esses deploys não houve novo kill do supervisor (central 6e7b87cf, 06/10). A CAUSA do 1º travamento de 05/10 continua sem prova e não há mais log a ler; só a próxima ocorrência, com a pilha gravada pelo 29.121, a mostra.",
+   "blocker": "Fica partial até a próxima ocorrência trazer a pilha (29.121) ou até 7 dias sem kill (13/10), quando se fecha como mitigado.",
+   "grupo": "jev",
+   "modelo": "sonnet-5.5",
+   "esforco": "medium",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T16:05:07+00:00"
   }
  },
  "rodadas": [
@@ -14593,6 +14619,24 @@
    "itens": [
     "29.108",
     "29.102"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T16:05:07+00:00",
+   "itens": [
+    "29.126"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T16:05:07+00:00",
+   "itens": [
+    "29.122"
    ],
    "grupos": [
     "jev"

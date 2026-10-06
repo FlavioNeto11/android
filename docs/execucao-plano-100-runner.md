@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-660 de 710 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+661 de 710 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -430,11 +430,11 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.119 | implemented | simulated | claude-opus-5-5 | — | #424, ponta f2a17d75. Simulado: frontend/src/test/esperas.test.ts::*, frontend/src/components/Disclosure.test.tsx::*, frontend/src/features/profiles/GuiaImagens.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f… | None |
 | 29.120 | implemented | simulated | claude-opus-5-5 | — | #422, ponta 1ffa5890. Simulado: backend/tests/test_wake_relogio_do_snapshot.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend S… | None |
 | 29.121 | implemented | simulated | claude-opus-5-5 | — | #421, ponta 9cb77354. Simulado: backend/tests/test_vigia_do_laco.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6… | None |
-| 29.122 | pendente | — | — | — |  |  |
+| 29.122 | partial | real | sonnet-5.5 | — | Mitigações já na main e no ar: 29.121 (o vigia guarda a pilha do backend antes do kill), 29.123 e 29.127 (readoção do Appium sem o log antigo), 29.124 (o supervisor espera a partida lenta e pausa depois de reinícios seg… | Fica partial até a próxima ocorrência trazer a pilha (29.121) ou até 7 dias sem kill (13/10), quando se fecha como mitigado. |
 | 29.123 | implemented | simulated | claude-opus-5-5 | — | #420, ponta f87ec674. Simulado: backend/tests/test_readocao_sem_log_antigo.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQ… | None |
 | 29.124 | implemented | simulated | claude-opus-5-5 | — | #433, ponta 056b14af. A partida do deploy 38 subiu sem kill do supervisor (o deploy deu ok). Simulado: backend/tests/test_supervisor_partida.py::*, backend/tests/test_vigia_do_laco.py::*. Suíte 38 sobre a integração 86a… | None |
 | 29.125 | implemented | simulated | claude-opus-5-5 | — | #435, ponta eb92cdfa. Simulado: backend/tests/test_supervisao_do_central.py::*, backend/tests/test_supervisor_partida.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP,… | None |
-| 29.126 | pendente | — | — | — |  |  |
+| 29.126 | implemented | simulated | sonnet-5.5 | — | Conferido no código de c0d2fd5f (06/10/2026 16:03Z), sem mudança nova: a readoção do Appium que o 29.126 pede já foi consertada pelo 29.132 e pelo 29.138 (CHANGELOG de 05/10, branch fix/29-131-sobras-supervisor-readocao… | Prova real da readoção sob carga (reinício do central com o Appium vivo e o disco saturado) fica not_run; só se o dono autorizar o reinício em condição de carg… |
 | 29.127 | implemented | simulated | claude-opus-5-5 | — | #441, ponta 044bd2f8, sobre o #420. Simulado: backend/tests/test_readocao_marco.py::*, backend/tests/test_readocao_sem_log_antigo.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7… | None |
 | 29.128 | implemented | simulated | claude-opus-5-5 | — | Ramo da Portal, ponta 8b847e2b. Simulado: frontend/src/features/profiles/AcoesEmLote.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e… | None |
 | 29.129 | implemented | simulated | claude-opus-5-5 | — | Ramo da Portal, ponta 6e746a5e. Simulado: frontend/src/test/esperas.test.ts::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, cen… | None |
@@ -717,7 +717,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (50): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.57, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.145, 29.152, 29.154, 29.155, 29.156, 29.159, 29.160, 29.161, 29.162, 29.163, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (49): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.57, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.145, 29.152, 29.154, 29.155, 29.156, 29.159, 29.160, 29.161, 29.162, 29.163, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
