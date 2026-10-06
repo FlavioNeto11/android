@@ -146,9 +146,9 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     title: 'Orquestração de operações',
     description: 'Quantas personas uma operação com vários agentes escolhe, e quantas das mais disponíveis a IA avalia (prova de 07/10).',
     fields: [
-      int('orquestracao_max_escolhidas', 'Personas escolhidas por operação', 'personas', 'O teto da sugestão de alvos: a operação não passa disto.', 1, 64),
-      int('orquestracao_max_candidatas', 'Candidatas avaliadas pela IA', 'personas', 'As mais disponíveis que vão ao modelo para a escolha; nunca menos que as escolhidas.', 1, 120),
-      int('operacao_max_acoes_executadas', 'Contas que executam a ação final', 'contas', 'Quantas contas comentam de verdade no post nosso; as outras param até alguém liberar.', 1, 64),
+      int('orquestracao_max_escolhidas', 'Personas escolhidas por operação', 'personas', 'O teto da sugestão de alvos: a operação não passa disto. Padrão 30; vai de 1 a 64.', 1, 64),
+      int('orquestracao_max_candidatas', 'Candidatas avaliadas pela IA', 'personas', 'As mais disponíveis que vão ao modelo para a escolha; nunca menos que as escolhidas. Padrão 60; vai de 1 a 120.', 1, 120),
+      int('operacao_max_acoes_executadas', 'Contas que executam a ação final', 'contas', 'Quantas contas comentam de verdade no post nosso; as outras param até alguém liberar. Padrão 3; vai de 1 a 64.', 1, 64),
     ],
   },
   {

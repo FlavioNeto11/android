@@ -6,7 +6,8 @@ import type { Settings } from '../../api/types';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, botaoPronto, byRole, click, installBrowserStubs, json, setValue, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, botaoPronto, byRole, click, installBrowserStubs, json, setValue, waitFor } from '../../test/harness';
+import { useToastStore } from '../../store/toasts';
 import { LimitsSection } from './LimitsSection';
 
 // 29.115: a resposta do PUT zera os rascunhos. Com os campos livres durante o envio, o que a pessoa mexesse com o
@@ -117,4 +118,17 @@ it('J1: backend anterior (sem os campos) não mostra o grupo nem campo vazio', a
   await act(async () => { root.render(<LimitsSection />); });
   expect(container.textContent).not.toContain('Orquestração de operações');
   expect(container.textContent).toContain('Limites por objetivo');
+});
+
+it('J1: cada limite explica o que é, o padrão e o teto, e a recusa do backend aparece e não perde o que foi digitado', async () => {
+  backend.on('PUT', /^\/api\/settings$/, () => apiError(422, 'validation_error', 'orquestracao_max_escolhidas: deve ser menor ou igual a 64'));
+  await act(async () => { root.render(<LimitsSection />); });
+  expect(container.textContent).toContain('Padrão 30; vai de 1 a 64.');
+  expect(container.textContent).toContain('Padrão 60; vai de 1 a 120.');
+  expect(container.textContent).toContain('Padrão 3; vai de 1 a 64.');
+  await setValue(campo('Personas escolhidas por operação'), '50');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
+  await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'Não foi possível salvar os limites' && String(t.message).includes('deve ser menor ou igual a 64'))).toBe(true));
+  expect(campo('Personas escolhidas por operação').value).toBe('50');
 });
