@@ -30,8 +30,9 @@ def _palavra(valor: str) -> re.Pattern[str]:
 def demonstrados(persona: Mapping[str, str], entradas: Iterable[Mapping[str, object]]) -> dict[str, str]:
     """Os dados da persona que a pessoa DIGITOU na demonstração, cada um como uma entrada INTEIRA (o campo recebeu
     exatamente o valor). Valor dentro de outro texto não conta: "centro" no endereço, ou um nome curto numa frase,
-    seriam trocados onde não deviam (leitura da Jev); na dúvida, fica como a pessoa escreveu."""
-    textos = {str(e.get("text") or "").strip().casefold() for e in entradas if e.get("type") == "text"}
+    seriam trocados onde não deviam (leitura da Jev); na dúvida, fica como a pessoa escreveu. A entrada que o `save` já
+    marcou (31.118, `{perfil_…}` inteiro) conta como o dado daquele marcador."""
+    textos = {str(e.get("text") or "").strip().casefold() for e in com_valores(entradas, persona) if e.get("type") == "text"}
     return {nome: valor for nome, valor in persona.items()
             if isinstance(valor, str) and len(valor.strip()) >= MINIMO and valor.strip().casefold() in textos}
 
@@ -134,6 +135,35 @@ def nas_perguntas(p: Mapping[str, object], persona: Mapping[str, str]) -> dict[s
     return novo
 
 
+def marcas_das_entradas(entradas: Iterable[Mapping[str, object]], ligados: Mapping[str, str]) -> list[tuple[int, str]]:
+    """31.118: `(seq, marcador)` de cada entrada de texto que o `save` troca na gravação. `ligados`: `{nome: valor}` dos
+    dados da persona que a habilidade salva usa (o marcador está no plano). Só o campo INTEIRO (casefold), a mesma régua
+    de `demonstrados`: o texto que só contém o dado fica como a pessoa escreveu."""
+    por_valor = {str(v).strip().casefold(): "{" + n + "}" for n, v in ligados.items()
+                 if isinstance(v, str) and len(v.strip()) >= MINIMO}
+    marcas: list[tuple[int, str]] = []
+    for e in entradas:
+        marca = por_valor.get(str(e.get("text") or "").strip().casefold()) if e.get("type") == "text" else None
+        seq = e.get("seq")
+        if marca is not None and isinstance(seq, int):
+            marcas.append((seq, marca))
+    return marcas
+
+
+def com_valores(entradas: Iterable[Mapping[str, object]], persona: Mapping[str, str]) -> list[dict[str, object]]:
+    """31.118: as entradas com o marcador da gravação salva (`{perfil_…}` no campo inteiro) trocado pelo valor da
+    persona, SÓ em memória, para quem precisa do que foi digitado (refazer as receitas, mascarar as perguntas). Sem o
+    dado na persona, a entrada fica com o marcador."""
+    saida: list[dict[str, object]] = []
+    for e in entradas:
+        texto = e.get("text")
+        nome = texto.strip()[1:-1] if isinstance(texto, str) and re.fullmatch(r"\{\w+\}", texto.strip()) else None
+        valor = persona.get(nome) if nome else None
+        saida.append({**e, "text": valor} if e.get("type") == "text" and isinstance(valor, str) and valor.strip()
+                     else dict(e))
+    return saida
+
+
 def aviso(usados: Iterable[str]) -> list[str]:
     """A linha que o painel mostra no salvar e na prévia: o que vem do perfil da persona de cada aparelho."""
     marcadores = ", ".join("{" + n + "}" for n in usados)
@@ -141,4 +171,4 @@ def aviso(usados: Iterable[str]) -> list[str]:
             ] if marcadores else []
 
 
-__all__ = ["MINIMO", "aviso", "demonstrados", "na_proposta", "nas_perguntas"]
+__all__ = ["MINIMO", "aviso", "com_valores", "demonstrados", "marcas_das_entradas", "na_proposta", "nas_perguntas"]

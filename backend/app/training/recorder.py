@@ -485,6 +485,17 @@ class TrainingRecorder:
             raise TrainingError("not_found", "Treinamento não encontrado.", 404)
         return s
 
+    def marcar_entradas(self, session_id: str, marcas: list[tuple[int, str]]) -> int:
+        """31.118: troca o texto gravado dessas entradas pelo marcador da persona (`dado_da_persona.marcas_das_entradas`).
+        Só o `save` chama, com a sessão salva: a gravação aberta segue em claro, porque a proposta precisa do valor.
+        `has_text` e `text_len` ficam como foram gravados."""
+        feitas = 0
+        for seq, marca in marcas:
+            cur = self.db.execute("UPDATE training_inputs SET text=? WHERE session_id=? AND seq=? AND type='text'",
+                                  (marca, session_id, seq))
+            feitas += int(getattr(cur, "rowcount", 1) or 0)
+        return feitas
+
     def inputs(self, session_id: str) -> list[dict[str, Any]]:
         saida = []
         for r in self.db.query("SELECT * FROM training_inputs WHERE session_id=? ORDER BY seq", (session_id,)):

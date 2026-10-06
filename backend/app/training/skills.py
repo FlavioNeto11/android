@@ -466,6 +466,12 @@ class TrainingSkills:
                                           prep, session_id, gravar=True)
         self.s.db.execute("UPDATE training_sessions SET status='saved', flow_id=?, proposal=?, updated_at=? WHERE id=?",
                           (flow_id, dumps(prep.p), now_iso(), session_id))
+        # 31.118: o dado da persona que a habilidade usa sai da gravação salva; fica o marcador (quem precisa do valor
+        # o lê da persona, em memória: `dado_da_persona.com_valores`)
+        persona = self._persona_demonstrada(sess)
+        plano = prep.plano.model_dump_json()
+        self.s.training.marcar_entradas(session_id, dado_da_persona.marcas_das_entradas(
+            sess["inputs"], {n: v for n, v in persona.items() if "{" + n + "}" in plano}))
         origem = {k: v for k, v in (sess.get("origin") or {}).items() if k in ("run_id", "step_id", "attempt_id")}
         self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento"
                                f"{' (correção de uma execução que falhou)' if origem else ''}",
@@ -506,6 +512,9 @@ class TrainingSkills:
         não têm (31.86). Serve ao fluxo salvo com o aparelho fora do ar, ou antes de uma regra de destilação mudar.
         Idempotente: onde já há receita ativa o `recipes.save` não grava outra (a política é a de sempre)."""
         sess = self.s.training.get(session_id)
+        # 31.118: a gravação salva guarda o marcador; a destilação precisa do que foi digitado (o valor, em memória)
+        sess = {**sess, "inputs": dado_da_persona.com_valores(
+            sess["inputs"], self.s.repo.variaveis_da_persona(sess.get("profile_id")))}
         if sess["status"] != "saved" or not sess.get("flow_id"):
             raise TrainingError("sessao_nao_salva", "Este treinamento ainda não virou habilidade: salve-o antes de "
                                                     "refazer as receitas.", 409)

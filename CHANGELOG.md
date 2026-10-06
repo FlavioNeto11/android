@@ -78,6 +78,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   pessoa com e sem diagnóstico e a função pura) e `backend/tests/test_treino_diagnostico_da_falha.py` (1 novo: a sessão e
   a sugestão com a mesma pergunta em `waiting_user`). Real: `not_run`.
 
+## 2026-10-06 — 31.118: a gravação salva guarda o marcador da persona (branch feat/31-118-gravacao-com-marcador)
+
+- No `save`, a entrada de `training_inputs` cujo texto inteiro é um dado da persona que a habilidade usa (marcador no
+  plano) troca o valor pelo marcador; `GET /api/training/{id}` passa a devolver o marcador (mesma forma de resposta). A
+  gravação aberta segue em claro para a proposta. O reparo das receitas e a máscara das perguntas leem o valor da
+  persona em memória. Sem migração. Achado da prova real do 31.87 (sessão de ensino de 06/10 no android-04).
+- Funções tocadas (K-095): `marcas_das_entradas` e `com_valores` (novas) e `demonstrados`
+  (`training/dado_da_persona.py`), `TrainingRecorder.marcar_entradas` (nova, `training/recorder.py`),
+  `TrainingSkills.save` e `refazer_receitas` (`training/skills.py`).
+- Prova `simulated`: `backend/tests/test_treino_gravacao_com_marcador.py` (6; o do `save` e o do reparo falham sem a
+  mudança). Real: `not_run`.
 ## 2026-10-06 — 31.116 (parte 2): a sugestão do ensino antes da sessão (branch feat/31-116-ensino-sugerido)
 
 - `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}`. Usa o mesmo diagnóstico do
