@@ -10840,20 +10840,16 @@
   "31.129": {
    "id": "31.129",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Os pacotes que a etapa aceita aparecem na revisão e na execução (Portal a7d95626); mapeamento a teste aproximado. Simulado: frontend/src/features/runs/PacotesAceitos.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 51 sobre a integração 58330182 (base main 67e81e60; Portal a7d95626, Canais 29b0dc83, Aprendizado 040227b8, Jev 85f0d686; depois a main de estado 0e649799, só plano e docs, entrou no deploy 8aee8c6b; só conflito de CHANGELOG juntado; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 121_elementos_da_tela_do_treino.sql, só ADD COLUMN training_inputs.screen_elements): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12312 passed, 13 skipped, 1 FALHA DECLARADA: tests/test_acoes_encadeadas.py::test_alvo_que_nao_esta_na_tela_nova_volta_a_decisao_normal_sem_falhar (flaky de tempo sob carga: o arquivo e app/taskqueue não têm diff contra f86bafd8; o arquivo inteiro reexecutado deu 8 passed e o teste sozinho 3 vezes passou; aceita pela orquestradora, SQLite não repetido); frontend typecheck limpo, 1783 passed (138 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 210 arquivos: 1882 passed 8 skipped + 1729 passed 4 skipped, 0 falhas | No ar desde o deploy 51 (8aee8c6b, 12:27Z; migração 121; backup 20261006-092608).",
-   "blocker": null,
-   "arquivos": [
-    "frontend/src/features/runs/PacotesAceitos.test.tsx",
-    "frontend/src/features/training/TrainingReview.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "deploy-51",
-   "modelo": "orquestradora",
-   "esforco": "n/a",
+   "proof": "real",
+   "evidence": "Os pacotes que a etapa aceita aparecem na revisão e na execução (Portal a7d95626); mapeamento a teste aproximado. Simulado: frontend/src/features/runs/PacotesAceitos.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 51 sobre a integração 58330182 (base main 67e81e60; Portal a7d95626, Canais 29b0dc83, Aprendizado 040227b8, Jev 85f0d686; depois a main de estado 0e649799, só plano e docs, entrou no deploy 8aee8c6b; só conflito de CHANGELOG juntado; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 121_elementos_da_tela_do_treino.sql, só ADD COLUMN training_inputs.screen_elements): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12312 passed, 13 skipped, 1 FALHA DECLARADA: tests/test_acoes_encadeadas.py::test_alvo_que_nao_esta_na_tela_nova_volta_a_decisao_normal_sem_falhar (flaky de tempo sob carga: o arquivo e app/taskqueue não têm diff contra f86bafd8; o arquivo inteiro reexecutado deu 8 passed e o teste sozinho 3 vezes passou; aceita pela orquestradora, SQLite não repetido); frontend typecheck limpo, 1783 passed (138 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 210 arquivos: 1882 passed 8 skipped + 1729 passed 4 skipped, 0 falhas | No ar desde o deploy 51 (8aee8c6b, 12:27Z; migração 121; backup 20261006-092608). || Percurso 51 (Portal, real em parte, central 8aee8c6b, android-04 controle none, sem IA): 2026-10-06 ~12:30Z, central 8aee8c6b, execução r-20261006102728-1157c6 (android-04): Plano e Por aparelho > etapa 2 mostram 'Também aceita concluir em: com.google.android.settings.intelligence'; GET /api/runs/r-20261006102728-1157c6 traz pacotes_aceitos em plan.steps, steps e plan_versions",
+   "blocker": "proposta do treino e leitura da sessão salva sem dado (as sessões não trazem pacotes_aceitos); a parte do 31.129 que depende do campo na sessão fica not_run",
+   "nota": "real em parte: plano e detalhe da etapa da execução vistos na tela; a etapa 1 sem o campo não ganha a linha",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "alto",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T12:31:41+00:00"
+   "quando": "2026-10-06T12:36:40+00:00"
   },
   "31.127": {
    "id": "31.127",
@@ -14250,6 +14246,15 @@
    ],
    "grupos": [
     "deploy-51"
+   ]
+  },
+  {
+   "quando": "2026-10-06T12:36:40+00:00",
+   "itens": [
+    "31.129"
+   ],
+   "grupos": [
+    "Portal"
    ]
   }
  ]
