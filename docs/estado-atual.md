@@ -1,10 +1,19 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `16858086` (migração 119, deploy 48); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `1b86bd6b` (migração 119, deploy 49); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 49 no ar (06/10/2026, 08:56Z, central `1b86bd6b`, sem migração nova).** 8 pontas: 31.116 fechado (formulário com causa e
+  pergunta, v1.82), 31.119 (Descartar), 31.118 (gravação com a marca), 15.15 F7 evento do 409 e F4d releases, 29.151
+  (readoção pelo aparelho), 29.152 (evento de pressão nomeia quem pesa), C-28 (corte adiado e deploy pelo Git), UX da lista Para revisar.
+  - `real` (central WIN-7S2UASNLFOP): deploy; saúde ok, migração 119, problems e features iguais; prova de fora 46 ok; agente `0.1.0+1b86bd6b`; A10 com 12 aparelhos ready em
+    menos de 60 s; eventos do 409: 0; aviso de pressão já com data.pressao; reparo do 31.118 pendente (backup `20261006-055448`).
+  - `simulated` (suíte 49): números do CHANGELOG.
+  - `not_run`: percurso 49; 31.120.
+  - Plano-100: resultado da suíte 49 aplicado. Corte 50: 31.120 (Portal), F4e workers (Jev), 29.152 alterações (Android,
+    após o cartão do dono), 33.1 levantamentos; 31.115 em 20/10, 29.75 em 11/10, 30.72 medida em 12/10.
 - **Deploy 48 no ar (06/10/2026, 07:24Z, central `16858086`, sem migração nova).** 5 pontas: 31.116 (diagnóstico no treino e
   ensino sugerido, v1.80), 30.34 (observar B gera prova), 31.117 (origem do fluxo no Livro, v1.81), C-28 (deploy pelo git na
   reconciliação do Trello); 15.15 F7+F4+F2 com prova real.

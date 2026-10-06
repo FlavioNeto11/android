@@ -7,7 +7,7 @@
  * a habilidade versionada nasce dele ("Gerar habilidade deste fluxo", a conversão da fase J). O ensino v2 que a gravação
  * já tinha saiu da tela (31.91 T1, ADR-078: o caminho único de ensino é o Modo treinamento).
  */
-import { GraduationCap, RefreshCw, ServerCrash, Sparkles, WandSparkles } from 'lucide-react';
+import { GraduationCap, RefreshCw, ServerCrash, Sparkles, Trash2, WandSparkles } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
 import type {
@@ -24,6 +24,7 @@ import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextInput } from '../../components/Field';
 import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
+import { descartarSessaoConcluida } from './descartarSessao';
 import { OrigemDoTreino, SeloDeOrigem } from './OrigemDoTreino';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { useAppStore } from '../../store/app';
@@ -259,6 +260,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   };
   const [pensando, setPensando] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [descartando, setDescartando] = useState(false);
   // v1.63: as respostas da pessoa às perguntas da proposta, por pergunta, e a recusa de resposta com cara de segredo.
   const [respostas, setRespostas] = useState<Record<string, string>>({});
   const [erroResposta, setErroResposta] = useState<{ message: string; question: string | null } | null>(null);
@@ -490,8 +492,19 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     }
   }
 
+  // 31.119: descartar a sessão inteira (a gravação já está concluída). A confirmação e o controle ficam no helper; descartada, a revisão fecha.
+  async function descartarSessao() {
+    if (!sessao || descartando || salvando) return;
+    setDescartando(true);
+    try {
+      if (await descartarSessaoConcluida(sessao)) onClose();
+    } finally {
+      setDescartando(false);
+    }
+  }
+
   // "Depois", Esc e o clique no fundo passam por aqui: com edição pendente, a pessoa confirma antes de perder.
-  async function fechar() {
+  async function fechar(): Promise<boolean> {
     if ((editado || escopoMudou) && proposta && !resultado) {
       const { confirmed } = await confirm({
         title: 'Sair sem salvar o fluxo?',
@@ -500,9 +513,15 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         cancelLabel: 'Voltar',
         body: 'O que você mudou na proposta (comando, etapas, destino das entradas, quem recebe) se perde. A gravação continua na lista "Para revisar".',
       });
-      if (!confirmed) return;
+      if (!confirmed) return false;
     }
     onClose();
+    return true;
+  }
+
+  // 31.119: o selo "corrige uma falha" abre a execução de origem; a revisão sai primeiro (com a confirmação de sempre se há edição).
+  async function abrirExecucao(href: string) {
+    if (await fechar()) window.location.hash = href;
   }
 
   const alterna = (set: Set<string>, id: string) => {
@@ -574,6 +593,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     <Dialog open onClose={() => void fechar()} title={sessao ? `Treinamento: ${sessao.intent}` : 'Treinamento'} icon={WandSparkles} size="lg"
             footer={resultado ? <Button onClick={onClose}>Fechar</Button> : (
               <>
+                {sessao && (sessao.status === 'recorded' || sessao.status === 'proposed') ? (
+                  <Button variant="dangerGhost" icon={Trash2} loading={descartando}
+                          disabledReason={salvando ? 'Salvando o fluxo…' : null} onClick={() => void descartarSessao()}>Descartar</Button>
+                ) : null}
                 <Button variant="ghost" onClick={() => void fechar()}>Depois</Button>
                 <Button variant={proposta ? 'primary' : 'secondary'} icon={Sparkles} loading={salvando}
                         disabledReason={motivoNaoSalvar()} onClick={() => void salvar()}>
@@ -645,7 +668,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         </div>
       ) : (
         <div className={styles.review}>
-          {sessao.origin ? <div className={styles.origemLinha}><OrigemDoTreino origin={sessao.origin} /></div> : null}
+          {sessao.origin ? <div className={styles.origemLinha}><OrigemDoTreino origin={sessao.origin} aoAbrirExecucao={(href) => void abrirExecucao(href)} /></div> : null}
           <div className={styles.recordingCol}>
             <h4 className={styles.sub}>O que você fez ({plural(sessao.inputs?.length ?? 0, 'entrada', 'entradas')})</h4>
             <ol className={styles.inputList}>
@@ -673,7 +696,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
               <div className={styles.ask}>
                 <p>A IA vai ler a gravação e propor o fluxo: o comando com o que varia, as etapas com o objetivo de cada
                   uma e o que foi engano. Uma chamada do modelo do planejador (poucos centavos).</p>
-                <Button variant="primary" icon={WandSparkles} loading={pensando} onClick={() => void pedirProposta()}>Pedir proposta à IA</Button>
+                <Button variant="primary" icon={WandSparkles} loading={pensando}
+                        disabledReason={(sessao.inputs ?? []).length ? null : 'Nada foi gravado: só dá para descartar.'} onClick={() => void pedirProposta()}>Pedir proposta à IA</Button>
               </div>
             ) : (
               <>

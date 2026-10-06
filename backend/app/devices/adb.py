@@ -163,6 +163,32 @@ def _ultima(saida: str, chave: str) -> str | None:
     return achados[-1].strip() if achados else None
 
 
+_NOME_SEGURO = re.compile(r"^[A-Za-z0-9_.:@/\-]{1,80}$")
+_LINHA_DE_CPU = re.compile(r"^\s*([\d.]+)%\s+\d+/(\S+?):\s")
+_PRIMEIRO_PLANO = re.compile(r"\bu\d+\s+([A-Za-z0-9_.]+)/")
+
+
+def ler_culpados(saida: str, *, quantos: int = 3) -> dict[str, object]:
+    """29.152: lê `dumpsys cpuinfo` (as primeiras linhas, já ordenadas por CPU) e a linha da atividade em primeiro plano.
+
+    Devolve `{"processos": [{"nome", "cpu_pct"}, ...], "primeiro_plano": <pacote> | None}`. Só o NOME do processo e do
+    pacote entram, e só se parecerem nome (letras, dígitos e `_.:@/-`): título de janela, nome de atividade e texto de
+    tela nunca passam, e uma linha que não bate com o formato é descartada em vez de copiada."""
+    cpu, _, fg = saida.partition("---FG---")
+    processos: list[dict[str, object]] = []
+    for linha in cpu.splitlines():
+        m = _LINHA_DE_CPU.match(linha)
+        if m and _NOME_SEGURO.match(m.group(2)):
+            processos.append({"nome": m.group(2), "cpu_pct": float(m.group(1))})
+        if len(processos) >= quantos:
+            break
+    pacote = None
+    m = _PRIMEIRO_PLANO.search(fg)
+    if m:
+        pacote = m.group(1)
+    return {"processos": processos, "primeiro_plano": pacote}
+
+
 class Adb:
     def __init__(self, tools: SdkTools, serial: str, *, apps_de_fundo: Sequence[str] | None = None):
         self.tools = tools
@@ -298,6 +324,18 @@ class Adb:
                 dados["cpu_irq_ticks"] = ticks[5] + ticks[6]
         dados.setdefault("ncpu", 1.0)
         return dados
+
+    def guest_culprits(self, *, timeout: float = 12) -> dict[str, object]:
+        """29.152: quem pesa DENTRO do convidado sob pressão: os 3 processos de maior CPU e o pacote em primeiro plano.
+
+        Leitura pura (`dumpsys cpuinfo`, `dumpsys activity`), sem escrita no aparelho. Só NOMES de pacote e de processo:
+        nunca título de janela, atividade nem conteúdo de tela (ver `ler_culpados`)."""
+        res = self._run(["shell", "dumpsys cpuinfo | head -14; echo ---FG---; "
+                                  "dumpsys activity activities | grep -m1 -E 'topResumedActivity|mResumedActivity'"],
+                        timeout=timeout)
+        if res.returncode != 0:
+            raise AdbError((res.stderr or res.stdout or "").strip()[:200] or f"dumpsys falhou ({res.returncode})")
+        return ler_culpados(res.stdout or "")
 
     def connectivity_probe(self, *, timeout: float = 60) -> dict[str, bool]:
         """Internet DENTRO do convidado (rota, DNS, TCP 443, rede validada) — ver `devices/conectividade.py`.

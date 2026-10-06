@@ -181,6 +181,13 @@ class FakeQaDevice:
             raise DriverError("o aparelho não respondeu à leitura de /proc", effect_possible=False)
         return dict(self.pressure or {"load1": 0.5, "mem_total_mb": 2048.0, "mem_available_mb": 900.0, "ncpu": 2.0})
 
+    def guest_culprits(self) -> dict[str, object]:
+        """29.152: quem pesa no convidado sob pressão. `culpados` injeta o retrato; `guest_mudo` faz o adb calar."""
+        if self.guest_mudo or getattr(self, "culpados_mudo", False):
+            raise DriverError("o aparelho não respondeu ao dumpsys", effect_possible=False)
+        self.leituras_de_culpados = getattr(self, "leituras_de_culpados", 0) + 1
+        return dict(getattr(self, "culpados", None) or {"processos": [], "primeiro_plano": None})
+
     def connectivity_probe(self) -> dict[str, bool]:
         """`internet` finge a rede do convidado: dict parcial sobrescreve o saudável (ex.: {"dns": False})."""
         if self.guest_mudo:

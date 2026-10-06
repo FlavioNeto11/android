@@ -11,14 +11,26 @@ import { evidenceUrl } from '../../api/client';
 import type { TrainingDiagnostico, TrainingOrigin } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Disclosure } from '../../components/Disclosure';
+import { hashDe } from '../../lib/rotas';
 import { STEP_STATUS, metaOf } from '../../lib/status';
 import styles from './Training.module.css';
 
-export function SeloDeOrigem({ origin }: { origin: TrainingOrigin }) {
+/** O link da execução de origem (`#/execucoes/<run_id>`). */
+export const linkDaExecucao = (origin: Pick<TrainingOrigin, 'run_id'>): string => hashDe('execucoes', { segmentos: [origin.run_id] });
+
+/**
+ * 31.119: o selo abre a execução de origem. `aoAbrir` deixa quem está dentro de um diálogo (a revisão) decidir se sai antes
+ * de navegar; sem ele o link é o de sempre.
+ */
+export function SeloDeOrigem({ origin, aoAbrir }: { origin: TrainingOrigin; aoAbrir?: (href: string) => void }) {
+  const href = linkDaExecucao(origin);
   return (
-    <Badge size="sm" tone="info" icon={Wrench} title={`Etapa ${origin.step_key} da execução ${origin.run_id}`}>
-      corrige uma falha<span className="sr-only"> da etapa {origin.step_key} da execução {origin.run_id}</span>
-    </Badge>
+    <a href={href} className={styles.seloLink} title={`Abrir a execução ${origin.run_id} (etapa ${origin.step_key})`}
+       onClick={aoAbrir ? (e) => { e.preventDefault(); aoAbrir(href); } : undefined}>
+      <Badge size="sm" tone="info" icon={Wrench}>
+        corrige uma falha<span className="sr-only"> da etapa {origin.step_key} da execução {origin.run_id}: abrir a execução</span>
+      </Badge>
+    </a>
   );
 }
 
@@ -49,12 +61,12 @@ function DiagnosticoDaFalha({ diagnostico }: { diagnostico: TrainingDiagnostico 
   );
 }
 
-export function OrigemDoTreino({ origin }: { origin: TrainingOrigin }) {
+export function OrigemDoTreino({ origin, aoAbrirExecucao }: { origin: TrainingOrigin; aoAbrirExecucao?: (href: string) => void }) {
   const ctx = origin.context;
   return (
     <section className={styles.origem} aria-label="Origem do treino">
       <p className={styles.recLine}>
-        <SeloDeOrigem origin={origin} />
+        <SeloDeOrigem origin={origin} aoAbrir={aoAbrirExecucao} />
         <span>Etapa <span className="mono">{origin.step_key}</span> da execução <span className="mono">{origin.run_id}</span></span>
       </p>
       {origin.motivo

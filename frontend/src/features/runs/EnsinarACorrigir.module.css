@@ -15,6 +15,9 @@
 
 .rotulo { color: var(--text-3); font-size: var(--fs-sm); }
 
+/* 31.116: o que a pessoa vai mostrar é a instrução da ação: fica em destaque acima do campo, não na dica miúda. */
+.mostrar { flex: 1 1 100%; margin: 0; color: var(--text-1); font-size: var(--fs-md, var(--fs-sm)); }
+
 /* Flex que quebra, não grade: o detalhe da etapa tem a largura do objetivo aberto, não a da página. */
 .form {
   display: flex;
