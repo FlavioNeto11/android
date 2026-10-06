@@ -1,0 +1,59 @@
+name: CI · aviso de falha do cron
+
+# 29.155 (C2) — a corrida diária do CI (05:17Z) ficou vermelha quatro noites seguidas (02 a 05/10) e ninguém foi chamado:
+# o vermelho só existia na aba Actions. Este workflow abre UMA issue por noite, com o rótulo `ci`, o título
+# "CI noturno AAAA-MM-DD: <jobs que não passaram>" e, no corpo, os destaques e as últimas linhas do log de cada job (cortadas
+# e limpas por formato). Se já há uma issue ABERTA do mesmo dia, comenta nela em vez de abrir outra.
+#
+# Onde roda: SEMPRE em runner hospedado (`ubuntu-latest`). NUNCA copie daqui o `fromJSON(vars.CI_RUNS_ON ...)` do ci.yml: o
+# runner `central` é a máquina do dono (suítes, emuladores, medidas), e este job só fala com a API do GitHub.
+# Sem segredo novo: usa o token do próprio workflow, com `issues: write` e `actions: read`.
+#
+# Gatilho: `workflow_run` do workflow "CI", só quando o evento do run foi `schedule` (disparo manual do CI e PR não abrem
+# issue: quem disparou está olhando) e o resultado não foi sucesso nem "pulado". O `workflow_dispatch` daqui serve para
+# reler um run antigo (`gh workflow run ci-aviso-de-falha.yml -f run_id=<id>`); só vale depois que o arquivo está na `main`.
+# O código é `scripts/ci_issue_falha.py` (teste: `scripts/tests/test_ci_issue_falha.py`).
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Id numérico de um run do CI (a corrida que falhou)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  # Uma leitura por run: o reenvio do mesmo evento não abre duas issues.
+  group: ci-aviso-${{ github.event.workflow_run.id || inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  avisar:
+    name: avisar · issue da noite
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'schedule' &&
+       contains(fromJSON('["failure","cancelled","timed_out","startup_failure"]'), github.event.workflow_run.conclusion))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # o script só chama o `gh`, com o GH_TOKEN abaixo
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"          # a mesma do ci.yml (env.PYTHON_VERSION)
+      - name: abre ou comenta a issue da noite
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Pelo ambiente, nunca dentro do script: o id do dispatch é texto digitado por quem dispara.
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+        run: python scripts/ci_issue_falha.py --repo "$GITHUB_REPOSITORY" --run-id "$RUN_ID"

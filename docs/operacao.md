@@ -144,13 +144,22 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
 - **"Nada dispara em push" não é literal:** o `conteiner.yml` ainda roda em push de qualquer ramo que toque
   `deploy/**`, `.dockerignore`, `backend/requirements.txt`, `backend/app/main.py` ou `frontend/package*.json`. Ele é
   hospedado e não ocupa o central.
+- **Aviso quando o cron falha (29.155, C2):** `.github/workflows/ci-aviso-de-falha.yml`, em runner hospedado, abre UMA issue por
+  noite quando o `schedule` do CI termina em `failure`, `cancelled`, `timed_out` ou `startup_failure`. Título "CI noturno
+  AAAA-MM-DD: <jobs>", rótulo `ci` (criado na primeira vez), corpo com o run, o commit e, por job, os destaques e as últimas
+  40 linhas do passo, limpas por formato (`scripts/ci_issue_falha.py`; teste em `scripts/tests/test_ci_issue_falha.py`,
+  que o job `docs` roda). Com uma issue ABERTA do mesmo dia, comenta nela. Disparo manual do CI e PR não abrem issue.
+  Reler um run antigo: `gh workflow run ci-aviso-de-falha.yml -f run_id=<id>` (cria a issue de verdade); só olhar:
+  `python scripts/ci_issue_falha.py --repo dono/nome --run-id <id> --ensaio`.
+- **Disparo só-PostgreSQL de verdade (29.155, C3):** o job `porta` agora é pulado em `somente_postgres=true`, então nenhum job
+  vai ao runner do central (antes a porta ainda ia, por ~5 s, e os demais eram pulados por dependência dela).
 
 `.github/workflows/ci.yml` — **6 jobs** (até 24/09 eram 5, e o cabeçalho do arquivo dizia 4):
 
 | Job | Quando | O que faz |
 |---|---|---|
 | `backend-sqlite` | todo push/PR | `pytest -q` contra SQLite |
-| `backend-postgres` | `schedule` (diário, 05:17 UTC) ou `workflow_dispatch` (com `somente_postgres=true` roda só ele, hospedado, sem ocupar o runner do central; `gh workflow run ci.yml -f somente_postgres=true`) | `pytest -q` contra `postgres:17` de serviço, `TEST_DATABASE_URL`; limite de **60 min** desde 01/10 (o de 25 cancelou o cron de 01/10, run 36819958569) |
+| `backend-postgres` | `schedule` (diário, 05:17 UTC) ou `workflow_dispatch` (com `somente_postgres=true` roda só ele, hospedado, sem ocupar o runner do central; `gh workflow run ci.yml -f somente_postgres=true`) | `pytest -q` contra `postgres:17` de serviço, `TEST_DATABASE_URL`; limite de **90 min** desde 06/10 (era 60, e antes 25: o de 25 cancelou o cron de 01/10, run 36819958569, e o de 60 o de 06/10, run 37418749690, com a suíte em ~55 min) |
 | `frontend` | todo push/PR | `npm run typecheck` + `npm test` |
 | `dependencias` | todo push/PR + diário | `pip-audit --strict` (backend + worker) e `npm audit --audit-level=high` (frontend, Appium). No Appium, ainda `npm ci` + `node corrigir-empacotados.mjs --conferir`: o driver traz dependências dentro do tarball, e o `npm audit` só lê o lock (K-064) |
 | `worker-agent-smoke` | todo push/PR | instala só `worker-requirements.txt` e importa `app.worker.agent` — prova que o agente continua leve |
@@ -694,6 +703,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `aprendizado-backlog.py` | S | Só GET em `/api/aprendizado/falhas?formato=md`: grava o "o que mais falha" em `data/aprendizado/backlog-AAAA-MM-DD.md` e imprime o topo; `--retroativo` inclui o legado classificado na leitura. Sem IA; o `API_TOKEN` nunca é impresso (ADR-054) |
 | `candidatos-do-portal.py` | S | Só GET em `/api/aprendizado/falhas` (JSON, a de sempre e a da camada `pessoa`): grava em `data/aprendizado/candidatos-do-portal.json` os grupos abertos, sem `plan_item` e com `--minimo` ocorrências (padrão 3), mais as propostas abertas, com contagem, exemplos por id (nunca o texto do erro), frente sugerida pela camada e onde alterar (29.72). Cada candidato traz `amostra_de_lote` ("n de m" exemplos de execução nossa: `lote:`/`ensaio:` ou prova de fluxo, lida do banco com `--banco`, só leitura) e `dias_sem_ocorrer`; amostra toda nossa ou mais de 7 dias sem ocorrer vai para o fim (`rebaixado`). É para a orquestradora ler: nada entra no plano sem número dela. Sem IA; o `API_TOKEN` nunca é impresso |
 | `gravacao-com-marcador.py` (`--ensaio` padrão / `--aplicar --backup CAMINHO`) | S / P | Reparo único do 31.118: as gravações de ensino salvas antes dele recebem o marcador da persona no texto digitado e, desde a F2, na tela gravada (`screen_lines`, `screen_title`). O ensaio roda numa cópia do banco (origem em `mode=ro`) e imprime as contagens e os ids das sessões que mudariam; `--aplicar` exige o backup e a mesma migração do código. Rodar só com o backend no ar já no 31.118 e com o "vai" da orquestradora. Nunca imprime valor nem id de persona |
+| `ci_issue_falha.py --run-id N --ensaio` | S | Só LÊ o GitHub (`gh api`, `gh run view --log-failed`) e imprime a issue que o aviso do cron abriria para aquele run (29.155); sem `--ensaio` escreve no GitHub, mas só roda dentro do workflow `ci-aviso-de-falha.yml`, em runner hospedado |
 | `aprendizado-telas.py` | S | Telas aprendidas: o deixa-um-fora sobre as observações reais (`--sem-regra thread --sem-regra feed`), com o banco aberto só para leitura (`mode=ro`); `exportar --app` pede o fragmento YAML ao central. Sem IA |
 
 ## 13. Incidentes conhecidos → sintoma → causa → ação

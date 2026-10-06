@@ -76,6 +76,9 @@ jobs:
   # Administrator: hoje a porta vê todos. Se o runner deixar de ser elevado, a porta passa a ver zero e nunca pula.
   porta:
     name: porta · o runner está livre?
+    # O disparo só-PG não roda nada no central, nem esta porta (antes ela ainda ia para o runner do central por 5 s, a conferir
+    # processos): sem ela, os jobs que dependem dela também são pulados, que é o que `somente_postgres` já pedia.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 5
     outputs:
@@ -143,9 +146,11 @@ jobs:
   backend-postgres:
     name: backend · pytest (PostgreSQL)
     runs-on: ubuntu-latest
-    # 60 min (era 25): o cron de 01/10/2026 (run 36819958569) foi CANCELADO pelo limite de 25 min com o runner hospedado
-    # de 2 núcleos; a suíte leva ~14 min na máquina do dono. `workflow_dispatch` com `somente_postgres` roda só este job.
-    timeout-minutes: 60
+    # 90 min (era 60, e 25 antes): o cron de 01/10/2026 (run 36819958569) foi CANCELADO pelo limite de 25 min com o runner
+    # hospedado de 2 núcleos, e o de 06/10 (run 37418749690) pelo de 60: a suíte cresceu de 6,2 mil testes (40 min, 03/10) para
+    # 10,7 mil (55 min, 05/10) e o cancelamento escondia o resultado da noite. Só este job é hospedado; o teto do SQLite no
+    # runner do central (60 min) NÃO mudou. `workflow_dispatch` com `somente_postgres` roda só este job.
+    timeout-minutes: 90
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     defaults:
       run:
@@ -319,4 +324,4 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install pytest
       - run: python scripts/docs-check.py
-      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py
+      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py
