@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.152: o aviso de pressão de CPU diz quem pesa no convidado (branch feat/29-152-processos-no-aviso-de-pressao)
+
+- No PRIMEIRO aviso de cada episódio de pressão (`DeviceManager._conferir_pressao`), o evento `instance.updated` ganha em
+  `data.pressao` os 3 processos de maior CPU (`dumpsys cpuinfo`) e o pacote em primeiro plano (`dumpsys activity`). Só nomes
+  de processo e de pacote (letras, dígitos e `_.:@/-`): título de janela, atividade e conteúdo nunca entram. Uma leitura de
+  adb por episódio, não por aviso; sem a leitura, o aviso sai igual. Sem migração, sem rota nova.
+- Motivo: no android-02 de 06/10, 375 dos 480 avisos do dia vieram de episódios sem nenhuma execução (até 117 min) e nenhum
+  nomeava processo ou app; a causa (Instagram, Outlook, cliente VPN ou prévia do painel) não se prova com o que se grava.
+  Medida do depois: no dia seguinte ao deploy, episódios com `data.pressao` contra episódios de pressão (meta: todos).
+- Funções tocadas (K-095): `devices/adb.ler_culpados` e `Adb.guest_culprits` (novas), `AppiumDriver.guest_culprits` (nova, delega),
+  `DeviceManager._culpados_da_pressao` (nova), `_conferir_pressao` e `publish` (parâmetro `dados_extra`).
+- Prova `simulated`: `backend/tests/test_pressao_nomeia_quem_pesa.py` (5: a leitura sobre a amostra real, só nomes, vazia, só o
+  primeiro aviso do episódio e o episódio seguinte, e o aviso sem o campo quando o adb cala) e 124 testes de saúde, arquitetura
+  e prontidão. mypy 257 = teto. Real: `not_run` até o deploy seguinte.
+
 ## 2026-10-06 — 31.116 (parte 2): a sugestão do ensino antes da sessão (branch feat/31-116-ensino-sugerido)
 
 - `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}`. Usa o mesmo diagnóstico do
