@@ -30,6 +30,11 @@ ELEMENTOS = 400
 CARACTERES = 200
 #: As pós-condições que a regra do verificador decide pela tela de partida: texto visível e elemento presente.
 CONFERIDAS = ("text_visible", "element_present")
+#: 31.148: quantos textos de cada tela vão à proposta (os da tela da entrada e os que apareceram depois dela) e o corte
+#: de cada um. É o que a IA precisa para escolher a pós-condição; a tela inteira gastaria tokens à toa.
+TEXTOS_DA_PARTIDA = 20
+TEXTOS_NOVOS = 12
+CARACTERES_NA_PROPOSTA = 60
 
 
 def com_abertura(entradas: Sequence[Mapping[str, object]], primeira: Mapping[str, object] | None, app_id: str | None,
@@ -153,6 +158,43 @@ def ja_valem(passos: Sequence[Mapping[str, object]], entradas: Sequence[Mapping[
     return saida
 
 
+def textos_da_proposta(entradas: Sequence[Mapping[str, object]], persona: Mapping[str, str]
+                       ) -> dict[int, dict[str, list[str]]]:
+    """31.148: por entrada, os textos da tela em que ela foi feita (`partida`) e os que apareceram na tela da entrada
+    seguinte e não estavam nela (`depois`), para o `propose` escolher a pós-condição com o que muda.
+
+    Achado das provas reais de 06/10: 2 de 2 propostas puseram em "abrir a busca" um texto que já estava na tela de
+    partida ("Search settings", que as `screen_lines` escondiam por ser de id de interface). A IA só via 8 linhas
+    filtradas. Com a tela inteira (os `screen_elements`, 31.122 F2) e a diferença para a seguinte, ela vê o que a
+    etapa faz aparecer.
+
+    Cada texto passa pelo marcador da persona (`dado_da_persona.com_marcador`, todo dado dela, não só o digitado) e é
+    cortado em `CARACTERES_NA_PROPOSTA`. A última entrada não tem `depois` (a tela final não é gravada). Entrada sem
+    tela gravada não entra."""
+    def limpos(tela: UiTree | None, e: Mapping[str, object]) -> dict[str, str]:
+        """{texto normalizado: o texto que vai ao prompt}, na ordem da tela, sem repetir."""
+        vistos: dict[str, str] = {}
+        for t in _textos(tela, e):
+            n = norm_text(t)
+            if len(n) >= MINIMO and n not in vistos:
+                vistos[n] = dado_da_persona.com_marcador(t, persona)[:CARACTERES_NA_PROPOSTA]
+        return vistos
+
+    ordem = sorted((e for e in entradas if str(e.get("seq", "")).lstrip("-").isdigit()), key=lambda e: int(str(e["seq"])))
+    telas = [(int(str(e["seq"])), tela_de_partida(e), e) for e in ordem]
+    saida: dict[int, dict[str, list[str]]] = {}
+    for i, (seq, tela, e) in enumerate(telas):
+        if tela is None:
+            continue
+        agora = limpos(tela, e)
+        item = {"partida": list(agora.values())[:TEXTOS_DA_PARTIDA]}
+        if i + 1 < len(telas) and telas[i + 1][1] is not None:
+            seguinte = limpos(telas[i + 1][1], telas[i + 1][2])
+            item["depois"] = [t for n, t in seguinte.items() if n not in agora][:TEXTOS_NOVOS]
+        saida[seq] = item
+    return saida
+
+
 def pronta(kind: str, texto: str, tela: UiTree | None) -> dict[str, str]:
     """31.142: a pós-condição inteira que a sugestão vira, para o botão da revisão aplicar sem decidir nada.
 
@@ -240,4 +282,4 @@ def aviso(achados: Sequence[Mapping[str, object]], persona: Mapping[str, str] | 
 
 
 __all__ = ["CARACTERES", "CONFERIDAS", "ELEMENTOS", "FORA_DOS_ACEITOS", "MINIMO", "SUGESTOES", "aviso", "aviso_dos_vizinhos", "com_abertura", "elementos_compactos", "entrada_seguinte", "estruturados", "ja_valem",
-           "pacotes_vizinhos", "pronta", "tela_de_partida"]
+           "pacotes_vizinhos", "pronta", "tela_de_partida", "textos_da_proposta"]

@@ -7297,3 +7297,23 @@ nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal`
 Migração `127_operacoes_parametros` (`operacoes.parametros`, só `ADD COLUMN`). Código: `backend/app/taskqueue/plano_da_operacao.py`,
 `RunService._plano_da_operacao`, `backend/app/modules/operacoes/`. Testes: `backend/tests/test_plano_da_operacao.py`,
 `backend/tests/test_operacoes.py`, `backend/tests/test_migracao_127.py`.
+
+## Adendo v1.93 (06/10/2026; número da orquestradora; item 31.148) — a proposta já avisa a pós-condição que vale na partida
+
+Achado das provas reais de 06/10: 2 de 2 propostas (ai_calls 4939 e 4942) puseram em "abrir a busca" um texto que já
+estava na tela de partida. O 31.122 e o 31.142 só pegavam o erro depois, no `preview` e no `save`.
+
+- **`POST /api/training/{session_id}/propose`:** o prompt da IA passa a levar, por entrada, os textos da tela inteira
+  (de `screen_elements`, texto e descrição, até 20, cada um até 60 caracteres) e os que apareceram DEPOIS dela (os da
+  tela da entrada seguinte que não estavam nesta, até 12). A instrução: a pós-condição de uma etapa não pode estar na
+  tela da 1ª entrada dela.
+  - Todo dado da persona vira o marcador (`{perfil_nome}`…), como nas `screen_lines`. Isso vale também para o texto e
+    a descrição do elemento tocado (`target`), que antes iam crus.
+  - Sem `screen_elements` (gravação anterior ao 31.122 F2), o prompt fica como antes.
+- **A proposta (`proposal`)** ganha `pos_condicoes_ja_valem` quando, mesmo assim, a IA propôs uma que já vale. O
+  formato é o do `preview` (v1.86 e v1.91, com `sugestoes` e `sugestoes_prontas`). Nada é trocado sozinho: quem decide
+  é a pessoa. Sem caso, a chave não vem.
+- **Prova:**
+  - `simulated`: `backend/tests/test_treino_pos_condicao_na_proposta.py`;
+  - `real`: `not_run` até o deploy. São 3 gravações do Configurações (~US$ 0,04), e uma sessão fica em `proposed`
+    para a Portal.
