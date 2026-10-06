@@ -156,9 +156,10 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
                                       "o consentimento do site nao e aceito pelo ator")),
     (_F.ALVO_AUSENTE, ("alvo ausente", "nao achou o alvo", "elemento nao encontrado")),
     # 29.74: o valor sensível que a triagem não deixa passar de uma etapa a outra (ADR-009) é parada do executor que
-    # pede a pessoa sem passar pela IA; sem regra, viraria relato da IA.
+    # pede a pessoa sem passar pela IA; sem regra, viraria relato da IA. 31.113 F2: o dado que sumiu da persona entre a
+    # materialização e a vez da etapa (o executor para antes do ator, com o nome do campo) é a pessoa que preenche.
     (_F.FALTA_INFORMACAO, ("parametro ausente", "missing_info", "falta informacao",
-                           "nao passam de uma etapa a outra")),
+                           "nao passam de uma etapa a outra", "a persona deste aparelho nao tem")),
     (_F.IA_DECLAROU_BLOQUEIO, ("bloqueio relatado pela ia", "step_blocked")),
 )
 
