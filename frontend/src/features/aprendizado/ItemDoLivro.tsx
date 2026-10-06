@@ -6,6 +6,7 @@ import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { Checkbox } from '../../components/Field';
 import { SeloEmProva } from '../../components/SeloEmProva';
+import { SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { StatusBadge } from '../../components/StatusBadge';
 import { explicacaoEmProva, textoDaEsperaDaPessoa } from '../../lib/emProva';
 import { cx, formatInt } from '../../lib/format';
@@ -165,6 +166,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         {e.state ? <StatusBadge meta={ESTADO_META[e.state]} size="sm" /> : null}
         {/* 30.85: o ensinado ainda em prova segue "Publicado", mas só vale para a persona que ensinou; o selo é o do 30.81. */}
         {e.kind === 'fluxo' ? <SeloEmProva ensinado={e.ensinado_em_prova} /> : null}
+        {e.kind === 'fluxo' ? <SeloNascidoDeProva nascido={e.nascido_de_prova} /> : null}
         {saude ? <Badge tone={saude.tone} size="sm" icon={saude.icon} title={saude.description} className={styles.seloDeSaude}><span className="sr-only">Saúde: </span>{saude.label}</Badge> : null}
       </div>
       <div className={styles.itemMeta}>
@@ -227,7 +229,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         <div className={styles.itemAcoes}>
           {acoes.map((a) => (
             <Button key={a.to} size="sm" variant={a.perigo ? 'dangerGhost' : a.to === 'published' || a.to === 'validated' ? 'primary' : 'secondary'}
-                    onClick={() => setAberta(a)}>
+                    title={a.efeito} onClick={() => setAberta(a)}>
               {a.label}
             </Button>
           ))}
@@ -236,6 +238,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
       {aberta ? (
         <DecisaoInline
           acao={aberta}
+          resumo={aberta.efeito}
           motivoOpcional={aberta.confirmaQueFica}
           onCancelar={() => setAberta(null)}
           onConfirmar={async (motivo) => {

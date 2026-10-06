@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 import pytest
 
-from app.api import _entregar_cancelamento
+from app.commands.despacho import _entregar_cancelamento
 from app.main import create_app
 from app.models import CommandState, InstanceState
 from app.workers.protocol import Result

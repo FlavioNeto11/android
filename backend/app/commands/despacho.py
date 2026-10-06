@@ -35,8 +35,8 @@ from ..releases.catalog import InstalacaoIncerta
 from ..security.sessions import operador_atual
 from ..social.repository import frase_da_quarentena
 from ..util import new_command_id, new_token, now, parse_iso, to_iso
-from ..workers.protocol import (MARCA_DE_FILA, Ack, Dispatch, Heartbeat, Hello, ObserveResult, Progress, Result,
-                               ResultAck)
+from ..workers.protocol import (MARCA_DE_FILA, Ack, Dispatch, ExecAck, ExecResult, Heartbeat, Hello, ObserveResult,
+                                Progress, Result, ResultAck)
 from ..workers.registry import WorkerError, WorkerLink
 from .outbox import PENDING as OUTBOX_PENDING
 from .reconciler import reconciliar_incertos
@@ -1047,7 +1047,8 @@ def _anunciar_inflight(s: AppState, worker_id: str, inflight: list[str]) -> None
 
 
 async def _tratar_mensagem_do_worker(s: AppState, worker_id: str, link: WorkerLink,
-                                     msg: Heartbeat | Ack | Progress | Result | Hello | ObserveResult) -> None:
+                                     msg: Heartbeat | Ack | Progress | Result | Hello | ObserveResult | ExecAck
+                                     | ExecResult) -> None:
     """Uma mensagem do worker, traduzida em estado persistido. Nada aqui pode escapar: exceção neste ponto cairia
     no `except` de fora e derrubaria o canal do worker por causa de um erro de banco."""
     try:
@@ -1077,6 +1078,10 @@ async def _tratar_mensagem_do_worker(s: AppState, worker_id: str, link: WorkerLi
             _progresso_do_worker(s, msg.command_id, worker_id, msg.message)
         elif isinstance(msg, Result):
             await _desfecho_do_worker(s, worker_id, link, msg)
+        elif isinstance(msg, ExecAck):
+            s.workers.comandos.on_ack(worker_id, msg)
+        elif isinstance(msg, ExecResult):
+            await s.workers.comandos.on_result(worker_id, msg)
         elif isinstance(msg, ObserveResult):
             # Falha da captura na origem, ou as dimensões de um pedido `so_dimensoes`. A imagem vem pelo canal de
             # mídia, nunca por aqui.

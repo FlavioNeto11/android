@@ -18,14 +18,16 @@ from urllib.parse import urlparse, urlunparse
 import psutil
 import websockets
 
-from ..contracts.worker.protocol import (FECHAMENTO_MOTIVO_DEFASADO, FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT,
+from ..contracts.worker.protocol import (FECHAMENTO_MOTIVO_DEFASADO, FEATURE_COMANDO_REMOTO, FEATURE_OBSERVACAO_LOCAL,
+                                         FEATURE_RESERVA_DE_BOOT,
                                          RECUSA_CERCA_NAO_MAIOR,
-                                         Ack, Dispatch, Heartbeat, Hello, Limits, ObserveImage, ObserveResult,
+                                         Ack, Dispatch, Exec, Heartbeat, Hello, Limits, ObserveImage, ObserveResult,
                                          Progress, Result, WorkerDevice, WorkerResources)
 from ..contracts.worker.verbos import sem_hibernacao
 from ..devices.avd import capacidades_do_avd
 from ..util import now, now_iso, parse_iso
 from . import AGENT_CODE, AGENT_VERSION
+from .comando import ComandoRemoto
 from .diario import DiarioDoAgente
 from .executor import EFEITO_INICIADO, VERBS, VerbFailed, VerbRefused, VerbUncertain, WorkerExecutor
 from .observacao import FEATURES_DE_OBSERVACAO, ObservacaoNaOrigem
@@ -149,6 +151,11 @@ class Agent:
         #: Observação na origem (`observe_local`): uma tarefa por pedido, guardada para não ser coletada no meio.
         self.observacao = ObservacaoNaOrigem(settings, adb_de=self.executor.adb_for, enviar=self._send)
         self._observacoes: set[asyncio.Task[Any]] = set()
+        #: Comando remoto (`remote_exec`, 29.154): desligado de fábrica; as tarefas ficam guardadas para o laço de
+        #: recepção não esperar um comando e para ninguém coletá-las no meio.
+        self.comando = ComandoRemoto(settings.work_dir, habilitado=settings.comando_remoto, enviar=self._send,
+                                     aceitas=lambda: self.features_aceitas)
+        self._comandos: set[asyncio.Task[None]] = set()
 
     # ------------------------------------------------------------------ declaração
     def _recursos(self) -> WorkerResources:
@@ -248,7 +255,7 @@ class Agent:
                      # banco restaurado, em vez de emitir cerca que este agente recusaria (K-004).
                      fences=dict(self._diario.cercas),
                      # O que este agente implementa e confere (C7). O central só usa o que ACEITAR no `welcome`.
-                     features=list(FEATURES))
+                     features=list(self._features()))
 
     # ------------------------------------------------------------------ envio
     async def _send(self, payload: dict[str, Any]) -> bool:
@@ -338,6 +345,9 @@ class Agent:
         for corpo in self._diario.pendentes():
             log.info("reenviando o desfecho de %s guardado no diário", corpo.get("command_id"))
             await self._send(corpo)
+        for corpo in self.comando.pendentes():
+            log.info("reenviando o desfecho do comando remoto %s", corpo.get("exec_id"))
+            await self._send(corpo)
 
     # ------------------------------------------------------------------ laços
     async def _bater(self, intervalo_s: float) -> None:
@@ -400,7 +410,7 @@ class Agent:
             # Central antigo não manda a chave: nada aceito, e o agente segue o caminho anterior (C7). Só o que
             # este agente ANUNCIOU entra — o central não liga, por aqui, o que o agente não sabe fazer.
             aceitas = resposta.get("accepted_features")
-            self.features_aceitas = ({str(f) for f in aceitas if str(f) in FEATURES}
+            self.features_aceitas = ({str(f) for f in aceitas if str(f) in self._features()}
                                      if isinstance(aceitas, list) else set())
             self._clock_offset_s = clock_offset_seconds(resposta.get("server_time"), now())
             if self._clock_offset_s is not None and abs(self._clock_offset_s) > 5.0:
@@ -435,11 +445,33 @@ class Agent:
             log.error("servidor recusou: %s", bruto.get("message"))
         elif tipo == "observe_image":
             self._observar(bruto)
+        elif tipo == "exec":
+            self._comandar(bruto)
+        elif tipo == "exec_cancel":
+            self.comando.cancelar(str(bruto.get("exec_id")))
+        elif tipo == "exec_result_ack":
+            self.comando.confirmar(str(bruto.get("exec_id")))
         elif tipo == "limits":
             msg = Limits.model_validate(bruto)
             efetivo = await self.executor.aplicar_limites(msg.max_slots, msg.boot_parallelism, msg.min_free_ram_mb)
             log.info("limites do painel aplicados: %d vaga(s), %d boot(s) por vez, piso de RAM %d MB",
                      efetivo["max_slots"], efetivo["boot_parallelism"], efetivo["min_free_ram_mb"])
+
+    def _features(self) -> tuple[str, ...]:
+        """O que este agente anuncia. `remote_exec` só com `comando_remoto: true` no `worker.yaml`: sem isso o
+        central nem sabe que existe, e o comando remoto fica fora do alcance mesmo com o interruptor dele ligado."""
+        return (*FEATURES, FEATURE_COMANDO_REMOTO) if self.settings.comando_remoto else FEATURES
+
+    def _comandar(self, bruto: dict[str, object]) -> None:
+        """Pedido de comando remoto. Roda à parte, como a observação: o laço de recepção não espera um comando."""
+        try:
+            msg = Exec.model_validate(bruto)
+        except Exception:  # noqa: BLE001 - pedido malformado não derruba o canal (e a linha crua não vai ao log)
+            log.warning("pedido de comando remoto inválido (%s)", str(bruto.get("exec_id"))[:64])
+            return
+        tarefa = asyncio.create_task(self.comando.atender(msg))
+        self._comandos.add(tarefa)
+        tarefa.add_done_callback(self._comandos.discard)
 
     def _observar(self, bruto: dict[str, Any]) -> None:
         """Pedido de imagem (`observe_local`). Roda à parte: o laço de recepção não espera um screencap, e o

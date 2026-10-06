@@ -71,16 +71,22 @@ def test_as_sete_rotas_de_releases_seguem_no_app_e_cada_uma_uma_vez() -> None:
         ("POST", "/api/releases/{release_id}/approve-signature"), ("POST", "/api/releases/{release_id}/lifecycle")])
 
 
-def test_as_dez_rotas_de_workers_e_limites_seguem_no_app_e_cada_uma_uma_vez() -> None:
+def test_as_rotas_de_workers_e_limites_seguem_no_app_e_cada_uma_uma_vez() -> None:
     """15.15 F4e: `/api/workers*` e `/api/servers/*/limits` saíram de `api.py` para `modules/fleet/presentation/workers.py`; o
-    conjunto (método e modelo) é o de antes. A literal de três segmentos não é engolida pelo modelo de um."""
+    conjunto (método e modelo) é o de antes. A literal de três segmentos não é engolida pelo modelo de um. 29.154
+    acrescentou as seis do comando remoto (interruptor, pedir, listar, ler e cancelar), no mesmo módulo."""
     rotas = [r for r in _rotas_na_ordem() if r[1].startswith(("/api/workers", "/api/servers"))]
     esperadas = [
         ("GET", "/api/workers"), ("GET", "/api/servers/limits"), ("PUT", "/api/servers/{worker_id}/limits"),
         ("GET", "/api/workers/{worker_id}"), ("GET", "/api/workers/devices/unbound"),
         ("POST", "/api/workers/{worker_id}/devices/adopt"), ("POST", "/api/workers/enroll"),
         ("POST", "/api/workers/{worker_id}/maintenance"), ("DELETE", "/api/workers/{worker_id}"),
-        ("POST", "/api/workers/{worker_id}/rotate-credential")]
+        ("POST", "/api/workers/{worker_id}/rotate-credential"),
+        # 29.154, comando remoto
+        ("GET", "/api/workers/{worker_id}/comando-remoto"), ("PUT", "/api/workers/{worker_id}/comando-remoto"),
+        ("POST", "/api/workers/{worker_id}/comandos"), ("GET", "/api/workers/{worker_id}/comandos"),
+        ("GET", "/api/workers/{worker_id}/comandos/{exec_id}"),
+        ("POST", "/api/workers/{worker_id}/comandos/{exec_id}/cancelar")]
     assert sorted(rotas) == sorted(esperadas)
     assert not _casa("/api/workers/{worker_id}", "/api/workers/devices/unbound")        # 1 segmento x 3: sem sobreposição
 
@@ -133,6 +139,69 @@ def test_as_vinte_rotas_de_personas_seguem_no_app_e_cada_uma_uma_vez() -> None:
         ("PUT", "/api/personas/{persona_id}/images/{image_id}/primary"),
         ("PUT", "/api/personas/{persona_id}/images/{image_id}/feita-por-ia"),
         ("DELETE", "/api/personas/{persona_id}/images/{image_id}")])
+
+
+def test_as_quarenta_e_uma_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4i: `/api/instagram/*` saiu de `api.py` para `modules/identity/presentation/instagram.py`; o conjunto (método e modelo) é o de
+    antes, sem repetição nem rota perdida."""
+    rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/instagram")]
+    assert sorted(rotas) == sorted([
+        ("GET", "/api/instagram/profiles"),
+        ("POST", "/api/instagram/profiles"),
+        ("GET", "/api/instagram/profiles/{profile_id}"),
+        ("PATCH", "/api/instagram/profiles/{profile_id}"),
+        ("DELETE", "/api/instagram/profiles/{profile_id}"),
+        ("GET", "/api/instagram/profiles/{profile_id}/avatar"),
+        ("PUT", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/credential"),
+        ("DELETE", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/credential"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/credential/clone"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/credential/consent"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/session/connect"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/session/verify"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/session/logout"),
+        ("GET", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/auth-attempts"),
+        ("PUT", "/api/instagram/profiles/{profile_id}/credential"),
+        ("DELETE", "/api/instagram/profiles/{profile_id}/credential"),
+        ("POST", "/api/instagram/profiles/{profile_id}/connect"),
+        ("POST", "/api/instagram/profiles/{profile_id}/verify"),
+        ("POST", "/api/instagram/profiles/{profile_id}/logout"),
+        ("GET", "/api/instagram/profiles/{profile_id}/memory"),
+        ("POST", "/api/instagram/profiles/{profile_id}/memory"),
+        ("DELETE", "/api/instagram/profiles/{profile_id}/memory/{memory_id}"),
+        ("GET", "/api/instagram/profiles/{profile_id}/capacidades"),
+        ("GET", "/api/instagram/profiles/{profile_id}/interactions"),
+        ("POST", "/api/instagram/profiles/{profile_id}/context"),
+        ("GET", "/api/instagram/profiles/{profile_id}/policy"),
+        ("PUT", "/api/instagram/profiles/{profile_id}/policy"),
+        ("GET", "/api/instagram/profiles/{profile_id}/accounts"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts"),
+        ("PATCH", "/api/instagram/profiles/{profile_id}/accounts/{account_id}"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/retire"),
+        ("DELETE", "/api/instagram/profiles/{profile_id}/accounts/{account_id}"),
+        ("GET", "/api/instagram/policy-groups"),
+        ("GET", "/api/instagram/policy-defaults"),
+        ("POST", "/api/instagram/policy-groups"),
+        ("GET", "/api/instagram/policy-groups/{group_id}"),
+        ("PUT", "/api/instagram/policy-groups/{group_id}"),
+        ("DELETE", "/api/instagram/policy-groups/{group_id}"),
+        ("GET", "/api/instagram/profiles/{profile_id}/auth-attempts"),
+        ("GET", "/api/instagram/profiles/{profile_id}/runs"),
+        ("GET", "/api/instagram/profiles/{profile_id}/operational-context")])
+
+
+def test_as_vinte_rotas_de_proxies_comandos_e_apps_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4j: `/api/proxies*`, `/api/commands*` e os apps (`/api/apps*`, `app-store`, `app-catalog`, `app-state`) saíram de `api.py`
+    para `fleet/presentation/proxies.py`, `execution/presentation/comandos.py` e `applications/presentation/apps.py`; o conjunto (método e
+    modelo) é o de antes, sem repetição nem rota perdida."""
+    prefixos = ("/api/proxies", "/api/commands", "/api/apps", "/api/app-store", "/api/app-catalog", "/api/app-state")
+    rotas = [r for r in _rotas_na_ordem() if r[1].startswith(prefixos)]
+    assert sorted(rotas) == sorted([
+        ("GET", "/api/proxies"), ("POST", "/api/proxies"), ("DELETE", "/api/proxies/{proxy_id}"), ("POST", "/api/proxies/apply"),
+        ("GET", "/api/commands/{command_id}"), ("GET", "/api/commands"), ("POST", "/api/commands/{command_id}/verify"),
+        ("POST", "/api/commands/{command_id}/cancel"), ("POST", "/api/commands/{command_id}/resolve"), ("POST", "/api/commands/refine"),
+        ("GET", "/api/apps-overview"), ("GET", "/api/apps/{app_id}/overview"), ("GET", "/api/apps/{pacote}/conhecimento"),
+        ("GET", "/api/apps"), ("POST", "/api/apps"), ("PUT", "/api/apps/{app_id}"), ("DELETE", "/api/apps/{app_id}"),
+        ("GET", "/api/app-store"), ("GET", "/api/app-catalog"), ("GET", "/api/app-state")])
 
 
 def test_modulos_de_apresentacao_nao_importam_app_api() -> None:

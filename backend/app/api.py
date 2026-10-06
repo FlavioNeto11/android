@@ -9,7 +9,6 @@ import os
 import re
 import threading
 import time
-from dataclasses import asdict
 from datetime import timedelta
 from time import monotonic
 from typing import Any, Literal
@@ -20,42 +19,30 @@ from fastapi.exception_handlers import http_exception_handler
 from pydantic import BaseModel, ConfigDict, Field
 
 from .automation.appium_driver import appium_no_ar
-from .contexto import contexto_do_aparelho
 from .storage import DISK, DiskStorage, Storage
-from .commands.states import COMMAND_OPEN, COMMAND_UNSETTLED, InvalidCommandTransition
-from .commands.reconciler import VERIFICAVEL_POR_ESTADO, verificar_comando
 from .commands.store import command_dto
 # O despacho de comandos mora em `commands/despacho.py` (não é HTTP, e o `state` precisa dele sem importar a API).
 # Os nomes seguem acessíveis por aqui: as rotas os usam, e os testes os importam de `app.api`.
 from .commands.despacho import (DespachoRecusado, _anunciar_inflight, _despachar_trabalho, _do_action,
-                                _entregar_cancelamento, _fechar_cancelado, _publish_command, _reconciliar_uma_vez,
-                                _tratar_mensagem_do_worker, executar_envelope, reconciliar_estado_desejado, remediar,
-                                remediar_reiniciando)
+                                _fechar_cancelado, _reconciliar_uma_vez, _tratar_mensagem_do_worker,
+                                executar_envelope, reconciliar_estado_desejado, remediar, remediar_reiniciando)
 from .db import Row, loads
 from .training.recorder import TrainingError
 from .devices.adb import AdbError
-from .devices import conectividade
 from .devices.manager import DeviceRuntime
 from .modules.fleet.presentation.comum import quem
-from .modules.identity.presentation.comum import mime_da_chave as _mime_da_chave
 from .modules.identity.presentation.comum import servir_do_storage as _servir_do_storage
 from .modules.identity.presentation.comum import social_error as _social_error
 from .modules.applications.presentation.comum import device
-from .devices.proxy import ProxyApplyBody, ProxyInput  # modelos da loja de apps fora de models.py (menos conflito)
-from .integrations.app_declarado.prova import prova_do_pacote
 from .devices.verbs import PRAZO_POR_VERBO, verbos_suportados
-from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ApprovalBatchBody, ApprovalDecision, AppInput,
-                     AppPatch, CapabilityDTO, CommandCancelBody, CommandResolveBody, CommandState, InstanceState,
-                     TrainingSaveBody, TrainingStartBody, PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
-                     ProfileAccountDTO, ProfileAccountPatch, ProfilePolicyPatch, CredentialClone, CredentialUpdate,
-                     MemoryCreate, ProfileCreate, ProfilePatch, SessionStatus, StoreBody, LoginBody, PanelSessionInfo,
-                     ResolveBody, RunCreate, RunTargetsPreview, RunTargetsResolveBody)
+from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ApprovalBatchBody, ApprovalDecision,
+                     CapabilityDTO, InstanceState, TrainingSaveBody, TrainingStartBody, StoreBody, LoginBody,
+                     PanelSessionInfo, ResolveBody, RunCreate, RunTargetsPreview, RunTargetsResolveBody)
 from .metricas import metricas
 from .contracts.skills.resolve import SkillResolveRequest
 from .modules.learning.domain.vocabulario import LivroKind
 from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.presentation.livro import mudar_status_legado
-from .modules.execution.presentation.comum import autor_do_sinal, run_error
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .modules.skills.presentation.schemas import EscopoDoFluxoBody, TrainingDeFalhaBody, TrainingStopBody, TrainingUndoBody
@@ -66,7 +53,7 @@ from .security import access as acesso           # o módulo, não os nomes: `LO
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
 from .security.sessions import COOKIE, VALIDADE_S, NomeInvalido, normalizar_nome
-from .shared.costuras import PAINEL, ResolucaoDeComando, autor_do_gesto, avisar
+from .shared.costuras import autor_do_gesto
 from .state import AppState
 from .workers.captura import ErroDeMidia
 from .workers.protocol import EnvioDeMidia, Hello, Refused, parse_upstream
@@ -74,19 +61,16 @@ from .workers.portao import BLOQUEIO_S
 from .workers.registry import WorkerError, motivo_do_conflito
 from .version import agent_version, codigo_do_agente
 from .planning.capabilities import load_catalog
-from .planning.catalog import registered
 from .social.excecoes import ExcecaoEmUso, ExcecaoInvalida
 from .social.service import SocialError
 from .taskqueue import observabilidade
 from .taskqueue.flows import id_do_fluxo
 from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
-from .modules.execution.domain.command_refinement import CommandRefinement
-from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
+from .taskqueue.assistente import RunSuccessorBody
 from .taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody, RunTargetsSuggestion
-from .taskqueue.service import RunError
 from .util import iso_in, new_token, now, now_iso, parse_iso, to_iso
-from .vitrine import _apps_changed, app_dto, apps_list, vitrine
+from .vitrine import apps_list
 
 from .devices.verbs import sem_hibernacao
 
@@ -121,44 +105,6 @@ async def recusa_do_despacho(request: Request, exc: DespachoRecusado) -> Respons
 #: A triagem de credencial do voto do D2 (`registrar_sinal(recusar_nota=True)`), para a nota livre que uma pessoa
 #: escreve numa rota daqui e que entraria crua no banco e no evento (segredo nunca em evento).
 _TRIAGEM_DE_NOTA = TriagemDeCredencial()
-
-#: O contexto que o painel punha NA NOTA até 29/09 ("decidido no painel a partir de <aparelho>: <texto>"). Com a
-#: triagem, um id de aparelho com maiúscula, dígito e símbolo (um AVD como `Pixel_7a-Lab.02`) recusava toda decisão
-#: pelo painel por causa do prefixo, não do texto da pessoa. Hoje o painel manda `origin=panel` e o backend compõe o
-#: contexto; a aba aberta antes do deploy ainda manda o prefixo, que só é reconhecido com o id do PRÓPRIO comando.
-_PREFIXO_ANTIGO_DO_PAINEL = {"resolve": "decidido no painel a partir de ", "cancel": "cancelado no painel a partir de "}
-
-
-def _decisao_sobre_comando(row: Row, nota: str | None, requested_by: str | None, origem: str | None, autor: str,
-                           gesto: Literal["resolve", "cancel"], o_que: str) -> tuple[str | None, str]:
-    """O texto da pessoa (sem o contexto) e o contexto que o motivo do comando acrescenta depois de "por <autor>":
-    ", no painel a partir de <aparelho>" — ou só ", a partir de <aparelho>" quando o autor já é `panel` (ninguém se
-    identificou; "por panel, no painel" repetiria o painel) —, ou nada fora do painel. Recusa com 409
-    `note_looks_secret` ANTES de qualquer escrita, pela triagem do voto do D2:
-
-    - a nota, só o texto da pessoa — o contexto é do backend e nunca passa pela triagem;
-    - o `requested_by` do corpo, sempre que vier, COM ou sem sessão: sem sessão ele é o autor gravado cru no motivo,
-      em `result.resolved_by` e no evento do comando; com sessão é ignorado, mas um rótulo com cara de credencial
-      não tem uso legítimo e a regra fica uma só."""
-    texto = (nota or "").strip()
-    antigo = f"{_PREFIXO_ANTIGO_DO_PAINEL[gesto]}{row['instance_id']}"
-    do_painel = origem == "panel"
-    if texto == antigo or texto.startswith(f"{antigo}:"):
-        texto, do_painel = texto[len(antigo) + 1:].strip(), True
-    if texto and _TRIAGEM_DE_NOTA.recusa(texto):
-        # A nota iria crua para `commands.reason` (e `result.note`), e dali para o evento do comando no bus. Nada é
-        # gravado, nem a decisão: o comando segue como estava até vir uma nota limpa.
-        raise err(409, "note_looks_secret", f"A nota tem formato ou assunto de credencial e não foi gravada, nem "
-                                            f"{o_que}. Reescreva a observação sem o segredo.")
-    rotulo = (requested_by or "").strip()
-    if rotulo and _TRIAGEM_DE_NOTA.recusa(rotulo):
-        raise err(409, "note_looks_secret", f"O requested_by tem formato ou assunto de credencial e não foi gravado, "
-                                            f"nem {o_que}. Mande um rótulo sem o segredo, ou nenhum (com sessão, o "
-                                            f"autor é o operador dela).")
-    if not do_painel:
-        return texto or None, ""
-    return texto or None, f", {'' if autor == PAINEL else 'no painel '}a partir de {row['instance_id']}"
-
 
 # ====================================================================== sessão do painel
 #: Caminhos que o `main.guarda` deixa responder ANTES de haver credencial — senão a tela de login levaria 401 no
@@ -479,32 +425,6 @@ def _price(prices: dict[str, list[float]], model: str) -> list[float] | None:
     return costs.price_for(prices, model)
 
 
-@router.get("/apps-overview")
-async def apps_overview_route(request: Request, days: int = Query(7, ge=1, le=90)) -> Any:
-    """Item 12.2: um resumo por aplicativo — contas, aparelhos, execuções, custo de IA, receitas, fluxos, versões."""
-    from .apps_overview import apps_overview  # noqa: PLC0415
-    return apps_overview(st(request), days)
-
-
-@router.get("/apps/{app_id}/overview")
-async def app_overview_route(request: Request, app_id: str, days: int = Query(30, ge=1, le=180)) -> Any:
-    from .apps_overview import app_detail  # noqa: PLC0415
-    detalhe = app_detail(st(request), app_id, days)
-    if detalhe is None:
-        raise err(404, "not_found", "Aplicativo não encontrado.")
-    return detalhe
-
-
-@router.get("/apps/{pacote}/conhecimento")
-async def app_conhecimento_route(pacote: str) -> dict[str, object]:
-    """RA-24: os YAML do conhecimento do app (`app/conhecimento/apps/<pacote>/`) com sha256 e o hash de blob do Git,
-    que confere com `git rev-parse <commit>:<caminho>` sem abrir a máquina. O parâmetro é o PACOTE, e não o id do app."""
-    prova = prova_do_pacote(pacote)
-    if prova is None:
-        raise err(404, "not_found", "Nenhum conhecimento declarado para este pacote.")
-    return asdict(prova)
-
-
 @router.get("/desempenho")
 async def desempenho(request: Request, janelas: int = Query(24, ge=0, le=672),
                      dias: int = Query(0, ge=0, le=90), irq_horas: int = Query(0, ge=0, le=336),
@@ -686,472 +606,11 @@ async def delete_recipe(request: Request, recipe_id: int) -> Response:
 
 
 # ====================================================================== apps
-@router.get("/apps")
-async def list_apps(request: Request) -> Any:
-    return apps_list(st(request))
-
-
-def _validate_apk(state: AppState, apk_path: str | None) -> None:
-    if apk_path:
-        try:
-            state.devices.resolve_apk(apk_path)
-        except ValueError as exc:
-            raise err(400, "invalid_apk_path", str(exc)) from exc
-
-
-@router.post("/apps")
-async def create_app(request: Request, body: AppInput) -> Any:
-    s = st(request)
-    _validate_apk(s, body.apk_path)
-    if s.apps.id_do_pacote(body.package) is not None:
-        # Loja de apps: o pacote é a identidade que as versões, o estado por aparelho e a vitrine usam. Dois
-        # cadastros do mesmo pacote dividiriam as contagens em dois cartões que falam do mesmo aplicativo.
-        raise err(409, "package_exists", f"O pacote {body.package} já está cadastrado.")
-    app_id = s.apps.criar(name=body.name, package=body.package, activity=body.activity or None,
-                          apk_path=body.apk_path or None, nav_hints=body.nav_hints or None,
-                          known_selectors=body.known_selectors, category=body.category)
-    _apps_changed(s)
-    return app_dto(s.apps.obter(app_id), s)
-
-
-@router.put("/apps/{app_id}")
-async def update_app(request: Request, app_id: str, body: AppPatch) -> Any:
-    s = st(request)
-    if s.apps.obter(app_id) is None:
-        raise err(404, "not_found", "App não encontrado.")
-    data = body.model_dump(exclude_unset=True)
-    if data.get("package") and s.apps.id_do_pacote(data["package"], exceto=app_id) is not None:
-        # Mesma regra do cadastro: dois apps com o mesmo pacote dividiriam a vitrine em dois cartões do mesmo app.
-        raise err(409, "package_exists", f"O pacote {data['package']} já está cadastrado em outro app.")
-    _validate_apk(s, data.get("apk_path"))
-    # Texto vazio vindo do formulário quer dizer "sem valor" (o repositório grava o que recebe).
-    for k in ("activity", "apk_path", "nav_hints"):
-        if k in data and not data[k]:
-            data[k] = None
-    s.apps.atualizar(app_id, data)
-    _apps_changed(s)
-    return app_dto(s.apps.obter(app_id), s)
-
-
-@router.delete("/apps/{app_id}", status_code=204)
-async def delete_app(request: Request, app_id: str) -> Response:
-    s = st(request)
-    row = s.apps.obter(app_id)
-    if row is None:
-        raise err(404, "not_found", "App não encontrado.")
-    if row["builtin"]:
-        raise err(409, "builtin", "O app de QA embutido não pode ser removido.")
-    s.apps.remover(app_id)
-    _apps_changed(s)
-    for rt in s.devices.devices.values():
-        s.devices.publish(rt)
-    return Response(status_code=204)
-
-
 # ====================================================================== instâncias
 # ====================================================================== perfis do Instagram
-@router.get("/instagram/profiles")
-async def list_profiles(request: Request) -> Any:
-    return st(request).social.list_profiles()
-
-
-@router.post("/instagram/profiles", status_code=201)
-async def create_profile(request: Request, body: ProfileCreate) -> Any:
-    """Cadastro pelo portal. A senha entra aqui e vai direto para o cofre: nenhuma rota a devolve."""
-    try:
-        return st(request).social.create_profile(body)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.get("/instagram/profiles/{profile_id}")
-async def get_profile(request: Request, profile_id: str) -> Any:
-    try:
-        return st(request).social.get_profile(profile_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.patch("/instagram/profiles/{profile_id}")
-async def patch_profile(request: Request, profile_id: str, body: ProfilePatch) -> Any:
-    try:
-        return st(request).social.update_profile(profile_id, body)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.delete("/instagram/profiles/{profile_id}", status_code=204)
-async def delete_profile(request: Request, profile_id: str) -> Response:
-    try:
-        st(request).social.delete_profile(profile_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-    return Response(status_code=204)
-
-
-@router.get("/instagram/profiles/{profile_id}/avatar")
-async def profile_avatar(request: Request, profile_id: str) -> Any:
-    """Foto do perfil. 404 quando não há. O painel só chama com `has_avatar` verdadeiro no DTO (29.26) e, sem ele, mostra
-    as iniciais sem requisição; o 404 fica para quem chama sem olhar o campo."""
-    s = st(request)
-    try:
-        perfil = s.social.get_profile(profile_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-    # A imagem PRINCIPAL da pessoa (048) quando há; senão o jpg legado de `data/avatars/`. A chave sai do id JÁ
-    # VALIDADO no banco (ou da linha da imagem), nunca do texto da URL: chave não se monta com entrada crua.
-    principal = s.persona_images.principal(perfil.id)
-    chave = principal.storage_key if principal is not None and principal.storage_key else f"avatars/{perfil.id}.jpg"
-    return _servir_do_storage(s.avatares, chave, _mime_da_chave(chave),
-                              ausente=("sem_foto", "Este perfil não tem foto cadastrada."))
-
-
 # ---------------------------------------------------------------- credencial e sessão POR CONTA (ADR-040)
-# A Conta é a entidade única: as rotas de credencial, conectar, verificar, sair e tentativas são da CONTA
-# (`/accounts/{account_id}/…`). As antigas, por perfil, viram apelidos que resolvem a conta âncora — a do app que
-# provê a conta do perfil (`social_repo.app_package`) — e continuam devolvendo o perfil, como sempre.
-def _conta_ancora_ou_409(s: AppState, profile_id: str) -> str:
-    try:
-        s.social.get_profile(profile_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-    # Leitura: não cria conta (um GET que insere linha seria uma surpresa); quem cria é guardar a senha.
-    conta = s.social_repo.conta_ancora(profile_id)
-    if conta is None:
-        raise err(409, "no_account", "Este perfil não tem conta no aplicativo que provê a conta dele.")
-    return str(conta["id"])
-
-
-@router.put("/instagram/profiles/{profile_id}/accounts/{account_id}/credential")
-async def put_account_credential(request: Request, profile_id: str, account_id: str,
-                                 body: CredentialUpdate) -> ProfileAccountDTO:
-    """Só escrita, com o consentimento por conta (`consent: true`, senão 409 `consentimento_de_credencial`). O
-    painel mostra apenas que existe uma credencial e quem consentiu, nunca o valor."""
-    try:
-        return st(request).social.set_account_credential(profile_id, account_id, body, by=quem(request))
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.delete("/instagram/profiles/{profile_id}/accounts/{account_id}/credential")
-async def delete_account_credential(request: Request, profile_id: str, account_id: str) -> ProfileAccountDTO:
-    try:
-        return st(request).social.delete_account_credential(profile_id, account_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/credential/clone")
-async def clone_account_credential(request: Request, profile_id: str, account_id: str,
-                                   body: CredentialClone) -> ProfileAccountDTO:
-    """Usar a senha de outra conta DESTA persona (ADR-057, D1): o cofre a copia para uma entrada própria desta
-    conta, sem o valor sair dele. Outra persona → 409 `credencial_de_outra_persona`; origem sem senha → 409
-    `no_credential`. O consentimento não é clonado: a conta que não tinha continua sem."""
-    try:
-        return st(request).social.clone_account_credential(profile_id, account_id, body, by=quem(request))
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/credential/consent")
-async def consent_account_credential(request: Request, profile_id: str, account_id: str) -> ProfileAccountDTO:
-    """Consentir sem redigitar: marca `consent_at`/`consent_by` numa senha já guardada."""
-    try:
-        return st(request).social.consent_account_credential(profile_id, account_id, by=quem(request))
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/session/connect", status_code=202)
-async def connect_account(request: Request, profile_id: str, account_id: str,
-                          instance_id: str | None = None) -> dict[str, object]:
-    """Abre o app da conta no aparelho vinculado, reaproveita a sessão ou autentica, e verifica a conta. Só para
-    app com provedor de sessão (409 `no_session_provider` nos demais). 202: o resultado aparece na conta (`session`).
-    `?instance_id=`: outro aparelho vinculado à persona (N:N, 051); sem ele, o principal."""
-    return await _start_session_job(request, profile_id, force_login=False, label="autenticação da conta",
-                                    account_id=account_id, instance_id=instance_id)
-
-
-@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/session/verify", status_code=202)
-async def verify_account(request: Request, profile_id: str, account_id: str,
-                         instance_id: str | None = None) -> dict[str, object]:
-    """Relê do aparelho qual conta está aberta. Não digita senha: só observa."""
-    return await _start_session_job(request, profile_id, force_login=False, observe_only=True,
-                                    label="verificação da conta", account_id=account_id, instance_id=instance_id)
-
-
-@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/session/logout", status_code=202)
-async def logout_account(request: Request, profile_id: str, account_id: str,
-                         instance_id: str | None = None) -> dict[str, object]:
-    """Encerra a sessão da conta no aparelho apagando os dados do app dela — o jeito determinístico de sair."""
-    return await _logout_job(request, profile_id, account_id=account_id, instance_id=instance_id)
-
-
-@router.get("/instagram/profiles/{profile_id}/accounts/{account_id}/auth-attempts")
-async def account_auth_attempts(request: Request, profile_id: str, account_id: str,
-                                limit: int = 20) -> list[dict[str, object]]:
-    """Tentativas de autenticação DESTA conta: quando, em qual aparelho e com que desfecho."""
-    try:
-        return st(request).social.auth_attempts(profile_id, min(max(limit, 1), 100), account_id=account_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.put("/instagram/profiles/{profile_id}/credential")
-async def put_credential(request: Request, profile_id: str, body: CredentialUpdate) -> Any:
-    """Apelido por perfil: a credencial da conta âncora. Só escrita; nunca o valor."""
-    try:
-        return st(request).social.set_credential(profile_id, body, by=quem(request))
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.delete("/instagram/profiles/{profile_id}/credential")
-async def delete_credential(request: Request, profile_id: str) -> Any:
-    try:
-        return st(request).social.delete_credential(profile_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.post("/instagram/profiles/{profile_id}/connect", status_code=202)
-async def connect_profile(request: Request, profile_id: str, instance_id: str | None = None) -> Any:
-    """Apelido por perfil de `…/accounts/{conta âncora}/session/connect`.
-
-    202 porque leva dezenas de segundos: o resultado aparece no próprio perfil (`session`).
-    """
-    return await _start_session_job(request, profile_id, force_login=False, label="autenticação da conta",
-                                    instance_id=instance_id)
-
-
-@router.post("/instagram/profiles/{profile_id}/verify", status_code=202)
-async def verify_profile(request: Request, profile_id: str, instance_id: str | None = None) -> Any:
-    """Apelido por perfil de `…/session/verify`: relê do aparelho qual conta está aberta, sem digitar senha.
-
-    `observe_only` faz a promessa valer: num aparelho deslogado, para na tela de login em vez de autenticar.
-    """
-    return await _start_session_job(request, profile_id, force_login=False, observe_only=True,
-                                    label="verificação da conta", instance_id=instance_id)
-
-
-@router.post("/instagram/profiles/{profile_id}/logout", status_code=202)
-async def logout_profile(request: Request, profile_id: str, instance_id: str | None = None) -> Any:
-    """Apelido por perfil de `…/session/logout`: apaga os dados do app da conta âncora naquele aparelho.
-
-    Apaga também cache e preferências do app; por isso é uma ação explícita, nunca efeito colateral de outra
-    operação.
-    """
-    return await _logout_job(request, profile_id, account_id=None, instance_id=instance_id)
-
-
-async def _logout_job(request: Request, profile_id: str, *, account_id: str | None,
-                      instance_id: str | None = None) -> dict[str, object]:
-    s = st(request)
-    rt, profile = _profile_device(s, profile_id, instance_id)
-    conta = _conta_da_sessao(s, profile_id, account_id, rt.id)
-    _recusa_pelo_portao(conta, "logout")
-    # "Sair da conta" APAGA os dados do app: é a operação mais destrutiva desta tela e era a que menos registro
-    # tinha. Agora é um comando, com id, desfecho e `uncertain` quando o adb não responde.
-    pacote = conta.package or s.social_repo.app_package or ""
-    return {**_despachar_trabalho(s, rt, "session.logout", lambda: _do_logout(s, rt, profile_id, conta.id, pacote),
-                                  label=f"logout de {conta.app_name or pacote}",
-                                  params={"profile_id": profile_id, "account_id": conta.id}),
-            "profile_id": profile_id, "account_id": conta.id}
-
-
-def _conta_da_sessao(s: AppState, profile_id: str, account_id: str | None, instance_id: str) -> Any:
-    """A conta que a rota opera (a dita, ou a âncora nos apelidos por perfil), vista NO aparelho da operação: é a
-    sessão e o app de lá que o portão confere."""
-    try:
-        return s.social.get_account(profile_id, account_id or _conta_ancora_ou_409(s, profile_id), instance_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-async def _do_logout(s: AppState, rt: DeviceRuntime, profile_id: str, account_id: str, package: str) -> None:
-    await rt.executor.run(rt.adb.clear_data, package, timeout=120, label="apagar dados do app")
-    rt.app_versions.clear()
-    s.social_repo.set_account_session(profile_id, account_id, rt.id, status=SessionStatus.unknown,
-                                      detail="Dados do app apagados neste aparelho; é preciso entrar de novo.")
-    s.bus.emit("log", f"{rt.id}: sessão da conta encerrada ({package}: dados do app apagados)", instance_id=rt.id)
-
-
-def _profile_device(s: AppState, profile_id: str, instance_id: str | None = None) -> tuple[DeviceRuntime, Any]:
-    """O aparelho onde a operação da persona acontece: o dito (`?instance_id=`, que precisa estar vinculado a ela —
-    409 `sem_vinculo`) ou o PRINCIPAL (N:N, migração 051)."""
-    try:
-        profile = s.social.get_profile(profile_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-    if instance_id is not None:
-        if s.social_repo.binding(profile_id, instance_id) is None:
-            raise err(409, "sem_vinculo", f"Esta persona não está vinculada a {instance_id}.")
-        return device(s, instance_id), profile
-    if not profile.instance_id:
-        raise err(409, "no_binding", "Este perfil não está vinculado a nenhum aparelho.")
-    rt = device(s, profile.instance_id)
-    return rt, profile
-
-
-def _recusa_pelo_portao(profile: Any, acao: str) -> None:
-    """Recusa pela MESMA regra que decide o botão (`social/sessao_gate.py`), com o código da fase.
-
-    Sem isto, "Conectar" num aparelho sem o Instagram virava um 202 e uma tentativa de abrir um app que não existe.
-    """
-    acoes = profile.session_actions
-    if acoes is None:
-        return
-    portao = getattr(acoes, acao)
-    if not portao.allowed:
-        codigo = {"app_missing": "app_not_installed", "app_unknown": "app_not_verified",
-                  "app_installing": "app_busy", "authenticating": "session_busy"}.get(acoes.phase, "not_allowed")
-        raise err(409, codigo, portao.reason or acoes.detail)
-
-
-async def _exigir_internet(s: Any, rt: Any) -> None:
-    """Conectar precisa de internet DENTRO do aparelho. `online` não prova isso (android-06, 25/09/2026: online,
-    sem DNS, e o login virava "An unexpected error occurred"). Resultado velho ou desconhecido → sonda agora; e o
-    que não se confirma recusa — incerteza não vira tentativa de login numa conta real."""
-    info = rt.connectivity
-    if info.state == "unknown" or time.monotonic() - rt.connectivity_mono > conectividade.VALIDADE_S:
-        info = await s.devices.conferir_conectividade(rt)
-    if info.state != "healthy":
-        raise err(409, "device_no_internet", info.detail)
-
-
-async def _start_session_job(request: Request, profile_id: str, *, force_login: bool, label: str,
-                             observe_only: bool = False, account_id: str | None = None,
-                             instance_id: str | None = None) -> dict[str, object]:
-    s = st(request)
-    rt, profile = _profile_device(s, profile_id, instance_id)
-    conta = _conta_da_sessao(s, profile_id, account_id, rt.id)
-    if conta.host:
-        # Conta de portal (um site, pelo navegador): o login gerenciado é o da conta do app inteiro, a única que a
-        # porta de sessão e o despacho acham (item 23.4). O provedor também recusa; aqui a recusa é HTTP e imediata.
-        raise err(409, "conta_de_site", f"Esta conta é de site ({conta.host}), usada pelo navegador: o login "
-                                        "gerenciado do app é o da conta do app, sem site.")
-    if not conta.credential.configured and not observe_only:
-        raise err(409, "no_credential", "Guarde a senha desta conta antes de conectar.")
-    if conta.credential.configured and conta.credential.consent_at is None and not observe_only:
-        raise err(409, "consentimento_de_credencial", "A senha desta conta está guardada sem o consentimento para a "
-                                                      "automação digitá-la; marque-o na conta antes de conectar.")
-    _recusa_pelo_portao(conta, "verify" if observe_only else "connect")
-    if rt.state not in (InstanceState.online, InstanceState.booting, InstanceState.stopped,
-                        InstanceState.hibernated, InstanceState.absent):
-        raise err(409, "device_unavailable", f"O aparelho está em '{rt.state.value}'.")
-    if rt.state != InstanceState.online:
-        s.devices.request_start(rt, f"conectar a conta de {conta.app_name or conta.app_id}")
-        raise err(409, "device_starting", "O aparelho está sendo ligado; tente novamente em instantes.")
-    if not observe_only:
-        await _exigir_internet(s, rt)
-    verbo = "session.verify" if observe_only else "session.connect"
-    # O provedor de sessão do PACOTE da conta (registro por pacote, fase K1), e a CONTA que a rota opera (item 23.4):
-    # a credencial, a tentativa e a sessão que o provedor lê e grava são as dela, não as da conta âncora do perfil.
-    provedor = s.sessoes.for_package(conta.package)
-    if provedor is None:
-        raise err(409, "no_session_provider", f"O aplicativo desta conta ({conta.app_name or conta.app_id}) não tem "
-                                              "login gerenciado pelo sistema: entre pelo aparelho e marque a sessão.")
-    return {**_despachar_trabalho(
-        s, rt, verbo,
-        lambda: provedor.ensure_session(rt, profile_id, account_id=conta.id, force_login=force_login,
-                                        observe_only=observe_only),
-        label=label, params={"profile_id": profile_id, "account_id": conta.id}),
-        "profile_id": profile_id, "account_id": conta.id}
-
-
 # ====================================================================== persona, memória e histórico
 # ---------------------------------------------------------------- imagens da persona (048)
-@router.get("/instagram/profiles/{profile_id}/memory")
-async def list_memory(request: Request, profile_id: str, subject: str | None = None, limit: int = 100,
-                      app_id: str | None = None) -> Any:
-    try:
-        return st(request).social.list_memories(profile_id, subject=subject, limit=min(max(limit, 1), 500),
-                                                app_id=app_id or None)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.post("/instagram/profiles/{profile_id}/memory", status_code=201)
-async def add_memory(request: Request, profile_id: str, body: MemoryCreate) -> Any:
-    try:
-        return st(request).social.add_memory(profile_id, body)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.delete("/instagram/profiles/{profile_id}/memory/{memory_id}", status_code=204)
-async def delete_memory(request: Request, profile_id: str, memory_id: str) -> None:
-    try:
-        st(request).social.delete_memory(profile_id, memory_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.get("/instagram/profiles/{profile_id}/capacidades")
-async def profile_capabilities(request: Request, profile_id: str) -> Any:
-    """O que esta persona já fez e quanto disso roda sem IA — fluxos concluídos com cobertura de receitas,
-    etapas por origem (receita / IA), interações confirmadas por tipo. Leitura pura, sem custo de modelo."""
-    from .social.capacidades import capacidades_do_perfil  # noqa: PLC0415
-
-    s = st(request)
-    try:
-        s.social.get_profile(profile_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-    return capacidades_do_perfil(s, profile_id)
-
-
-@router.get("/instagram/profiles/{profile_id}/interactions")
-async def list_interactions(request: Request, profile_id: str, counterparty: str | None = None,
-                            thread_key: str | None = None, limit: int = 30, app_id: str | None = None) -> Any:
-    try:
-        return st(request).social.list_interactions(profile_id, counterparty=counterparty, thread_key=thread_key,
-                                                    limit=min(max(limit, 1), 200), app_id=app_id or None)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-class SocialContextBody(BaseModel):
-    """Corpo de `POST /instagram/profiles/{id}/context` (29.26): `content` é a mensagem recebida, texto livre de
-    terceiro que pode trazer nome e e-mail; não vai para a URL (query string vira linha de log de acesso)."""
-    model_config = ConfigDict(extra="forbid")
-    counterparty: str | None = Field(default=None, max_length=200)
-    thread_key: str | None = Field(default=None, max_length=200)
-    content: str | None = Field(default=None, max_length=4000)
-
-
-@router.post("/instagram/profiles/{profile_id}/context")
-async def social_context(request: Request, profile_id: str, body: SocialContextBody | None = None) -> Any:
-    """Exatamente o que o modelo veria deste perfil. Serve para conferir persona, memória — e a ausência de senha.
-    Sem efeito: é POST só para o texto da mensagem ir no corpo (29.26); corpo ausente = contexto sem interlocutor."""
-    corpo = body or SocialContextBody()
-    try:
-        return st(request).social.context(profile_id, counterparty=corpo.counterparty, thread_key=corpo.thread_key,
-                                          current_content=corpo.content)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.get("/app-store")
-async def app_store(request: Request) -> Any:
-    """A vitrine da loja de apps: por app, ícone, versão promovida, aparelhos por versão e o que pede atenção."""
-    return vitrine(st(request))
-
-
-@router.get("/app-catalog")
-async def app_catalog(request: Request) -> Any:
-    """Os aplicativos que o registro conhece: quem tem catálogo, quem provê conta, quem exige perfil.
-
-    É o que a interface usa para deixar de assumir um pacote por omissão — a loja, as capacidades e o painel de
-    contas passam a perguntar "qual app?" em vez de cair no Instagram. `profile_anchor` (23.10) é o que o painel
-    usa para achar o app da conta de cadastro da persona sem comparar nome ou pacote (`ehInstagram` fixo).
-    """
-    return [{"package": c.package, "name": c.name, "label": c.label, "has_catalog": c.has_catalog,
-             "session_provider": c.session_provider, "needs_profile": c.needs_profile,
-             "profile_anchor": c.profile_anchor}
-            for c in registered()]
-
-
 @router.get("/capabilities")
 async def list_capabilities(request: Request, package: str = Query(..., min_length=1)) -> Any:
     """Catálogo do app: o que o sistema sabe fazer, com efeito, risco e política padrão de cada ação.
@@ -1166,24 +625,6 @@ async def list_capabilities(request: Request, package: str = Query(..., min_leng
                           default_policy=c.default_policy, limit_bucket=c.limit_bucket, needs_draft=c.needs_draft,
                           bindings=list(c.bindings), optional_bindings=list(c.optional_bindings))
             for c in catalog.offered]
-
-
-@router.get("/instagram/profiles/{profile_id}/policy")
-async def get_policy(request: Request, profile_id: str, package: str | None = None) -> Any:
-    """`package` (23.10): sem ele, o app âncora, como sempre; com ele, o catálogo do app escolhido no painel —
-    quem decide qual app é o âncora não é mais o painel adivinhando "o primeiro com login gerenciado"."""
-    try:
-        return st(request).social.get_policy(profile_id, package=package)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.put("/instagram/profiles/{profile_id}/policy")
-async def put_policy(request: Request, profile_id: str, body: ProfilePolicyPatch, package: str | None = None) -> Any:
-    try:
-        return st(request).social.set_policy(profile_id, body, package=package)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
 
 
 # ---------------------------------------------------------------- exceções de política (item 30.65)
@@ -1244,127 +685,7 @@ async def listar_excecoes_de_politica(request: Request, profile_id: str | None =
 
 
 # ---------------------------------------------------------------- contas do perfil por app (item 12.1)
-@router.get("/instagram/profiles/{profile_id}/accounts")
-async def list_profile_accounts(request: Request, profile_id: str) -> Any:
-    try:
-        return st(request).social.list_accounts(profile_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.post("/instagram/profiles/{profile_id}/accounts", status_code=201)
-async def add_profile_account(request: Request, profile_id: str, body: ProfileAccountCreate) -> Any:
-    try:
-        return st(request).social.add_account(profile_id, body, by=quem(request))
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.patch("/instagram/profiles/{profile_id}/accounts/{account_id}")
-async def patch_profile_account(request: Request, profile_id: str, account_id: str, body: ProfileAccountPatch) -> Any:
-    try:
-        return st(request).social.update_account(profile_id, account_id, body)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-class RetirarContaBody(BaseModel):
-    """Corpo opcional de `…/accounts/{id}/retire`: o que a pessoa viu (o @ é cortado do evento)."""
-    evidencia: str | None = Field(default=None, max_length=500)
-
-
-@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/retire")
-async def retire_profile_account(request: Request, profile_id: str, account_id: str,
-                                 body: RetirarContaBody | None = None) -> dict[str, object]:
-    """Bloqueio confirmado (29.23, ADR-068): a conta SAI na hora (credencial, cofre, sessão, vínculo, linha) e a
-    persona fica. Vale também para a âncora, que a remoção comum recusa. Idempotente: a conta que já saiu é 200 com
-    `retirada: false`. O aparelho não é tocado."""
-    try:
-        return st(request).social.retirar_conta_bloqueada(
-            profile_id, account_id, origem="declarado", autor=quem(request),
-            evidencia=body.evidencia if body else None)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.delete("/instagram/profiles/{profile_id}/accounts/{account_id}", status_code=204)
-async def delete_profile_account(request: Request, profile_id: str, account_id: str) -> None:
-    try:
-        st(request).social.delete_account(profile_id, account_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
 # ---------------------------------------------------------------- grupos de acesso (migração 036)
-@router.get("/instagram/policy-groups")
-async def list_policy_groups(request: Request, package: str | None = None) -> Any:
-    """`package` (23.10): contra que catálogo `loosened` é calculado; `capabilities`/`limits` seguem completos."""
-    return st(request).social.list_policy_groups(package=package)
-
-
-@router.get("/instagram/policy-defaults")
-async def policy_defaults(request: Request) -> Any:
-    """Os limites-padrão (o que vale sem grupo e sem escolha própria) — o editor de grupo parte deles."""
-    from .social.policy import DEFAULT_LIMITS  # noqa: PLC0415
-    return {"limits": DEFAULT_LIMITS}
-
-
-@router.post("/instagram/policy-groups", status_code=201)
-async def create_policy_group(request: Request, body: PolicyGroupCreate, package: str | None = None) -> Any:
-    try:
-        return st(request).social.create_policy_group(body, package=package)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.get("/instagram/policy-groups/{group_id}")
-async def get_policy_group(request: Request, group_id: str, package: str | None = None) -> Any:
-    try:
-        return st(request).social.get_policy_group(group_id, package=package)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.put("/instagram/policy-groups/{group_id}")
-async def put_policy_group(request: Request, group_id: str, body: PolicyGroupPatch, package: str | None = None) -> Any:
-    try:
-        return st(request).social.update_policy_group(group_id, body, package=package)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.delete("/instagram/policy-groups/{group_id}", status_code=204)
-async def delete_policy_group(request: Request, group_id: str) -> None:
-    try:
-        st(request).social.delete_policy_group(group_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.get("/instagram/profiles/{profile_id}/auth-attempts")
-async def auth_attempts(request: Request, profile_id: str, limit: int = 20) -> Any:
-    """Apelido por perfil: as tentativas de autenticação da conta âncora (as anteriores à 049 apontam para ela)."""
-    s = st(request)
-    try:
-        return s.social.auth_attempts(profile_id, min(max(limit, 1), 100), account_id=_conta_ancora_ou_409(s, profile_id))
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.get("/instagram/profiles/{profile_id}/runs")
-async def profile_runs(request: Request, profile_id: str, limit: int = 20) -> Any:
-    """Execuções que passaram por este perfil. O vínculo vem do objetivo, que guarda o dono fotografado."""
-    s = st(request)
-    try:
-        s.social.get_profile(profile_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-    rows = s.db.query(
-        "SELECT r.* FROM runs r WHERE EXISTS (SELECT 1 FROM objectives o WHERE o.run_id=r.id AND o.profile_id=?)"
-        " ORDER BY r.created_at DESC LIMIT ?", (profile_id, min(max(limit, 1), 100)))
-    return s.repo.run_summaries(rows)
-
-
 @router.get("/approvals")
 async def list_approvals(request: Request, status: str | None = "pending", profile_id: str | None = None,
                          run_id: str | None = None, limit: int = 50) -> Any:
@@ -1461,195 +782,9 @@ async def store_sync(request: Request, body: StoreBody | None = None) -> Any:
 
 
 # ---------------------------------------------------------------------- proxy do aparelho (loja de apps, 26/09)
-def _proxy_error(exc: Any) -> HTTPException:
-    return err(exc.status, exc.code, exc.message)
-
-
-@router.get("/proxies")
-async def list_proxies(request: Request) -> Any:
-    from .devices.proxy import listar  # noqa: PLC0415
-    return listar(st(request))
-
-
-@router.post("/proxies", status_code=201)
-async def create_proxy(request: Request, body: ProxyInput) -> Any:
-    from .devices.proxy import criar  # noqa: PLC0415
-    return criar(st(request), body, quem(request))
-
-
-@router.delete("/proxies/{proxy_id}", status_code=204)
-async def delete_proxy(request: Request, proxy_id: str) -> Response:
-    from .devices.proxy import ProxyError, remover  # noqa: PLC0415
-    try:
-        remover(st(request), proxy_id)
-    except ProxyError as exc:
-        raise _proxy_error(exc) from exc
-    return Response(status_code=204)
-
-
-@router.post("/proxies/apply")
-async def apply_proxy(request: Request, body: ProxyApplyBody) -> Any:
-    """Pede um proxy (ou nenhum, com `proxy_id` nulo) para os aparelhos. `dry_run` = prévia, nada é gravado."""
-    from .devices.proxy import ProxyError, aplicar  # noqa: PLC0415
-    try:
-        devices = aplicar(st(request), body)
-    except ProxyError as exc:
-        raise _proxy_error(exc) from exc
-    return {"accepted": not body.dry_run, "dry_run": body.dry_run, "devices": devices}
-
-
-@router.get("/app-state")
-async def app_state(request: Request, package: str | None = None) -> Any:
-    return st(request).release_repo.list_app_state(package)
-
-
 # ====================================================================== provisionamento (migração 050)
-@router.get("/instagram/profiles/{profile_id}/operational-context")
-async def profile_context(request: Request, profile_id: str, instance_id: str | None = None) -> Any:
-    """O MESMO contexto, chegando pelo perfil: do Beltrano Souza ao aparelho dele sem trocar de tela. O aparelho é
-    o principal da persona, ou o dito em `?instance_id=` (precisa estar vinculado a ela)."""
-    s = st(request)
-    rt, _perfil = _profile_device(s, profile_id, instance_id)
-    return contexto_do_aparelho(s, rt.id)
-
-
-@router.get("/commands/{command_id}")
-async def get_command(request: Request, command_id: str) -> Any:
-    row = st(request).commands.get(command_id)
-    if row is None:
-        raise err(404, "not_found", f"Comando {command_id} não existe.")
-    return command_dto(row)
-
-
-@router.get("/commands")
-async def list_commands(request: Request, instance_id: str | None = None, unsettled: bool = False,
-                        limit: int = Query(50, ge=1, le=200)) -> Any:
-    """`unsettled=true` devolve só os comandos que terminaram sem desfecho conhecido — a fila de quem ainda
-    espera uma resposta (da sonda ou de uma pessoa). É o que o painel precisa para eles pararem de sumir."""
-    s = st(request)
-    linhas = s.commands.unsettled(limit) if unsettled else s.commands.recent(instance_id, limit)
-    if unsettled and instance_id:
-        linhas = [r for r in linhas if r["instance_id"] == instance_id]
-    return [command_dto(r) for r in linhas]
-
-
-@router.post("/commands/{command_id}/verify")
-async def verify_command(request: Request, command_id: str) -> Any:
-    """"Verificar agora": pergunta ao estado real se aquele comando incerto deu certo.
-
-    Para os verbos de ciclo de vida o desfecho é observável (`start` promete o aparelho no ar, `stop` promete o
-    contrário), e ver o estado prometido é prova de sucesso. Não ver NÃO é prova de fracasso — então o comando
-    que a sonda não fecha volta como está, esperando a decisão de alguém. Sempre 200: "continua incerto" é
-    resposta legítima, e não erro.
-    """
-    s = st(request)
-    row = s.commands.get(command_id)
-    if row is None:
-        raise err(404, "not_found", f"Comando {command_id} não existe.")
-    novo = verificar_comando(s, row)
-    mudou = novo["state"] != row["state"]
-    if mudou:
-        _publish_command(s, novo)
-    return {"command": command_dto(novo).model_dump(mode="json"), "changed": mudou,
-            "verifiable": row["verb"] in VERIFICAVEL_POR_ESTADO}
-
-
-@router.post("/commands/{command_id}/cancel")
-async def cancel_command(request: Request, command_id: str, body: CommandCancelBody | None = None) -> Any:
-    """Pedir o cancelamento de um comando ABERTO — a ponta que faltava do que a máquina de estados já previa.
-
-    `cancel_requested` não encerra nada: ele diz "quero que pare" e o desfecho continua sendo de quem executa.
-    Por isso a resposta é sempre 200 com o comando como está, mais o que foi possível fazer: um `start` remoto de
-    540 s é interrompido no agente, um boot local é interrompido aqui, e um verbo sem ponto seguro apenas fica
-    registrado — mentir sobre isso seria pior do que a espera.
-
-    Repetir o pedido é seguro: o estado não muda de novo e o sinal é reenviado, que é o que alguém faz quando o
-    worker acabou de reconectar. A nota ou o `requested_by` com cara de credencial é recusado (409
-    `note_looks_secret`) antes de qualquer escrita; `origin=panel` acrescenta o contexto ao motivo
-    (`_decisao_sobre_comando`).
-    """
-    s = st(request)
-    row = s.commands.get(command_id)
-    if row is None:
-        raise err(404, "not_found", f"Comando {command_id} não existe.")
-    if CommandState(row["state"]) not in COMMAND_OPEN:
-        raise err(409, "not_open", f"O comando {command_id} está em '{row['state']}': só um comando aberto pode "
-                                   "ser cancelado.")
-    corpo = body or CommandCancelBody()
-    # `quem` só lê; o `requested_by` que ele pode devolver é triado logo abaixo, antes de qualquer escrita.
-    autor = quem(request, corpo.requested_by)
-    nota, contexto = _decisao_sobre_comando(row, corpo.note, corpo.requested_by, corpo.origin, autor, "cancel",
-                                            "o pedido de cancelamento")
-    if CommandState(row["state"]) is not CommandState.cancel_requested:
-        motivo = f"cancelamento pedido por {autor}{contexto}" + (f": {nota}" if nota else "")
-        try:
-            row = s.commands.transition(command_id, CommandState.cancel_requested, reason=motivo)
-        except InvalidCommandTransition as exc:
-            # O desfecho chegou entre a leitura e a escrita: o comando já fechou sozinho, e não há o que cancelar.
-            atual = s.commands.get(command_id)
-            raise err(409, "not_open", f"O comando {command_id} fechou antes do cancelamento "
-                                       f"('{atual['state'] if atual else '?'}').") from exc
-        _publish_command(s, row)
-    entregue, detalhe = await _entregar_cancelamento(s, row)
-    s.bus.emit("log", f"{row['instance_id']}: cancelamento do comando {command_id} ({row['verb']}) pedido por "
-                      f"{autor} — {detalhe}", level="warn", instance_id=row["instance_id"])
-    atual = s.commands.get(command_id) or row
-    return {"command": command_dto(atual).model_dump(mode="json"), "delivered": entregue, "detail": detalhe}
-
-
-@router.post("/commands/{command_id}/resolve")
-async def resolve_command(request: Request, command_id: str, body: CommandResolveBody) -> Any:
-    """A decisão humana que tira um comando de `uncertain` — a outra porta de saída, para o que nenhuma sonda
-    prova (o `reset` apagou os dados? o APK entrou?).
-
-    Só `uncertain` é resolvível: comando terminal já tem desfecho, e reabrir seria apagar história. Quem
-    resolveu e por quê ficam gravados no comando, porque "alguém decidiu" sem dizer quem é o mesmo tipo de
-    afirmação vaga que esta fase inteira existe para eliminar. A nota ou o `requested_by` com cara de credencial é
-    recusado (409 `note_looks_secret`) antes de qualquer escrita; `origin=panel` acrescenta o contexto ao motivo, e
-    `result.note` guarda só o texto da pessoa (`_decisao_sobre_comando`).
-    """
-    s = st(request)
-    row = s.commands.get(command_id)
-    if row is None:
-        raise err(404, "not_found", f"Comando {command_id} não existe.")
-    if CommandState(row["state"]) not in COMMAND_UNSETTLED:
-        raise err(409, "not_unsettled", f"O comando {command_id} está em '{row['state']}': só um comando "
-                                        "'uncertain' é resolvido à mão.")
-    autor = quem(request, body.requested_by)       # só lê: a triagem abaixo vem antes de qualquer escrita
-    nota, contexto = _decisao_sobre_comando(row, body.note, body.requested_by, body.origin, autor, "resolve",
-                                            "a resolução")
-    alvo = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
-            "cancelled": CommandState.cancelled}[body.outcome]
-    motivo = f"resolvido à mão por {autor}{contexto}" + (f": {nota}" if nota else "")
-    anterior = loads(row["result"], {}) if row["result"] else {}
-    dados = {**(anterior or {}), "resolved_by": autor, "resolved_at": now_iso(), "resolution": body.outcome,
-             "note": nota, "previous_reason": row["reason"], **({"origin": "panel"} if contexto else {})}
-    novo = s.commands.transition(command_id, alvo, reason=motivo, result=dados)
-    _publish_command(s, novo)
-    s.bus.emit("log", f"{novo['instance_id']}: o comando {command_id} ({novo['verb']}) era incerto e foi "
-                      f"marcado como '{body.outcome}' por {autor}.", level="warn",
-               instance_id=novo["instance_id"])
-    # Sinal `comando_incerto_resolvido` (ADR-054), só depois de a decisão valer. A falha do livro nunca desfaz nem
-    # derruba a resolução (`avisar`).
-    avisar(s.costuras.comando_incerto_resolvido, ResolucaoDeComando(
-        command_id=command_id, resolucao=body.outcome, nota=nota, quem=autor_do_sinal(request),
-        simulated=s.provider.simulated))
-    return command_dto(novo)
-
-
 # ---------------------------------------------------------------------- controle manual
 # ====================================================================== execuções
-@router.post("/commands/refine")
-async def refine_command(request: Request, body: CommandRefineBody) -> CommandRefinement:
-    """Assistente do comando (ADR-047): o comando reescrito em blocos, o que ainda falta e se está pronto para
-    planejar. Uma chamada de IA pelo papel `plan`; não cria execução. Com `run_id`, fecha as perguntas daquela
-    execução em `needs_input` (as de destino ficam de fora: 409 `pergunta_de_destino`)."""
-    try:
-        return await ComandoAssistido(st(request).runs).refinar(body)
-    except RunError as exc:
-        raise run_error(exc) from exc
-
-
 def _armazem_de(s: AppState, onde: str) -> Storage | None:
     """O back-end daquela LINHA. `disk` sempre existe (é a pasta local); os outros, só se forem o configurado."""
     if onde == s.storage.name:

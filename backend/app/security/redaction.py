@@ -66,6 +66,10 @@ _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     # a senha não.
     (re.compile(r"\b((?:https?|socks(?:4a?|5h?))://[^:/?#\s@]+:)[^@\s/]+(@)", re.IGNORECASE), r"\1" + MASK + r"\2"),
     (re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"), MASK),
+    # Chave privada em PEM (29.154): `type chave.pem` num comando remoto a despejaria na saída. Vale o bloco inteiro e
+    # também o CORTADO (sem o `END`): a saída de um comando é truncada, e a metade de uma chave ainda é segredo.
+    (re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)", re.DOTALL),
+     MASK),
 )
 
 # ---------------------------------------------------------------- chave do WireGuard sem rótulo (item 25.3)
@@ -158,6 +162,45 @@ _CREDENCIAL = re.compile(
 def mentions_credential(text: str | None) -> bool:
     """Verdadeiro quando o texto FALA de credencial, código ou token — com ou sem o valor junto."""
     return bool(text) and bool(_CREDENCIAL.search(text or ""))
+
+
+# ---------------------------------------------------------------- linha de comando com credencial (29.154)
+# O operador NÃO digita segredo no comando remoto (ADR-040: senha só pelo canal sensível). `redact` mascara pares
+# `chave=valor`, mas não cobre os jeitos de linha de comando que levam a senha como argumento solto; estes, sim.
+_LINHA_COM_CREDENCIAL: tuple[re.Pattern[str], ...] = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r"\bnet\s+use\b[^\n]*?/user:",                    # net use \host /user:u senha
+    r"\bcurl\b[^\n]*?(?:\s-u\s+\S+|--user\s+\S+)",    # curl -u usuario:senha
+    r"\bConvertTo-SecureString\b",                    # senha em texto no PowerShell
+    r"-AsPlainText\b",
+    r"\bsshpass\b",
+    r"\bplink\b[^\n]*?\s-pw\b",
+    r"\bcmdkey\b[^\n]*?/pass\b",
+    r"\bnet\s+user\b[^\n]*?\s/add\b",                 # criar conta e definir senha
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
+))
+
+
+def linha_de_comando_suspeita(linha: str | None) -> bool:
+    """A linha do comando remoto leva (ou fala de) credencial? Recusa-se ANTES de gravar ou despachar: a linha crua
+    nunca pode ir ao diário do agente, a evento ou a log. Mais rígida que `looks_secret` de propósito: uma linha
+    legítima de manutenção quase nunca precisa da palavra "senha" ou "token"."""
+    if not linha:
+        return False
+    if looks_secret(linha) or mentions_credential(linha):
+        return True
+    return any(p.search(linha) for p in _LINHA_COM_CREDENCIAL)
+
+
+def cortar_saida(texto: str, max_bytes: int) -> tuple[str, bool]:
+    """Guarda o começo e o fim de uma saída que passa de `max_bytes` (em UTF-8). Chamar DEPOIS de `redact`: o corte não
+    pode partir um segredo ao meio (comando remoto, 29.154). Devolve o texto e se houve corte."""
+    bruto = texto.encode("utf-8")
+    if len(bruto) <= max_bytes:
+        return texto, False
+    metade = max(max_bytes // 2 - 48, 16)
+    inicio = bruto[:metade].decode("utf-8", errors="ignore")
+    fim = bruto[-metade:].decode("utf-8", errors="ignore")
+    return f"{inicio}\n[... {len(bruto) - 2 * metade} bytes cortados ...]\n{fim}", True
 
 
 def looks_secret(text: str | None) -> bool:

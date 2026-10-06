@@ -377,6 +377,14 @@ class AndroidDeviceIO:
         except AdbError as exc:
             raise DriverError(str(exc), effect_possible=True) from exc
 
+    def open_app_tarefa_limpa(self, package: str, activity: str | None) -> None:
+        """31.137: abre o app na tela inicial, apagando a tarefa que ele já tinha (`ABERTURA_COM_TAREFA_LIMPA`). Extensão do `DeviceIO`
+        (quem a tem, o executor usa; um dublê sem ela cai no `open_app` comum)."""
+        try:
+            self.adb.start_app(package, activity, tarefa_limpa=True)
+        except AdbError as exc:
+            raise DriverError(str(exc), effect_possible=True) from exc
+
     def open_url(self, url: str) -> None:
         try:
             self.adb.open_url(url)

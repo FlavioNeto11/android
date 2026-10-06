@@ -630,7 +630,7 @@ describe('FocusPanel — painel do Modo treinamento (31.80, 31.84, 31.85, 31.86)
     const el = await renderFocus(aparelho());
     await aguardarQuadro(el);
     await waitFor(() => expect(marcaLimpar(el).checked).toBe(true));
-    expect(text(el)).toContain('Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.');
+    expect(text(el)).toContain('Para trocar um texto já digitado, marque “Limpar o campo antes” (em Controle manual, ao lado do campo de texto) em vez de apertar Apagar.');
 
     await setValue(caixa(el), 'olá');
     await click(byRole('button', /^Enviar$/, el));

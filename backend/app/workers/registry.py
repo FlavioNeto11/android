@@ -25,6 +25,7 @@ from ..metricas import metricas
 from ..models import WorkerDTO
 from ..util import iso_in, now, now_iso, parse_iso, truncate
 from .captura import CapturaNaOrigem, ErroDeCaptura
+from .comando_remoto import ComandoRemotoDoCentral
 from .portao import PortaoDoWorker
 from .protocol import (FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT, PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch,
                        Heartbeat, Hello, Limits, Result, WorkerDevice, WorkerResources, Welcome)
@@ -315,6 +316,8 @@ class WorkerRegistry:
         self.anunciadas: dict[str, frozenset[str]] = {}
         #: Captura na origem (`observe_local`): pedidos em voo e o canal de mídia que os resolve.
         self.captura = CapturaNaOrigem(self)
+        #: Comando remoto (`remote_exec`, 29.154): fila, registro e auditoria. Desligado de fábrica.
+        self.comandos = ComandoRemotoDoCentral(self)
         #: Id do worker que É este servidor (`workers/local.py`). Guardado aqui porque duas operações do painel
         #: não fazem sentido sobre ele: remover apagaria a linha do próprio central (e soltaria o `worker_id` de
         #: todos os aparelhos locais), e rotacionar credencial trocaria um segredo que ninguém usa.
@@ -433,11 +436,13 @@ class WorkerRegistry:
         """
         if (antigo := self.live.get(worker_id)) is not None:
             antigo.encerrar("uma conexão nova deste worker substituiu a anterior")
+            self.comandos.on_link_lost(worker_id, antigo)
             self._fechar_em_segundo_plano(antigo)
         link = WorkerLink(worker_id, send, fechar)
         # C7: o que o agente anunciou no `hello` desta conexão E este central sabe usar. Agente antigo não anuncia
         # nada — conjunto vazio, e tudo segue pelo caminho de antes.
-        link.features_aceitas = self.anunciadas.get(worker_id, frozenset()) & FEATURES_DO_CENTRAL
+        link.features_aceitas = self.anunciadas.get(worker_id, frozenset()) & (
+            FEATURES_DO_CENTRAL | self.comandos.features_extras(worker_id))
         self.live[worker_id] = link
         self.on_change(worker_id)
         return link
@@ -451,6 +456,12 @@ class WorkerRegistry:
         except RuntimeError:
             pass        # fora do laço (teste síncrono, encerramento): não há socket a fechar de forma útil
 
+    def renegociar(self, worker_id: str) -> None:
+        """Fecha o socket vivo para o agente reconectar e renegociar as features (o interruptor do comando remoto vale
+        ao vivo por aqui). O agente volta em segundos; o que estava em voo vira `uncertain`, como em qualquer queda."""
+        if (link := self.live.get(worker_id)) is not None:
+            self._fechar_em_segundo_plano(link)
+
     def detach(self, worker_id: str, motivo: str, link: WorkerLink | None = None) -> bool:
         """Remove o canal. Devolve `True` quando ELE era o canal vivo — e `False` quando não era mais.
 
@@ -462,10 +473,12 @@ class WorkerRegistry:
         if link is not None and vivo is not link:
             # Socket velho terminando depois da reconexão: encerra só o que era DELE e não encosta no link novo.
             link.encerrar(motivo)
+            self.comandos.on_link_lost(worker_id, link)
             return False
         self.live.pop(worker_id, None)
         if vivo is not None:
             vivo.encerrar(motivo)
+            self.comandos.on_link_lost(worker_id, vivo)
         # NÃO marca offline aqui: socket cai por rede piscando, e o worker pode voltar em segundos ainda dentro do
         # prazo da batida. Quem decide "indisponível" é `reap()`, pela ausência de batida.
         self.db.execute("UPDATE workers SET state_detail=? WHERE id=?", (truncate(motivo, 200), worker_id))

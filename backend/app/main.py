@@ -67,6 +67,10 @@ from .modules.fleet.presentation.workers import router as workers_router
 from .modules.fleet.presentation.rede import router as rede_router
 from .modules.fleet.presentation.instancias import router as instancias_router
 from .modules.identity.presentation.personas import router as personas_router
+from .modules.identity.presentation.instagram import router as instagram_router
+from .modules.fleet.presentation.proxies import router as proxies_router
+from .modules.execution.presentation.comandos import router as comandos_router
+from .modules.applications.presentation.apps import router as apps_router
 from .modules.learning.presentation.router import router as learning_router
 from .modules.pedidos.presentation.router import router as pedidos_router
 from .modules.portal.presentation.contato import METODOS_DO_CONTATO, ROTA_DO_CONTATO
@@ -261,12 +265,16 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
                   swagger_ui_oauth2_redirect_url="/api/docs/oauth2-redirect")
 
     @app.exception_handler(RequestValidationError)
-    async def validacao_sem_segredo(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    async def validacao_sem_segredo(request: Request, exc: RequestValidationError) -> JSONResponse:
         """O 422 padrão devolve o `input` de cada erro — e o `input` de um campo de credencial é o próprio valor
         (medido: `credentials={"Nome Ruim": "…"}` voltava com a senha em claro). Erro cujo caminho passa por um
-        nome sensível sai sem `input`/`ctx`; o resto do corpo fica no formato de sempre."""
+        nome sensível sai sem `input`/`ctx`; o resto do corpo fica no formato de sempre.
+
+        O comando remoto (29.154) também: a linha digitada pode ter levado um segredo, e a rota promete não repeti-la.
+        Ali nenhum erro devolve `input`, qualquer que seja o campo."""
+        comando_remoto = "/comandos" in request.url.path or request.url.path.endswith("/comando-remoto")
         erros = [{k: v for k, v in e.items() if k not in ("input", "ctx")}
-                 if any(chave_sensivel(p) for p in e.get("loc", ())) else e for e in exc.errors()]
+                 if comando_remoto or any(chave_sensivel(p) for p in e.get("loc", ())) else e for e in exc.errors()]
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(erros)})
     # O despacho de comandos recusa sem conhecer HTTP; aqui a recusa vira o 4xx de sempre (`api.err`).
     app.add_exception_handler(DespachoRecusado, recusa_do_despacho)  # type: ignore[arg-type]
@@ -395,6 +403,10 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
         app.include_router(rede_router)          # `/api/network/*` (15.15 F4f): saíram de `api.py`, no mesmo lugar do `router`
         app.include_router(instancias_router)    # `/api/instances*` (15.15 F4g): saíram de `api.py`, no mesmo lugar do `router`
         app.include_router(personas_router)      # `/api/personas*` (15.15 F4h): saíram de `api.py`, no mesmo lugar do `router`
+        app.include_router(instagram_router)     # `/api/instagram/*` (15.15 F4i): saíram de `api.py`, no mesmo lugar do `router`
+        app.include_router(proxies_router)       # `/api/proxies*` (15.15 F4j): saíram de `api.py`, no mesmo lugar do `router`
+        app.include_router(comandos_router)      # `/api/commands*` (15.15 F4j)
+        app.include_router(apps_router)          # `/api/apps*`, `/api/app-store`, `/api/app-catalog`, `/api/app-state` (15.15 F4j)
         # Depois do `router`: `/api/skills/resolve` (fase I) mora lá e precisa casar antes de `/api/skills/{id}`.
         app.include_router(skills_router)
         app.include_router(context_retrieval_router)   # só leitura (ADR-063)

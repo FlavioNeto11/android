@@ -97,6 +97,11 @@ MOTIVOS_DE_MORTE = frozenset({4, 5, 6})
 _FOLGA_DA_HORA_S = 5.0
 _HORA_DO_CONVIDADO = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 #: O trecho que identifica o aviso de ANR no cartão do aparelho: quem o escreve só ocupa o cartão vazio ou o seu.
+#: Apps que a abertura sem IA (executor, LT-6) reabre com a tarefa LIMPA (31.137): a tarefa do Configurações guarda a busca (de outro pacote,
+#: `com.google.android.settings.intelligence`) e o `am start` comum a retomava onde parou, o foco do app nunca chegava (60 s perdidos) e a
+#: receita divergia. Só o app de prova do parque: apagar a tarefa de um app com conta real descartaria o ponto em que a pessoa ou a execução
+#: estava (rascunho, conversa), então o resto segue retomando como sempre.
+ABERTURA_COM_TAREFA_LIMPA = frozenset({"com.android.settings"})
 AVISO_DE_ANR = "parou de responder (ANR)"
 
 
@@ -808,9 +813,21 @@ class Adb:
                            + (f": {junto.splitlines()[0][:160]}" if junto else " (o `pm` não respondeu)"))
         return pacotes
 
-    def start_app(self, package: str, activity: str | None = None) -> None:
+    def start_app(self, package: str, activity: str | None = None, *, tarefa_limpa: bool = False) -> None:
+        """Abre o app. `tarefa_limpa` (31.137): `--activity-clear-task --activity-new-task`, que apaga a tarefa que o app já tinha
+        (inclusive as telas de OUTRO pacote empilhadas nela, como a busca do Configurações) e abre a tela inicial. Sem isso o
+        `am start` só traz a tarefa de volta, no ponto onde parou."""
         _check_package(package)
-        if activity:
+        if tarefa_limpa:
+            flags = "--activity-clear-task --activity-new-task"
+            if activity:
+                if not ACTIVITY_RE.match(activity):
+                    raise AdbError("activity inválida")
+                out = self.shell(f"am start -n {package}/{activity} {flags}", timeout=30)
+            else:
+                out = self.shell(f"am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p {package} {flags}",
+                                 timeout=30)
+        elif activity:
             if not ACTIVITY_RE.match(activity):
                 raise AdbError("activity inválida")
             comp = f"{package}/{activity}"

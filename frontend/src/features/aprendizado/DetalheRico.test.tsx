@@ -706,6 +706,18 @@ describe('detalhe rico: o selo em prova do fluxo ensinado (30.85)', () => {
     expect(t).toContain('Publicado');
   });
 
+  it('31.131 (v1.87): o Estado do fluxo nascido de uma prova leva o selo "Nascido de uma prova"; sem a marca, ou com `false`, não leva', async () => {
+    const selos = () => Array.from(container.querySelectorAll('span')).filter((x) => !x.children.length && x.textContent === 'Nascido de uma prova').length;
+    await mostrar(FLUXO({ state: 'disabled', nascido_de_prova: true }));
+    const estado = Array.from(container.querySelectorAll('dt')).find((d) => d.textContent === 'Estado')!.nextElementSibling as HTMLElement;
+    expect(text(estado)).toContain('Desligado');
+    expect(Array.from(estado.querySelectorAll('span')).some((x) => x.textContent === 'Nascido de uma prova')).toBe(true);
+    await mostrar(FLUXO({ state: 'disabled', nascido_de_prova: false }));
+    expect(selos()).toBe(0);
+    await mostrar(FLUXO({ state: 'disabled' }));
+    expect(selos()).toBe(0);
+  });
+
   it('31.120 (v1.81): o fluxo ensinado a partir de uma falha mostra etapa, tentativa e sessão de origem, só ids; com os campos nulos ou ausentes nada disso aparece', async () => {
     const fluxo = (origem: object) => detalhe({ conteudo: { tipo: 'fluxo', nome: 'Abrir', comando_modelo: 'abra', origem: origem as never, apps: [], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } });
     let t = await mostrar(fluxo({ tipo: 'treino', fonte: 'training:trn-4lukXbyHNxGubAK0', source_run_id: 'r-20261006053318-c04149', session_id: 'trn-4lukXbyHNxGubAK0',
@@ -722,5 +734,55 @@ describe('detalhe rico: o selo em prova do fluxo ensinado (30.85)', () => {
     expect(t).not.toContain('Sessão do treino');
     t = await mostrar(fluxo({ tipo: 'treino', fonte: 't', source_run_id: null }));                  // backend anterior ao v1.81
     expect(t).not.toContain('Etapa de origem');
+  });
+});
+
+describe('detalhe rico: texto do fluxo para uma pessoa (31.134)', () => {
+  it('a etapa mostra o nome em palavras (a chave crua vai no title) e o Confere troca o marcador da persona por palavras', async () => {
+    const etapa = (indice: number, chave: string, descricao: string) => ({ indice, chave, capability: null, alvo: null, efeito: false,
+      pos_condicao: { tipo: 'text_visible', descricao }, parametros: [], segredo: false });
+    await mostrar(detalhe({ conteudo: { tipo: 'fluxo', nome: 'Adicionar rede', comando_modelo: 'adicione uma rede', origem: { tipo: 'treino', fonte: 't', source_run_id: null },
+      apps: [], efeito: { externo: false, etapas_com_efeito: [] },
+      etapas: [etapa(0, 'abrir_rede_internet', 'A tela mostra a opção Internet'), etapa(1, 'digitar_nome_rede', 'O campo mostra o texto {perfil_nome}')] }, item: { kind: 'fluxo' } }));
+    const nomes = Array.from(container.querySelectorAll('ol[aria-label="Etapas do fluxo"] strong'));
+    expect(nomes.map((n) => n.textContent)).toEqual(['Abrir rede internet', 'Digitar nome rede']);
+    expect(nomes[0]!.getAttribute('title')).toBe('abrir_rede_internet');
+    const t = text(container);
+    expect(t).toContain('Confere: O campo mostra o texto [nome da persona]');
+    expect(t).not.toContain('{perfil_nome}');
+    expect(t).not.toContain('digitar_nome_rede');
+  });
+});
+
+describe('detalhe rico: o fluxo demonstrado no treino diz de onde veio (31.136)', () => {
+  const fluxo = (origem: object) => detalhe({ conteudo: { tipo: 'fluxo', nome: 'Abrir', comando_modelo: 'abra', origem: origem as never, apps: [], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } });
+  const ensinado = () => Array.from(container.querySelectorAll('dt')).find((d) => d.textContent === 'Ensinado')?.nextElementSibling as HTMLElement | undefined;
+
+  it('mostra aparelho, quem ensinou e quando, com o link para o treinamento salvo no Foco do aparelho', async () => {
+    await mostrar(fluxo({ tipo: 'treino', fonte: 'training:trn-9', source_run_id: null, session_id: 'trn-9', instance_id: 'android-04', operator: 'Flavio', ensinado_em: '2026-10-06T10:00:00Z' }));
+    expect(text(ensinado()!)).toContain('no aparelho android-04');
+    expect(text(ensinado()!)).toContain('por Flavio');
+    const link = ensinado()!.querySelector('a')!;
+    expect(link.textContent).toBe('Ver o treinamento salvo');
+    expect(link.getAttribute('href')).toBe('#/aprendizado?aba=aprendido&foco=android-04&treino=trn-9');
+  });
+
+  it('só com a sessão (v1.81) ou fora do treino, a linha "Ensinado" não aparece', async () => {
+    await mostrar(fluxo({ tipo: 'treino', fonte: 't', source_run_id: null, session_id: 'trn-9' }));
+    expect(ensinado()).toBeUndefined();
+    await mostrar(fluxo({ tipo: 'execucao', fonte: null, source_run_id: 'r-1', session_id: 'trn-9', instance_id: 'android-04' }));
+    expect(ensinado()).toBeUndefined();
+  });
+});
+
+describe('detalhe rico: a etapa do fluxo diz os pacotes que também aceita (31.141)', () => {
+  const etapa = (indice: number, chave: string, extra: object = {}) => ({ indice, chave, capability: null, alvo: null, efeito: false, pos_condicao: null, parametros: [], segredo: false, ...extra });
+  const fluxo = (etapas: object[]) => detalhe({ conteudo: { tipo: 'fluxo', nome: 'Pesquisar', comando_modelo: 'pesquise', origem: { tipo: 'treino', fonte: 't', source_run_id: null }, apps: [], efeito: { externo: false, etapas_com_efeito: [] }, etapas: etapas as never }, item: { kind: 'fluxo' } });
+
+  it('a etapa com `pacotes_aceitos` mostra "Também aceita concluir em: <pacote>"; a sem o campo e a de lista vazia, nada', async () => {
+    await mostrar(fluxo([etapa(0, 'abrir_busca'), etapa(1, 'digitar_termo', { pacotes_aceitos: ['com.google.android.settings.intelligence'] }), etapa(2, 'conferir', { pacotes_aceitos: [] })]));
+    const itens = Array.from(container.querySelectorAll('ol[aria-label="Etapas do fluxo"] > li'));
+    expect(itens.map((li) => li.textContent?.includes('Também aceita concluir em'))).toEqual([false, true, false]);
+    expect(text(itens[1] as HTMLElement)).toContain('Também aceita concluir em: com.google.android.settings.intelligence');
   });
 });

@@ -2,17 +2,21 @@ import { Zap } from 'lucide-react';
 import { createContext, useContext, useId, useState, type ReactNode } from 'react';
 import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
+import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { SeloEmProva } from '../../components/SeloEmProva';
+import { SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { textoDosApps } from '../../lib/appsDoFluxo';
 import { formatInt } from '../../lib/format';
+import { textoComMarcadores } from '../../lib/marcadores';
 import { hashDe } from '../../lib/rotas';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { apiAprendizado } from './api';
 import { abrirApp, dicaDoApp, nomeDoApp } from './apps';
 import { AppsDoItem, eMultiApp } from './AppsDoItem';
+import { lerOrigemDoTreino, linkDaSessaoDeTreino, type OrigemDoTreino } from './origemDoTreino';
 import { EscopoDoFluxo } from './EscopoDoFluxo';
 import { SecaoDoParecer } from './ParecerDaIA';
 import {
@@ -25,7 +29,7 @@ import {
   type ConteudoDoFluxo, type ConteudoDoItem, type DetalheDoLivro, type EntradaDoLivro, type EvidenciaDoLivro,
   type LivroKind, type OrigemDaReceita, type RelacaoDoItem, type SaudeDoItem, type TransicaoDoLivro, type VersaoDoItem,
   type VizinhaDaReceita, ORIGEM_LABEL, acoesDoItem, nomearCapabilityNoTexto, porQueOSistemaNaoPublica, rotuloDoEstado,
-  rotuloDoKind, motivoDaInvalida, textoDaEvidencia,
+  rotuloDoKind, motivoDaInvalida, nomeDaEtapa, textoDaEvidencia,
 } from './model';
 import { formatUsd } from './metricas';
 import styles from './Aprendizado.module.css';
@@ -101,6 +105,7 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
         <Fato rotulo="Estado">
           {rotuloDoEstado(item.state)}
           {item.kind === 'fluxo' && item.ensinado_em_prova ? <> <SeloEmProva ensinado={item.ensinado_em_prova} /></> : null}
+          {item.kind === 'fluxo' && item.nascido_de_prova ? <> <SeloNascidoDeProva nascido={item.nascido_de_prova} /></> : null}
         </Fato>
         <Fato rotulo="Origem">{ORIGEM_LABEL[item.origin] ?? item.origin}</Fato>
       </dl>
@@ -238,11 +243,26 @@ function ConteudoReceita({ c, nomeDe }: { c: ConteudoDaReceita; nomeDe: NomeDaCa
   );
 }
 
+/** 31.136: onde, quando e por quem o fluxo foi demonstrado, com o link para a sessão salva no Foco do aparelho. Só o que o backend disse. */
+function EnsinadoNoTreino({ o }: { o: OrigemDoTreino }) {
+  const link = linkDaSessaoDeTreino(o);
+  const partes = [o.aparelho ? <>no aparelho <span className="mono">{o.aparelho}</span></> : null,
+                  o.quando ? <span title={formatDateTime(o.quando)}>{formatQuando(o.quando)}</span> : null,
+                  o.pessoa ? <>por {o.pessoa}</> : null].filter((p) => p !== null);
+  return (
+    <>
+      {partes.map((p, i) => <span key={i}>{i ? ' · ' : ''}{p}</span>)}
+      {link ? <>{partes.length ? ' · ' : ''}<a className={styles.linkAlvo} href={link} title={`Abre o treinamento salvo (${o.sessao}) no aparelho`}>Ver o treinamento salvo</a></> : null}
+    </>
+  );
+}
+
 function ConteudoFluxo({ c, appsNaIdentidade }: { c: ConteudoDoFluxo; appsNaIdentidade?: boolean }) {
   const apps = useAppStore((s) => s.apps);
   // Os apps exigidos na ordem em que o plano os usa (29.42): "QA Messenger → Chrome". No fluxo que atravessa apps a
   // Identidade já os mostra, com link para cada um (30.33-C); repetir aqui, com o nome do registro, só confundia.
   const exigidos = appsNaIdentidade ? '' : textoDosApps(c.apps, apps);
+  const ensinado = lerOrigemDoTreino(c.origem);
   return (
     <>
       <dl className={styles.fatos}>
@@ -257,18 +277,20 @@ function ConteudoFluxo({ c, appsNaIdentidade }: { c: ConteudoDoFluxo; appsNaIden
         {c.origem.step_id ? <Fato rotulo="Etapa de origem"><span className="mono">{c.origem.step_id}</span></Fato> : null}
         {c.origem.attempt_id ? <Fato rotulo="Tentativa de origem"><span className="mono">{c.origem.attempt_id}</span></Fato> : null}
         {c.origem.session_id ? <Fato rotulo="Sessão do treino"><span className="mono">{c.origem.session_id}</span></Fato> : null}
+        {ensinado && (ensinado.aparelho || ensinado.quando || ensinado.pessoa) ? <Fato rotulo="Ensinado"><EnsinadoNoTreino o={ensinado} /></Fato> : null}
         <Fato rotulo="Efeito">{c.efeito.externo ? 'tem efeito fora do sistema' : 'sem efeito fora do sistema'}</Fato>
       </dl>
       <ol className={styles.passos} aria-label="Etapas do fluxo">
         {c.etapas.map((e) => (
           <li key={e.indice}>
             <span className={styles.passoTitulo}>
-              <strong>{e.chave ?? `Etapa ${e.indice + 1}`}</strong>
+              <strong title={e.chave ?? undefined}>{e.chave ? nomeDaEtapa(e.chave) : `Etapa ${e.indice + 1}`}</strong>
               {e.efeito ? <Badge tone="warning" size="sm" icon={Zap} title="Esta etapa tem efeito externo">efeito</Badge> : null}
             </span>
             {e.capability ? <span className={styles.passoLinha}>Capacidade <Mono>{e.capability}</Mono></span> : null}
             {e.alvo ? <span className={styles.passoLinha}>Alvo: <Mono>{e.alvo}</Mono></span> : null}
-            {e.pos_condicao ? <span className={styles.passoLinha}>Confere: {e.pos_condicao.descricao ?? e.pos_condicao.tipo ?? SEM_DADO}</span> : null}
+            {e.pos_condicao ? <span className={styles.passoLinha}>Confere: {e.pos_condicao.descricao ? textoComMarcadores(e.pos_condicao.descricao) : e.pos_condicao.tipo ?? SEM_DADO}</span> : null}
+            <PacotesAceitos pacotes={e.pacotes_aceitos} className={styles.passoLinha} />
             {e.segredo ? <span className={styles.passoLinha}>Usa um dado sigiloso (nunca mostrado)</span> : null}
             {e.parametros.length > 0 ? <span className={styles.passoLinha}>Parâmetros {nomesDeParametro(e.parametros)}</span> : null}
           </li>

@@ -1,10 +1,20 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `8aee8c6b` (migração 121, deploy 51); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `cdee6620` (migração 123, deploy 52); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 52 no ar (06/10/2026, 15:08Z, central `cdee6620`, migrações 122 e 123).** 5 pontas: ensino (31.130, 31.135, 31.138–31.141),
+  painel do Livro (31.131–31.134, 31.136, PR 470), arquitetura (15.15 F4i, F5b, F4j, F5c; 31.137), parque (29.154 fatia 1, ADR-079),
+  GitHub (29.155 C2–C5, C10, C11; 29.157; 29.158).
+  - `real` (central WIN-7S2UASNLFOP): deploy com ensaio; saúde ok, migração 123; prova de fora; agente `0.1.0+cdee6620`;
+    A10 ok; prova F2 do ensino no android-04 concluída (r-20261006140412-cebae7, US$ 0,01141); C3 run 37463062580 (68 min 34 s).
+  - `simulated` (suíte 52): números do CHANGELOG.
+  - `not_run`: percurso 52; latência do 31.137; fatia 2 do 29.154; provas reais do 29.157/29.158; scripts do banco em 122.
+  - Plano-100: resultados da suíte 52 aplicados (Portal, Jev, Android, GitHub, Aprendizado). Corte 53: Jev (F5c B com janela em
+    state.py, 31.137 latência), Android (29.154 fatia 2, 29.159), DevOps (29.160), GitHub (provas reais), Hardware (29.161 análise);
+    31.115 em 20/10, 29.75 em 11/10, 30.72 em 12/10, 29.152 medida em 07/10, C8 em 14/10.
 - **Deploy 51 no ar (06/10/2026, 12:27Z, central `8aee8c6b`, migração 121).** 4 pontas: arquitetura (15.15 F5a portões em
   gates.py, F4h router de personas), ensino (31.122 F2, 31.123 F2, 31.127), painel do ensino (31.128, 31.129), espelho do Trello (T.N).
   - `real` (central WIN-7S2UASNLFOP): deploy com ensaio; saúde ok, migração 121; prova de fora; agente `0.1.0+8aee8c6b`;

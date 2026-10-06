@@ -342,6 +342,28 @@ isso). Pontos que já causaram incidente:
 - `scripts/install-central-service.ps1` registra o **backend do central** como tarefa supervisionada (o túnel já
   tinha gatilho de boot; o backend não — dependia de alguém abrir uma sessão interativa).
 
+**Quantos emuladores cabem num host** (29.161, medido em 06/10/2026). Antes de subir as vagas de um worker
+(`max_slots`) ou de comprar máquina, conte assim:
+
+- **CPU manda primeiro.** No máximo **1 vCPU de emulador por thread lógica do host**, deixando 4 threads para o sistema,
+  o agente e o adb: (threads − 4) ÷ vCPU por aparelho. Em CPU híbrida (núcleos P, E e LP-E, como o Core Ultra do central),
+  conte com folga: núcleo E e LP-E rendem menos como vCPU. **1,5 vCPU por thread quebra**: no notebook da LAN, 9 emuladores
+  de 2 vCPU (18 vCPU) em 12 threads deram load mediano de 12,2 nos convidados (limite do aviso: 8) e derrubaram o
+  `system_server` do android-13 em 06/10 00:30–01:14Z, com o host em 50–66 % de CPU. É sobreinscrição de vCPU, não falta de
+  ciclo total. Medida de um ponto só: o central, com 12 vCPU em 22 threads, está folgado, mas não é teto medido.
+- **RAM vem depois.** Planeje com o custo no host de `est_real_mb` (`backend/app/devices/perfis.py`): **2,7 GB** por
+  emulador `google_apis` e **5,2 GB** com Play Store, mais 8 GB para o sistema. O working set do `qemu-system-x86_64`
+  (0,8–0,9 GB num convidado pouco usado) não serve para planejar. Não baixe a RAM do convidado para caber mais: o custo
+  vai para swap e thrash.
+- **Disco:** cada AVD ocupa ~10–15 GB (partição de dados de 10 GB mais snapshots).
+- **Exemplo:** 16 núcleos com 32 threads homogêneos dão (32 − 4) ÷ 2 = **14** emuladores de 2 vCPU, que pedem
+  14 × 2,7 + 8 ≈ 46 GB de RAM; 64 GB bastam.
+- **Para conferir:** os avisos `Convidado sob pressão` por aparelho e por dia (tabela `events`). No notebook de 04 a 06/10
+  foram ~136 por aparelho, contra ~41 no central.
+
+Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06/10) e a medida da Frente DevOps
+(`.claude/handoffs/devops-medida-host.md`). Prova: `real` (central e banco da central em `mode=ro`, 06/10, commit `360d133a`).
+
 ## 10. Diagnóstico
 
 - `scripts/diagnose.ps1` — só leitura, roda no host onde os emuladores vão rodar; grava

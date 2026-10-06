@@ -11,10 +11,12 @@ import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
 import { Disclosure } from '../../components/Disclosure';
+import { SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { Field, Select, TextInput } from '../../components/Field';
 import { isRecord, plural } from '../../lib/format';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
+import { PARAM_TREINO, useUiStore } from '../../store/ui';
 import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
 import { descartarSessaoConcluida } from './descartarSessao';
@@ -45,6 +47,15 @@ function encurtar(nome: string): string {
   return `${(espaco > ROTULO_DA_GRAVACAO / 2 ? corte.slice(0, espaco) : corte).trimEnd()}…`;
 }
 
+/** O começo do id da sessão ("trn-o5UL"): o bastante para distinguir duas linhas com o mesmo texto; o id inteiro vai no `title`. */
+const idCurto = (id: string): string => id.slice(0, 8);
+
+/** Há quanto tempo a sessão foi salva ("há 3 h"); a atualização mais recente vale, e sem data nenhuma a linha não inventa uma. */
+function quandoDaSalva(s: TrainingSession, agora: number): string {
+  const quando = s.updated_at || s.finished_at || s.created_at;
+  return quando ? tempoRelativo(quando, agora) : 'sem data';
+}
+
 /** Quantas sessões salvas a barra lista para refazer receitas: as mais novas (a lista vem do backend da mais nova para a mais velha). */
 const SALVAS_NA_BARRA = 5;
 
@@ -61,6 +72,9 @@ export function personasDoEnsino(personas: readonly PersonaOnDevice[], appId: st
     return true;
   });
 }
+
+/** 31.134: diz ONDE a opção fica (no Foco, em "Controle manual", ao lado do campo de texto), não só o nome dela. */
+const DICA_DE_TROCAR_TEXTO = 'trocar um texto já digitado, marque “Limpar o campo antes” (em Controle manual, ao lado do campo de texto) em vez de apertar Apagar.';
 
 const DESCRICAO: Record<string, string> = {
   tap: 'toque', long_press: 'toque longo', swipe: 'deslize', text: 'texto', key: 'tecla', open_app: 'abrir app',
@@ -86,6 +100,11 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   const [ocupado, setOcupado] = useState<'iniciar' | 'concluir' | 'descartar' | 'desfazer' | null>(null);
   const [revisando, setRevisando] = useState<string | null>(null);
   const [vendo, setVendo] = useState<string | null>(null);   // 31.120: a sessão salva aberta em leitura
+  const [verTodasAsSalvas, setVerTodasAsSalvas] = useState(false);
+  // 31.136: o Livro leva à sessão salva por `?foco=<aparelho>&treino=<sessão>`; o Foco a abre em leitura uma vez e limpa o parâmetro.
+  const treinoDoLink = useUiStore((s) => s.rota.query[PARAM_TREINO]) || null;
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const [listaLida, setListaLida] = useState(false);
   const recusadas = useTrainingStore((s) => s.recusadas[instance.id] ?? 0);
   const definirGravando = useTrainingStore((s) => s.definirGravando);
   // Só é "gravando" para o Foco (padrão de "Limpar o campo antes", contador de recusas) quando a gravação é desta pessoa.
@@ -99,6 +118,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
     try {
       const lista = await api.listTraining(instance.id);
       setSessoes(lista);
+      setListaLida(true);
       const gravando = lista.find((s) => s.status === 'recording');
       setAtiva(gravando ? await api.getTraining(gravando.id) : null);
     } catch {
@@ -109,6 +129,13 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   useEffect(() => {
     void carregar();
   }, [carregar, mine]);
+
+  useEffect(() => {
+    if (!treinoDoLink || !listaLida) return;
+    trocarQuery({ [PARAM_TREINO]: undefined });
+    if (sessoes.some((s) => s.id === treinoDoLink)) setVendo(treinoDoLink);
+    else toast({ tone: 'info', title: 'Treinamento não encontrado', message: `A sessão ${treinoDoLink} não está na lista de ${instance.id}.` });
+  }, [treinoDoLink, listaLida, sessoes, trocarQuery, instance.id]);
 
   // As personas vinculadas a este aparelho: só se leem quando o formulário de iniciar está à vista.
   const formularioAberto = mine && !ativa && !somenteRevisao;
@@ -228,7 +255,8 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   // v1.58: a sessão salva some de "Para revisar", mas a etapa que ficou sem receita (aparelho fora do ar no salvar)
   // ainda pode ganhá-la; daqui a pessoa refaz quando o aparelho voltar, sem reabrir a revisão.
   const todasSalvas = sessoes.filter((s) => s.status === 'saved');
-  const salvas = todasSalvas.slice(0, SALVAS_NA_BARRA);
+  // 31.133: as 5 mais novas por padrão; "Ver todas" abre o resto (antes as mais antigas ficavam sem acesso na tela).
+  const salvas = verTodasAsSalvas ? todasSalvas : todasSalvas.slice(0, SALVAS_NA_BARRA);
 
   return (
     <section className={styles.bar} aria-label="Modo treinamento">
@@ -268,7 +296,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
           </ol>
           {/* A região viva nasce vazia com a gravação: o texto que entra depois é anunciado, o que já nasce com ele não. */}
           <p className={styles.hint} role="status" aria-live="polite">{recusadas ? `${plural(recusadas, 'entrada recusada', 'entradas recusadas')}: refaça` : ''}</p>
-          <p className={styles.hint}>Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.</p>
+          <p className={styles.hint}>{`Para ${DICA_DE_TROCAR_TEXTO}`}</p>
           {/* Só a gravação de quem tem o controle (este ramo): quem só olha, ou a gravação órfã, não desfaz a de ninguém. */}
           <Button size="sm" variant="ghost" icon={Undo2} loading={ocupado === 'desfazer'}
                   disabledReason={!leaseId ? 'Retome o controle para desfazer.' : !(ativa.inputs ?? []).length ? 'Ainda não há entrada para desfazer.'
@@ -314,10 +342,10 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             Iniciar treinamento
           </Button>
           <p className={styles.hint}>Senhas e códigos digitados não são gravados. Devolver o controle encerra a gravação.</p>
-          <p className={styles.hint}>Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.</p>
+          <p className={styles.hint}>{`Na gravação, para ${DICA_DE_TROCAR_TEXTO}`}</p>
         </div>
       ) : (
-        <p className={styles.hint}>Assuma o controle para ensinar uma tarefa: você faz, a IA mapeia o processo e ele vira habilidade para os perfis que você escolher.</p>
+        <p className={styles.hint}>Assuma o controle para ensinar uma tarefa: você faz, a IA mapeia o processo e ele vira um fluxo (na revisão você escolhe para quais perfis ele vale).</p>
       )}
       {pendentes.length ? (
         <div className={styles.pending}>
@@ -345,12 +373,21 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             {salvas.map((s) => (
               <li key={s.id}>
                 <span>{s.intent}</span>
+                <span className={styles.muted} title={`sessão ${s.id}${s.flow_id ? ` · fluxo ${s.flow_id}` : ''}`}>
+                  {quandoDaSalva(s, agora)} · <span className="mono">{idCurto(s.id)}</span>
+                </span>
+                <SeloNascidoDeProva nascido={s.nascido_de_prova} />
                 {s.origin ? <SeloDeOrigem origin={s.origin} /> : null}
                 <Button size="sm" variant="ghost" onClick={() => setVendo(s.id)} label={`Ver o treinamento salvo “${s.intent}”`}>Ver</Button>
-                <RefazerReceitas sessionId={s.id} intent={s.intent} />
+                <RefazerReceitas sessionId={s.id} intent={s.intent} dica />
               </li>
             ))}
           </ul>
+          {todasSalvas.length > SALVAS_NA_BARRA ? (
+            <Button size="sm" variant="ghost" onClick={() => setVerTodasAsSalvas((v) => !v)}>
+              {verTodasAsSalvas ? `Ver só as ${SALVAS_NA_BARRA} mais novas` : `Ver todas as ${todasSalvas.length}`}
+            </Button>
+          ) : null}
         </Disclosure>
       ) : null}
       {vendo ? <SessaoSalva sessionId={vendo} onClose={() => setVendo(null)} /> : null}

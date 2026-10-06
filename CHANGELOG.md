@@ -25,6 +25,32 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
+
+- Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
+- **Livro:** cada etapa do fluxo (`conteudo.etapas[].pacotes_aceitos`, opcional) ganha a linha "Também aceita concluir em: <pacote>". **Revisão do treino:** a etapa da proposta mostra a lista da prévia (`TrainingStepReport.pacotes_aceitos`, opcional) quando a IA não pôs uma na etapa; a lista da etapa vale antes, e a linha aparece uma vez só.
+- Adendo v1.89: cada linha de `steps[]` da prévia, do save e do /recipes e `conteudo.etapas[]` do Livro trazem `pacotes_aceitos: string[]` (vazio = só o app da etapa); o painel tipa como **opcional**, mostra a linha só quando não vazio e a repete no resultado do salvar, por etapa; backend anterior fica como está.
+- Só frontend e CHANGELOG. Prova `simulated`: casos novos em `TrainingReview.test.tsx` (prévia, lista vazia, a da proposta antes da prévia, resultado do salvar) e um em `DetalheRico.test.tsx`; seis mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy com o 31.140.
+
+## 2026-10-06 — 29.154 fatia 1: comando remoto nos notebooks da rede, desligado de fábrica (branch feat/29-154-comando-remoto-f1)
+
+- Pedido do dono (cartão, 06/10 11:45Z): executar comandos de forma remota nos notebooks controlados pela central. Decisão e
+  riscos aceitos no ADR-079; desenho em `.claude/handoffs/android/desenho-29-154.md`, revisado pelo `revisor-segredos`.
+- **Agente** (`worker/comando.py`): a feature `remote_exec`, anunciada só com `comando_remoto: true` no `worker.yaml`; um
+  comando por vez, prazo de 60 s (até 600 s), árvore de processos morta no estouro e no cancelamento, ambiente do filho
+  por lista de permissão, linha com cara de credencial recusada antes de rodar, saída redigida inteira e só então cortada
+  (64 KiB por fluxo), diário próprio com marcador `uncertain` gravado antes de o processo existir.
+- **Central** (`workers/comando_remoto.py`, adendo v1.90): seis rotas em `/api/workers/{id}` com sessão nomeada
+  obrigatória e 404 no host público; registro em `worker_comandos` (migração 123) com a linha redigida, fila de 4, 30 por
+  minuto por operador, auditoria `worker.comando` como pré-condição, queda do canal ou reinício do central = `uncertain`;
+  interruptor por worker ao vivo (o agente renegocia) e `comando_remoto.ativo` no config, os dois desligados.
+- **Contrato:** cinco mensagens novas no fio do worker (nenhuma existente mudou); o hash congelado mudou de propósito, com
+  o checklist no teste. Agente antigo ignora tipo desconhecido e nunca recebe a mensagem (a feature não é aceita).
+- Redação: chave privada em PEM (inteira ou cortada) passa a ser mascarada; `linha_de_comando_suspeita` e `cortar_saida`
+  em `security/redaction.py`.
+- **Prova:** `simulated` (`backend/tests/test_comando_remoto_agente.py`, `backend/tests/test_comando_remoto_central.py`,
+  `backend/tests/test_contratos_do_worker.py`); `real`: `not_run` (falta o deploy, o procedimento e o sim do dono para ligar).
+
 ## 2026-10-06 — 31.140: os pacotes aceitos por etapa na prévia e no Livro (branch feat/31-130-fluxo-de-prova)
 
 - Achado da Portal (06/10): `pacotes_aceitos` (31.123) não aparecia em nenhuma proposta das 16 sessões do android-04; existia só no plano salvo e nas etapas da execução.
@@ -70,6 +96,48 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **31.127** (adendo v1.85): cada etapa ensinada espera a anterior (`depends_on`), salvo `independente: true` na proposta; tipo errado dá 400 `etapa_invalida`.
 - Revisão de segredos (agente, só leitura): nem uma palavra do dado da persona vira sugestão; a entrada marcada (teclado de PIN, padrão) não guarda os elementos.
 - Prova `simulated`: `tests/test_treino_partida_f2_e_sequencia.py` (13) e os ajustes de `tests/test_etapa_pacotes_aceitos.py` (a 1ª etapa agora também aceita o vizinho) e de `tests/test_treino_previa_e_refazer_receitas.py` (a chave nova da prévia). Dirigidos: 124 arquivos um por vez, com 1944 aprovados e as 3 falhas corrigidas e rodadas de novo; `scripts/tests`: 683. Real: `not_run` até o corte 51.
+## 2026-10-06 — 31.136: o Livro leva à sessão de treino e ao aparelho de origem do fluxo (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (candidato 11): o item do fluxo "Demonstrado no treino" não dizia sessão, aparelho, quem ensinou nem quando, e não levava à sessão salva.
+- Adendo v1.88 (item 31.135, backend): em `conteudo.origem` do fluxo, `session_id` passa a vir em todo fluxo cuja fonte é sessão de treino, e entram `instance_id` (aparelho), `operator` (quem ensinou) e `ensinado_em` (data ISO do salvar), todos opcionais, `null` fora do treino. O painel tipa os campos como **opcionais** (`ConteudoDoFluxo.origem`) e a leitura fica isolada em `origemDoTreino.ts`: backend anterior (só `session_id` quando veio de falha, v1.81) segue como antes, sem a linha nova.
+- **Detalhe do fluxo no Livro:** a linha **Ensinado** ("no aparelho android-04 · há 3 h · por <pessoa>", com a data completa no `title`) e o link **Ver o treinamento salvo**, que abre o Foco do aparelho com a sessão salva em leitura (`?aba=aprendido&foco=<aparelho>&treino=<sessão>`). Sem aparelho não há link; sem nenhum dos três campos a linha não aparece; fluxo de execução não ganha a linha.
+- **Foco (`TrainingBar`):** o parâmetro `treino` abre a sessão salva em leitura uma vez e é limpo da rota; se a sessão não é deste aparelho, avisa "Treinamento não encontrado" em vez de ficar mudo.
+- Só frontend e CHANGELOG. Prova `simulated`: `origemDoTreino.test.ts` (2), dois casos em `DetalheRico.test.tsx`, três em `TrainingBar.test.tsx`; doze mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy do corte 52, com o 31.135.
+
+## 2026-10-06 — 31.134: varredura de texto do caminho de ensino e o efeito de cada botão do Livro (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (candidatos 5, 7, 8, 9 e 10; o 6 foi conferido e não é defeito, ver abaixo).
+- **Barra do Modo treinamento:** "ele vira habilidade para os perfis que você escolher" passa a "ele vira um fluxo (na revisão você escolhe para quais perfis ele vale)", que é o que o salvar cria.
+- **"Limpar o campo antes":** a dica (no formulário de iniciar e na gravação ao vivo) diz onde a opção fica ("em Controle manual, ao lado do campo de texto"); no formulário vem como "Na gravação, para trocar…".
+- **"Depois"** na revisão ganha a dica "Fecha a revisão sem salvar: a gravação continua na lista “Para revisar”." (sem edição ele fechava mudo).
+- **Código cru em texto de pessoa:** o marcador do dado da persona (`{perfil_nome}` etc., a lista fechada de `available_data.py`) vira "[nome da persona]" nas entradas gravadas (com "(preenchido na hora com o dado da persona)"), no "Confere" da revisão, da sessão salva e do detalhe do fluxo no Livro; "reconhecido por id e texto, id button2" passa a "reconhecido por identificador e texto: button2"; a chave da etapa no Livro (`abrir_rede_internet`) vira "Abrir rede internet" com a chave crua no `title`. Marcador que o painel não conhece fica como veio.
+- **O efeito de cada botão do Livro** (validar, aprovar, rejeitar, aposentar, desligar, reativar, devolver à prova, confirmar que fica): uma frase no `title` do botão e acima do campo de motivo quando a decisão abre; "Reativar" diz que publica de novo, já valendo, sem nova prova; "Pedir revisão ao curador" diz que o curador revisa na próxima volta e não muda o estado.
+- **Conferido e sem mudança (candidato 6):** o cartão de controle do Foco já mapeia `none` para "Livre — Ninguém está controlando" (`FocusPanel.tsx`); o "Controle: IA" visto na leitura era o estado do momento, e uma releitura do mesmo aparelho com `none` mostrou "Livre". Não é texto errado; se a tela mostrar "IA" com `none` na API, é estado velho da aba (não reproduzido).
+- **Do backend, só anotado (nada mexido):** "desligado por uma pessoa (panel)" no motivo do desligamento e o formato da chave de etapa no conteúdo do fluxo.
+- Só frontend e CHANGELOG. Prova `simulated`: casos em `TrainingBar.test.tsx`, `TrainingReview.test.tsx`, `SessaoSalva.test.tsx`, `DetalheRico.test.tsx`, `ParecerDaIA.test.tsx`, `NascidoDeProva.test.tsx` e `lib/marcadores.test.ts`; 16 mutações mortas; sementes 1 a 8 e 88 do fetch atrasado; typecheck e suíte do frontend (1796) verdes. Real: `not_run` até o deploy do corte 52.
+
+## 2026-10-06 — 31.133: "Salvas" legível, com data, id curto, "Ver todas" e sem o aviso repetido em toda linha (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (candidatos 3 e 4): "Salvas (as 5 mais novas de 8)" deixava as 3 mais antigas sem acesso na tela, duas linhas com o mesmo texto não se distinguiam e a frase "Etapa sem receita porque o aparelho estava fora do ar? Com ele de volta, refaça." aparecia em todas as linhas, com o aparelho online.
+- Cada linha ganha **há quanto tempo foi salva** e o **começo do id da sessão** (o id inteiro e o fluxo vão no `title`); **"Ver todas as N"** abre o resto e **"Ver só as 5 mais novas"** volta; sem mais de 5 salvas, o botão não existe.
+- O aviso fixo some da lista e vira **dica do botão "Refazer receitas"** (a lista não traz se a sessão ficou com etapa sem receita; quando o backend trouxer, o aviso pode voltar só para quem precisa). Depois de clicar, o resultado do refazer continua dizendo o que houve; no resultado do salvar o aviso segue visível, porque ali ele vale.
+- Só frontend e CHANGELOG. Prova `simulated`: `SalvasLegiveis.test.tsx` (4); oito mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy do corte 52.
+
+## 2026-10-06 — 31.132: depois de salvar, a pessoa chega ao fluxo e vê o estado dele (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (`.claude/handoffs/portal-leitura-ensino.md`, candidatos 1, 2 e 12): o resultado do salvar e o diálogo "Treinamento salvo" mostravam "Fluxo f-… salvo" com o id cru, sem link, sem o estado do fluxo e sem o próximo passo; a sessão aparecia como "salvo" enquanto o Livro mostrava o mesmo fluxo como Desligado.
+- Novo `FluxoNoLivro` no resultado do salvar e no diálogo da sessão salva: lê o estado atual do fluxo no Livro (`GET /api/aprendizado/fluxo/{id}`, só leitura) e mostra "No Livro agora: <Estado>" com os selos "em prova" e "Nascido de uma prova", o **próximo passo** pelo estado (em prova: acompanhar no Livro; espera a pessoa: o motivo em português e "Confirmar que fica"; desligado: só uma pessoa o reativa; candidato ou validado: Para aprovar; aposentado; publicado: já vale) e o link **Abrir no Livro** (`?aba=aprendido&item=fluxo:<id>`).
+- Fluxo que já não existe (404): diz isso e não oferece link morto; outra falha de leitura: avisa que não deu para ler e mantém o link.
+- Só frontend e CHANGELOG. Prova `simulated`: `FluxoNoLivro.test.tsx` (6), um caso em `SessaoSalva.test.tsx` e um em `TrainingReview.test.tsx`; oito mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy do corte 52 (percurso 52).
+
+## 2026-10-06 — 31.131: o selo "Nascido de uma prova" no Livro e em Salvas, e o filtro que separa prova de uso real (branch feat/31-131-nascido-de-prova)
+
+- Achado da leitura dos três fluxos desligados que nasceram de provas: no Livro eles pareciam fluxos reais desligados por uma pessoa, e em Salvas as sessões eram linhas comuns; nada dizia "veio de prova".
+- Adendo v1.87 (item 31.130, backend): a sessão de treino e o fluxo ganham `nascido_de_prova` (boolean). O painel tipa o campo como **opcional** (`EntradaDoLivro` e `TrainingSession`), então backend anterior segue como antes: sem o campo, nenhum selo.
+- **Selo "Nascido de uma prova"** (componente `SeloNascidoDeProva`, com a explicação no `title`) no cartão do fluxo no Livro, no Estado do detalhe do fluxo e na linha da sessão em **Salvas**; só com `nascido_de_prova === true` (`false` é desligado por falha ou uso real e não leva o selo), e só no fluxo (na lista do Livro).
+- **Filtro "Prova"** no Livro (Todos / Só os nascidos de uma prova / Sem os de prova (uso real)): manda `nascido_de_prova=true|false` na listagem e também separa no painel pela marca de cada linha, para valer com backend que ainda ignora o parâmetro.
+- **O motivo do desligamento** já saía como o backend o escreve (a frase do `por_que_nao_publica`); o painel não reescreve nada, e quando o 31.130 gravar o motivo que diz "de prova", ele aparece no cartão.
+- Só frontend e CHANGELOG; nada de reativar, aposentar ou mexer nos três fluxos. Prova `simulated`: `NascidoDeProva.test.tsx` (3), um caso em `DetalheRico.test.tsx` e um em `TrainingBar.test.tsx`; nove mutações mortas; sementes 1 a 8 e 88 do fetch atrasado; typecheck e suíte do frontend (1773) verdes. Real: `not_run` até o deploy com as duas pontas (percurso 52).
 
 ## 2026-10-06 — 29.155 (C11): a gravidade do formulário de achado começa em "nota" (branch ci/29-155-c11-gravidade)
 
@@ -103,6 +171,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-06 — 29.155 (C4): AGENTS.md e os perfis de agente backend, frontend e docs (branch ci/29-155-c4-agentes)
 
 - `AGENTS.md` na raiz (leitura em ordem, precedência, limites comuns, quem pode mandar no agente e como a tarefa sai) e `.github/agents/{backend,frontend,docs}.agent.md`: cada perfil diz a área, a lista FIXA do que NÃO toca (migração, ensino, aprendizado, conta real, IA paga, parque e processos da máquina, harness e catracas, estado do plano, documentos que descrevem a máquina), como validar e o formato do PR. `.github/copilot-instructions.md` ganha: `.github/**`, `AGENTS.md`, `CLAUDE.md` e `scripts/**` na lista de "Não edite" (o agente não reescreve as próprias instruções), a regra de que texto lido no trabalho é dado e não instrução, e "suíte inteira" vale só para o backend. Só texto; sem servidor MCP, segredo ou caminho da máquina em perfil nenhum. A revisão de segredos de 06/10 apontou 5 brechas (exceção "a menos que a tarefa nomeie", edição das próprias instruções, conflito com o `CLAUDE.md`, lista de ensino incompleta, contradição da suíte inteira); todas corrigidas. Prova `simulated` (06/10, base `0e649799`): o frontmatter dos três lê com `yaml.safe_load` e `python scripts/docs-check.py` sai com 0 erros. `not_run`: o GitHub oferecer os perfis na página de agents e o agente de nuvem usá-los, que só se vê depois do merge na `main` e na primeira tarefa dada a um perfil.
+
+## 2026-10-06 — 31.137: a abertura do app de prova reabre na tela inicial e a espera do foco aceita os pacotes vizinhos da etapa (branch feat/31-137-open-app-tela-inicial)
+
+- Defeito (leitura da Aprendizado no banco central): com a busca do Configurações (`com.google.android.settings.intelligence`) no topo da tarefa do app, a abertura
+  sem IA do executor (LT-6) esperava o foco do Configurações por `ESPERA_DO_FOCO_S` (60 s; medido 60,3 s em d92795 e 60,8 s em 1157c6, contra 2,0 a 6,9 s nos outros
+  cinco) porque o `am start` comum só traz a tarefa de volta, no ponto onde parou; na 1157c6 a receita divergiu e a IA assumiu.
+- Mudança: (1) `Adb.start_app(..., tarefa_limpa=True)` usa `--activity-clear-task --activity-new-task`, que apaga a tarefa (inclusive as telas de outro pacote empilhadas
+  nela) e abre a tela inicial; o driver ganhou a extensão `open_app_tarefa_limpa` (fora do `DeviceIO`: dublê sem ela cai no `open_app` comum); o executor e
+  `DeviceManager.open_app` a usam só para os pacotes de `ABERTURA_COM_TAREFA_LIMPA` (`com.android.settings`). **Decisão e porquê:** só o app de prova, e não um flag
+  para todos, porque apagar a tarefa de um app com conta real descartaria o ponto em que a pessoa ou a execução estava (rascunho, conversa); o resto segue
+  retomando como sempre. Force-stop seguido de start foi descartado: parar o Configurações não tira da tarefa a tela da busca, que é de outro processo.
+  (2) `esperar_foco` (executor) e `wait_for_focus` (manager e instalador) aceitam `aceitos`, os `pacotes_aceitos` da etapa (31.123); a partida da prova junta os das etapas do
+  objetivo. O diário da abertura diz "(tarefa limpa, na tela inicial)" quando foi o caso.
+- Prova `simulated` (`test_open_app_tarefa_limpa.py` 9 testes, mais o caso do LT-6 em `test_caminho_rapido_2.py`; 1230 passed nos 52 arquivos que citam abertura e espera de foco,
+  com `test_arquitetura` e as catracas; mypy 257 no teto). `real`: `not_run` — a latência de `open_app` antes e depois, na mesma situação (busca do Configurações no topo),
+  pede um aparelho de prova livre; depois do funil da Android. Sem migração e sem adendo.
 
 ## 2026-10-06 — 31.124, 31.125 e 31.126: ensinar sem repetir sem saber, atalho na falha e o Livro sem código cru (branch feat/31-124-ensino-avisos)
 
@@ -155,6 +239,55 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `dado_da_persona.com_marcador` (nova), `_destilar`, `TrainingSkills._preparar` e `save` (`training/skills.py`).
 - Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
   para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
+
+## 2026-10-06 — 15.15 F4, corte 10 (F4j): proxies, comandos e apps (20 rotas) saem de `api.py` (branch feat/15-15-f4j-routers-restantes)
+
+- `/api/proxies*` (4) vão para `backend/app/modules/fleet/presentation/proxies.py`; `/api/commands*` (6, com a triagem de credencial da nota em
+  `_decisao_sobre_comando`) para `modules/execution/presentation/comandos.py`; `/api/apps*`, `apps-overview`, `app-store`, `app-catalog` e `app-state` (10)
+  para `modules/applications/presentation/apps.py`. Montados em `main.py` no mesmo lugar do `api.router`, depois do Instagram. Mesmo caminho, método, corpo e
+  resposta. Os comandos ficaram em `execution` (e não em `fleet`) porque `execution → fleet` já existe e o contrário fecharia um ciclo de contextos. `api.py`
+  mantém a sua `_TRIAGEM_DE_NOTA` (a das exceções de política; sem estado) e o módulo de comandos tem a própria. Os 6 imports tardios das rotas viraram imports
+  do topo; teto de `Any` de `app.api` 45 → 28 e de imports tardios de `app.api` 7 → 1. `tests/test_cancelamento.py` importa `_entregar_cancelamento` de
+  `app.commands.despacho`, onde ele mora.
+- Três `cast` no módulo de apps (a linha acabou de ser gravada; o corpo do PUT é `CamposDeApp`), porque o retorno `Any` antigo escondia o mypy.
+- Prova do OpenAPI contra a ponta 0b383265: 271 método+caminho idênticos; os schemas só diferem no título automático das respostas das rotas que devolviam
+  `Any` (`response_model=None`, 14 de 200 e o 201 de `POST /api/proxies`). `test_ordem_das_rotas.py` ganhou o caso das 20 rotas.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 F4, corte 9 (F4i): as 41 rotas de perfis do Instagram (`/api/instagram/*`) saem de `api.py` (branch feat/15-15-f4i-router-instagram)
+
+- Perfis (cadastro, edição, sessão: iniciar, encerrar, verificar; conta âncora e contas por perfil; credencial; memória; grupos de política; política por perfil;
+  avatar) e o que só elas usam (os jobs de logout e de início de sessão, a recusa pelo portão, a exigência de internet no aparelho, os corpos
+  `SocialContextBody` e `RetirarContaBody`) moram agora em `backend/app/modules/identity/presentation/instagram.py`, montado em `main.py` no mesmo lugar do
+  `api.router`, depois do das personas. Mesmo caminho, método, corpo e resposta. Ficam em `api.py` as rotas que dividiam o bloco mas não são do Instagram
+  (a loja, os proxies, as exceções de política, as aprovações, o catálogo de apps e as capacidades). `quem()` ficou repetido em `identity/presentation/comum.py`
+  porque `identity` importar `fleet` fecharia um ciclo de contextos. Os 4 auxiliares que levavam `Any` ganharam o tipo (`AppState`, `DeviceRuntime`, os DTOs) e os 2 imports
+  tardios do `api.py` viraram imports do topo; teto de `Any` de `app.api` 78 → 45 e de imports tardios de `app.api` 9 → 7.
+- Prova do OpenAPI contra a main f86bafd8: 271 método+caminho idênticos; os schemas só diferem no título automático das respostas das rotas que devolviam
+  `Any` (`response_model=None`). Corpo das 51 funções e classes idêntico ao original por script, salvo os 4 tipos e os 2 imports (6 diferenças, todas
+  intencionais). `test_ordem_das_rotas.py` ganhou o caso das 41 rotas.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 K, F5c (recorte A): três blocos de `AppState.__init__` viram funções de `app/bootstrap.py` (branch feat/15-15-f5c-bootstrap)
+
+- `montar_armazenamento(cfg)` (storage de evidências e avatares), `montar_lideranca_e_canais(cfg, db)` (trava de líder, canais da frota e anexos dos canais) e
+  `montar_decisoes(cfg, db, avisos, lider)` (registro e serviço das decisões automáticas) saem do `__init__`, que chama as funções na mesma ordem e continua
+  dono dos atributos (`storage`, `avatares`, `lideranca`, `canais_da_frota`, `anexos_canal`, `decisoes_registro`, `decisoes`): quem lê `state.<atributo>` e o mypy
+  não notam. Só entrou o que não lê `self`; a trava `self._lider` e o `ServicoDeAvisos` entram como argumento. Sem mudar construção, argumento nem ordem.
+  O corte inteiro (declarar os 82 atributos na classe e mover o `__init__`) é o recorte B, numa janela em que nenhuma frente toque `state.py`.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 K, F5b: o cluster de apps de `state.py` (a entrega do aplicativo ao parque) vai para `app/convergencia.py` (branch feat/15-15-f5b-convergencia)
+
+- 18 métodos do `AppState` (`release_no_aparelho`, `fora_da_convergencia`, `aplicar_versao_promovida`, `adotar_promovidas`, `_entregar`, `_rebaixa_do_parque`,
+  `_rollout_pending`, `distribute`, o preflight e o resolvedor do app da tarefa, `_pacote_do_app_id`, `_pacote_do_aparelho`, `tem_o_app` e os auxiliares) e
+  `RETENTATIVA_DE_ENTREGA_S` passam para a classe `Convergencia` em `backend/app/convergencia.py`. O `AppState` guarda métodos finos com os mesmos nomes e
+  assinaturas que delegam (`self.convergencia`), então scheduler, vitrine, despacho, rotas e testes não mudam; as constantes `_ENTREGA_FALHOU`,
+  `_ENTREGA_AUTOMATICA` e `_CANAIS_ABANDONADOS` seguem no `AppState` (a vitrine as lê de lá). `vitrine.py` fica como está. Corpo idêntico ao original a menos de
+  `self.` → `self._st.` (conferido por script, 18 métodos, 0 diferenças). Catracas: `Any` de `app.state` 28 → 13 e `app.convergencia` 15; imports tardios de
+  `app.state` 5 → 3 e `app.convergencia` 2.
+- Prova `simulated`: arquitetura e ordem das rotas, os 19 arquivos de teste que citam o cluster (404 passed e 1 falha por import que faltava no módulo novo, corrigido e verde isolado, 35 passed no arquivo), mypy 257 (no teto), docs-check 0. A bateria larga fica
+  para depois do funil da Android. `real`: `not_run` até o deploy. Sem migração e sem adendo.
 
 ## 2026-10-06 — 15.15 F4, corte 8 (F4h): as 20 rotas de personas saem de `api.py` (branch feat/15-15-f4h-router-personas)
 
@@ -1070,6 +1203,13 @@ Da leitura do 31.78.
 - `.claude/trello/reconciliar.py`: o item classificado na mesma rodada do registro do deploy deixou de ser dado como "no ar desde o deploy N" pela hora; vale o primeiro commit que
   pôs o cabeçalho dele no CHANGELOG e o menor deploy cujo commit do central o contém (no primeiro deploy conhecido: "o deploy 38 ou um anterior"), e a linha do concluído é refeita quando o deploy muda.
   Regra no C-28. Prova `simulated`: `.claude/trello/test_reconciliar.py` (30 passed). Prova `real` (06/10): ensaio contra os três quadros, 37 linhas de concluído com deploy corrigido.
+
+## 2026-10-06 — Deploy 52 (suíte 52: fluxo nascido de prova e origem do ensino, painel do Livro, pacotes aceitos por etapa, comando remoto nos notebooks, rotas fora de api.py, bootstrap do AppState, cadeia dos workflows e gitleaks)
+
+- **Implantado** às 15:08Z: central em `cdee6620`, migrações 122 (`122_nascido_de_prova.sql`) e 123 (`123_comando_remoto.sql`, tabela `worker_comandos`), 5 pontas sobre a main `360d133a`. Itens: ensino 31.130 (marca `nascido_de_prova`, adendo v1.87), 31.135 (origem de todo fluxo ensinado: sessão, aparelho, operador, quando; adendo v1.88), 31.138 e 31.139 (abertura do app nas receitas ensinadas e `open_app` pelo lançador), 31.140 e 31.141 (`pacotes_aceitos` por etapa na prévia, no conteúdo do fluxo e no Livro; adendo v1.89); painel 31.131 (selo "Nascido de uma prova" e filtro Prova), 31.132 (estado do fluxo salvo no Livro), 31.133 (Salvas legível), 31.134 (varredura de texto e efeito de cada botão), 31.136 (Livro leva à sessão de treino e ao aparelho de origem), cobertura de `lib/format` (PR 470 do agente de nuvem, aceito pela Portal); arquitetura 15.15 F4i (41 rotas de perfis do Instagram em `modules/identity`), F5b (cluster de apps de `state.py`), F4j (proxies, comandos e apps, 20 rotas, fora de `api.py`), F5c recorte A (três blocos do `__init__` em `app/bootstrap.py`), 31.137 (abertura do app de prova reabre na tela inicial); parque 29.154 fatia 1 (comando remoto nos notebooks, desligado de fábrica, ADR-079, adendo v1.90); GitHub 29.155 C2–C5, C10 e C11 (issue automática de cron falho, teto de 90 min no PostgreSQL, AGENTS.md e perfis do Copilot, modelos de issue e rótulos, leitura diária, gravidade do achado), 29.157 (contêiner só na `main`, actions fixadas por SHA, Dependabot só de `github-actions`), 29.158 (secret-scan semanal com gitleaks por digest, sem bloquear push); plano 29.156, 29.157–29.161.
+- Prova `real`: deploy `deploy.ps1` (ensaio obrigatório pelas migrações, backup `20261006-120645`); `GET /api/health` ok, migração 123, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+cdee6620`; A10 ok; prova F2 do ensino no android-04 (31.122/31.123/31.128/31.130: concluída: reprodução `r-20261006140412-cebae7` em 36,7 s, 0 decisões de IA, save como veio 400 `pos_condicao_ja_vale` com a sugestão "Back", save com `text_visible` 200 (`f-760f95b8e930`, desligado no fim), custo US$ 0,01141); C3 do 29.155 (run 37463062580, 68 min 34 s, `ubuntu-latest`, de `87c334d7`).
+- Prova `simulated` (suíte 52 sobre `cdee6620`): `scripts/tests` 758 passed; backend em SQLite inteiro 12378 passed e 13 skipped; frontend 1854 passed (144 arquivos) e build; catracas 88 (backend) e 6 (scripts); docs-check 0/0; mypy 257 (teto 257); PostgreSQL dirigido 6064 + 4646 passed e 14 skipped em 524 arquivos (2 partes), mais o rerun dirigido de 47 arquivos sobre a ponta corrigida (423 passed e 1 skipped em PG; 424 passed em SQLite; 3 no script de marcação); bateria da Aprendizado antes do push 3273 passed e 6 skipped (26 arquivos refeitos após a queda da IDE; `WinError 10055` ambiental rerodado verde). Falhas declaradas: `scripts/tests` teve 1 falha ambiental de tempo (`test_stop_appium_orfao`, sob a carga da SQLite ao lado; o arquivo sozinho 24 passed) e, na primeira rodada, 1 falha real corrigida (`test_marcar_fluxo_de_prova`, 6734905a). No PostgreSQL dirigido, 1 falha real corrigida antes do deploy (`recorder.py` montava `nascido_de_prova IS NOT 1`, sintaxe só do SQLite; corrigido para expressão portátil, 680fd309, e rerodado em PG e SQLite nos arquivos tocados). Na SQLite, 2 falhas por a versão derivada do commit mudar no meio da corrida (merge do 6734905a; `test_backup` e `test_instalacao_do_worker`, rerodados sobre a ponta estável: 21 passed).
+- `not_run`: percurso 52 no navegador (Portal); latência real do 31.137 no android-04 (Jev); fatia 2 do 29.154 (ligar o comando remoto num notebook); provas reais do 29.157 e 29.158 (push de branch sem corrida do contêiner, CI com os pins, 1º PR do Dependabot, run do secret-scan) só após o libera para dispatch; `scripts/marcar-fluxo-de-prova.py` (4 fluxos, inclusive `f-760f95b8e930`) e `scripts/abertura-nas-receitas-ensinadas.py` no banco em 122 (Android, com backup).
 
 ## 2026-10-06 — Deploy 51 (suíte 51: portões em gates.py, router de personas, pós-condição com elementos da tela, pacote da tela final, dependência sequencial do fluxo ensinado, alerta e pacotes aceitos no painel, T.N no espelho do Trello)
 

@@ -7089,6 +7089,33 @@ fluxo ensinado a partir de uma falha (adendo v1.75), que `GET /api/flows[].origi
   no plano salvo e aparece nas etapas de `GET /api/runs/{id}`, e agora também na prévia e no Livro, por este adendo.
 - **Prova:** `simulated` (`backend/tests/test_pacotes_aceitos_na_previa_e_no_livro.py`); `real`: `not_run`.
 
+## Adendo v1.90 (06/10/2026; número da orquestradora; item 29.154, migração 123, ADR-079) — comando remoto nos workers
+
+Seis rotas novas em `/api/workers/{worker_id}`. Todas exigem **sessão nomeada de operador** (cookie do `POST /api/login`):
+sem ela, `401 {code: "sem_operador"}`, inclusive no loopback e com o token da API. No host público do portal, todas
+respondem `404`, mesmo com credencial. O resto de `/api/workers*` não muda.
+
+- **`GET .../comando-remoto`** → `{worker_id, central_ativo, worker_ligado, agente_anuncia, negociado, e_o_central}`.
+- **`PUT .../comando-remoto`** `{ligado: bool}` (campos extras recusados) → o mesmo objeto. Grava o interruptor do worker,
+  emite `worker.comando.interruptor` e força o agente a reconectar para renegociar. `404 worker_inexistente`,
+  `409 central_fora`.
+- **`POST .../comandos`** `{linha?, argv?, pasta?, timeout_s?, idempotency_key?}` (exatamente um entre `linha` e `argv`;
+  `timeout_s` até 600; campos extras recusados) → `202 {id, worker_id, state, created_at}`, **sem eco da linha**. Erros:
+  `409 comando_remoto_desligado` (interruptor do central ou do worker), `409 worker_sem_remote_exec` (o agente não negociou
+  a feature nesta conexão), `409 central_fora`, `404 worker_inexistente`, `422 pedido_invalido`,
+  `422 linha_com_credencial` (o texto não é guardado; fica um registro `rejected` de auditoria), `429 limite_por_minuto`,
+  `429 fila_cheia`, `409 chave_em_uso`. A mesma `idempotency_key` devolve o mesmo registro.
+- **`GET .../comandos?limite=50`** (1 a 200) → `{items: [...]}`, do mais novo ao mais velho, **sem** `stdout`/`stderr`.
+- **`GET .../comandos/{exec_id}`** → o registro com a saída: `{id, worker_id, requested_by, modo, linha, pasta, timeout_s,
+  state, exit_code, stdout, stderr, truncated, duration_ms, reason, created_at, dispatched_at, finished_at}`. `linha` é a
+  redigida. `state`: `created`, `dispatched`, `running`, `succeeded`, `failed`, `timed_out`, `cancelled`, `uncertain`,
+  `rejected`. `404 comando_inexistente`.
+- **`POST .../comandos/{exec_id}/cancelar`** → o registro. Na fila: `cancelled` na hora; em voo: o pedido vai ao agente e o
+  desfecho chega depois. `409 ja_encerrado`, `409 worker_desconectado`.
+
+Eventos novos: `worker.comando` (pedido, recusa e desfecho; `data` com a linha redigida, até 500 caracteres, e sem a
+saída), `worker.comando.interruptor` e `worker.comando.cancelamento`.
+
 ## Adendo v1.91 (06/10/2026; número da orquestradora; item 31.142) — sugestão de pós-condição pronta e prévia com o comando repetido
 
 Achados da prova F2 (06/10, `trn-YjYU8iobj_V42xXx`, deploy 51). A única sugestão era "Back", a descrição do botão

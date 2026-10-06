@@ -38,7 +38,7 @@ from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessI
 from ..shared.costuras import SEM_COSTURAS_DE_GESTO, CosturaDeControle, TomadaDeControle, avisar
 from ..util import new_token, now, now_iso, parse_iso, to_iso
 from . import emulator as emu
-from .adb import PRAZO_DO_AJUSTE_S, Adb, AdbError, AdbTimeout, fator_de_carga_do_preparo
+from .adb import ABERTURA_COM_TAREFA_LIMPA, PRAZO_DO_AJUSTE_S, Adb, AdbError, AdbTimeout, fator_de_carga_do_preparo
 from .publicacao import assinatura_material
 from .apps_de_fundo import AjusteDosApps
 from .apps_de_fundo import validar_lista as validar_apps_de_fundo
@@ -4609,7 +4609,8 @@ class DeviceManager:
             rt.ui_variant = f"{locale or 'desconhecido'}/{_density_bucket(density)}"
         return rt.ui_variant
 
-    async def open_app(self, rt: DeviceRuntime, app: Any, *, pela_execucao: bool = False) -> tuple[bool, str]:
+    async def open_app(self, rt: DeviceRuntime, app: Any, *, pela_execucao: bool = False,
+                       aceitos: Collection[str] = ()) -> tuple[bool, str]:
         """Abre o app e CONFERE que ele chegou ao primeiro plano. Devolve `(abriu, detalhe)`.
 
         O retorno do `am start` é positivo mesmo quando o app cai na abertura — era por isso que "Abrir app"
@@ -4631,8 +4632,13 @@ class DeviceManager:
                 await rt.executor.run(rt.adb.keyevent, "home", timeout=20, label="tela inicial")
         except (AdbError, DriverError) as exc:
             log.info("%s: sem ler o foco antes de abrir %s (%s); abre assim mesmo", rt.id, app["package"], exc)
-        # `am start -n pkg/.Activity` aceita nome relativo; sem activity usa o launcher do pacote
-        await rt.executor.run(rt.adb.start_app, app["package"], app["activity"] or None, timeout=40, label="abrir app")
+        # `am start -n pkg/.Activity` aceita nome relativo; sem activity usa o launcher do pacote. 31.137: o app de prova
+        # (Configurações) abre com a tarefa limpa, senão o `am start` retoma a busca (outro pacote) e o foco nunca chega.
+        if app["package"] in ABERTURA_COM_TAREFA_LIMPA:
+            await rt.executor.run(functools.partial(rt.adb.start_app, app["package"], app["activity"] or None, tarefa_limpa=True),
+                                  timeout=40, label="abrir app")
+        else:
+            await rt.executor.run(rt.adb.start_app, app["package"], app["activity"] or None, timeout=40, label="abrir app")
         rt.capture_now.set()
         if rt.training_session_id and self.on_training_input is not None:
             try:
@@ -4642,7 +4648,7 @@ class DeviceManager:
         if self.io_factory is not None:        # testes: aparelho falso, sem janela de verdade para sondar
             return True, "driver de teste"
         pacote = app["package"]
-        if await wait_for_focus(rt, pacote, deadline_s=LAUNCH_DEADLINE_S):
+        if await wait_for_focus(rt, pacote, deadline_s=LAUNCH_DEADLINE_S, aceitos=aceitos):
             return True, f"{pacote} está em primeiro plano"
         return False, (f"o pedido de abertura foi aceito, mas {pacote} não apareceu em primeiro plano em "
                        f"{LAUNCH_DEADLINE_S:.0f} s; pode estar abrindo, ou ter caído na abertura")

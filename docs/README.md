@@ -64,15 +64,16 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 
 | Área | Código | Doc principal |
 |---|---|---|
-| API, eventos, rotas | `backend/app/api.py`, `models.py`, `events.py` | [`api-contract.md`](api-contract.md) |
+| Montagem do `AppState` (o que o `__init__` constrói) | `backend/app/state.py`, `backend/app/bootstrap.py` (`montar_*`: armazenamento, líder e canais, decisões) | [`arquitetura.md`](arquitetura.md) |
+| API, eventos, rotas | `backend/app/api.py`, `modules/fleet/presentation/proxies.py`, `modules/execution/presentation/comandos.py`, `modules/applications/presentation/apps.py`, `models.py`, `events.py` | [`api-contract.md`](api-contract.md) |
 | Comandos e worker | `backend/app/commands/`, `workers/`, `worker/` | [`arquitetura.md`](arquitetura.md), [`worker.md`](worker.md) |
 | Aparelhos e parque | `backend/app/devices/`, `taskqueue/scheduler.py` | [`dominios/parque.md`](dominios/parque.md) |
 | Portões do despacho (política, rascunho, aprovação do sim) | `backend/app/gates.py` (`AppState` delega), `porta_do_plano.py`, `social/policy.py`, `social/approvals.py` | [`dominios/execution.md`](dominios/execution.md) |
 | Fila e execução | `backend/app/taskqueue/`, `modules/execution/` | [`dominios/execution.md`](dominios/execution.md) |
 | IA | `backend/app/planning/`, `taskqueue/executor.py` | [`ia.md`](ia.md) |
-| Apps, releases, loja, manifesto de app | `backend/app/releases/`, `modules/applications/` (`planning/catalog/` é shim) | [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md) |
+| Apps, releases, loja, manifesto de app | `backend/app/releases/`, `modules/applications/`, `convergencia.py` (a entrega ao parque; `AppState` delega) (`planning/catalog/` é shim) | [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md) |
 | Skills, DSL, compilador, ensino | `backend/app/modules/skills/`, `modules/capabilities/`, `contracts/skills/` | [`dominios/skills.md`](dominios/skills.md), [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md) |
-| Perfis, personas, Instagram, treinamento | `backend/app/social/`, `modules/identity/presentation/personas.py`, `app/conhecimento/apps/`, `integrations/app_declarado/`, `training/` | [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md) |
+| Perfis, personas, Instagram, treinamento | `backend/app/social/`, `modules/identity/presentation/personas.py`, `modules/identity/presentation/instagram.py`, `app/conhecimento/apps/`, `integrations/app_declarado/`, `training/` | [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md) |
 | Retrieval de contexto de código (desligado por padrão) | `backend/app/modules/context_retrieval/`, `scripts/plano-100-pacotes.py --contexto` | [`dominios/context-retrieval.md`](dominios/context-retrieval.md) |
 | Banco e migrações | `backend/app/db.py`, `backend/migrations/` | [`banco.md`](banco.md) |
 | Segurança | `backend/app/security/` | [`operacao.md`](operacao.md) |

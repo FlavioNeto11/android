@@ -134,6 +134,9 @@ class WorkerSettings(BaseModel):
     ram_per_device_mb: int | None = Field(default=None, ge=256, le=16384)
     #: Guarda da máquina: quanto deve sobrar de RAM depois de subir mais um aparelho.
     min_free_ram_mb: int = Field(default=4096, ge=512, le=131072)
+    #: Comando remoto (29.154): o agente só anuncia `remote_exec` com isto ligado, e só o aceita se o central também
+    #: estiver com o interruptor dele ligado. Nasce DESLIGADO; ligar é decisão do dono (ADR-079).
+    comando_remoto: bool = False
 
     @field_validator("server")
     @classmethod

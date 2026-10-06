@@ -33,7 +33,7 @@ from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, Drag, Read
 from ..config import AiCfg, Config, LimitsCfg
 from ..security.enderecos import endereco_para_o_prompt, enderecos_limpos
 from ..shared.vinculos import tem_vinculo_ativo
-from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
+from ..devices.adb import ABERTURA_COM_TAREFA_LIMPA, AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.conta_observada import evidencia_legivel
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
 from ..metricas import metricas
@@ -2676,9 +2676,15 @@ class StepExecutor:
                     abriu_sem_ia = True
                     rr.exerceu(StrategyKind.deterministic)
                     t_abrir = time.monotonic()
+                    # 31.137: no app de prova (Configurações) a abertura apaga a tarefa e abre a tela inicial; o `am start` comum a
+                    # retomava na busca (outro pacote) e o foco do app nunca chegava (60 s). Os pacotes vizinhos que a etapa
+                    # declara (31.123) também valem como "na frente". Dublê sem a extensão cai na abertura comum.
+                    abrir = (getattr(rt.io, "open_app_tarefa_limpa", None) if alvo_do_foco in ABERTURA_COM_TAREFA_LIMPA else None)
+                    tarefa_limpa = abrir is not None
                     try:
-                        await call(rt.io.open_app, alvo_do_foco, app.activity if alvo_do_foco == app.package else None)
-                        na_frente = await esperar_foco(lambda: call(rt.io.current_focus), alvo_do_foco, ate=deadline)
+                        await call(abrir or rt.io.open_app, alvo_do_foco, app.activity if alvo_do_foco == app.package else None)
+                        na_frente = await esperar_foco(lambda: call(rt.io.current_focus), alvo_do_foco, ate=deadline,
+                                                       aceitos=step.pacotes_aceitos)
                     except DriverTimeout as exc:
                         return await self._stuck(rt, step, fired, str(exc))
                     except DriverError as exc:
@@ -2687,7 +2693,8 @@ class StepExecutor:
                     gasto = time.monotonic() - t_abrir
                     situacao = ("em primeiro plano" if na_frente else "ainda não está em primeiro plano"
                                 if na_frente is False else "o pedido de abertura falhou")
-                    repo.decision(f"{iid} · {step.title}: app {alvo_do_foco} aberto pelo executor, sem IA — {situacao} "
+                    repo.decision(f"{iid} · {step.title}: app {alvo_do_foco} aberto pelo executor, sem IA"
+                                  f"{' (tarefa limpa, na tela inicial)' if tarefa_limpa else ''} — {situacao} "
                                   f"({gasto:.1f} s)", run_id=run_id, instance_id=iid, step_id=step.id)
                     history.append(f"(executor) abriu o app {alvo_do_foco} sem IA: {situacao}. Se a tela não for a "
                                    "dele, continue a partir dela.")

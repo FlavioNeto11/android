@@ -675,20 +675,20 @@ it('31.90-E: etapa com ação do catálogo não tem editor da conferência (o sa
 it('31.90-F: a coluna da gravação diz por que a gravação reconhece o elemento (seletor e id, sem o pacote)', async () => {
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('QA-001'));
-  expect(text()).toContain('(reconhecido por id e texto, id conversation_name)');
+  expect(text()).toContain('(reconhecido por identificador e texto: conversation_name)');
   expect(text()).not.toContain('x:id/conversation_name');
 });
 
 it('31.90-F: alvoReconhecido cobre cada seletor, o alvo sem identificador e o que não é toque', () => {
   const entrada = (parcial: Partial<TrainingInput>) => ({ ...SESSAO.inputs[0], ...parcial }) as unknown as TrainingInput;
   expect(alvoReconhecido(entrada({ target: { desc: 'Enviar', unique: ['desc'] } }))).toBe('reconhecido por descrição');
-  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/ok', unique: ['rid', 'text'], text: 'OK' } }))).toBe('reconhecido por id (ou texto), id ok');
+  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/ok', unique: ['rid', 'text'], text: 'OK' } }))).toBe('reconhecido por identificador (ou texto): ok');
   expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [] } }))).toBe('sem identificador único: este toque não vira receita');
   expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [], filhos: [{}] } }))).toBe('reconhecido pelo que o elemento contém');
   // O contêiner sem identidade: a pessoa vê o filho rotulado (e o id) pelo qual a receita o acha, até três.
   expect(alvoReconhecido(entrada({ target: { unique: [], filhos: [
     { text: 'Fulano', resource_id: 'a:id/row_name', unique: ['text'] }, { desc: 'Foto', unique: ['desc'] }, { resource_id: 'a:id/so_id' }, { text: 'quarto' }] } })))
-    .toBe('reconhecido pelo que o elemento contém: “Fulano”, id row_name; “Foto”; id so_id');
+    .toBe('reconhecido pelo que o elemento contém: “Fulano”, identificador row_name; “Foto”; identificador so_id');
   expect(alvoReconhecido(entrada({ target: null }))).toBeNull();                      // sem alvo: a frase é de toqueSemAlvo
   expect(alvoReconhecido(entrada({ type: 'text', target: { unique: ['text'], text: 'x' } }))).toBeNull();
 });
@@ -889,4 +889,90 @@ it('31.129: a etapa da proposta que aceita um pacote vizinho diz em qual; a que 
   await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [PROPOSTA.steps[0]!, vizinha] });
   expect(text()).toContain('Também aceita concluir em: com.google.android.googlequicksearchbox');
   expect(text().match(/Também aceita concluir em/g)).toHaveLength(1);
+});
+
+// 31.132: depois de salvar, o resultado lê o estado do fluxo no Livro, diz o próximo passo e leva ao item.
+it('31.132: o resultado do salvar mostra o estado do fluxo no Livro, o próximo passo e o link para o item', async () => {
+  backend.on('GET', /\/aprendizado\/fluxo\/mandar-mensagem$/, () => json({
+    item: { kind: 'fluxo', ref: 'mandar-mensagem', state: 'published', title: 'Mandar mensagem', ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' } },
+    evidencias: [], trilha: [], exposicoes: [],
+  }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  await click(byRole('button', /Pedir proposta à IA/i));
+  await click(await botaoPronto(/Salvar como fluxo/i));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  const estado = await waitFor(() => { const e = document.querySelector('[aria-label="Estado do fluxo no Livro"]'); expect(e).toBeTruthy(); return e as HTMLElement; });
+  expect(estado.textContent).toContain('No Livro agora: Publicado');
+  expect(estado.textContent).toContain('Falta a prova');
+  expect(byRole('link', /Abrir no Livro/).getAttribute('href')).toBe('#/aprendizado?aba=aprendido&item=fluxo%3Amandar-mensagem');
+});
+
+// 31.134: "Depois" diz o que faz, e o marcador do dado da persona aparece em palavras.
+it('31.134: "Depois" explica que a gravação continua em "Para revisar"', async () => {
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  expect(byRole('button', /^Depois$/).getAttribute('title')).toBe('Fecha a revisão sem salvar: a gravação continua na lista “Para revisar”.');
+});
+
+it('31.134: o texto gravado com marcador da persona aparece em palavras, sem o marcador cru', async () => {
+  const marcada = { ...SESSAO, inputs: [...SESSAO.inputs, { ...SESSAO.inputs[0], seq: 9, type: 'text', text: '{perfil_nome}', has_text: true, text_len: 13, sensitive: false, target: null }] };
+  backend.on('GET', /\/training\/trn-1$/, () => json(marcada));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('[nome da persona]'));
+  expect(text()).toContain('(preenchido na hora com o dado da persona)');
+  expect(text()).not.toContain('{perfil_nome}');
+});
+
+it('31.134: o "Confere" da etapa proposta também troca o marcador da persona por palavras', async () => {
+  const comMarcador = { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, postcondition: { kind: 'text_visible', value: '{perfil_nome}', description: 'campo com {perfil_sobrenome}' } }] };
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => json({ ...SESSAO, status: 'proposed', proposal: comMarcador }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  await click(byRole('button', /Pedir proposta à IA/i));
+  await waitFor(() => expect(text()).toContain('Confere: aparece o texto “[nome da persona]” (campo com [sobrenome da persona])'));
+  expect(text()).not.toContain('{perfil_');
+});
+
+// 31.141: a prévia calcula os pacotes vizinhos da etapa (31.140 no backend); a etapa da proposta mostra a linha com eles.
+it('31.141: a etapa mostra "Também aceita concluir em" com os pacotes da prévia; o que a IA propôs na etapa vale antes', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, pacotes_aceitos: ['com.google.android.settings.intelligence'] }] }));
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(text()).toContain('Também aceita concluir em: com.google.android.settings.intelligence'), 4000);
+  expect(text().match(/Também aceita concluir em/g)).toHaveLength(1);
+});
+
+it('31.141: com a lista vazia na prévia (ou sem o campo, backend anterior), nenhuma linha', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, pacotes_aceitos: [] }] }));
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(backend.callsTo('POST', /\/preview$/).length).toBeGreaterThan(0));
+  await waitFor(() => expect(text()).toContain('Ao salvar:'), 4000);
+  expect(text()).not.toContain('Também aceita concluir em');
+});
+
+it('31.141: a lista que a IA pôs na etapa vale antes da prévia, e a linha aparece uma vez só', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, pacotes_aceitos: ['com.da.previa'] }] }));
+  await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, pacotes_aceitos: ['com.da.proposta'] }] });
+  await waitFor(() => expect(text()).toContain('Ao salvar:'), 4000);
+  expect(text()).toContain('Também aceita concluir em: com.da.proposta');
+  expect(text()).not.toContain('com.da.previa');
+  expect(text().match(/Também aceita concluir em/g)).toHaveLength(1);
+});
+
+it('31.141 (v1.89): o resultado do salvar traz a linha dos pacotes por etapa só quando a lista não é vazia', async () => {
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem',
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada', pacotes_aceitos: ['com.google.android.settings.intelligence'] },
+            { key: 'enviar', title: 'Enviar', recipe: true, reason: 'receita gravada', pacotes_aceitos: [] }],
+  }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  await click(byRole('button', /Pedir proposta à IA/i));
+  await click(await botaoPronto(/Salvar como fluxo/i));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  const itens = Array.from(document.querySelectorAll('ul > li')).filter((li) => /Abrir a conversa|Enviar/.test(li.textContent ?? '') && li.querySelector('span')) as HTMLElement[];
+  const abrir = itens.find((li) => li.textContent?.includes('Abrir a conversa') && li.textContent.includes('receita gravada'))!;
+  const enviar = itens.find((li) => li.textContent?.includes('Enviar') && li.textContent.includes('receita gravada'))!;
+  expect(abrir.textContent).toContain('Também aceita concluir em: com.google.android.settings.intelligence');
+  expect(enviar.textContent).not.toContain('Também aceita concluir em');
 });
