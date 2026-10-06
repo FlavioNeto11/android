@@ -189,6 +189,10 @@ async def test_remover_e_rotacionar_credencial_de_worker_pelo_http(harness: Harn
         rot = await c.post("/api/workers/worker-lan-01/rotate-credential")
         assert rot.status_code == 200
         assert isinstance(rot.json()["credential"], str) and len(rot.json()["credential"]) > 20
+        # 15.15 F4e: a credencial nova vai só na resposta; o evento da rotação diz o id do worker e nenhum valor dela.
+        credencial = rot.json()["credential"]
+        assert not [e for e in harness.state.db.query("SELECT message, data FROM events")
+                    if credencial in (e["message"] or "") or credencial in (e["data"] or "")]
         assert (await c.post("/api/workers/worker-fantasma/rotate-credential")).status_code == 404
 
         # amarra um aparelho ao worker antes de remover
