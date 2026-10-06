@@ -55,7 +55,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python scripts/pr_leve_resumo.py --nome "docs-check + scripts/tests" --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --tentativa "$GITHUB_RUN_ATTEMPT" --runner "$RUNNER_NAME" --pytest "$RUNNER_TEMP/pytest.out" >> "$GITHUB_STEP_SUMMARY"
+        run: python scripts/pr_leve_resumo.py --nome "docs-check + scripts/tests" --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --tentativa "$GITHUB_RUN_ATTEMPT" --runner "$RUNNER_NAME" --pytest "$RUNNER_TEMP/pytest.out" | tee -a "$GITHUB_STEP_SUMMARY"
 
   frontend:
     name: frontend · typecheck + vitest + build
@@ -90,4 +90,4 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/pr_leve_resumo.py --nome "frontend · typecheck + vitest + build" --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --tentativa "$GITHUB_RUN_ATTEMPT" --runner "$RUNNER_NAME" --vitest "$RUNNER_TEMP/vitest.out" >> "$GITHUB_STEP_SUMMARY"
+        run: python3 scripts/pr_leve_resumo.py --nome "frontend · typecheck + vitest + build" --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --tentativa "$GITHUB_RUN_ATTEMPT" --runner "$RUNNER_NAME" --vitest "$RUNNER_TEMP/vitest.out" | tee -a "$GITHUB_STEP_SUMMARY"
