@@ -7,6 +7,8 @@ import type { AppConfigInput, Settings } from '../../api/types';
 export type NumericSettingKey = { [K in keyof Settings]-?: NonNullable<Settings[K]> extends number ? K : never }[keyof Settings];
 /** Chaves booleanas de `Settings` (v0.2: `auto_start_devices`). */
 export type BooleanSettingKey = { [K in keyof Settings]-?: NonNullable<Settings[K]> extends boolean ? K : never }[keyof Settings];
+/** Escolha de um grupo de política pelo id (28.61: `grupo_sem_aprovacao`; texto no backend, id vazio = desligado). */
+export type GroupSettingKey = 'grupo_sem_aprovacao';
 /** Escolhas entre valores nomeados (v0.20: `preview_mode`). */
 export type ChoiceSettingKey = 'preview_mode';
 
@@ -23,6 +25,13 @@ export interface LimitField {
 /** Interruptor liga/desliga de um grupo. */
 export interface ToggleField {
   key: BooleanSettingKey;
+  label: string;
+  hint: string;
+}
+
+/** Escolha de um grupo de política: a tela lista os grupos pelo nome, mas o que vai ao servidor é o id. */
+export interface GroupPickField {
+  key: GroupSettingKey;
   label: string;
   hint: string;
 }
@@ -44,6 +53,7 @@ export interface LimitGroup {
   description: string;
   toggles?: ToggleField[];
   choices?: ChoiceField[];
+  grupos?: GroupPickField[];
   fields: LimitField[];
 }
 
@@ -172,6 +182,19 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     ],
   },
   {
+    soSeOServidorManda: true,
+    title: 'Aprovação de política',
+    description: 'Por padrão, a ação de uma persona que a política deixa sob aprovação espera o dono. Aqui um grupo de política fica dispensado dessa espera (28.61); vale na hora, sem reiniciar.',
+    grupos: [
+      {
+        key: 'grupo_sem_aprovacao',
+        label: 'Grupo dispensado da aprovação de política',
+        hint: 'As personas desse grupo não passam pela aprovação de política; recusas, conduta, proteção de conta e tetos continuam. Em “Nenhum” a regra fica desligada.',
+      },
+    ],
+    fields: [],
+  },
+  {
     title: 'Sinais e limites do Instagram',
     description: 'Quando parar de insistir sozinho e como a frota se coordena sobre o mesmo alvo (item 8.3).',
     fields: [
@@ -187,6 +210,7 @@ export const LIMIT_GROUPS: LimitGroup[] = [
 export const ALL_LIMIT_FIELDS: LimitField[] = LIMIT_GROUPS.flatMap((g) => g.fields);
 export const ALL_TOGGLE_FIELDS: ToggleField[] = LIMIT_GROUPS.flatMap((g) => g.toggles ?? []);
 export const ALL_CHOICE_FIELDS: ChoiceField[] = LIMIT_GROUPS.flatMap((g) => g.choices ?? []);
+export const ALL_GROUP_FIELDS: GroupPickField[] = LIMIT_GROUPS.flatMap((g) => g.grupos ?? []);
 
 /** Aceita vírgula decimal ("0,5"). Devolve NaN se não for número. */
 export function parseNumber(text: string): number {
@@ -226,7 +250,7 @@ export function crossValidate(values: Partial<Record<NumericSettingKey, number>>
 
 /** Rascunho do formulário: texto para os números (como digitado), booleano para os interruptores e o valor da escolha. */
 export type LimitDrafts = Partial<Record<NumericSettingKey, string>> & Partial<Record<BooleanSettingKey, boolean>>
-  & Partial<{ [K in ChoiceSettingKey]: NonNullable<Settings[K]> }>;
+  & Partial<{ [K in ChoiceSettingKey]: NonNullable<Settings[K]> }> & Partial<Record<GroupSettingKey, string>>;
 
 export interface LimitsFormState {
   errors: Partial<Record<NumericSettingKey, string>>;
@@ -278,6 +302,13 @@ export function buildSettingsPatch(settings: Settings, drafts: LimitDrafts): Lim
     if (draft === undefined || draft === settings[c.key] || !c.options.some((o) => o.value === draft)) continue;
     dirtyCount += 1;
     patch[c.key] = draft;
+  }
+
+  for (const g of ALL_GROUP_FIELDS) {
+    const draft = drafts[g.key];
+    if (draft === undefined || draft === (settings[g.key] ?? '')) continue;
+    dirtyCount += 1;
+    patch[g.key] = draft;
   }
 
   // Erros do próprio campo têm prioridade sobre os cruzados.
