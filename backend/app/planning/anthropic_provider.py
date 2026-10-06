@@ -32,6 +32,8 @@ from ..modules.identity.domain.persona_generation import (MAX_TOKENS_DO_RASCUNHO
 from . import prompts
 from .curador import (CURADOR_SYSTEM, ParecerBruto, ParecerIlegivel, PedidoDeParecer, curador_user, esquema_do_parecer,
                       parecer_from_json)
+from .pesquisa import (PESQUISA_SYSTEM, Citacao, PesquisaBruta, PesquisaRequest, Resultado,
+                       pesquisa_user)
 from .parsing import (_CapPlanOut, _MultiPlanCurtoOut, _MultiPlanOut, _PlanCurtoOut, _PlanOut, catalog_plan_from_json,
                       plan_from_json, social_from_json, verdict_from_json)
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, LeituraRequest, PlanRequest, ScreenInput,
@@ -151,7 +153,8 @@ class AnthropicProvider:
     # ------------------------------------------------------------------ chamada base
     def _kwargs(self, *, model: str, system: str, content: list[dict[str, Any]], effort: str, max_tokens: int,
                 tools: bool, schema: dict[str, Any] | None, pensar: bool = True,
-                cache_ttl: str | None = None, cachear: bool = True, paralelo: bool = False) -> dict[str, Any]:
+                cache_ttl: str | None = None, cachear: bool = True, paralelo: bool = False,
+                ferramentas: list[dict[str, object]] | None = None) -> dict[str, Any]:
         """Monta a requisição respeitando a capacidade DECLARADA deste modelo (`ai.models`) e o que ele já recusou.
         `pensar=False` (item 17.14, `thinking: false` da função) deixa de mandar `thinking`, como num modelo sem ele.
         `cache_ttl` (31.30): validade do ponto de cache; `None` é o padrão da API (5 min), sem o campo.
@@ -191,6 +194,10 @@ class AnthropicProvider:
             kwargs["tools"] = self._tools if estrito else self._tools_loose
             # Item 31.35 (parte B): só a decisão que pode encadear ações libera chamadas paralelas.
             kwargs["tool_choice"] = {"type": "auto", "disable_parallel_tool_use": not paralelo}
+        elif ferramentas:
+            # prova30 A2: ferramenta do SERVIDOR do provedor (a busca), no lugar das de tela. Sem `tool_choice`: o
+            # modelo decide quantas buscas faz, até o `max_uses` declarado nela.
+            kwargs["tools"] = ferramentas
         return kwargs
 
     def _learn(self, model: str, exc: anthropic.BadRequestError) -> bool:
@@ -214,7 +221,8 @@ class AnthropicProvider:
     async def _create(self, *, role: str, model: str, system: str, content: list[dict[str, Any]], effort: str,
                       max_tokens: int, tools: bool = False, schema: dict[str, Any] | None = None, tier: int = 0,
                       with_image: bool = False, funcao: str | None = None, cache_ttl: str | None = None,
-                      cachear: bool = True, paralelo: bool = False) -> tuple[Any, Usage]:
+                      cachear: bool = True, paralelo: bool = False,
+                      ferramentas: list[dict[str, object]] | None = None) -> tuple[Any, Usage]:
         """`funcao`: a função do hub que a chamada serve, quando difere de `role` (a decisão escalada é `escalation`).
         `cache_ttl`: validade do cache do prefixo (31.30); só o plano da execução pede outra que não a padrão."""
         if self._client is None:
@@ -229,7 +237,8 @@ class AnthropicProvider:
             for _ in range(len(_TUNABLE) + 2):
                 kwargs = self._kwargs(model=model, system=system, content=content, effort=effort,
                                       max_tokens=max_tokens, tools=tools, schema=schema, pensar=pensar,
-                                      cache_ttl=cache_ttl, cachear=cachear, paralelo=paralelo)
+                                      cache_ttl=cache_ttl, cachear=cachear, paralelo=paralelo,
+                                      ferramentas=ferramentas)
                 try:
                     resp = await self._send(model, kwargs)
                     break
@@ -437,6 +446,39 @@ class AnthropicProvider:
             return orquestracao_from_json(raw), usage
         except OrquestracaoInvalida as exc:
             raise AIError(str(exc), retryable=True, kind="invalid_output", model=resp.model) from exc
+
+    # ------------------------------------------------------------------ pesquisa da operação (prova30 A2)
+    async def pesquisar(self, req: PesquisaRequest) -> tuple[PesquisaBruta, Usage]:
+        """Assunto da operação → buscas na web pela ferramenta do PRÓPRIO provedor → texto final e blocos da busca.
+
+        Modelo do planejador, sem ponto de cache (o prefixo muda com o assunto). A confiança dos fatos não é lida daqui:
+        `pesquisa.fatos_consolidados` decide por código, só com as URLs que a busca de fato trouxe."""
+        ferramenta = {"type": req.ferramenta, "name": "web_search", "max_uses": req.max_buscas}
+        resp, usage = await self._create(role="plan", model=self.models["plan"], system=PESQUISA_SYSTEM,
+                                         content=[{"type": "text", "text": pesquisa_user(req)}],
+                                         effort=self.cfg.env.ai_effort_planner, max_tokens=4000, cachear=False,
+                                         ferramentas=[ferramenta])
+        self._check_stop(resp, self.models["plan"])
+        resultados: list[Resultado] = []
+        citacoes: list[Citacao] = []
+        ultimo_resultado = -1
+        blocos = list(resp.content or ())
+        for i, b in enumerate(blocos):
+            tipo = getattr(b, "type", "")
+            if tipo == "web_search_tool_result":
+                ultimo_resultado = i
+                for r in (getattr(b, "content", None) or []) if isinstance(getattr(b, "content", None), list) else []:
+                    if getattr(r, "type", "") == "web_search_result":
+                        resultados.append(Resultado(r.url, r.title or "", getattr(r, "page_age", None)))
+            elif tipo == "text":
+                for c in getattr(b, "citations", None) or ():
+                    if getattr(c, "type", "") == "web_search_result_location":
+                        citacoes.append(Citacao(c.url, c.cited_text or "", getattr(c, "title", None) or ""))
+        texto = "".join(b.text for b in blocos[ultimo_resultado + 1:] if getattr(b, "type", "") == "text")
+        servidor = getattr(getattr(resp, "usage", None), "server_tool_use", None)
+        usage.buscas = int(getattr(servidor, "web_search_requests", 0) or 0)
+        usage.usd_das_buscas = round(usage.buscas * req.preco_por_busca_usd, 6)
+        return PesquisaBruta(texto, tuple(resultados), tuple(citacoes), usage.buscas), usage
 
     # ------------------------------------------------------------------ curador do Livro (30.12)
     async def review_knowledge(self, req: PedidoDeParecer) -> tuple[ParecerBruto, Usage]:

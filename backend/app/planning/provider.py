@@ -48,9 +48,9 @@ def frase_dos_modelos(models: Mapping[str, str]) -> str | None:
 #: alimenta a fatia do teto do dia (`_budget`) e o relatório do Livro, então uma grafia solta viraria gasto sem dono.
 #: `execucao` = o laço da execução (há `run_id`); as demais nascem do portal ou de uma rotina e não têm `run_id`.
 OrigemDeIA = Literal["execucao", "ensino", "orquestracao", "assistente", "social", "persona", "curador",
-                     "decisao_fechada", "leitura", "canais"]
+                     "decisao_fechada", "leitura", "canais", "pesquisa"]
 ORIGENS_DE_IA: tuple[str, ...] = ("execucao", "ensino", "orquestracao", "assistente", "social", "persona",
-                                  "curador", "decisao_fechada", "leitura", "canais")
+                                  "curador", "decisao_fechada", "leitura", "canais", "pesquisa")
 
 #: Qual régua de gasto barrou (item 31.6, decisão P6): o painel, o aviso e a 30.13 leem o MOTIVO, nunca a frase.
 #: Só existe quando `kind="budget"`. `saldo` é o saldo da conta (ADR-051) e `kind="balance"` continua sendo o que o
@@ -143,6 +143,10 @@ class Usage:
     # executor (`_ai`); fora dele, NULOS.
     started_at: str | None = None
     vaga_ms: int | None = None
+    # prova30 A2 (31.158): buscas da ferramenta de busca do provedor nesta chamada e o preço delas. A busca é cobrada por
+    # unidade, fora dos tokens: `add_usage` grava uma linha própria (`model='web_search'`, `usd` declarado).
+    buscas: int = 0
+    usd_das_buscas: float = 0.0
     preparo: "PreparoDaDecisao | None" = None
 
 
@@ -425,6 +429,10 @@ class SocialRequest:
     # Textos que NÃO podem se repetir: o que este perfil já escreveu e o que os irmãos escreveram nesta execução.
     # Sem isso, personas diferentes convergem para a mesma frase óbvia — voz própria não é só tom, é não repetir.
     avoid: tuple[str, ...] = ()
+    # O que a OPERAÇÃO sabe em comum (prova30 A1): a leitura do alvo e os fatos consolidados, com a confiança de cada um.
+    # É do objetivo, não da persona: vai a todas as contas da operação e não vira memória de nenhuma. Vazio fora de
+    # operação.
+    fatos_da_operacao: str = ""
     retry: bool = False                       # segunda tentativa: a primeira saiu igual a um texto que já existe
     # Segunda tentativa porque a primeira atribuía fala, intenção ou recado a um terceiro ("seu marido mandou um oi",
     # r-20260919220216-7cfa59) — ADR-055. O prompt diz o que corrigir; a trava é `social/conteudo.py`.

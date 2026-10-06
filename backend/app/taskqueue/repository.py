@@ -1258,6 +1258,15 @@ class Repository:
                  # Item 31.35 (migração 097): o tamanho das partes do prompt do ator.
                  prep.arvore_chars if prep else None, prep.historico_chars if prep else None,
                  prep.podados if prep else None))
+            if usage.usd_das_buscas > 0:
+                # prova30 A2: as buscas da ferramenta do provedor são cobradas por unidade, fora dos tokens. Linha
+                # própria com `usd` declarado (o molde da imagem da persona), para `spent_usd` somar sem regra nova.
+                self.db.execute(
+                    "INSERT INTO ai_calls(ts, run_id, objective_id, step_id, role, model, tier, input_tokens, cache_read,"
+                    " cache_write, output_tokens, with_image, ms, ok, requested_model, provider, usd, origem, ref)"
+                    " VALUES (?,?,?,?,?,'web_search',0,0,0,0,0,0,0,?,'web_search',?,?,?,?)",
+                    (now_iso(), run_id, objective_id, step_id, usage.role, int(ok), usage.provider or None,
+                     float(usage.usd_das_buscas), usage.origem or ("execucao" if run_id else None), usage.ref))
         self.db.execute("UPDATE runs SET ai_input_tokens=ai_input_tokens+?, ai_output_tokens=ai_output_tokens+? WHERE id=?",
                         (usage.input_tokens, usage.output_tokens, run_id))
         if objective_id:

@@ -299,6 +299,14 @@ ai:
   # o RECORTE de uma linha de tela ao provedor do leitor, que pode ser outro que o do ator.
   leitura_visual:
     enabled: false                # (false) um valor lido da imagem só conta como saída com a conferência às cegas do leitor
+  # Pesquisa externa da OPERAÇÃO (prova30 A2, 31.158). DESLIGADA. Ligar faz o modelo do planejador usar a ferramenta de busca
+  # do próprio provedor (Anthropic, `web_search`) UMA vez por operação com assunto e lacuna; o resultado vai para a memória da
+  # operação (fonte, fato, confiança, frescor). Chamada paga: tokens + US$ 0,01 por busca, com teto por operação.
+  pesquisa:
+    enabled: false                # (false)
+    max_buscas: 3                 # (3) buscas por pesquisa
+    teto_usd_por_operacao: 0.25   # (0.25) tokens + buscas, somados por operação
+    frescor_h: 24                 # (24) quanto o fato pesquisado vale
   # Página de faturamento de cada conta de IA (ADR-051), a que o painel linka em "Abrir console". Sem o parâmetro
   # `billing`, o AI Studio abre a PRIMEIRA conta de faturamento, que pode não ser a pré-paga.
   # balance_consoles:

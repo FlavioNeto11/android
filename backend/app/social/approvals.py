@@ -392,15 +392,30 @@ def ler_rascunho(db: Database, step_id: str) -> dict[str, Any]:
     return (loads(row["draft_meta"], {}) or {}) if row is not None else {}
 
 
-def textos_irmaos(db: Database, run_id: str, step_id: str, limit: int = 16) -> list[str]:
+#: Numa operação (124) os irmãos são as OUTRAS execuções dela: até ~30 agentes, então o teto cobre todos.
+IRMAOS_DA_OPERACAO_MAX = 40
+
+
+def textos_irmaos(db: Database, run_id: str, step_id: str, limit: int = 16, *,
+                  operacao_id: str | None = None) -> list[str]:
     """O que as OUTRAS contas desta execução já escreveram para a mesma tarefa.
 
     É o espelho do defeito que originou tudo isto: o mesmo comando em oito aparelhos saía como a mesma frase.
     Cada perfil escreve depois dos irmãos que já passaram pela porta, então aqui ele vê o que não pode repetir.
+
+    Com `operacao_id` (prova30 A1), os irmãos são os de TODAS as execuções da operação: lá cada alvo é uma execução
+    própria, e por `run_id` cada agente veria a lista vazia. Ali só conta o texto já ESCRITO (`draft_meta`): o
+    briefing das etapas que ainda não passaram pela porta é o mesmo em todas e tomaria as vagas dos textos reais.
     """
-    linhas = db.query(
-        "SELECT bindings FROM steps WHERE run_id=? AND id<>? AND bindings LIKE '%\"content\"%' LIMIT ?",
-        (run_id, step_id, limit))
+    if operacao_id:
+        linhas = db.query(
+            "SELECT bindings FROM steps WHERE run_id IN (SELECT id FROM runs WHERE operacao_id=?) AND id<>?"
+            " AND draft_meta IS NOT NULL AND bindings LIKE '%\"content\"%' LIMIT ?",
+            (operacao_id, step_id, max(limit, IRMAOS_DA_OPERACAO_MAX)))
+    else:
+        linhas = db.query(
+            "SELECT bindings FROM steps WHERE run_id=? AND id<>? AND bindings LIKE '%\"content\"%' LIMIT ?",
+            (run_id, step_id, limit))
     textos = []
     for row in linhas:
         texto = ((loads(row["bindings"], {}) or {}).get("content") or "").strip()

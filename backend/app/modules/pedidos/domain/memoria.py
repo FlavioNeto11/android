@@ -15,10 +15,17 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 #: O vocabulário de `pedido_memoria.tipo` (CHECK da 070; `tests/test_pedidos_memoria.py` confere os dois).
 TIPOS = ("progresso", "descoberta", "decisao", "pendencia", "fonte")
+#: Quem afirmou o fato (125): o operador, a ocorrência (o fechamento de uma execução), a leitura do alvo de uma operação
+#: ou a pesquisa externa. A linha anterior à 125 é `ocorrencia`.
+ORIGENS = ("operador", "ocorrencia", "leitura", "pesquisa")
+#: `hipotese` é o que ainda não se confirmou (uma fonte só, por exemplo): entra no contexto marcado como tal, e quem
+#: escreve não o afirma como fato. Antes da 125 só existia `confirmado`.
+CONFIANCAS = ("confirmado", "hipotese")
+EVIDENCIA_MAX = 20
 CHAVE_RE = re.compile(r"^[a-z][a-z0-9_.:-]{0,63}$")
 VALOR_MAX = 2000
 #: Teto padrão do bloco que entra no plano da ocorrência (caracteres: o desenho fala em tokens, que aqui se medem em
@@ -40,6 +47,15 @@ class Entrada:
     atualizada_em: str = ""
     ocorrencia_id: str | None = None
     resolvida: bool = False
+    origem: str = "ocorrencia"
+    confianca: str = "confirmado"
+    #: Ids das observações que sustentam o fato (no máximo `EVIDENCIA_MAX`); vazio = afirmado sem observação.
+    evidencia: tuple[str, ...] = ()
+    #: Até quando o fato vale (UTC ISO); `None` = não vence. Vencido, sai do contexto e vira lacuna de novo.
+    frescor_ate: str | None = None
+
+    def vale(self, agora: str) -> bool:
+        return self.frescor_ate is None or self.frescor_ate > agora
 
 
 @dataclass(frozen=True)
@@ -63,18 +79,29 @@ def validar(chave: str, tipo: str, valor: str, *, parece_segredo: Callable[[str]
 
 
 def escrever(atual: Entrada | None, *, chave: str, tipo: str, valor: str, agora: str,
-             ocorrencia_id: str | None = None, parece_segredo: Callable[[str], bool]) -> Escrita:
+             ocorrencia_id: str | None = None, parece_segredo: Callable[[str], bool], origem: str = "ocorrencia",
+             confianca: str = "confirmado", evidencia: Iterable[str] = (), frescor_ate: str | None = None) -> Escrita:
     """A entrada que fica depois de gravar `valor` em `chave`. Valor igual ao atual: nada muda (versão e instante
     ficam). Valor novo: versão + 1. Mudar o TIPO de uma chave existente é recusado (a chave `x` não vira outra coisa
-    em silêncio)."""
+    em silêncio).
+
+    Mesmo valor com a procedência mudada (confiança, evidência ou frescor) também sobe a versão: uma hipótese que se
+    confirma, ou um fato relido que ganha prazo novo, é mudança do que se SABE, mesmo com o texto igual."""
     validar(chave, tipo, valor, parece_segredo=parece_segredo)
+    if origem not in ORIGENS:
+        raise MemoriaInvalida(f"origem de memória inválida: {origem!r}")
+    if confianca not in CONFIANCAS:
+        raise MemoriaInvalida(f"confiança de memória inválida: {confianca!r}")
+    provas = tuple(dict.fromkeys(str(e) for e in evidencia if e))[:EVIDENCIA_MAX]
     if atual is None:
-        return Escrita(Entrada(chave, tipo, valor, 1, agora, ocorrencia_id), True)
+        return Escrita(Entrada(chave, tipo, valor, 1, agora, ocorrencia_id, False, origem, confianca, provas,
+                               frescor_ate), True)
     if atual.tipo != tipo:
         raise MemoriaInvalida(f"a chave '{chave}' já é do tipo '{atual.tipo}', não '{tipo}'")
-    if atual.valor == valor:
+    if (atual.valor, atual.confianca, atual.evidencia, atual.frescor_ate) == (valor, confianca, provas, frescor_ate):
         return Escrita(atual, False)
-    return Escrita(Entrada(chave, tipo, valor, atual.versao + 1, agora, ocorrencia_id or atual.ocorrencia_id), True)
+    return Escrita(Entrada(chave, tipo, valor, atual.versao + 1, agora, ocorrencia_id or atual.ocorrencia_id,
+                           atual.resolvida, origem, confianca, provas, frescor_ate), True)
 
 
 def resolver(atual: Entrada, *, agora: str) -> Escrita:
@@ -83,7 +110,7 @@ def resolver(atual: Entrada, *, agora: str) -> Escrita:
         raise MemoriaInvalida(f"só pendência se resolve; '{atual.chave}' é '{atual.tipo}'")
     if atual.resolvida:
         return Escrita(atual, False)
-    return Escrita(Entrada(atual.chave, atual.tipo, atual.valor, atual.versao + 1, agora, atual.ocorrencia_id, True), True)
+    return Escrita(replace(atual, versao=atual.versao + 1, atualizada_em=agora, resolvida=True), True)
 
 
 def compactar(entradas: Iterable[Entrada], *, teto: int = TETO_DO_BLOCO,

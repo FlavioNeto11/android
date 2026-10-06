@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import random
 import re
 from datetime import date
@@ -31,6 +32,7 @@ from .apps_do_comando import apps_citados
 from .curador import ParecerBruto, PedidoDeParecer, parecer_simulado
 from .capabilities import CapabilityCatalog, CapabilityNode, compose
 from .parsing import apps_do_plano, norm_key
+from .pesquisa import Citacao, PesquisaBruta, PesquisaRequest, Resultado
 from .provider import (AppContext, Decision, DecisionRequest, LeituraRequest, PlanRequest, SocialRequest, Transcricao,
                        Usage, Verdict, VerifyRequest)
 
@@ -420,6 +422,20 @@ class SimulatedProvider:
                     steps=steps, missing=faltando + missing, planner=info)
 
     # ------------------------------------------------------------------ geração social (por regras)
+    async def pesquisar(self, req: PesquisaRequest) -> tuple[PesquisaBruta, Usage]:
+        """prova30 A2 sem rede: duas fontes fixas (as indicadas, se houver), um fato confirmado por elas e um que só a
+        primeira sustenta. Uma busca contada, para exercitar a linha de custo; o modo simulado não entra no gasto."""
+        urls = list(req.fontes_indicadas[:2]) + ["https://exemplo.org/a", "https://exemplo.net/b"]
+        a, b = urls[0], urls[1]
+        assunto = " ".join(req.assunto.split())[:80]
+        texto = json.dumps({"fatos": [{"texto": f"[simulado] fato confirmado sobre {assunto}", "fontes": [a, b]},
+                                      {"texto": f"[simulado] fato de uma fonte só sobre {assunto}", "fontes": [a]}],
+                            "lacunas": []}, ensure_ascii=False)
+        bruta = PesquisaBruta(texto, (Resultado(a, "Fonte A"), Resultado(b, "Fonte B")),
+                              (Citacao(a, "[simulado] trecho da fonte A"),), 1)
+        return bruta, Usage(calls=1, role="plan", model=self.model, provider="simulated", buscas=1,
+                            usd_das_buscas=req.preco_por_busca_usd)
+
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
         """Resposta por regras fixas, para exercitar persona, memória e aprovação sem chamar modelo nenhum.
 

@@ -1836,7 +1836,8 @@ class SocialService:
                              counterparty: str | None = None, thread_key: str | None = None, max_length: int = 300,
                              persist: bool = True, screen: str = "", runner: Any = None,
                              avoid: Sequence[str] = (), app_id: str | None = None,
-                             capability: str | None = None) -> tuple[SocialDraftDTO, InteractionDTO | None]:
+                             capability: str | None = None,
+                             fatos_da_operacao: str = "") -> tuple[SocialDraftDTO, InteractionDTO | None]:
         """Gera o texto e o REGISTRA antes de qualquer envio (§16). Nada é enviado aqui: quem envia é o executor.
 
         `app_id` é o app da ETAPA: o "Você é @…" do prompt usa o handle da conta da pessoa nesse app, e só cai no
@@ -1855,6 +1856,9 @@ class SocialService:
 
         `capability` é a ação da etapa (a chave do catálogo): com ela, a voz aprendida deste perfil nesta ação — os
         pares das aprovações que o dono editou e publicou (ADR-054) — entra no contexto. Sem ela, nada muda.
+
+        `fatos_da_operacao` é o que a operação sabe em comum (prova30 A1): vai no bloco próprio e nunca vira memória do
+        perfil (a regra de `memory_candidates` abaixo já descarta tudo que não é fala dirigida à conta).
         """
         if not (incoming or "").strip() and not (brief or "").strip():
             raise SocialError("nothing_to_write", "Sem mensagem recebida nem intenção, não há texto a escrever.", 400)
@@ -1875,7 +1879,7 @@ class SocialService:
             profile_id=profile_id, username=ctx.username, kind=kind, context_text=ctx.rendered,
             incoming=incoming, brief=brief, screen=screen,
             counterparty=_counterparty(counterparty) if counterparty else None,
-            max_length=max_length, avoid=tuple(proibidos))
+            max_length=max_length, avoid=tuple(proibidos), fatos_da_operacao=fatos_da_operacao)
         draft, _usage = await self._generate(pedido, runner=runner)
         # Pedir para não repetir não garante que não repita. Uma segunda chance, e só uma: o custo de IA é real e
         # um texto repetido é melhor do que uma etapa travada.
