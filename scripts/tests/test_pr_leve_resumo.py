@@ -41,7 +41,7 @@ def gh_com(*jobs):
 def rodar(gh, *extra):
     out = io.StringIO()
     with redirect_stdout(out):
-        codigo = mod.main(["--nome", "docs-check + scripts/tests", "--repo", "dono/repo", "--run", "9", "--runner", "RUNNER-1", *extra], gh=gh)
+        codigo = mod.main(["--nome", "docs-check + scripts/tests", "--repo", "dono/repo", "--run", "9", "--runner", "RUNNER-1", "--espera", "0", *extra], gh=gh)
     return codigo, out.getvalue().strip()
 
 
@@ -105,7 +105,7 @@ class Resumo(unittest.TestCase):
     def test_repo_fora_do_formato(self) -> None:
         out = io.StringIO()
         with redirect_stdout(out):
-            self.assertEqual(mod.main(["--nome", "x", "--repo", "x y", "--run", "1", "--runner", "r"], gh=gh_com(JOB)), 0)
+            self.assertEqual(mod.main(["--nome", "x", "--repo", "x y", "--run", "1", "--runner", "r", "--espera", "0"], gh=gh_com(JOB)), 0)
         self.assertIn("resumo indisponível", out.getvalue())
 
 

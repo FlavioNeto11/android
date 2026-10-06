@@ -15,6 +15,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -87,6 +88,7 @@ def main(argv: list[str] | None = None, gh: Gh | None = None) -> int:
     ap.add_argument("--runner", required=True)
     ap.add_argument("--pytest", type=Path)
     ap.add_argument("--vitest", type=Path)
+    ap.add_argument("--espera", type=float, default=4.0, help="segundos antes de ler a API: ela atrasa a última etapa (medido em 06/10: o build de 5 s não aparecia)")
     a = ap.parse_args(argv)
     for f in (sys.stdout, sys.stderr):
         if hasattr(f, "reconfigure"):
@@ -94,6 +96,7 @@ def main(argv: list[str] | None = None, gh: Gh | None = None) -> int:
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", a.repo):
         print(f"**{a.nome}**: resumo indisponível (--repo fora do formato)")
         return 0
+    time.sleep(max(0.0, min(a.espera, 15.0)))
     try:
         jobs = [json.loads(x) for x in (gh or gh_real)(
             "api", f"repos/{a.repo}/actions/runs/{a.run}/attempts/{a.tentativa}/jobs?per_page=100",
