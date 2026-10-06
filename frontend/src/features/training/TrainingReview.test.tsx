@@ -882,3 +882,11 @@ it('31.111: o fluxo salvo nasce com o selo "corrige uma falha" e a frase de onde
   await click(await botaoPronto(/^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('Este fluxo nasceu da correção da etapa open_app da execução run-0001.'));
 });
+
+// ---------------------------------------------------------------- 31.129 (adendo v1.84): os pacotes que a etapa também aceita
+it('31.129: a etapa da proposta que aceita um pacote vizinho diz em qual; a que não tem o campo não ganha a linha', async () => {
+  const vizinha = { ...PROPOSTA.steps[0]!, key: 'buscar', title: 'Buscar o termo', pacotes_aceitos: ['com.google.android.googlequicksearchbox'] };
+  await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [PROPOSTA.steps[0]!, vizinha] });
+  expect(text()).toContain('Também aceita concluir em: com.google.android.googlequicksearchbox');
+  expect(text().match(/Também aceita concluir em/g)).toHaveLength(1);
+});

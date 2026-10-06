@@ -130,3 +130,17 @@ it('sessão sem entradas e sem proposta diz isso; a recusa do backend mostra o e
   expect(d.querySelector('section[aria-label="Origem do treino"]')).toBeNull();
   await flush(ATRASO_MAXIMO + 30);
 });
+
+it('31.129: a leitura da sessão salva diz em qual pacote vizinho a etapa também conclui', async () => {
+  const comPacote = { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, pacotes_aceitos: ['com.google.android.googlequicksearchbox', 'com.exemplo.vizinho'] }] };
+  backend.on('GET', /\/training\/trn-s$/, () => json({ ...SALVA, proposal: comPacote }));
+  const d = await abrirSalva();
+  await waitFor(() => expect(d.textContent).toContain('Também aceita concluir em: com.google.android.googlequicksearchbox, com.exemplo.vizinho'));
+});
+
+it('31.129: sem o campo (etapa antiga) ou com a lista vazia, nenhuma linha', async () => {
+  backend.on('GET', /\/training\/trn-s$/, () => json({ ...SALVA, proposal: { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, pacotes_aceitos: [] }] } }));
+  const d = await abrirSalva();
+  await waitFor(() => expect(d.textContent).toContain('Rolar a lista para ver o item'));
+  expect(d.textContent).not.toContain('Também aceita concluir em');
+});
