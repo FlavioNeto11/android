@@ -5676,8 +5676,8 @@ em 4 aparelhos. Passar de 4 para 30 contas sem um aparelho por conta exige tirar
    `unknown`**, não só a da conta que saiu. Desafio e conta errada ficam como estão: são o que a pessoa precisa ver.
 4. **D2-a relaxa só no app que declara a troca.** `AppDefinition.account_switch` é derivado do `sessao.yaml` na
    descoberta, e `quem_ja_serve` não vê conflito nesse app. O índice único `ux_binding_conta_do_app_no_aparelho` (051)
-   continua no banco, então o vínculo POR APP de duas personas do mesmo app ainda é recusado ali. Trocá-lo pede
-   migração, com número dado pela orquestradora, depois da prova.
+   sai na migração 126 (número da orquestradora, corte 56): ele não lê o `sessao.yaml`. A regra fica no repositório,
+   que já era a única porta de escrita de vínculo; quem escrever por fora dele perde o piso do banco.
 5. **É mecanismo do despacho, não ação do planejador.** O `LOGOUT` do catálogo do Instagram segue `manual_only`, e o
    Instagram **não** declara a troca nesta prova.
 6. **QA Messenger sem sessão declarada.** Declarar provedor de sessão no QA mudaria a porta de sessão de todo objetivo
@@ -5721,9 +5721,11 @@ dois têm de ser lidos na hierarquia de um aparelho com conta de teste. Sem essa
 
 **Falta para usar em conta real (depois da prova):**
 
+- **pré-requisito do Instagram:** ler a hierarquia do seletor de contas num aparelho com conta de teste, com
+  autorização do dono. O caminho escolhido é o seletor (orquestradora, 06/10 18:05Z), e ele fica para **depois da
+  prova** mesmo com o sim do dono ao P-026;
 - o passo por id (e, para o seletor, "tocar a conta esperada se ela já estiver no seletor");
-- declarar `troca` no `sessao.yaml` do app, com os sinais lidos num aparelho de conta de teste;
-- a migração do índice 051;
+- declarar `troca` no `sessao.yaml` do app, com os sinais e ids dessa leitura;
 - a preferência no despacho;
 - a prova `real`.
 
@@ -5733,6 +5735,6 @@ ADR-055; achado #115; D2-a (051); 31.154. Código:
 - `backend/app/integrations/app_declarado/sessao.py` (`_trocar_de_conta`, `_antes_de_sair`);
 - `backend/app/integrations/app_declarado/pacote.py`;
 - `backend/app/modules/applications/domain/definition.py` (`account_switch`);
-- `backend/app/social/repository.py` (`_troca_declarada`).
+- `backend/app/social/repository.py` (`_troca_declarada`); `backend/migrations/126_troca_de_conta.sql`.
 
-Teste: `backend/tests/test_troca_de_conta.py`.
+Testes: `backend/tests/test_troca_de_conta.py` e `backend/tests/test_migracao_126.py`.

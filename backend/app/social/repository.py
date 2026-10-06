@@ -625,12 +625,12 @@ class SocialRepository:
         """Vincula a persona ao aparelho PARA um app (`None` = apps sem conta gerenciada). Não desvincula a própria
         persona de outro aparelho nem toma o aparelho de outra (era o 1:1); o par já vinculado é idempotente.
 
-        Recusa com `BindingConflict` quando OUTRA persona já serve ao mesmo app naquele aparelho (D2-a): a troca de
-        conta no Instagram é manual (achado #115), e duas contas no mesmo app do mesmo aparelho seriam uma tarefa
-        entrando na conta errada. A conferência é a MESMA de `profiles_of_instance(iid, app_id)`, mais estrita que o
-        índice `ux_binding_conta_do_app_no_aparelho`: o índice não enxerga o vínculo sem `app_id` (o de antes da
-        051, ou "apps sem conta gerenciada") de uma persona que TEM conta no app — o repositório enxerga. O índice
-        é o piso, para quem escreve por fora; o `IntegrityError` dele também vira `BindingConflict`.
+        Recusa com `BindingConflict` quando OUTRA persona já serve ao mesmo app naquele aparelho (D2-a): no app sem
+        troca de conta declarada (achado #115), duas contas no mesmo app do mesmo aparelho seriam uma tarefa entrando
+        na conta errada. A conferência é a MESMA de `profiles_of_instance(iid, app_id)`, e enxerga também o vínculo
+        sem `app_id` de uma persona que TEM conta no app. O app que declara a troca (31.155, ADR-080) não tem a
+        recusa: o motor de sessão troca a conta. O índice único da 051 que servia de piso saiu na 126 (ele não lê o
+        `sessao.yaml`); o `IntegrityError` dos índices que ficam ainda vira `BindingConflict`.
 
         `primary`: torna este o aparelho principal (tirando a marca do anterior). A primeira vinculação da persona é
         principal por definição, para ela nunca ficar sem um. O histórico fica: linhas inativas são a auditoria.

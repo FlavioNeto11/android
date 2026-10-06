@@ -29,12 +29,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   senha vem do cofre, só pelo canal sensível. Desvio vira `wrong_account` com o motivo, sem laço. O "Verificar conta"
   nunca troca.
 - `AppDefinition.account_switch`, derivado do `sessao.yaml` na descoberta. `quem_ja_serve` (D2-a) só aceita outra
-  persona do mesmo app no aparelho para quem declara. O índice único da 051 continua; a migração dele vem depois da
-  prova.
+  persona do mesmo app no aparelho para quem declara. **Migração 126** (`126_troca_de_conta`): sai o índice único
+  `ux_binding_conta_do_app_no_aparelho` da 051, sem mudar linha; a regra fica no repositório. Corte 56.
 - Nenhum app do parque declara a troca (o Instagram não declara nesta prova). O QA Messenger não ganhou sessão
   declarada: isso mudaria a porta de sessão de todo objetivo de QA.
-- Prova `simulated`: `backend/tests/test_troca_de_conta.py`, com o correio de exemplo declarado só no teste e duas
-  personas.
+- Prova `simulated`: `backend/tests/test_troca_de_conta.py` (com o correio de exemplo declarado só no teste e duas
+  personas) e `backend/tests/test_migracao_126.py` (atualização, idempotência, banco novo = atualizado).
 - `not_run`: prova real (exige declarar a troca num app, com os sinais lidos num aparelho de conta de teste).
 
 ## 2026-10-06 — 28.57: arquivo de texto com o nome original no envio e repasse do `.txt` do dono sem legenda (branch canais/anexos-28-57)

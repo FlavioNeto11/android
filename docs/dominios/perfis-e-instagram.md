@@ -241,7 +241,7 @@ Caminhos relativos a `backend/app/`.
   por passo; invalida as sessões do app no aparelho e só entra pelo `_login` de sempre se a tela for a de login. Qualquer
   desvio vira `wrong_account` com o motivo. O "Verificar conta" nunca troca. O app que declara a troca ganha
   `AppDefinition.account_switch`, e só nele `quem_ja_serve` aceita outra persona do mesmo app no aparelho; o índice
-  único da 051 continua no banco. **Nenhum app do parque declara a troca hoje**, nem o Instagram.
+  único da 051 saiu na migração 126. **Nenhum app do parque declara a troca hoje**, nem o Instagram.
 
   O `type_secret` do executor (`taskqueue/executor.py::_conferir_destino`) ainda recusa a Custom Tab (exige o pacote da
   conta em primeiro plano): só o motor de sessão a aceita. O `telas.yaml`/`sessao.yaml` do Outlook veio no 23.8

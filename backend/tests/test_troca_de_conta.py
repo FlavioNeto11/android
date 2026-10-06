@@ -268,8 +268,8 @@ def test_nenhum_app_do_parque_declara_a_troca() -> None:
 
 def test_a_descoberta_marca_quem_declara_a_troca_e_o_d2a_relaxa_so_nele(parque: Any, tmp_path: Path) -> None:
     """`account_switch` vem do `sessao.yaml` (não do `app.yaml`); com ele, outra persona do mesmo app no aparelho deixa
-    de ser conflito de vínculo (D2-a). Sem ele, o conflito é o de sempre. O índice único da 051 continua no banco: o
-    vínculo POR APP de duas personas ainda é recusado lá (a migração que o troca é pós-prova, ADR-080)."""
+    de ser conflito de vínculo (D2-a), e o vínculo POR APP da segunda persona entra (o índice único da 051 saiu na 126).
+    Sem ele, o conflito é o de sempre."""
     from app.integrations.app_declarado.pacote import manifesto_da_pasta
     from app.modules.applications.infrastructure import registry
 
@@ -290,6 +290,10 @@ def test_a_descoberta_marca_quem_declara_a_troca_e_o_d2a_relaxa_so_nele(parque: 
         registry.register_manifest(manifesto)
         try:
             assert p.repo.quem_ja_serve(p.b[0], IID, "correio") == esperado
+            if esperado is None:
+                # Com a 126 o banco também aceita: as duas personas servem o correio no mesmo aparelho.
+                p.repo.bind(p.b[0], IID, app_id="correio")
+                assert {str(v["profile_id"]) for v in p.repo.profiles_of_instance(IID, "correio")} == {p.a[0], p.b[0]}
         finally:
             registry.unregister(CORREIO)
 

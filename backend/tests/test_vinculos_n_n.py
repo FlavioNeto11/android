@@ -9,7 +9,7 @@ O que se prova aqui, nos dois bancos (o PostgreSQL quando `TEST_DATABASE_URL` ex
 - a 051 renderiza sem marca de dialeto sobrando;
 - o N:N de verdade, pelo repositório: uma persona em dois aparelhos (com um principal), dois aparelhos com personas
   diferentes, duas personas de APPS diferentes no mesmo aparelho, e a recusa de duas contas do MESMO app no mesmo
-  aparelho (D2-a) — pelo repositório (`BindingConflict`) e pelo índice (INSERT à mão).
+  aparelho (D2-a) — pelo repositório (`BindingConflict`); o índice que também a segurava saiu na 126 (ADR-080).
 
 K-029: os INSERTs de semente usam só os tipos que as migrações declaram.
 """
@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 
 from app import db as db_mod
-from app.db import INTEGRITY_ERRORS, Database
+from app.db import Database
 from app.social.repository import BindingConflict, SocialRepository
 
 from .test_db import _banco, _copia_das_migracoes, _Falso, _tem_indice
@@ -193,10 +193,9 @@ def test_duas_contas_do_mesmo_app_no_mesmo_aparelho_sao_recusadas(repo: SocialRe
         repo.bind("p-quillon", "android-01", app_id="instagram")
     assert exc.value.code == "conta_do_app_ja_no_aparelho" and "p-ottilie" in str(exc.value)
     assert _pares(repo, "p-quillon") == []
-    # E o índice segura mesmo quem escreve por fora do repositório (INSERT à mão, só com os tipos da 051).
-    with pytest.raises(INTEGRITY_ERRORS):
-        repo.db.execute("INSERT INTO device_profile_bindings(profile_id, instance_id, active, bound_at, app_id,"
-                        " is_primary) VALUES (?,?,1,?,?,0)", ("p-quillon", "android-01", TS, "instagram"))
+    # O índice que segurava quem escreve por fora do repositório saiu na 126 (31.155, ADR-080): ele não lê o
+    # `sessao.yaml`, e o app que declara a troca de conta aceita duas personas. A recusa é do repositório (acima);
+    # a prova da migração está em `test_migracao_126.py`.
     # O vínculo repetido do MESMO par também é recusado pelo repositório, sem duplicar linha.
     repo.bind("p-ottilie", "android-01", app_id="instagram")           # idempotente: já existe, nada muda
     assert repo.db.scalar("SELECT COUNT(*) FROM device_profile_bindings WHERE active=1") == 1
