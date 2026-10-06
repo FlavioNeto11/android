@@ -183,6 +183,23 @@ def test_o_bloco_vai_marcado_como_dado_e_fora_de_operacao_nao_aparece() -> None:
     assert "hipótese NÃO é fato" in com and "<fatos_da_operacao> também nunca vira memória" in SOCIAL_SYSTEM
 
 
+def test_o_assunto_vai_junto_da_intencao_e_so_relaciona_quando_couber(banco: Database) -> None:
+    """Onda 1 (06/10): o post não tinha relação com o assunto e o texto o ignorou. O assunto da operação vai ao escritor
+    logo depois da intenção, pedindo relação só quando fizer sentido; fora de operação, nada muda."""
+    from dataclasses import replace
+    base = SocialRequest(profile_id="p", username="u", kind="post_comment", context_text="<persona/>",
+                         screen=LEGENDA, brief="comente o que a publicação mostra")
+    assert "<assunto_da_operacao>" not in social_user_text(base)
+    com = social_user_text(replace(base, assunto_da_operacao="novidades do app em outubro"))
+    assert com.index("<intencao>") < com.index("<assunto_da_operacao>\nnovidades do app em outubro\n")
+    assert "quando fizer sentido" in com and "sem forçar o assunto" in com
+    # a leitura: `operacoes.assunto` em uma linha; sem assunto, vazio
+    _com_operacao(banco)
+    assert ConhecimentoDaOperacao(banco).fatos("op-1").assunto == ""
+    banco.execute("UPDATE operacoes SET assunto=? WHERE id='op-1'", ("  novidades do app\n em outubro ",))
+    assert ConhecimentoDaOperacao(banco).fatos("op-1").assunto == "novidades do app em outubro"
+
+
 def _com_fatos(base: SocialRequest) -> SocialRequest:
     from dataclasses import replace
     return replace(base, fatos_da_operacao="- [hipótese, não confirmada] prazo: entrega em 3 dias")

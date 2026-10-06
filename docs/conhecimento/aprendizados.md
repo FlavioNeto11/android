@@ -2810,6 +2810,12 @@ tocado e o `target.desc` do ladrilho ("Photo by …"). Isso deu 7 ocorrências d
 próprio @ fez o 31.87 trocar `{username}` por `{conta_instagram_usuario}`, e a receita ensinada virou "abrir o PRÓPRIO
 perfil": ela só serve a quem ensinou.
 
+Medido na tentativa 3 da onda 1: a receita nem é consultada. A identidade dela é `perfil de {conta_instagram_usuario}
+aberto`, e a da etapa planejada para o MESMO alvo é `perfil de {perfil} aberto`. Na execução, `para_hash` recebe o
+parâmetro do objetivo e o dado da persona com o mesmo valor, e o empate fica com o parâmetro, que entra primeiro no
+dicionário. Gravar a receita na chave genérica não resolve: ela digita o @ da persona e abriria o perfil errado em outro
+alvo.
+
 **O que fazer (pós-prova).** Mascarar o dado da persona também em `inputs[].target` e `screen_lines` na leitura da
 sessão (o painel não precisa do valor). E avisar na prévia quando um parâmetro do comando some porque o exemplo é o
 dado da própria persona: quem ensina pode querer o alvo genérico.

@@ -274,6 +274,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   da frente de Aprendizado, e nada a gravava; ela vinha sempre vazia. Agora a porta de escrita grava em
   `operacao_alvos.marcas` as refs dos fatos que o texto recebeu (o bloco e a leitura igual à tela). Prova `simulated`:
   `backend/tests/test_conhecimento_da_operacao.py::test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem`.
+- **O assunto da operação vai ao escritor junto da intenção (decisão da orquestradora após a tentativa 3):** o texto
+  ignorava o assunto quando o post não tinha relação com ele, porque só `<intencao>` mandava. Agora o bloco
+  `<assunto_da_operacao>` (de `operacoes.assunto`) vem logo depois da intenção e pede para relacionar só quando fizer
+  sentido com a publicação. O `draft_meta` marca `fatos_da_operacao.assunto: true`. Prova `simulated`:
+  `backend/tests/test_conhecimento_da_operacao.py::test_o_assunto_vai_junto_da_intencao_e_so_relaciona_quando_couber` e
+  `backend/tests/test_pesquisa_da_operacao.py`.
 - O roteador mora no módulo de pedidos, com `prefix=/api/operacoes` e um caminho de dois segmentos que não colide com
   as rotas da Jev, e não mexe no `state.py`.
 - Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
