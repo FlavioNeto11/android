@@ -8746,16 +8746,21 @@
   },
   "29.104": {
    "id": "29.104",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #392, ponta FINAL 6b34f013, branch fix/29-104-espera-de-elemento. Só teste e harness; o produto não muda. Causa da fuga do cron do frontend: o waitFor só trata false e exceção como 'ainda não', e waitFor(() => raiz.querySelector(...)) passava na hora com null. Entrou: esperarElemento(seletor, raiz) no harness; ATRASO_DO_FETCH_MS, desligado por padrão, semeado por SEMENTE_DO_ATRASO e pelo nome do teste (FNV-1a e mulberry32), com o teste que falha imprimindo a semente; a catraca src/test/esperas.test.ts, com parênteses balanceados. Consertados: AnexosTab, 7 esperas e a prévia esperada antes do dispatchEvent; ProfilesPage, 1 espera e 5 testes que afirmavam antes da resposta. Correção da contagem: 8 esperas, não 15. W2: it.fails do 29.106 (A responde depois de B). Simulated (05/10, Node 24.19.0): contraprova, o AnexosTab da main com o atraso cai nos 76:68 e 248:46 do cron e no 157:20; AnexosTab e ProfilesPage com o atraso, 67/67 em 8 sementes a 30 ms e numa a 60 ms; suíte do frontend inteira 1603/1603, e na 6b34f013 ProfilesPage 49 passed mais 1 expected fail. Leitura: Ferramentas do Claude (entra; W2 feito). Real: na suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b). Parcial: o 2º PR (as 53 falhas em 22 arquivos com o atraso ligado, semente 7, separando teste que afirma cedo de corrida do produto; W1, waitFor recusando null; a âncora da catraca; a mensagem e a raiz undefined do esperarElemento) ainda não foi feito. Sem conferir: o Node 22 do CI.",
-   "blocker": "2º PR do 29.104 (corridas restantes, W1 e as notas da leitura)",
-   "grupo": "resultado-orquestradora-suite36",
-   "modelo": "claude-fable-5-1",
-   "esforco": "sessao orquestradora",
+   "evidence": "Ponta a03278e1 (Portal). Simulado: frontend/src/features/training/TrainingBar.test.tsx::*, frontend/src/features/focus/FocusPanel.test.tsx::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/training/TrainingBar.test.tsx",
+    "frontend/src/features/focus/FocusPanel.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-43",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T09:50:24+00:00"
+   "quando": "2026-10-06T00:44:32+00:00"
   },
   "29.106": {
    "id": "29.106",
@@ -9209,21 +9214,22 @@
   },
   "31.86": {
    "id": "31.86",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "#438 (dca4c079), parte B; e #428 (05b44377). Simulado: backend/tests/test_treino_previa_e_refazer_receitas.py::*, frontend/src/features/focus/FocusPanel.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "05/10/2026 ~23:42Z a ~23:47Z, WIN-7S2UASNLFOP, commit cb6742d4, android-04. (1) Gravei 2 toques (\"toque em Perfil salvo às 19:23\" e \"toque sem elemento identificado\") no Modo treinamento e concluí; com o aparelho PARADO (Parar no Ciclo de vida, estado stopped) o foco abriu com \"Para revisar: Revisar “prova do 31.86…”, só gravada\", e o clique abriu a revisão com as 2 entradas, o botão \"Pedir proposta à IA\" e o Salvar travado com \"Peça a proposta da IA primeiro\". Liguei o aparelho de volta (booting, depois online, control none). (3) A prévia por etapa apareceu na revisão de outra sessão (trn-osso9bYL3nq4N4ZJ): \"Ao salvar: a receita desta etapa é gravada\", e o salvar mostrou o motivo por etapa. (2) \"Refazer receitas\" rodou com o aparelho recém-ligado e devolveu o motivo verdadeiro (\"Nenhuma receita nova. Sem receita: … versão do app excedeu 25s\"). Id: sessões trn-yAy9RZzqxJeiiM-f (descartada) e trn-osso9bYL3nq4N4ZJ (fluxo f-21f399425646, desligado).",
    "blocker": null,
    "arquivos": [
-    "backend/tests/test_treino_previa_e_refazer_receitas.py",
-    "frontend/src/features/focus/FocusPanel.test.tsx"
+    "frontend/src/features/focus/FocusPanel.tsx",
+    "frontend/src/features/training/TrainingBar.tsx",
+    "frontend/src/features/training/TrainingReview.tsx"
    ],
-   "nota": "o PR cobre só uma parte do item; status e prova ficam para a frente dizer se fecha",
-   "grupo": "android-suite-38",
-   "modelo": "claude-opus-5-5",
+   "nota": "Limite da prova: o salvar do fluxo de teste foi com o aparelho online, então o refazer depois de um salvar OFFLINE não foi exercitado de ponta a ponta; só o botão e a resposta honesta com o aparelho recém-ligado. Não pedi proposta (IA paga).",
+   "grupo": "portal-percurso-deploy-42",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T16:25:16+00:00"
+   "quando": "2026-10-05T23:48:37+00:00"
   },
   "31.95": {
    "id": "31.95",
@@ -9280,20 +9286,22 @@
   "31.90": {
    "id": "31.90",
    "status": "partial",
-   "proof": "real",
-   "evidence": "REAL (parte B, percurso no navegador): Parte B, 05/10/2026 ~18:10Z-18:12Z, WIN-7S2UASNLFOP, commit 9f9e2b39, Foco do android-04 > Modo treinamento. 'Salvas (1)' lista a gravação salva com 'Refazer receitas' e a nota. A revisão da gravação trn-osso9bYL3nq4N4ZJ, depois da proposta real, mostra a prévia por etapa ('Ao salvar: …', com a marca 'sem IA') e 'Pedir outra proposta' com a nota de custo. O salvar como fluxo não foi feito, para não pôr item de teste no catálogo vivo; a gravação ficou como proposta pronta. | Antes (suíte 39, simulado): Ramo da Portal 31.90-B, ponta 89d7dc7c. Simulado: frontend/src/features/training/TrainingReview.test.tsx::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
+   "proof": "simulated",
+   "evidence": "31.90-D (63a00368) e 31.90-C, E e F (Portal a03278e1). Simulado: backend/tests/test_treino_desfazer_a_ultima.py::*, backend/tests/test_treino_previa_e_refazer_receitas.py::*, frontend/src/features/training/CorrigirEtapa.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
    "blocker": null,
    "arquivos": [
-    "frontend/src/features/training/TrainingReview.test.tsx",
-    "frontend/src/features/training/TrainingBar.test.tsx"
+    "backend/tests/test_treino_desfazer_a_ultima.py",
+    "backend/tests/test_treino_previa_e_refazer_receitas.py",
+    "frontend/src/features/training/CorrigirEtapa.test.tsx",
+    "frontend/src/features/training/TrainingReview.test.tsx"
    ],
-   "nota": "O item segue parcial como antes. Achados A ('O que você fez (1 entradas)' e '1 entrada(s)') e B ('Ao salvar: receita será gravada ao salvar') viram o 29.146. | o ramo cobre só uma parte do item (partial, como a orquestradora classificou na 38); a frente diz se fecha",
-   "grupo": "orquestradora-percurso-deploy-39",
-   "modelo": "claude-opus-5-5",
+   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-43",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T18:19:13+00:00"
+   "quando": "2026-10-06T00:44:32+00:00"
   },
   "31.89": {
    "id": "31.89",
@@ -9387,19 +9395,21 @@
    "id": "31.87",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "#437, ponta 6f0427b7, só o F1. Simulado: backend/tests/test_prevoo_dado_da_persona.py::*, frontend/src/features/runs/RunView.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
+   "evidence": "F2 da identidade, ponta 9d2e2b5d (feat/31-87-f2-gender-e-locale). Simulado: backend/tests/test_perfil_variaveis_da_persona.py::*, backend/tests/test_ensino_v2.py::*, frontend/src/app.integration.test.tsx::*, frontend/src/features/personas/DetalheRico.test.tsx::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
    "blocker": null,
    "arquivos": [
-    "backend/tests/test_prevoo_dado_da_persona.py",
-    "frontend/src/features/runs/RunView.test.tsx"
+    "backend/tests/test_perfil_variaveis_da_persona.py",
+    "backend/tests/test_ensino_v2.py",
+    "frontend/src/app.integration.test.tsx",
+    "frontend/src/features/personas/DetalheRico.test.tsx"
    ],
-   "nota": "o ramo cobre só uma parte do item (partial, como a orquestradora classificou na 38); a frente diz se fecha",
-   "grupo": "android-suite-39",
-   "modelo": "claude-opus-5-5",
+   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-43",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T18:09:30+00:00"
+   "quando": "2026-10-06T00:44:32+00:00"
   },
   "31.100": {
    "id": "31.100",
@@ -9549,19 +9559,20 @@
    "id": "31.91",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "NOT_RUN no caminho real das respostas: As respostas às perguntas da proposta não foram percorridas (not_run): a única proposta real pedida no percurso veio sem perguntas. Essa proposta foi pedida em 05/10/2026 às 18:12:19Z, WIN-7S2UASNLFOP, commit 9f9e2b39, gravação trn-osso9bYL3nq4N4ZJ, como uma chamada real (ai_calls id 4845, role plan, origem ensino, claude-sonnet-5-5, anthropic, 301 tokens de entrada, 2506 de escrita de cache e 300 de saída, 5380 ms). Custo lido pela regra de planning/costs (row_usd com ai.prices): US$ 0,009867. 'Pedir proposta à IA' é primário antes da proposta; geração de habilidade não percorrida. | Antes (suíte 39, simulado): F2 de backend 78c70431 e painel 8c008afb; na junção da 39 o teste de guarda passa o lease no descarte (31.92). Simulado: backend/tests/test_treino_proposta_com_respostas.py::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
+   "evidence": "F1, ponta 5e5668a0. Simulado: backend/tests/test_ensino_v2.py::*, frontend/src/features/training/CorrigirEtapa.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
    "blocker": null,
    "arquivos": [
-    "backend/tests/test_treino_proposta_com_respostas.py",
-    "frontend/src/features/training/TrainingBar.test.tsx"
+    "backend/tests/test_ensino_v2.py",
+    "frontend/src/features/training/CorrigirEtapa.test.tsx",
+    "frontend/src/features/training/TrainingReview.test.tsx"
    ],
-   "nota": "Gasto pago do percurso: US$ 0,009867 (uma chamada). | o ramo cobre só uma parte do item (partial, como a orquestradora classificou na 38); a frente diz se fecha",
-   "grupo": "orquestradora-percurso-deploy-39",
-   "modelo": "claude-opus-5-5",
+   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-43",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T18:19:13+00:00"
+   "quando": "2026-10-06T00:44:32+00:00"
   },
   "31.97": {
    "id": "31.97",
@@ -9759,20 +9770,21 @@
   "30.81": {
    "id": "30.81",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Painel, ponta 5b14572a. Simulado: frontend/src/features/aprendizado/AprendizadoPage.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 42 sobre a integração cb6742d4 (origin/main 095a43b6 + 12 pontas; conflitos só de texto juntados, mais 2 de código resolvidos pelas frentes, 28.54 e 29.135; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed (4 subtests); backend SQLite -n 6 12020 passed, 13 skipped, 0 falhas (sobre 545cd03f, antes do 28.54); frontend typecheck limpo, 1698 passed (131 arquivos), build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto; PG dirigido 404 arquivos em 2 partes: 5367 passed, 7 skipped e 3914 passed, 1 skipped, 0 falhas (fim 23:14:17Z); repetição em SQLite dos 308 arquivos afetados pelo 28.54: 7839 passed, 1 skipped, 0 falhas (763 s, fim 23:27:23Z).",
+   "proof": "real",
+   "evidence": "05/10/2026 ~23:40Z, cb6742d4, android-04 (sessão sem persona). Salvei a proposta pronta trn-osso9bYL3nq4N4ZJ como fluxo f-21f399425646 (ref público f-…, 30.83): o resultado diz \"Fluxo f-21f399425646 salvo [em prova]. Até a prova, o comando não vale em aparelho nenhum (a gravação não tinha persona)\" com a explicação; Configuração > Fluxos e receitas mostra o selo \"em prova\" no fluxo; no Painel, o comando \"volte da conversa QA-001…\" mostra o selo \"em prova\" ao lado da estimativa (não executei). GET /api/flows/cobertura traz ensinado_em_prova {persona: null, sessao: trn-osso9bYL3nq4N4ZJ}; GET /api/aprendizado/fluxo/f-21f399425646 traz origem treino (training:trn-osso9bYL3nq4N4ZJ) e espera_a_pessoa null.",
    "blocker": null,
    "arquivos": [
-    "frontend/src/features/aprendizado/AprendizadoPage.test.tsx",
-    "frontend/src/features/training/TrainingReview.test.tsx"
+    "frontend/src/components/SeloEmProva.tsx",
+    "frontend/src/lib/emProva.ts",
+    "frontend/src/features/training/TrainingReview.tsx"
    ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-42",
+   "nota": "ACHADO: no Livro (Aprendizado > Aprendido) o mesmo fluxo aparece como \"Publicado\" e sem selo nem nota de prova: o ensinado_em_prova só vai no salvar, no /recipes e na cobertura, não na entrada do Livro (espera_a_pessoa é null até uma prova pedir a pessoa). Falta um campo na entrada do Livro (backend) para o painel mostrar o selo ali. As receitas promovidas junto com o fluxo não foram exercitadas (a sessão de teste não tinha persona).",
+   "grupo": "portal-percurso-deploy-42",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T23:36:03+00:00"
+   "quando": "2026-10-05T23:48:37+00:00"
   },
   "28.50": {
    "id": "28.50",
@@ -9813,21 +9825,20 @@
   "29.146": {
    "id": "29.146",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Ponta 2cf2979e (com o 29.142). Simulado: backend/tests/test_rede_por_aparelho.py::*, frontend/src/features/training/TrainingBar.test.tsx::*, frontend/src/features/rede/RedePage.test.tsx::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "proof": "real",
+   "evidence": "05/10/2026 ~23:41Z a ~23:44Z, cb6742d4: a barra do treino diz \"1 entrada\" e \"2 entradas\" e a revisão \"O que você fez (1 entrada)\" e \"(2 entradas)\"; a prévia diz só \"Ao salvar: a receita desta etapa é gravada\", sem a frase redundante.",
    "blocker": null,
    "arquivos": [
-    "backend/tests/test_rede_por_aparelho.py",
-    "frontend/src/features/training/TrainingBar.test.tsx",
-    "frontend/src/features/rede/RedePage.test.tsx"
+    "frontend/src/features/training/TrainingBar.tsx",
+    "frontend/src/features/training/TrainingReview.tsx"
    ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-41",
+   "nota": null,
+   "grupo": "portal-percurso-deploy-42",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T22:07:09+00:00"
+   "quando": "2026-10-05T23:48:37+00:00"
   },
   "29.143": {
    "id": "29.143",
@@ -10016,18 +10027,18 @@
    "id": "28.54",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "Ponta 052757d2 (junção da Canais com a main). Simulado: backend/tests/test_canais_respostas_as_perguntas.py::*. Suíte 42 sobre a integração cb6742d4 (origin/main 095a43b6 + 12 pontas; conflitos só de texto juntados, mais 2 de código resolvidos pelas frentes, 28.54 e 29.135; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed (4 subtests); backend SQLite -n 6 12020 passed, 13 skipped, 0 falhas (sobre 545cd03f, antes do 28.54); frontend typecheck limpo, 1698 passed (131 arquivos), build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto; PG dirigido 404 arquivos em 2 partes: 5367 passed, 7 skipped e 3914 passed, 1 skipped, 0 falhas (fim 23:14:17Z); repetição em SQLite dos 308 arquivos afetados pelo 28.54: 7839 passed, 1 skipped, 0 falhas (763 s, fim 23:27:23Z).",
+   "evidence": "Ponta 7e5fb245 (o teste do 28.54 da Canais). Simulado: backend/tests/test_canais_respostas_as_perguntas.py::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
    "blocker": null,
    "arquivos": [
     "backend/tests/test_canais_respostas_as_perguntas.py"
    ],
    "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-42",
+   "grupo": "android-suite-43",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T23:36:03+00:00"
+   "quando": "2026-10-06T00:44:32+00:00"
   },
   "29.147": {
    "id": "29.147",
@@ -10049,36 +10060,37 @@
   "29.148": {
    "id": "29.148",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Ponta 980200e0. Simulado: frontend/src/test/harness.test.ts::*. Suíte 42 sobre a integração cb6742d4 (origin/main 095a43b6 + 12 pontas; conflitos só de texto juntados, mais 2 de código resolvidos pelas frentes, 28.54 e 29.135; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed (4 subtests); backend SQLite -n 6 12020 passed, 13 skipped, 0 falhas (sobre 545cd03f, antes do 28.54); frontend typecheck limpo, 1698 passed (131 arquivos), build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto; PG dirigido 404 arquivos em 2 partes: 5367 passed, 7 skipped e 3914 passed, 1 skipped, 0 falhas (fim 23:14:17Z); repetição em SQLite dos 308 arquivos afetados pelo 28.54: 7839 passed, 1 skipped, 0 falhas (763 s, fim 23:27:23Z).",
+   "proof": "real",
+   "evidence": "05/10/2026 ~23:46Z, cb6742d4: Execuções carrega as 20 execuções, filtros e o detalhe de uma execução (r-20261005222326-913d4b: plano, progresso, eventos, relatório, validações); só 1 erro 404 no console: o quadro do android-04 (frame?mode=full) enquanto o aparelho estava parado/ligando, esperado.",
    "blocker": null,
    "arquivos": [
-    "frontend/src/test/harness.test.ts"
+    "frontend/src/test/harness.ts"
    ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-42",
+   "nota": "Só teste; a tela de execuções não quebrou.",
+   "grupo": "portal-percurso-deploy-42",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T23:36:03+00:00"
+   "quando": "2026-10-05T23:48:37+00:00"
   },
   "29.150": {
    "id": "29.150",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Ponta c48e09b3. Simulado: frontend/src/test/deslocamento.test.ts::*. Suíte 42 sobre a integração cb6742d4 (origin/main 095a43b6 + 12 pontas; conflitos só de texto juntados, mais 2 de código resolvidos pelas frentes, 28.54 e 29.135; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed (4 subtests); backend SQLite -n 6 12020 passed, 13 skipped, 0 falhas (sobre 545cd03f, antes do 28.54); frontend typecheck limpo, 1698 passed (131 arquivos), build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto; PG dirigido 404 arquivos em 2 partes: 5367 passed, 7 skipped e 3914 passed, 1 skipped, 0 falhas (fim 23:14:17Z); repetição em SQLite dos 308 arquivos afetados pelo 28.54: 7839 passed, 1 skipped, 0 falhas (763 s, fim 23:27:23Z).",
+   "proof": "real",
+   "evidence": "Mesma conferência do 29.148: a tela de execuções (datas relativas: \"há 1 h\", \"há 6 h\") renderiza sem erro no deploy 42.",
    "blocker": null,
    "arquivos": [
-    "frontend/src/test/deslocamento.test.ts"
+    "frontend/src/test/relogioDeslocado.ts",
+    "frontend/vite.config.ts"
    ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-42",
+   "nota": "Só teste e configuração do vitest.",
+   "grupo": "portal-percurso-deploy-42",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T23:36:03+00:00"
+   "quando": "2026-10-05T23:48:37+00:00"
   },
   "29.136": {
    "id": "29.136",
@@ -10168,6 +10180,58 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-05T23:36:03+00:00"
+  },
+  "29.142": {
+   "id": "29.142",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "05/10/2026 ~23:44Z, cb6742d4: o item da lista Para revisar diz \"só gravada\" (a sessão sem proposta) em vez de cortar a palavra; Configuração > Limites mostra só \"Nenhuma alteração pendente.\" (sem a frase dupla).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/training/TrainingBar.tsx",
+    "frontend/src/features/settings/LimitsSection.tsx"
+   ],
+   "nota": "A coluna Conta real da Rede não foi percorrida.",
+   "grupo": "portal-percurso-deploy-42",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T23:48:37+00:00"
+  },
+  "31.108": {
+   "id": "31.108",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta ca16b4f1 (sem teste novo próprio; revalidação de UX, texto). Simulado: . Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
+   "blocker": null,
+   "arquivos": [],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-43",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T00:44:32+00:00"
+  },
+  "31.88": {
+   "id": "31.88",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "F2: ponta 63a00368 (backend) e painel na a03278e1. Simulado: backend/tests/test_treino_dado_da_persona.py::*, backend/tests/test_treino_escopo_ao_provar.py::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_dado_da_persona.py",
+    "backend/tests/test_treino_escopo_ao_provar.py",
+    "frontend/src/features/training/TrainingReview.test.tsx"
+   ],
+   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-43",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T00:44:32+00:00"
   }
  },
  "rodadas": [
@@ -13020,6 +13084,35 @@
    ],
    "grupos": [
     "redacao-evidencia-antiga"
+   ]
+  },
+  {
+   "quando": "2026-10-05T23:48:37+00:00",
+   "itens": [
+    "31.86",
+    "30.81",
+    "29.148",
+    "29.150",
+    "29.146",
+    "29.142"
+   ],
+   "grupos": [
+    "portal-percurso-deploy-42"
+   ]
+  },
+  {
+   "quando": "2026-10-06T00:44:32+00:00",
+   "itens": [
+    "28.54",
+    "31.91",
+    "31.108",
+    "31.87",
+    "31.88",
+    "31.90",
+    "29.104"
+   ],
+   "grupos": [
+    "android-suite-43"
    ]
   }
  ]
