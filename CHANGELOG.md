@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 28.63 (Canais): um cartão por achado de revisão automática (branch canais/28-63-achados)
+
+- `.claude/trello/achados.py` e `test_achados.py`: cria um cartão em Próximas por achado do coletor 29.170 (`--json`), idempotente pela
+  chave `PR:arquivo:linha:revisor` na descrição, fecha (vai a Concluído) quando o PR sai de `open`, baixa prioridade no fim da lista, frase
+  mascarada de novo por `redacao.redigir`, link só do github.com, sem trecho de código nem handle; o resumo geral da revisão não vira cartão.
+- Prova `simulated`: `.claude/trello/test_achados.py` (9 testes) mais `test_reconciliar.py` (42 passed no conjunto). Prova `real` (06/10, central, commit
+  945f5043 + coletor da Frente GitHub 3a298541): 117 achados lidos, 82 com arquivo, 7 em PR aberto, 7 cartões criados; a segunda execução leu 7 cartões
+  existentes e fez 0 ações. `not_run`: o fechamento por PR mesclado em dado real (o PR 487 ainda está aberto) e o coletor ainda não está na `main`.
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.
