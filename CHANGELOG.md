@@ -39,6 +39,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - `.github/ISSUE_TEMPLATE/achado.yml`: a lista de gravidade passa a abrir em `nota`, e `a corrigir` e `bloqueante` ficam depois. Antes o primeiro item era `bloqueante`, então um achado preenchido com pressa nascia como o mais grave. A escolha continua obrigatória. Prova `real`: a issue 467 (formulário de teste de 06/10) abriu em `bloqueante`; a nova ordem só vale depois da mescla. Prova `simulated`: `yaml.safe_load` do modelo e `docs-check` limpo.
 
+## 2026-10-06 — 29.157 (1ª fatia): o contêiner só dispara em push da main (branch ci/29-155-c12-conteiner)
+
+- `.github/workflows/conteiner.yml`: o gatilho `push` ganha `branches: [main]` e `tags-ignore`; o cron de segunda e o disparo manual ficam. Antes valia para qualquer branch que tocasse a imagem: segundo a leitura da Frente DevOps em 06/10 (sem ids de run anotados), 7 das 8 últimas corridas eram de branches de frente, gastando a cota hospedada do repositório privado. Prova `simulated`: `yaml.safe_load` do gatilho e `docs-check`. Prova `real`: `not_run` até o próximo push de branch que toque a imagem terminar SEM corrida do Contêiner (e o próximo push na main com corrida).
+
 ## 2026-10-06 — 29.155 (C10): leitura diária do GitHub (branch ci/29-155-c10-rotina)
 
 - `scripts/github_rotina.py`: uma linha com cron da noite, runner `central`, runs ruins, issues `ci`/`agente`, PRs do agente e créditos do Copilot estimados. Só lê: nenhuma escrita no GitHub, nada no runner. Prova `real`: 06/10/2026 12:46Z, máquina central, base 8baec2a8, execução de leitura contra o repositório (a estimativa deu ~708 créditos e a página marcava 709, mas não é prova independente: os fatores 146 e 31 foram calibrados nessa mesma página). Prova `simulated`: `scripts/tests/test_github_rotina.py` (13 testes, `gh` falso e relógio fixo), incluído na linha do job `docs`.

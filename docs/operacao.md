@@ -141,8 +141,9 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
 - **Testes que dependiam do host:** `test_pausa_de_reparo` compara a saúde antes e depois da pausa, não um valor
   absoluto (hermético). `test_backup::test_copia_a_frio_...` NÃO ficou hermético: roda só no Windows (a lib de cópia
   de AVD é do Windows) e pula no Linux.
-- **"Nada dispara em push" não é literal:** o `conteiner.yml` ainda roda em push de qualquer ramo que toque
-  `deploy/**`, `.dockerignore`, `backend/requirements.txt`, `backend/app/main.py` ou `frontend/package*.json`. Ele é
+- **"Nada dispara em push" não é literal:** o `conteiner.yml` roda em push da `main` (só dela, e tag não dispara; 29.157) que toque
+  `deploy/**`, `.dockerignore`, `backend/requirements.txt`, `backend/app/main.py` ou `frontend/package*.json`, no disparo manual e no cron
+  de segunda. Push de branch de frente não dispara mais (segundo a leitura da Frente DevOps em 06/10, 7 das 8 últimas corridas eram de branches e gastavam a cota hospedada). Ele é
   hospedado e não ocupa o central.
 - **Aviso quando o cron falha (29.155, C2):** `.github/workflows/ci-aviso-de-falha.yml`, em runner hospedado, abre UMA issue por
   noite quando o `schedule` do CI termina em `failure`, `cancelled`, `timed_out` ou `startup_failure`. Título "CI noturno

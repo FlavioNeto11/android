@@ -12,6 +12,11 @@ name: Contêiner
 
 on:
   push:
+    # Só a main (29.157): antes valia para QUALQUER branch, e 7 das 8 últimas corridas eram de branches de frente,
+    # gastando a cota hospedada de um repositório privado. Tag não dispara (não há release). O que a branch muda na
+    # imagem é conferido quando ela chega à main, no disparo manual ou no cron de segunda.
+    branches: [main]
+    tags-ignore: ["**"]
     paths:
       - "deploy/**"
       - ".dockerignore"
