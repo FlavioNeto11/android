@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F4, corte 2: as 11 rotas do modo treinamento saem de `api.py` (branch feat/15-15-f4b-router-treino, sobre o corte 1)
+
+- `POST /api/instances/{id}/training`, `POST /api/training/from-run`, `GET /api/training`, `GET /api/training/{id}` e `POST /api/training/{id}/stop|propose|save|preview|recipes|discard|undo` passam de `backend/app/api.py` para `backend/app/modules/learning/presentation/treino.py`, montado em `main.py` logo depois do router dos fluxos. São 11 rotas (o plano dizia 10: faltava o `POST /instances/{id}/training`, que mora no caminho de aparelhos). `/training/from-run` continua antes de `/training/{session_id}`.
+- Nenhum caminho, método, corpo ou resposta muda: o conjunto método+caminho do OpenAPI é idêntico (270 operações) e só o título automático do schema de 6 respostas some (`{}` = o mesmo "qualquer valor"; a catraca de `Any` impede `-> Any`). A ordem das 11 rotas só muda dentro do bloco movido, sem sobreposição com outra rota.
+- Os imports tardios do bloco (`TrainingError`, `AIError`) viram imports de topo do módulo novo, sem ciclo. Catracas baixadas: imports tardios de `app.api` 16→9 e `Any` 138→130.
+- Prova `simulated`: 1111 testes (os 53 arquivos que tocam as rotas de treino ou de aparelhos, contrato HTTP, cobertura de rotas, arquitetura, ordem das rotas, `models_fatiado` e as catracas); mypy 257. `real`: `not_run`. Sem migração e sem adendo.
+
 ## 2026-10-06 — 15.15 F4, corte 1: as 7 rotas de fluxos saem de `api.py` (branch feat/15-15-f4a-router-fluxos)
 
 - `GET /api/flows`, `/flows/cobertura`, `POST /flows/match`, `/flows/similar`, `PUT /flows/{id}`, `/flows/{id}/scope` e `DELETE /flows/{id}`
