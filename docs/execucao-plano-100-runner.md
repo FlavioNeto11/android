@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-660 de 727 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+660 de 737 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -314,6 +314,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.56 | implemented | simulated | claude-sonnet-5-5 | — | Reconciliação do Trello da Canais com a exceção do corte adiado (64bfc633, 31 testes). Simulado: .claude/trello/test_reconciliar.py::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152… | None |
 | 28.57 | pendente | — | — | — |  |  |
 | 28.58 | pendente | — | — | — |  |  |
+| 28.59 | pendente | — | — | — |  |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -476,6 +477,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.165 | pendente | — | — | — |  |  |
 | 29.166 | pendente | — | — | — |  |  |
 | 29.167 | pendente | — | — | — |  |  |
+| 29.168 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -717,6 +719,14 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.151 | pendente | — | — | — |  |  |
 | 31.152 | pendente | — | — | — |  |  |
 | 31.153 | pendente | — | — | — |  |  |
+| 31.154 | pendente | — | — | — |  |  |
+| 31.155 | pendente | — | — | — |  |  |
+| 31.156 | pendente | — | — | — |  |  |
+| 31.157 | pendente | — | — | — |  |  |
+| 31.158 | pendente | — | — | — |  |  |
+| 31.159 | pendente | — | — | — |  |  |
+| 31.160 | pendente | — | — | — |  |  |
+| 31.161 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -734,7 +744,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (67): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.57, 28.58, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.145, 29.152, 29.154, 29.155, 29.156, 29.159, 29.160, 29.161, 29.162, 29.163, 29.164, 29.165, 29.166, 29.167, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 31.142, 31.143, 31.144, 31.145, 31.146, 31.147, 31.148, 31.149, 31.150, 31.151, 31.152, 31.153, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (77): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.57, 28.58, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.145, 29.152, 29.154, 29.155, 29.156, 29.159, 29.160, 29.161, 29.162, 29.163, 29.164, 29.165, 29.166, 29.167, 29.168, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 31.142, 31.143, 31.144, 31.145, 31.146, 31.147, 31.148, 31.149, 31.150, 31.151, 31.152, 31.153, 31.154, 31.155, 31.156, 31.157, 31.158, 31.159, 31.160, 31.161, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
