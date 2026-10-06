@@ -23,8 +23,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
 - **Livro:** cada etapa do fluxo (`conteudo.etapas[].pacotes_aceitos`, opcional) ganha a linha "Também aceita concluir em: <pacote>". **Revisão do treino:** a etapa da proposta mostra a lista da prévia (`TrainingStepReport.pacotes_aceitos`, opcional) quando a IA não pôs uma na etapa; a lista da etapa vale antes, e a linha aparece uma vez só.
-- Campo opcional tipado até o backend chegar; sem o campo, ou com a lista vazia, nenhuma linha (backend anterior fica como está).
-- Só frontend e CHANGELOG. Prova `simulated`: dois casos novos e um ajustado em `TrainingReview.test.tsx` e um em `DetalheRico.test.tsx`; cinco mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy com o 31.140.
+- Adendo v1.89: cada linha de `steps[]` da prévia, do save e do /recipes e `conteudo.etapas[]` do Livro trazem `pacotes_aceitos: string[]` (vazio = só o app da etapa); o painel tipa como **opcional**, mostra a linha só quando não vazio e a repete no resultado do salvar, por etapa; backend anterior fica como está.
+- Só frontend e CHANGELOG. Prova `simulated`: casos novos em `TrainingReview.test.tsx` (prévia, lista vazia, a da proposta antes da prévia, resultado do salvar) e um em `DetalheRico.test.tsx`; seis mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy com o 31.140.
 
 ## 2026-10-06 — 31.128 e 31.129: a conferência que já vale vira aviso na etapa, e os pacotes que a etapa aceita aparecem (branch feat/31-128-pos-condicao-na-etapa)
 

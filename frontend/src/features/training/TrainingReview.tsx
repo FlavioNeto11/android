@@ -666,6 +666,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
               <li key={s.key}>
                 <Badge size="sm" tone={s.recipe ? 'success' : 'neutral'}>{s.recipe ? 'sem IA' : 'com IA'}</Badge> {s.title}
                 <span className={styles.muted}> — {s.reason}</span>
+                <PacotesAceitos pacotes={s.pacotes_aceitos} />
               </li>
             ))}
           </ul>

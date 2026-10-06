@@ -938,7 +938,7 @@ it('31.134: o "Confere" da etapa proposta também troca o marcador da persona po
 it('31.141: a etapa mostra "Também aceita concluir em" com os pacotes da prévia; o que a IA propôs na etapa vale antes', async () => {
   backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, pacotes_aceitos: ['com.google.android.settings.intelligence'] }] }));
   await abrirEProporComPrevia();
-  await waitFor(() => expect(text()).toContain('Também aceita concluir em: com.google.android.settings.intelligence'), { timeout: 4000 });
+  await waitFor(() => expect(text()).toContain('Também aceita concluir em: com.google.android.settings.intelligence'), 4000);
   expect(text().match(/Também aceita concluir em/g)).toHaveLength(1);
 });
 
@@ -946,15 +946,33 @@ it('31.141: com a lista vazia na prévia (ou sem o campo, backend anterior), nen
   backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, pacotes_aceitos: [] }] }));
   await abrirEProporComPrevia();
   await waitFor(() => expect(backend.callsTo('POST', /\/preview$/).length).toBeGreaterThan(0));
-  await waitFor(() => expect(text()).toContain('Ao salvar:'), { timeout: 4000 });
+  await waitFor(() => expect(text()).toContain('Ao salvar:'), 4000);
   expect(text()).not.toContain('Também aceita concluir em');
 });
 
 it('31.141: a lista que a IA pôs na etapa vale antes da prévia, e a linha aparece uma vez só', async () => {
   backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, pacotes_aceitos: ['com.da.previa'] }] }));
   await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, pacotes_aceitos: ['com.da.proposta'] }] });
-  await waitFor(() => expect(text()).toContain('Ao salvar:'), { timeout: 4000 });
+  await waitFor(() => expect(text()).toContain('Ao salvar:'), 4000);
   expect(text()).toContain('Também aceita concluir em: com.da.proposta');
   expect(text()).not.toContain('com.da.previa');
   expect(text().match(/Também aceita concluir em/g)).toHaveLength(1);
+});
+
+it('31.141 (v1.89): o resultado do salvar traz a linha dos pacotes por etapa só quando a lista não é vazia', async () => {
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem',
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada', pacotes_aceitos: ['com.google.android.settings.intelligence'] },
+            { key: 'enviar', title: 'Enviar', recipe: true, reason: 'receita gravada', pacotes_aceitos: [] }],
+  }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  await click(byRole('button', /Pedir proposta à IA/i));
+  await click(await botaoPronto(/Salvar como fluxo/i));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  const itens = Array.from(document.querySelectorAll('ul > li')).filter((li) => /Abrir a conversa|Enviar/.test(li.textContent ?? '') && li.querySelector('span')) as HTMLElement[];
+  const abrir = itens.find((li) => li.textContent?.includes('Abrir a conversa') && li.textContent.includes('receita gravada'))!;
+  const enviar = itens.find((li) => li.textContent?.includes('Enviar') && li.textContent.includes('receita gravada'))!;
+  expect(abrir.textContent).toContain('Também aceita concluir em: com.google.android.settings.intelligence');
+  expect(enviar.textContent).not.toContain('Também aceita concluir em');
 });
