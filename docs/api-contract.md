@@ -7214,7 +7214,7 @@ Eventos novos:
 
 ## Adendo v1.95 (06/10/2026; número da orquestradora; item 31.154, migração 127) — custo por alvo, vínculo principal e parâmetros fixos da operação
 
-Quatro mudanças na operação do adendo v1.94, para a rodada de 07/10. Nada do v1.94 deixa de valer, exceto o `409 ja_encerrada` do liberar na operação encerrada e não cancelada (item 4).
+Cinco mudanças na operação do adendo v1.94, para a rodada de 07/10. Nada do v1.94 deixa de valer, exceto o `409 ja_encerrada` do liberar na operação encerrada e não cancelada (item 4).
 
 **1. Custo por alvo.** `AlvoDaOperacao` ganha `custo_usd`: o gasto da execução do alvo (`planning.costs.spent_usd` pelo
 `run_id`, com a pesquisa externa se ela rodou ali), `null` sem execução. Quando há `resultado`, ele traz o mesmo valor em
@@ -7266,6 +7266,26 @@ nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal`
   operação. Antes, N alvos em paralelo liam o mesmo gasto abaixo do teto e o estouravam juntos. A reserva fica na
   memória do processo (o deploy é um processo só). Antes da primeira resposta não há média, então o estouro possível
   fica em uma chamada por vaga de IA. A mensagem da recusa diz quantas chamadas estavam em voo.
+
+**5. Regra da frota configurável, motivo sem @ e recusa da porta (ADR-081 e o percurso da Portal, 06/10).**
+- `GET/PUT /api/settings` ganham dois limites, lidos ao vivo:
+  - `frota_max_contas_por_alvo` (int, padrão 10, de 1 a 64): quantas contas diferentes da frota podem seguir, mandar
+    mensagem ou comentar para o mesmo alvo dentro de `fleet_target_window_days` (int, padrão 30, de 1 a 365, que já
+    existia). Antes era 1, fixo no código;
+  - `frota_conta_nossa_fora_da_regra` (bool, padrão `true`): o alvo que é conta nossa viva não entra nessa contagem.
+    Pessoa real sempre entra.
+- O `motivo` do alvo da operação sai sem @ de conta: o @ vira "o perfil alvo". Vale para o GET, o evento
+  `operacao.alvo`, a contagem por motivo e o relatório.
+- A ação final recusada por uma porta antes de rodar (objetivo com `blocked_kind=policy`: regra da frota, conduta, teto)
+  passa ao estágio `acao_bloqueada`, com o estado `bloqueado`, `parou_em: acao_bloqueada` e o motivo. Antes, o alvo
+  ficava no último estágio de navegação com `parou_em: acao_preparada`. O pedido de aprovação que espera o liberar NÃO
+  é recusa: continua em `acao_preparada`.
+- A hora de `resposta_gerada` e de `acao_preparada` da etapa que espera o liberar é a do pedido de aprovação. Antes era
+  a do início do objetivo.
+- O plano da operação não fixa o nome que o plano JÁ usa com outro valor. A execução registra uma decisão com o
+  motivo, e o nome fica o do planejador.
+- O teto `max_usd` também reserva o POST do Jev (`conferir_gasto(reservar=True)`, segurado até a linha de custo). A
+  média da reserva conta só as chamadas cobradas.
 
 Migração `127_operacoes_parametros` (`operacoes.parametros`, só `ADD COLUMN`). Código: `backend/app/taskqueue/plano_da_operacao.py`,
 `RunService._plano_da_operacao`, `backend/app/modules/operacoes/`. Testes: `backend/tests/test_plano_da_operacao.py`,
