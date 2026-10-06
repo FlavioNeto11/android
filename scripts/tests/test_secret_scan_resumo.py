@@ -145,5 +145,17 @@ class Execucao(unittest.TestCase):
         self.assertNotIn("não é json", out.getvalue() + err.getvalue())
 
 
+class Ignorados(unittest.TestCase):
+    """`.gitleaksignore` guarda só impressões digitais (commit completo:arquivo:regra:linha), nunca valor."""
+
+    def test_so_impressoes_digitais_bem_formadas(self) -> None:
+        import re
+        linhas = [x for x in (ROOT / ".gitleaksignore").read_text(encoding="utf-8").splitlines() if x.strip() and not x.startswith("#")]
+        self.assertGreater(len(linhas), 0)
+        for x in linhas:
+            self.assertRegex(x, r"^[0-9a-f]{40}:[\w./-]{1,160}:[\w.-]{1,60}:\d{1,7}$", "impressão digital malformada (valor colado?)")
+        self.assertEqual(len(linhas), len(set(linhas)))
+
+
 if __name__ == "__main__":
     unittest.main()

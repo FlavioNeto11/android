@@ -10,3 +10,16 @@ description = "arquivos de trava de dependência: hashes de integridade parecem 
 paths = [
   '''(^|/)package-lock\.json$''',
 ]
+
+[[allowlists]]
+description = "cabeçalho Sec-WebSocket-Key de exemplo (nonce da RFC 6455, base64 de 16 bytes): é público e não é credencial"
+regexTarget = "line"
+regexes = [
+  '''(?i)sec-websocket-key''',
+]
+
+[[allowlists]]
+description = "manifesto da extensão do coletor de saldos: o campo key é a chave PÚBLICA da extensão (DER em base64, começa por MII), não um segredo"
+paths = [
+  '''^tools/coletor-de-saldos/manifest\.json$''',
+]

@@ -1,0 +1,35 @@
+# gitleaks (29.158): achados JÁ CLASSIFICADOS como não-segredo, por impressão digital (commit:arquivo:regra:linha). A impressão digital NÃO traz o valor.
+# Só entra aqui o que a coordenação confirmou. Achado novo nunca entra por este arquivo sem a mesma conferência (06/10/2026, issue 472).
+
+# Texto de teste em backend/tests, scripts/tests: valor legível e de baixa entropia (<= 3,8 bits por caractere, curto), medido sem exibir o valor
+2f2001135d461eb60c557d7a1ad96f019bd36e85:backend/tests/test_canais_estado.py:generic-api-key:26
+894c7a8e9992e6ab20e52b73303a197d242b4884:backend/tests/test_context_retrieval_privacy_gates.py:generic-api-key:549
+4ddba1ada3833b9f626ead39cb12c8625d4e0c54:backend/tests/test_conversao_de_fluxo.py:generic-api-key:99
+e784619a72d1c833ee162e35d4c4cb1369d47802:backend/tests/test_decisoes_desfazer.py:generic-api-key:26
+dd85044acffa182c6366a5d038126b4025109f06:backend/tests/test_distribuicao_pelo_comando.py:generic-api-key:103
+abe0aa2417f388d79891754b8b134cb9b42e6885:backend/tests/test_distribute.py:generic-api-key:168
+abe0aa2417f388d79891754b8b134cb9b42e6885:backend/tests/test_distribute.py:generic-api-key:188
+f05588d2c776a4f341a0c37484497e02a45e3bd0:backend/tests/test_perfil_de_ia.py:generic-api-key:225
+f05588d2c776a4f341a0c37484497e02a45e3bd0:backend/tests/test_perfil_de_ia.py:generic-api-key:230
+5e206c2e2f93ee1cc2fcc7ad8fa1cca0a4954432:backend/tests/test_registro_de_apps.py:generic-api-key:169
+5e206c2e2f93ee1cc2fcc7ad8fa1cca0a4954432:backend/tests/test_registro_de_apps.py:generic-api-key:176
+5e206c2e2f93ee1cc2fcc7ad8fa1cca0a4954432:backend/tests/test_registro_de_apps.py:generic-api-key:255
+cb48e0754833218a03b60164200151794af4fb48:backend/tests/test_social_profiles.py:generic-api-key:66
+9edf3b74db6a7329c517661e2eece418dd2f1bbb:backend/tests/test_social_profiles.py:generic-api-key:83
+15aa478d6b83efec6831215afd76fffe74294444:backend/tests/test_social_profiles.py:generic-api-key:87
+040227b828a72060672d5b1cfa6d6bdd5dc7ed10:backend/tests/test_treino_partida_f2_e_sequencia.py:generic-api-key:223
+44e5cdf2b4e046d3701c9d58e5cac2aec54b5f41:scripts/tests/test_ci_issue_falha.py:generic-api-key:111
+
+# Exemplo do próprio redator de segredos (backend/app/security/redaction.py): padrão de URL com credencial de mentira, usado para provar a redação
+cdcb5eba2c5bab179cc22e2e5933fca6b9d1c3bc:backend/app/security/redaction.py:curl-auth-user:172
+
+# Fixtures de teste de redação e de classificação, conferidas pela coordenação em 06/10/2026 (valores vistos mascarados, nunca copiados aqui):
+# test_comando_remoto_central.py: caminho de pasta com "token=...segredo" de propósito (teste de redação do comando remoto);
+# test_log_do_emulador.py: os 4 textos "vazado" que o teste exige que o redator apague;
+# test_valor_entre_etapas.py (linha 54 e o jwt da 107): casos marcados "token ou segredo" do classificador;
+# experiments/jev/tests/test_provider.py: fixture histórica, o arquivo não existe mais no HEAD.
+cdcb5eba2c5bab179cc22e2e5933fca6b9d1c3bc:backend/tests/test_comando_remoto_central.py:generic-api-key:311
+1a206e087559179ab877b8540b00f832a3bb4cfc:backend/tests/test_log_do_emulador.py:generic-api-key:42
+21a182f8c90e8a76e3ecc9e9d4ff103140dacd3d:backend/tests/test_valor_entre_etapas.py:generic-api-key:54
+92594e3c0800086be83180bc0ed496d9202935c7:experiments/jev/tests/test_provider.py:generic-api-key:119
+21a182f8c90e8a76e3ecc9e9d4ff103140dacd3d:backend/tests/test_valor_entre_etapas.py:jwt:107
