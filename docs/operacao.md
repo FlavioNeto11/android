@@ -473,6 +473,15 @@ Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06
   CPU no minuto, em % do host, sem linha de comando) e `avisos_pressao` (`android-05:3;android-01:1`, lidos do banco em
   `mode=ro`; vazio = nenhum ou não medido). É a entrada do 29.165 e da janela da prova. Na primeira leitura de teste, o topo
   da CPU do host foi `python` (provavelmente os testes do funil) e o antivírus, não a VM do WSL nem os emuladores.
+- **Teto de CPU para o funil** (29.174) — `scripts/com-teto-de-cpu.ps1 -Teto 40 [-NucleosE] -Linha "<comando>"` (ou
+  `-ComandoJson '["exe","arg"]'` para argumentos exatos). Cria um Job Object com teto rígido de CPU (percentual do total de
+  threads do host) e a afinidade opcional dos núcleos E (`-NucleosE`: as threads de menor eficiência, lidas do próprio Windows;
+  `-Afinidade 0x..` fixa uma máscara; `-Simular` só mostra o plano), e roda o comando **criado já dentro do job** (suspenso, entra, retoma):
+  pytest, workers do xdist e netos ficam sob o teto; sem administrador; o job some com o comando e, se o wrapper morrer, a árvore
+  morre junto. `-Linha` passa pelo `cmd.exe /d /c`; um `pwsh -Command` NÃO serve, porque os processos que o PowerShell cria escapam do
+  job. Imprime a CPU usada pela árvore (% do total) e propaga o código de saída. Não toca `.wslconfig`, WSL, túnel nem relógio e não
+  mata processo alheio. Teste: `scripts/tests/test_com_teto_de_cpu.py`. O custo do teto é tempo de funil: compare a duração da
+  suíte sem e com teto antes de adotar.
 
 ## 11. Segurança
 
@@ -784,6 +793,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
 | `amostrador-host.ps1` | S | Amostrador permanente do host (CPU, RAM, disco, VM do WSL, processos que mais usam CPU, avisos de pressão por aparelho), 1 linha/min em `data\observabilidade\host`, retenção 7 dias; `-Instalar` [P] registra a tarefa `farm-amostrador-host` |
+| `com-teto-de-cpu.ps1` | S | Roda um comando sob teto rígido de CPU (Job Object) e, opcional, nos núcleos E; só limita a árvore do próprio comando |
 | `rollback-ensaio.ps1` | S | Ensaio do rollback com migração: backup da última linha de `deploys.jsonl` aberto pelo código do `commit_antes`, em pasta própria (Idle, sem tocar o checkout nem `data\poc.sqlite3`) |
 | `restore-ensaio.ps1` | S | Ensaio semanal sobre a cópia mais nova (pasta própria, Idle, não toca `data\poc.sqlite3`); `-Instalar` [P] registra a tarefa `farm-restore-ensaio` |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central`; grava `data\deploys.jsonl` e, conferida a subida, cria a tag `deploy-AAAAMMDD-HHMM` e o release (29.159; `-SemTag` pula a tag) |
