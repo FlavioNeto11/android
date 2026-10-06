@@ -1,10 +1,18 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `cdee6620` (migração 123, deploy 52); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `6e7b87cf` (migração 123, deploy 53); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 53 no ar (06/10/2026, 15:45Z, central `6e7b87cf`, sem migração; hotfix do 31.137).** 1 ponta (`c580a9db`): `Adb.start_app` com
+  tarefa limpa mandava `--activity-new-task`, que o `am` do Android 34 recusa; toda abertura do Configurações por esse caminho falhava
+  no deploy 52 (ação manual, ponto de partida da prova, LT-6 do executor). Só o Configurações usa a tarefa limpa; Instagram intacto.
+  - `real` (central WIN-7S2UASNLFOP): defeito medido no android-04 (`c-20261006152209-ada35d`, 15:22Z); deploy com backup `20261006-124324`;
+    saúde ok, migração 123; prova de fora; agente `0.1.0+6e7b87c`; A10 ok (agente dos dois workers em `0.1.0+6e7b87c`, pausas do worker retiradas; 9 de 15 online, todos ready: os 6 parados são os 3 da redução do notebook das 15:16Z e os 3 já parados).
+  - `simulated` (funil dirigido, sem suíte inteira, declarado no CHANGELOG): SQLite 1224, PG 1224, mypy 257, docs-check 0/0.
+  - `not_run`: latência real do 31.137 (7 medidas, Jev, logo após). Corte 53 segue: 29.154 fatia 2 (`5cbf0c1e`), 31.142, 31.143,
+    28.57, 29.160, F5c B.
 - **Deploy 52 no ar (06/10/2026, 15:08Z, central `cdee6620`, migrações 122 e 123).** 5 pontas: ensino (31.130, 31.135, 31.138–31.141),
   painel do Livro (31.131–31.134, 31.136, PR 470), arquitetura (15.15 F4i, F5b, F4j, F5c; 31.137), parque (29.154 fatia 1, ADR-079),
   GitHub (29.155 C2–C5, C10, C11; 29.157; 29.158).
