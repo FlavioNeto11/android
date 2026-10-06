@@ -10426,16 +10426,14 @@
   "31.113": {
    "id": "31.113",
    "status": "partial",
-   "proof": "not_run",
-   "evidence": "not_run: F1/F2 não têm tela (marcador no registro da execução), e não rodei nem criei execução para ver o registro; o percurso não tocou nelas.",
-   "blocker": "só se vê numa execução nova de um fluxo ensinado, o que gasta IA e fica no 31.79",
-   "nota": "Nenhum erro novo apareceu no detalhe da execução existente, mas ela é de antes do 31.113 (execuções antigas ficam como estão).",
-   "grupo": "portal-percurso-deploy-46",
-   "modelo": "claude-sonnet-5-5",
-   "esforco": "high",
+   "proof": "simulated",
+   "evidence": "F1 80b22dbc e F2 a133e58a (marcador da persona na linha da etapa, resolver_persona único em run_step) mais a regra 93898149 (motivo da persona sem o dado = falta_informacao). F3 vai ao corte 47; os bindings ficam com o valor na linha até lá. Simulado: backend/tests/test_etapa_com_marcador_da_persona.py::*, backend/tests/test_registro_mascarado_da_persona.py::*, backend/tests/test_prevoo_dado_da_persona.py::*, backend/tests/test_credenciais_da_conta.py::*, backend/tests/test_learning_falhas.py::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z). [Percurso 46 (Portal): not_run, F1/F2 não têm tela. Falta: F3 (bindings com marcador, ponta ae539033, corte 47) e a prova real (uma execução com persona de teste, após o deploy 47).]",
+   "grupo": "orquestrador-correcao-31-113",
+   "modelo": "claude-fable-5-1",
+   "esforco": "medium",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T05:33:02+00:00"
+   "quando": "2026-10-06T05:33:32+00:00"
   },
   "29.153": {
    "id": "29.153",
@@ -13552,6 +13550,15 @@
    ],
    "grupos": [
     "portal-percurso-deploy-46"
+   ]
+  },
+  {
+   "quando": "2026-10-06T05:33:32+00:00",
+   "itens": [
+    "31.113"
+   ],
+   "grupos": [
+    "orquestrador-correcao-31-113"
    ]
   }
  ]
