@@ -5661,14 +5661,19 @@ em 4 aparelhos. Passar de 4 para 30 contas sem um aparelho por conta exige tirar
    conta" (`observe_only`). A ordem:
    - a conta esperada pode entrar? Conferido sem tocar no aparelho: senha guardada com consentimento (ADR-040), teto
      diário, conta parada ou login em revisão, canal sensível. Recusado aqui, a conta aberta continua logada;
-   - os toques de saída, com um candidato só em cada um. Tela de verificação: nada é tocado;
-   - a tela tem de ser a de login, e só então o `_login` de sempre digita a senha da conta esperada, do cofre, pelo
-     canal sensível.
+   - a conta aberta pode sair? Só se for uma conta nossa deste app, ativa, com senha guardada e consentimento (a
+     automação consegue trazê-la de volta), e o aparelho não estiver em quarentena (ADR-055). Uma conta que alguém
+     abriu à mão não é deslogada;
+   - os toques de saída, com um candidato só em cada um. Tela de verificação no meio é o desafio de sempre
+     (`_challenge`: nada é tocado, quarentena e conta travada pela regra do ADR-055), atribuído à conta esperada como
+     no caminho da leitura da conta;
+   - a tela tem de ser a de login (espera até o prazo de verificação do app), e só então o `_login` de sempre digita a
+     senha da conta esperada, do cofre, pelo canal sensível.
 
    Qualquer desvio vira `wrong_account` com o motivo. É caso de pessoa e não entra em laço: a porta de sessão e
    `_needs_person` não reentram.
-3. **Depois de um toque de saída, toda sessão daquele app naquele aparelho vira `unknown`**
-   (`invalidate_sessions_of_instance` pelo pacote), não só a da conta que saiu.
+3. **Depois de um toque de saída, as sessões `session_ready` e `auth_required` daquele app naquele aparelho viram
+   `unknown`**, não só a da conta que saiu. Desafio e conta errada ficam como estão: são o que a pessoa precisa ver.
 4. **D2-a relaxa só no app que declara a troca.** `AppDefinition.account_switch` é derivado do `sessao.yaml` na
    descoberta, e `quem_ja_serve` não vê conflito nesse app. O índice único `ux_binding_conta_do_app_no_aparelho` (051)
    continua no banco, então o vínculo POR APP de duas personas do mesmo app ainda é recusado ali. Trocá-lo pede
@@ -5688,12 +5693,32 @@ em 4 aparelhos. Passar de 4 para 30 contas sem um aparelho por conta exige tirar
   para depois da prova.
 - **Login repetido numa conta real pode chamar verificação da plataforma.** A verificação para tudo (ADR-055) e a
   pessoa assume.
+- **Depois do primeiro toque de saída não há volta automática.** Se o `_login` da esperada falhar (formulário não
+  identificado, usuário que não ficou, senha recusada, canal que caiu entre o pré-cheque e o uso), o aparelho fica na
+  tela de login, sem conta, e a sessão que saiu fica `unknown`. Nenhuma senha vai a tela errada; a pessoa assume.
+- **`wrong_account` gravado antes** (pelo executor durante uma execução, ou antes de o app declarar a troca) não se
+  cura sozinho: a pessoa usa "Conectar", que troca.
+- **Ligar é editar o YAML.** Não há chave por instalação: declarar `troca` num app com conta real liga a troca no tick
+  seguinte do agendador. A catraca `test_nenhum_app_do_parque_declara_a_troca` (em `tests/catracas.txt`) trava isso, e
+  mudá-la é a autorização registrada.
 - **App que lembra contas pode abrir a tela de login com a conta anterior.** O `_login` só digita a senha com o usuário
   preenchido e conferido (formulário de uma tela) ou numa tela que mostra este identificador (login em etapas), como
   sempre.
 
+**O Instagram ainda não cabe no passo declarado.** Os dois caminhos de saída dele pedem algo que o passo (um toque por
+sinal de rótulo) não faz:
+
+- Configurações → "Sair": o botão fica no fim da lista, e o passo não rola;
+- o seletor de contas (`account_switcher`, já reconhecido no `telas.yaml`): abre tocando o @ no cabeçalho do perfil,
+  um rótulo dinâmico que o sinal não acha. Exige passo por id.
+
+O seletor é o caminho nativo e **não desloga** a conta anterior. Depois do primeiro "Adicionar conta", voltar seria um
+toque no @ dentro do seletor, sem senha, o que zera o custo de login apontado acima. Os sinais e ids de qualquer dos
+dois têm de ser lidos na hierarquia de um aparelho com conta de teste. Sem essa leitura, um YAML seria palpite.
+
 **Falta para usar em conta real (depois da prova):**
 
+- o passo por id (e, para o seletor, "tocar a conta esperada se ela já estiver no seletor");
 - declarar `troca` no `sessao.yaml` do app, com os sinais lidos num aparelho de conta de teste;
 - a migração do índice 051;
 - a preferência no despacho;
