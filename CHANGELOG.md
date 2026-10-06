@@ -19,6 +19,11 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.144 (Portal): os filtros do Livro viajam no endereço (branch feat/31-144-filtros-no-endereco)
+
+- Tipo, Estado, Origem, Prova e a visão Produto/QA/Todos passam a ser `tipo`, `estado`, `origem`, `prova` e `visao` na query de `#/aprendizado`; recarregar ou mandar o link mantém o filtro, valor desconhecido é ignorado e um link que troca de app larga o `visao` (RA-19).
+- Prova `simulated`: `FiltrosNoEndereco.test.tsx` (6 casos) e `AprendizadoPage.test.tsx` (22), 233 testes de `src/features/aprendizado`, 4 mutações mortas; `real` `not_run` até o deploy.
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
