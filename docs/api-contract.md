@@ -7176,6 +7176,9 @@ depois de `<intencao>`, com o pedido de relacionar o texto ao assunto só quando
   por `forma` ou `invalida` da mesma origem não conta, e `conflict` conta contra. A reprodução da receita conta, porque é
   o registro do uso nesta operação.
 - Voz e preferência com `scope_profile_id` saem com `escopo: persona` e `persona` = a dona.
+- Campo novo por item, `personas: [profile_id]` (revisão do Codex no PR 482): a lição citada por execuções de duas ou
+  mais personas sai com `persona: null` e o conjunto em `personas`. No filtro `?persona=`, ela aparece só para elas;
+  `persona: null` com `personas: []` continua querendo dizer "da operação inteira".
 - Campo novo `avisos: [{run_id, step_id, aviso}]`: a etapa cujo `conhecimento_ids` não foi gravado. O texto sai, e o
   `draft_meta.fatos_da_operacao.conhecimento_ids` da etapa fica `nao_gravados`.
 

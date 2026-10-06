@@ -48,6 +48,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   3. voz e preferência ignoravam `scope_profile_id`; agora são da persona dona;
   4. a falha ao gravar `conhecimento_ids` ficava só no log; agora fica no `draft_meta` da etapa e em `avisos` do GET,
      sem derrubar o texto.
+  5. (Codex, PR 482) a lição de duas personas virava "da operação inteira" e aparecia para uma terceira; agora guarda o
+     conjunto em `personas` (`::test_licao_de_duas_personas_guarda_o_conjunto_e_nao_vira_da_operacao`).
   
   Prova `simulated`:
   `backend/tests/test_aprendizado_da_operacao.py::test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona`

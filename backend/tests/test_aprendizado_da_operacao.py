@@ -217,6 +217,24 @@ def test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona(banco: Dat
     assert "voz:li-voz" not in _refs(_resposta(banco, persona="p1"), "persona_aprendeu")
 
 
+def test_licao_de_duas_personas_guarda_o_conjunto_e_nao_vira_da_operacao(banco: Database) -> None:
+    """Revisão do Codex no PR 482: a lição citada por execuções de duas personas virava `persona: null` ("da operação
+    inteira") e aparecia no filtro de uma terceira. Agora ela guarda as duas em `personas`."""
+    _mundo(banco)
+    _ins(banco, "learning_items", id="li-3", kind="licao", state="active", scope_app="instagram",
+         scope_capability="OPEN_COMMENTS", content="{}", content_hash="c4", summary="Em OPEN_COMMENTS: espere a folha.",
+         tokens=10, source_kind="recovery", provenance=json.dumps({"execucoes": ["r-a", "r-b"]}), evidence_for=2,
+         evidence_against=0, distinct_runs=2, distinct_devices=2, created_by="sistema", created_at=T0, updated_at=T0,
+         state_at=T0)
+    item = next(i for i in _resposta(banco)["perguntas"][0]["itens"] if i["ref"] == "licao:li-3")  # type: ignore[index]
+    assert item["persona"] is None and item["personas"] == ["p1", "p2"]
+    assert "licao:li-3" in _refs(_resposta(banco, persona="p1"), "plataforma_aprendeu")
+    assert "licao:li-3" in _refs(_resposta(banco, persona="p2"), "plataforma_aprendeu")
+    so_p3 = _resposta(banco, persona="p3")
+    assert "licao:li-3" not in _refs(so_p3, "plataforma_aprendeu")
+    assert "fato:alvo.conteudo" in _refs(so_p3, "conhecimento_geral")     # o da operação inteira continua
+
+
 def test_a_rota_responde_e_diz_404_sem_a_124(banco: Database, tmp_path: Path) -> None:
     from fastapi import FastAPI
     app = FastAPI()
