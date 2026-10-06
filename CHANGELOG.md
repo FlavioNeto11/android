@@ -19,6 +19,51 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.113 F3: os `bindings` guardam o marcador da persona, e a porta resolve o valor de agora (branch feat/31-113-f3-bindings-com-marcador)
+
+- A materialização deixa `{perfil_*}`/`{conta_*_usuario}` também nos argumentos da etapa. A porta, a frota, a
+  repetição e a chave da aprovação os leem por um leitor único (`Repository.bindings_da_etapa`), que usa a persona lida
+  na hora e não grava. A chave é calculada sobre o valor, igual na prévia e na execução. A persona trocada depois do sim
+  muda a chave e a porta pergunta de novo. `argumentos_da_acao`, `tem_variavel` e `VERSAO_DA_CHAVE` não mudam
+  (parecer da Ferramentas). O dado ausente ou vazio deixa o marcador, nunca "", e a chave falha fechado.
+- O pedido de aprovação guarda o marcador: alvo e texto pela máscara reversível (mesma caixa, só com a volta exata),
+  resumo pela máscara do registro. O rascunho da IA e a edição do dono seguem a regra reversível. A tela do painel
+  (`GET /api/approvals`, a resposta da decisão e a prévia) recebe o valor de agora. O canal leva o marcador: a prévia
+  do Telegram (`previa_para_o_canal`, também o `objeto_alvo`), `approval.pending` e as pendências. Achado A1 da
+  Ferramentas.
+- Corrigido na F1: o cache da máscara do registro guardava o valor da persona, e o nome trocado no perfil sairia em
+  claro até o reinício. Agora o valor é lido a cada uso.
+- Ficam com o valor, de propósito: `social_interactions.outgoing_content` (o texto que saiu) e `remember_screen` (a
+  memória da própria persona).
+- Funções tocadas (K-095), novas:
+  - `Repository.bindings_da_etapa`, `perfil_do_objetivo`, `texto_ao_vivo`, `texto_reversivel`, `texto_mascarado`;
+  - `dado_da_persona.resolver_texto`, `resolver_argumentos`;
+  - `mascara_da_persona.na_mesma_caixa`, `no_alvo`;
+  - `porta_do_plano.previa_para_o_canal`, `aprovar_pelo_canal`;
+  - `ApprovalService.na_tela`, `_reversivel`;
+  - `SocialRepository._persona_de_agora`.
+- Funções tocadas (K-095), alteradas:
+  - `Repository._insert_steps`, `_mascara_do_objetivo`, `_trocas_da_acao`;
+  - `AppState._policy_gate`, `_mesmo_pedido_noutras_contas`, `_alvo_da_conversa`, `_draft_gate`, `_approval_gate`,
+    `_sim_do_plano_nao_vale`;
+  - `porta_do_plano._item`, `aprovar_plano`;
+  - `SocialRepository.saidas_da_acao`, `etapas_em_curso_da_acao`, `pedidos_da_acao`;
+  - `ApprovalService.decide`;
+  - rotas `GET /api/approvals`, `POST /api/approvals/decide` e `POST /api/approvals/{id}/decide`;
+  - `StepExecutor.run_step` (a persona com o mesmo fallback da porta).
+- Prova `simulated`: `backend/tests/test_bindings_com_marcador_da_persona.py` (15). Cobre:
+  - o vazio nunca vira "";
+  - a chave da prévia vale na execução;
+  - a persona trocada faz perguntar de novo;
+  - frota com duas personas;
+  - repetição com marcador e com valor antigo;
+  - canal com marcador e painel com valor;
+  - máscara reversível e edição do dono;
+  - cache da F1;
+  - varredura do leitor único.
+
+  `test_etapa_com_marcador_da_persona.py` vira para o marcador na linha. Real: `not_run`.
+
 ## 2026-10-06 — 31.113 F2: a etapa guarda o marcador da persona, e o executor resolve num ponto só (branch feat/31-113-f2-etapa-com-marcador)
 
 - A materialização e a revisão do plano deixam `{perfil_*}`/`{conta_*_usuario}` como marcador no título, no objetivo,

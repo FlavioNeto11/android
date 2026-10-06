@@ -1950,22 +1950,27 @@ async def profile_runs(request: Request, profile_id: str, limit: int = 20) -> An
 @router.get("/approvals")
 async def list_approvals(request: Request, status: str | None = "pending", profile_id: str | None = None,
                          run_id: str | None = None, limit: int = 50) -> Any:
-    """`run_id` junta os textos de uma execução — um por perfil — para serem lidos e decididos de uma vez."""
-    return st(request).approval_service.list(status=status or None, profile_id=profile_id, run_id=run_id,
-                                             limit=min(max(limit, 1), 200))
+    """`run_id` junta os textos de uma execução — um por perfil — para serem lidos e decididos de uma vez. 31.113 F3:
+    o pedido guarda o marcador da persona; a tela recebe o valor de agora (`na_tela`), sem gravar."""
+    servico = st(request).approval_service
+    return [servico.na_tela(a) for a in servico.list(status=status or None, profile_id=profile_id, run_id=run_id,
+                                                     limit=min(max(limit, 1), 200))]
 
 
 @router.post("/approvals/decide")
 async def decide_approvals(request: Request, body: ApprovalBatchBody) -> Any:
     """Decide várias aprovações. Cada uma é independente: uma recusada não impede as demais, e a resposta diz quais."""
-    return st(request).approval_service.decide_many(body.decisions)
+    servico = st(request).approval_service
+    feito = servico.decide_many(body.decisions)
+    return {**feito, "decided": [servico.na_tela(a) for a in feito["decided"]]}
 
 
 @router.post("/approvals/{approval_id}/decide")
 async def decide_approval(request: Request, approval_id: str, body: ApprovalDecision) -> Any:
     """Aprovar, editar ou rejeitar. Nenhum dos três marca a etapa como concluída: eles decidem o que VAI acontecer."""
     try:
-        return st(request).approval_service.decide(approval_id, body.verb, content=body.content, note=body.note)
+        servico = st(request).approval_service
+        return servico.na_tela(servico.decide(approval_id, body.verb, content=body.content, note=body.note))
     except SocialError as exc:
         raise _social_error(exc) from exc
 

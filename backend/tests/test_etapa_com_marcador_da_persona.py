@@ -3,8 +3,8 @@
 A materialização deixa `{perfil_*}`/`{conta_*_usuario}` como marcador no texto que descreve e confere a etapa (título,
 objetivo, pré e pós-condição, guardas). `StepExecutor.run_step` resolve com a persona do objetivo
 (`dado_da_persona.resolver_persona`): o ator, a receita, a conferência da tela (`text_visible`) e o juiz recebem o
-valor; a linha, o `plan_versions` e o evento `step.updated` ficam com o marcador. Os `bindings` saem resolvidos da
-materialização (a porta e a chave da aprovação os leem da linha). O dado que sumiu da persona depois da
+valor; a linha, o `plan_versions` e o evento `step.updated` ficam com o marcador. Desde a F3, os `bindings` também
+guardam o marcador (a porta os resolve pelo leitor único, `Repository.bindings_da_etapa`). O dado que sumiu da persona depois da
 materialização não vai cru ao aparelho: a etapa espera a pessoa com o nome do campo.
 
 Os quatro casos pedidos pela Android (06/10 02:03Z): (i) o ator recebe o valor; (ii) a `text_visible` confere o
@@ -162,16 +162,20 @@ async def test_o_dado_que_sumiu_da_persona_nao_vai_cru_ao_aparelho(harness: Harn
     assert "android-01" not in recebidas                                     # o ator nunca viu o molde
 
 
-async def test_os_bindings_ficam_com_o_valor_na_linha_e_nao_saem(harness: Harness) -> None:
-    """Desvio aceito (06/10 03:08Z): os `bindings` ficam com o VALOR na linha até a F3, porque a porta e a chave da
-    aprovação os leem dali. O que SAI leva o marcador: o detalhe da execução (`GET /runs/{id}`), o relatório, as
-    versões do plano na resposta, o evento `step.updated` e a evidência."""
+async def test_os_bindings_guardam_o_marcador_na_linha_e_o_valor_nao_sai(harness: Any) -> None:
+    """F3 (06/10): os `bindings` guardam o MARCADOR na linha, como o texto da etapa (a F2 os deixava com o valor; a
+    porta e a chave da aprovação os resolvem agora pelo leitor único, `Repository.bindings_da_etapa`). O que SAI leva o
+    marcador: o detalhe da execução (`GET /runs/{id}`), o relatório, as versões do plano na resposta, o evento
+    `step.updated` e a evidência."""
     run_id = await _executar(harness, bindings={"texto": MARCA_POST})
     st = harness.state
     assert st is not None
     linhas = st.db.query("SELECT instance_id, bindings FROM steps WHERE run_id=? AND bindings LIKE ?",
                          (run_id, '%"texto"%'))
-    assert {r["instance_id"]: json.loads(r["bindings"])["texto"] for r in linhas} ==         {iid: exibicao for iid, (_u, exibicao) in PESSOAS.items()}             # na linha: o valor (até a F3)
+    assert {r["instance_id"]: json.loads(r["bindings"])["texto"] for r in linhas} ==         {iid: MARCA_POST for iid in PESSOAS}                                 # na linha: o marcador (F3)
+    for r in linhas:                                                          # a porta lê o valor de cada persona
+        assert st.repo.bindings_da_etapa(st.db.one("SELECT * FROM steps WHERE instance_id=? AND bindings LIKE ?",
+                                                   (r["instance_id"], '%"texto"%')))["texto"] == PESSOAS[r["instance_id"]][1]
     detalhe = st.repo.run_detail(run_id)
     assert detalhe is not None
     saidas = {

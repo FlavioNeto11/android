@@ -38,7 +38,8 @@ from ..social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_MOTIV
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, parse_iso, to_iso, truncate
 from .latencia import TemposDaTentativa, motivo_da_espera
-from .dado_da_persona import DadoDaPersonaAusente, exigir_resolvido, faltas_dos_passos
+from .dado_da_persona import (DadoDaPersonaAusente, exigir_resolvido, faltas_dos_passos, resolver_argumentos,
+                              resolver_texto)
 from .dado_da_persona import nomes_citados as citados_da_persona
 from .recipes import para_hash, step_template_hash
 from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
@@ -198,9 +199,10 @@ class Repository:
         #: binding, no título e no objetivo da etapa, embora a lista do planejador (`service.dados`) já desse o @.
         self._dados = SqlProfileDataStore(db, tem_provedor_de_sessao=lambda pacote: session_provider_of(pacote)
                                           is not None)
-        #: 31.113 F1: o mapa valor → marcador da persona por objetivo (com as variáveis e os parâmetros dele), e o
-        #: objetivo de cada tentativa, etapa e execução. Caches limitados; o dado da persona não muda no meio da execução.
-        self._mascaras: dict[str, tuple[dict[str, str], dict[str, str], dict[str, object]]] = {}
+        #: 31.113 F1: por objetivo, o que não muda (perfil, nomes que o plano cita, parâmetros) e o dado que o ator
+        #: digitou inteiro; e o objetivo de cada tentativa, etapa e execução. Caches limitados. F3: o VALOR da persona
+        #: não entra no cache; ele é lido a cada uso, senão o nome trocado no perfil sairia em claro no registro.
+        self._mascaras: dict[str, tuple[str | None, list[str], dict[str, object], dict[str, str]]] = {}
         self._objetivo_de: dict[str, str] = {}
         self._objetivos_da_execucao: dict[str, list[str]] = {}
         bus.mascara = self.mascara_do_registro
@@ -509,7 +511,9 @@ class Repository:
                     v["account_label"] = contas[s.app_id]          # type: ignore[assignment]
                 else:
                     v.pop("account_label", None)
-            vt = {k: x for k, x in v.items() if k not in (molde or {})}   # o texto guarda o marcador da persona
+            # 31.113 F2/F3: o texto e os argumentos guardam o marcador da persona; o valor entra só em memória (executor e
+            # `bindings_da_etapa`).
+            vt = {k: x for k, x in v.items() if k not in (molde or {})}
             post = s.postcondition.model_copy(update={
                 "value": resolve_templates(s.postcondition.value, vt),
                 "description": resolve_templates(s.postcondition.description, vt)})
@@ -518,7 +522,7 @@ class Repository:
                 "precondition": resolve_templates(s.precondition, vt), "postcondition": post,
                 "commit_guard": [resolve_templates(g, vt) or "" for g in s.commit_guard],
                 "band_guard": [resolve_templates(g, vt) or "" for g in s.band_guard],
-                "bindings": self._com_rotulo_ia({k: resolve_templates(val, v) or "" for k, val in s.bindings.items()})}))
+                "bindings": self._com_rotulo_ia({k: resolve_templates(val, vt) or "" for k, val in s.bindings.items()})}))
         self.db.execute("INSERT INTO plan_versions(objective_id, version, reason, steps, created_at) VALUES (?,?,?,?,?)",
                         (oid, version, reason, dumps([s.model_dump(mode="json") for s in resolved]), now_iso()))
         for seq, s in enumerate(resolved, start=1):
@@ -992,14 +996,15 @@ class Repository:
                             " WHERE o.id=?", (oid,))
             if r is None:
                 return {}, {}, {}
-            variaveis = self._variaveis_da_persona(r["profile_id"]) if r["profile_id"] else {}
             params: dict[str, object] = loads(r["parameters"], {}) or {}
             try:
                 citados = citados_da_persona(Plan.model_validate_json(r["plan"])) if r["plan"] else []
             except ValueError:
                 citados = []
-            _guardar(self._mascaras, oid, (mascara.mapa(variaveis, citados, params), variaveis, params))
-        return self._mascaras[oid]
+            _guardar(self._mascaras, oid, (str(r["profile_id"]) if r["profile_id"] else None, citados, params, {}))
+        perfil, citados, params, digitados = self._mascaras[oid]
+        variaveis = self._variaveis_da_persona(perfil) if perfil else {}
+        return {**digitados, **mascara.mapa(variaveis, citados, params)}, variaveis, params
 
     def _trocas_da_acao(self, attempt_id: str, tool: str, args: dict[str, object]) -> dict[str, str]:
         """O mapa do objetivo, mais o dado da persona que o ator digitou INTEIRO (de qualquer chave): dali em diante o
@@ -1011,12 +1016,54 @@ class Repository:
         if tool == "type_text" and variaveis:
             novo = mascara.digitado(args.get("text"), variaveis, params)
             if novo is not None:
+                self._mascaras[oid][3].setdefault(*novo)
                 trocas.setdefault(*novo)
         return trocas
 
+    # ------------------------------------------------------------------ 31.113 F3: `bindings` com o marcador
+    def perfil_do_objetivo(self, objective_id: str | None) -> str | None:
+        """A persona do objetivo, com o fallback do aparelho de persona única (`persona_do_objetivo`)."""
+        r = self.db.one("SELECT profile_id, instance_id FROM objectives WHERE id=?", (objective_id,))             if objective_id else None
+        return self.persona_do_objetivo(r["profile_id"], str(r["instance_id"])) if r is not None else None
+
+    def bindings_da_etapa(self, row: Row, perfil: str | None = None) -> dict[str, object]:
+        """O leitor ÚNICO dos `bindings` da linha para a porta, a política e a chave da aprovação: o marcador da persona
+        trocado pelo valor, lido NA HORA (o nome trocado depois do sim muda a chave, e a porta pergunta de novo) e nunca
+        gravado. `perfil` é o da porta; sem ele, o do objetivo da etapa. Sem marcador, a linha como está."""
+        bindings: dict[str, object] = (loads(row["bindings"], {}) or {}) if "bindings" in row.keys() else {}
+        if not any(isinstance(v, str) and "{" in v for v in bindings.values()):
+            return bindings
+        if perfil is None:
+            perfil = self.perfil_do_objetivo(row["objective_id"] if "objective_id" in row.keys() else None)
+        return resolver_argumentos(bindings, self._variaveis_da_persona(perfil)) if perfil else bindings
+
+    def texto_ao_vivo(self, texto: str | None, objective_id: str | None) -> str | None:
+        """O texto gravado com o marcador (pedido de aprovação, prévia) com o valor de AGORA, para a tela do painel;
+        nunca gravado nem enviado a canal."""
+        if not texto or "{" not in texto:
+            return texto
+        perfil = self.perfil_do_objetivo(objective_id)
+        return resolver_texto(texto, self._variaveis_da_persona(perfil)) if perfil else texto
+
+    def texto_reversivel(self, texto: str | None, objective_id: str | None) -> str | None:
+        """O texto que VOLTA a sair (rascunho, edição do dono, alvo e texto do pedido) com o marcador no lugar do dado
+        da persona, só se a volta der o texto EXATO (mesma caixa); senão, literal. Nada de aproximação."""
+        if not texto or not objective_id:
+            return texto
+        trocas, variaveis, _ = self._mascara_do_objetivo(objective_id)
+        mascarado = mascara.na_mesma_caixa(texto, trocas)
+        if mascarado == texto or resolver_texto(mascarado, variaveis) != texto:
+            return texto
+        return mascarado
+
+    def texto_mascarado(self, texto: str | None, objective_id: str | None) -> str | None:
+        """A prosa que só se lê (o resumo do pedido de aprovação): a máscara do registro (F1), sem caixa."""
+        return mascara.no_texto(texto, self.mascara_do_registro(None, objective_id)) if objective_id else texto
+
     def _sem_dado_nos_argumentos(self, passo: _Passo, objective_id: str | None) -> _Passo:
-        """31.113 F2: os `bindings` ficam com o VALOR na linha até a F3 (a porta e a chave da aprovação os leem dali);
-        o que SAI (detalhe da execução, relatório, `plan_versions` na resposta, evento `step.updated`) leva o marcador."""
+        """31.113 F2: o que SAI (detalhe da execução, relatório, `plan_versions` na resposta, evento `step.updated`)
+        leva o marcador. Desde a F3 a linha nova já o tem; isto cobre a linha anterior à F3 e o texto que não voltou
+        exato pela máscara reversível (`texto_reversivel`)."""
         trocas = self.mascara_do_registro(None, objective_id, None, None) if objective_id and passo.bindings else {}
         if not trocas:
             return passo
