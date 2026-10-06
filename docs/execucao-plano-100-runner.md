@@ -665,7 +665,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.115 | pendente | — | — | — |  |  |
 | 31.116 | implemented | simulated | claude-sonnet-5-5 | — | Real, 06/10/2026 07:42Z, central 16858086 (deploy 48), android-04, sessão trn-2hGmYRzUYaZaI5Xk. Na barra do treino (Foco, gravando 'Corrigir a etapa «Confirmar item na tela»') a seção Origem do treino mostra o selo 'cor… | None |
 | 31.117 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 07:35Z, central 16858086: GET /api/aprendizado/fluxo/f-455f91437856 devolve conteudo.origem com tipo treino, fonte training:trn-4lukXbyHNxGubAK0, source_run_id e run_id r-20261006053318-c04149, session_… | None |
-| 31.118 | implemented | simulated | claude-sonnet-5-5 | — | training_inputs com a marca ao salvar e o script de reparo da gravação (Aprendizado 25878b0a, contém 80c9e39b). O reparo (--aplicar) NÃO faz parte do deploy: só depois, com o vai da orquestradora e o backup como argumen… | None |
+| 31.118 | implemented | real | claude-opus-5-5 | — | Real, 06/10/2026, máquina central, deploy 49 (1b86bd6b, no ar às 08:56Z). O reparo único scripts/gravacao-com-marcador.py foi aplicado pela sessão Android às 08:59:20Z, com o backup data/backups/20261006-055448: o ensai… | None |
 | 31.119 | implemented | simulated | claude-sonnet-5-5 | — | Descartar sessão e a lista Para revisar (Portal 8e8cf588). Simulado: frontend/src/features/training/DescartarSessao.test.tsx::*, frontend/src/features/training/ParaRevisar.test.tsx::*. Suíte 49 sobre a integração 1b86bd… | None |
 | 31.120 | pendente | — | — | — |  |  |
 | 31.121 | pendente | — | — | — |  |  |
