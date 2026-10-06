@@ -713,6 +713,11 @@ Da leitura do 31.78.
 - `PortaDoPlano.test.tsx` "mostra a validade dos sins do plano…" usava `2026-10-05T21:00Z` como instante futuro; às 21:00Z de hoje o sim passou a "vencido" e o teste falhou (determinístico, também em ramos que passavam antes). A validade agora é relativa ao relógio (6 h à frente; a renovação, 30 h).
 - Prova `simulated`: o arquivo sozinho, 22/22 em duas rodadas, em 05/10 depois das 21:00Z. Outras datas fixas próximas em testes (a conferir, sem mudança aqui): `ValidacaoTab.test.tsx` (`expira_em` em 06/10), `NovoPedido.test.tsx` (prazo em 09/10), `MetricasTab.test.tsx` (17/10).
 
+## 2026-10-06 — A reconciliação do Trello não conta como citado no deploy o item que "fica para o corte N" (28.56, branch canais/reconciliacao-corte-adiado)
+
+- `.claude/trello/reconciliar.py`: o id que a seção do deploy no CHANGELOG diz que "fica" ou "segue" para outro corte (como 31.116 e 31.117 no deploy 47) deixa de valer como citado nele, para a linha de prova dizer o deploy certo
+  quando o item ficar implementado. Prova `simulated`: `.claude/trello/test_reconciliar.py` (31 passed). Regra no C-28.
+
 ## 2026-10-06 — A reconciliação do Trello descobre o deploy do item pelo Git (28.56, branch canais/reconciliacao-deploy-pelo-git)
 
 - `.claude/trello/reconciliar.py`: o item classificado na mesma rodada do registro do deploy deixou de ser dado como "no ar desde o deploy N" pela hora; vale o primeiro commit que
