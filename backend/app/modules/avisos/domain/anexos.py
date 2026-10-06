@@ -28,6 +28,11 @@ ROTULO: dict[str, str] = {
     "application/pdf": "o PDF",
     "text/plain": "o arquivo de texto",
 }
+#: 28.57: as extensões que um arquivo de TEXTO pode ter quando o chamador pede o NOME ORIGINAL no envio. Lista fechada: o
+#: conteúdo continua sendo `text/plain` (UTF-8 sem byte nulo), conferido pela assinatura; o nome só muda como o chat o
+#: mostra, para o comando `-File .\script.ps1` funcionar. O armazém e a recepção seguem pela `EXTENSAO` (tudo vira `.txt`).
+EXTENSOES_COM_NOME = frozenset({"ps1", "md", "txt", "json", "csv"})
+_NOME_DE_ENVIO = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
 _SINONIMOS = {"image/jpg": "image/jpeg", "image/pjpeg": "image/jpeg", "text/x-log": "text/plain"}
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -91,3 +96,38 @@ def tamanho_legivel(n: int) -> str:
     if n < 1024 * 1024:
         return f"{round(n / 1024)} KB"
     return f"{n / (1024 * 1024):.1f} MB".replace(".0", "").replace(".", ",")
+
+
+def nome_de_envio(nome: str) -> str:
+    """O nome original de um arquivo de texto no envio (28.57), ou `ValueError`. Só o nome (nada de pasta, barra, espaço
+    nem acento), até 80 caracteres e com uma extensão da lista fechada `EXTENSOES_COM_NOME`; sem `..` nem nome oculto."""
+    if not _NOME_DE_ENVIO.fullmatch(nome) or ".." in nome:
+        raise ValueError("nome de arquivo inválido")
+    ext = nome.rsplit(".", 1)[-1].lower() if "." in nome else ""
+    if ext not in EXTENSOES_COM_NOME:
+        raise ValueError("extensão fora da lista")
+    return nome
+
+
+#: 28.57: o que a varredura de identificadores procura num arquivo de texto que o dono mandou. Só CONTA por categoria: o
+#: que achou nunca é ecoado (o aviso à orquestradora diz quantos, não quais).
+_IDENTIFICADORES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("ip", re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")),
+    ("mac", re.compile(r"\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b")),
+    ("email", re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")),
+    ("usuario_em_caminho", re.compile(r"(?i)(?:[a-z]:\\users\\|/home/|/users/)[^\\/\s]+")),
+    ("serial", re.compile(r"(?i)\b(?:serial(?:number)?|numero de serie|uuid)\b\s*[:=]\s*\S+")),
+    ("nome_da_maquina", re.compile(r"(?i)\b(?:computername|hostname|nome do computador)\b\s*[:=]\s*\S+")),
+    ("segredo", re.compile(r"(?i)\b(?:senha|password|passwd|token|api[_-]?key|secret)\b\s*[:=]\s*\S+")),
+)
+
+
+def varrer_identificadores(texto: str) -> dict[str, int]:
+    """Quantas ocorrências de cada categoria de identificador há em `texto` (só as categorias com achado). Não devolve o
+    que achou."""
+    achados: dict[str, int] = {}
+    for categoria, padrao in _IDENTIFICADORES:
+        n = len(padrao.findall(texto))
+        if n:
+            achados[categoria] = n
+    return achados

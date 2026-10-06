@@ -68,6 +68,7 @@ from app.modules.avisos.domain.anexos import (
     AnexoRecebido,
     normalizar_mime,
     tamanho_legivel,
+    varrer_identificadores,
 )
 from app.modules.avisos.domain.porta import (
     itens_da_previa,
@@ -414,7 +415,7 @@ class SaidaComAnexos(SaidaDaConversa, Protocol):
 
     async def baixar_anexo(self, ref: str, max_bytes: int) -> bytes: ...
     async def enviar_anexo(self, conteudo: bytes, mime: str, legenda: str = "", *,
-                           responde_a: str | None = None) -> str | None: ...
+                           responde_a: str | None = None, nome: str | None = None) -> str | None: ...
 
 
 class SaidaDoTelegram:
@@ -427,8 +428,8 @@ class SaidaDoTelegram:
         return await self.canal.baixar_anexo(ref, max_bytes)
 
     async def enviar_anexo(self, conteudo: bytes, mime: str, legenda: str = "", *,
-                           responde_a: str | None = None) -> str | None:
-        mid = await self.canal.enviar_anexo(conteudo, mime, legenda, responde_a=_num(responde_a))
+                           responde_a: str | None = None, nome: str | None = None) -> str | None:
+        mid = await self.canal.enviar_anexo(conteudo, mime, legenda, responde_a=_num(responde_a), nome=nome)
         return str(mid) if mid is not None else None
 
     async def responder(self, texto: str, *, responde_a: str | None = None,
@@ -862,23 +863,24 @@ class ConversaDoCanal:
 
     # ------------------------------------------------------------------ anexos na saída (28.24)
     async def enviar_anexo(self, saida: SaidaDaConversa, referencia: int | str | Path, legenda: str = "", *,
-                           responde_a: str | None = None, entrada_id: int | None = None) -> str | None:
+                           responde_a: str | None = None, entrada_id: int | None = None,
+                           nome: str | None = None) -> str | None:
         """Manda ao dono um arquivo que JÁ está no armazém: `referencia` é o id do anexo, o sha256 de um anexo guardado ou
         um caminho dentro de `data/anexos`. Um caminho de fora levanta `CaminhoForaDoArmazem`; o tipo e o tamanho são
         conferidos de novo pelo conteúdo. A legenda passa pela redação de credencial; quem chama garante que ela não
         traz nome de persona, conta, e-mail, telefone nem IP (regra do dono para texto de mensagem e de cartão)."""
         cfg = self._cfg_do_envio(saida)
         conteudo, mime, sha = self._armazem().conteudo_de(referencia, tipos=cfg.tipos, max_bytes=cfg.max_bytes)
-        return await self._despachar(saida, conteudo, mime, sha, legenda, responde_a, entrada_id)
+        return await self._despachar(saida, conteudo, mime, sha, legenda, responde_a, entrada_id, nome)
 
     async def enviar_conteudo(self, saida: SaidaDaConversa, conteudo: bytes, legenda: str = "", *,
                               mime_declarado: str | None = None, responde_a: str | None = None,
-                              entrada_id: int | None = None) -> str | None:
+                              entrada_id: int | None = None, nome: str | None = None) -> str | None:
         """Manda ao dono um arquivo que o PRODUTO gerou (uma captura de tela do aparelho, p. ex.). O conteúdo é conferido
         como o recebido (tipo da lista pela assinatura, teto) e fica guardado em `data/anexos` com a retenção do 28.16."""
         cfg = self._cfg_do_envio(saida)
         mime = self._armazem().verificar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes, mime_declarado=mime_declarado)
-        return await self._despachar(saida, conteudo, mime, None, legenda, responde_a, entrada_id)
+        return await self._despachar(saida, conteudo, mime, None, legenda, responde_a, entrada_id, nome)
 
     def _cfg_do_envio(self, saida: SaidaDaConversa):  # noqa: ANN202 - o modelo de config
         cfg = self.cfg.file.avisos.entrada.anexos
@@ -889,10 +891,12 @@ class ConversaDoCanal:
         return cfg
 
     async def _despachar(self, saida: SaidaDaConversa, conteudo: bytes, mime: str, sha: str | None, legenda: str,
-                         responde_a: str | None, entrada_id: int | None) -> str | None:
+                         responde_a: str | None, entrada_id: int | None, nome: str | None = None) -> str | None:
         armazem = self._armazem()
+        # 28.57: o `nome` só vai à saída quando o chamador o pediu (a saída que não o conhece, como as de teste, não muda).
+        extra = {"nome": nome} if nome is not None else {}
         enviada = await saida.enviar_anexo(conteudo, mime, self._redigir(legenda),  # type: ignore[attr-defined]
-                                           responde_a=responde_a)
+                                           responde_a=responde_a, **extra)
         self.repo.registrar_enviada(enviada, "anexo", entrada_id=entrada_id)
         # Daqui em diante o arquivo JÁ está no chat do dono: uma falha ao guardar o rastro (erro de disco, banco) não pode
         # virar "não enviei" para quem chamou. Registra o que deu, diz a verdade no log e devolve o envio.
@@ -1055,7 +1059,42 @@ class ConversaDoCanal:
             if antes is not None and str(antes.get("estado")) in ("orquestradora", "falhou") and antes.get("texto"):
                 return Intencao("orquestradora", texto=f"{str(antes['texto']).strip()} — {texto.strip()}",
                                 repasse="continuacao")
+        sem_texto = None if texto.strip() or linha.get("id") is None else self._anexo_sem_texto(linha)
+        if sem_texto is not None:
+            return sem_texto
         return rotear(texto, fato=str(fato) if fato else None)
+
+    def _anexo_sem_texto(self, linha: Linha) -> Intencao | None:
+        """28.57: a mensagem do dono que é SÓ um arquivo de texto (sem legenda) e que ficou guardado vai à orquestradora
+        na hora, com o que há de seguro dizer: quantos arquivos, tamanho, o id do anexo e a contagem por categoria de
+        identificador (IP, MAC, e-mail, usuário em caminho, serial, nome da máquina, segredo; só números, nunca o
+        achado). Sem isto a linha caía em `vazia` e ficava `ignorada`: o arquivo estava guardado e ninguém sabia."""
+        if self.anexos is None:
+            return None
+        guardados = [a for a in self.anexos.da_entrada(self._id(linha))
+                     if a.get("estado") == "guardado" and a.get("mime") == "text/plain"]
+        if not guardados:
+            return None                                          # foto e PDF sem legenda seguem como sempre (o /ler em reply)
+        partes: list[str] = []
+        for a in guardados:
+            descricao = f"anexo {a['id']}: {ROTULO['text/plain']} de {tamanho_legivel(int(str(a.get('bytes') or 0)))}"
+            aberto = self.anexos.abrir(int(str(a["id"])))
+            if aberto is not None:
+                achados = varrer_identificadores(aberto[1].read_text(encoding="utf-8", errors="replace"))
+                descricao += ("; varredura de identificadores: "
+                              + (", ".join(f"{k} {v}" for k, v in achados.items()) if achados else "nenhum"))
+            partes.append(descricao)
+        n = len(guardados)
+        texto = (f"O dono mandou {n} arquivo{'s' if n > 1 else ''} sem texto, guardado{'s' if n > 1 else ''} em "
+                 f"data/anexos ({'; '.join(partes)}). Ler pelo armazém (GET /api/canais/anexos/<id>/conteudo) e riscar o que a "
+                 "varredura contou antes de repassar.")
+        return Intencao("orquestradora", texto=texto, repasse="anexo_recebido")
+
+    async def _repassar_anexo(self, linha: Linha, i: Intencao) -> None:
+        """O anexo sem texto vai à orquestradora (estado `orquestradora`), SEM nova resposta ao dono: ele já recebeu o "guardei"
+        do próprio anexo (`RESPOSTA_ANEXO_OK`)."""
+        self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora",
+                         previa={"repasse": i.repasse, "texto": i.texto}, de=("recebida",))
 
     def _escolha_solta(self, linha: Linha, texto: str) -> Intencao | None:
         """28.44: a mensagem SOLTA do dono que é só uma opção ("1", "opção 2") casa com a pergunta de escolha aberta da
@@ -1099,6 +1138,8 @@ class ConversaDoCanal:
             await self._repassar_comentario(saida, linha, i)
         elif i.tipo == "orquestradora" and i.repasse in REPASSES_DA_ESCOLHA:
             await self._repassar_escolha(saida, linha, i)
+        elif i.tipo == "orquestradora" and i.repasse == "anexo_recebido":
+            await self._repassar_anexo(linha, i)
         elif i.tipo == "orquestradora":
             await self._repassar(saida, linha, i)
         elif i.tipo == "ajuda":

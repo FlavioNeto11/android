@@ -2752,3 +2752,25 @@ essas linhas.
 
 **Aplicabilidade.** Vigente. Todo golden ou teste de caracterização: o que depende do ambiente (dialeto do banco, versão, hora, caminho da máquina) entra
 como marcador, não como valor; e um golden novo roda também no PG dirigido antes de entrar.
+
+### K-105 — O canal recebia o arquivo do dono e ninguém ficava sabendo: confira o armazém antes de dizer que o canal "ignora"
+
+**Data:** 06/10/2026 · **Área:** canais (Telegram, anexos)
+
+**Sintoma.** O dono mandou quatro `.txt` (saída de dois scripts) pelo Telegram, às 14:37 e 14:38Z. O vigia viu só a legenda e uma entrada sem texto, `ignorada`;
+a sessão concluiu que "o canal ignora o anexo" e que a saída precisava ir por outro caminho. O item 28.57 nasceu com essa premissa.
+
+**Causa.** A premissa estava errada. A recepção do 28.24 já tinha baixado e guardado os quatro arquivos (`canal_anexos` 1 a 4, `guardado`, `text/plain`,
+7288, 1901, 6943 e 1135 bytes, em `data/anexos`). O que faltava era o REPASSE: a mensagem só com anexo caía na intenção `vazia`, ficava `ignorada` e nada avisava a
+orquestradora. Os tamanhos batem byte a byte com os arquivos que o dono mandou depois por zip.
+
+**O que funcionou.** Olhar `canal_anexos` (e `canal_entradas.erro`) antes de afirmar o que o canal faz com um anexo: bastou uma consulta de leitura. A correção ficou
+pequena: a linha do `.txt` sem legenda vai à orquestradora (`previa.repasse = "anexo_recebido"`) com id, tamanho e a contagem de identificadores por categoria
+(sem eco do achado), sem resposta nova ao dono. Um achado vizinho: `enviar_anexo` renomeava tudo para `anexo-<sha>` e quebraria o comando `-File .\script.ps1`; o
+nome original passou a ser pedido pelo código, numa lista fechada de extensões de texto.
+
+**O que não funcionou.** Concluir pela linha `ignorada` e pela ausência de texto, sem abrir a tabela de anexos. Também não funcionou escrever expressões regulares e
+caminhos com barra invertida por heredoc no shell: ele reduz a barra e o arquivo sai com erro de sintaxe; use o Write ou o Edit.
+
+**Aplicabilidade.** Vigente. Antes de abrir um item porque "o canal não recebe X", leia a tabela do armazém do canal; a linha de entrada sem texto não prova que o
+anexo se perdeu. O repasse ao dono ou à orquestradora tem de existir para todo tipo guardado que importe, mesmo sem legenda.

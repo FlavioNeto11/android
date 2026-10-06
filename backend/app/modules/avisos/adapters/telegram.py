@@ -25,7 +25,7 @@ from urllib.parse import quote
 import httpx
 
 from app.modules.avisos.application.entrega import FalhaDeEnvio
-from app.modules.avisos.domain.anexos import EXTENSAO, AnexoGrandeDemais
+from app.modules.avisos.domain.anexos import EXTENSAO, AnexoGrandeDemais, detectar_mime, nome_de_envio
 from app.modules.avisos.domain.mensagem import texto_da_mensagem
 from app.security.redaction import redact
 
@@ -265,15 +265,28 @@ class CanalTelegram:
                 await cliente.aclose()
 
     async def enviar_anexo(self, conteudo: bytes, mime: str, legenda: str = "", *, responde_a: int | None = None,
-                           chat_id: str | None = None) -> int | None:
+                           chat_id: str | None = None, nome: str | None = None) -> int | None:
         """Manda o arquivo ao chat configurado: `sendPhoto` para imagem (se o Telegram a recusar como foto, por tamanho
         ou proporção, vai como `sendDocument`) e `sendDocument` para o resto. Só recebe BYTES: a porta que decide o que
         pode sair (id ou sha256 de um anexo guardado, ou conteúdo que o produto gerou) é a conversa, nunca um caminho
-        livre. O nome no multipart é neutro (`anexo-<sha>.<ext>`); o do remetente nunca é usado. Devolve o `message_id`."""
+        livre. O nome no multipart é neutro (`anexo-<sha>.<ext>`); o do remetente nunca é usado. Devolve o `message_id`.
+
+        28.57: o CHAMADOR (código nosso, nunca o remetente) pode pedir o `nome` original de um arquivo de texto, para o
+        comando `-File .\\script.ps1` valer no destino. Só vale para `text/plain` cujo conteúdo é de fato texto UTF-8, com o
+        nome na lista fechada de extensões (`nome_de_envio`); qualquer outro caso é recusa definitiva, sem enviar."""
         ext = EXTENSAO.get(mime)
         if ext is None:
             raise FalhaDeEnvio("tipo de anexo fora da lista para envio", definitiva=True)
-        nome = f"anexo-{hashlib.sha256(conteudo).hexdigest()[:12]}.{ext}"
+        if nome is not None:
+            try:
+                nome_enviado = nome_de_envio(nome)
+            except ValueError:
+                raise FalhaDeEnvio("nome de arquivo fora da lista para envio", definitiva=True) from None
+            if mime != "text/plain" or detectar_mime(conteudo) != "text/plain":
+                raise FalhaDeEnvio("só arquivo de texto leva nome próprio no envio", definitiva=True)
+            nome = nome_enviado
+        else:
+            nome = f"anexo-{hashlib.sha256(conteudo).hexdigest()[:12]}.{ext}"
         etapas = [("sendPhoto", "photo")] if mime.startswith("image/") else []
         etapas.append(("sendDocument", "document"))
         dados_form: dict[str, str] = {"chat_id": chat_id or self._chat_id}
