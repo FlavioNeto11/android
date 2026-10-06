@@ -70,6 +70,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (nova), `LeitorDoEnsinadoSql.em_prova` (nova), `LeitorDoEnsinado` (método novo na porta).
 - Prova `simulated`: `backend/tests/test_livro_selo_em_prova.py` (7). Real: `not_run`.
 
+## 2026-10-06 — O mapa de cartões do Trello sai do Git (28.56, branch canais/mapa-fora-do-git)
+
+- `.claude/trello/mapa.json` vira estado por instalação, como o `config/config.yaml`: sai do índice (`git rm --cached`), entra no
+  `.gitignore`, e a skill `trello`, o `mapa.py` e as regras C-17 e `dono:<shortLink>` de `docs/dominios/canais.md` dizem isso. Motivo: o
+  script de espelho o regrava a cada deploy e o arquivo versionado modificado no central trava o fast-forward do deploy. Fonte durável: a
+  tabela `trello_cartoes` (migração 087). Aprendizado K-103. Prova `simulated`: `docs-check` 0 erros; `git check-ignore` confirma o caminho
+  ignorado. `not_run`: o deploy 46 com o arquivo do central guardado e reposto pela Android em volta do fast-forward.
+
 ## 2026-10-06 — Reconciliação total dos quadros do Trello e a dinâmica dos cartões (branch canais/reconciliacao-trello)
 
 - Pedido do dono (06/10, ~01:22Z): "98 cartões em validação, nada sai de lá" e "rever o status de todos os cards nos 3 quadros e a
