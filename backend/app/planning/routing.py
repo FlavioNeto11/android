@@ -39,6 +39,7 @@ from . import costs, saldos
 from .capabilities import CONHECIMENTO_DE_APPS
 from .catalog import capabilities_of
 from .curador import ParecerBruto, PedidoDeParecer
+from .pesquisa import PesquisaBruta, PesquisaRequest
 from .provider import (AIError, AIProvider, Decision, DecisionRequest, LeituraRequest, PersonaGenerationRequest,
                        PlanRequest, SocialRequest, Transcricao, Usage, Verdict, VerifyRequest, build_one,
                        frase_dos_modelos)
@@ -445,6 +446,12 @@ class RoutingProvider:
     async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
         """Assistente do comando (ADR-047): mesma função/modelo/orçamento do planejador, sem execução."""
         return await self._call("plan", None, lambda p: p.refine_command(req), origem="assistente")
+
+    async def pesquisar(self, req: PesquisaRequest) -> tuple[PesquisaBruta, Usage]:
+        """Pesquisa da operação (prova30 A2): função `plan` emprestada, dentro da execução que a pediu (os tetos dela
+        valem), com `origem='pesquisa'` e `ref` = a operação, que é por onde o teto POR OPERAÇÃO soma o gasto."""
+        return await self._call("plan", req.run_id, lambda p: p.pesquisar(req),  # type: ignore[attr-defined]
+                                origem="pesquisa", ref=req.operacao_id)
 
     async def review_knowledge(self, req: PedidoDeParecer) -> tuple[ParecerBruto, Usage]:
         """Curador do Livro (30.12; hub §2): papel `plan` emprestado, sem execução; a fatia `curador` do teto do dia

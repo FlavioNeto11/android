@@ -2305,3 +2305,15 @@ O fato comum nunca vira memória da persona. Ela lembra do que FEZ (o efeito con
 Numa operação, a lista "não repita" e a trava de escrita são da operação inteira, não da execução. Código:
 `modules/pedidos/{domain,infrastructure}/conhecimento_da_operacao.py` e `gates.py` (`_conhecimento_da_operacao`).
 O que seria um segundo sistema, e por que não se fez assim: `.claude/handoffs/prova30/aprendizado.md`.
+
+### Pesquisa externa por lacuna (31.158)
+
+- Quando o assunto da operação (`operacoes.assunto`) não tem fato de pesquisa válido, a primeira execução que chega à
+  porta de escrita pesquisa UMA vez, pela ferramenta de busca do próprio provedor (`ai.pesquisa`, desligada de fábrica).
+- O resultado entra pela mesma porta: as fontes viram observações `url` e entradas `fonte`; os fatos viram `descoberta`
+  com `origem='pesquisa'`.
+- A confiança é decidida por código: dois domínios = confirmado; um = hipótese; URL que a busca não trouxe = descartada.
+- Teto por operação, somado de `ai_calls` (`origem='pesquisa'`, `ref` = a operação; as buscas têm linha própria com
+  `usd`).
+- Falha deixa a marca `pesquisa.estado` por 1 h. Código: `planning/pesquisa.py` e
+  `modules/pedidos/infrastructure/pesquisa_da_operacao.py`.

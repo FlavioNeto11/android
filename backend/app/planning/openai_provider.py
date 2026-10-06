@@ -50,6 +50,7 @@ from .curador import (CURADOR_SYSTEM, ParecerBruto, ParecerIlegivel, PedidoDePar
                       parecer_from_json)
 from .parsing import (_CapPlanOut, _MultiPlanCurtoOut, _MultiPlanOut, _PlanCurtoOut, _PlanOut, catalog_plan_from_json,
                       plan_from_json, social_from_json, verdict_from_json)
+from .pesquisa import PesquisaBruta, PesquisaRequest
 from .provider import (AVISO_TELA_SENSIVEL, AIError, Decision, DecisionRequest, LeituraRequest, PlanRequest, ScreenInput,
                        SocialRequest, Transcricao, TranscricaoWire, Usage, Verdict, VerifyRequest,
                        modelo_do_papel_leitura, persona_draft_from_json, transcricao_from_json)
@@ -420,6 +421,11 @@ class OpenAICompatProvider:
         return transcricao_from_json(self._texto(msg), list(req.saidas)), usage
 
     # ------------------------------------------------------------------ geração social
+    async def pesquisar(self, req: PesquisaRequest) -> tuple[PesquisaBruta, Usage]:
+        """prova30 A2: a busca pela ferramenta do provedor só está ligada na Anthropic (sem roteador nem proxy)."""
+        raise AIError("A pesquisa externa usa a ferramenta de busca da Anthropic; aponte ai.roles.plan para ela.",
+                      kind="not_configured", model=self.models.get("plan", self.model))
+
     async def generate_social_response(self, req: SocialRequest) -> tuple[SocialDraftDTO, Usage]:
         modelo = self.models.get("social", self.model)
         esquema = strict_schema(SocialDraftDTO)

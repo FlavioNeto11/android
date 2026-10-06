@@ -632,9 +632,32 @@ class DecisaoFechadaCfg(BaseModel):
     retencao_dias: int = Field(180, ge=1, le=3650)
 
 
+class PesquisaCfg(BaseModel):
+    """Pesquisa externa da operação (prova30 A2, 31.158): UMA por operação, quando o assunto dela tem lacuna. DESLIGADA de
+    fábrica: ligar faz o modelo do planejador usar a ferramenta de busca do PRÓPRIO provedor (Anthropic, server tool
+    `web_search`), sem roteador nem proxy. A consulta nasce só do assunto e das fontes indicadas na operação, nunca de
+    texto de persona nem de tela sensível. O resultado vai para a memória da operação (fonte, fato, confiança, frescor)."""
+
+    enabled: bool = False
+    #: A versão da ferramenta no provedor. A de 2025-03-05 é a chamada direta (as mais novas filtram por execução de código).
+    ferramenta: str = "web_search_20250305"
+    #: Buscas por pesquisa (`max_uses` da ferramenta). Cada busca é cobrada à parte (`preco_por_busca_usd`).
+    max_buscas: int = Field(3, ge=1, le=10)
+    #: US$ por busca (página de preços: US$ 10 por mil). Entra em `ai_calls.usd` numa linha própria (`model='web_search'`).
+    preco_por_busca_usd: float = Field(0.01, ge=0)
+    #: Teto de gasto da pesquisa por operação (tokens + buscas, somados das linhas de `origem='pesquisa'` e `ref` = operação).
+    #: Atingido, não se pesquisa de novo naquela operação.
+    teto_usd_por_operacao: float = Field(0.25, ge=0)
+    #: Quanto tempo o fato pesquisado vale; vencido, o assunto volta a ser lacuna.
+    frescor_h: float = Field(24.0, gt=0, le=24 * 30)
+    max_fatos: int = Field(8, ge=1, le=20)
+
+
 class AiCfg(BaseModel):
     #: Gerador de imagem da persona. Não é papel: `_ia_coerente` não o conhece e o hub não o roteia.
     image: ImageCfg = ImageCfg()
+    #: Pesquisa externa da operação (prova30 A2). Desligada de fábrica.
+    pesquisa: PesquisaCfg = PesquisaCfg()
     #: Orçamento por etapa, medido no histórico da ação (item 18.3).
     step_budget: StepBudgetCfg = StepBudgetCfg()
     screenshot_max_side: int = 1280             # lado maior da imagem enviada ao modelo (tokens ∝ área)

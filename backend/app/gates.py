@@ -25,6 +25,7 @@ from .db import Row, loads
 from .devices.manager import DeviceRuntime
 from .modules.pedidos.infrastructure.conhecimento_da_operacao import ConhecimentoDaOperacao, Fatos
 from .modules.pedidos.infrastructure.contexto import contexto_do_pedido
+from .modules.pedidos.infrastructure.pesquisa_da_operacao import PesquisaDaOperacao
 from .planning.capabilities import (
     Capability,
     alvo_da_acao,
@@ -117,6 +118,7 @@ class Portoes:
     def __init__(self, state: AppState):
         self._st = state
         self._conhecimento_cache: ConhecimentoDaOperacao | None = None
+        self._pesquisa_cache: PesquisaDaOperacao | None = None
 
     @property
     def _conhecimento(self) -> ConhecimentoDaOperacao:
@@ -125,6 +127,14 @@ class Portoes:
         if self._conhecimento_cache is None:
             self._conhecimento_cache = ConhecimentoDaOperacao(self._st.db)
         return self._conhecimento_cache
+
+    @property
+    def _pesquisa(self) -> PesquisaDaOperacao:
+        """prova30 A2: a pesquisa externa da operação, com a configuração `ai.pesquisa` (desligada de fábrica)."""
+        if self._pesquisa_cache is None:
+            ai = self._st.cfg.file.ai
+            self._pesquisa_cache = PesquisaDaOperacao(self._st.db, ai.pesquisa, ai.prices)
+        return self._pesquisa_cache
 
     async def _policy_gate(self, obj: Any, srow: Any, run: Any) -> Any:
         """Quarta porta, e a única que depende da ETAPA: política e limite da capability para este perfil.
@@ -430,7 +440,7 @@ class Portoes:
             alvo = alvo_da_acao(cap, bindings)
             arvore = await self._ler_tela(rt, pacote)
             tela = leitor.visible_content(arvore) if leitor is not None and arvore is not None else ""
-            fatos, leitura = self._conhecimento_da_operacao(operacao_id, obj, srow, cap, arvore, tela, pacote)
+            fatos, leitura = await self._conhecimento_da_operacao(operacao_id, obj, srow, cap, arvore, tela, pacote)
             # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta
             # tanto a resposta quanto o que o perfil passa a saber sobre a pessoa. Só deste bloco sai memória.
             recebido = (leitor.comment_of(arvore, alvo or "")
@@ -521,9 +531,12 @@ class Portoes:
             log.exception("não deu para ler a operação da execução %s", run_id)
             return None
 
-    def _conhecimento_da_operacao(self, operacao_id: str | None, obj: Any, srow: Any, cap: Any, arvore: Any,
-                                  tela: str, pacote: str | None) -> tuple[Fatos | None, str | None]:
-        """A leitura do alvo entra na memória da operação (uma vez; as outras conferem) e os fatos voltam para o texto.
+    async def _conhecimento_da_operacao(self, operacao_id: str | None, obj: Any, srow: Any, cap: Any, arvore: Any,
+                                        tela: str, pacote: str | None) -> tuple[Fatos | None, str | None]:
+        """A leitura do alvo entra na memória da operação (uma vez; as outras conferem), a pesquisa externa preenche a
+        lacuna do assunto (uma vez por operação, prova30 A2) e os fatos voltam para o texto.
+
+        Quem chama segura a trava da OPERAÇÃO: a 2ª execução já encontra a leitura e os fatos, e não pesquisa de novo.
 
         Conhecimento é contexto: qualquer falha aqui vira log e o texto sai como sairia sem operação. Tela sensível
         (campo de senha à vista) não é gravada como leitura."""
@@ -538,6 +551,8 @@ class Portoes:
                     fonte=f"{pacote or 'app'} · {cap.key}", texto=tela)
                 if leitura is not None:
                     _registrar_estagio(self._st.db, run_id, "conteudo_lido")
+            await self._pesquisar_se_preciso(operacao_id, obj, srow,
+                                             tela if arvore is not None and not getattr(arvore, "sensitive", False) else "")
             fatos = self._conhecimento.fatos(operacao_id, leitura=leitura)
         except Exception:  # noqa: BLE001 - ver acima
             log.exception("operação %s: o conhecimento comum não entrou no texto da execução %s", operacao_id, run_id)
@@ -545,6 +560,26 @@ class Portoes:
         if fatos.quantos:
             _registrar_estagio(self._st.db, run_id, "conhecimento_recuperado")
         return fatos, leitura
+
+    async def _pesquisar_se_preciso(self, operacao_id: str, obj: Any, srow: Any, contexto: str) -> None:
+        """A pesquisa externa da operação (31.158), pelo caminho de IA da execução: tetos, vaga e custo no run certo.
+        A consulta leva o assunto da operação e, como contexto, a leitura do alvo; nunca nada da persona."""
+        executor = self._st.scheduler.executor
+        provedor = self._st.provider
+        if not hasattr(provedor, "pesquisar"):
+            return
+
+        async def chamar(req: Any) -> Any:
+            return await executor._ai(str(obj["run_id"]), str(obj["id"]),  # noqa: SLF001
+                                      lambda: provedor.pesquisar(req), step_id=str(srow["id"]), role="plan")
+
+        feito = await self._pesquisa.pesquisar_se_preciso(operacao_id, run_id=str(obj["run_id"]), contexto=contexto,
+                                                          chamar=chamar)
+        if feito is not None:
+            # Só contagens: os fatos e as fontes moram na memória da operação.
+            self._st.bus.emit("log", f"{obj['instance_id']}: pesquisa da operação: {feito.fatos} fato(s) "
+                                     f"({feito.confirmados} confirmado(s)), {feito.fontes} fonte(s), {feito.buscas} busca(s)",
+                              run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=obj["id"])
 
     async def _ler_tela(self, rt: Any, pacote: str | None) -> Any:
         """O que está escrito na tela do aparelho agora — para o texto falar do que está ali.

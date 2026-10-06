@@ -19,7 +19,7 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-10-06 — prova30 A1: o conhecimento comum da operação chega ao texto de cada persona (branch feat/prova30-a1-conhecimento-da-operacao)
+## 2026-10-06 — 31.157 e 31.158 (prova30 A1/A2): conhecimento comum da operação e pesquisa externa por lacuna (branch feat/prova30-a1-conhecimento-da-operacao)
 
 - Pedido do dono de 06/10 (prova de capacidade, FULL INSTAGRAM): N agentes de uma operação precisam de conhecimento COMUM, separado do de cada persona, sem segundo sistema de conhecimento e sem repetir a mesma frase.
 - **Migração 125:** `pedido_memoria` e `pedido_observacoes` passam a ser de um pedido OU de uma operação (`operacao_id`, sem chave estrangeira; CHECK de exatamente um). A memória ganha `origem`, `confianca` (`confirmado`/`hipotese`), `evidencia` e `frescor_ate`.
@@ -27,7 +27,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **`SocialRequest.fatos_da_operacao`:** o bloco `<fatos_da_operacao>` (fato, hipótese marcada, fonte; o vencido sai) vai ao texto de cada persona como dado, separado do contexto dela, e nunca vira memória do perfil. Quem já leu a mesma tela não recebe a leitura repetida no bloco.
 - **"Não repita" e trava da OPERAÇÃO:** cada alvo da operação é uma execução própria (124), então `textos_irmaos` e a trava de escrita usam `operacao_id or run_id` (até 40 irmãos). Fora de operação, nada muda.
 - Estágios do agente (`registrar_estagio`, da Jev, por import tardio): `conteudo_lido` e `conhecimento_recuperado`.
-- Prova `simulated`: `tests/test_conhecimento_da_operacao.py` (7: migração, domínio, leitura única com conferência, fora de operação e segredo, irmãos da operação, prompt, porta de escrita com duas execuções). Real: `not_run` até o deploy com a 124.
+- **31.158, pesquisa externa por lacuna:**
+  - Lacuna = a operação tem `assunto` (124) e nenhum fato de pesquisa válido. A decisão é de código.
+  - A busca é UMA por operação: a 2ª execução já encontra os fatos, porque segura a trava da operação. Usa a ferramenta de busca do próprio provedor (Anthropic, server tool `web_search_20250305`, `max_uses` configurável), sem roteador nem proxy.
+  - A consulta leva só o assunto, as fontes indicadas e a leitura do alvo; nunca persona nem tela sensível.
+  - A confiança é decidida por código: só conta a URL que a busca trouxe. Dois domínios = confirmado; um = hipótese; nenhum = descartado.
+  - As fontes viram observações `url` (título, trecho, sha256, data de acesso) e entradas `fonte`. Os fatos viram `descoberta` com `origem='pesquisa'`, a evidência e o frescor (`ai.pesquisa.frescor_h`).
+  - Falha ou zero fatos deixam a marca `pesquisa.estado` por 1 h, para 30 agentes não pagarem 30 tentativas.
+  - Teto por operação: `ai.pesquisa.teto_usd_por_operacao`, sobre tokens + buscas, de `ai_calls` com `origem='pesquisa'` e `ref` = operação. As buscas viram linha própria de custo (`model='web_search'`, `usd` declarado).
+  - Desligada de fábrica (`ai.pesquisa.enabled`). Nova origem de IA: `pesquisa`.
+- Prova `simulated`:
+  - `tests/test_conhecimento_da_operacao.py` (7): migração, domínio, leitura única com conferência, fora de operação e segredo, irmãos da operação, prompt, porta de escrita com duas execuções.
+  - `tests/test_pesquisa_da_operacao.py` (6): consolidação por código, serviço, desligada/sem assunto/teto/falha, linha de custo das buscas, provedor Anthropic com resposta falsa, porta de escrita com UMA pesquisa para duas execuções.
+- Real: `not_run` até o deploy com a 124; a 1ª operação pequena com pesquisa é chamada paga, dentro do gasto autorizado, com teto.
 
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
