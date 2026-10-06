@@ -94,6 +94,18 @@ def gravidade(corpo: str) -> str:
     return f"P{m.group(1)}" if m else "-"
 
 
+def _url(item: dict[str, Any]) -> str:
+    """Link direto do comentário; só https do próprio github.com (qualquer outra coisa vira vazio)."""
+    url = str(item.get("html_url") or "")
+    return url if re.fullmatch(r"https://github\.com/[\w./#-]{1,300}", url) else ""
+
+
+def estado_do_pr(repo: str, numero: int, gh: Gh) -> str:
+    """open, closed ou merged; o que não for isso vira desconhecido."""
+    estado = str(json.loads(gh("pr", "view", str(numero), "--repo", repo, "--json", "state")).get("state", "")).lower()
+    return estado if estado in ("open", "closed", "merged") else "desconhecido"
+
+
 def achados_do_pr(repo: str, numero: int, gh: Gh) -> list[dict[str, Any]]:
     achados: list[dict[str, Any]] = []
     for c in _itens(gh("api", "--paginate", f"repos/{repo}/pulls/{numero}/comments")):
@@ -107,7 +119,7 @@ def achados_do_pr(repo: str, numero: int, gh: Gh) -> list[dict[str, Any]]:
         achados.append({"pr": str(numero), "revisor": mascarar(str(login)), "gravidade": gravidade(corpo),
                         "arquivo": arquivo, "linha": linha if isinstance(linha, int) else None,
                         "onde": f"{arquivo}:{linha}" if linha else arquivo, "resumo": resumo(corpo),
-                        "artefato": bool(_ARTEFATO.search(corpo))})
+                        "artefato": bool(_ARTEFATO.search(corpo)), "url": _url(c)})
     for r in _itens(gh("api", "--paginate", f"repos/{repo}/pulls/{numero}/reviews")):
         user = r.get("user")
         login = user.get("login") if isinstance(user, dict) else None
@@ -115,7 +127,11 @@ def achados_do_pr(repo: str, numero: int, gh: Gh) -> list[dict[str, Any]]:
         if eh_revisor(login) and corpo:
             achados.append({"pr": str(numero), "revisor": mascarar(str(login)), "gravidade": gravidade(corpo),
                             "arquivo": "", "linha": None, "onde": "(resumo da revisão)", "resumo": resumo(corpo),
-                            "artefato": bool(_ARTEFATO.search(corpo))})
+                            "artefato": bool(_ARTEFATO.search(corpo)), "url": _url(r)})
+    if achados:
+        estado = estado_do_pr(repo, numero, gh)
+        for a in achados:
+            a["pr_estado"] = estado
     return achados
 
 
@@ -136,7 +152,8 @@ def para_json(achados: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Contrato lido pela Canais (28.63, um cartão por achado). `id` é estável entre execuções: PR, arquivo:linha e revisor.
     Sem trecho de código: `frase` é só a primeira frase, mascarada e sem crases."""
     return [{"id": f"{a['pr']}:{a['onde']}:{a['revisor']}", "pr": int(a["pr"]), "revisor": a["revisor"], "gravidade": a["gravidade"],
-             "arquivo": a["arquivo"], "linha": a["linha"], "frase": a["resumo"], "artefato": a["artefato"]} for a in achados]
+             "arquivo": a["arquivo"], "linha": a["linha"], "frase": a["resumo"], "artefato": a["artefato"],
+             "url": a["url"], "pr_estado": a["pr_estado"]} for a in achados]
 
 
 def tabela(achados: list[dict[str, Any]]) -> str:

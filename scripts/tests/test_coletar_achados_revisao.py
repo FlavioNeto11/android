@@ -19,9 +19,11 @@ AGORA = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc)
 COMENTARIOS = {
     10: [
         {"user": {"login": "chatgpt-codex-connector[bot]"}, "path": "a.py", "line": 7,
+         "html_url": "https://github.com/dono/repo/pull/10#discussion_r1",
          "body": "![P1 Badge](https://x/p1.svg) **Apaga a branch errada**\n\nmais detalhe"},
         {"user": {"login": "pessoa"}, "path": "b.py", "line": 1, "body": "P1 comentario humano"},
-        {"user": {"login": "Copilot"}, "path": "c.py", "line": None, "original_line": 3, "body": "Sem marca de gravidade"},
+        {"user": {"login": "Copilot"}, "path": "c.py", "line": None, "original_line": 3, "body": "Sem marca de gravidade",
+         "html_url": "https://evil.example/x"},
     ],
     11: [],
 }
@@ -43,6 +45,8 @@ class FakeGh:
             return json.dumps([{"number": 10, "updatedAt": "2026-10-06T20:00:00Z"},
                                {"number": 11, "updatedAt": "2026-10-06T21:00:00Z"},
                                {"number": 5, "updatedAt": "2026-09-01T00:00:00Z"}])
+        if args[:2] == ("pr", "view"):
+            return json.dumps({"state": "MERGED" if args[2] == "10" else "OPEN"})
         if args[0] == "api":
             n = int(args[2].split("/pulls/")[1].split("/")[0])
             return json.dumps((COMENTARIOS if args[2].endswith("/comments") else REVISOES)[n])
@@ -77,8 +81,14 @@ class Coletor(unittest.TestCase):
         self.assertEqual([x["id"] for x in a], [x["id"] for x in b])
         self.assertEqual(len({x["id"] for x in a}), len(a))
         self.assertIn("10:a.py:7:chatgpt-codex-connector[bot]", [x["id"] for x in a])
-        self.assertEqual(set(a[0]), {"id", "pr", "revisor", "gravidade", "arquivo", "linha", "frase", "artefato"})
+        self.assertEqual(set(a[0]), {"id", "pr", "revisor", "gravidade", "arquivo", "linha", "frase", "artefato", "url", "pr_estado"})
         self.assertIsInstance(a[0]["artefato"], bool)
+
+    def test_url_so_de_github_e_estado_do_pr(self) -> None:
+        a = json.loads(rodar(FakeGh(), "--json")[1])
+        self.assertEqual(next(x for x in a if x["arquivo"] == "a.py")["url"], "https://github.com/dono/repo/pull/10#discussion_r1")
+        self.assertEqual(next(x for x in a if x["arquivo"] == "c.py")["url"], "")  # fora do github.com vira vazio
+        self.assertEqual({x["pr_estado"] for x in a}, {"merged"})
 
     def test_artefato_marca_so_regra_de_conduta_de_agente(self) -> None:
         self.assertTrue(mod._ARTEFATO.search("Este hunk viola a regra explícita do repositório que proíbe agentes"))
