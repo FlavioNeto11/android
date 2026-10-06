@@ -105,7 +105,7 @@ def main(argv: list[str] | None = None, gh: Gh | None = None) -> int:
         if meu is None:
             raise ValueError("job não encontrado")
         print(linha(a.nome, etapas(meu.get("steps") or []), _ler(a.pytest), _ler(a.vitest)))
-    except (RuntimeError, ValueError, KeyError, TypeError, AttributeError, json.JSONDecodeError):
+    except (RuntimeError, ValueError, KeyError, TypeError, AttributeError, OSError, json.JSONDecodeError):
         print(f"**{a.nome}**: resumo indisponível")
     return 0
 
