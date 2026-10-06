@@ -195,7 +195,9 @@ describe('sem a rota no central (exemplo)', () => {
 describe('com a rota no central', () => {
   const OPERACAO = {
     id: 'op-1', command: 'Comentar no post da loja', app_id: 'com.instagram.android', acao_final: 'preparar', status: 'em_curso',
-    created_at: '2026-10-06T17:00:00Z', finished_at: null, custo_usd: 0.02,
+    created_at: '2026-10-06T17:00:00Z', finished_at: null,
+    max_usd: 1.5, assunto: 'A embalagem nova da loja.', fontes: ['https://exemplo.com.br/a', 'http://exemplo.com.br/b', 'https://u:p@exemplo.com.br/c', 'https://exemplo.com.br/d?x=1'],
+    custo: { pesquisa_usd: 0.01, alvos_usd: 0.02, total_usd: 0.03 },
     capacidade: { solicitados: 2, contas_existentes: 2, sessoes_validas: 2, contas_disponiveis: 2, concluidas: 0, bloqueadas: 0, em_curso: 2, motivos: {} },
     alvos: [
       { profile_id: 'p1', persona_nome: 'Ana', app_id: 'com.instagram.android', account_id: 'a1', conta: '@ana', instance_id: 'android-04', run_id: 'r1',
@@ -226,6 +228,30 @@ describe('com a rota no central', () => {
 
   const PREPARADO = (p: string, nome: string, texto: string) => ({ ...OPERACAO.alvos[1], profile_id: p, persona_nome: nome, estado: 'bloqueado', motivo: 'limite de ações executadas',
     estagio: 'acao_preparada', estagios: [], resultado: { texto, conhecimento_ids: [], evidencia_id: null, acao_final: null } });
+
+  it('mostra o custo (total, teto e a divisão), o assunto e as fontes; só vira link a que o backend aceita (https, sem usuário nem query)', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json(OPERACAO));
+    await ir(['op-1']);
+    const faixa = await waitFor(() => {
+      const e = container.querySelector('section[aria-label="Custo e assunto"]');
+      if (!e) throw new Error('a faixa de custo ainda não apareceu');
+      return e as HTMLElement;
+    });
+    expect(text(faixa)).toContain('Custo de IA US$ 0,0300 de um teto de US$ 1,5000');
+    expect(text(faixa)).toContain('pesquisa US$ 0,0100 · agentes US$ 0,0200');
+    expect(text(faixa)).toContain('Assunto: A embalagem nova da loja.');
+    const links = Array.from(faixa.querySelectorAll('a')).map((a) => a.getAttribute('href'));
+    expect(links).toEqual(['https://exemplo.com.br/a']);
+    expect(text(faixa)).toContain('http://exemplo.com.br/b');          // as outras aparecem como texto, sem link
+    expect(text(faixa)).toContain('https://u:p@exemplo.com.br/c');
+  });
+
+  it('sem custo, teto, assunto nem fontes a faixa não aparece', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, custo: undefined, max_usd: undefined, assunto: undefined, fontes: undefined }));
+    await ir(['op-1']);
+    await waitFor(() => expect(linhas()).toHaveLength(2));
+    expect(container.querySelectorAll('section[aria-label="Custo e assunto"]')).toHaveLength(0);
+  });
 
   it('"Liberar": mostra os textos parados, começa tudo desmarcado, respeita o limite que sobra e envia exatamente o texto lido', async () => {
     useAppStore.setState({ settings: { ...SETTINGS, operacao_max_acoes_executadas: 2 } });

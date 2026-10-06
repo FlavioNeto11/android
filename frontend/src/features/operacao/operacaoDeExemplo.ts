@@ -50,5 +50,8 @@ export const OPERACAO_DE_EXEMPLO = {
     motivos: { 'sem conta': 25, 'sem sessão': 1, [MOTIVO_DO_LIMITE]: 1 },
   },
   alvos,
-  custo_usd: 0.31,
+  max_usd: 2,
+  assunto: 'O lançamento da embalagem nova da loja e o que os clientes já comentaram sobre ela.',
+  fontes: ['https://exemplo.com.br/lancamento'],
+  custo: { pesquisa_usd: 0.06, alvos_usd: 0.25, total_usd: 0.31 },
 } as const;

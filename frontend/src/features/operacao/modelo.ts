@@ -106,9 +106,18 @@ export interface ResumoDaOperacao {
   capacidade: Capacidade;
 }
 
+export interface CustoDaOperacao { pesquisa_usd: number; alvos_usd: number; total_usd: number }
+
 export interface Operacao extends ResumoDaOperacao {
   alvos: Alvo[];
-  custo_usd: number | null;
+  /** O custo de IA da operação inteira: a pesquisa externa e os agentes, e o total que o teto compara. */
+  custo: CustoDaOperacao | null;
+  /** O teto em US$ da operação inteira. */
+  max_usd: number | null;
+  /** O que precisa ser compreendido antes de escrever (a pesquisa externa parte dele). */
+  assunto: string | null;
+  /** As fontes públicas que o operador indicou. */
+  fontes: string[];
   /** Os dados vêm do exemplo fixo (a rota ainda não existe no backend), não do parque. */
   exemplo: boolean;
 }
@@ -211,7 +220,27 @@ export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
   const o = registro(v);
   if (!resumo || !o) return null;
   const alvos = (Array.isArray(o.alvos) ? o.alvos : []).map(lerAlvo).filter((a): a is Alvo => a !== null);
-  return { ...resumo, alvos, custo_usd: typeof o.custo_usd === 'number' && Number.isFinite(o.custo_usd) ? o.custo_usd : null, exemplo };
+  const c = registro(o.custo);
+  const usd = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+  const total = c ? usd(c.total_usd) : null;
+  const custo = c && total !== null ? { pesquisa_usd: usd(c.pesquisa_usd) ?? 0, alvos_usd: usd(c.alvos_usd) ?? 0, total_usd: total } : null;
+  return {
+    ...resumo, alvos, custo, max_usd: usd(o.max_usd), assunto: texto(o.assunto),
+    fontes: (Array.isArray(o.fontes) ? o.fontes : []).filter((f): f is string => typeof f === 'string' && f.trim() !== ''), exemplo,
+  };
+}
+
+/**
+ * A fonte só vira link se for do jeito que o backend aceita: `https`, sem usuário e sem query. O que vier de outro jeito aparece
+ * como texto, nunca como link (a lista vem do operador).
+ */
+export function fonteComoLink(f: string): string | null {
+  try {
+    const u = new URL(f);
+    return u.protocol === 'https:' && !u.username && !u.password && !u.search ? u.href : null;
+  } catch {
+    return null;
+  }
 }
 
 export function lerLista(v: unknown): ResumoDaOperacao[] {

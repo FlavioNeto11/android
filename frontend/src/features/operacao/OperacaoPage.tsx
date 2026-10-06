@@ -20,7 +20,7 @@ import { apiOperacoes, type ListaDeOperacoes } from './api';
 import { LiberarAcoes } from './LiberarAcoes';
 import styles from './Operacao.module.css';
 import {
-  acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, isEstadoDoAlvo, isEstagio,
+  acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
   ROTULO_DA_VERIFICACAO, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, rotuloDaAcao, rotuloDoEstagio, verificacaoDoAlvo, type Alvo, type EstadoDoAlvo,
   type EstagioId, type Operacao, type ResumoDaOperacao, type StatusDaOperacao, type Verificacao,
 } from './modelo';
@@ -206,6 +206,38 @@ const AVISO_DE_EXEMPLO = (
   </Banner>
 );
 
+/** O custo (total, teto e a divisão pesquisa × agentes), o assunto e as fontes que o operador indicou. */
+function CustoEAssunto({ op }: { op: Operacao }) {
+  const { custo, max_usd: teto, assunto, fontes } = op;
+  if (!custo && teto === null && !assunto && fontes.length === 0) return null;
+  return (
+    <section aria-label="Custo e assunto" className={styles.faixa}>
+      {custo || teto !== null ? (
+        <p className={styles.objetivo}>
+          {custo ? <>Custo de IA <strong>{formatUsd4(custo.total_usd)}</strong>{teto !== null ? <> de um teto de {formatUsd4(teto)}</> : null}
+            {' '}<span className={styles.mudo}>(pesquisa {formatUsd4(custo.pesquisa_usd)} · agentes {formatUsd4(custo.alvos_usd)})</span></>
+            : <>Teto de custo de IA {formatUsd4(teto ?? 0)}</>}
+        </p>
+      ) : null}
+      {assunto ? <p className={styles.objetivo}><strong>Assunto:</strong> {assunto}</p> : null}
+      {fontes.length ? (
+        <p className={styles.objetivo}>
+          <strong>Fontes indicadas:</strong>{' '}
+          {fontes.map((f, i) => {
+            const link = fonteComoLink(f);
+            return (
+              <span key={`${f}-${i}`}>
+                {i > 0 ? ' · ' : ''}
+                {link ? <a className={styles.link} href={link} target="_blank" rel="noopener noreferrer">{f}</a> : f}
+              </span>
+            );
+          })}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function DetalheDaOperacao({ id }: { id: string }) {
   const { dado: op, erro, carregando, recarregar } = useCarga((s) => apiOperacoes.detalhe(id, s), id);
   const [estado, setEstado] = useState<EstadoDoAlvo | ''>('');
@@ -265,8 +297,9 @@ function DetalheDaOperacao({ id }: { id: string }) {
       <p className={styles.cabecalho}>
         <a className={styles.link} href={hashDe('operacoes')}>← Todas as operações</a>
         {op.status ? <Badge tone={TOM_DO_STATUS[op.status]} size="sm">{ROTULO_DO_STATUS[op.status]}</Badge> : null}
-        <span className={styles.mudo}>Ação final: {rotuloDaAcao(op.acao_final)}{op.custo_usd !== null ? ` · custo de IA ${formatUsd4(op.custo_usd)}` : ''}</span>
+        <span className={styles.mudo}>Ação final: {rotuloDaAcao(op.acao_final)}</span>
       </p>
+      <CustoEAssunto op={op} />
       <FaixaDeCapacidade op={op} />
       <PorApp op={op} />
       <section aria-labelledby="operacao-agentes">
