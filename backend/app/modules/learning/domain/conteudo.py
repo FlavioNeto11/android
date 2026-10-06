@@ -11,7 +11,7 @@ BRANCA de campos: nada de `args` é copiado em bloco, e um campo novo da receita
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from app.modules.learning.domain.livro import apps_na_ordem_do_plano, fluxo_tem_efeito, receita_tem_efeito
@@ -266,10 +266,16 @@ def etapa_de_fluxo(indice: int, passo: JsonValue) -> JsonObject:
 
 
 def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: str | None,
-                  source_run_id: str | None, apps: Iterable[str] = ()) -> JsonObject:
+                  source_run_id: str | None, apps: Iterable[str] = (),
+                  correcao: Mapping[str, str | None] | None = None) -> JsonObject:
     """`app`: o principal do plano, onde rodam as etapas sem app próprio; `apps`: os exigidos (`flow_required_apps`),
     na ordem em que o plano os usa (29.42: ler no Outlook e depois procurar no Instagram → Outlook, Instagram).
-    Um comando que atravessa apps (12.1: ler no Outlook, procurar no Instagram) tem o principal e os dois exigidos."""
+    Um comando que atravessa apps (12.1: ler no Outlook, procurar no Instagram) tem o principal e os dois exigidos.
+
+    `correcao` (31.117): a execução que falhou e deu origem à correção ensinada (`{session_id, run_id, step_id, attempt_id}`, a
+    mesma forma de `flows[].origin`); `None` quando o fluxo não veio de uma falha. Os quatro ids vão em `origem` (null sem
+    correção) e `source_run_id` cai para o run da falha quando a coluna do fluxo é null (o treino não a preenche)."""
+    origem_da_falha = correcao or {}
     passos = plano.get("steps") if isinstance(plano, dict) else None
     etapas = [etapa_de_fluxo(i, p) for i, p in enumerate(passos if isinstance(passos, list) else [])]
     treino = bool(fonte and fonte.startswith("training"))
@@ -277,7 +283,10 @@ def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: st
     return {
         "tipo": "fluxo", "nome": nome, "comando_modelo": comando_modelo,
         "app": _texto(plano.get("app_id")) if isinstance(plano, dict) else None, "apps": exigidos,
-        "origem": {"tipo": "treino" if treino else "execucao", "fonte": fonte, "source_run_id": source_run_id},
+        "origem": {"tipo": "treino" if treino else "execucao", "fonte": fonte,
+                   "source_run_id": source_run_id or origem_da_falha.get("run_id"),
+                   "session_id": origem_da_falha.get("session_id"), "run_id": origem_da_falha.get("run_id"),
+                   "step_id": origem_da_falha.get("step_id"), "attempt_id": origem_da_falha.get("attempt_id")},
         "etapas": etapas,
         "efeito": {"externo": fluxo_tem_efeito(plano),
                    "etapas_com_efeito": [e["indice"] for e in etapas if e["efeito"] is True]}}

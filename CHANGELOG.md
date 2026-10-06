@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.117: o Livro lê a origem da execução do fluxo ensinado (branch feat/31-117-origem-no-livro)
+
+- `conteudo.origem` de `GET /api/aprendizado/fluxo/{ref}` ganha `session_id`, `run_id`, `step_id` e `attempt_id`, iguais ao `flows[].origin` (a sessão de treino
+  de origem, lida em `fontes.py::_correcao_do_fluxo`); `null` quando o fluxo não veio de uma falha. O `source_run_id`, que o treino não grava na coluna, cai
+  para o run da falha. Adendo v1.81, aditivo, sem migração. Os testes que fixavam o dict antigo de `origem` ganharam os quatro ids nulos.
+- Prova `simulated` (`test_treino_a_partir_da_falha`, `test_learning_conteudo`); `real`: `not_run` até o deploy (ler o Livro e `GET /api/flows` de um fluxo com origem).
+
 ## 2026-10-06 — K-104: a caracterização da saúde não fotografa o dialeto do banco (branch fix/saude-caracterizacao-dialeto)
 
 - Na suíte 47 o PG dirigido reprovou os 31 cenários de `test_saude_caracterizacao.py`: o dourado foi gerado em SQLite e a fotografia levava `database.dialect`
