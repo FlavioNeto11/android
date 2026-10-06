@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from app.contracts.origem import PREFIXO_OPERACAO
-from app.db import Database, Row, dumps, loads
+from app.db import OPERATIONAL_ERRORS, Database, Row, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
@@ -61,7 +61,7 @@ _ARROBA = re.compile(r"(?<![\w.])@[A-Za-z0-9._]{1,60}")
 def _motivo(texto: object) -> str | None:
     """O motivo REDIGIDO, numa linha e SEM @ de conta. O do objetivo pode trazer texto lido da tela, da pergunta à pessoa
     ou o @ do alvo (a porta de frota o cita), e vai para o banco, o evento `operacao.alvo`, a API e o relatório."""
-    return motivo_curto(_ARROBA.sub("o perfil alvo", redact(str(texto))) if texto else None)
+    return motivo_curto(_ARROBA.sub("o perfil alvo", redact(str(texto)) or "") if texto else None)
 
 
 class OperacaoError(Exception):
@@ -271,6 +271,13 @@ class ServicoDeOperacoes:
             alvos.append((a, leitura, resultado))
         executadas = self._acoes_comprometidas(op_id)
         aprovados = self._runs_com_acao_aprovada(op_id)
+        if aprovados and op["acao_final"] == "preparar" and op["status"] != "cancelada":
+            # A ação aprovada POR FORA do liberar (Pendências, Telegram: a onda 1 de 06/10) vai rodar. A operação passa a
+            # `executar` e reabre, como no liberar; sem isto, ficava `concluida` com o `finished_at` da preparação e a
+            # ação executada e verificada depois dele.
+            self.db.execute("UPDATE operacoes SET acao_final='executar', status='em_curso', finished_at=NULL, updated_at=?"
+                            " WHERE id=? AND acao_final='preparar'", (now_iso(), op_id))
+            op = self.db.one("SELECT * FROM operacoes WHERE id=?", (op_id,)) or op
         saida = []
         for a, lt, resultado in alvos:
             estado, motivo, parou = lt.estado, lt.motivo, lt.parou_em
@@ -296,9 +303,24 @@ class ServicoDeOperacoes:
         status = self._status(op, saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
                 "max_usd": op["max_usd"], "assunto": op["assunto"], "fontes": loads(op["fontes"], []),
-                "parametros": loads(op["parametros"], None),
-                "status": status, "created_at": op["created_at"], "finished_at": self._fechar(op, status, capacidade),
+                "parametros": loads(op["parametros"], None), "fontes_da_pesquisa": self._fontes_da_pesquisa(op_id),
+                "status": status, "created_at": op["created_at"],
+                "finished_at": self._fechar(op, status, capacidade, fim=self._fim_real(saida)),
                 "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id)}
+
+    def _fontes_da_pesquisa(self, op_id: str) -> list[str]:
+        """As URLs que a pesquisa externa da operação ACHOU (frente de aprendizado, migração 125: `pedido_observacoes` com
+        `tipo='url'`). `fontes` é o que o pedido trouxe de entrada; sem isto, o GET mostrava 0 fontes com pesquisa paga."""
+        vistas: list[str] = []
+        try:
+            linhas = self.db.query("SELECT valor FROM pedido_observacoes WHERE operacao_id=? AND tipo='url' AND valor IS"
+                                   " NOT NULL ORDER BY capturado_em, id", (op_id,))
+        except OPERATIONAL_ERRORS:          # banco sem a migração 125 (a coluna `operacao_id`): a pesquisa não gravou nada
+            return vistas
+        for r in linhas:
+            if str(r["valor"]) not in vistas:
+                vistas.append(str(r["valor"]))
+        return vistas
 
     def _definicao(self, app_id: str) -> tuple[str, dict[str, str]]:
         row = self.db.one("SELECT package FROM apps WHERE id=?", (app_id,))
@@ -404,10 +426,17 @@ class ServicoDeOperacoes:
                       data={"operacao_id": op_id, "profile_id": a["profile_id"], "estagio": estagio, "estado": estado,
                             "motivo": motivo})
 
-    def _fechar(self, op: Row, status: str, capacidade: dict[str, object]) -> str | None:
+    @staticmethod
+    def _fim_real(alvos: list[dict[str, object]]) -> str | None:
+        """A hora do último estágio alcançado entre os alvos: é quando a operação terminou de fato. Fechar com a hora da
+        LEITURA punha o fim depois do que aconteceu (ou antes, quando a operação reabre e fecha de novo)."""
+        horas = [str(e["em"]) for a in alvos for e in a["estagios"]]  # type: ignore[attr-defined]
+        return max(horas) if horas else None
+
+    def _fechar(self, op: Row, status: str, capacidade: dict[str, object], *, fim: str | None = None) -> str | None:
         if status == "em_curso" or op["finished_at"]:
             return str(op["finished_at"]) if op["finished_at"] else None
-        agora = now_iso()
+        agora = min(fim, now_iso()) if fim else now_iso()
         if self.db.execute("UPDATE operacoes SET status=?, finished_at=?, updated_at=? WHERE id=? AND finished_at IS"
                            " NULL", (status, agora, agora, op["id"])) == 0:
             return None

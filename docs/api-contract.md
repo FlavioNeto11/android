@@ -7286,6 +7286,11 @@ nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal`
   motivo, e o nome fica o do planejador.
 - O teto `max_usd` também reserva o POST do Jev (`conferir_gasto(reservar=True)`, segurado até a linha de custo). A
   média da reserva conta só as chamadas cobradas.
+- A ação final aprovada POR FORA do liberar (Pendências, Telegram) vale como liberação: a operação passa a `executar`
+  e reabre. Em todo fechamento, o `finished_at` é a hora do último estágio alcançado, não a da leitura. Na onda 1 de
+  06/10, ele ficava em 19:44:58, antes da ação verificada às 19:48:05.
+- `OperacaoDetalhe.fontes_da_pesquisa: string[]`: as URLs que a pesquisa externa achou (`pedido_observacoes`,
+  `tipo='url'`, sem repetição, na ordem da captura). `fontes` continua sendo só a entrada do pedido.
 
 Migração `127_operacoes_parametros` (`operacoes.parametros`, só `ADD COLUMN`). Código: `backend/app/taskqueue/plano_da_operacao.py`,
 `RunService._plano_da_operacao`, `backend/app/modules/operacoes/`. Testes: `backend/tests/test_plano_da_operacao.py`,
