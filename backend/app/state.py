@@ -52,6 +52,8 @@ from .modules.avisos.infrastructure.portas_da_central import PortasReais, nomes_
 from .porta_do_plano import (AprovarPlanoBody, ItemAprovado, aprovar_pelo_canal, previa_da_porta,
                              previa_para_o_canal)
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos, trava_de_avisos_em_uso
+from .devices.diagnostics import ler_disco as ler_disco_da_saude
+from .modules.avisos.infrastructure.vigia_do_host import VigiaDoHost
 from .decisoes_inversas import inversas_das_filas
 from .modules.decisoes.application.desfazer import DesfazerDecisoes
 from .modules.avisos.infrastructure.trello_leitor import ComentariosDoTrello, LeitorDoTrello
@@ -290,6 +292,10 @@ class AppState:
                                       redigir=TriagemDeCredencial().redigir,
                                       faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta),
                                       nomes_de_persona=lambda: nomes_e_dados_da_persona(self.db))
+        # O que a Central confere no próprio host (28.60 ensaio de restauração, 28.58 disco baixo): lê o veredito do script
+        # e o livre do disco e avisa pela rotina. O leitor do disco é o da saúde (`devices.diagnostics.ler_disco`).
+        self.vigia_do_host = VigiaDoHost(cfg, self.avisos.enfileirar_aviso, ler_disco=ler_disco_da_saude,
+                                         pronto=lambda: self.avisos.ligado and self.avisos.canal() is not None)
         # O contato do site institucional (29.77, ADR-075): grava antes de avisar e entrega pela Canais. Desligado de fábrica.
         self.portal = Portal(cfg, self.db, self.avisos)
         # O que a plataforma decide sozinha (28.25): `bootstrap.montar_decisoes`.
@@ -1750,6 +1756,8 @@ class AppState:
             # O vigia da borda (29.97): de hora em hora, no mesmo líder; sem nome público não faz nada.
             self._bg.append(asyncio.create_task(self.portal.laco_da_borda(lambda: self._lider(AVISOS)),
                                                 name="portal-borda"))
+            # O ensaio de restauração e o disco do central (28.60, 28.58): no mesmo líder, só com o aviso ligado.
+            self._bg.append(asyncio.create_task(self.vigia_do_host.laco(lambda: self._lider(AVISOS)), name="vigia-do-host"))
             # O recolher das decisões automáticas (28.25) em qualquer réplica; o resumo, só no líder da trava `avisos`.
             self._bg.append(asyncio.create_task(self.decisoes.laco(), name="decisoes-automaticas"))
             # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).

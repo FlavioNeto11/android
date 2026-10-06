@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 28.60 e 28.58 (Canais): avisos de rotina do host, ensaio de restauração e disco baixo (branch canais/28-60-e-28-58)
+
+- Dois tipos de aviso de rotina (nível 3, na janela junto dos demais, sem cartão no Trello): `host.restore_ensaio` e `host.disco_baixo`, lidos por um vigia do backend (`VigiaDoHost`, no líder da trava `avisos`) sem rota nova.
+- 28.60: lê `data/restore-ensaio/ultimo.json` e avisa `falhou`, `pulado`, veredito ilegível ou veredito velho (`avisos.restore_ensaio.idade_max_h`, 192 h: o ensaio é semanal, 48 h alarmaria toda terça). Uma mensagem por veredito (ou por dia UTC no velho/ilegível); arquivo ausente não avisa.
+- 28.58: o livre do disco, pelo mesmo leitor da saúde (`devices/diagnostics.ler_disco`), abaixo de `avisos.disco.piso_gb` (100) e a cada degrau de 20 GB abaixo; rearma ao voltar ao piso; diz o que ocupa (backups, AVDs, capturas medidos em thread de fundo com cache; Docker "não medido") e nunca apaga nada.
+- Prova `simulated`: `backend/tests/test_aviso_restore_ensaio.py` e `backend/tests/test_aviso_disco_baixo.py`. `real`: `not_run` (falha forçada numa cópia de teste; primeira leitura do disco no central).
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.

@@ -98,6 +98,10 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "portal.borda_sem_conferir": ALGO_FALHOU,
     # 29.101: a API do central aberta sem login pelo endereço público. O gesto é do dono (parar o túnel): sai na hora.
     "portal.borda_api": PRECISA_DE_VOCE,
+    # 28.60 e 28.58: o que a Central confere no PRÓPRIO host (ensaio de restauração e disco). Rotina: a janela os junta,
+    # com a conta no título. Nenhum deles começa com `portal.`, que a fila nunca agrupa (`SEM_AGRUPAR`).
+    "host.restore_ensaio": ROTINA,
+    "host.disco_baixo": ROTINA,
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
 PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado", "portal.resumo", "portal.borda",
