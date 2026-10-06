@@ -53,6 +53,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Fica para o F4 (Aprendizado): `origin.diagnostico`.
 - Prova: `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
 
+## 2026-10-06 — 31.113 F1: o registro da execução guarda o marcador da persona (branch feat/31-113-f1-registro-mascarado)
+
+- Achado da prova real do 31.87 (r-20261006012340-d92795): o nome da persona ficou em claro em `events`, `actions`,
+  `attempts.error`, `evidence.note` e `steps`. A F1 troca valor → marcador na fronteira de escrita
+  (`security/mascara_da_persona.py`): diário de ações, erro e resultado observado da tentativa, nota da evidência,
+  detalhe da etapa e todo evento com contexto de execução (máscara do `Repository` ligada no `EventBus`). A tela e o
+  executor seguem com o valor. `actions.target` fica (seletor da receita e da lição). O texto das etapas é a F2.
+- Execuções anteriores não são reescritas; o registro nasce mascarado a partir do deploy deste commit.
+- Funções tocadas (K-095): `EventBus.__init__`, `EventBus.emit`, `Repository.__init__`, `Repository.log_intent`,
+  `Repository.finish_action`, `Repository.note_attempt`, `Repository.finish_attempt`,
+  `Repository._registrar_evidencia`, `Repository.transition_step`, `Repository.mascara_do_registro` (nova),
+  `Repository._objetivo_do_registro` (nova), `Repository._mascara_do_objetivo` (nova), `Repository._trocas_da_acao`
+  (nova), `Repository._tentativa_da_acao` (nova), `security.mascara_da_persona` (módulo novo).
+- Prova `simulated`: `backend/tests/test_registro_mascarado_da_persona.py` (8). Real: `not_run`.
+
 ## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)
 
 - Une o painel do 31.89 já sobre a junção do corte 43 (`feat/31-89-painel-corte-44`, 5cb96676) e a tela do 30.85 (`feat/30-85-selo-no-livro`, b083e683, sobre a

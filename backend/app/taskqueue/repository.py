@@ -13,7 +13,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from ..contracts.origem import origem_da_execucao
 from ..db import Database, INTEGRITY_ERRORS, Row, dumps, loads
@@ -30,6 +30,7 @@ from ..modules.learning.domain.falhas import classificar_falha
 from ..modules.pedidos.domain.orcamento import teto_da_execucao
 from ..planning.catalog import session_provider_of
 from ..planning.provider import Usage
+from ..security import mascara_da_persona as mascara
 from ..security.enderecos import enderecos_limpos
 from ..security.redaction import redact
 from ..social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_MOTIVO_DO_ROTULO, ARGUMENTO_DO_ROTULO_IA,
@@ -38,6 +39,7 @@ from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, parse_iso, to_iso, truncate
 from .latencia import TemposDaTentativa, motivo_da_espera
 from .dado_da_persona import DadoDaPersonaAusente, exigir_resolvido, faltas_dos_passos
+from .dado_da_persona import nomes_citados as citados_da_persona
 from .recipes import para_hash, step_template_hash
 from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
@@ -154,6 +156,19 @@ class PosseDaEtapaPerdida(RuntimeError):
 # migração posterior.
 
 
+_LIMITE_DO_CACHE = 2048
+
+
+_V = TypeVar("_V")
+
+
+def _guardar(cache: dict[str, _V], chave: str, valor: _V) -> None:
+    """Cache limitado: passou do limite, começa de novo (o custo é refazer uma consulta por objetivo)."""
+    if len(cache) >= _LIMITE_DO_CACHE:
+        cache.clear()
+    cache[chave] = valor
+
+
 class Repository:
     def __init__(self, db: Database, bus: EventBus, evidence_dir: Path, *, owner_id: str = "local",
                  storage: Storage | None = None):
@@ -182,6 +197,12 @@ class Repository:
         #: binding, no título e no objetivo da etapa, embora a lista do planejador (`service.dados`) já desse o @.
         self._dados = SqlProfileDataStore(db, tem_provedor_de_sessao=lambda pacote: session_provider_of(pacote)
                                           is not None)
+        #: 31.113 F1: o mapa valor → marcador da persona por objetivo (com as variáveis e os parâmetros dele), e o
+        #: objetivo de cada tentativa, etapa e execução. Caches limitados; o dado da persona não muda no meio da execução.
+        self._mascaras: dict[str, tuple[dict[str, str], dict[str, str], dict[str, object]]] = {}
+        self._objetivo_de: dict[str, str] = {}
+        self._objetivos_da_execucao: dict[str, list[str]] = {}
+        bus.mascara = self.mascara_do_registro
 
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None,
@@ -704,6 +725,8 @@ class Repository:
             if cercar and dono != self.owner_id:
                 raise PosseDaEtapaPerdida(step_id, dono, self.owner_id)
             fields = ["status=?", "status_detail=?", "next_retry_at=?"]
+            if detail:      # 31.113 F1: o detalhe é registro; leva o marcador da persona
+                detail = mascara.no_texto(detail, self.mascara_do_registro(None, None, step_id, None))
             params: list[Any] = [target.value, truncate(detail, 600), next_retry_at]
             if result is not None:
                 fields.append("result=?")
@@ -859,9 +882,10 @@ class Repository:
     def note_attempt(self, attempt_id: str, *, error: str | None = None, recovery: str | None = None) -> None:
         """Anota erro original/recuperação numa tentativa ainda em andamento."""
         # 31.54 (U1): o erro anotado pode trazer o texto do juiz com a URL que ele leu na imagem; grava limpo.
+        trocas = self.mascara_do_registro(None, None, None, attempt_id) if error else {}   # 31.113 F1
         self.db.execute("UPDATE attempts SET error=COALESCE(?, error), recovery=COALESCE(?, recovery) WHERE id=?",
-                        (truncate(enderecos_limpos(error) if error else error, 800), truncate(recovery, 800),
-                         attempt_id))
+                        (truncate(mascara.no_texto(enderecos_limpos(error), trocas) if error else error, 800),
+                         truncate(recovery, 800), attempt_id))
 
     def refund_attempt(self, step_id: str) -> None:
         """Interrupção sem culpa da etapa (pausa, controle manual, reinício): não consome tentativa."""
@@ -896,6 +920,10 @@ class Repository:
         # A tela só acompanha um tipo de falha: tentativa comprovada ou cancelada não tem "onde falhou", e a tela
         # sem tipo seria um grupo do backlog sem falha nenhuma.
         tela = (screen or None) if tipo is not None else None
+        # 31.113 F1: o tipo sai do texto; o que fica gravado leva o marcador da persona.
+        if erro or observed:
+            trocas = self.mascara_do_registro(None, None, None, attempt_id)
+            erro, observed = mascara.no_texto(erro, trocas), mascara.no_texto(observed, trocas)
         cur = self.db.execute(
             "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(?, error), recovery=COALESCE(?, recovery),"
             " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=?, error_kind=? WHERE id=?"
@@ -915,12 +943,83 @@ class Repository:
                        instance_id=step["instance_id"] if step else None)
         self.emit_attempt(attempt_id, step)
 
+    # ================================================================== 31.113 F1: o registro leva o marcador
+    def mascara_do_registro(self, run_id: str | None = None, objective_id: str | None = None,
+                            step_id: str | None = None, attempt_id: str | None = None) -> dict[str, str]:
+        """`{valor: marcador}` da persona do objetivo do registro (pela tentativa, pela etapa ou direto); só com a
+        execução, a soma dos objetivos dela. Sem persona, vazio."""
+        oid = objective_id or self._objetivo_do_registro(step_id, attempt_id)
+        if oid:
+            return self._mascara_do_objetivo(oid)[0]
+        if not run_id:
+            return {}
+        oids = self._objetivos_da_execucao.get(run_id)
+        if oids is None:
+            oids = [str(r["id"]) for r in self.db.query("SELECT id FROM objectives WHERE run_id=?", (run_id,))]
+            if oids:        # antes da materialização não há objetivo: não guarda a lista vazia
+                _guardar(self._objetivos_da_execucao, run_id, oids)
+        trocas: dict[str, str] = {}
+        for o in oids:
+            trocas.update(self._mascara_do_objetivo(o)[0])
+        return trocas
+
+    def _objetivo_do_registro(self, step_id: str | None, attempt_id: str | None) -> str | None:
+        chave = attempt_id or step_id
+        if not chave:
+            return None
+        if chave not in self._objetivo_de:
+            r = (self.db.one("SELECT s.objective_id FROM attempts t JOIN steps s ON s.id=t.step_id WHERE t.id=?",
+                             (attempt_id,)) if attempt_id else
+                 self.db.one("SELECT objective_id FROM steps WHERE id=?", (step_id,)))
+            if r is None or not r["objective_id"]:
+                return None
+            _guardar(self._objetivo_de, chave, str(r["objective_id"]))
+        return self._objetivo_de[chave]
+
+    def _mascara_do_objetivo(self, oid: str) -> tuple[dict[str, str], dict[str, str], dict[str, object]]:
+        if oid not in self._mascaras:
+            r = self.db.one("SELECT o.profile_id, o.parameters, r.plan FROM objectives o JOIN runs r ON r.id=o.run_id"
+                            " WHERE o.id=?", (oid,))
+            if r is None:
+                return {}, {}, {}
+            variaveis = self._variaveis_da_persona(r["profile_id"]) if r["profile_id"] else {}
+            params: dict[str, object] = loads(r["parameters"], {}) or {}
+            try:
+                citados = citados_da_persona(Plan.model_validate_json(r["plan"])) if r["plan"] else []
+            except ValueError:
+                citados = []
+            _guardar(self._mascaras, oid, (mascara.mapa(variaveis, citados, params), variaveis, params))
+        return self._mascaras[oid]
+
+    def _trocas_da_acao(self, attempt_id: str, tool: str, args: dict[str, object]) -> dict[str, str]:
+        """O mapa do objetivo, mais o dado da persona que o ator digitou INTEIRO (de qualquer chave): dali em diante o
+        texto do objetivo também o mascara."""
+        oid = self._objetivo_do_registro(None, attempt_id)
+        if not oid:
+            return {}
+        trocas, variaveis, params = self._mascara_do_objetivo(oid)
+        if tool == "type_text" and variaveis:
+            novo = mascara.digitado(args.get("text"), variaveis, params)
+            if novo is not None:
+                trocas.setdefault(*novo)
+        return trocas
+
+    def _tentativa_da_acao(self, action_id: int) -> str | None:
+        r = self.db.one("SELECT attempt_id FROM actions WHERE id=?", (action_id,))
+        return str(r["attempt_id"]) if r is not None else None
+
     # ================================================================== ações (diário intenção → resultado)
     def log_intent(self, attempt_id: str, tool: str, args: dict[str, Any], rationale: str | None,
                    *, side_effect: bool, source: str = "ai", ai_call_id: int | None = None) -> int:
         """`ai_call_id` (item 31.24, C-1): a linha de `ai_calls` do decide que escolheu esta ação; `None` quando quem
         decidiu foi a receita ou o executor."""
         seq = int(self.db.scalar("SELECT COALESCE(MAX(seq),0)+1 FROM actions WHERE attempt_id=?", (attempt_id,)))
+        # 31.113 F1: o diário guarda o marcador da persona; o executor digita o valor que tem em memória.
+        trocas = self._trocas_da_acao(attempt_id, tool, args)
+        if trocas:
+            mascarados = mascara.no_objeto(args, trocas)
+            args = mascarados if isinstance(mascarados, dict) else args
+            rationale = mascara.no_texto(rationale, trocas)
         action_id = int(self.db.inserted_id(
             "INSERT INTO actions(attempt_id, seq, tool, args, rationale, status, side_effect, intent_at, source,"
             " ai_call_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -932,6 +1031,14 @@ class Repository:
     def finish_action(self, action_id: int, status: ActionStatus, *, result: dict[str, Any] | None = None,
                       error: str | None = None, effect_possible: bool = False,
                       target: dict[str, Any] | None = None) -> None:
+        # 31.113 F1: resultado e erro levam o marcador. O `target` fica: é o seletor da receita e da lição (o elemento
+        # da tela), e o `ActionDTO` do evento não o leva.
+        if result is not None or error:
+            trocas = self.mascara_do_registro(None, None, None, self._tentativa_da_acao(action_id))
+            if trocas:
+                mascarado = mascara.no_objeto(result, trocas)
+                result = mascarado if isinstance(mascarado, dict) else result
+                error = mascara.no_texto(error, trocas)
         self.db.execute("UPDATE actions SET status=?, done_at=?, result=?, error=?, effect_possible=?,"
                         " target=COALESCE(?, target) WHERE id=?",
                         (status.value, now_iso(), dumps(result) if result is not None else None, truncate(error, 600),
@@ -1012,6 +1119,8 @@ class Repository:
 
     def _registrar_evidencia(self, *, run_id: str, instance_id: str, step_id: str | None, attempt_id: str | None,
                              ts: str, kind: str, note: str | None, path: str | None, redacted: bool) -> int:
+        if note:            # 31.113 F1: a nota é registro; leva o marcador da persona
+            note = mascara.no_texto(note, self.mascara_do_registro(run_id, None, step_id, attempt_id))
         # `storage`/`stored_by` dizem ONDE o arquivo está e QUEM o gravou: sem isso a retenção de uma réplica
         # apaga do banco compartilhado a linha de um arquivo que está no disco da OUTRA (achado #172).
         eid = int(self.db.inserted_id(
