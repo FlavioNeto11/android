@@ -67,6 +67,7 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 | API, eventos, rotas | `backend/app/api.py`, `models.py`, `events.py` | [`api-contract.md`](api-contract.md) |
 | Comandos e worker | `backend/app/commands/`, `workers/`, `worker/` | [`arquitetura.md`](arquitetura.md), [`worker.md`](worker.md) |
 | Aparelhos e parque | `backend/app/devices/`, `taskqueue/scheduler.py` | [`dominios/parque.md`](dominios/parque.md) |
+| Portões do despacho (política, rascunho, aprovação do sim) | `backend/app/gates.py` (`AppState` delega), `porta_do_plano.py`, `social/policy.py`, `social/approvals.py` | [`dominios/execution.md`](dominios/execution.md) |
 | Fila e execução | `backend/app/taskqueue/`, `modules/execution/` | [`dominios/execution.md`](dominios/execution.md) |
 | IA | `backend/app/planning/`, `taskqueue/executor.py` | [`ia.md`](ia.md) |
 | Apps, releases, loja, manifesto de app | `backend/app/releases/`, `modules/applications/` (`planning/catalog/` é shim) | [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md) |

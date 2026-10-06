@@ -223,6 +223,7 @@ _PERMITIDOS = {
     "app/social/repository.py": {"saidas_da_acao", "etapas_em_curso_da_acao", "pedidos_da_acao"},  # resolvem logo após
     "app/social/approvals.py": {"definir_texto", "textos_irmaos"},  # escreve a linha; o "não repita" com o marcador
     "app/state.py": set(),
+    "app/gates.py": set(),                               # os portões moram aqui desde o 15.15 F5a
 }
 
 
@@ -249,5 +250,5 @@ def test_a_porta_le_os_bindings_so_pelo_leitor_unico() -> None:
     fora = [f"{arquivo}:{linha} ({funcao})" for arquivo, permitidos in _PERMITIDOS.items()
             for funcao, linha in _leituras_cruas(raiz / arquivo) if funcao not in permitidos]
     assert not fora, "leitura crua de `bindings` fora de `Repository.bindings_da_etapa`: " + ", ".join(fora)
-    texto = (raiz / "app/state.py").read_text(encoding="utf-8")
+    texto = (raiz / "app/gates.py").read_text(encoding="utf-8")      # onde os portões moram desde o 15.15 F5a (antes, `state.py`)
     assert len(re.findall(r"bindings_da_etapa\(", texto)) >= 10
