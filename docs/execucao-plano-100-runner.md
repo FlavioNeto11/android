@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-616 de 673 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+617 de 673 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -626,7 +626,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.76 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 287bc608. Simulado: backend/tests/test_falha_so_da_imagem.py::*, backend/tests/test_learning_falhas.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só confl… | None |
 | 31.77 | implemented | simulated | claude-opus-5-5 | — | Ponta 5e0aa9b7: uma fração só para página e janela, e a janela flutuante pela raiz do dump. Simulado: backend/tests/test_janela_pela_raiz.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/main 8ac140e0 + fix/31… | None |
 | 31.78 | implemented | simulated | claude-fable-5-1 | — | Ponta cd36871d (com dfe626de e 13e6d342), na main pelo merge ff868859. Simulado: backend/tests/test_releitura_do_mesmo_valor.py::* (suíte que integrou o commit; a lista exata de testes está no resultado dessa suíte). Re… |  |
-| 31.79 | pendente | — | — | — |  |  |
+| 31.79 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 05:33Z a 05:41Z, deploy 46 (325a04fb). (1) Execução criada por POST /api/runs (instance_ids android-04, profile_ids da persona de teste): 'Abra as Configurações do Android e confirme que a tela mostra u… | None |
 | 31.80 | implemented | simulated | claude-opus-5-5 | — | #427 (5a56f403) e #428 (05b44377). Simulado: backend/tests/test_treino_gravacao_orfa.py::*, frontend/src/features/training/trainingStore.test.ts::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 38 sobre… | None |
 | 31.81 | pendente | — | — | — |  |  |
 | 31.82 | implemented | simulated | claude-opus-5-5 | — | #427, ponta 5a56f403. Simulado: backend/tests/test_treino_segredo_na_gravacao.py::*, backend/tests/test_redaction_linha_com_codigo.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-… | None |
@@ -680,7 +680,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (57): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.145, 29.151, 29.152, 30.34, 30.72, 30.73, 30.74, 31.11, 31.12, 31.26, 31.79, 31.81, 31.87, 31.113, 31.115, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (56): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.145, 29.151, 29.152, 30.34, 30.72, 30.73, 30.74, 31.11, 31.12, 31.26, 31.81, 31.87, 31.113, 31.115, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

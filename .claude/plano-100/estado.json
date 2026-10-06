@@ -10467,6 +10467,20 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T05:23:28+00:00"
+  },
+  "31.79": {
+   "id": "31.79",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 05:33Z a 05:41Z, deploy 46 (325a04fb). (1) Execução criada por POST /api/runs (instance_ids android-04, profile_ids da persona de teste): 'Abra as Configurações do Android e confirme que a tela mostra um item chamado Zzz Inexistente 777', r-20261006053318-c04149; falha natural do que não existe: plano v1 'Confirmar item na tela' failed, replanejamento v2 e a etapa 'Confirmar item na tela' parou em waiting_user, a execução ficou awaiting_person (não needs_input), custo US$ 0,292031. (2) Pela tela, Execuções > Por aparelho > Versões anteriores do plano > Plano v1 > etapa 'Confirmar item na tela' (Falhou): 'Ensinar a corrigir', com o formulário que nomeia android-04 e a escolha de persona (Teste Portal Um): assumiu o controle e abriu o Foco com 'Gravando: Corrigir a etapa «Confirmar item na tela»' e o selo 'corrige uma falha da etapa check_item da execução r-20261006053318-c04149' com o motivo. (3) Gravei 2 rolagens (arrastar) na lista de Configurações (2 entradas) e 'Concluir e revisar': a revisão mostrou o selo e a origem no topo, a trilha recolhível e as 2 entradas ('desliza'). (4) 'Pedir proposta à IA' (US$ 0,0130): proposta com o comando 'abra as configurações e confirme o item {item} na tela', parâmetro item e perguntas da IA (não respondidas). (5) 'Salvar como fluxo': 'Fluxo f-455f91437856 salvo [em prova]. Até a prova, só a persona que ensinou pode pedir pelo comando…', 'Vale para todos os perfis, depois de provado.' e o selo com a frase 'Este fluxo nasceu da correção da etapa check_item da execução r-20261006053318-c04149.' (6) Leitura do fluxo: GET /api/flows traz no f-455f91437856 origin {session_id trn-4lukXbyHNxGubAK0, run_id r-20261006053318-c04149, step_id r-20261006053318-c04149:android-04:v1:check_item, attempt_id …:check_item:a2}; GET /api/training/trn-4lukXbyHNxGubAK0 devolve status saved, flow_id f-455f91437856 e o mesmo origin.",
+   "blocker": null,
+   "nota": "Achados: (a) o botão 'Ensinar a corrigir' NÃO aparece na etapa em waiting_user (a v2 desta execução), embora o backend aceite (STATUS_ENSINAVEIS inclui waiting_user desde a6d52001, 31.111 A): ETAPA_CORRIGIVEL do painel só tem failed e uncertain, escrito pelo adendo v1.75 antes do 31.111 A; usei a etapa failed da versão 1. Correção no 31.91 T1. (b) O detalhe do Aprendizado (GET /api/aprendizado/fluxo/{ref}) NÃO cita a execução de origem: conteudo.origem.source_run_id é null e a ligação só existe em GET /api/flows (origin) e na sessão; o selo do Livro/detalhe do fluxo não tem como mostrar 'nasceu de uma falha' sem outra rota. (c) Logo depois de salvar, o texto da tela ainda trazia a sessão em 'Para revisar' ('só gravada') ao lado de 'Salvas (4)'; vi uma vez e não reproduzi (pode ser atraso da lista). (d) A proposta generalizou 'Zzz Inexistente 777' para {item} com exemplo 'Safety & emergency': o fluxo é só de teste e ficou em prova. Os selos de origem na barra, na revisão e no resultado do salvar mostraram o que o F5 promete.",
+   "grupo": "portal-31-79-ensino-assistido-ponta-a-ponta",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T05:42:42+00:00"
   }
  },
  "rodadas": [
@@ -13559,6 +13573,15 @@
    ],
    "grupos": [
     "orquestrador-correcao-31-113"
+   ]
+  },
+  {
+   "quando": "2026-10-06T05:42:42+00:00",
+   "itens": [
+    "31.79"
+   ],
+   "grupos": [
+    "portal-31-79-ensino-assistido-ponta-a-ponta"
    ]
   }
  ]
