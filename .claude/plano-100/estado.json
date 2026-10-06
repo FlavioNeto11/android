@@ -7409,16 +7409,16 @@
   },
   "31.40": {
    "id": "31.40",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Prova real em 05/10/2026, central WIN-7S2UASNLFOP, deploy 35 (d025b671), android-09 sem vínculo e sem conta, execução r-20261005071303-f24955 (lote:jev:31.40-r1, página pública de comércio), de 07:13:03Z a 07:15:20Z, US$ 0,1637 por costs.spent_usd (parou pela regra de 0,15 da ficha; teto da janela 0,30), 0 avisos ao dono. PROVADO: o juiz recusou com motivo sobreposicao; a limpeza foi inserida antes da etapa (plano v2, mecanismo do 31.36); a limpeza não aceitou nada (31.51): rodou em 2 s e registrou que não havia botão de recusar, fechar ou continuar. NÃO PROVADO: a limpeza fechar o diálogo e a etapa terminar comprovada (o banner não tem fechar na árvore; desfecho completed_with_issues, 0 de 1). Achados que viraram item: o ator tocou em aceitar cookies duas vezes (31.72); sobreposição venceu com causa dupla (31.73); a espera por texto levou 15,6 s e 40,9 s com 8 s pedidos (31.74). Relatório: .claude/handoffs/jev-31-40-janela-2026-10-05.md.",
-   "blocker": "As execuções 2 e 3 (site com banner de cookies) só rodam com o 31.72 no ar: o ator ainda aceita consentimento por conta própria.",
-   "grupo": "resultado-orquestradora-janela35c",
-   "modelo": "claude-fable-5-1",
-   "esforco": "sessao orquestradora",
+   "evidence": "Prova real 05/10/2026 (deploy 35, d025b671), android-09 sem vínculo e sem conta, r-20261005071303-f24955 (lote:jev:31.40-r1), US$ 0,1637 por spent_usd, 0 avisos ao dono. PROVADO em real, que é o que o item pede: o juiz recusou com o motivo estruturado `sobreposicao` (ai_call 4660), a etapa falhou sem segunda tentativa, a recuperação inseriu antes dela a etapa opcional de limpeza (plano v2, `limpar_antes_open_url`, mecanismo do 31.36) e retomou da tela atual. Simulado (não visto em real): 'uma vez por objetivo' e o orçamento de chamadas da etapa de leitura dando o desfecho de dado ausente do 31.38, ambos pelos testes do item. NÃO provado e fora do contrato do item: a limpeza fechar o diálogo e a etapa terminar comprovada (o banner da prova real não tinha botão de fechar na árvore; a limpeza registrou isso sem aceitar nada, 31.51); isso é do 31.36/31.51 e do site usado. Os achados da prova viraram 31.72, 31.73 e 31.74, todos já implementados e na main. Se a orquestradora quiser a execução com banner que fecha, é uma rodada paga de cerca de US$ 0,16: aguardo o sim dela.",
+   "blocker": null,
+   "grupo": "jev",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T07:25:21+00:00"
+   "quando": "2026-10-06T03:57:02+00:00"
   },
   "31.41": {
    "id": "31.41",
@@ -7964,16 +7964,16 @@
   },
   "31.55": {
    "id": "31.55",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "04/10 21:45Z, banco central só leitura: sombra do curador 41 linhas, 38 abaixo do limiar; topo revisar 39/41; contra 30 rótulos do dono: 2/39 iguais (tabela .claude/handoffs/jev/tabela-31-55.md). 21:51Z, braço offline v2 (jev-braco-offline.py --estado v2 --enviar --teto 0.05), chave lote:jev:31.55-v2: 65 chamadas ok, US$ 0,002198 (custo.chamadas do JSON; fora do livro-caixa do ADR-051), 57339 tokens; topo=rótulo 9/63 (recorte da sombra 7/39, v1 2/39); acima de 0,85: 1 de 11 igual ao dono; rebaixar 4/4. | 21:55:50Z pré-registro de P1/P2 (.claude/handoffs/jev/preregistro-31-55.md, código ca14e5bb). 21:56Z P1 (lote:jev:31.55-p1): 67 chamadas, US$ 0,002548; acima de 0,85: 0 de 48 iguais ao dono. P2 (lote:jev:31.55-p2): 67 chamadas, US$ 0,002202; acima de 0,85: 2 de 6. Total do item US$ 0,006948 (teto 0,15), fora do livro-caixa. Perfil v2: degradando/falhas_seguidas em 4/4 rebaixados e 0/60 mantidos.",
-   "blocker": "Nenhuma pergunta bateu 70% a 0,85 (v2 9%, P1 0% dentro da amostra, P2 33%); runtime sem mudança e nenhuma rodada nova (decisão da orquestradora, 21:59Z). Ressalva: Os 30 rótulos \"do dono\" são confirmação EM BLOCO dos rótulos que o curador já tinha proposto (a pergunta a ele foi confirmar os 28 rótulos do curador e rebaixar a 10 e a 42). Então \"a regra determinística explica 64 de 65\" é em boa parte circular: mede a regra contra ela mesma, com o carimbo do dono por cima. A medida que separa o julgamento dele da regra só existe com rótulo item a item, e essa taxa está SEM AMOSTRA. Conclusão: o Jev com a entrada v1, v2, P1 e P2 não reproduz a política de manter até degradar; se a R1 em receita precisa do Jev, só se decide com rótulos item a item dados depois de hoje.",
-   "grupo": "orquestrador-resultado-suite32-a",
-   "modelo": "claude-fable-5-1",
-   "esforco": "sessao orquestradora",
+   "evidence": "O que o item pede está entregue e provado em real, só leitura mais o braço offline barato: 04/10, banco central (mode=ro), sombra do curador 41 linhas, 38 abaixo do limiar, topo revisar 39/41; o braço offline v2 (lote:jev:31.55-v2, 65 chamadas, US$ 0,002198) e as variantes P1 e P2 (lote:jev:31.55-p1/p2, 67 chamadas cada, US$ 0,002548 e 0,002202), total US$ 0,006948 contra teto de 0,15, fora do livro-caixa; perfil v2 degradando/falhas_seguidas em 4/4 rebaixados e 0/60 mantidos. O item termina com o critério NÃO fechado e 'nada muda em runtime', que é o resultado entregue: nenhuma pergunta bateu 70 % a 0,85 (v2 9 %, P1 0 %, P2 33 %). O que falta (uma linha) não é do item: rótulos do dono item a item (os 30 que existem são confirmação em bloco dos próprios rótulos do curador, então a medida é circular); só com rótulos dados depois de 04/10 a decisão sobre a R1 em receita se destrava, e isso é decisão do dono, sem gasto.",
+   "blocker": null,
+   "grupo": "jev",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:43:27+00:00"
+   "quando": "2026-10-06T03:58:16+00:00"
   },
   "31.48": {
    "id": "31.48",
@@ -8016,16 +8016,16 @@
   },
   "31.58": {
    "id": "31.58",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "05/10/2026, central WIN-7S2UASNLFOP, só leitura (mode=ro) e scripts/latencia-por-etapa.py em 4 janelas de 04/10 00:00Z a 05/10 22:30Z (execuções reais, normais n=84, 33, 3 e 46). Parede p50/p95 em s: 33,2/198,6; 45,2/249,8; 65,4/98,5; 29,0/137,4. Etapas estáveis: ator p50 2,3 a 2,5 s, conferência p50 2,9 a 3,1 s, ação p50 0,1 s. Maior bloco: tent_resto (33 a 44 % da parede). Primeiro juiz dispensado: 0 eventos nas 4 janelas, então o ganho da dispensa não é medível em real (QA sem catálogo; nenhum app declara marcador). Tabela e JSONs: .claude/handoffs/jev/latencia-31-58-depois-do-deploy-32.md e latencia-31-58/.",
-   "blocker": "A mistura de comandos e a carga do host mudam entre janelas, e a dispensa não disparou em real; a medida limpa pede o android-12 estável, a carga do notebook lida e o painel fechado.",
-   "grupo": "Jev",
+   "evidence": "O que o item pede (comparar a latência por etapa depois do deploy 32 com a linha de base de 04/10, só leitura e sem IA) está feito sobre execuções reais (mode=ro, scripts/latencia-por-etapa.py, simulated=0, classe normais). Parede p50/p95 em s: A antes do 31.40 (04/10, até o deploy 26) n=84, 33,2/198,6; B deploy 26 a 31 n=33, 45,2/249,8; C deploy 32 n=3, 65,4/98,5; D deploy 33 a 05/10 22:30Z n=46, 29,0/137,4; E nova, 05/10 22:30Z a 06/10 03:56Z (deploys 41 a 45) n=3, 71,4/218,6, em que 2 das 3 são as minhas da F6 (uma delas é a de bloqueio) e por isso não vale como amostra. Etapas estáveis em todas: ator p50 2,3 a 2,8 s, conferência p50 2,9 a 3,1 s (E sem chamadas de conferência), ação p50 0,1 s. Maior bloco: tent_resto (33 a 44 % da parede) de A a D. Conclusão sem regressão: o p50 de D (29,0 s) fica abaixo da base A (33,2 s). Primeiro juiz dispensado: 0 eventos em A, B, C, D e E, então o ganho da dispensa (31.26A/31.57) segue só inferido (1 chamada de juiz barato a menos por envio com nível, cerca de 3 s) e provado simulado por contagem de chamadas. Tabela, JSONs (A a E) e o script com a janela E: .claude/handoffs/jev/latencia-31-58-depois-do-deploy-32.md, latencia-31-58/ e latencia-31-58-tabela-com-e.py. O que ainda não se mede: a dispensa em real (o QA não tem catálogo e nenhum app declara marcador) e a janela limpa pós-deploy 45 (precisa de tráfego natural; nada a executar agora).",
+   "blocker": null,
+   "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T23:36:03+00:00"
+   "quando": "2026-10-06T03:57:02+00:00"
   },
   "31.60": {
    "id": "31.60",
@@ -9765,22 +9765,16 @@
   },
   "30.83": {
    "id": "30.83",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "Ponta 62d7259e (traz a migração 116_ref_publico_do_fluxo). Simulado: backend/tests/test_ref_publico_do_fluxo.py::*, backend/tests/test_conversao_de_fluxo.py::*, backend/tests/test_avisos_ensinado.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "As quatro fatias estão na main e no ar: 1 a 3 na suíte 41 (62d7259e, migração 116 `ref_publico_do_fluxo`) e a 4 na 42 (0ef8c2c7); deploy 45 (7154d7cf) as contém. Simulado: test_ref_publico_do_fluxo.py, test_ref_do_fluxo_fora_do_log.py, test_conversao_de_fluxo.py, test_avisos_ensinado.py (suítes 41 e 42 verdes). Real, só leitura no central em 06/10 (mode=ro, deploy 45): 70 fluxos, 0 sem `ref_publico` (a subida preencheu todos), 3 já nascidos com id igual à referência (`f-` mais 12 hex aleatórios), 67 antigos mantêm o id (decisão do item, que não tem ON UPDATE CASCADE) e ganharam a referência; nenhum evento persistido depois do deploy 41 (22:06Z de 05/10) leva `flow_id` fora do formato `f-…`. O que ficou de fora e é de outro item: o registro da execução (etapas, ações, eventos) ainda guarda o valor resolvido do dado da persona (31.113, da Aprendizado). Os 67 ids antigos continuam dentro do banco e das rotas internas; só a referência pública sai para fora.",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_ref_publico_do_fluxo.py",
-    "backend/tests/test_conversao_de_fluxo.py",
-    "backend/tests/test_avisos_ensinado.py"
-   ],
-   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; a migração 116 entra no ensaio do deploy",
-   "grupo": "android-suite-41",
+   "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T22:07:09+00:00"
+   "quando": "2026-10-06T04:00:21+00:00"
   },
   "29.146": {
    "id": "29.146",
@@ -10123,23 +10117,16 @@
   },
   "30.84": {
    "id": "30.84",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "Ponta 0ef8c2c7 (com a fatia 4 do 30.83 sobre 999f0793). Simulado: backend/tests/test_reensinar_o_desligado_pela_prova.py::*, backend/tests/test_ref_do_fluxo_fora_do_log.py::*, backend/tests/test_ref_publico_do_fluxo.py::*, backend/tests/test_learning_feedback.py::*. Suíte 42 sobre a integração cb6742d4 (origin/main 095a43b6 + 12 pontas; conflitos só de texto juntados, mais 2 de código resolvidos pelas frentes, 28.54 e 29.135; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed (4 subtests); backend SQLite -n 6 12020 passed, 13 skipped, 0 falhas (sobre 545cd03f, antes do 28.54); frontend typecheck limpo, 1698 passed (131 arquivos), build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto; PG dirigido 404 arquivos em 2 partes: 5367 passed, 7 skipped e 3914 passed, 1 skipped, 0 falhas (fim 23:14:17Z); repetição em SQLite dos 308 arquivos afetados pelo 28.54: 7839 passed, 1 skipped, 0 falhas (763 s, fim 23:27:23Z).",
+   "evidence": "Ponta 0ef8c2c7, na main e no deploy no ar (7154d7cf contém); suíte 42 verde (backend SQLite 12020 passed, PG dirigido sem falhas). Simulado: backend/tests/test_reensinar_o_desligado_pela_prova.py (a demonstração nova entra pela regra do 30.79 quando a última linha da trilha é o desligamento da prova), test_ref_do_fluxo_fora_do_log.py, test_ref_publico_do_fluxo.py, test_learning_feedback.py. O 'partial' vinha de o ramo cobrir também a fatia 4 do 30.83; as duas partes estão na main. Real: not_run: exige um fluxo ensinado que a PROVA real tenha desligado (execução de prova com IA paga) e depois ensinar o mesmo comando; não se provoca sem criar a falha de propósito. Fica para a primeira ocorrência natural.",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_reensinar_o_desligado_pela_prova.py",
-    "backend/tests/test_ref_do_fluxo_fora_do_log.py",
-    "backend/tests/test_ref_publico_do_fluxo.py",
-    "backend/tests/test_learning_feedback.py"
-   ],
-   "nota": "o ramo cobre a fatia 4 do 30.83 e o 30.84; a frente diz se fecha",
-   "grupo": "android-suite-42",
+   "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T23:36:03+00:00"
+   "quando": "2026-10-06T03:57:02+00:00"
   },
   "29.142": {
    "id": "29.142",
@@ -13445,6 +13432,35 @@
    "itens": [
     "30.80",
     "31.45"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:57:02+00:00",
+   "itens": [
+    "30.84",
+    "31.40",
+    "31.58"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:58:16+00:00",
+   "itens": [
+    "31.55"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T04:00:21+00:00",
+   "itens": [
+    "30.83"
    ],
    "grupos": [
     "jev"

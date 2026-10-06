@@ -83,6 +83,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (nova), `Repository._tentativa_da_acao` (nova), `security.mascara_da_persona` (módulo novo).
 - Prova `simulated`: `backend/tests/test_registro_mascarado_da_persona.py` (8). Real: `not_run`.
 
+## 2026-10-06 — 31.91 T1: o ensino v2 fica obsoleto e contado, ADR-078 (branch feat/31-91-t1-ensino-v2-obsoleto)
+
+- As 12 rotas `/api/teaching-sessions*` e `/api/skill-candidates*` saem marcadas `deprecated` no OpenAPI e cada chamada é
+  contada (`settings["ensino_v2.chamadas"]`: total, início, última, por molde de rota; sem id, corpo nem operador). O resumo
+  sai em `GET /api/health`, `features.ensino_v2_chamadas`. O contador persiste (o deploy não zera a medição), não conta
+  chamada recusada por `skills_disabled` e nunca derruba a rota. `skills.ensino_v2_na_tela` segue `false`. As rotas respondem igual.
+- ADR-078: dois tempos (T1 agora; T2 = 31.115, apagar o código depois de 14 dias de `total` em zero, com a pergunta das
+  tabelas `teaching_*` ao dono só então) e os fatos que o sustentam (v1: 11 sessões, 70 fluxos, 204 receitas; v2: 1 sessão
+  parada e 1 habilidade). Sem migração, sem adendo de contrato (nenhuma rota ou corpo mudou).
+- Prova `simulated`: `backend/tests/test_ensino_v2_obsoleto.py` (5 testes) e `test_ensino_v2.py`. Em ambiente real: `not_run`
+  até o deploy; depois dele, a prova é a leitura de `features.ensino_v2_chamadas` no `/api/health` central.
+
 ## 2026-10-06 — 31.101, o `--amplo` real: pedaços de nome de conta trocados por valores de exemplo nos testes (branch chore/trocar-nomes-amplo)
 
 - `scripts/trocar-nomes-nos-testes.py --amplo --aplicar` sobre a ponta da suíte 44: 119 arquivos e 1438 linhas, todos de teste
