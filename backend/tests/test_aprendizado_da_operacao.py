@@ -160,7 +160,7 @@ def test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so(banco: Dat
     assert revisar[f"receita:{ids['open_comments_1']}"] == "no Livro em quarantined"
     assert revisar["fluxo:f-op"] == "no Livro em candidate"
     assert revisar["fato:velho"] == "vencido: passou do frescor"
-    assert revisar["fato:pesquisa.1"] == "hipótese: não confirmada"
+    assert revisar["fato:pesquisa.1"] == "hipótese: uma fonte só, e a leitura do alvo não a confirmou"   # 31.179
     assert revisar["memoria:mem-2"] == "hipótese: não confirmada"
     assert revisar["observacao:ob-inc"].startswith("leitura incerta")
     for p in resp["perguntas"]:                                            # type: ignore[union-attr]

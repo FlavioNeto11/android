@@ -7367,6 +7367,7 @@ estava na tela de partida. O 31.122 e o 31.142 só pegavam o erro depois, no `pr
   - `real`: `not_run` até o deploy. São 3 gravações do Configurações (~US$ 0,04), e uma sessão fica em `proposed`
     para a Portal.
 
+
 ## Adendo v1.96 (06/10/2026; prova30 A3, extensão do 31.157) — o aprendizado de uma operação nas 10 perguntas do dono
 
 `GET /api/operacoes/{operacao_id}/aprendizado?persona=<profile_id>&simulados=false`: só leitura, sem IA. As 10
@@ -7492,3 +7493,122 @@ Código: `backend/app/modules/operacoes/` e `backend/app/state.py::_releitura_da
 
 Código: `ServicoDeOperacoes.elegiveis` e `backend/app/modules/operacoes/presentation/router.py`. Testes:
 `backend/tests/test_operacoes.py`.
+
+## Adendo v1.97 (06/10/2026; número da orquestradora; item 31.150, K-106) — o fluxo de prova religado para uso real
+
+Todo fluxo de prova (`nascido_de_prova`, 31.130) termina desligado. A volta era o `PUT /api/flows/{id}` genérico, com o
+motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esquecido ligado".
+
+- **`PUT /api/flows/{id}` com `status: "active"` num fluxo `nascido_de_prova`:**
+  - `motivo` passa a ser obrigatório: sem ele, `400 motivo_obrigatorio`. O fluxo de uso real segue como antes.
+  - A trilha grava `religado para uso real: <motivo>`.
+  - `escopo: {profile_ids: [...], group_ids: [...]}` (opcional) troca a quem o fluxo vale no mesmo gesto e na mesma
+    transação, com as recusas do `/scope` (`400 unknown_profile`, `400 unknown_group`). O evento `log` "Escopo da
+    habilidade mudou" sai como no `/scope`.
+  - Fora desse caso (desligar, ou ligar um fluxo de uso real), `escopo` no corpo dá `400 invalid`; o caminho é o `/scope`.
+  - A marca `nascido_de_prova` nunca se apaga.
+- **`POST /api/aprendizado/fluxo/{id}/status` com `to: "published"` num fluxo de prova desligado** (o "Ligar" do Livro;
+  achado da Portal): a mesma regra. Motivo só com espaços dá `400 motivo_obrigatorio`, e a trilha grava "religado para
+  uso real: <reason>", que acende `em_uso_real_desde`. O escopo continua sendo pelo `PUT` ou pelo `/scope`.
+- **`em_uso_real_desde`** (texto ISO ou `null`): sai em cada fluxo de `GET /api/flows` e na resposta do `PUT`. Sai também
+  em cada `Entrada` do Livro (`GET /api/aprendizado`, `/pendentes`, `/revisar` e o `item` do detalhe) e em
+  `conteudo.origem` do detalhe do fluxo. É a data da linha "religado para uso real" enquanto ela for a última da trilha
+  e o fluxo estiver ligado. Desligar de novo, pela pessoa ou pelo sistema, volta a `null`.
+- **Prova:** `simulated`
+  (`backend/tests/test_fluxo_nascido_de_prova.py::test_religar_fluxo_de_prova_exige_motivo_troca_o_escopo_e_sela_o_uso_real`,
+  que reprova no código anterior). `real`: `not_run` (religar um fluxo de prova para uma persona real só com o sim do
+  dono).
+
+## Adendo v1.98 (06/10/2026; número da orquestradora; item 31.149, P-014 b) — a correção ensinada volta ao comando que falhou
+
+- **`POST /api/training/{id}/save` de uma sessão de correção** (`origin`, 31.111) ganha `correcao`. Além das receitas de
+  sempre, a demonstração é gravada na chave da etapa que FALHOU (`steps.template_hash` e a chave dela). Assim, a próxima
+  execução do mesmo comando a acha nessa etapa.
+  - Ligada: `{ligada: true, step_key, recipe_id, reason, comando, texto}`. `texto` = "esta correção vale para o comando
+    “<molde>”", e o molde é o comando da execução que falhou com os valores trocados pelos nomes (parâmetros e dados
+    da persona).
+  - Não ligada: `{ligada: false, step_key?, motivo}`. Os motivos:
+    - a etapa que falhou foi apagada, ou não tem identidade de receita;
+    - há efeito (na etapa que falhou ou numa ensinada);
+    - uma etapa ensinada não virou ação;
+    - a correção é de outro app;
+    - a receita usaria `{nome}` que a execução não tem (só o nome vai na resposta);
+    - a versão do app é desconhecida no aparelho.
+  - Sessão sem `origin`: sem `correcao`.
+- **Quais etapas ensinadas são a correção:** a de mesma chave da que falhou; senão, todas, em sequência.
+- **Parâmetros:** os da proposta são renomeados para os do objetivo que falhou pelo valor (sem o @ e sem caixa).
+- **Receita:** segue o 30.81 (vale para quem ensinou até o "Confirmar que fica") e a regra de uma viva por chave (30.79).
+- **Evento `log` do salvar:** ganha `correcao_ligada` e `recipe_id`.
+- **Não feito aqui:** a "lição do planejador" como caminho alternativo quando a receita não liga; veio no adendo v1.100.
+- **Prova:** `simulated` (`backend/tests/test_correcao_volta_ao_comando.py`, 2 testes, que reprovam no código anterior).
+  `real`: `not_run`. As 2 sessões reais salvas não teriam receita: uma sem app, outra em Configurações, sem versão
+  conhecida no catálogo.
+
+## Adendo v1.99 (06/10/2026; número da orquestradora; item 31.169) — a pesquisa externa na criação da operação
+
+- **`POST /api/operacoes`** agenda a pesquisa externa da operação (31.158). Ela roda UMA vez, logo depois da criação e
+  antes de qualquer alvo: a tarefa pega a trava da operação, a mesma da porta de escrita. A resposta da rota não muda e
+  não espera a pesquisa.
+- **Os alvos não pesquisam mais:** a porta de escrita só reusa a memória da operação. Sem a pesquisa da criação (por
+  exemplo, desligada naquela hora), o texto sai sem os fatos da pesquisa.
+- **Custo:**
+  - paga na execução do 1º alvo com execução (`operacao_alvos` por `seq`), pelo caminho de IA dela (tetos e vaga);
+  - aparece em `custo.pesquisa_usd` da operação;
+  - o teto por operação (`ai.pesquisa.teto_usd_por_operacao`) segue valendo;
+  - sem alvo com execução, não pesquisa.
+- **Sem lacuna** (o assunto já tem fato de pesquisa válido), ou na repetição idempotente: não pesquisa.
+- **Consulta:** leva só o assunto e as fontes indicadas. A leitura do alvo, que antes ia de contexto, ainda não existe
+  na criação.
+- **Prova:** `simulated`, em `backend/tests/test_pesquisa_da_operacao.py`:
+  - `::test_criar_a_operacao_pela_rota_pesquisa_uma_vez_antes_dos_alvos`;
+  - `::test_os_alvos_nao_pesquisam_so_reusam`, que reprova no código anterior;
+  - `::test_duas_execucoes_uma_pesquisa_e_os_fatos_chegam_ao_texto`.
+
+  `real`: a operação de 07/10.
+
+## Adendo v1.100 (06/10/2026; número da orquestradora; item 31.149, caminho alternativo) — a correção não ligada ensina o planejador
+
+- **`POST /api/training/{id}/save` de uma sessão de correção:** quando `correcao.ligada` é `false` (adendo v1.98),
+  `correcao` ganha `licao`.
+  - Lição proposta: `{id, estado, texto}`, com `estado` = `candidate`. `texto` = "Em <pacote>: quando a etapa <chave>
+    falhar, o caminho que uma pessoa ensinou foi <chave> → <chave>."
+  - Lição não proposta: `{id: null, motivo}`. Os motivos:
+    - a etapa que falhou foi apagada;
+    - a lição foi recusada, com o motivo do vocabulário das lições (`simulada`, `app_invalido`, `acao_invalida`,
+      `acao_de_sessao`, `valor_de_parametro`, `longa`);
+    - o Livro não a aceitou (veto ou cara de credencial).
+  - Correção ligada: sem `licao`.
+- **No Livro:** item `licao` no escopo do planejador do app (`scope_role = planner`), com `source_kind` =
+  `teaching_correction`.
+  - É de origem humana: só o dono a publica.
+  - Só publicada, e com `aprendizado.licoes.modo: on` (global ou `por_app`), ela vai ao prompt do planejador.
+  - `provenance.sessao` = `training:<sessão>`.
+- **O que entra no texto:** só chaves de etapa que passam pela régua da chave livre. Título, comando e valor nunca
+  entram. A chave que contém um valor do objetivo, do exemplo ou da persona é recusada, seja o valor inteiro ou
+  qualquer palavra dele de 3 letras ou mais.
+- **Evento `log` do salvar:** ganha `licao_id`, que é `null` sem lição.
+- **Prova:** `simulated`, em `backend/tests/test_correcao_vira_licao_do_planejador.py` (3 testes; a lição publicada
+  cabe no bloco do planejador do app). `real`: `not_run`.
+
+## Adendo v1.101 (06/10/2026; número da orquestradora; item 31.177) — o rendimento de uma sessão de ensino
+
+- **`GET /api/training/{id}/rendimento`** (nova, só leitura, nenhuma IA): o que a sessão de ensino gerou e quanto
+  disso foi usado. Sessão desconhecida: 404 `not_found`.
+- **Corpo:** `{sessao, resumo, fluxo, execucoes_do_fluxo, receitas, licoes, vizinhos}`.
+  - `resumo`: `{receitas, receitas_liberadas, etapas_sem_ia, execucoes_do_fluxo, licoes, vizinhos, usado_de_verdade}`.
+  - `fluxo`: `{id, status, uses, nascido_de_prova, em_uso_real_desde}` ou `null`.
+  - `receitas[]`: `{id, step_key, app, status, liberada, sem_ia, caiu_na_ia, outras, usd_da_ia_na_retencao}`.
+  - `licoes[]`: `{id, estado, papel, texto}`.
+  - `vizinhos[]`: `{app, pacote, etapas_em_planos_livres}`.
+- **Contagens por uso** (`{real, prova, simulada}`), com a régua da medida de 06/10:
+  - `simulada`: a execução simulada;
+  - `prova`: a prova de fluxo (`prova_fluxo_id`) ou a chave `lote:`;
+  - `real`: o resto.
+- **Por receita:**
+  - `sem_ia`: a tentativa só `recipe` que comprovou;
+  - `caiu_na_ia`: a cadeia `recipe>…`;
+  - `outras`: o resto;
+  - `usd_da_ia_na_retencao`: o US$ das chamadas ainda em `ai_calls`, pela regra de preço de `spent_usd`;
+  - `liberada`: vale fora da persona que ensinou (30.81).
+- **Vizinhos:** contam as etapas de planos LIVRES (sem fluxo e sem prova de fluxo) que aceitaram o pacote.
+- **Prova:** `simulated` (`backend/tests/test_rendimento_do_ensino.py`, 2 testes). `real`: `not_run`.

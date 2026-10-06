@@ -271,7 +271,8 @@ def etapa_de_fluxo(indice: int, passo: JsonValue) -> JsonObject:
 
 def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: str | None,
                   source_run_id: str | None, apps: Iterable[str] = (),
-                  correcao: Mapping[str, str | None] | None = None, nascido_de_prova: bool = False) -> JsonObject:
+                  correcao: Mapping[str, str | None] | None = None, nascido_de_prova: bool = False,
+                  em_uso_real_desde: str | None = None) -> JsonObject:
     """`app`: o principal do plano, onde rodam as etapas sem app próprio; `apps`: os exigidos (`flow_required_apps`),
     na ordem em que o plano os usa (29.42: ler no Outlook e depois procurar no Instagram → Outlook, Instagram).
     Um comando que atravessa apps (12.1: ler no Outlook, procurar no Instagram) tem o principal e os dois exigidos.
@@ -280,7 +281,8 @@ def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: st
     mesma forma de `flows[].origin`); `None` quando o fluxo não veio de uma falha. Desde o 31.135 (v1.88) vem de todo fluxo
     ensinado, com `instance_id`, `operator` e `ensinado_em`, e os três ids da falha `None` quando não veio de uma. Os quatro ids vão em `origem` (null sem
     correção) e `source_run_id` cai para o run da falha quando a coluna do fluxo é null (o treino não a preenche).
-    `nascido_de_prova` (31.130): o fluxo nasceu de uma prova (da sessão aberta com a marca), não de uso real."""
+    `nascido_de_prova` (31.130): o fluxo nasceu de uma prova (da sessão aberta com a marca), não de uso real.
+    `em_uso_real_desde` (31.150): quando uma pessoa o religou para uso real (a linha da trilha); `None` fora disso."""
     origem_da_falha = correcao or {}
     passos = plano.get("steps") if isinstance(plano, dict) else None
     etapas = [etapa_de_fluxo(i, p) for i, p in enumerate(passos if isinstance(passos, list) else [])]
@@ -296,7 +298,7 @@ def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: st
                    # 31.135 (v1.88): a sessão de treino de onde veio, de todo fluxo ensinado; `None` fora do treino
                    "instance_id": origem_da_falha.get("instance_id"), "operator": origem_da_falha.get("operator"),
                    "ensinado_em": origem_da_falha.get("ensinado_em"),
-                   "nascido_de_prova": nascido_de_prova},
+                   "nascido_de_prova": nascido_de_prova, "em_uso_real_desde": em_uso_real_desde},
         "etapas": etapas,
         "efeito": {"externo": fluxo_tem_efeito(plano),
                    "etapas_com_efeito": [e["indice"] for e in etapas if e["efeito"] is True]}}

@@ -19,6 +19,190 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+
+## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
+
+- Na onda 1 (06/10), a pesquisa da operação deixou 6 de 8 fatos como `hipotese` (uma fonte só), e nada os
+  reavaliava. A leitura do alvo é fonte independente da web.
+- Quando a leitura da OPERAÇÃO traz todas as âncoras de uma hipótese `pesquisa.*`, ela passa a `confirmado`
+  (`domain/hipoteses.py`, `ConhecimentoDaOperacao.confirmar_hipoteses`):
+  - as âncoras são números inteiros como aparecem, `#tag`, `@perfil` e nomes próprios fora do começo da frase;
+  - o fato precisa de 2 ou mais âncoras, ao menos uma forte (número de 4 ou mais caracteres, `#` ou `@`);
+  - a evidência ganha a observação da leitura e a versão sobe;
+  - origem e frescor ficam os da pesquisa.
+- Roda na primeira leitura do alvo, que no 31.169 vem depois da pesquisa, e no fim da pesquisa, para a refeita
+  depois da leitura. A leitura divergente de um agente (`incerto`) não promove. A hipótese vencida não é tocada.
+- No 31.163, a hipótese da pesquisa diz por quê ("uma fonte só, e a leitura do alvo não a confirmou"), e a leitura
+  que sustenta um fato aparece como `fato:alvo.conteudo`.
+- Limites conhecidos:
+  - âncora não lê negação: "fecha dia 12/10" e um post com "12/10, inauguração" têm as mesmas âncoras. Por isso o
+    mínimo de duas, com uma forte;
+  - `confianca` só tem dois valores (CHECK da 125), então não há estado intermediário sem migração nova.
+- Prova `simulated`: `backend/tests/test_hipotese_pela_leitura.py` (5 testes). Pedidos, operação, pesquisa,
+  conhecimento, memória, aprendizado e arquitetura: 806 passaram, mais o teste do 31.163 com o motivo novo. `real`: a
+  onda 2 de 07/10, se a pesquisa trouxer hipótese com âncoras do post.
+
+## 2026-10-06 — 31.178: a evidência da receita sai no fechamento da etapa (branch feat/31-178-evidencia-no-fechamento)
+
+- Na onda 1 da prova (06/10), a execução parou em `awaiting_person` e as 10 perguntas do 31.163 deram 0: a evidência
+  das receitas só era gravada quando a execução assentava (digest e retrocarga só liam execução terminal).
+- Agora a retrocarga da curadoria (`ReproducoesSql.faltantes`) também lê a execução ABERTA, mas só o "a favor": a etapa
+  `succeeded` que a receita conduziu sozinha. É o único estado final da etapa. `failed` e `uncertain` voltam a `ready`
+  no "tentar de novo", então o "contra" espera a execução assentar, como antes. A etapa em `waiting_user` segue de fora.
+- Não há duplicata: a chave única do Livro é item, origem e posição, e o digest posterior não repete a linha. O
+  detalhe da linha gravada cedo conta as etapas que já tinham comprovado naquela hora.
+- Prova `simulated`: `backend/tests/test_learning_evidencia_receita.py::test_a_execucao_parada_ja_da_o_a_favor_e_o_contra_espera_ela_assentar`,
+  que reprova no código anterior; o teste da retrocarga passa a fixar que o "contra" da execução aberta fica de fora.
+  Aprendizado, receitas, evidência e arquitetura: 3223 passaram. `real`: a onda 2 de 07/10 (a pergunta
+  `plataforma_aprendeu` com a execução ainda aberta).
+
+## 2026-10-06 — 31.177: rendimento do ensino por sessão (branch feat/31-177-rendimento-do-ensino)
+
+- Medido em 06/10: 8 de 275 execuções foram planejadas por fluxo ensinado, todas lote de prova; 0 uso real. O número
+  era de uma consulta à mão. Agora `GET /api/training/{id}/rendimento` dá isso por sessão de ensino, sem IA e sem
+  escrita. A régua do uso é a mesma da medida (`domain/rendimento.py`, `tipo_de_uso`):
+  - `simulada`: provedor ou aparelho falso;
+  - `prova`: prova de fluxo, ou chave `lote:`;
+  - `real`: o resto.
+- O que a rota mostra:
+  - por receita: tentativas sem IA (só `recipe`, comprovou), tentativas que caíram na IA (`recipe>…`), as outras, o
+    US$ da IA dentro da retenção de `ai_calls` e se a receita está liberada fora de quem ensinou (30.81,
+    `RecipeStore.liberada_fora_do_ensino`);
+  - o fluxo (estado, usos, selo do 31.150) e as execuções dele por uso;
+  - as lições que a sessão gerou;
+  - os vizinhos (31.152) e as etapas de planos livres que os aceitaram (`steps.pacotes_aceitos`);
+  - um resumo com `usado_de_verdade`.
+- Não há "US$ evitado": seria contrafactual. Adendo v1.101 do contrato.
+- Prova `simulated`: `backend/tests/test_rendimento_do_ensino.py` (2 testes, um pela rota). `real`: `not_run` (o
+  `GET` nas sessões salvas do central, depois do deploy que levar isto).
+
+## 2026-10-06 — 31.149, caminho alternativo: a correção não ligada vira lição do planejador (branch feat/31-149-licao-do-planejador)
+
+- Quando a correção ensinada não liga à etapa que falhou (nome que a execução não tem, efeito, app diferente), o `save`
+  propõe ao Livro uma lição do PLANEJADOR do app: "Em <pacote>: quando a etapa X falhar, o caminho que uma pessoa
+  ensinou foi A → B" (`licao_da_correcao`, `SourceKind.CORRECAO_ENSINADA` = `teaching_correction`).
+- Só chaves de etapa entram, pela régua da chave livre: nem título, nem comando, nem valor do objetivo, do exemplo ou
+  da persona. Chave com valor (inteiro, ou qualquer palavra dele de 3 letras ou mais), etapa de sessão e execução
+  simulada são recusadas, com o motivo. Revisor de segredos: sem achado alto. O médio era o nome que entrava em parte
+  e foi corrigido. Do baixo: o vizinho do 31.152 passa a exigir formato de pacote, e a etapa de sessão não ganha
+  vizinho.
+- Nasce candidata e de origem humana: só o dono a publica, e só publicada E com `aprendizado.licoes.modo: on` (global
+  ou `por_app`; de fábrica é `shadow`) vai ao prompt do planejador (ADR-054). Não depende do 31.151. A resposta do `save` ganha `correcao.licao` ({id, estado, texto} ou {id: null, motivo}) e o
+  evento ganha `licao_id` (adendo v1.100 do contrato).
+- Prova `simulated`: `backend/tests/test_correcao_vira_licao_do_planejador.py` (3 testes; a publicada cabe no bloco do
+  planejador do app). Aprendizado, treino, correção, costuras e arquitetura: 3458 passaram. mypy 257 (no teto).
+  `real`: `not_run` (correção de uma falha real no QA Messenger, como a do 31.149).
+
+## 2026-10-06 — 31.152: os pacotes vizinhos do ensino valem no plano livre (branch feat/31-152-pacotes-vizinhos)
+
+- Antes, `pacotes_aceitos` (31.123) só existia no plano de fluxo ensinado. A execução livre que abre a busca do
+  Configurações terminava no pacote da busca e a etapa era recusada (r-20261006102728-1157c6: a IA assumiu, US$ 0,039).
+- O par (app, vizinho) é lido dos fluxos ensinados (`FlowStore.vizinhos_conhecidos`, `taskqueue/vizinhos.py`), com a
+  contagem de sessões de ensino distintas e a origem `training:<sessão>`. O fluxo desligado também conta (o saber é do
+  app); o aprendido de execução não. Nunca entram o systemui, o lançador ou um app cadastrado. Sem migração.
+- No `_plan`, só no ramo livre, cada etapa SEM efeito e sem lista própria recebe os vizinhos do app dela, e a trilha
+  ganha a linha "Pacotes vizinhos conhecidos do app (31.152)". O executor não muda: já lê `step.pacotes_aceitos`.
+  `FORA_DOS_ACEITOS` mudou de `training/partida.py` para `taskqueue/vizinhos.py`.
+- Prova `simulated`: `backend/tests/test_vizinhos_no_plano_livre.py` (3 testes). Bateria dirigida (61 arquivos que tocam
+  fluxos, `_plan` e pacotes aceitos, mais arquitetura, rotas e apps fora do núcleo): 1264 passaram. mypy 257 (no teto).
+  `real`: `not_run` (um comando livre que abre a busca do Configurações, cerca de US$ 0,03, com o sim do dono).
+
+## 2026-10-06 — 31.169: a pesquisa externa roda na criação da operação (branch feat/31-169-pesquisa-na-criacao)
+
+- Antes, a pesquisa rodava na porta de escrita do 1º alvo que chegasse ao texto, no meio da execução dele. Agora
+  `POST /api/operacoes` a agenda uma vez, antes de qualquer alvo, sob a trava da operação. Os alvos só reusam.
+- Custo na execução do 1º alvo (`custo.pesquisa_usd`), com o teto por operação. Sem lacuna, ou na repetição
+  idempotente, não pesquisa. A consulta leva só o assunto e as fontes: a leitura do alvo ainda não existe nessa hora.
+- Toca a rota da Jev (`modules/operacoes/presentation/router.py`) em uma linha, depois do `criar`.
+- Prova `simulated`: `backend/tests/test_pesquisa_da_operacao.py` (3 testes; o dos alvos que só reusam reprova no código
+  anterior). Operação, conhecimento, pesquisa, aprendizado e arquitetura: 180 passaram. `real`: a operação de 07/10.
+
+## 2026-10-06 — 31.149 (P-014 b): a correção ensinada volta ao comando que falhou (branch feat/31-149-correcao-volta-ao-comando)
+
+- Medido em 06/10: das 6 sessões de correção, 2 viraram fluxo, os dois desligados e com 0 usos, e o molde salvo era
+  diferente do comando que falhou. A receita morava na chave da etapa da proposta, que o plano do comando não tem.
+- O `save` de uma sessão de correção também grava a demonstração na chave da etapa que falhou (`template_hash` e
+  chave), com os parâmetros renomeados para os do objetivo que falhou pelo valor. A resposta traz `correcao` com
+  "esta correção vale para o comando <molde>", ou o motivo de não ligar (efeito, nome ausente, outro app, sem
+  identidade). Regras em `backend/app/training/correcao.py`.
+- A lição do planejador como caminho alternativo fica para depois (depende do lado do planejador, 31.151).
+- Prova `simulated`: `backend/tests/test_correcao_volta_ao_comando.py` (reprova no código anterior). Bateria do ensino,
+  receitas, fluxos e arquitetura: 779 passaram e 1 falhou, a catraca de `Any` em `app.training`, que já está corrigida.
+  `real`: `not_run`. As 2 sessões reais salvas não gerariam receita: uma sem app, outra em Configurações, sem versão
+  conhecida.
+
+## 2026-10-06 — 31.150 (K-106): o fluxo de prova religado para uso real, com motivo e escopo (branch feat/31-150-fluxo-religado)
+
+- Todo fluxo de prova termina desligado, e a volta era o `PUT /api/flows/{id}` genérico, com o motivo opcional. O Livro
+  não distinguia "fluxo de prova em uso real" de "esquecido ligado".
+- Ligar um fluxo `nascido_de_prova` exige `motivo` (`400 motivo_obrigatorio`) e aceita `escopo` no mesmo gesto. A trilha
+  grava "religado para uso real: <motivo>", e a marca de origem fica. O "Ligar" do Livro (`POST
+  /api/aprendizado/fluxo/{id}/status`, achado da Portal) segue a mesma regra
+  (`::test_o_ligar_do_livro_segue_a_mesma_regra_do_religamento`, reprova no código anterior).
+- `em_uso_real_desde` em `GET /api/flows`, na `Entrada` do Livro e em `conteudo.origem` do detalhe: lido da trilha
+  (`modules/learning/domain/uso_real.py`), sem migração. Volta a `null` quando o fluxo sai de uso.
+- Prova `simulated`:
+  `backend/tests/test_fluxo_nascido_de_prova.py::test_religar_fluxo_de_prova_exige_motivo_troca_o_escopo_e_sela_o_uso_real`
+  (reprova no código anterior). O teste do 31.130 que religava o fluxo de prova sem motivo agora espera o 400. Bateria do
+  Livro, fluxos, aprendizado e arquitetura: 1529 passaram. `real`: `not_run`, só com o sim do dono.
+
+## 2026-10-06 — 31.165: no empate de valor, a identidade da etapa fica com o marcador da persona (branch feat/31-165-empate-para-hash)
+
+- Achado da onda 1: a receita ensinada 221 ficava em "perfil de {conta_instagram_usuario} aberto", porque o alvo do
+  ensino era a própria persona (31.87). A etapa planejada para o mesmo alvo calculava "perfil de {perfil} aberto": o
+  parâmetro "@x" é mais longo que a conta "x" e ganhava a troca em `para_hash`. A receita nunca era consultada.
+- `recipes.para_hash(..., persona=)`: quando um parâmetro do objetivo tem o mesmo valor de um dado da persona (sem o @
+  da frente e sem caixa, a régua do 31.87), `{param}` vira o marcador da persona, no literal trocado e no marcador já
+  escrito. Só `repository._insert_steps` passa a persona (o `molde`); os outros chamadores seguem iguais.
+- Medida `real`, só leitura, 06/10 até 20:21Z, banco do central no deploy 55 (086236e9df30a8): a etapa open_profile_1 da
+  execução r-20261006194323-240d40 passa de a25a2299… para 8a9a214a…, que é a chave da receita 221. Das 155 receitas
+  vivas, 2 foram aprendidas numa execução com empate, e só a 166 teria a identidade mudada. A 166 mora na chave
+  genérica, que não usa a pós-condição, então não há backfill (sem migração e sem script).
+- Prova `simulated`: `backend/tests/test_empate_para_hash.py` (3 testes; reprova no código anterior), incluindo um
+  `plan` simulado em que a etapa ganha o hash do ensino e a loja de receitas acha a receita gravada nele.
+
+## 2026-10-06 — prova30 A3 (extensão do 31.157): o aprendizado de uma operação nas 10 perguntas do dono (branch feat/prova30-a3-aprendizado-da-operacao)
+
+- Pedido da orquestradora (o dono pediu para adiantar): para uma operação, responder às 10 perguntas do aprendizado do
+  dono com origem, evidência, confiança e frescor por item, e com filtro por persona. Até aqui as respostas existiam
+  espalhadas (Livro, memória da persona, memória da operação), sem uma leitura por operação.
+- `GET /api/operacoes/{id}/aprendizado` (adendo v1.96): só leitura, sem IA e sem tabela nova.
+  - Ligação às execuções da operação: direta por `run_id` (evidência, transição, sinal, interação), pela origem
+    (receita, fluxo), pela proveniência (lição) e pela interação (memória da persona). O backlog é inferido e vem
+    marcado.
+  - Uma régua só de confiança, e o valor original ao lado.
+  - Reutilizável e "revisar" são regras de código.
+  - Texto redigido e cortado em 200 caracteres. O simulado fica fora por padrão. O que a rota não cobre vem em
+    `nao_coberto`.
+- **`resultado.conhecimento_ids` do alvo (achado da tentativa 3 da onda 1, 06/10):** o contrato da 124 diz que a lista vem
+  da frente de Aprendizado, e nada a gravava; ela vinha sempre vazia. Agora a porta de escrita grava em
+  `operacao_alvos.marcas` as refs dos fatos que o texto recebeu (o bloco e a leitura igual à tela). Prova `simulated`:
+  `backend/tests/test_conhecimento_da_operacao.py::test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem`.
+- **O assunto da operação vai ao escritor junto da intenção (decisão da orquestradora após a tentativa 3):** o texto
+  ignorava o assunto quando o post não tinha relação com ele, porque só `<intencao>` mandava. Agora o bloco
+  `<assunto_da_operacao>` (de `operacoes.assunto`) vem logo depois da intenção e pede para relacionar só quando fizer
+  sentido com a publicação. O `draft_meta` marca `fatos_da_operacao.assunto: true`. Prova `simulated`:
+  `backend/tests/test_conhecimento_da_operacao.py::test_o_assunto_vai_junto_da_intencao_e_so_relaciona_quando_couber` e
+  `backend/tests/test_pesquisa_da_operacao.py`.
+- **Revisão do PR 480 (corte 57), 4 achados confirmados no código e corrigidos:**
+  1. a evidência da lição era buscada por `licao:li-…`, e o Livro a grava por `li-…`: nunca casava;
+  2. a contagem ignorava `conflict` e a neutralização (`forma`/`invalida`); agora passa por `promocao.efetivas`/`contrarias`;
+  3. voz e preferência ignoravam `scope_profile_id`; agora são da persona dona;
+  4. a falha ao gravar `conhecimento_ids` ficava só no log; agora fica no `draft_meta` da etapa e em `avisos` do GET,
+     sem derrubar o texto.
+  5. (Codex, PR 482) a lição de duas personas virava "da operação inteira" e aparecia para uma terceira; agora guarda o
+     conjunto em `personas` (`::test_licao_de_duas_personas_guarda_o_conjunto_e_nao_vira_da_operacao`).
+  
+  Prova `simulated`:
+  `backend/tests/test_aprendizado_da_operacao.py::test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona`
+  (reprova no código anterior) e
+  `backend/tests/test_conhecimento_da_operacao.py::test_falha_ao_gravar_conhecimento_ids_nao_derruba_e_fica_visivel`.
+- O roteador mora no módulo de pedidos, com `prefix=/api/operacoes` e um caminho de dois segmentos que não colide com
+  as rotas da Jev, e não mexe no `state.py`.
+- Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
+  `::test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so`, `::test_persona_simulado_redacao_e_404` e
+  `::test_a_rota_responde_e_diz_404_sem_a_124` (5 no arquivo). Real: `not_run` até a operação de 07/10.
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.
@@ -443,6 +627,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
   `::test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so`, `::test_persona_simulado_redacao_e_404` e
   `::test_a_rota_responde_e_diz_404_sem_a_124` (5 no arquivo). Real: `not_run` até a operação de 07/10.
+
 
 ## 2026-10-06 — 31.157 e 31.158 (prova30 A1/A2): conhecimento comum da operação e pesquisa externa por lacuna (branch feat/prova30-a1-conhecimento-da-operacao)
 

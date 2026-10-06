@@ -19,6 +19,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from ..automation.hierarchy import UiElement, UiTree
 from ..util import norm_text
+from ..taskqueue.vizinhos import FORA_DOS_ACEITOS
 from . import dado_da_persona
 
 #: Quantos textos da tela seguinte a sugestão oferece.
@@ -212,8 +213,8 @@ def pronta(kind: str, texto: str, tela: UiTree | None) -> dict[str, str]:
 
 
 #: 31.123: telas que nunca comprovam a conclusão de uma etapa, mesmo vistas na demonstração (a barra do sistema e o
-#: lançador, onde a pessoa passa sem que a etapa termine ali).
-FORA_DOS_ACEITOS = ("com.android.systemui",)
+#: lançador, onde a pessoa passa sem que a etapa termine ali). A lista mora no `taskqueue.vizinhos` (31.152), que a
+#: aplica também ao plano livre.
 
 
 def pacotes_vizinhos(entradas: Sequence[Mapping[str, object]], pacote_da_etapa: str | None,
