@@ -795,7 +795,7 @@ adendo v0.20 de [`api-contract.md`](api-contract.md) (C6 e C7). ADR-027.
 
 ## Comando remoto (29.154, ADR-079)
 
-**Estado:** fatias 1 (agente, central, rotas) e 2 (terminal no painel) no código, provadas `simulated`; **desligado** em todos os lados. `real`: `not_run`. Decisão e riscos aceitos no
+**Estado:** fatias 1 (agente, central, rotas), 2 (terminal no painel) e 3 (cliente `scripts/worker-comando.py`) no código, provadas `simulated`; fatia 4 (este procedimento) escrita; **desligado** em todos os lados. `real`: `not_run`. Decisão e riscos aceitos no
 [ADR-079](decisoes.md#adr-079--comando-remoto-nos-notebooks-da-rede-um-módulo-de-controle-desligado-de-fábrica).
 
 O agente executa UMA linha de comando (ou um `argv`) na máquina dele, a pedido do central, e devolve saída, erro e
@@ -824,3 +824,38 @@ público do portal; linha com cara de credencial é recusada (422 `linha_com_cre
 redigida inteira antes do corte de 64 KiB por fluxo; um comando por vez por máquina, fila de 4; prazo de 60 s (até 600 s);
 estouro ou cancelamento matam a árvore de processos; queda no meio = `uncertain`, nunca repetido. O comando roda na conta
 do agente: não use para operar aparelho com conta real.
+
+### Cliente de linha de comando (fatia 3)
+
+`scripts/worker-comando.py` faz o que o terminal do painel faz, para sessões nomeadas e rotinas de operação (sem IA: um agente
+de IA não dispara comando remoto). A sessão do operador (valor do cookie `parque_sessao`) vai na variável `CENTRAL_SESSAO`,
+nunca na linha de comando.
+
+```
+$env:CENTRAL_SESSAO = '<valor do cookie>'
+python scripts/worker-comando.py --worker worker-lan-01 --linha "Get-Date" --timeout 30
+python scripts/worker-comando.py --worker worker-lan-01 --argv-json '["adb","devices"]'
+```
+
+Imprime a saída exatamente como a central a devolve (já redigida lá) e sai com o código do comando; 2 = recusa, `rejected`,
+`cancelled` ou `uncertain` (nunca é reenviado às cegas: o id impresso é consultado em `GET /api/workers/{id}/comandos/{cid}`);
+3 = `timed_out` ou a espera local acabou; 4 = sem sessão, sem permissão ou rota inexistente (interruptor desligado, host
+público); 5 = central fora do ar. A mesma `--chave` (mínimo de 8 caracteres) devolve o mesmo registro.
+
+### Ensaio depois de ligar (fatia 4) e como voltar
+
+Com o sim do dono dado e os três interruptores ligados (lista acima), nesta ordem e um passo por vez:
+
+1. **Leitura:** `--linha "Get-Date"`; espera `succeeded`, código 0, uma linha de evento `worker.comando` e o registro no histórico.
+2. **Escrita numa pasta de teste:** `--linha "New-Item -ItemType Directory -Force C:arm	este-comando"`; confira no notebook e apague a pasta.
+3. **Cancelamento:** `--linha "Start-Sleep 120" --timeout 120` e `POST /api/workers/{id}/comandos/{cid}/cancelar`; espera `cancelled` e o `Start-Sleep` fora da lista de processos.
+4. **Recusa com o interruptor desligado:** `PUT /api/workers/{id}/comando-remoto {"ligado": false}` e repetir o passo 1: tem de sair 4 (`comando_remoto_desligado`).
+5. **Prova de fora:** `SITE=ligado CONTATO=ligado WEBHOOK_DO_TRELLO=ligado bash scripts/portal-prova-de-fora.sh depois` continua dando tudo como esperado (a família não existe no host público).
+
+**Voltar:** qualquer um dos três interruptores desligado basta; o do painel vale ao vivo. Depois do ensaio, deixe desligado até
+a próxima necessidade. Registre no relatório da prova `real`: data, máquina, commit, ids dos comandos.
+
+**Texto do cartão para o sim do dono (Trello, lista de perguntas):** "Ligar o comando remoto no notebook (worker-lan-01)? Hoje é
+desligado. Com sim, ligo os três interruptores, rodo o ensaio acima (4 comandos de teste) e desligo de novo. O comando roda na
+conta do agente e pode ler a credencial do worker: a defesa é redação, rotação da credencial depois e o interruptor. Sem sim,
+continua desligado e a prova fica `not_run`."

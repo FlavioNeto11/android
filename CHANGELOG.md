@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.154 fatia 3: o cliente de linha de comando do comando remoto (branch feat/29-154-comando-remoto-f3)
+
+- `scripts/worker-comando.py` (sem IA): pede `POST /api/workers/{id}/comandos` com `--linha` ou `--argv-json`, `--pasta`, `--timeout`, `--chave`, consulta o `GET` a cada 2 s até um estado final e imprime só o que a central devolveu (já redigido). A sessão de operador (cookie `parque_sessao`) vem da variável `CENTRAL_SESSAO`, nunca da linha de comando; sem ela o script nem tenta (saída 4). Saída: o código do comando; 2 = recusa, `rejected`, `cancelled` ou `uncertain` (nunca reenviado às cegas); 3 = `timed_out` ou a espera local acabou (confira pelo id); 4 = sem sessão/permissão/rota; 5 = central fora do ar.
+- Fatia 4 (documentação): `docs/worker.md` ganha o cliente, o ensaio em quatro passos (leitura, escrita numa pasta de teste, cancelamento, recusa com o interruptor desligado), o rollback e o texto do cartão para o sim do dono. `real`: `not_run` (nada foi ligado: os três interruptores seguem desligados).
+- Prova `simulated`: `scripts/tests/test_worker_comando_cliente.py` (21 testes, central falsa em memória e um servidor HTTP falso na porta efêmera do loopback). Sem migração, sem rota nova, nada novo no host público.
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.

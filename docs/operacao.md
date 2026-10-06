@@ -778,6 +778,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `sincronizar-relogio.ps1` | P | Mede o desvio do relógio do central pelo NTP.br e ajusta acima de 0,2 s (`-Simular` só mede); `-Instalar` registra a tarefa `farm-relogio` e tira a sincronização do `w32time`. Mexer no relógio exige autorização do dono (dada em 28/09) |
 | `recuperar-parque.ps1` | P | Reinicia aparelhos remotos pelo worker |
 | `worker-install.ps1` / `worker-agent.ps1 -Instalar` | P | Instala/registra o agente numa máquina worker |
+| `worker-comando.py` (`--worker`, `--linha` ou `--argv-json`; sessão em `CENTRAL_SESSAO`) | P | Cliente do comando remoto (29.154, ADR-079): pede a execução de UMA linha na máquina de um worker, espera o estado final e imprime a saída já redigida pela central; desligado de fábrica nos três interruptores; sem IA; o código de saída é o do comando (2 recusa/`uncertain`, 3 prazo, 4 sem sessão, 5 central fora) |
 | `install-central-service.ps1` | P | Registra o backend do central como tarefa supervisionada |
 | `worker-tunnel.ps1` | P | Sobe/mantém o túnel SSH real |
 | `portal-instalar-tunel.ps1` | P | **Rodado pelo dono**, como Administrador, depois do `cloudflared tunnel login`: cria o túnel da Cloudflare, grava o `config.yml` com as travas do ADR-073, aponta o DNS e instala o serviço `Cloudflared`. Não abre porta nem mexe no central |
