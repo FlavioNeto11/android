@@ -814,12 +814,13 @@ class Adb:
         return pacotes
 
     def start_app(self, package: str, activity: str | None = None, *, tarefa_limpa: bool = False) -> None:
-        """Abre o app. `tarefa_limpa` (31.137): `--activity-clear-task --activity-new-task`, que apaga a tarefa que o app já tinha
+        """Abre o app. `tarefa_limpa` (31.137): `--activity-clear-task` (o `am start` já abre em tarefa nova; `--activity-new-task` NÃO existe no Android 34 e
+        fazia o `am` falhar com "Unknown option"), que apaga a tarefa que o app já tinha
         (inclusive as telas de OUTRO pacote empilhadas nela, como a busca do Configurações) e abre a tela inicial. Sem isso o
         `am start` só traz a tarefa de volta, no ponto onde parou."""
         _check_package(package)
         if tarefa_limpa:
-            flags = "--activity-clear-task --activity-new-task"
+            flags = "--activity-clear-task"
             if activity:
                 if not ACTIVITY_RE.match(activity):
                     raise AdbError("activity inválida")

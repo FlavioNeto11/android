@@ -238,6 +238,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
   para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
 
+## 2026-10-06 — 31.137, correção: `--activity-new-task` não existe no `am` do Android 34 (branch fix/31-137-flag-new-task)
+
+- Defeito do 31.137 no deploy 52 (cdee6620): `Adb.start_app(..., tarefa_limpa=True)` mandava `--activity-clear-task --activity-new-task`, e o `am start` do Android 34
+  recusa a segunda ("Unknown option"; `am help` no android-04 lista `--activity-clear-task` e não lista `--activity-new-task`). Medido: `POST /api/instances/android-04/actions/open_app`
+  (Configurações) terminou `failed` em 0,6 s (comando c-20261006152209-ada35d). Falhavam: `DeviceManager.open_app` (ação manual, ponto de partida da prova em `_partir_da_prova`, que engole
+  a exceção e segue, com `force_stop_app` antes) e o LT-6 do executor (o `DriverError` cai em "o ator assume", ou seja, IA). O ae97e2 (etapa 1 em 6,0 s) passou porque o ponto de partida
+  falhou em silêncio e a receita abriu o app pelo `open_app` comum.
+- Correção: só `--activity-clear-task` (o `am start` já abre em tarefa nova; conferido no aparelho: o comando abre as Configurações numa tarefa única). Teste novo trava as opções.
+  Só as Configurações usam a tarefa limpa (`ABERTURA_COM_TAREFA_LIMPA`): o Instagram e os demais apps seguem pelo `am start` comum, sem mudança.
+- Prova `simulated`: 1484 passed nos dirigidos (open_app, start_app, foco, ponto de partida) + catracas, mypy 257, docs-check 0; 1 falha instável sob carga
+  (`test_quarentena_de_conta`, passa isolado, 25 passed). `real`: só a leitura do `am help` e do `open_app` falho no android-04 (06/10, 15:22Z); a abertura corrigida fica `not_run` até o deploy.
+
 ## 2026-10-06 — 15.15 F4, corte 10 (F4j): proxies, comandos e apps (20 rotas) saem de `api.py` (branch feat/15-15-f4j-routers-restantes)
 
 - `/api/proxies*` (4) vão para `backend/app/modules/fleet/presentation/proxies.py`; `/api/commands*` (6, com a triagem de credencial da nota em
