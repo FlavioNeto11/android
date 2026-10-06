@@ -14,10 +14,11 @@ pedidos pelo serviço de aprovações de sempre, só com o eco do texto que a pe
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 import secrets
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -26,9 +27,11 @@ from app.db import Database, Row, dumps, loads
 from app.models import InstanceState, RunCreate, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
-from app.security.redaction import redact
+from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs
 from app.social.service import SocialError
+from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS, normal
+from app.taskqueue.recipes import SENSITIVE_PARAM
 from app.taskqueue.service import RunError
 from app.util import now_iso
 
@@ -43,6 +46,8 @@ if TYPE_CHECKING:
 SEM_PERSONA = "persona inexistente"
 SEM_CONTA = "sem conta"
 SEM_SESSAO = "sem sessão"
+#: A conta tem sessão em mais de um aparelho e nenhuma no vínculo principal da persona: qual age não se adivinha.
+FORA_DO_PRINCIPAL = "sessão fora do aparelho principal"
 SEM_APARELHO = "aparelho indisponível"
 TETO_DE_CUSTO = "teto de custo"
 LIMITE_DE_ACOES = "limite de ações executadas"
@@ -78,12 +83,47 @@ class PedidoDeOperacao:
     max_usd: float
     assunto: str | None = None
     fontes: Sequence[str] = ()
+    #: Adendo v1.95: parâmetros FIXOS de cada execução de alvo (`username`, `caption_contains`), com estes nomes no
+    #: plano (`taskqueue/plano_da_operacao.py`), para a receita ensinada casar.
+    parametros: Mapping[str, str] | None = None
+
+
+#: Nome de parâmetro fixo: o alfabeto das chaves do plano. Os que a materialização põe por cima dos parâmetros
+#: (`instance_id`, `run_id`, `account_label`, `item`) e os dados da persona (`perfil_*`, `conta_*`) seriam engolidos.
+_NOME_DE_PARAMETRO = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+
+
+def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
+    """Nome e valor de cada parâmetro fixo. Credencial nunca: a execução não carrega credencial (ADR-040), e um parâmetro
+    vai ao plano, ao objetivo, ao prompt e ao texto digitado pelo canal comum. A recusa olha o NOME (`senha`, `codigo`,
+    `token`), o par `nome=valor` e o FORMATO do valor sozinho (senha ou código sem rótulo)."""
+    for nome, valor in (parametros or {}).items():
+        texto = str(valor)
+        if (chave_sensivel(nome) or SENSITIVE_PARAM.search(nome) or redact(f"{nome}={texto}") != f"{nome}={texto}"
+                or looks_secret(texto) or parece_senha_ou_codigo(texto)):
+            raise OperacaoError("credencial_no_comando", f"O parâmetro {nome!r} parece credencial; a operação não "
+                                "leva credencial (a senha só sai do cofre, pelo canal sensível).", 409)
+        if (not _NOME_DE_PARAMETRO.match(nome) or nome in NOMES_RESERVADOS
+                or nome.startswith(("perfil_", "conta_"))):
+            raise OperacaoError("pedido_invalido", f"Nome de parâmetro não aceito: {nome!r}.", 422)
+        if not isinstance(valor, str) or not 1 <= len(valor) <= 300 or "{" in valor or "}" in valor:
+            raise OperacaoError("pedido_invalido", f"Valor do parâmetro {nome!r}: de 1 a 300 caracteres, sem chaves.",
+                                422)
+    if len(parametros or {}) > 10:
+        raise OperacaoError("pedido_invalido", "No máximo 10 parâmetros.", 422)
+    valores = [normal(str(v)) for v in (parametros or {}).values()]
+    if len(set(valores)) != len(valores):
+        # Dois nomes para o mesmo valor deixariam a identidade da etapa dependente da ordem da troca.
+        raise OperacaoError("pedido_invalido", "Dois parâmetros com o mesmo valor.", 422)
 
 
 def _sha(pedido: PedidoDeOperacao) -> str:
     corpo = {"command": pedido.command.strip(), "app_id": pedido.app_id, "acao_final": pedido.acao_final,
              "max_usd": pedido.max_usd, "assunto": pedido.assunto, "fontes": list(pedido.fontes),
              "alvos": [[a.profile_id, a.account_id, a.instance_id] for a in pedido.alvos]}
+    if pedido.parametros:
+        # Só quando há: a chave de uma operação anterior ao v1.95, mandada de novo, segue casando.
+        corpo["parametros"] = dict(pedido.parametros)
     return hashlib.sha256(json.dumps(corpo, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
@@ -97,10 +137,11 @@ class ServicoDeOperacoes:
     def criar(self, pedido: PedidoDeOperacao, *, quem: str | None = None) -> dict[str, object]:
         try:
             # A MESMA recusa da execução, antes de gravar, para tudo que vai ao banco e à pesquisa externa.
-            for texto in (pedido.command, pedido.assunto or "", *pedido.fontes):
+            for texto in (pedido.command, pedido.assunto or "", *pedido.fontes, *(pedido.parametros or {}).values()):
                 self.runs._recusar_credencial(texto)  # noqa: SLF001
         except RunError as exc:
             raise OperacaoError(exc.code, exc.message, exc.status) from exc
+        _conferir_parametros(pedido.parametros)
         app = self.db.one("SELECT id, package FROM apps WHERE id=?", (pedido.app_id,))
         if app is None:
             raise OperacaoError("app_inexistente", f"O app {pedido.app_id!r} não está registrado.", 404)
@@ -116,9 +157,10 @@ class ServicoDeOperacoes:
         agora = now_iso()
         self.db.execute(
             "INSERT INTO operacoes(id, command, app_id, acao_final, max_usd, assunto, fontes, status, idempotency_key,"
-            " corpo_sha256, criada_por, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " corpo_sha256, criada_por, created_at, updated_at, parametros) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (op_id, pedido.command.strip(), pedido.app_id, pedido.acao_final, float(pedido.max_usd), pedido.assunto,
-             dumps(list(pedido.fontes)), "em_curso", pedido.idempotency_key, sha, quem, agora, agora))
+             dumps(list(pedido.fontes)), "em_curso", pedido.idempotency_key, sha, quem, agora, agora,
+             dumps(dict(pedido.parametros)) if pedido.parametros else None))
         for seq, alvo in enumerate(pedido.alvos):
             self._criar_alvo(op_id, seq, alvo, pedido)
         self.bus.emit("operacao.criada", f"Operação {op_id} criada com {len(pedido.alvos)} alvo(s).",
@@ -165,13 +207,25 @@ class ServicoDeOperacoes:
         if conta["status"] != "active":
             return "conta", _motivo(f"conta {conta['status']}"), str(conta["id"]), None
         sessoes = self._sessoes_prontas(str(conta["id"]))
-        aparelho = alvo.instance_id or (sessoes[0] if sessoes else None)
+        if alvo.instance_id is None and len(sessoes) > 1:
+            # A conta com sessão em dois aparelhos (a mesma conta lida no notebook e logada no central) executa só no
+            # vínculo PRINCIPAL da persona: a sessão mais recente podia ser a do aparelho que só lê.
+            aparelho = self._principal_com_sessao(alvo.profile_id, sessoes)
+            if aparelho is None:
+                return "sessao", FORA_DO_PRINCIPAL, str(conta["id"]), None
+        else:
+            aparelho = alvo.instance_id or (sessoes[0] if sessoes else None)
         if aparelho is None or aparelho not in sessoes:
             return "sessao", SEM_SESSAO, str(conta["id"]), alvo.instance_id
         rt = self.runs.devices.devices.get(aparelho)
         if rt is None or rt.store:
             return "aparelho", SEM_APARELHO, str(conta["id"]), aparelho
         return None, None, str(conta["id"]), aparelho
+
+    def _principal_com_sessao(self, profile_id: str, sessoes: list[str]) -> str | None:
+        principal = self.social.binding_principal(profile_id)
+        iid = str(principal["instance_id"]) if principal is not None else None
+        return iid if iid in sessoes else None
 
     def _sessoes_prontas(self, account_id: str) -> list[str]:
         return [str(r["instance_id"]) for r in self.db.query(
@@ -219,16 +273,22 @@ class ServicoDeOperacoes:
                 estado, motivo, parou = ("bloqueado", LIMITE_DE_ACOES if executadas >= limite else AGUARDA_LIBERACAO,
                                          "acao_executada")
             self._anotar(op_id, a, lt.estagio, estado, motivo)
+            # O custo do alvo é o da execução DELE (com a pesquisa externa, se ela rodou ali); sem execução, nulo.
+            custo = round(costs.spent_usd(self.db, self.precos, run_id=str(a["run_id"])), 4) if a["run_id"] else None
+            if resultado is not None:
+                resultado = {**resultado, "custo_usd": custo}
             saida.append({"profile_id": a["profile_id"], "persona_nome": self._nome(str(a["profile_id"])),
                           "app_id": op["app_id"], "account_id": a["account_id"], "conta": self._handle(a),
                           "instance_id": a["instance_id"], "run_id": a["run_id"], "estagio": lt.estagio,
                           "estado": estado, "motivo": motivo,
                           "parou_em": parou if estado in ("bloqueado", "cancelado") else None,
-                          "estagios": [{"estagio": e, "em": em} for e, em in lt.estagios], "resultado": resultado})
+                          "estagios": [{"estagio": e, "em": em} for e, em in lt.estagios], "resultado": resultado,
+                          "custo_usd": custo})
         capacidade = self._capacidade(saida)
         status = self._status(op, saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
                 "max_usd": op["max_usd"], "assunto": op["assunto"], "fontes": loads(op["fontes"], []),
+                "parametros": loads(op["parametros"], None),
                 "status": status, "created_at": op["created_at"], "finished_at": self._fechar(op, status, capacidade),
                 "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id)}
 

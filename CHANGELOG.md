@@ -123,6 +123,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   casam `aria-controls` e painel, a aba nova abre o painel certo e o botão de exemplo preenche a mensagem do formulário.
   Não implantado.
 
+## 2026-10-06 — 31.154: custo por alvo, vínculo principal e parâmetros fixos da operação (adendo v1.95, migração 127; branch feat/31-154-custo-por-alvo)
+
+- `GET /api/operacoes/{id}`: cada alvo ganha `custo_usd` (o `spent_usd` da execução dele; `null` sem execução), repetido em
+  `resultado.custo_usd`. A Portal mostrava `null`.
+- Alvo sem `instance_id` cuja conta tem sessão pronta em mais de um aparelho vai ao vínculo **principal** da persona, não à
+  sessão mais recente. Sem sessão no principal: parado em `sessao`, motivo `sessão fora do aparelho principal`.
+- `parametros` opcionais no `POST /api/operacoes` (migração 127, `operacoes.parametros`). No plano de cada execução de
+  alvo, o parâmetro do planejador com o mesmo valor vira o nome fixo, e as etapas das capabilities do bloco `operacao` do
+  app ganham a chave `<capability>_<n>` (`taskqueue/plano_da_operacao.py`, aplicado antes de gravar o plano). A receita
+  ensinada com `{username}`/`{caption_contains}` casa e se reproduz; sem isso, dava `RecipeDiverged` "parâmetro ausente".
+  Credencial em `parametros` é recusada pelo nome, pelo par `nome=valor` e pelo formato do valor; a renomeação nunca
+  toca o dado da persona nem nome sensível. O `revisor-segredos` teve 5 achados, todos corrigidos com teste.
+- Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (identidade igual à da etapa ensinada, reprodução e o
+  controle sem os fixos, operação no harness, execução fora de operação sem mudança, validação),
+  `backend/tests/test_operacoes.py` e `backend/tests/test_migracao_127.py`. `not_run`: prova real (rodada de 07/10).
+
 ## 2026-10-06 — 31.154 e 31.156: a operação com N agentes e os tetos da seleção (prova de 07/10; branch feat/prova30-j1-j2-candidata)
 
 - **31.156 (J1)**: a sugestão de alvos escolhia no máximo 10 personas entre 20 candidatas (constantes do domínio); um pedido
