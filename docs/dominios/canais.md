@@ -415,6 +415,13 @@ avisos depois da faxina"), e a trava cai no TTL.
 | Métrica, custo, risco | Programa | Canais e orquestradora | A cada deploy refaz o que tem fonte automática (aparelhos e testes); o resto, na rodada semanal. A primeira linha é `Leitura de DD/MM HH:MMZ`, e a leitura com mais de 3 dias é listada |
 | Registro de rotina, estudo ou análise | Execução, Concluído nesta semana | Canais | Na virada da semana vai para a lista "Rotina, estudos e registros" do Histórico |
 
+- **Regra, o procedimento da resposta do dono a uma pergunta (28.65):** a Canais não escreve mais script avulso. Depois de
+  conferir a resposta no banco, roda `.claude/trello/registrar_resposta.py --cartao <id> --entrada <N> --canal trello|telegram
+  --quando "DD/MM HH:MMZ" --literal "<texto exato>" [--leitura "..."] [--confirmacao "..."]` (sem `--aplicar` é ensaio). Com
+  `--aplicar` ele põe o bloco "RESPOSTA DO DONO" no topo da descrição, move o cartão para Perguntas respondidas (no topo, com
+  " · respondida em DD/MM" no nome) e cria "⚖️ <nome>" em Programa › Decisões do dono com o link da pergunta. É idempotente
+  (descrição já registrada não se reescreve; decisão de mesmo nome não se duplica). O literal do dono vai como está e o
+  redator só avisa se mudaria algo; leitura e confirmação passam por `redacao.redigir`.
 - **Regra, a reconciliação total:** a cada espelho de deploy e a cada `claude-plan-100.py aplicar`, a Canais roda
   `.claude/trello/reconciliar.py` (primeiro sem `--aplicar`, que só relata, depois com ele). O script confere **todos** os
   cartões do quadro Execução com o estado do plano e o deploy de cada item (commit "merge: ID na suíte N"; sem ele, o id
