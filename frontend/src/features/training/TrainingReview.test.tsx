@@ -839,3 +839,72 @@ it('31.89: o aviso de colisão do comando aparece na prévia e no resultado como
   await waitFor(() => expect(regiao('Avisos do salvar', 'ul').textContent).toContain('colide com a habilidade “enviar mensagem”'));
 });
 
+// ---------------------------------------------------------------- 31.111 F5 (adendo v1.75): treino que nasceu de uma etapa que falhou
+const ORIGEM = {
+  run_id: 'run-0001', step_id: 'run-0001:android-01:v1:open_app', step_key: 'open_app', attempt_id: 'att-1',
+  motivo: 'A tela esperada não apareceu.',
+  context: {
+    disponivel: true,
+    trilha: [
+      { step_id: 'run-0001:android-01:v1:login', step_key: 'login', titulo: 'Entrar', status: 'succeeded', motivo: null, falhou: false },
+      { step_id: 'run-0001:android-01:v1:open_app', step_key: 'open_app', titulo: 'Abrir o app', status: 'failed', motivo: 'tela errada', falhou: true },
+    ],
+    esperado: { kind: 'text_visible', value: 'Conversas', description: 'a lista de conversas' },
+    tentativa: { number: 2, status: 'failed', erro: 'timeout', failure_kind: 'postcondition', failure_screen: 'Configurações', strategy: 'recipe' },
+    evidencias: [{ id: 41, kind: 'screenshot', nota: 'tela da falha', disponivel: true }, { id: 42, kind: 'screenshot', nota: 'tela anterior', disponivel: false }],
+  },
+};
+
+it('31.111: a sessão com origem mostra o selo, o motivo, o que a execução fez, o esperado, a tentativa e as imagens', async () => {
+  backend.on('GET', /\/training\/trn-1$/, () => json({ ...SESSAO, origin: ORIGEM }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  const origem = await waitFor(() => regiao('Origem do treino'));
+  expect(origem.textContent).toContain('corrige uma falha');
+  expect(origem.textContent).toContain('Etapa open_app da execução run-0001');
+  expect(origem.textContent).toContain('Motivo: A tela esperada não apareceu.');
+  const resumoDoContexto = Array.from(document.querySelectorAll('summary')).find((x) => /O que a execução fez, o esperado e as imagens/.test(x.textContent ?? ''))!;
+  await click(resumoDoContexto);
+  const o = regiao('Origem do treino').textContent!;
+  expect(o).toContain('Entrar');
+  expect(o).toContain('a que falhou');
+  expect(o).toContain('A etapa esperava: a lista de conversas (Conversas)');
+  expect(o).toContain('Tentativa 2 (failed)');
+  expect(o).toContain('postcondition');
+  expect(o).toContain('estratégia recipe');
+  expect(o).toContain('timeout');
+  expect(o).toContain('tela: Configurações');
+  const imagens = [...document.querySelectorAll<HTMLImageElement>('ul[aria-label="Imagens da falha"] img')];
+  expect(imagens).toHaveLength(1);                                                                // a redigida não vira <img>
+  expect(imagens[0]!.getAttribute('src')).toMatch(/\/evidence\/41$/);
+  expect(imagens[0]!.alt).toBe('tela da falha');
+  expect(o).toContain('tela anterior: não disponível (redigida)');
+  expect(document.querySelector('[aria-current="step"]')!.textContent).toContain('Abrir o app');
+});
+
+it('31.111: sem origem (gravação comum) nada de selo; etapa apagada diz que já não existe; contexto indisponível diz isso', async () => {
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  expect(document.querySelector('section[aria-label="Origem do treino"]')).toBeNull();
+  expect(text()).not.toContain('corrige uma falha');
+  await act(async () => root.unmount());
+  root = createRoot(container);
+
+  backend.on('GET', /\/training\/trn-1$/, () => json({ ...SESSAO, origin: { ...ORIGEM, attempt_id: null, motivo: null, context: { disponivel: false } } }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  const origem = await waitFor(() => regiao('Origem do treino'));
+  expect(origem.textContent).toContain('A etapa já não existe');
+  expect(origem.textContent).toContain('O contexto da execução já não está disponível.');
+  expect(Array.from(document.querySelectorAll('summary')).some((x) => /O que a execução fez/.test(x.textContent ?? ''))).toBe(false);
+});
+
+it('31.111: o fluxo salvo nasce com o selo "corrige uma falha" e a frase de onde veio', async () => {
+  backend.on('GET', /\/training\/trn-1$/, () => json({ ...SESSAO, origin: ORIGEM }));
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved', origin: ORIGEM }, flow_id: 'f-0a1b2c3d4e5f', warnings: [],
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
+  }));
+  await abrirEProporComPrevia();
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Este fluxo nasceu da correção da etapa open_app da execução run-0001.'));
+});

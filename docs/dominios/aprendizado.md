@@ -935,6 +935,16 @@ hub de IA e o curador, 30.11): a causa `indeterminada` sai como dado, sem chamad
   releitura por `ai_calls` não desmente o gravado, e ela segue só para o legado.)
 - Prova `simulated`: `tests/test_learning_diagnostico.py`. `not_run` no central.
 
+**O diagnóstico de UMA tentativa abre o ensino da correção (31.111 F4).** O ensino que nasce de uma etapa que falhou
+(31.111 F1–F3) lê a causa provável daquela tentativa pela mesma regra do relatório:
+`ServicoDeFalhas.diagnostico_da_tentativa(attempt_id)`, com a porta `FontesDaTentativa.chave_da_tentativa`, à parte como
+a do contexto. Ela usa o tipo relido pelo texto quando não gravado, o app pela etapa ou pela execução, e os tipos de erro
+do provedor nas chamadas dela. `domain/ensino_da_falha.py` traduz a causa em rótulo curto e na pergunta do que mostrar.
+`GET /api/training/{id}` leva `origin.diagnostico`, e `POST /api/training/from-run` sem intenção escrita sugere
+"Corrigir a etapa «…»: <rótulo>". A causa `indeterminada` não acrescenta nada à intenção, e a intenção da pessoa vence.
+Nenhuma IA: a única chamada continua sendo a proposta do próprio ensino. Sem tentativa, sem tipo ou com erro na leitura,
+`diagnostico` é `null` e a sessão abre igual. Quem liga é o `AppState` (`TrainingRecorder.diagnostico_da_falha`).
+
 ## Evidência inválida e o reaprendido (30.23)
 
 Decisão da coordenação (03/10), registrada como emenda ao ADR-054. Desenho: `design/aprendizado-vivo.md` §9.3. Contrato:

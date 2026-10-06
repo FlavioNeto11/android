@@ -22,8 +22,10 @@ class OrigemRecusada(Exception):
         self.code, self.message, self.status = code, message, status
 
 
-#: Etapa que "não deu certo": falhou, ou ficou incerta (incerteza nunca conta como sucesso, e a pessoa pode corrigi-la).
-STATUS_ENSINAVEIS = ("failed", "uncertain")
+#: Etapa que "não deu certo": falhou, ficou incerta (incerteza nunca conta como sucesso) ou PAROU num bloqueio esperando uma
+#: pessoa (`waiting_user`: a IA concluiu que não dá e o executor não aceitou; a prova real do 31.111, 06/10, caiu aqui). A
+#: pessoa pode corrigir qualquer das três.
+STATUS_ENSINAVEIS = ("failed", "uncertain", "waiting_user")
 MAXIMO_DO_MOTIVO = 400
 MAXIMO_DA_TRILHA = 60
 MAXIMO_DE_EVIDENCIAS = 10
@@ -53,7 +55,7 @@ def origem_da_falha(db: Database, run_id: str, step_id: str) -> OrigemDaFalha:
     if etapa is None:
         raise OrigemRecusada("step_not_found", "Etapa não encontrada nesta execução.", 404)
     if etapa["status"] not in STATUS_ENSINAVEIS:
-        raise OrigemRecusada("step_not_failed", "Só se ensina a partir de uma etapa que falhou ou ficou incerta.", 409)
+        raise OrigemRecusada("step_not_failed", "Só se ensina a partir de uma etapa que falhou, ficou incerta ou parou esperando uma pessoa.", 409)
     tentativa = db.one("SELECT id, error FROM attempts WHERE step_id=? ORDER BY number DESC LIMIT 1", (step_id,))
     motivo = _limpo(etapa["status_detail"] or (tentativa["error"] if tentativa else "")) or ""
     return OrigemDaFalha(run_id=run_id, step_id=step_id, step_key=str(etapa["key"]),

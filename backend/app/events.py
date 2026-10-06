@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from .db import Database, dumps, loads
+from .security.mascara_da_persona import no_objeto, no_texto
 from .security.redaction import redact, redact_obj
 from .models import EventRecord
 from .util import now_iso
@@ -53,6 +55,9 @@ class EventBus:
         self._subscribers: set[asyncio.Queue[EventRecord]] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._replica_cursor: int | None = None
+        #: 31.113 F1: `(run_id, objective_id, step_id, attempt_id) -> {valor: marcador}` da persona do objetivo; quem
+        #: liga é o `Repository`. Sem ele (testes do barramento), o evento sai como veio.
+        self.mascara: Callable[[str | None, str | None, str | None, str | None], dict[str, str]] | None = None
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -75,6 +80,18 @@ class EventBus:
         # não deixar o segredo chegar aqui; esta é a segunda camada.
         message = redact(message) or ""
         data = redact_obj(data)
+        if self.mascara is not None and (run_id or objective_id or step_id or attempt_id):
+            # 31.113 F1: o evento é registro e vai a todo navegador: o dado da persona sai como o marcador. A tela e o
+            # executor seguem com o valor; isto só olha o texto que fica.
+            try:
+                trocas = self.mascara(run_id, objective_id, step_id, attempt_id)
+            except Exception:  # noqa: BLE001 - a máscara nunca derruba o evento
+                log.warning("máscara da persona indisponível no evento %s", kind)
+                trocas = {}
+            if trocas:
+                message = no_texto(message, trocas) or ""
+                mascarado = no_objeto(data, trocas)
+                data = mascarado if isinstance(mascarado, dict) else data
         ts = now_iso()
         event_id: int | None = None
         if kind not in EPHEMERAL_KINDS:

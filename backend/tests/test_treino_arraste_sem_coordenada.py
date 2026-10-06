@@ -145,7 +145,7 @@ async def test_os_leitores_aguentam_o_arraste_nao_gravado_sem_inventar_gesto(har
     receita, motivo = distill_training([comum, toque], {}, side_effect=False)
     assert receita is not None and receita[0]["scroll"]["direction"] == "down", (receita, motivo)
     # entrada com coordenada: a linha segue como antes
-    assert linha_da_entrada(comum) == "#1 swipe | rolou para baixo"
+    assert linha_da_entrada(comum) == "#1 swipe | arrastou o dedo de baixo para cima (borda de origem desconhecida)"
 
 
 # ---- (f) dígito por extenso só dentro de teclado -----------------------------------------------------------------------

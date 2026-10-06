@@ -277,9 +277,14 @@ export function hydrateFromSnapshot(state: DataState, snap: Snapshot): DataState
 
 // ---- mutações vindas de respostas REST ----------------------------------------------------------
 
+/** 29.153: o resumo de um evento ou da lista não traz `costs`; o último custo lido no detalhe não pode sumir por isso. */
+function guardandoOCusto(prev: RunSummary, next: RunSummary): RunSummary {
+  return next.costs === undefined && prev.costs !== undefined ? { ...next, costs: prev.costs } : next;
+}
+
 export function upsertRun(state: DataState, run: RunSummary): DataState {
   const clean = cleanSummary(run);
-  const runs = sortRuns(upsertBy(state.runs, clean, (r) => r.id));
+  const runs = sortRuns(upsertBy(state.runs, clean, (r) => r.id, guardandoOCusto));
   let detail = state.detail;
   if (detail?.data && detail.runId === clean.id) {
     detail = { ...detail, data: { ...detail.data, ...clean } };
@@ -289,7 +294,7 @@ export function upsertRun(state: DataState, run: RunSummary): DataState {
 
 export function mergeRuns(state: DataState, list: RunSummary[]): DataState {
   let runs = state.runs;
-  for (const r of list) runs = upsertBy(runs, cleanSummary(r), (x) => x.id);
+  for (const r of list) runs = upsertBy(runs, cleanSummary(r), (x) => x.id, guardandoOCusto);
   return { ...state, runs: sortRuns(runs) };
 }
 

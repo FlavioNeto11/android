@@ -1,6 +1,7 @@
 """Funde os mapas dos lotes (`<pasta>/mapa/lote_*.json`) em `.claude/trello/mapa.json` (id do plano → cartão).
 
 Uso: python .claude/trello/mapa.py <pasta com mapa/*.json>
+O arquivo é estado por instalação e fica fora do Git (28.56); sem ele, este script o cria do zero.
 Idempotente: o que já está no mapa.json é mantido; entradas novas entram; conflitos ficam com a mais recente.
 """
 from __future__ import annotations

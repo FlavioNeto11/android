@@ -70,6 +70,7 @@ from .proofs import marcas_pendentes_na_tela, nivel_pelo_marcador, variantes_de_
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .latencia import TemposDaTentativa, ms_desde
 from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_galeria
+from .dado_da_persona import resolver_persona, rotulo, sem_valor_na_etapa
 from .recipes import (NAO_APLICAVEL_CONTA_APOS, READ_ONLY, AlvoAusente, RecipeDiverged, RecipeStore, Replayer,
                       contar_retorno_ia, distill, eh_generica, filhos_rotulados, hash_generico_da_linha,
                       unique_selectors)
@@ -1381,6 +1382,15 @@ class StepExecutor:
                        app: AppContext, account_label: str | None, remaining: list[str],
                        stop_reason: Callable[[], str | None], resumed_after_manual: bool) -> StepOutcome:
         """Etapa com receitas: procura a receita, executa, e depois contabiliza o replay ou aprende com a IA."""
+        # 31.113 F2: o ponto ÚNICO onde o dado da persona entra na etapa. A linha guarda o marcador; daqui em diante
+        # (ator, receita, conferência da tela, juiz) a etapa da tentativa tem o valor, só em memória.
+        persona = self.repo.variaveis_da_persona(objective["profile_id"])
+        step = resolver_persona(step, persona)
+        if faltam := sem_valor_na_etapa(step):
+            # O pré-voo conferiu na materialização; o dado sumiu da persona depois. O molde não vai ao aparelho.
+            return StepOutcome(Outcome.waiting_user, f"{PREFIXO_DADO_AUSENTE} a persona deste aparelho não tem "
+                               + ", ".join(rotulo(n) for n in faltam) + "; nada foi digitado.",
+                               needs="Preencha o dado no perfil da persona e retome o item.")
         mode = self.cfg.file.ai.recipes
         leitura = mode != "off" and bool(saidas_exigidas(self.repo.saidas_da_etapa(step.id),
                                                          capability_of(app.package, step.capability)))
@@ -1422,8 +1432,7 @@ class StepExecutor:
                 if rr.row is not None:
                     # 31.87 F2: a receita ensinada digita `{perfil_email}`; os dados da persona do objetivo entram
                     # só na REPRODUÇÃO (os do objetivo vencem). A destilação na execução segue com `rr.variables`.
-                    rr.replayer = self.recipes.replayer(
-                        rr.row, {**self.repo.variaveis_da_persona(objective["profile_id"]), **rr.variables})
+                    rr.replayer = self.recipes.replayer(rr.row, {**persona, **rr.variables})
                     if rr.row["status"] == "candidate":
                         rr.mode = "shadow"      # em prova: a IA decide a etapa e a receita só é comparada
             except Exception as exc:  # noqa: BLE001 - receita é otimização: nunca derruba a etapa
