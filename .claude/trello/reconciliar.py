@@ -283,7 +283,8 @@ def com_linha(desc: str, topo: str) -> str:
 
 # ---- fontes (Git e plano) e rede -----------------------------------------------------------------------------------
 
-def suite_do_commit(pid: str, raiz: Path = RAIZ) -> int | None:
+def suite_do_commit(pid: str, raiz: Path | None = None) -> int | None:
+    raiz = raiz or RAIZ
     r = subprocess.run(["git", "-C", str(raiz), "log", "origin/main", "--format=%s", "-E", "--grep",
                         r"^merge: " + re.escape(pid) + r" \(.*na suíte [0-9]+"], capture_output=True, text=True,
                        encoding="utf-8", check=False).stdout
@@ -301,7 +302,8 @@ def ids_citados_por_deploy(texto: str) -> dict[str, int]:
     return achados
 
 
-def horas_dos_deploys(raiz: Path = RAIZ) -> dict[int, str]:
+def horas_dos_deploys(raiz: Path | None = None) -> dict[int, str]:
+    raiz = raiz or RAIZ
     texto = (raiz / "CHANGELOG.md").read_text(encoding="utf-8")
     saida: dict[int, str] = {}
     for n in deploys_do_changelog(texto):
