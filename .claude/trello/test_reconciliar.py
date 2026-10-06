@@ -306,8 +306,11 @@ def test_item_classificado_junto_do_registro_do_deploy_vale_o_deploy_do_git():
     item = {"status": "implemented", "proof": "real", "quando": "2026-10-05T17:00:00+00:00",
             "evidence": "provado em 06/10 no deploy 43"}
     c = [cartao("c1", "29.7 · algo", "🧭 Próximas")]
-    # a hora diz 39 e não é o último deploy: o git nem é consultado
+    # a hora diz 39, mas o git diz 38 e o git manda; com o commit de suíte, é a suíte que manda
     a = decidir(c, estado(**{"29.7": item}), agora=AGORA, horas=HORAS, suite_de=lambda p: None,
+                listas_do_historico=HIST, deploy_git=lambda p: 38).acoes[0]
+    assert "no ar desde o deploy 38" in a.linha
+    a = decidir(c, estado(**{"29.7": item}), agora=AGORA, horas=HORAS, suite_de=lambda p: 39,
                 listas_do_historico=HIST, deploy_git=lambda p: 38).acoes[0]
     assert "no ar desde o deploy 39" in a.linha
     mesmo_da_ultima = {**item, "quando": "2026-10-06T00:55:00+00:00"}  # depois do 43: ambíguo
