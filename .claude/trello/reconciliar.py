@@ -36,7 +36,7 @@ BRASILIA = timezone(timedelta(hours=-3))
 CARTAO_DO_DONO = ("espera_voce",)
 
 # papel de cada lista do quadro Execução, achado pelo nome (os nomes levam emoji e mudam de texto)
-PAPEIS = (("Concluído", "concluido"), ("Em validação", "em_validacao"), ("Em execução", "em_execucao"),
+PAPEIS = (("Prova 07/10", "prova"), ("Concluído", "concluido"), ("Em validação", "em_validacao"), ("Em execução", "em_execucao"),
           ("Próximas", "proximas"), ("Aguardando", "aguardando"), ("Espera você", "espera_voce"),
           ("Bloqueado", "bloqueado"), ("Perguntas respondidas", "perguntas_respondidas"),
           ("Perguntas para você", "perguntas"), ("Como ler", "como_ler"), ("Central", "central"))
@@ -287,8 +287,8 @@ def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[i
         if atual in CARTAO_DO_DONO:
             rel.acoes.append(Acao(c["id"], nome, "listar", atual, None, "", "espera o dono; não se move"))
             continue
-        if atual in ("como_ler", "central", "perguntas", "perguntas_respondidas"):
-            continue
+        if atual in ("como_ler", "central", "perguntas", "perguntas_respondidas", "prova"):
+            continue          # "prova": lista da prova de 07/10, mantida à mão até o fim da prova
         st = it.get("status")
         if st == "blocked":
             if atual != "bloqueado":

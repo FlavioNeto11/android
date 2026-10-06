@@ -95,6 +95,13 @@ def test_implementado_e_implantado_vai_a_concluido_com_a_linha_de_prova():
     assert "no ar desde o deploy 38" in a.linha
 
 
+def test_cartao_na_lista_da_prova_nao_volta_para_a_coluna_do_plano():
+    est = estado(**{"29.1": {"status": "implemented", "proof": "simulated", "quando": "2026-10-05T17:00:00+00:00",
+                             "evidence": "backend/tests/test_x.py::test_a passou"}})
+    rel = roda([cartao("c1", "29.1 · algo", "🎯 Prova 07/10 · NECESSÁRIO")], est)
+    assert rel.acoes == []
+
+
 def test_prova_real_leva_data_e_ids():
     est = estado(**{"29.1": {"status": "implemented", "proof": "real", "quando": "2026-10-05T17:00:00+00:00",
                              "evidence": "validado em 05/10 nas execuções r-20261005123456-abc e r-20261005123500-def"}})
