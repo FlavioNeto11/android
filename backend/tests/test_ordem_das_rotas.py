@@ -115,6 +115,26 @@ def test_as_dezoito_rotas_de_aparelhos_seguem_no_app_e_cada_uma_uma_vez() -> Non
         ("POST", "/api/instances/{instance_id}/input")])
 
 
+def test_as_vinte_rotas_de_personas_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4h: `/api/personas*` e `/api/instances/{id}/personas` saíram de `api.py` para `modules/identity/presentation/personas.py`;
+    o conjunto (método e modelo) é o de antes, sem repetição nem rota perdida."""
+    rotas = [r for r in _rotas_na_ordem()
+             if r[1].startswith("/api/personas") or r[1] == "/api/instances/{instance_id}/personas"]
+    assert sorted(rotas) == sorted([
+        ("GET", "/api/personas"), ("POST", "/api/personas"), ("POST", "/api/personas/generate/batch"),
+        ("GET", "/api/personas/generate/batch/{batch_id}"), ("GET", "/api/personas/{persona_id}"),
+        ("PATCH", "/api/personas/{persona_id}"), ("DELETE", "/api/personas/{persona_id}"),
+        ("POST", "/api/personas/{persona_id}/devices"), ("DELETE", "/api/personas/{persona_id}/devices/{instance_id}"),
+        ("PUT", "/api/personas/{persona_id}/devices/{instance_id}/primary"),
+        ("GET", "/api/instances/{instance_id}/personas"), ("POST", "/api/personas/{persona_id}/preview"),
+        ("POST", "/api/personas/generate"), ("POST", "/api/personas/{persona_id}/enrich"),
+        ("GET", "/api/personas/{persona_id}/images"), ("POST", "/api/personas/{persona_id}/images"),
+        ("GET", "/api/personas/{persona_id}/images/{image_id}"),
+        ("PUT", "/api/personas/{persona_id}/images/{image_id}/primary"),
+        ("PUT", "/api/personas/{persona_id}/images/{image_id}/feita-por-ia"),
+        ("DELETE", "/api/personas/{persona_id}/images/{image_id}")])
+
+
 def test_modulos_de_apresentacao_nao_importam_app_api() -> None:
     """Ciclo: `app.api` importa os módulos; um módulo que importa `app.api` de volta só funciona por acidente de ordem."""
     raiz = Path(__file__).resolve().parent.parent / "app" / "modules"

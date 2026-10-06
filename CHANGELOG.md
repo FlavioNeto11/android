@@ -71,6 +71,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
   para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
 
+## 2026-10-06 — 15.15 F4, corte 8 (F4h): as 20 rotas de personas saem de `api.py` (branch feat/15-15-f4h-router-personas)
+
+- `/api/personas*` (cadastro, geração e lote por IA, enriquecimento, prévia, vínculo e aparelho primário, as imagens: listar, enviar, servir, principal,
+  "feita por IA", apagar) e `GET /api/instances/{id}/personas` agora moram em `backend/app/modules/identity/presentation/personas.py`, montado em `main.py`
+  no mesmo lugar do `api.router`. Eram 20 rotas, não 19. Mesmo caminho, método, corpo e resposta. O que as rotas de perfis do Instagram (que ficam em
+  `api.py`) dividem com elas, o erro de social como HTTP, o tipo de mídia da chave e servir um artefato pelo storage, foi para
+  `modules/identity/presentation/comum.py`, e `api.py` os importa de lá. O achado do aparelho pelo id ficou repetido ali (5 linhas) porque `identity`
+  importar `applications` fecharia um ciclo de contextos. Teto de `Any` de `app.api` 84 → 78.
+- Prova do OpenAPI contra a ponta do F4g (main f86bafd8): 271 método+caminho idênticos; os schemas só diferem no título automático de resposta
+  (`response_model=None` nas 5 rotas que devolviam `Any`). `test_ordem_das_rotas.py` ganhou o caso das 20 rotas.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
 ## 2026-10-06 — 15.15 F4, corte 7 (F4g): as 18 rotas de aparelhos (`/api/instances*`) saem de `api.py` (branch feat/15-15-f4g-router-instances)
 
 - `GET/POST /instances`, `DELETE/PUT /instances/{id}`, instalar e verificar o app, o contexto operacional, os pacotes, o lote, as ações, o quadro e a hierarquia, a conta
