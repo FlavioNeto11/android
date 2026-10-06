@@ -7,6 +7,7 @@ import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { CodeBlock, KvList, KvRow } from '../../components/JsonTree';
+import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { ProgressBar } from '../../components/ProgressBar';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cx, formatInt, ratio } from '../../lib/format';
@@ -441,6 +442,8 @@ function StepDetail({ detail, step: s, attempts }: { detail: RunDetail; step: St
           </>
         ) : null}
       </dl>
+
+      <PacotesAceitos pacotes={s.pacotes_aceitos} />
 
       {/* Plano 22.7: a etapa que a habilidade errou (falhou ou ficou sem prova) se corrige aqui, no ensino dela. */}
       {/* 31.111 F5: ensinar a corrigir a partir da falha, no aparelho da etapa (o treino nasce ligado a ela). */}

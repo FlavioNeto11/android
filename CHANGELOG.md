@@ -43,6 +43,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `scripts/marcar-fluxo-de-prova.py`: marca pelo id os fluxos de prova anteriores e a sessão de origem; ensaio por padrão, `--aplicar --backup`, idempotente.
 - Prova `simulated`: `tests/test_fluxo_nascido_de_prova.py` (2) e `scripts/tests/test_marcar_fluxo_de_prova.py` (3). Real: `not_run` até o deploy e o script rodado pela Android nos três ids.
 
+## 2026-10-06 — 31.128 e 31.129: a conferência que já vale vira aviso na etapa, e os pacotes que a etapa aceita aparecem (branch feat/31-128-pos-condicao-na-etapa)
+
+- Achados da conferência do painel contra os adendos v1.83 e v1.84 (deploy 50): as linhas novas de `warnings` e a recusa 400 `pos_condicao_ja_vale` chegavam como frase solta (lista de avisos da prévia, dica do "Salvar", toast), sem dizer onde mexer, e o campo `pacotes_aceitos` não aparecia em tela nenhuma.
+- **31.128** (adendo v1.86: `pos_condicoes_ja_valem: [{etapa, valor, sugestoes[≤3], message}]` ao lado de `warnings` na prévia e no corpo da 400): o aviso entra **dentro da etapa** citada ("O texto “…” já aparece na tela em que esta etapa começa: ela passaria sem agir"), com um botão **Usar “texto”** por sugestão que troca o valor da conferência (`text_visible`) e dispara a prévia de novo; o aviso some quando a prévia volta sem a ocorrência. A frase que a etapa já mostra não se repete em "Avisos da prévia"; o "Salvar como fluxo" diz qual etapa trocar (nome da etapa, não a frase inteira). Na recusa do salvar o aviso vai para as etapas sem o toast repetindo a frase. Sem a lista (backend anterior ao v1.86), tudo segue como antes (toast, frase no Salvar). Item que cita etapa que a proposta não tem não vira aviso na etapa, e a frase fica na lista. O leitor da lista (`lerPosCondicoes`) é tolerante e fica isolado em `PosCondicaoQueJaVale.tsx`.
+- **31.129** (adendo v1.84): `pacotes_aceitos?: string[]` tipado em `PlanStep`, `Step` e `TrainingStep`, e a linha **"Também aceita concluir em: <pacote>"** (componente `PacotesAceitos`, só quando o campo existe e não é vazio) no Plano da execução, no detalhe da etapa da execução, na etapa da proposta do treino e na leitura da sessão salva.
+- Só frontend e CHANGELOG. Prova `simulated`: `PosCondicaoQueJaVale.test.tsx` (9), `PacotesAceitos.test.tsx` (3) e quatro casos em `SessaoSalva.test.tsx` e `TrainingReview.test.tsx`; onze mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até uma demonstração que termine em pacote vizinho (corte 51, Aprendizado).
+
 ## 2026-10-06 — 31.122 F2, 31.123 F2 e 31.127: a tela inteira da partida, a tela final da etapa e a ordem das etapas ensinadas (branch feat/31-122-123-f2-127)
 
 - Achados da prova conjunta real (06/10, deploy 50, r-20261006102728-1157c6, android-04, Configurações): a sugestão "Search settings" do 31.122 já valia na tela inicial (o id `search_action_bar_title` cai no filtro de interface das `screen_lines`, que ainda cortam em 8 linhas), e a etapa 1 "comprovou" lá depois de um press_back; a etapa 1 termina na busca (pacote vizinho), que o 31.123 não declarava; e a etapa 2 rodou com a 1ª em `retry_wait` (7 de 9 fluxos ensinados sem `depends_on`).
@@ -103,6 +110,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `dado_da_persona.com_marcador` (nova), `_destilar`, `TrainingSkills._preparar` e `save` (`training/skills.py`).
 - Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
   para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
+
+## 2026-10-06 — 15.15 F4, corte 8 (F4h): as 20 rotas de personas saem de `api.py` (branch feat/15-15-f4h-router-personas)
+
+- `/api/personas*` (cadastro, geração e lote por IA, enriquecimento, prévia, vínculo e aparelho primário, as imagens: listar, enviar, servir, principal,
+  "feita por IA", apagar) e `GET /api/instances/{id}/personas` agora moram em `backend/app/modules/identity/presentation/personas.py`, montado em `main.py`
+  no mesmo lugar do `api.router`. Eram 20 rotas, não 19. Mesmo caminho, método, corpo e resposta. O que as rotas de perfis do Instagram (que ficam em
+  `api.py`) dividem com elas, o erro de social como HTTP, o tipo de mídia da chave e servir um artefato pelo storage, foi para
+  `modules/identity/presentation/comum.py`, e `api.py` os importa de lá. O achado do aparelho pelo id ficou repetido ali (5 linhas) porque `identity`
+  importar `applications` fecharia um ciclo de contextos. Teto de `Any` de `app.api` 84 → 78.
+- Prova do OpenAPI contra a ponta do F4g (main f86bafd8): 271 método+caminho idênticos; os schemas só diferem no título automático de resposta
+  (`response_model=None` nas 5 rotas que devolviam `Any`). `test_ordem_das_rotas.py` ganhou o caso das 20 rotas.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
 
 ## 2026-10-06 — 15.15 F4, corte 7 (F4g): as 18 rotas de aparelhos (`/api/instances*`) saem de `api.py` (branch feat/15-15-f4g-router-instances)
 

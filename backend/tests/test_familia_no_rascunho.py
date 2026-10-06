@@ -12,7 +12,7 @@ import json
 from types import SimpleNamespace
 from typing import Any
 
-from app import state as state_mod
+from app import gates as gates_mod
 from app.models import ProfileCreate
 from app.social.policy import MOTIVO_CITA_A_FAMILIA, ContextoDoPedido
 
@@ -35,7 +35,7 @@ def _com_familia(monkeypatch: Any, state: Any, irma: str) -> None:
         dono = state.db.scalar("SELECT profile_id FROM objectives")
         return ContextoDoPedido(raiz="ped-1", familia=frozenset({dono, irma}))
 
-    monkeypatch.setattr(state_mod, "contexto_do_pedido", contexto)
+    monkeypatch.setattr(gates_mod, "contexto_do_pedido", contexto)
 
 
 def _rascunho(monkeypatch: Any, state: Any, texto: str) -> None:

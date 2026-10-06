@@ -11,7 +11,7 @@ import { GraduationCap, RefreshCw, ServerCrash, Sparkles, Trash2, WandSparkles }
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
 import type {
-  Capability, FlowConversion, InstagramProfile, PolicyGroup, TrainingAnswer, TrainingInput, TrainingPreview, TrainingProposal,
+  Capability, FlowConversion, InstagramProfile, PolicyGroup, PosCondicaoQueJaVale, TrainingAnswer, TrainingInput, TrainingPreview, TrainingProposal,
   TrainingRecipesResult, TrainingSaveResult, TrainingSession, TrainingStep,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -23,6 +23,8 @@ import { confirm } from '../../components/Confirm';
 import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextInput } from '../../components/Field';
+import { PacotesAceitos } from '../../components/PacotesAceitos';
+import { AvisoDaPosCondicao, lerPosCondicoes, motivoDaPosCondicao } from './PosCondicaoQueJaVale';
 import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
 import { descartarSessaoConcluida } from './descartarSessao';
 import { OrigemDoTreino, SeloDeOrigem } from './OrigemDoTreino';
@@ -277,6 +279,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   // prévia que outra edição já tornou velha (a primeira pode esperar a leitura do aparelho e chegar depois da segunda).
   const [previa, setPrevia] = useState<TrainingPreview | null>(null);
   const [recusa, setRecusa] = useState<Recusa | null>(null);
+  // 31.128 (v1.86): as etapas cuja conferência já vale na tela de partida, da prévia ou da recusa do salvar.
+  const [jaValem, setJaValem] = useState<PosCondicaoQueJaVale[]>([]);
   const [previaFora, setPreviaFora] = useState<string | null>(null);
   const leitura = useRef(0);
   // O relatório do salvar oferece "Refazer receitas" se alguma etapa saiu sem receita; fica depois de refazer, com o resultado.
@@ -359,6 +363,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     if (fechada) return;
     const minha = ++leitura.current;
     setRecusa(null);
+    setJaValem([]);
     setPreviaFora(null);
     if (!corpoDoSalvar || bloqueioLocal || resultado) {
       setPrevia(null);
@@ -366,7 +371,9 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     }
     const espera = setTimeout(() => {
       api.previewTraining(sessionId, corpoDoSalvar).then((r) => {
-        if (minha === leitura.current) setPrevia(r);
+        if (minha !== leitura.current) return;
+        setPrevia(r);
+        setJaValem(lerPosCondicoes(r.pos_condicoes_ja_valem));
       }).catch((e) => {
         if (minha !== leitura.current) return;
         setPrevia(null);
@@ -464,7 +471,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       const r = recusaDe(e);
       if (r?.code === 'closed') setFechada(true);
       if (r) setRecusa(r);
-      if (!r || !CODIGOS_DO_COMANDO.has(r.code)) toastError('Não foi possível salvar o fluxo', e);
+      // 31.128: a recusa da pós-condição que já vale traz a lista; o aviso fica dentro das etapas, sem toast repetindo a frase.
+      const itens = r?.code === 'pos_condicao_ja_vale' ? lerPosCondicoes(toApiError(e).detail?.pos_condicoes_ja_valem) : [];
+      if (itens.length) setJaValem(itens);
+      if ((!r || !CODIGOS_DO_COMANDO.has(r.code)) && !itens.length) toastError('Não foi possível salvar o fluxo', e);
     } finally {
       setSalvando(false);
     }
@@ -534,6 +544,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   function motivoNaoSalvar(): string | null {
     const local = motivoLocal();
     if (local) return local;
+    const daPosCondicao = motivoDaPosCondicao(jaValem, (k) => proposta?.steps.find((s) => s.key === k)?.title ?? null);
+    if (daPosCondicao) return daPosCondicao;
     if (recusa) return CODIGOS_DO_COMANDO.has(recusa.code) ? 'Corrija o comando: o motivo está no campo.' : recusa.message;
     return null;
   }
@@ -552,6 +564,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
 
   const duplicada = new Set(duplicadas);
   const previaPorEtapa = new Map((previa?.steps ?? []).map((x) => [x.key, x]));
+  // A linha de `warnings` que a etapa já mostra por dentro (31.128) não se repete na lista de avisos da prévia.
+  const avisosDaPrevia = (previa?.warnings ?? []).filter((w) => !jaValem.some((j) => j.message && j.message === w && proposta?.steps.some((s) => s.key === j.etapa)));
   const linhaDaEntrada = (seq: number) => {
     const e = porSeq.get(seq);
     return (
@@ -771,6 +785,11 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       ) : null}
                       <p className={styles.muted}>Confere: {textoDoConfere(s.postcondition)}
                         {s.inputs.map((n) => porSeq.get(n)).filter(Boolean).length ? '' : ' · sem entradas: a IA conduz esta etapa'}</p>
+                      <PacotesAceitos pacotes={s.pacotes_aceitos} />
+                      {jaValem.filter((j) => j.etapa === s.key).map((j) => (
+                        <AvisoDaPosCondicao key={j.valor} item={j}
+                                            onUsar={(texto) => mudarEtapa(i, { postcondition: { ...s.postcondition, kind: 'text_visible', value: texto } })} />
+                      ))}
                       <EditorDaPosCondicao indice={i} etapa={s} onChange={(postcondition) => mudarEtapa(i, { postcondition })} />
                       {previaPorEtapa.get(s.key) ? (
                         <p className={styles.muted}>
@@ -792,8 +811,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                     </li>
                   ))}
                 </ol>
-                {previa?.warnings.length ? (
-                  <ul className={styles.questions} aria-label="Avisos da prévia">{previa.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+                {avisosDaPrevia.length ? (
+                  <ul className={styles.questions} aria-label="Avisos da prévia">{avisosDaPrevia.map((w) => <li key={w}>{w}</li>)}</ul>
                 ) : null}
                 {previaFora ? <p className={styles.muted}>Prévia indisponível: {previaFora} O salvar confere de novo.</p> : null}
                 {descarteUnico.length ? (

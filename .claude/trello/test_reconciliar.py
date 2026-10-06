@@ -55,6 +55,10 @@ def test_nome_e_lista():
     assert id_do_item("29.1 · algo") == "29.1"
     assert id_do_item("[A] 🙋 31.90 · algo") == "31.90"
     assert id_do_item("#162 · 31.21 · algo") == "31.21"
+    assert id_do_item("T.2 · Testes: relógio injetável") == "T.2"
+    assert id_do_item("[A] T.14 · algo") == "T.14"
+    assert id_do_item("T.2.1 · algo") is None
+    assert id_do_item("Tabela 1.2") is None
     assert id_do_item("P-001. Pergunta") is None
     assert id_do_item("Suíte 16 → deploy 16") is None
     assert papel_da_lista("✅ Concluído nesta semana") == "concluido"
@@ -133,6 +137,12 @@ def test_semana_anterior_vai_para_a_lista_da_fase_no_historico():
     a = roda([cartao("c1", "28.7 · algo", "✅ Concluído nesta semana")], est).acoes[0]
     assert (a.tipo, a.para, a.lista_do_historico) == ("mover", "historico", "L28")
     assert "um deploy anterior ao 38" in a.linha
+
+
+def test_item_transversal_de_semana_anterior_fica_em_concluido_sem_lista_de_fase():
+    est = estado(**{"T.3": {"status": "implemented", "proof": "simulated", "quando": "2026-10-02T10:00:00+00:00"}})
+    a = roda([cartao("c1", "T.3 · algo", "🧭 Próximas")], est).acoes[0]
+    assert (a.tipo, a.para, a.lista_do_historico) == ("mover", "concluido", None)
 
 
 def test_espera_voce_e_sem_estado_so_sao_listados():
