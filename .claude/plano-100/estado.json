@@ -10683,16 +10683,15 @@
   },
   "31.118": {
    "id": "31.118",
-   "status": "implemented",
+   "status": "partial",
    "proof": "real",
-   "evidence": "Real, 06/10/2026, máquina central, deploy 49 (1b86bd6b, no ar às 08:56Z). O reparo único scripts/gravacao-com-marcador.py foi aplicado pela sessão Android às 08:59:20Z, com o backup data/backups/20261006-055448: o ensaio deu 4 sessões lidas, 2 com marca e 2 entradas; o aplicar deu rc 0 com as mesmas contagens; o novo ensaio deu 0 e 0 (idempotente). Conferência só leitura da sessão Aprendizado às 09:01Z, por GET /api/training/{id} e com a persona lida do SQLite em mode=ro, sem imprimir valor: trn-1nuBzRHaAkM09f6K tem a entrada de texto seq 2 com text = {perfil_nome_exibicao}, has_text true e text_len 15; trn-o5UL-qvehFesjTuB tem a entrada seq 4 com text = {perfil_nome}, has_text true e text_len 5. O texto gravado em claro saiu das duas. O save novo marca na hora (código do 31.118 no ar). Prova do código: simulated em backend/tests/test_treino_gravacao_com_marcador.py (9). ACHADO, fora do escopo do item: na trn-1nuBzRHaAkM09f6K o valor ainda aparece em inputs[2].screen_lines[1], a linha da tela gravada depois da digitação (o campo de busca mostra o que foi digitado). A trn-o5UL-qvehFesjTuB não tem o valor em screen_lines. Proposta: estender a mesma troca, por palavra, aos screen_lines no save e no reparo.",
-   "blocker": null,
-   "grupo": "aprendizado-31-118-gravacao-com-marcador",
-   "modelo": "claude-opus-5-5",
+   "evidence": "Real, 06/10/2026, máquina central, deploy 49 (1b86bd6b, no ar às 08:56Z). O reparo único scripts/gravacao-com-marcador.py foi aplicado pela sessão Android às 08:59:20Z, com o backup data/backups/20261006-055448: o ensaio deu 4 sessões lidas, 2 com marca e 2 entradas; o aplicar deu rc 0 com as mesmas contagens; o novo ensaio deu 0 e 0 (idempotente). Conferência só leitura da sessão Aprendizado às 09:01Z, por GET /api/training/{id} e com a persona lida do SQLite em mode=ro, sem imprimir valor: trn-1nuBzRHaAkM09f6K tem a entrada de texto seq 2 com text = {perfil_nome_exibicao}, has_text true e text_len 15; trn-o5UL-qvehFesjTuB tem a entrada seq 4 com text = {perfil_nome}, has_text true e text_len 5. O texto gravado em claro saiu das duas. O save novo marca na hora (código do 31.118 no ar). Prova do código: simulated em backend/tests/test_treino_gravacao_com_marcador.py (9). ACHADO, fora do escopo do item: na trn-1nuBzRHaAkM09f6K o valor ainda aparece em inputs[2].screen_lines[1], a linha da tela gravada depois da digitação (o campo de busca mostra o que foi digitado). A trn-o5UL-qvehFesjTuB não tem o valor em screen_lines. Proposta: estender a mesma troca, por palavra, aos screen_lines no save e no reparo. Falta (F2): em trn-1nuBzRHaAkM09f6K o valor ainda aparece em inputs[2].screen_lines[1] (a tela gravada depois da digitação) e GET /api/training/{id} o devolve; o save e o reparo passam a trocar o dado pela marca também em screen_lines (branch do 31.121/122, Aprendizado), e o reparo roda de novo depois do deploy que o levar.",
+   "grupo": "orquestradora-31-118-residual",
+   "modelo": "fable",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T09:02:09+00:00"
+   "quando": "2026-10-06T09:02:31+00:00"
   },
   "29.151": {
    "id": "29.151",
@@ -13981,6 +13980,15 @@
    ],
    "grupos": [
     "aprendizado-31-118-gravacao-com-marcador"
+   ]
+  },
+  {
+   "quando": "2026-10-06T09:02:31+00:00",
+   "itens": [
+    "31.118"
+   ],
+   "grupos": [
+    "orquestradora-31-118-residual"
    ]
   }
  ]

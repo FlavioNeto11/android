@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-633 de 681 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+632 de 681 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -665,7 +665,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.115 | pendente | — | — | — |  |  |
 | 31.116 | implemented | simulated | claude-sonnet-5-5 | — | Real, 06/10/2026 07:42Z, central 16858086 (deploy 48), android-04, sessão trn-2hGmYRzUYaZaI5Xk. Na barra do treino (Foco, gravando 'Corrigir a etapa «Confirmar item na tela»') a seção Origem do treino mostra o selo 'cor… | None |
 | 31.117 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 07:35Z, central 16858086: GET /api/aprendizado/fluxo/f-455f91437856 devolve conteudo.origem com tipo treino, fonte training:trn-4lukXbyHNxGubAK0, source_run_id e run_id r-20261006053318-c04149, session_… | None |
-| 31.118 | implemented | real | claude-opus-5-5 | — | Real, 06/10/2026, máquina central, deploy 49 (1b86bd6b, no ar às 08:56Z). O reparo único scripts/gravacao-com-marcador.py foi aplicado pela sessão Android às 08:59:20Z, com o backup data/backups/20261006-055448: o ensai… | None |
+| 31.118 | partial | real | fable | — | Real, 06/10/2026, máquina central, deploy 49 (1b86bd6b, no ar às 08:56Z). O reparo único scripts/gravacao-com-marcador.py foi aplicado pela sessão Android às 08:59:20Z, com o backup data/backups/20261006-055448: o ensai… |  |
 | 31.119 | implemented | simulated | claude-sonnet-5-5 | — | Descartar sessão e a lista Para revisar (Portal 8e8cf588). Simulado: frontend/src/features/training/DescartarSessao.test.tsx::*, frontend/src/features/training/ParaRevisar.test.tsx::*. Suíte 49 sobre a integração 1b86bd… | None |
 | 31.120 | pendente | — | — | — |  |  |
 | 31.121 | pendente | — | — | — |  |  |
@@ -688,7 +688,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (48): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.152, 31.11, 31.12, 31.26, 31.81, 31.115, 31.120, 31.121, 31.122, 31.123, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (49): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.152, 31.11, 31.12, 31.26, 31.81, 31.115, 31.118, 31.120, 31.121, 31.122, 31.123, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
