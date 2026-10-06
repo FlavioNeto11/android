@@ -27,7 +27,9 @@ worker segue fixado em provedor simulado (`worker/settings.py`), de propósito: 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from collections.abc import Iterator
 from typing import Any, Callable
 
 from ..automation.conhecimento_de_telas import declaram_leitura_visual
@@ -391,56 +393,59 @@ class RoutingProvider:
             # Modo simulado não gasta dinheiro nenhum: conferir teto ali seria uma consulta por chamada para
             # sempre dar zero — e, com teto apertado, dava para BLOQUEAR uma execução que não custa nada.
             operacao = self._budget(run_id, origem)
-        if operacao is None:
-            return await self._despachar(papel, run_id, fn, r, perfil, origem, ref)
         # A chamada fica reservada no teto da operação até voltar; quem a pediu grava o custo logo depois, sem `await`
         # no meio (`Executor`), então a reserva sai e o gasto gravado entra na mesma volta do laço.
+        with self._reserva(operacao):
+            try:
+                self._saldo(r)
+                try:
+                    resultado, usage = await self._one(papel, r, fn)
+                except AIError as exc:
+                    self._esgotou(r, exc)
+                    raise
+                if usage.fallback == "refusal":
+                    # A troca por recusa vira linha DA EXECUÇÃO, que é o que o pedido exige e não existia: até aqui
+                    # ela só aparecia como um modelo diferente no `model` de uma linha de custo.
+                    self._anota(run_id, f"Recusa de {usage.requested_model} em {papel}; respondeu {usage.model} "
+                                        f"(cobrado na tarifa de {usage.model}).")
+                usage.origem, usage.ref = origem, ref
+                return resultado, usage
+            except AIError as exc:
+                alvo = r.fallback_provider
+                if not alvo or exc.kind in ("budget", "refusal"):
+                    raise
+                # Cair só acontece porque ALGUÉM ESCREVEU que pode cair. É isto que separa "fallback explícito por
+                # função" de "fallback pago silencioso": sem a linha no YAML, o erro do endpoint local sobe.
+                alternativo = _com_provedor(self.cfg, papel, alvo, perfil)
+                self._saldo(alternativo)
+                log.warning("Função %s: provedor %s falhou (%s); caindo para %s/%s (declarado em ai.roles.%s).",
+                            papel, r.provider, exc, alvo, alternativo.model, papel)
+                try:
+                    resultado, usage = await self._one(papel, alternativo, fn)
+                except AIError as exc2:
+                    self._esgotou(alternativo, exc2)
+                    raise
+                usage.fallback = alvo
+                usage.requested_model = r.model
+                self._anota(run_id, f"Provedor “{r.provider}” falhou em {papel} ({exc}); respondeu "
+                                    f"“{alvo}” com {usage.model} (cobrado na tarifa de {usage.model}).")
+                usage.origem, usage.ref = origem, ref
+                return resultado, usage
+
+    @contextlib.contextmanager
+    def _reserva(self, operacao: str | None) -> Iterator[None]:
+        """Conta a chamada em voo da operação (31.154, ver `_budget`) enquanto ela dura, também quando falha."""
+        if operacao is None:
+            yield
+            return
         self._em_voo_da_operacao[operacao] = self._em_voo_da_operacao.get(operacao, 0) + 1
         try:
-            return await self._despachar(papel, run_id, fn, r, perfil, origem, ref)
+            yield
         finally:
             if (restam := self._em_voo_da_operacao.get(operacao, 1) - 1) > 0:
                 self._em_voo_da_operacao[operacao] = restam
             else:
                 self._em_voo_da_operacao.pop(operacao, None)
-
-    async def _despachar(self, papel: str, run_id: str | None, fn: Callable[[AIProvider], Any], r: ResolvedRole,
-                         perfil: str | None, origem: str | None, ref: str | None) -> tuple[Any, Usage]:
-        try:
-            self._saldo(r)
-            try:
-                resultado, usage = await self._one(papel, r, fn)
-            except AIError as exc:
-                self._esgotou(r, exc)
-                raise
-            if usage.fallback == "refusal":
-                # A troca por recusa vira linha DA EXECUÇÃO, que é o que o pedido exige e não existia: até aqui
-                # ela só aparecia como um modelo diferente no `model` de uma linha de custo.
-                self._anota(run_id, f"Recusa de {usage.requested_model} em {papel}; respondeu {usage.model} "
-                                    f"(cobrado na tarifa de {usage.model}).")
-            usage.origem, usage.ref = origem, ref
-            return resultado, usage
-        except AIError as exc:
-            alvo = r.fallback_provider
-            if not alvo or exc.kind in ("budget", "refusal"):
-                raise
-            # Cair só acontece porque ALGUÉM ESCREVEU que pode cair. É isto que separa "fallback explícito por
-            # função" de "fallback pago silencioso": sem a linha no YAML, o erro do endpoint local sobe.
-            alternativo = _com_provedor(self.cfg, papel, alvo, perfil)
-            self._saldo(alternativo)
-            log.warning("Função %s: provedor %s falhou (%s); caindo para %s/%s (declarado em ai.roles.%s).",
-                        papel, r.provider, exc, alvo, alternativo.model, papel)
-            try:
-                resultado, usage = await self._one(papel, alternativo, fn)
-            except AIError as exc2:
-                self._esgotou(alternativo, exc2)
-                raise
-            usage.fallback = alvo
-            usage.requested_model = r.model
-            self._anota(run_id, f"Provedor “{r.provider}” falhou em {papel} ({exc}); respondeu "
-                                f"“{alvo}” com {usage.model} (cobrado na tarifa de {usage.model}).")
-            usage.origem, usage.ref = origem, ref
-            return resultado, usage
 
     def _instance(self, papel: str, r: ResolvedRole) -> AIProvider:
         chave = _chave_da_instancia(r)

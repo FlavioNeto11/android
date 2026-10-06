@@ -168,15 +168,18 @@ async def test_o_teto_da_operacao_reserva_as_chamadas_em_voo_dos_alvos_paralelos
     roteador._em_voo_da_operacao.clear()  # noqa: SLF001
     vistos: list[int] = []
 
-    async def _despachar(*_: Any) -> Any:
+    uso = types.SimpleNamespace(fallback=None)
+
+    async def _one(*_: Any) -> Any:
         vistos.append(roteador._em_voo_da_operacao.get(op["id"], 0))  # noqa: SLF001
         if len(vistos) == 2:
             raise AIError("falhou", kind="transient")
-        return "ok", None
+        return "ok", uso
 
-    roteador._funcao = lambda papel, rid: (types.SimpleNamespace(kind="anthropic"), None)  # type: ignore[method-assign,assignment,return-value]
-    roteador._despachar = _despachar  # type: ignore[method-assign,assignment]
-    assert await roteador._call("decide", run_id, lambda p: None) == ("ok", None)  # noqa: SLF001
+    roteador._funcao = lambda papel, rid: (types.SimpleNamespace(kind="anthropic", fallback_provider=None), None)  # type: ignore[method-assign,assignment,return-value]
+    roteador._saldo = lambda r: None  # type: ignore[method-assign,assignment]
+    roteador._one = _one  # type: ignore[method-assign,assignment]
+    assert await roteador._call("decide", run_id, lambda p: None) == ("ok", uso)  # noqa: SLF001
     with pytest.raises(AIError):
         await roteador._call("decide", run_id, lambda p: None)  # noqa: SLF001
     assert vistos == [1, 1] and roteador._em_voo_da_operacao == {}  # noqa: SLF001
@@ -196,7 +199,7 @@ async def test_registrar_estagio_marca_uma_vez_e_fora_de_operacao_nao_faz_nada(h
     assert registrar_estagio(st.db, avulsa.id, "conteudo_lido") is False
 
 
-def test_so_a_coluna_ausente_vira_sem_operacao_e_o_resto_propaga() -> None:
+async def test_so_a_coluna_ausente_vira_sem_operacao_e_o_resto_propaga() -> None:
     """Achado do Codex (corte 56): o `except Exception` engolia qualquer erro e apagava a marca em silêncio."""
     import sqlite3
 
