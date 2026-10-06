@@ -33,9 +33,11 @@ from app.modules.execution.domain.command_refinement import motivo_sem_valor
 from app.modules.identity.domain.persona import CONDUTA_DAS_CRENCAS
 
 #: Quantas candidatas vão ao modelo, no máximo: cada cartão é biografia + crenças de uma pessoa (o que sai da
-#: máquina cresce com o parque). As mais disponíveis primeiro.
-MAX_CANDIDATAS = 20
-MAX_ESCOLHIDAS = 10
+#: máquina cresce com o parque). As mais disponíveis primeiro. São os PADRÕES: o valor vigente vem de
+#: `LimitsCfg.orquestracao_max_candidatas`/`orquestracao_max_escolhidas`, lido a cada pedido (prova de 07/10, J1: um pedido
+#: de 30 personas voltava com 10).
+MAX_CANDIDATAS = 60
+MAX_ESCOLHIDAS = 30
 
 ADERENCIAS = ("alta", "media", "baixa")
 
@@ -113,6 +115,9 @@ class PedidoDeOrquestracao:
     app: str | None = None
     cartoes: list[CartaoDePersona] = field(default_factory=list)
     max_personas: int = MAX_ESCOLHIDAS
+    #: Os tetos vigentes da instalação (J1): quantas candidatas vão ao modelo e quantas podem ser escolhidas.
+    max_candidatas: int = MAX_CANDIDATAS
+    teto_escolhidas: int = MAX_ESCOLHIDAS
 
 
 class EscolhaOut(BaseModel):
@@ -144,7 +149,7 @@ class OrquestracaoOut(BaseModel):
 
 def orquestracao_user(req: PedidoDeOrquestracao) -> str:
     blocos = []
-    for c in req.cartoes[:MAX_CANDIDATAS]:
+    for c in req.cartoes[:req.max_candidatas]:
         linhas = [f"<persona id=\"{c.profile_id}\">", f"nome: {c.nome}", *c.perfil]
         if c.sem_crencas:
             linhas.append("crenças: não registradas")
@@ -182,7 +187,7 @@ def normalizar(out: OrquestracaoOut, req: PedidoDeOrquestracao) -> OrquestracaoO
             aderencia = e.aderencia.strip().lower().replace("é", "e")
             escolhidas.append(EscolhaOut(profile_id=e.profile_id, motivo=e.motivo.strip()[:300],
                                          aderencia=aderencia if aderencia in ADERENCIAS else "media"))
-    teto = max(0, min(req.max_personas, MAX_ESCOLHIDAS))
+    teto = max(0, min(req.max_personas, req.teto_escolhidas))
     escolhidas = escolhidas[:teto]
     vistos = {e.profile_id for e in escolhidas}
     nao_avaliaveis = []

@@ -8,18 +8,19 @@ import { cx, formatInt } from '../../lib/format';
 import { useUiStore } from '../../store/ui';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
 import { apiAprendizado, PROVAS_DO_LIVRO, PROVA_LABEL, type FiltroDoLivro } from './api';
+import { lerFiltroDoEndereco, PARAMS_DO_FILTRO, queryDoFiltro } from './filtroNoEndereco';
 import { hashDe } from '../../lib/rotas';
 import { NOME_DO_APP_NAO_IDENTIFICADO, PACOTE_NAO_RESOLVIDO, type VisaoDeApps } from './apps';
 import { AvisoDaHabilidade, ItemDoLivro, chaveDoItem } from './ItemDoLivro';
 import {
   ESTADOS_DO_LIVRO, LIVRO_KINDS, ORIGENS, ORIGEM_LABEL, ROTULOS, ROTULO_DICA, ROTULO_LABEL, type EntradaDoLivro, type ListaDoLivro,
-  type LivroKind, type Rotulo, acoesDoItem, isEstadoDoLivro, isLivroKind, rotuloDoEstado, rotuloDoKind, textoDosOcultos,
+  type LivroKind, acoesDoItem, isEstadoDoLivro, isLivroKind, rotuloDoEstado, rotuloDoKind, textoDosOcultos,
   titulosDaLista,
 } from './model';
 import styles from './Aprendizado.module.css';
 
 /** Quantos itens por tipo e estado (a memória conta lembranças, não linhas). */
-function Contagem({ contagem }: { contagem: NonNullable<ListaDoLivro['contagem']> }) {
+function Contagem({ contagem, deProva }: { contagem: NonNullable<ListaDoLivro['contagem']>; deProva: { n: number; ativo: boolean; alternar: () => void } }) {
   const tipos = Object.entries(contagem).filter(([, porEstado]) => Object.keys(porEstado).length > 0);
   if (tipos.length === 0) return null;
   return (
@@ -33,6 +34,12 @@ function Contagem({ contagem }: { contagem: NonNullable<ListaDoLivro['contagem']
               : `${rotuloDoEstado(isEstadoDoLivro(estado) ? estado : null).toLowerCase()}${n === 1 ? '' : 's'}`;
             return <span key={estado}>{formatInt(n)} {rotulo}</span>;
           })}
+          {kind === 'fluxo' && deProva.n > 0 ? (
+            <button type="button" className={styles.resumoBotao} aria-pressed={deProva.ativo} onClick={deProva.alternar}
+                    title={deProva.ativo ? 'Tirar o filtro "Só os nascidos de uma prova".' : 'Mostrar só os fluxos que nasceram de uma prova.'}>
+              {formatInt(deProva.n)} de prova
+            </button>
+          ) : null}
         </span>
       ))}
     </div>
@@ -92,16 +99,32 @@ function ItemDoLink({ kind, refDoItem, onMudou }: { kind: LivroKind; refDoItem: 
  * Configuração → Fluxos e receitas → Habilidades; a validada também aparece na fila Para aprovar.
  */
 export function AprendidoTab() {
-  const [outros, setFiltro] = useState<FiltroDoLivro>({});
+  // 31.144: os filtros vêm do endereço (e a escolha da pessoa o escreve), para recarregar ou mandar o link não os perder.
+  const qTipo = useUiStore((s) => s.rota.query[PARAMS_DO_FILTRO.kind]);
+  const qEstado = useUiStore((s) => s.rota.query[PARAMS_DO_FILTRO.state]);
+  const qOrigem = useUiStore((s) => s.rota.query[PARAMS_DO_FILTRO.origem]);
+  const qProva = useUiStore((s) => s.rota.query[PARAMS_DO_FILTRO.prova]);
+  const qVisao = useUiStore((s) => s.rota.query[PARAMS_DO_FILTRO.rotulo]);
+  const outros = useMemo(() => lerFiltroDoEndereco({ tipo: qTipo, estado: qEstado, origem: qOrigem, prova: qProva, visao: qVisao }),
+    [qTipo, qEstado, qOrigem, qProva, qVisao]);
   // O app vem do link (`?aba=aprendido&app=<pacote>`), para a navegação do detalhe do app ao catálogo e de volta.
   const app = useUiStore((s) => s.rota.query.app) || undefined;
   const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const setFiltro = (muda: (f: FiltroDoLivro) => FiltroDoLivro) => trocarQuery(queryDoFiltro(muda(outros)));
   const doLink = itemDoLink(useUiStore((s) => s.rota.query.item));
-  // RA-19: a escolha de "Apps" vale para o app em que foi feita. Trocar de app (no filtro ou por um link) volta ao padrão
-  // do servidor, em que o app escolhido mostra o que tem: escolher o QA Messenger depois de "Produto" não fica vazio.
-  const [escolhaDeApps, setEscolhaDeApps] = useState<{ app: string | undefined; rotulo: Rotulo } | null>(null);
-  const rotuloEscolhido = escolhaDeApps && escolhaDeApps.app === app ? escolhaDeApps.rotulo : undefined;
-  const filtro = useMemo<FiltroDoLivro>(() => ({ ...outros, app, rotulo: rotuloEscolhido }), [outros, app, rotuloEscolhido]);
+  // RA-19: a escolha de "Apps" vale para o app em que foi feita. Trocar de app NO FILTRO volta ao padrão do servidor, em que o
+  // app escolhido mostra o que tem: escolher o QA Messenger depois de "Produto" não fica vazio (o `visao` sai do endereço).
+  // O `visao` do endereço vale para o app em que foi escolhido (`appDaVisao`); um link que troca de app o larga.
+  const appDaVisao = useRef(app);
+  const visaoVale = outros.rotulo === undefined || appDaVisao.current === app;
+  useEffect(() => {
+    if (outros.rotulo === undefined) appDaVisao.current = app;
+    else if (!visaoVale) trocarQuery(queryDoFiltro({ rotulo: undefined }));
+  }, [outros.rotulo, app, visaoVale, trocarQuery]);
+  const rotuloVale = visaoVale ? outros.rotulo : undefined;
+  // Os campos, não o objeto: soltar o `visao` que não vale não relê o livro à toa.
+  const filtro = useMemo<FiltroDoLivro>(() => ({ kind: outros.kind, state: outros.state, origem: outros.origem, prova: outros.prova, app, rotulo: rotuloVale }),
+    [outros.kind, outros.state, outros.origem, outros.prova, app, rotuloVale]);
   const [visao, setVisao] = useState<VisaoDeApps | null>(null);
   const [lista, setLista] = useState<ListaDoLivro | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
@@ -131,6 +154,18 @@ export function AprendidoTab() {
   useEffect(() => {
     void carregar(filtro);
   }, [carregar, filtro]);
+
+  // 31.146: quantos fluxos nasceram de prova (os de `GET /api/flows?nascido_de_prova=true`, sem os filtros da lista), relido a
+  // cada carga do Livro. Sem a marca nos fluxos (backend anterior) ou sem a rota, a conta dá 0 e a contagem some.
+  const [quantosDeProva, setQuantosDeProva] = useState(0);
+  useEffect(() => {
+    if (!lista) return;
+    const ctl = new AbortController();
+    apiAprendizado.fluxosDeProva(ctl.signal)
+      .then(setQuantosDeProva)
+      .catch(() => { if (!ctl.signal.aborted) setQuantosDeProva(0); });
+    return () => ctl.abort();
+  }, [lista]);
 
   // As opções do filtro de app vêm da lista de /apps (nenhum pacote fica escrito aqui); se ela falhar, o filtro só
   // mostra o app do link e o resto do catálogo continua funcionando.
@@ -174,7 +209,7 @@ export function AprendidoTab() {
         </Field>
         <Field label="Aplicativo" className={styles.filtro}>
           {({ id }) => (
-            <Select id={id} small value={app ?? ''} onChange={(e) => trocarQuery({ app: e.target.value || undefined })}>
+            <Select id={id} small value={app ?? ''} onChange={(e) => trocarQuery({ app: e.target.value || undefined, ...queryDoFiltro({ rotulo: undefined }) })}>
               <option value="">Todos</option>
               {opcoesDeApp.map((a) => (
                 <option key={a.pacote} value={a.pacote}>
@@ -209,7 +244,7 @@ export function AprendidoTab() {
               {ROTULOS.map((r) => (
                 <button key={r} type="button" role="radio" aria-checked={rotulo === r} title={ROTULO_DICA[r]}
                         className={cx(styles.segmento, rotulo === r && styles.segmentoOn)}
-                        onClick={() => setEscolhaDeApps({ app, rotulo: r })}>
+                        onClick={() => { appDaVisao.current = app; trocarQuery(queryDoFiltro({ rotulo: r })); }}>
                   {ROTULO_LABEL[r]}
                 </button>
               ))}
@@ -233,7 +268,11 @@ export function AprendidoTab() {
         )
       ) : (
         <>
-          {lista.contagem ? <Contagem contagem={lista.contagem} /> : null}
+          {lista.contagem ? (
+            <Contagem contagem={lista.contagem}
+                      deProva={{ n: quantosDeProva, ativo: filtro.prova === 'so_prova',
+                                 alternar: () => setFiltro((f) => ({ ...f, prova: f.prova === 'so_prova' ? undefined : 'so_prova' })) }} />
+          ) : null}
           {lista.itens.length === 0 ? (
             <EmptyState icon={BookOpen} compact title="Nada aprendido com este filtro"
                         hint={ocultos ? `Há ${ocultos} pelo filtro de apps: escolha "Todos" para vê-los.` : undefined} />

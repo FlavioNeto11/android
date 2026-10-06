@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
 import type { EntradaDoLivro } from './model';
@@ -103,6 +103,52 @@ describe('31.131: o fluxo nascido de uma prova no Livro', () => {
     await setValue(byRole('combobox', /^Prova/, container) as HTMLSelectElement, 'so_prova');
     await waitFor(() => expect(text(container)).toContain('Nada aprendido com este filtro'));
     expect(allByRole('listitem', /.*/, container).filter((e) => e.hasAttribute('data-item'))).toHaveLength(0);
+  });
+});
+
+// 31.146: a contagem "N de prova" ao lado de Fluxo na faixa do Livro.
+describe('31.146: a contagem "N de prova" na faixa do Livro', () => {
+  const COM_FLUXO = { fluxo: { disabled: 2, published: 1 } };
+  const chip = () => byRole('button', /de prova$/, container);
+
+  it('mostra quantos fluxos nasceram de prova (só fluxo, não a receita) e, ao clicar, aplica o filtro Prova; clicar de novo tira', async () => {
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [DE_PROVA, REAL, DESLIGADO_POR_FALHA, RECEITA_COM_A_MARCA], total: 4, contagem: COM_FLUXO }));
+    backend.on('GET', /^\/api\/flows$/, () => json([{ id: 'f-prova', nascido_de_prova: true }, { id: 'f-real', nascido_de_prova: false }]));
+    await montar();
+    await waitFor(() => expect(chip()).toBeTruthy());
+    expect(text(chip())).toBe('1 de prova');
+    expect(chip().getAttribute('aria-pressed')).toBe('false');
+    expect(backend.callsTo('GET', /^\/api\/flows$/)[0]!.query.get('nascido_de_prova')).toBe('true');
+    await click(chip());
+    await waitFor(() => expect(rotulosDosItens()).toEqual(['fluxo:f-prova', 'receita:9']));
+    expect((byRole('combobox', /^Prova/, container) as HTMLSelectElement).value).toBe('so_prova');
+    expect(chip().getAttribute('aria-pressed')).toBe('true');
+    await click(chip());
+    await waitFor(() => expect(rotulosDosItens()).toHaveLength(4));
+    expect((byRole('combobox', /^Prova/, container) as HTMLSelectElement).value).toBe('');
+  });
+
+  it('some quando nenhum fluxo nasceu de prova, com o backend sem a marca e sem a rota', async () => {
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [REAL, DESLIGADO_POR_FALHA, RECEITA_COM_A_MARCA], total: 3, contagem: COM_FLUXO }));
+    backend.on('GET', /^\/api\/flows$/, () => json([{ id: 'f-real' }, { id: 'f-falha', nascido_de_prova: false }]));
+    await montar();
+    await waitFor(() => expect(rotulosDosItens()).toHaveLength(3));
+    expect(container.textContent).toContain('2 desligados');     // a faixa de contagem está lá
+    expect(allByRole('button', /de prova$/, container)).toHaveLength(0);
+    // com a rota ausente (404 do FakeBackend) também some, sem erro na tela
+    backend.on('GET', /^\/api\/flows$/, () => apiError(404, 'not_found', 'sem rota'));
+    await click(byRole('button', /^Atualizar$/, container));
+    await waitFor(() => expect(backend.callsTo('GET', /^\/api\/flows$/).length).toBeGreaterThan(1));
+    expect(allByRole('button', /de prova$/, container)).toHaveLength(0);
+  });
+
+  it('o número é o dos fluxos de prova do servidor, não o da lista na tela', async () => {
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [REAL], total: 1, contagem: COM_FLUXO }));
+    backend.on('GET', /^\/api\/flows$/, () => json([1, 2, 3].map((n) => ({ id: `f${n}`, nascido_de_prova: true }))));
+    await montar();
+    await waitFor(() => expect(chip()).toBeTruthy());
+    expect(text(chip())).toBe('3 de prova');
+    expect(rotulosDosItens()).toEqual(['fluxo:f-real']);
   });
 });
 

@@ -770,10 +770,10 @@ describe('Central de Aparelhos — rotas por objeto e menu', () => {
     return Array.from(nav.querySelectorAll('a[aria-current="page"]')).map((a) => text(a as HTMLElement));
   };
 
-  it('o menu lateral tem as onze seções e marca a atual', async () => {
+  it('o menu lateral tem as doze seções e marca a atual', async () => {
     await goTo('#/painel');
     const nav = document.querySelector('nav[aria-label="Seções"]') as HTMLElement;
-    expect(nav.querySelectorAll('a')).toHaveLength(11);
+    expect(nav.querySelectorAll('a')).toHaveLength(12);
     expect(atual()).toEqual(['Painel']);
   });
 

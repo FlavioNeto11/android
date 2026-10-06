@@ -537,12 +537,15 @@ class TrainingSkills:
         sess = self.s.training.get(session_id)
         prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids, scope_on_proof)
         # A única recusa do `save` que só aparece ao gravar (`learn_from_plan`): o comando repetido. Lida sem escrever,
-        # pela MESMA regra do `save` (30.84: o ensinado que a prova desligou pode ser ensinado de novo).
-        if (recusa := self.s.scheduler.flows.recusa_do_treino(prep.comando)) is not None:
-            raise TrainingError("duplicate_command", recusa, 409)
+        # pela MESMA regra do `save` (30.84: o ensinado que a prova desligou pode ser ensinado de novo). 31.142: vem no
+        # corpo, junto do resto (o 409 parava a prévia e escondia as pós-condições e os avisos até a pessoa trocar o
+        # comando, prova F2 de 06/10); o 409 fica só no `save`.
+        recusa = self.s.scheduler.flows.recusa_do_treino(prep.comando)
         relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
                                           prep, session_id, gravar=False)
-        return {"steps": relatorio, "warnings": [*prep.avisos, *_aviso_sem_persona(sess)],
+        return {"steps": relatorio, "warnings": [*([recusa] if recusa else []), *prep.avisos, *_aviso_sem_persona(sess)],
+                # adendo v1.91: o código da recusa que o `save` daria (só `duplicate_command`; `null` se não há)
+                "code": "duplicate_command" if recusa else None, "message": recusa,
                 # adendo v1.86: as linhas de `warnings` do 31.122, estruturadas (o alerta dentro da etapa, 31.128)
                 "pos_condicoes_ja_valem": partida.estruturados(prep.ja_valem, prep.persona),
                 "scope": _escopo_da_resposta(prep, scope_on_proof)}

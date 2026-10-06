@@ -300,6 +300,19 @@ describe('página Aprendizado', () => {
     expect(text(item('receita:41'))).not.toContain('Confirmado que fica');
   });
 
+  it('31.145: a confirmação feita pelo painel diz "pelo painel", e a receita ensinada no treino mostra o nome, não a chave', async () => {
+    const doPainel = { ...LEGADO, em_revisar: false, title: 'abrir_busca (v1)', capability: null, capability_nome: null, etapa: null,
+                       confirmado: { por: 'panel', em: '2026-10-03T05:00:00Z', motivo: null } };
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [doPainel], total: 1, contagem: { receita: { published: 1 } } }));
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    expect(text(item('receita:40'))).toContain('Confirmado que fica pelo painel');
+    expect(text(item('receita:40'))).not.toContain('por panel');
+    expect(text(item('receita:40'))).toContain('Abrir busca (v1)');
+    expect(item('receita:40')!.querySelector('[title^="abrir_busca (v1)"]')).toBeTruthy();       // a chave crua fica no title
+  });
+
   it('"Revisar" diz por que o item confirmado voltou: chegou evidência contrária (30.24)', async () => {
     backend.on('GET', /^\/api\/aprendizado\/revisar$/, () => json({ itens: [{ ...LEGADO, em_revisar: true, confirmado: null,
       confirmacao_contestada: { por: 'Ana Ribeiro', em: '2026-10-03T05:00:00Z', motivo: null } }], total: 1 }));

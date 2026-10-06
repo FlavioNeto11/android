@@ -127,11 +127,21 @@ export function alvoReconhecido(e: TrainingInput): string | null {
   return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `: ${id}` : ''}`;
 }
 
+const SELETOR_DA_POS = /^(text|desc|id)==(.+)$/;
+const DO_SELETOR: Record<string, string> = { text: 'com o texto', desc: 'com a descrição', id: 'com o identificador' };
+
+/** 31.147: o valor de `element_present` é um seletor ("desc==Back"); a pessoa lê "com a descrição “Back”". Sem seletor, o valor entre aspas. */
+export function elementoEmPalavras(valor: string): string {
+  if (!valor) return '';
+  const m = SELETOR_DA_POS.exec(valor);
+  return m ? `${DO_SELETOR[m[1]!]} “${textoComMarcadores(m[2]!)}”` : `“${textoComMarcadores(valor)}”`;
+}
+
 /** O que a etapa confere, em palavras da pessoa; o tipo cru só aparece se o backend mandar um que a tela não conhece. */
 export function textoDoConfere(pc: TrainingStep['postcondition']): string {
   const valor = pc.value ? `“${textoComMarcadores(pc.value)}”` : '';
   const frase = pc.kind === 'text_visible' ? `aparece o texto ${valor || 'esperado'}`
-    : pc.kind === 'element_present' ? `existe o elemento ${valor || 'esperado'}`
+    : pc.kind === 'element_present' ? `existe o elemento ${elementoEmPalavras(pc.value) || 'esperado'}`
       : pc.kind === 'app_foreground' ? `o app ${valor || 'certo'} está na frente`
         : pc.kind === 'model_judged' ? 'a IA julga pela tela'
           : `${pc.kind} ${valor}`.trim();
@@ -383,6 +393,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         if (minha !== leitura.current) return;
         setPrevia(r);
         setJaValem(lerPosCondicoes(r.pos_condicoes_ja_valem));
+        // 31.142 (v1.91): o comando repetido volta como 200 com `code`/`message`; trava o Salvar como a recusa 409 do salvar.
+        if (r.code) setRecusa({ code: r.code, message: r.message || 'O comando já existe.' });
       }).catch((e) => {
         if (minha !== leitura.current) return;
         setPrevia(null);
@@ -574,7 +586,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   const duplicada = new Set(duplicadas);
   const previaPorEtapa = new Map((previa?.steps ?? []).map((x) => [x.key, x]));
   // A linha de `warnings` que a etapa já mostra por dentro (31.128) não se repete na lista de avisos da prévia.
-  const avisosDaPrevia = (previa?.warnings ?? []).filter((w) => !jaValem.some((j) => j.message && j.message === w && proposta?.steps.some((s) => s.key === j.etapa)));
+  const avisosDaPrevia = (previa?.warnings ?? []).filter((w) => !(previa?.code && w === previa.message)).filter((w) => !jaValem.some((j) => j.message && j.message === w && proposta?.steps.some((s) => s.key === j.etapa)));
   const linhaDaEntrada = (seq: number) => {
     const e = porSeq.get(seq);
     return (
@@ -801,7 +813,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       <PacotesAceitos pacotes={s.pacotes_aceitos?.length ? s.pacotes_aceitos : previaPorEtapa.get(s.key)?.pacotes_aceitos} />
                       {jaValem.filter((j) => j.etapa === s.key).map((j) => (
                         <AvisoDaPosCondicao key={j.valor} item={j}
-                                            onUsar={(texto) => mudarEtapa(i, { postcondition: { ...s.postcondition, kind: 'text_visible', value: texto } })} />
+                                            onUsar={(p) => mudarEtapa(i, { postcondition: { ...s.postcondition, kind: p.kind as typeof s.postcondition.kind, value: p.value } })} />
                       ))}
                       <EditorDaPosCondicao indice={i} etapa={s} onChange={(postcondition) => mudarEtapa(i, { postcondition })} />
                       {previaPorEtapa.get(s.key) ? (

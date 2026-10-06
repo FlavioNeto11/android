@@ -55,9 +55,11 @@ ORIGENS_DE_IA: tuple[str, ...] = ("execucao", "ensino", "orquestracao", "assiste
 #: Qual régua de gasto barrou (item 31.6, decisão P6): o painel, o aviso e a 30.13 leem o MOTIVO, nunca a frase.
 #: Só existe quando `kind="budget"`. `saldo` é o saldo da conta (ADR-051) e `kind="balance"` continua sendo o que o
 #: `_saldo` levanta hoje; o valor fica no vocabulário para a etapa que o unificar, sem mudar o contrato de novo.
-MotivoDeOrcamento = Literal["saldo", "dia", "fatia_curador", "fatia_jev", "fatia_leitura", "execucao", "pedido"]
+#: `operacao` (31.154): o teto em US$ da operação com N agentes, somado em todas as execuções dos alvos dela.
+MotivoDeOrcamento = Literal["saldo", "dia", "fatia_curador", "fatia_jev", "fatia_leitura", "execucao", "pedido",
+                            "operacao"]
 MOTIVOS_DE_ORCAMENTO: tuple[str, ...] = ("saldo", "dia", "fatia_curador", "fatia_jev", "fatia_leitura", "execucao",
-                                         "pedido")
+                                         "pedido", "operacao")
 
 
 def erro_de_validacao_sem_entrada(exc: ValidationError, modelo: type[BaseModel], limite: int = 6) -> str:

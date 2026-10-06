@@ -76,6 +76,168 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `::test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so`, `::test_persona_simulado_redacao_e_404` e
   `::test_a_rota_responde_e_diz_404_sem_a_124` (5 no arquivo). Real: `not_run` até a operação de 07/10.
 
+## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
+
+- Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.
+
+## 2026-10-06 — 29.164 (Portal): o cartão "Comando remoto" com o estado do canal e a falha em português (branch feat/29-164-comando-remoto-em-portugues)
+
+- Achado do percurso real de 06/10 (central no deploy 54, cartão do worker aberto, só leitura): o motivo "desligado no config do central" aparecia com crases cruas (`comando_remoto.ativo`), a etiqueta "não negociado" era jargão e o cartão não dizia o que a seção não faz. Agora: cada interruptor desligado diz o que falta e o que fazer (sem crase), as etiquetas viram "canal pronto / canal não pronto" (com a explicação no `title`), cada fim ruim (falhou, passou do prazo, cancelado, recusado) traz o passo seguinte, e uma linha avisa que a seção não é um terminal (uma linha por vez, sem resposta durante a execução, sem saída ao vivo, não repete comando incerto, não mexe em aparelho Android). Prova: real só do achado (leitura do cartão); a correção é simulada (`TerminalDoWorker.test.tsx`, 3 casos novos, 4 mutações mortas) e o percurso pós-correção fica `not_run` até o deploy.
+
+## 2026-10-06 — 28.57: arquivo de texto com o nome original no envio e repasse do `.txt` do dono sem legenda (branch canais/anexos-28-57)
+
+- Achado de 06/10 ao mandar os arquivos do 29.161: `enviar_anexo` renomeava tudo para `anexo-<sha>.<ext>` e não aceitava `.ps1`/`.md`, o que quebraria o comando `-File .\script.ps1`; e o `.txt` que o dono mandou sem legenda ficava `ignorada`. A premissa de que o canal não recebia o anexo estava errada: a recepção do 28.24 já guardava os 4 `.txt` (`canal_anexos` 1 a 4), só faltava o repasse (K-105).
+- **Envio:** `enviar_anexo`/`enviar_conteudo` aceitam `nome` (o código nosso, nunca o remetente): lista fechada `.ps1`, `.md`, `.txt`, `.json`, `.csv` (`domain/anexos.EXTENSOES_COM_NOME`), nome só de `[A-Za-z0-9._-]` até 80, sem `..` nem oculto, e conteúdo que de fato é texto UTF-8 pela assinatura; fora disso, recusa definitiva sem enviar. O armazém e a recepção não mudam (tudo `.txt`).
+- **Recepção:** o `.txt` do dono sem legenda vai à orquestradora (`previa.repasse = "anexo_recebido"`) com o id, o tamanho e a contagem de identificadores por categoria (ip, mac, email, usuario_em_caminho, serial, nome_da_maquina, segredo), só números, sem eco do achado nem do nome do arquivo e sem resposta nova ao dono. Foto e PDF sem legenda seguem `ignorada` (o `/ler` em reply). O filtro de credencial do texto colado não mudou.
+- Prova `simulated`: `backend/tests/test_canais_anexos.py` 103 passed (10 testes novos: nome no multipart, 10 nomes recusados, binário e imagem com nome recusados, `enviar_conteudo` com nome, domínio, `.txt` com e sem achado, foto ignorada, legenda segue a gramática); dirigidos de canais, Telegram, arquitetura e catracas 632 passed; catracas 88; Trello leitor e webhook 78; mypy 257 no teto; docs-check 0. Doc: `docs/dominios/canais.md`; aprendizado K-105.
+- `not_run`: prova real (um envio com nome e uma recepção com o dono, só depois do deploy do corte 53).
+
+## 2026-10-06 — 29.154 fatia 2: o terminal do comando remoto na Infraestrutura (branch feat/29-154-comando-remoto-f2)
+
+- No cartão de cada worker remoto, a seção **Comando remoto** (recolhida; nada é consultado até abrir) mostra os três
+  interruptores (central, worker, agente) e se a feature foi negociada, liga e desliga o do worker (o ligar pede
+  confirmação), e tem o terminal: linha, pasta opcional e prazo (1 a 600 s), Executar e Cancelar, a saída em bloco
+  monoespaçado com o aviso de segredo mascarado e de corte, e o histórico dos últimos 50 (estado, código, duração, quem
+  pediu). Consulta o comando a cada 2 s até o fim; sem rolagem ao vivo.
+- Parado, o botão Executar diz o primeiro interruptor desligado; as recusas do central (sem sessão nomeada, linha com
+  credencial, fila cheia, limite por minuto) viram texto, não código. O central fica de fora (a máquina é do dono).
+- **Prova:** `simulated` (`frontend/src/features/infra/TerminalDoWorker.test.tsx`, 11 testes com o backend falso;
+  frontend inteiro 145 arquivos e 1865 testes, typecheck e build ok). `real`: `not_run` (falta o percurso no navegador
+  depois do deploy e o sim do dono para ligar; o comando remoto segue desligado de fábrica).
+
+## 2026-10-06 — 29.159: o histórico, a tag e o runbook de rollback do deploy nativo (branch feat/29-159-historico-deploy)
+
+- `deploy.ps1` grava UMA linha por subida de verdade (a que parou o backend) em `data\deploys.jsonl`, fora do Git: hora UTC,
+  resultado (`ok` ou `falhou`, esta pelo `trap` depois do stop), commit e migração antes e depois, pasta do backup, tag e a
+  falha em uma linha de até 300 caracteres. Ensaio, recusa do portão e falha do build antes de parar não entram.
+- Com a subida conferida, cria a tag anotada `deploy-AAAAMMDD-HHMM` (UTC), envia à origem e pede ao `gh` o release com as
+  notas geradas (`scripts/lib/historico-de-deploy.ps1`). No melhor esforço: sem `gh`, rede ou permissão sai o aviso e o deploy
+  segue; `-SemTag` pula a tag. A tag não dispara o `conteiner.yml` (29.157).
+- `docs/operacao.md` § 6 ganha o runbook único de rollback: código (revert na `main`, ou `git switch --detach` na emergência),
+  banco (`restore.ps1`, ensaio antes, com a perda do que entrou depois dito de frente) e agente do notebook.
+- **Prova:** `simulated` (`scripts/tests/test_historico_de_deploy.py`, 7 testes: as funções rodam de verdade no pwsh contra um
+  repositório de mentira com origem local e um `gh` falso; a posição da marca, da tag e da linha no `deploy.ps1` é lida do
+  texto). `real`: `not_run` (falta o próximo deploy, com a linha e a tag).
+
+## 2026-10-06 — 29.163: a conferência periódica da rede não publica "IA assumiu/liberou o aparelho" (branch feat/29-163-conferencia-da-rede)
+
+- Achado (Jev, 06/10, só leitura): o android-02, 03, 05 e 06 mostravam "IA assumiu/liberou o aparelho" a cada ~16 min (14:35:30, 14:51:31 ...), de 3 a 20 s, sem passo nem execução. Desde 13:00Z os
+  quatro tinham exatamente 9 `control.changed` "assumiu" cada, e são os quatro com política de rede `exigida_com_bloqueio`; a cadência bate com `rede.deriva_s` (900 s) mais a varredura de 60 s
+  (`vitrine.convergir_ligados`). **Limite honesto: a ligação foi inferida por contagem, cadência e código; não há linha em `network_measurements` nem evento que a prove por si.**
+- Mudança: `DeviceManager.ai_begin(rt, silencioso=True)` e `Scheduler.run_device_job(..., silencioso=True)` seguram o aparelho como qualquer trabalho mas não publicam o par "assumiu/liberou"
+  (o silêncio não vaza para o trabalho seguinte e a troca para o controle manual limpa a marca). `RedeConvergencia.so_confere` diz quando o passo da varredura só LÊ a rede (`conferir`, `verificar`;
+  nunca aplicar, conectar nem desfazer). `vitrine.convergir_ligados` roda esse caso, quando não há entrega nem proxy, com o rótulo "conferência da rede", silencioso e com um log info de uma linha
+  com a duração ("<aparelho>: conferência da rede em X s"). Entrega, proxy e qualquer passo que mude a rede seguem anunciados como antes. `rede.deriva_s` fica em 900 s (config por instalação).
+- Prova `simulated`: `tests/test_conferencia_da_rede_silenciosa.py` (6 testes: sem evento, sem vazamento, rótulo, log da duração, o caso comum inalterado). `real`: `not_run`; o antes/depois é a contagem
+  de `control.changed` por aparelho em 1 h no banco em modo somente leitura, depois do deploy. Sem migração e sem adendo.
+
+## 2026-10-06 — 28.55: o comentário de app em cartão de alvo desconhecido não vale como digitado pelo dono (branch canais/28-55-comentario-desconhecido)
+
+- Achado da leitura do 28.54: fora das listas de perguntas o `appCreator` não mudava nada, e o comentário que o app da Central, um script ou uma sessão escrevia com o token do dono num cartão sem fato contava como `do_dono` (e pedia o sim no Telegram, 28.30).
+- **Leitor do Trello:** o comentário sem fato, fora das listas de perguntas, escrito por um app que NÃO está em `trello.apps_do_dono` vira `outro`, sem texto, com `responde_a = alvo_desconhecido;autoria=app`. O que o dono digita (sem `appCreator`), o app que ele reconheceu e o cartão com fato seguem como sempre. **Estado dos canais:** `GET /api/canais/estado` ganha `trello.comentarios_de_app_em_alvo_desconhecido` (só o número; contrato de chaves e `docs/api-contract.md` atualizados).
+- **Leitura do item:** a linha do plano dizia "ignorado ou `outro`" para todo comentário de alvo desconhecido; ficou restrita ao comentário de APP, para não silenciar o dono (regra "comentário do dono não fica mudo": o que ele digita vale em qualquer cartão). Aceita pela orquestradora no corte 53.
+- Prova `simulated`: `test_canais_respostas_as_perguntas.py` (o teste de "fora das listas" trocou o caso do app comum e ganhou o do cartão com fato e o ponta a ponta na contagem); `test_canais_estado.py` (lista fechada de chaves); canais, Trello e Telegram inteiros 721 passed; catracas 88; mypy 257 no teto; docs-check 0. `not_run`: leitura real do Trello depois do deploy.
+
+## 2026-10-06 — 31.143: a marca de prova na lista do Livro (branch feat/31-142-sugestao-pronta)
+
+- Achado do percurso 52 da Portal: `nascido_de_prova` (31.130) só saía em `conteudo.origem` do detalhe, e o selo e o filtro "Prova" da lista (31.131) ficavam sem dado.
+- Adendo v1.92: cada `Entrada` do livro (lista, `/pendentes`, `/revisar` e o `item` do detalhe) traz `nascido_de_prova` (só o fluxo tem a marca; os outros tipos vêm `false`), e `GET /api/aprendizado?nascido_de_prova=true|false` filtra antes da contagem, somando com os outros filtros.
+- Prova `simulated`: `tests/test_livro_nascido_de_prova.py` (1, a rota nos dois valores). Real: `not_run`.
+
+## 2026-10-06 — 31.142: a sugestão de pós-condição sai pronta e a prévia mostra o comando repetido (branch feat/31-142-sugestao-pronta)
+
+- Achados da prova F2 (06/10, deploy 51). A única sugestão ("Back") era a descrição do botão voltar: com `element_present`, trocar só o valor deixaria um seletor que só olha o texto. E a prévia parava no 409 `duplicate_command`, escondendo as pós-condições que já valem.
+- Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
+- Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
+
+## 2026-10-06 — Portal e desenho sem relação com política partidária (pedido do dono, sem item)
+
+- `site/index.html`: a aba "Lideranças e porta-vozes" (o que sobrou das abas Mandatos e Campanhas do 29.77) vira
+  "Executivos e porta-vozes", com exemplos corporativos (comunicados, lançamentos, entrevistas; clientes e parceiros);
+  saem "prestação de contas" e "lideranças" da descrição da página, e o ícone `i-campanha` passa a `i-porta-voz`.
+- `docs/design/pedidos-persistentes.md`: "eleitores" sai dos exemplos (público em geral; apoiadores).
+- Ficam, por decisão do dono: as crenças da persona (orientação e engajamento político, espectro no painel) e a regra
+  de conduta que recusa propaganda, pedido de voto e campanha de opinião (`orquestracao.py`).
+- Prova `real` (06/10, central WIN-7S2UASNLFOP, site servido localmente na porta 5199 a partir do checkout): as cinco abas
+  casam `aria-controls` e painel, a aba nova abre o painel certo e o botão de exemplo preenche a mensagem do formulário.
+  Não implantado.
+
+## 2026-10-06 — 31.154 e 31.156: a operação com N agentes e os tetos da seleção (prova de 07/10; branch feat/prova30-j1-j2-candidata)
+
+- **31.156 (J1)**: a sugestão de alvos escolhia no máximo 10 personas entre 20 candidatas (constantes do domínio); um pedido
+  de 30 voltava com 10. Agora `LimitsCfg.orquestracao_max_escolhidas` (padrão 30) e `orquestracao_max_candidatas` (padrão 60),
+  lidos a cada sugestão; `max_personas` do corpo aceita até 64. Simulado em `tests/test_orquestracao.py`. O campo no formulário
+  de Configurações é da frente Portal (até lá, `PUT /api/settings`).
+- **31.154 (J2, migração 124, adendo v1.94)**: `POST/GET /api/operacoes`, `GET /api/operacoes/{id}`, `POST .../cancelar` e
+  `POST .../liberar`, e o filtro `GET /api/runs?operacao_id=` (`RunSummary.operacao_id`).
+  - Cada alvo é persona + conta + aparelho numa execução própria (chave `op:<operacao>:<persona>`, execução do sistema).
+  - A conferência persona → conta → sessão → aparelho para o alvo no estágio, com o motivo (`sem conta`, `sem sessão`…), e
+    nunca troca de app.
+  - O estágio de cada alvo é derivado na leitura, no vocabulário e na ordem do dono (`app/modules/operacoes/domain/estagios.py`).
+    Os estágios do app vêm do `app.yaml` (`operacao.abertura`/`operacao.estagios`; o Instagram declara `instagram_aberto`,
+    `OPEN_PROFILE`/`OPEN_POST`/`OPEN_COMMENTS`), e `conteudo_lido`/`conhecimento_recuperado` vêm de `registrar_estagio`, chamado
+    pela frente de aprendizado.
+  - Todo alvo nasce com o teto de autonomia `preparar` (28.23): o efeito para depois do rascunho, com o pedido de aprovação,
+    e esse é o `acao_preparada`. `liberar` aprova pelo serviço de sempre só com o eco do texto lido (31.49) e até
+    `LimitsCfg.operacao_max_acoes_executadas` (padrão 3).
+  - `max_usd` é obrigatório e tem régua própria no roteamento (`AIError(kind="budget", motivo="operacao")`, somado em todas
+    as execuções da operação).
+  - A capacidade (solicitados, contas existentes, sessões válidas, contas disponíveis, concluídas, bloqueadas, motivos) vem em
+    toda leitura.
+  - Prova: simulada em `tests/test_operacoes.py` e `tests/test_operacoes_estagios.py` (30 alvos com 1 falha sem derrubar os
+    outros). A real fica `not_run` até o deploy e a onda de 07/10 (Instagram, contas reais já logadas, uma por aparelho).
+  - Limite honesto: o estágio é derivado quando alguém lê a operação (o painel ou o GET), e os eventos `operacao.alvo` saem
+    nessa leitura, não no instante da mudança.
+
+## 2026-10-06 — 29.126, correção: a prova do mascaramento de log vale para o processo provado, não para sempre (branch fix/29-126-mascaramento-revalidado)
+
+- Achado da revisão de segredos (leitura, 06/10) sobre o caminho readoção do Appium → mascaramento → digitação de credencial: `AppiumServer.log_masking_active` era marcada na subida ou na
+  readoção e só zerava em `stop()`, no ramo externo da readoção e numa falha de readoção. `ensure_automation` só chama `start()` quando `is_up()` é falso, então, se o nosso Appium provado
+  morresse e um externo assumisse a porta, a marca ficava True e o `SensitiveInputChannel.fill` digitava credencial num servidor sem prova de máscara. Eu tinha dado o item por coberto pelo
+  29.132/29.138; esses cuidam da DECISÃO na subida, não da validade da prova depois.
+- Mudança (`app/automation/appium_server.py`): `log_masking_active` virou propriedade. A prova de um processo (`_provar(pid)`) é reconferida a cada leitura, com o resultado guardado por 2 s: o processo
+  tem de estar vivo, ser nosso e ser dono da porta (todos os donos nossos e o pid entre eles); sem ver os donos vale o processo nosso e vivo (o mesmo critério da readoção). Marcar de fora
+  (`log_masking_active = True`, como o harness e os testes de login) segue valendo sem processo. `start()` zera a marca ao entrar (a prova de uma subida anterior não vale para esta) e ganhou
+  uma trava, para duas subidas não se sobreporem.
+- Não coberto: o TOCTOU de milissegundos DENTRO de `fill` (a marca é lida uma vez antes de tocar o campo); o `appium.pid` ainda vale quando o sistema não mostra os donos da porta
+  (comportamento travado pelo teste do 29.138); que a regra carregada cubra o comando que `type_text` usa não foi verificado.
+- Prova `simulated`: `tests/test_mascaramento_revalidado.py` (11 testes: processo vivo e dono, externo assume a porta, alheio ao lado, pid provado fora dos donos, processo morto, donos invisíveis, validade de 2 s,
+  marca de fora, o canal sensível acompanha, `start` zera, duas subidas não se sobrepõem); 5 testes de prova na subida passaram a fixar `_ainda_e_o_provado` (pids de mentira; a reconferência tem teste próprio).
+  `real`: `not_run` (pede um Appium externo tomando a porta de um backend vivo).
+
+## 2026-10-06 — 31.162 (Portal): relatório exportável da operação (branch feat/31-162-relatorio-da-operacao, sobre a7f03152)
+
+- Na tela Operação, o botão "Relatório" abre um diálogo que baixa o relatório em Markdown e em JSON, montado no painel só do `GET /api/operacoes/{id}` (adendo v1.94). Por agente: os 14 estágios com a hora, o motivo e onde parou, o conhecimento usado (ids), o texto gerado e a ação final (tipo, verificada sim, não ou não conferida, evidência). Consolidado: capacidade, custos (pesquisa, agentes, total e o teto), falhas agrupadas por motivo e os textos irmãos (iguais mesmo com espaço ou caixa diferente). Os agentes saem pelo rótulo da persona, sem @ da conta nem id de conta. O custo por agente fica `null` e o relatório diz que o contrato só traz o da operação. Desligado no exemplo fixo. Prova: simulada (`Relatorio.test.tsx`, 12 casos, 6 mutações mortas); real: not_run até a operação existir no central.
+
+## 2026-10-06 — 31.159 (Portal): tela Operação (prova de 07/10) e os limites da orquestração em Configurações (branch feat/prova30-tela-operacao)
+
+- Nova tela `#/operacoes` (menu "Operação"): lista de operações e, por operação, a faixa de capacidade (solicitados, contas existentes, sessões válidas, disponíveis, em curso, concluídas, bloqueadas e os motivos), o agregado por app e uma linha por alvo (persona, conta só como rótulo, aparelho, pipeline de 14 estágios, estado, ação final ou motivo, "Verificada / Não verificada") com detalhe (resposta, conhecimento, evidências, estágios). "Liberar" abre a lista dos textos dos alvos parados em "ação preparada", nada marcado de início, até o limite que ainda sobra (conta os já executados); envia exatamente os textos exibidos (`{itens:[{profile_id, texto}]}`) e mostra a decisão item a item (liberados e recusados com o motivo: texto mudou, limite, sem ação preparada). "Cancelar a operação" com confirmação. A linha do alvo usa o `parou_em` do backend. A operação mostra o custo (`custo.total_usd` de um teto `max_usd`, com a divisão pesquisa × agentes), o assunto e as fontes indicadas (só viram link as `https` sem usuário nem query), conforme o adendo v1.94 fechado em 530d5af0. Prova: simulada (`OperacaoPage.test.tsx`, 21 casos, 3 mutações mortas; 1878 testes do frontend verdes).
+- Lê o contrato do rascunho do adendo v1.94 (Jev, 9da5017d) com leitor tolerante; sem a rota no central (404), cai num exemplo fixo e AVISA. Nenhum campo de login, e-mail de entrada ou credencial existe na tela.
+- Configurações → Limites: grupo "Orquestração de operações" com `orquestracao_max_escolhidas`, `orquestracao_max_candidatas` e `operacao_max_acoes_executadas`; só aparece se o servidor mandar os campos; candidatas nunca menores que as escolhidas.
+- Prova `simulated`: `OperacaoPage.test.tsx` (20 casos), `LimitsSection.test.tsx` e `validation.test.ts`; vitest inteiro e tsc limpos, mutações mortas; `real` `not_run` (a rota `/api/operacoes` ainda não existe).
+
+## 2026-10-06 — 31.147 (Portal, parte simulada): varredura de código cru no Treino (branch feat/31-147-varredura-de-codigo-cru)
+
+- `SemCodigoCru.test.tsx` renderiza uma sessão com todos os tipos de entrada, de pós-condição e de efeito na revisão, na barra (Salvas) e na sessão salva, e barra código cru no texto e nos `aria-label` (kinds, campos do contrato, seletores `desc==`, `resource-id`, marcador `{perfil_*}`, `(panel)`, `undefined`/`null`, chave em snake_case).
+- A varredura achou um defeito real: a etapa mostrava "existe o elemento “desc==Back”"; agora lê "existe o elemento com a descrição “Back”" (`elementoEmPalavras`: `text==`, `desc==` e `id==`).
+- Prova `simulated`: vitest de `src/features/training` 128 testes, tsc limpo, 2 mutações mortas; a parte `real` (prévia de pacotes e resultado numa sessão `proposed` do android-04, só leitura) segue `not_run`.
+
+## 2026-10-06 — 31.144 (Portal): os filtros do Livro viajam no endereço (branch feat/31-144-filtros-no-endereco)
+
+- Tipo, Estado, Origem, Prova e a visão Produto/QA/Todos passam a ser `tipo`, `estado`, `origem`, `prova` e `visao` na query de `#/aprendizado`; recarregar ou mandar o link mantém o filtro, valor desconhecido é ignorado e um link que troca de app larga o `visao` (RA-19).
+- Prova `simulated`: `FiltrosNoEndereco.test.tsx` (6 casos) e `AprendizadoPage.test.tsx` (22), 233 testes de `src/features/aprendizado`, 4 mutações mortas; `real` `not_run` até o deploy.
+
+## 2026-10-06 — 31.145 (Portal): receita e "(panel)" legíveis no Livro (branch feat/31-145-receita-e-painel-legiveis)
+
+- A receita ensinada no treino, sem capability nem título de etapa, mostrava a chave (`abrir_adicionar_rede (v1)`): a chave em minúsculas com sublinhado vira texto (`Abrir adicionar rede (v1)`) e a crua fica no `title`; título com espaço, maiúscula ou acento não muda. O `(panel)` do motivo de desligamento lê-se `(painel)` e "Confirmado que fica por panel" lê-se "pelo painel".
+- Os testes que fixavam a chave crua (`model.test.ts`, `DecididoPelaPlataforma.test.tsx`) passaram a esperar o texto, de propósito.
+- Prova `simulated`: `model.test.ts`, `AprendizadoPage.test.tsx`, `DecididoPelaPlataforma.test.tsx`; vitest inteiro 144 arquivos / 1857 testes, tsc limpo, 4 mutações mortas; `real` `not_run` até o deploy.
+
+## 2026-10-06 — 29.145: runbook da parada em 95 % do uso semanal (docs, branch canais/29-145-runbook-95)
+
+- `docs/operacao.md` ganha a § 17, curta: como medir (a orquestradora lê o uso pelo painel da IDE, diz a hora do `date -u`, a cada 5 min perto do gatilho, e para SÓ ao ler 95 % do semanal, todos os modelos); a ordem de parada (handoff curto por frente em `.claude/handoffs/<frente>.md` PRIMEIRO, com o scratchpad que importa; parar crons e subagentes; registrar em `.claude/session-registry.md`; um handoff único da orquestradora em `.claude/handoff-current.md` para o dono reiniciar com OUTRA conta); quem retoma (a orquestradora nova abre as sessões com nome, continuação, modelo e força); e o que roda sem sessão (`farm-central`, agente do notebook, cron do GitHub 05:17Z e 06:03Z, amostradores) contra o que depende de sessão (reconciliação do Trello, vigia do Telegram, execução do plano-100).
+- Só documento, sem código. Prova: `docs-check` 0 erros. `not_run`: a parada de verdade (nunca foi disparada); o gatilho é a leitura humana da orquestradora, sem automação.
+
 ## 2026-10-06 — 31.157 e 31.158 (prova30 A1/A2): conhecimento comum da operação e pesquisa externa por lacuna (branch feat/prova30-a1-conhecimento-da-operacao)
 
 - Pedido do dono de 06/10 (prova de capacidade, FULL INSTAGRAM): N agentes de uma operação precisam de conhecimento COMUM, separado do de cada persona, sem segundo sistema de conhecimento e sem repetir a mesma frase.
@@ -131,6 +293,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Prova:** `simulated` (`backend/tests/test_comando_remoto_agente.py`, `backend/tests/test_comando_remoto_central.py`,
   `backend/tests/test_contratos_do_worker.py`); `real`: `not_run` (falta o deploy, o procedimento e o sim do dono para ligar).
 
+## 2026-10-06 — 31.142: a sugestão de pós-condição sai pronta e a prévia mostra o comando repetido (branch feat/31-142-sugestao-pronta)
+
+- Achados da prova F2 (06/10, deploy 51). A única sugestão ("Back") era a descrição do botão voltar: com `element_present`, trocar só o valor deixaria um seletor que só olha o texto. E a prévia parava no 409 `duplicate_command`, escondendo as pós-condições que já valem.
+- Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
+- Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
+
+
 ## 2026-10-06 — 31.140: os pacotes aceitos por etapa na prévia e no Livro (branch feat/31-130-fluxo-de-prova)
 
 - Achado da Portal (06/10): `pacotes_aceitos` (31.123) não aparecia em nenhuma proposta das 16 sessões do android-04; existia só no plano salvo e nas etapas da execução.
@@ -160,6 +329,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Migração 122 e adendo v1.87: `POST /api/instances/{id}/training` aceita `nascido_de_prova: true`; a marca fica na sessão (`training_sessions.nascido_de_prova`) e o `save` a leva ao fluxo (`flows.nascido_de_prova`). Sai no GET e na listagem das sessões, em `GET /api/flows` e em `conteudo.origem` do fluxo no Livro, com o filtro `nascido_de_prova=true|false` nas listagens. `PUT /api/flows/{id}` aceita `motivo` (1 a 300 caracteres), que vai à trilha do livro.
 - `scripts/marcar-fluxo-de-prova.py`: marca pelo id os fluxos de prova anteriores e a sessão de origem; ensaio por padrão, `--aplicar --backup`, idempotente.
 - Prova `simulated`: `tests/test_fluxo_nascido_de_prova.py` (2) e `scripts/tests/test_marcar_fluxo_de_prova.py` (3). Real: `not_run` até o deploy e o script rodado pela Android nos três ids.
+
+## 2026-10-06 — 31.142 (Portal): "Usar" aplica a sugestão pronta e a prévia 200 com comando repetido trava o Salvar (branch feat/31-142-painel-sugestao-pronta)
+
+- O botão "Usar" da conferência que já vale aplica `sugestoes_prontas[i].kind` e `.value` (adendo v1.91; `desc==Back` vira `element_present`), mantendo o texto do botão; backend anterior sem o campo cai em `text_visible`, como antes.
+- A prévia 200 com `code: duplicate_command` e `message` trava o "Salvar" e mostra a mensagem no campo Comando; a frase não se repete nos avisos. Sem `code`, nada muda.
+- Prova `simulated`: `PosCondicaoQueJaVale.test.tsx` (14 casos, dois deles os de `desc==Back` e `text_visible`), 3 mutações mortas; `real` `not_run` até o deploy.
 
 ## 2026-10-06 — 31.128 e 31.129: a conferência que já vale vira aviso na etapa, e os pacotes que a etapa aceita aparecem (branch feat/31-128-pos-condicao-na-etapa)
 
@@ -234,6 +409,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-06 — 29.158: secret-scan semanal com gitleaks, sem bloquear push (branch ci/29-155-c14-gitleaks)
 
 - `.github/workflows/secret-scan.yml` (`ubuntu-latest`, manual e segundas 07:23Z, sem gatilho de push), `.gitleaks.toml` na raiz (regras padrão e a exclusão do `package-lock.json`) e `scripts/secret_scan_resumo.py`: imagem do gitleaks v8.30.1 por digest, histórico inteiro com `--redact`, log do gitleaks descartado, relatório apagado ao fim, e só regra, caminho, linha e hash curto na saída e na issue. Prova `simulated`: `scripts/tests/test_secret_scan_resumo.py` (14 testes: nada de valor, autor ou e-mail; relatório sem redação não imprime e sai com 2; nomes com marcação omitidos; issue só com achado), `tomllib` e `yaml.safe_load`. O digest foi lido do registro `ghcr.io` (índice da tag v8.30.1) em 06/10. Prova `real`: `not_run`: o workflow só pode ser disparado depois de estar na `main`; a prova será o run id e a contagem de achados, com a saída conferida sem nenhum valor e com os nomes de campo do JSON do gitleaks (`Secret`, `Match`, `RuleID`, `File`, `StartLine`, `Commit`) conferidos na primeira corrida, porque até lá são suposição da documentação. Não rodei o gitleaks nesta máquina.
+
+## 2026-10-06 — 29.166 (a): o job `docs` do CI instala PyYAML e pydantic nas versões travadas (branch ci/29-166a-docs-check)
+
+- `.github/workflows/ci.yml`, job `docs`: `pip install -c backend/requirements.txt pytest pyyaml pydantic pydantic-settings` (pyyaml 6.0.3, pydantic 2.13.5, pydantic-settings 2.15.0, as do backend), para o `docs-check` rodar COMPLETO e não só avisar que não conferiu. Prova `simulated`: yaml do workflow e instalação das quatro versões num venv limpo desta máquina (conferido). Prova `real`: ver o resultado em `.claude/handoffs/github-resultado-29.166a.json` (execução hospedada dos mesmos passos). Pendente do 29.160 (Frente DevOps): o esquema do `config.example.yaml` ainda não está no `docs-check` da main, então 'sem o aviso' e 'exemplo ruim derruba o job' só se provam depois dele.
 
 ## 2026-10-06 — 29.158 (allowlist, branch ci/29-155-c15-allowlist): achados do primeiro secret-scan classificados
 
@@ -1300,11 +1479,26 @@ Da leitura do 31.78.
   pôs o cabeçalho dele no CHANGELOG e o menor deploy cujo commit do central o contém (no primeiro deploy conhecido: "o deploy 38 ou um anterior"), e a linha do concluído é refeita quando o deploy muda.
   Regra no C-28. Prova `simulated`: `.claude/trello/test_reconciliar.py` (30 passed). Prova `real` (06/10): ensaio contra os três quadros, 37 linhas de concluído com deploy corrigido.
 
+## 2026-10-06 — Deploy 55 (corte da prova de 07/10: operação com N alvos, conhecimento e pesquisa da operação, tela Operação, tetos configuráveis)
+
+- **Implantado** às 19:11Z: central em `086236e9df30a8`, migrações 124 (`operacoes`, `operacao_alvos`, `runs.operacao_id`) e 125 (confiança e frescor em `pedido_memoria`, fontes da operação), 16 pontas sobre a main `d8ff73f7`. Itens: Jev 31.154 (entidade operação: `POST /api/operacoes` cria uma execução por alvo, 14 estágios por alvo no vocabulário do dono, capacidade, `liberar` com eco do texto limitado por `operacao_max_acoes_executadas`, `cancelar`; alvo sem conta nasce parado em `conta` sem execução e sem custo; `custo{pesquisa_usd, alvos_usd, total_usd}`; adendo v1.94), 31.156 (tetos da seleção de personas configuráveis: `orquestracao_max_escolhidas` 30 e `orquestracao_max_candidatas` 60, pedido do dono de 06/10) e fix 29.126 (readoção do Appium sob carga); ensino 31.157 (leitura do post gravada uma vez por operação em `pedido_observacoes` com `operacao_id` e sha256, `fatos_da_operacao` no texto de cada persona, confiança e frescor) e 31.158 (pesquisa externa genérica por lacuna, uma por operação, pela ferramenta de busca do provedor, com fontes, origem, evidência, confiança e frescor; desligada de fábrica em `ai.pesquisa.enabled`, teto US$ 0,25 por operação); Portal 31.159 (tela Operação: lista, faixa de capacidade, tabela por alvo nos 14 estágios, liberar e cancelar; campos dos limites em Configurações), 31.144 (filtros do Livro no endereço), 31.145 (nome da receita e "(panel)" legíveis), 31.146 (contagem "N de prova" na faixa do Livro), 31.147 (varredura de código cru no Treino); canais 28.59 (listas Prova 07/10 no Trello, etiqueta `prova-07/10`, `prova.json` na reconciliação) e 29.145 (runbook de 95 % do uso semanal, `docs/operacao.md` § 17); DevOps 29.166 ponta b (docs-check completo no `deploy.ps1 -Ensaio` e na subida) e 29.167 (`scripts/restore-ensaio.ps1`: ensaio de restauração da cópia mais nova, tarefa semanal ainda não registrada). Também: Portal 29.164 (seção Comando remoto em português) e 31.162 (relatório da operação em Markdown e JSON); Frente GitHub 29.166 ponta a (job docs do CI com o docs-check completo); dois testes de outras frentes corrigidos na integ (409a3604).
+- Prova `real`: deploy `deploy.ps1` (backup `20261006-160927`, ensaio de migração 124 e 125 ok); `GET /api/health` ok, migração 125, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+086236e`; A10 ok; tag deploy-20261006-1911. `ai.pesquisa.enabled` ligada neste deploy (antes: chave ausente = false; depois: true; teto US$ 0,25 por operação).
+- Prova `simulated` (suíte 55 sobre `086236e9df30a8`): `scripts/tests` 790 passed; backend em SQLite inteiro 12455; frontend 1932 e build; catracas 88 (backend) e 7 (scripts); docs-check 0/0; mypy 257 (teto 257); PostgreSQL dirigido 10481. Falhas declaradas: 1 em test_treino_escopo_ao_provar na parte 2 do PostgreSQL sob carga (passa isolada nos dois bancos); 3 em test_pesquisa_da_operacao (fixture sem as colunas da 124) e 1 em test_restore_ensaio (cópia WAL sem checkpoint), corrigidas na integ antes do deploy.
+- `not_run` até a prova de 07/10: operação real com 1, 3 a 4 e ~30 alvos no Instagram em ativo nosso (31.154, 31.157, 31.158, 31.159, 31.161; roteiro em `.claude/handoffs/prova30/roteiro-onda.md`); percurso no navegador da tela Operação durante a operação; primeiro ensaio real de restauração (29.167); percurso real do 31.142 (depende de autorização do dono para digitar no campo do Treino).
+
+## 2026-10-06 — Deploy 54 (suíte 53: anexos e comentários nos canais, comando remoto no painel, histórico de deploy, conferência da rede silenciosa, sugestão pronta e Livro com nascido de prova)
+
+- **Implantado** às 17:07Z: central em `2193a8b50ea34e`, sem migração nova (segue em 123), 8 pontas sobre a main `732bf56b`. Itens: canais 28.57 (anexos no Telegram com nome original e lista fechada de extensões; o `.txt` do dono sem legenda vira repasse à orquestradora com contagem de identificadores; K-105), 28.55 (comentário de app fora de `apps_do_dono` em cartão sem fato vira `outro`, com contagem em `GET /api/canais/estado`); parque 29.154 fatia 2 (seção "Comando remoto" no cartão do worker remoto: interruptores, liga/desliga com confirmação, terminal com prazo, saída redigida, histórico); 29.159 (deploy.ps1 grava `data/deploys.jsonl` por subida, tag anotada `deploy-AAAAMMDD-HHMM` e release pelo gh no melhor esforço, `-SemTag`; runbook de rollback em `docs/operacao.md` § 6); Jev 29.163 (conferência periódica da rede rotulada, silenciosa e sem `control.changed`; K-106 da medida do 31.137); ensino 31.142 (sugestão de pós-condição pronta na prévia e botão que aplica kind e valor; adendo v1.91) e 31.143 (`nascido_de_prova` em cada item do Livro e filtro `?nascido_de_prova`; adendo v1.92). Primeira tag e release criadas por este deploy: deploy-20261006-1707 (release criado).
+- Prova `real`: deploy `deploy.ps1` (backup `20261006-140601`, sem ensaio de migração: nenhuma nova); `GET /api/health` ok, migração 123, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+2193a8b`; A10 ok; linha em `data/deploys.jsonl` e tag no GitHub (29.159): tag deploy-20261006-1707 e release na origem, linha ok em data/deploys.jsonl (commit_antes 6e7b87cf, 102,7 s).
+- Prova `simulated` (suíte 53 sobre `2193a8b50ea34e`): `scripts/tests` 767 passed; backend em SQLite inteiro 12414; frontend 1870 e build; catracas 88 (backend) e 7 (scripts); docs-check 0/0; mypy 257 (teto 257); PostgreSQL dirigido 5928. Falhas declaradas: 1 no PostgreSQL dirigido (test_sempre_na_promovida, tempo esgotado sob carga; passa isolada em SQLite e PostgreSQL, 17/17).
+- `not_run`: percurso 53 no navegador (Portal: 29.154 fatia 2, 31.142, 31.143 e o selo do 31.131); antes/depois do 29.163 (contagem de `control.changed` por aparelho em 1 h, Jev); prova real do 28.57 (um envio com nome e uma recepção com o dono) e do 28.55 (leitura real do Trello); readoção sob carga do 29.126 (a correção c03f0451 fica para o corte 54).
+
 ## 2026-10-06 — Deploy 53 (hotfix do 31.137: `--activity-new-task` não existe no `am` do Android 34)
 
 - **Implantado** às 15:45Z: central em `6e7b87cf`, sem migração (segue em 123), 1 ponta (`c580a9db`, Jev) sobre a main `3a20bc70`. Defeito do deploy 52: `Adb.start_app(..., tarefa_limpa=True)` mandava `--activity-clear-task --activity-new-task` e o `am start` do Android 34 recusava a segunda ("Unknown option"), então toda abertura do Configurações pela tarefa limpa falhava (`DeviceManager.open_app` manual, ponto de partida da prova em `_partir_da_prova`, que engolia a exceção e seguia, e o LT-6 do executor, que caía em "o ator assume"). Só o pacote do Configurações usa a tarefa limpa (`ABERTURA_COM_TAREFA_LIMPA`): Instagram e demais apps abrem pelo `am start` comum e não foram afetados. Correção: só `--activity-clear-task`; teste trava as opções.
 - Prova `real`: defeito medido no android-04 (`POST /api/instances/android-04/actions/open_app` failed em 0,6 s, comando `c-20261006152209-ada35d`, 15:22Z; `am help` no aparelho lista `--activity-clear-task` e não `--activity-new-task`); deploy `deploy.ps1` (backup `20261006-124324`, sem ensaio de migração: nenhuma nova); `GET /api/health` ok, migração 123, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+6e7b87c`; A10 ok (agente dos dois workers em `0.1.0+6e7b87c`, pausas do worker retiradas; 9 de 15 online, todos ready: os 6 parados são os 3 da redução do notebook das 15:16Z e os 3 já parados). A abertura corrigida e a latência real do 31.137 (7 medidas manuais no android-04) ficam `not_run` até a medida da Jev depois deste deploy.
 - Prova `simulated` (funil dirigido do hotfix sobre `6e7b87cf`, declarado: sem a suíte inteira, porque a mudança é 1 linha de flag em `adb.py` e o deploy 52 rodou a suíte inteira às 15:08Z): SQLite dirigida 1224 passed em 56 arquivos (testes que tocam open_app, start_app, tarefa limpa, ponto de partida, mais `test_arquitetura` e catracas 88); PostgreSQL dirigido 1224 passed nos mesmos arquivos; mypy 257 (teto 257); docs-check 0/0; frontend sem mudança (não rodado). Falhas declaradas: nenhuma.
+- Medida real do 31.137 depois do deploy (Jev, 06/10/2026 15:47Z a 15:53Z, central `6e7b87cf`, android-04, `open_app` manual sem IA, tempo do comando até o foco confirmado): com a busca na frente, #1 `c-20261006154828-8371e3` **uncertain em 92,09 s** (o foco não chegou em 90 s), #2 3,68 s, #3 7,58 s, #4 4,29 s, #5 7,62 s (mais a repetição de depuração `c-20261006155041-c1131e`, 3,69 s; mediana dos 5 sucessos 4,29 s); app fechado `c-20261006155229-cfe0a7` 6,10 s e `c-20261006155245-e09474` 6,23 s; nos 6 sucessos da busca o foco final foi a tela inicial das Configurações. Métricas diferentes das etapas 1 de 1157c6 (36,5 s, falhou), cebae7 (24,8 s) e ae97e2 (6,0 s). O uncertain de 92 s: leitura dos eventos do android-04 entre 15:48:28Z e 15:50:00Z: só o comando (`dispatched`, `running` e `uncertain`); nenhum `control.changed` do android-04 na janela (o primeiro, às 15:50:58Z, é posterior), nenhuma execução, nenhum evento de rede ou de pressão de CPU dele; os `control.changed` de 15:47:58Z a 15:48:10Z são de outros 5 aparelhos. **Sem causa**: nem a conferência da rede nem outro job segurou o aparelho, então não é prova a favor do 29.163, e o 92 s fica aberto. Custo de IA: zero.
 - `not_run`: medida real do 31.137 (Jev, logo após); 29.154 fatia 2 (`5cbf0c1e`, frontend), 31.142, 31.143, 28.57 e 29.160 ficam para o corte 53.
 
 ## 2026-10-06 — Deploy 52 (suíte 52: fluxo nascido de prova e origem do ensino, painel do Livro, pacotes aceitos por etapa, comando remoto nos notebooks, rotas fora de api.py, bootstrap do AppState, cadeia dos workflows e gitleaks)

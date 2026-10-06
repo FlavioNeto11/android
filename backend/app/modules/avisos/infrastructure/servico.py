@@ -25,7 +25,7 @@ from datetime import datetime
 
 from app.config import Config
 from app.db import loads
-from app.contracts.origem import PREFIXO_LOTE, e_execucao_do_sistema
+from app.contracts.origem import PREFIXO_LOTE, PREFIXO_OPERACAO, e_execucao_do_sistema
 from app.events import EventBus
 from app.models import Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram
@@ -438,8 +438,8 @@ class ServicoDeAvisos:
             return False
         if linha is None:
             return False
-        if aprovacao and str(linha["idempotency_key"] or "").startswith(PREFIXO_LOTE):
-            return False                                   # aprovação de lote: o dono decide, então avisa
+        if aprovacao and str(linha["idempotency_key"] or "").startswith((PREFIXO_LOTE, PREFIXO_OPERACAO)):
+            return False                                   # aprovação de lote ou de operação (31.154): o dono decide, então avisa
         return e_execucao_do_sistema(linha["prova_fluxo_id"], linha["idempotency_key"])
 
     # ------------------------------------------------------------------ saída (líder)

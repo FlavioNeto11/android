@@ -2753,6 +2753,53 @@ essas linhas.
 **Aplicabilidade.** Vigente. Todo golden ou teste de caracterização: o que depende do ambiente (dialeto do banco, versão, hora, caminho da máquina) entra
 como marcador, não como valor; e um golden novo roda também no PG dirigido antes de entrar.
 
+### K-105 — O canal recebia o arquivo do dono e ninguém ficava sabendo: confira o armazém antes de dizer que o canal "ignora"
+
+**Data:** 06/10/2026 · **Área:** canais (Telegram, anexos)
+
+**Sintoma.** O dono mandou quatro `.txt` (saída de dois scripts) pelo Telegram, às 14:37 e 14:38Z. O vigia viu só a legenda e uma entrada sem texto, `ignorada`;
+a sessão concluiu que "o canal ignora o anexo" e que a saída precisava ir por outro caminho. O item 28.57 nasceu com essa premissa.
+
+**Causa.** A premissa estava errada. A recepção do 28.24 já tinha baixado e guardado os quatro arquivos (`canal_anexos` 1 a 4, `guardado`, `text/plain`,
+7288, 1901, 6943 e 1135 bytes, em `data/anexos`). O que faltava era o REPASSE: a mensagem só com anexo caía na intenção `vazia`, ficava `ignorada` e nada avisava a
+orquestradora. Os tamanhos batem byte a byte com os arquivos que o dono mandou depois por zip.
+
+**O que funcionou.** Olhar `canal_anexos` (e `canal_entradas.erro`) antes de afirmar o que o canal faz com um anexo: bastou uma consulta de leitura. A correção ficou
+pequena: a linha do `.txt` sem legenda vai à orquestradora (`previa.repasse = "anexo_recebido"`) com id, tamanho e a contagem de identificadores por categoria
+(sem eco do achado), sem resposta nova ao dono. Um achado vizinho: `enviar_anexo` renomeava tudo para `anexo-<sha>` e quebraria o comando `-File .\script.ps1`; o
+nome original passou a ser pedido pelo código, numa lista fechada de extensões de texto.
+
+**O que não funcionou.** Concluir pela linha `ignorada` e pela ausência de texto, sem abrir a tabela de anexos. Também não funcionou escrever expressões regulares e
+caminhos com barra invertida por heredoc no shell: ele reduz a barra e o arquivo sai com erro de sintaxe; use o Write ou o Edit.
+
+**Aplicabilidade.** Vigente. Antes de abrir um item porque "o canal não recebe X", leia a tabela do armazém do canal; a linha de entrada sem texto não prova que o
+anexo se perdeu. O repasse ao dono ou à orquestradora tem de existir para todo tipo guardado que importe, mesmo sem legenda.
+
+### K-106 — Medir a abertura de um app depois de um fluxo nascido de prova: o fluxo fica desligado, o run cai no planejador e gasta IA
+
+**Data:** 06/10/2026 · **Área:** medida de latência (31.137), aprendizado, execução
+
+**Sintoma.** Para medir a abertura das Configurações no android-04 depois do deploy 52, criei runs com o mesmo comando do cebae7. Quatro runs (`5b6644`, `d550cf`,
+`f255eb`, `727d42`) terminaram em `needs_input` ou `failed` sem tocar no aparelho, e dois gastaram IA do planejador (US$ 0,01604 e US$ 0,004377) por uma recusa
+(31.33: "buscar wifi nas configurações não está disponível no Instagram"). Sem o `app_id` no alvo, a persona do aparelho (Instagram) decidia o app.
+
+**Causa.** O fluxo nascido de prova fica **desligado no fim** da prova (31.130): os cinco fluxos de busca das Configurações estavam `disabled`, então o mesmo comando
+não reaproveitava plano nenhum e ia ao planejador, que recusa com a persona do Instagram. Um run de medida com o mesmo comando não é gratuito.
+
+**O que funcionou.** Medir a latência de abertura por controle manual, sem IA: `POST /api/instances/{id}/actions/open_app` e ler `created_at`/`finished_at` do comando
+(`GET /api/commands/{id}`), com o `adb` só para preparar o estado (a busca na frente, o app parado à força). Custo zero, o mesmo `DeviceManager.open_app` da prova. Ou
+religar um fluxo de busca por um motivo registrado e desligar depois.
+
+**O que não funcionou.** Criar run com o comando do fluxo desligado; indicar a persona como alvo sem `app_id` do app do run.
+
+**E o achado que a medida trouxe.** A primeira medida manual (`c-20261006152209-ada35d`) falhou em 0,6 s com "Unknown option: --activity-new-task": o `am start` do
+Android 34 tem `--activity-clear-task` e não tem `--activity-new-task`. O 31.137 do deploy 52 estava quebrado e o `ae97e2` não provava nada dele (o ponto de partida
+falhava em silêncio e a receita abria o app pelo `open_app` comum). Opção de linha de comando de aparelho se confere no aparelho (`am help`) antes de entrar no código, e
+um teste guarda as opções usadas.
+
+**Aplicabilidade.** Vigente. Medida de latência de uma etapa: por controle manual ou fluxo religado com motivo, nunca por um run que depende de um fluxo desligado.
+Comando `adb`/`am` novo: ler o `help` do aparelho e travar as opções num teste.
+
 ### K-pendente (número pela orquestradora; pós-prova) — A gravação crua do ensino guarda o texto tocado, inclusive dado da persona
 
 **Contexto.** Ensino do 31.160 (06/10, android-01, conta real), com o alvo = o perfil da própria persona que ensinava.

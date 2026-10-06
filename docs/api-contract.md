@@ -1098,7 +1098,7 @@ campo.
 | `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
 | `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[], scope_on_proof?}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo); 400 `pos_condicao_ja_vale` quando a `text_visible` ou a `element_present` de uma etapa já vale na tela em que ela começa (31.122, adendos v1.83 e v1.86, com `pos_condicoes_ja_valem`); etapa da proposta aceita `independente: bool` (31.127, adendo v1.85) |
-| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason, pacotes_aceitos}], warnings, pos_condicoes_ja_valem}`, sem gravar nada (v1.58, v1.86, v1.89) |
+| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason, pacotes_aceitos}], warnings, pos_condicoes_ja_valem, code, message}`, sem gravar nada; o comando repetido vem em `code: duplicate_command` num 200 (v1.58, v1.86, v1.89, v1.91) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
 | `POST /api/training/from-run` | `TrainingDeFalhaBody {run_id, step_id, lease_id, intent?, app_id?, profile_id?}` | `TrainingSession` (201) com `origin {run_id, step_id, step_key, attempt_id, motivo}`: abre o ensino a partir de uma etapa que falhou (31.111 F1 e F2, adendo v1.75); 404 `step_not_found`, 409 `step_not_failed` e as recusas de `POST /instances/{id}/training` |
@@ -5269,8 +5269,9 @@ problemas da saúde sai só o `code`.
   `orquestradora`, `pergunta`, `executando`, `feita`, `cancelada`, `falhou`, `aviso`; um estado desconhecido soma em
   `outro`), `problemas` (só `telegram_entrada_*`).
 - `trello`: `ligado`, `webhook_ligado`, `cadastro_automatico`, `ultima_reconciliacao_em` (o `atualizado_em` mais recente
-  do cursor), `cartoes` (`ativo`, `arquivado`, `criando`), `entradas` (como acima, `canal='trello'`), `problemas` (só
-  `trello_*`, sem repetir).
+  do cursor), `cartoes` (`ativo`, `arquivado`, `criando`), `entradas` (como acima, `canal='trello'`),
+  `comentarios_de_app_em_alvo_desconhecido` (28.55: quantos comentários escritos por app, num cartão fora das listas de
+  perguntas e sem fato, foram tratados como `outro`; só o número), `problemas` (só `trello_*`, sem repetir).
 
 Prova:
 - `simulated`: `backend/tests/test_canais_estado.py` (conjunto de chaves travado; nenhum valor carrega o texto semeado nas
@@ -7115,6 +7116,143 @@ respondem `404`, mesmo com credencial. O resto de `/api/workers*` não muda.
 
 Eventos novos: `worker.comando` (pedido, recusa e desfecho; `data` com a linha redigida, até 500 caracteres, e sem a
 saída), `worker.comando.interruptor` e `worker.comando.cancelamento`.
+
+## Adendo v1.91 (06/10/2026; número da orquestradora; item 31.142) — sugestão de pós-condição pronta e prévia com o comando repetido
+
+Achados da prova F2 (06/10, `trn-YjYU8iobj_V42xXx`, deploy 51). A única sugestão era "Back", a descrição do botão
+voltar, sem texto. Trocar só o valor de um `element_present` deixaria o seletor puro "Back", que só olha o texto, e a
+etapa nunca passaria. E a prévia parava no 409 `duplicate_command`, escondendo as pós-condições que já valem e os
+avisos até a pessoa trocar o comando.
+
+- **`pos_condicoes_ja_valem[]`** (prévia e `detail` do 400 `pos_condicao_ja_vale` do `save`, v1.86): cada entrada ganha
+  `sugestoes_prontas: [{kind, value, texto}]`, na mesma ordem de `sugestoes`, que fica igual. É a pós-condição inteira
+  que o botão da revisão aplica, `kind` e `value` juntos:
+  - com a pós-condição original `text_visible`, `{kind: "text_visible", value: <texto>}`, porque o verificador lê texto
+    e descrição;
+  - com `element_present`, `{kind: "element_present", value: "text==<texto>"}` ou `"desc==<texto>"`, pelo campo em que o
+    texto está na tela seguinte;
+  - sem achar o elemento (a linha veio só das `screen_lines`), ou com `|` no texto, `text_visible`.
+
+  `texto` é o rótulo do botão. O dado da persona vira o marcador em `value` e `texto`, como em `sugestoes`.
+- **`POST /api/training/{session_id}/preview`**: o comando repetido não é mais 409. A resposta é 200, com:
+  - `code: "duplicate_command"` e `message`, a mesma frase do 409 do `save`;
+  - a mesma frase como 1ª linha de `warnings`;
+  - `steps`, `pos_condicoes_ja_valem` e `scope` como sempre.
+
+  Sem recusa, `code` e `message` são `null`. As outras recusas da prévia (400 da proposta, 409 `closed`) não mudam. O
+  `save` segue com o 409 `duplicate_command`.
+- **Prova:** `simulated` (`backend/tests/test_sugestao_pronta_e_previa_com_recusa.py`); `real`: `not_run` (o botão é da
+  Portal, no 31.128, corte 53).
+
+## Adendo v1.92 (06/10/2026; número da orquestradora; item 31.143) — `nascido_de_prova` na lista do Livro
+
+Achado do percurso 52 da Portal: a marca do 31.130 só saía em `conteudo.origem` do detalhe do fluxo. O selo e o filtro
+"Prova" da lista (31.131) ficavam sem dado.
+
+- **`Entrada` do livro** (cada elemento de `itens[]` em `GET /api/aprendizado`, `/pendentes` e `/revisar`, e o `item` de
+  `GET /api/aprendizado/{kind}/{ref}`): ganha `nascido_de_prova: bool`, sempre presente. Só o fluxo tem a marca
+  (`flows.nascido_de_prova`, migração 122); os outros tipos vêm `false`.
+- **`GET /api/aprendizado?nascido_de_prova=true|false`**: com `true`, só os itens com a marca; com `false`, o resto, os
+  outros tipos inclusive. Sem o parâmetro, tudo. Soma com os outros filtros (`kind`, `state`, `app`, `origem`,
+  `rotulo`) e entra antes da contagem: `total` e `contagem` já vêm filtrados. Valor inválido dá 422, como nos outros
+  filtros.
+- **Prova:** `simulated` (`backend/tests/test_livro_nascido_de_prova.py`); `real`: `not_run`.
+
+## Adendo v1.94 (06/10/2026; número da orquestradora; item 31.154, migração 124) — a operação com N agentes
+
+Uma **operação** é um objetivo único entregue a N **alvos**. Cada alvo é persona + conta (dela, no app da operação) +
+aparelho e roda numa **execução própria**: `objectives` tem um objetivo por aparelho em cada execução, e 30 contas não cabem
+em 9 aparelhos de uma vez. A fila por aparelho já serializa as execuções do mesmo aparelho. A operação agrega as execuções:
+estado de cada alvo, resultado, capacidade e cancelamento. Nada troca de app: o alvo que não pode avançar PARA no estágio,
+com o motivo.
+
+- **`POST /api/operacoes`** `{command, app_id, alvos: [{profile_id, account_id?, instance_id?}], acao_final?, idempotency_key,
+  max_usd, assunto?, fontes?}`, com campos extras recusados.
+  - `max_usd` (obrigatório, até 100): o teto em US$ da operação inteira, somado em todas as execuções dos alvos. Atingido, a
+    IA de qualquer alvo é recusada (`AIError` `budget`, motivo `operacao`), e o alvo ainda não criado nasce parado com
+    `teto de custo`.
+  - `assunto` (3 a 500 caracteres) e `fontes` (até 10 URLs `https://`): o que precisa ser compreendido e as fontes públicas
+    que o operador indica. São a única origem da pesquisa externa da operação (frente de aprendizado).
+  - `alvos`: de 1 a 64, sem `profile_id` repetido. Quem escolhe as personas pela IA é a sugestão de sempre
+    (`POST /api/runs/targets/suggest`, que agora vai até `LimitsCfg.orquestracao_max_escolhidas`), e o painel passa a
+    escolha aqui.
+  - `account_id` ausente = a conta ativa da persona no app (a mesma regra da etapa que confere a conta).
+  - `instance_id` ausente = o aparelho onde essa conta tem sessão pronta.
+  - `acao_final`: `preparar` (padrão) para cada alvo em `acao_preparada`, com o texto gerado e a interface pronta, sem
+    enviar. Toda execução de alvo nasce com o teto de autonomia `preparar` (28.23): o efeito para depois do rascunho,
+    com o pedido de aprovação que carrega o texto. `executar` diz que a operação vai além disso, mas só pelo `liberar`
+    (abaixo): nenhuma ação final sai sem o texto lido por uma pessoa.
+  - Resposta `201` com o `OperacaoDetalhe` (abaixo). A mesma `idempotency_key` devolve a mesma operação.
+  - Cria uma execução por alvo apto, com `runs.operacao_id`. O alvo sem conta ou sem sessão NÃO ganha execução: nasce
+    parado em `conta` ou `sessao`, com o motivo.
+  - Erros: `422 pedido_invalido`, `404 app_inexistente`, `409 credencial_no_comando`, `409 chave_em_uso` (a mesma chave
+    com outro corpo).
+- **`GET /api/operacoes?limite=50`** → `{items: [OperacaoResumo]}`, da mais nova à mais velha. `OperacaoResumo` =
+  `{id, command, app_id, acao_final, status, created_at, finished_at, capacidade}`.
+- **`GET /api/operacoes/{id}`** → `OperacaoDetalhe` = `OperacaoResumo` + `{max_usd, assunto, fontes, alvos: [AlvoDaOperacao],
+  custo: {pesquisa_usd, alvos_usd, total_usd}}`. A pesquisa externa da operação roda dentro da execução de um alvo; `alvos_usd`
+  já vem sem ela, e `total_usd` é o que o teto `max_usd` compara.
+  `404 operacao_inexistente`.
+- **`POST /api/operacoes/{id}/cancelar`** → `OperacaoDetalhe`. Cancela as execuções ainda abertas, pelo mesmo caminho do
+  cancelamento de uma execução; o alvo já encerrado não muda. `409 ja_encerrada`.
+- **`POST /api/operacoes/{id}/liberar`** `{itens: [{profile_id, texto}]}` (1 a 64) →
+  `{liberados: [profile_id], recusados: [{profile_id, motivo}], operacao: OperacaoDetalhe}`.
+  - Aprova, pelo serviço de aprovações de sempre, a ação preparada de cada alvo, decidindo item a item como o lote de
+    aprovações (sem 409 geral).
+  - `texto` é o eco do texto que a pessoa leu (31.49). Diferente do pedido de aprovação, o item é recusado com
+    `texto_divergente`.
+  - Só até `LimitsCfg.operacao_max_acoes_executadas` (padrão 3, lido a cada chamada), contando as ações já executadas. O
+    excedente é recusado com `limite de ações executadas`; sem pedido pendente, com `sem ação preparada`.
+  - A operação passa a `acao_final: executar`. Erros gerais: `404 operacao_inexistente` e `409 ja_encerrada`.
+- **`GET /api/runs?operacao_id=…`**: o filtro novo na lista de execuções. Cada `RunSummary` ganha `operacao_id`
+  (`null` fora de operação).
+
+`status` da operação: `em_curso`, `concluida` (todos os alvos chegaram ao último estágio que a `acao_final` pede),
+`concluida_com_bloqueios` (todos pararam, ao menos um bloqueado) ou `cancelada`.
+
+**`AlvoDaOperacao`** = `{profile_id, persona_nome, app_id, account_id, conta (o @ da conta, ou null), instance_id, run_id,
+estagio, estado, motivo, parou_em, estagios: [{estagio, em}], resultado}`. Os estágios seguem o vocabulário do dono, nesta ordem fixa:
+
+`persona` → `conta` → `sessao` → `aparelho` → `instagram_aberto` → `target_localizado` → `post_localizado` →
+`conteudo_lido` → `conhecimento_recuperado` → `resposta_gerada` → `interface_de_comentario_alcancada` → `acao_preparada` →
+`acao_executada` | `acao_bloqueada` → `resultado_verificado`.
+
+- `estagio` = o último alcançado, e `estagios` = os alcançados com prova, com a hora. Pode haver lacuna:
+  `conteudo_lido` e `conhecimento_recuperado` só existem se a frente de aprendizado os marcar, e nenhum estágio é inferido
+  por um posterior.
+- `parou_em` = o estágio em que o alvo parou, só em `bloqueado`/`cancelado`, e `null` nos demais. Exemplos:
+  - o alvo sem conta vem `estagio: "persona"`, `estagios: [persona]`, `motivo: "sem conta"`, `parou_em: "conta"`;
+  - o alvo em `acao_preparada` numa operação `executar` vem `bloqueado`, com `parou_em: "acao_executada"` e motivo
+    `aguarda liberação` ou `limite de ações executadas`.
+- `acao_bloqueada` ocupa o lugar de `acao_executada`.
+- O estágio de app (`instagram_aberto` … `interface_de_comentario_alcancada`) vem da ação do catálogo que o declara
+  (`estagio_da_operacao` no `catalogo.yaml` do app). Nenhum nome de app fica no código: o mesmo modelo serve a qualquer app
+  declarado, e `instagram_aberto` é o rótulo que o app do Instagram dá à sua abertura (`app_aberto` nos demais).
+- `estado`: `pendente` (sem execução ainda na fila do aparelho), `em_curso`, `concluido`, `bloqueado` (com `motivo`) ou
+  `cancelado`.
+- `motivo` é uma frase curta e estável, a mesma que entra na contagem de `capacidade.motivos`: `sem conta`, `sem sessão`,
+  `conta <status>`, `aparelho indisponível` (com a recusa da execução depois de dois-pontos), `teto de custo`,
+  `aguarda liberação`, `limite de ações executadas`, ou o motivo do objetivo (uma linha, até 120 caracteres).
+- `resultado` = `{texto, conhecimento_ids, evidencia_id, acao_final: {tipo, verificada, evidencia_id}}` (`null` antes de
+  haver texto).
+  - `texto` é o rascunho fechado do alvo, na voz da persona.
+  - `conhecimento_ids` vem da frente de Aprendizado (fatos da operação usados no texto) e é lista vazia sem eles.
+  - `evidencia_id` é a captura mais recente da execução fora da etapa de efeito (a tela lida até o texto).
+  - `acao_final.tipo` é a chave da ação de efeito (ex.: `CREATE_COMMENT`), `verificada` é `true` só com a pós-condição
+    comprovada, e `acao_final.evidencia_id` é a prova dela.
+
+**`capacidade`** = `{solicitados, contas_existentes, sessoes_validas, contas_disponiveis, concluidas, bloqueadas,
+em_curso, motivos: {<motivo>: n}}`. Conta só os alvos desta operação:
+- `contas_existentes`: a persona tem conta ativa no app;
+- `sessoes_validas`: e essa conta tem sessão pronta em algum aparelho;
+- `contas_disponiveis`: e o aparelho está apto agora (ligado, sem quarentena, sem conta travada).
+
+O déficit aparece aqui, não é escondido.
+
+Eventos novos:
+- `operacao.criada` com `{operacao_id, solicitados}`;
+- `operacao.alvo` com `{operacao_id, profile_id, estagio, estado, motivo}`, a cada mudança de estágio ou de estado;
+- `operacao.encerrada` com `{operacao_id, status, capacidade}`.
 
 
 ## Adendo v1.96 (06/10/2026; prova30 A3, extensão do 31.157) — o aprendizado de uma operação nas 10 perguntas do dono

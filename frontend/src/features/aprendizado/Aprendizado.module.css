@@ -180,6 +180,21 @@
 
 .resumoChip strong { color: var(--text-1); }
 
+.resumoBotao {
+  padding: 0 8px;
+  border: 1px solid var(--border-2, var(--border-1));
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--accent, inherit);
+  font: inherit;
+  cursor: pointer;
+}
+
+.resumoBotao[aria-pressed='true'] {
+  background: var(--surface-3, var(--surface-2));
+  font-weight: 600;
+}
+
 /* O que mais falha: os três custos separados; o total só ordena. */
 .numeros {
   display: grid;

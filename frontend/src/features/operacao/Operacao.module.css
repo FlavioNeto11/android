@@ -1,0 +1,193 @@
+.subtitulo {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.objetivo {
+  margin: 0;
+  max-width: 80ch;
+}
+
+.faixa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.celulas {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--sp-3);
+}
+
+.celula {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-2, 8px);
+}
+
+.celulaOk {
+  border-color: var(--success, var(--border-2));
+}
+
+.celulaAtencao {
+  border-color: var(--warning, var(--border-2));
+}
+
+.celulaValor {
+  margin: 0;
+  font-size: var(--fs-xl, 1.5rem);
+  font-weight: 700;
+}
+
+.celulaRotulo {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.motivos,
+.porApp {
+  margin: 0;
+  padding-left: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+.rolagem {
+  overflow-x: auto;
+}
+
+.tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.tabela th,
+.tabela td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.tabela thead th {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.persona {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.acao {
+  min-width: 220px;
+  overflow-wrap: anywhere;
+}
+
+.mudo {
+  color: var(--text-3);
+}
+
+.pipeline {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.ponto {
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--surface-3, var(--border-1));
+}
+
+.pontoFeito {
+  background: var(--success, currentColor);
+}
+
+.pontoParada {
+  background: var(--warning, currentColor);
+}
+
+.cabecalho {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+  margin: 0;
+}
+
+.link {
+  color: var(--accent, inherit);
+}
+
+.lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.itemDaLista {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-2, 8px);
+}
+
+.linhaDoDetalhe td {
+  background: var(--surface-2);
+}
+
+.detalhe {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-4);
+}
+
+.resposta {
+  margin: 0 0 var(--sp-2);
+  overflow-wrap: anywhere;
+}
+
+.liberar {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.acoesDoRelatorio {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}

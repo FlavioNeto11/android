@@ -26,6 +26,7 @@ from ...devices.emulator import RENDERIZADORES, normalizar_renderizador
 from ...modules.applications.domain.definition import AppDefinition
 from ...modules.applications.infrastructure.registry import AppManifest
 from ...modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
+from ...modules.operacoes.domain.estagios import ESTAGIOS_DE_APP
 from ...planning.capabilities import CONHECIMENTO_DE_APPS, CapabilityCatalog, carregar_catalogo, catalogo_do_pacote
 from . import conhecimento as declarado
 from .conhecimento import ConhecimentoDeSessao
@@ -37,7 +38,8 @@ PASTA_DOS_APPS = CONHECIMENTO_DE_APPS
 #: Os campos que o `app.yaml` aceita. Campo fora daqui é erro de digitação que seria ignorado em silêncio.
 _CAMPOS = frozenset({"app", "nome", "rotulo", "provedor_de_sessao", "precisa_de_perfil", "precisa_de_internet",
                      "ancora_do_perfil", "links_de_perfil", "tipos_de_texto", "leituras_de_conversa", "leitura",
-                     "renderizador_recusado", "atividades_de_conta_perdida", "limpar_ao_retirar", "apelidos"})
+                     "renderizador_recusado", "atividades_de_conta_perdida", "limpar_ao_retirar", "apelidos",
+                     "operacao"})
 _PACOTE_ANDROID = re.compile(r"^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*)+$")
 
 
@@ -118,6 +120,24 @@ def _renderizadores(bruto: object, onde: str) -> tuple[str, ...]:
     return nomes
 
 
+def _operacao(bruto: object, onde: str) -> tuple[str, tuple[tuple[str, str], ...]]:
+    """`operacao: {abertura, estagios: {CAPABILITY: estagio}}` (31.154): o rótulo do app aberto e os estágios do alvo que
+    as ações do catálogo marcam. Estágio fora do vocabulário do dono é erro de digitação, recusado na carga."""
+    if bruto is None:
+        return "app_aberto", ()
+    if not isinstance(bruto, dict) or set(bruto) - {"abertura", "estagios"}:
+        raise PacoteInvalido(f"{onde}: esperava {{abertura, estagios}}")
+    abertura = _texto(bruto.get("abertura"), f"{onde}: abertura", opcional=True) or "app_aberto"
+    if not re.fullmatch(r"[a-z]+_aberto", abertura):
+        raise PacoteInvalido(f"{onde}: abertura {abertura!r} tem de ser <nome>_aberto")
+    estagios = _pares(bruto.get("estagios"), f"{onde}: estagios")
+    estranhos = sorted(e for _, e in estagios if e not in ESTAGIOS_DE_APP)
+    if estranhos:
+        raise PacoteInvalido(f"{onde}: estágio desconhecido {', '.join(estranhos)} (aceitos: "
+                             f"{', '.join(sorted(ESTAGIOS_DE_APP))})")
+    return abertura, estagios
+
+
 def definicao_de_dados(dados: object, onde: str = "app.yaml") -> AppDefinition:
     """A `AppDefinition` de um `app.yaml` já lido."""
     if not isinstance(dados, dict):
@@ -131,6 +151,7 @@ def definicao_de_dados(dados: object, onde: str = "app.yaml") -> AppDefinition:
         raise PacoteInvalido(f"{onde}: app {pacote!r} não é um pacote Android")
     nome = _texto(dados.get("nome"), f"{onde}: nome") or pacote
     hosts, reservados = _links(dados.get("links_de_perfil"), f"{onde}: links_de_perfil")
+    abertura, estagios = _operacao(dados.get("operacao"), f"{onde}: operacao")
     return AppDefinition(package=pacote, name=nome,
                          session_provider=_texto(dados.get("provedor_de_sessao"), f"{onde}: provedor_de_sessao",
                                                  opcional=True),
@@ -147,7 +168,8 @@ def definicao_de_dados(dados: object, onde: str = "app.yaml") -> AppDefinition:
                                                          f"{onde}: atividades_de_conta_perdida"),
                          clear_on_account_retire=_booleano(dados.get("limpar_ao_retirar"),
                                                            f"{onde}: limpar_ao_retirar"),
-                         aliases=_textos(dados.get("apelidos"), f"{onde}: apelidos"))
+                         aliases=_textos(dados.get("apelidos"), f"{onde}: apelidos"),
+                         operation_opening=abertura, operation_stages=estagios)
 
 
 def _ler(caminho: Path) -> object:

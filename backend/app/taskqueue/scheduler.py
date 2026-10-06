@@ -437,17 +437,17 @@ class Scheduler:
                     self.run_device_job(rt, trabalho, label="entrega do aplicativo")
 
     # ------------------------------------------------------------------ trabalho exclusivo fora do laço de etapas
-    def run_device_job(self, rt: DeviceRuntime, factory: Callable[[], Any], *, label: str) -> bool:
+    def run_device_job(self, rt: DeviceRuntime, factory: Callable[[], Any], *, label: str, silencioso: bool = False) -> bool:
         """Roda um trabalho que precisa do aparelho inteiro — instalar um APK, autenticar — com as MESMAS guardas do
         executor: registrado em `workers`, então o despacho não concorre, o rodízio não despeja e o encerramento
-        cancela. Devolve False quando o aparelho já está ocupado."""
+        cancela. Devolve False quando o aparelho já está ocupado. `silencioso` (29.163): não publica "IA assumiu/liberou"."""
         if rt.id in self.workers:
             return False
         if rt.worker_id and self.worker_gate and self.worker_gate(rt.worker_id) is not None:
             # Mesma guarda do despacho de objetivos: instalação de app e autenticação também são trabalho, e um
             # worker em manutenção não recebe nada novo — nem isso.
             return False
-        if not self.devices.ai_begin(rt):
+        if not self.devices.ai_begin(rt, silencioso=silencioso):
             return False
         self.workers[rt.id] = asyncio.create_task(self._device_job(rt, factory, label), name=f"job-{rt.id}")
         return True

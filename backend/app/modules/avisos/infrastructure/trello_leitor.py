@@ -78,6 +78,10 @@ AUTORIA_APP_DO_DONO = "app_do_dono"
 #: 28.52: só nos comentários de IA (com 🤖) das listas de perguntas, que guardam a autoria para medir: `appCreator` nulo.
 AUTORIA_DIGITADA = "digitado"
 _SEPARADOR_DA_AUTORIA = ";autoria="
+#: 28.55: o comentário ESCRITO POR APP (a Central, um script, uma sessão) num cartão que não é pergunta nem aviso da Central
+#: (fora das listas de perguntas e sem chave de fato) não vale como digitado pelo dono: vira `outro`, sem texto, e a linha leva
+#: esta marca em `responde_a` (`alvo_desconhecido;autoria=app`) para a contagem no estado dos canais.
+ALVO_DESCONHECIDO = "alvo_desconhecido"
 _NUMERO_DA_PERGUNTA = re.compile(r"^\s*(P-\d{3,})(?!\d)")
 #: Comentário que começa com isto é de uma IA (a Central ou uma sessão), nunca um pedido do dono, que não usa 🤖.
 MARCA_DE_IA = "🤖"
@@ -224,6 +228,12 @@ def recebida_da_action(action: Mapping[str, object], cfg: TrelloCfg, *,
         # antigos (`🤖 HH:MMZ ·`) escrevem todos com o token dele. Regra C-07 de docs/dominios/canais.md.
         if da_ia:
             return outro()                    # o que a própria Central escreveu volta como action do dono (o token é o dele)
+        app = action.get("appCreator")
+        if fato is None and app is not None and _autoria_do_app(app, autor, cfg) == AUTORIA_DE_APP:
+            # 28.55: sem fato e fora das listas de perguntas, o app que não é o do dono não digitou isto. O comentário sem
+            # `appCreator` (o que o dono digita) e o do app que ele reconheceu seguem como sempre (28.30 pede o sim no Telegram).
+            return Recebida(id_externo=ident, ordem=None, tipo="outro", do_dono=False, texto="", ref_mensagem=ref,
+                            responde_a=f"{ALVO_DESCONHECIDO}{_SEPARADOR_DA_AUTORIA}{AUTORIA_DE_APP}", escrita_em=escrita)
         return Recebida(id_externo=ident, ordem=None, tipo="mensagem", do_dono=do_dono, texto=texto,
                         ref_mensagem=ref, responde_a=fato, escrita_em=escrita)
     if tipo_da_action == "updateCard" and chave is not None and chave.startswith("approval:"):

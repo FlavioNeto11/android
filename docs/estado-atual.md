@@ -1,10 +1,25 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `6e7b87cf` (migração 123, deploy 53); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `086236e9df30a8` (migração 125, deploy 55); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 55 no ar (06/10/2026, 19:11Z, central `086236e9df30a8`, migrações 124 e 125; corte da prova de 07/10).** 16 pontas: Jev 31.154,
+  31.156 e fix 29.126; ensino 31.157 e 31.158; Portal 31.159, 31.144, 31.145, 31.146 e 31.147; canais 28.59 e 29.145; DevOps 29.166 b e
+  29.167. Também: Portal 29.164 (seção Comando remoto em português) e 31.162 (relatório da operação em Markdown e JSON); Frente GitHub 29.166 ponta a (job docs do CI com o docs-check completo); dois testes de outras frentes corrigidos na integ (409a3604).
+  - `real` (central WIN-7S2UASNLFOP): deploy com backup `20261006-160927` e ensaio das migrações; saúde ok, migração 125; prova de fora; agente `0.1.0+086236e`; A10 ok; `ai.pesquisa.enabled` ligada neste deploy (antes: chave ausente = false; depois: true; teto US$ 0,25 por operação).
+  - `simulated` (suíte 55): números do CHANGELOG.
+  - `not_run`: a operação real da prova (ondas 1, 3–4 e 30); percurso da tela Operação; ensaio real de restauração.
+  - Próxima ação: onda 1 (1 alvo, `max_usd` 0,75) pelo roteiro; depois 3–4; rodada com ~30 alvos em 07/10 (cenário em
+    `.claude/handoffs/prova30/cenario.md`).
+- **Deploy 54 no ar (06/10/2026, 17:07Z, central `2193a8b50ea34e`, sem migração; suíte 53).** 8 pontas: canais 28.57 e 28.55, parque 29.154 f2 e
+  29.159 (histórico, tag e rollback), Jev 29.163, ensino 31.142 e 31.143 (adendos v1.91 e v1.92). Primeira tag: deploy-20261006-1707 (release criado).
+  - `real` (central WIN-7S2UASNLFOP): deploy com backup `20261006-140601`; saúde ok, migração 123; prova de fora; agente `0.1.0+2193a8b`; A10 ok.
+  - `simulated` (suíte 53): números do CHANGELOG.
+  - `not_run`: percurso 53; antes/depois do 29.163; provas reais do 28.57 e 28.55.
+  - Prioridade a partir de 16:22Z: prova de capacidade com 20–30 agentes em 07/10 (`.claude/handoffs/prova30/`); corte 54 fica
+    subordinado ao caminho crítico dela.
 - **Deploy 53 no ar (06/10/2026, 15:45Z, central `6e7b87cf`, sem migração; hotfix do 31.137).** 1 ponta (`c580a9db`): `Adb.start_app` com
   tarefa limpa mandava `--activity-new-task`, que o `am` do Android 34 recusa; toda abertura do Configurações por esse caminho falhava
   no deploy 52 (ação manual, ponto de partida da prova, LT-6 do executor). Só o Configurações usa a tarefa limpa; Instagram intacto.

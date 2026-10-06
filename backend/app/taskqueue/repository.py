@@ -1715,6 +1715,7 @@ class Repository:
             teto_de_autonomia=_col(row, "teto_de_autonomia"),
             pedido_id=_col(row, "pedido_id"), ocorrencia_id=_col(row, "ocorrencia_id"),
             prova_fluxo_id=_col(row, "prova_fluxo_id"), origem=origem, origem_ref=origem_ref,
+            operacao_id=_col(row, "operacao_id"),
             vence_em=self._vence_em_da_pergunta(row, entrada_da_pergunta))
 
     def _vence_em(self, desde: str | None) -> str | None:

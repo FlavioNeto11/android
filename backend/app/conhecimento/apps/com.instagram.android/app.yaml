@@ -63,3 +63,13 @@ leitura:
       - '^(?:message|mensagem)\s+(?:from|de)\s+@?{autor}\s*[:\-]\s*(.+)$'
     campos: [text, desc]
     escolher: ultima
+
+# A operação com N agentes (31.154, adendo v1.94): o rótulo do estágio "app aberto" de cada alvo e a ação do catálogo que,
+# concluída, prova cada estágio do caminho perfil → post → comentários. `conteudo_lido` e `conhecimento_recuperado` não
+# vêm daqui: quem os marca é a porta do rascunho (frente de aprendizado), quando a leitura e os fatos existem.
+operacao:
+  abertura: instagram_aberto
+  estagios:
+    OPEN_PROFILE: target_localizado
+    OPEN_POST: post_localizado
+    OPEN_COMMENTS: interface_de_comentario_alcancada

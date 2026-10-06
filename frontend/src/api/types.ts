@@ -245,6 +245,8 @@ interface RunSummary {
    *  ausente no pedido de pessoa pelo painel. `origem_ref`: o fluxo, o pedido de validação ou o id externo do canal. */
   origem?: OrigemDaExecucao | null;
   origem_ref?: string | null;
+  /** 31.154: a operação com N agentes de que esta execução é um alvo; ausente/nulo fora dela. */
+  operacao_id?: string | null;
   /** v1.74 (29.153): o custo de IA da execução, só no detalhe (`GET /runs/{id}`); a lista não o traz. Ausente em backend
    *  de antes do 29.153: o painel mostra "custo não lido", nunca erro. */
   costs?: RunCosts | null;
@@ -386,6 +388,12 @@ interface Settings {
   idle_stop_s: number;          // 0 = só desliga para ceder vaga
   // v0.20 (C2) — prévia sob demanda. Opcional: backend anterior ao adendo não manda (e captura sempre).
   preview_mode?: PreviewMode;
+  // Prova de 07/10 (J1): quantas personas a sugestão de alvos escolhe e quantas candidatas vão ao modelo. Tipados como número
+  // (a lista de campos numéricos depende disso); backend anterior ao J1 não manda, e então o formulário não mostra o grupo.
+  orquestracao_max_escolhidas: number;
+  orquestracao_max_candidatas: number;
+  /** Quantas contas executam a ação final no post nosso numa operação (as demais ficam paradas até serem liberadas). */
+  operacao_max_acoes_executadas: number;
 }
 
 /** v0.20 (C2): `on_demand` só captura prévia de aparelho que alguém olha; `always` é o laço antigo. */
@@ -1521,6 +1529,47 @@ export interface Worker {
 
 export interface WorkerEnrollment { enrollment_token: string; expires_in_s: number }
 
+/** Comando remoto (29.154, ADR-079): o estado dos três interruptores de um worker e o que o agente negociou. */
+export interface ComandoRemotoInterruptor {
+  worker_id: string;
+  /** `comando_remoto.ativo` do config do central (vale na subida). */
+  central_ativo: boolean;
+  /** O interruptor deste worker no painel (ao vivo). */
+  worker_ligado: boolean;
+  /** O `worker.yaml` dele anuncia a feature `remote_exec`. */
+  agente_anuncia: boolean;
+  /** Os três juntos: só com isso um comando é aceito. */
+  negociado: boolean;
+  /** O central não entra: é a máquina do dono. */
+  e_o_central: boolean;
+}
+
+export type EstadoDoComando =
+  'created' | 'dispatched' | 'running' | 'succeeded' | 'failed' | 'timed_out' | 'cancelled' | 'uncertain' | 'rejected';
+
+/** Um comando remoto. `linha` é a REDIGIDA; `stdout`/`stderr` só vêm no detalhe e já saem redigidos e cortados. */
+export interface ComandoRemoto {
+  id: string;
+  worker_id: string;
+  requested_by: string;
+  modo: 'linha' | 'argv';
+  linha: string;
+  pasta: string | null;
+  timeout_s: number;
+  state: EstadoDoComando;
+  exit_code: number | null;
+  stdout?: string;
+  stderr?: string;
+  truncated: boolean;
+  duration_ms: number | null;
+  reason: string | null;
+  created_at: string;
+  dispatched_at: string | null;
+  finished_at: string | null;
+}
+
+export interface ComandoRemotoPedido { linha: string; pasta?: string; timeout_s?: number; idempotency_key?: string }
+
 /** O que `POST /instances/{id}/actions/{action}` devolve agora: algo para ACOMPANHAR, não uma promessa. */
 export interface CommandAccepted {
   command_id: string; state: CommandState; deduplicated: boolean;
@@ -2172,12 +2221,20 @@ export interface TrainingSaveResult {
 
 /** `POST /training/{id}/preview` (adendo v1.58): o que o salvar faria, sem gravar. */
 /** 31.128 (adendo v1.86): a etapa cuja pós-condição `text_visible` já aparece na tela de partida, com até 3 textos da tela seguinte. */
+export interface SugestaoPronta {
+  kind: string;
+  value: string;
+  texto: string;
+}
+
 export interface PosCondicaoQueJaVale {
   /** A `key` da etapa na proposta. */
   etapa: string;
   /** O texto da pós-condição que já vale. */
   valor: string;
   sugestoes: string[];
+  /** 31.142 (adendo v1.91): na mesma ordem de `sugestoes`; o que o botão aplica (`kind` e `value`) e o texto do botão. */
+  sugestoes_prontas: SugestaoPronta[];
   /** A mesma frase da linha de `warnings` (e da recusa). */
   message: string;
 }
@@ -2185,6 +2242,9 @@ export interface PosCondicaoQueJaVale {
 export interface TrainingPreview {
   steps: TrainingStepReport[];
   warnings: string[];
+  /** 31.142 (adendo v1.91): `duplicate_command` quando o comando já existe (200, não 409); nulo sem recusa; backend anterior não manda. */
+  code?: string | null;
+  message?: string | null;
   /** 31.128 (adendo v1.86): ao lado de `warnings`; vazia sem ocorrência; backend anterior não manda. */
   pos_condicoes_ja_valem?: PosCondicaoQueJaVale[];
   /** Adendo v1.71; backend anterior não manda. */

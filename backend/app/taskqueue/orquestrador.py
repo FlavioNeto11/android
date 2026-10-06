@@ -54,7 +54,9 @@ _VOZ_DO_CARTAO: tuple[tuple[str, str], ...] = (("personality", "personalidade"),
 class RunTargetsSuggestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     command: str = Field(min_length=3, max_length=4000)
-    max_personas: int = Field(default=3, ge=1, le=10)
+    #: O teto de verdade é o da instalação (`LimitsCfg.orquestracao_max_escolhidas`, J1), aplicado em `normalizar`;
+    #: 64 é só o limite do formato (o mesmo dos alvos de `RunCreate`).
+    max_personas: int = Field(default=3, ge=1, le=64)
 
 
 class PersonaEscolhida(BaseModel):
@@ -140,9 +142,12 @@ class Orquestrador:
         status = runs.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
-        cartoes = self._cartoes(candidatas, mundo, apps)
+        limites = runs.scheduler.get_settings()
+        max_candidatas = int(limites.orquestracao_max_candidatas)
+        cartoes = self._cartoes(candidatas, mundo, apps, max_candidatas=max_candidatas)
         pedido = PedidoDeOrquestracao(command=texto, app=", ".join(apps) or None, cartoes=cartoes,
-                                      max_personas=body.max_personas)
+                                      max_personas=body.max_personas, max_candidatas=max_candidatas,
+                                      teto_escolhidas=int(limites.orquestracao_max_escolhidas))
         try:
             bruto, usage = await runs.provider.orchestrate_targets(pedido)  # type: ignore[attr-defined]
         except AIError as exc:
@@ -289,7 +294,8 @@ class Orquestrador:
             " WHERE r.status IN ('running','paused') AND o.status IN ('pending','running')"
             " AND o.profile_id IS NOT NULL GROUP BY o.profile_id")}
 
-    def _cartoes(self, candidatas: dict[str, list[str]], mundo: Mundo, apps: list[str]) -> list[CartaoDePersona]:
+    def _cartoes(self, candidatas: dict[str, list[str]], mundo: Mundo, apps: list[str], *,
+                 max_candidatas: int = MAX_CANDIDATAS) -> list[CartaoDePersona]:
         sched = self.runs.scheduler
         com_trabalho = self.runs.repo.instances_with_open_work() | set(sched.workers)
         fila = self._fila_por_persona()
@@ -338,10 +344,10 @@ class Orquestrador:
                 aparelho_saudavel=not atencoes,
                 atencao=_curto("; ".join(f"{iid}: {texto}" for iid, texto in atencoes.items()), 600)))
         # A saúde ORDENA, não filtra: a de aparelho com aviso continua candidata, e a preferência é do orquestrador,
-        # pelo cartão. Fica depois de `livre` para não mudar quem cabe no teto de MAX_CANDIDATAS por um aviso só.
+        # pelo cartão. Fica depois de `livre` para não mudar quem cabe no teto de candidatas por um aviso só.
         cartoes.sort(key=lambda c: (not c.livre, not c.aparelho_saudavel, not c.sessao_pronta, c.tarefas_na_fila,
                                     c.nome))
-        return cartoes[:MAX_CANDIDATAS]
+        return cartoes[:max_candidatas]
 
 
 def _curto(valor: object, limite: int = 160) -> str:

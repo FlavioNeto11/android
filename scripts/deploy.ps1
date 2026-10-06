@@ -36,21 +36,31 @@
   Não reconstrói `frontend/dist`. Só quando o que mudou é comprovadamente backend, ou quando o `npm` não está
   disponível na máquina — e aí o painel servido continua sendo o do build anterior.
 
+.PARAMETER SemTag
+  Não cria a tag `deploy-AAAAMMDD-HHMM` nem o release no GitHub depois de uma subida conferida (29.159). A linha em
+  `data\deploys.jsonl` é gravada sempre; a tag é no melhor esforço e nunca faz o deploy falhar.
+
 .PARAMETER PularDependencias
   Não roda `uv pip install -r backend\requirements.txt` entre parar e subir. Só quando o `requirements.txt` não
   mudou e o `uv` não está disponível.
+
+.PARAMETER PularDocsCheck
+  Não roda `scripts\docs-check.py` antes de parar qualquer coisa (29.166). Só quando o erro que ele acusa é
+  comprovadamente só de documentação e a subida não pode esperar; o passo existe para pegar `config.example.yaml` ou
+  `.claude/plano-100.json` fora do formato ANTES do backend parar.
 
 .EXAMPLE
   pwsh -File scripts\deploy.ps1 -Ensaio      # sem janela: só backup + retrato do que está no ar
   pwsh -File scripts\deploy.ps1              # a subida
 #>
 [CmdletBinding()]
-param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend, [switch]$PularDependencias)
+param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend, [switch]$PularDependencias, [switch]$SemTag, [switch]$PularDocsCheck)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $base = 'http://127.0.0.1:8000'
 
 . (Join-Path $PSScriptRoot 'lib\farm-health.ps1')   # "responde na porta" não é "a Farm responde" (26/09/2026)
+. (Join-Path $PSScriptRoot 'lib\historico-de-deploy.ps1')   # uma linha por subida e a tag do deploy (29.159)
 function Saude {
   # Só a Farm conta: com ela parada, o `cartorio-api-1` (0.0.0.0:8000) respondia 404 aqui. A VERSÃO (commit) é
   # conferida depois, pelo chamador — a identidade não muda de um commit para outro.
@@ -68,6 +78,29 @@ if ($antes) {
               "migração $($antes.migration ?? '?') | status $($antes.status)")
 } else {
   Write-Host 'no ar agora: nada respondeu em /api/health.'
+}
+
+# 29.159: o histórico do deploy. A linha só existe para subida de verdade que PAROU o backend (a que mexe no que está no
+# ar), e é gravada nos dois desfechos: no fim, se a subida conferiu, e pelo `trap`, se algo lançou depois do stop. Um
+# ensaio, uma recusa do portão e a falha do build do painel (antes de parar) não mudam nada no ar e não entram.
+$inicioDoDeploy = Get-Date
+$arquivoDeDeploys = Join-Path $root 'data\deploys.jsonl'
+$script:subidaParou = $false
+$script:subidaRegistrada = $false
+$pastaDoBackup = $null
+$backupDoEnsaio = $false
+$opcoesDoDeploy = @($PSBoundParameters.Keys | Where-Object { $_ -ne 'Ensaio' } | Sort-Object)
+trap {
+  if ($script:subidaParou -and -not $script:subidaRegistrada) {
+    $script:subidaRegistrada = $true
+    try {
+      Add-RegistroDeDeploy -Caminho $arquivoDeDeploys -Registro (New-RegistroDeDeploy -Resultado 'falhou' `
+        -CommitAntes $antes.commit -MigracaoAntes $antes.migration -CommitDepois $esperadoCommit `
+        -Backup $pastaDoBackup -BackupDoEnsaio $backupDoEnsaio -Motivo $_.Exception.Message `
+        -DuracaoS ((Get-Date) - $inicioDoDeploy).TotalSeconds -Opcoes $opcoesDoDeploy)
+    } catch { Write-Warning "não consegui gravar a linha do histórico de deploys: $($_.Exception.Message)" }
+  }
+  throw $_
 }
 
 # ------------------------------------------------------------------ 1. cópia, ANTES de qualquer coisa
@@ -88,6 +121,8 @@ if ($PularBackup -and -not $Ensaio) {
            "$esperadoCommit, e não há cópia de ensaio assim em data\backups. Rode o -Ensaio ou suba sem -PularBackup.")
   }
   Write-Host "backup: a cópia do ensaio $($copiaDoEnsaio.Name) (mesmo commit, há menos de $minutosDoEnsaio min) vale para esta subida."
+  $pastaDoBackup = $copiaDoEnsaio.Name
+  $backupDoEnsaio = $true
 }
 # <<< portão do -PularBackup
 if (-not $PularBackup) {
@@ -95,6 +130,9 @@ if (-not $PularBackup) {
   $origem = if ($Ensaio) { 'ensaio' } else { 'deploy' }
   & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'backup.ps1') -IncluirSegredos -Origem $origem -Teto $tetoDeCopias
   if ($LASTEXITCODE -ne 0) { throw 'o backup falhou; a subida NÃO continua sem cópia do banco.' }
+  # A pasta que o backup.ps1 acabou de criar é a mais nova de data\backups (ele a anuncia na linha `pronto:`).
+  $pastaDoBackup = (Get-ChildItem (Join-Path $root 'data\backups') -Directory -ErrorAction SilentlyContinue |
+                    Sort-Object LastWriteTime | Select-Object -Last 1).Name
 }
 
 # ------------------------------------------------------------------ 1b. a pasta do site institucional (29.77)
@@ -127,6 +165,29 @@ if ($LASTEXITCODE -eq 2) {
 if ($LASTEXITCODE -ne 0) {
   throw 'a pasta site/ tem arquivo fora da lista e portal.site_ligado está ligado: o central não subiria. Limpe a pasta.'
 }
+
+# ------------------------------------------------------------------ 1c. docs-check (29.166)
+# O docs-check (links, IDs, mapa e, quando o 29.160 entrar, o formato de `config/config.example.yaml` e de
+# `.claude/plano-100.json`) roda aqui, com o Python do venv do backend (que tem PyYAML e pydantic: sem eles o docs-check só
+# AVISA que não conferiu), no ensaio e na subida de verdade, antes de parar qualquer coisa. ERRO recusa; AVISO não. O `config.yaml` da instalação nunca é aberto por ele.
+$pythonDoBackend = Join-Path $root 'backend\.venv\Scripts\python.exe'
+# >>> docs-check (29.166)
+Write-Host '--- docs-check (29.166) ---'
+if ($PularDocsCheck) {
+  Write-Host '    PULADO por -PularDocsCheck: o formato dos arquivos de configuração versionados NÃO foi conferido.'
+} else {
+  $saidaDocs = & $pythonDoBackend (Join-Path $root 'scripts\docs-check.py') --raiz $root 2>&1
+  $codigoDocs = $LASTEXITCODE
+  $saidaDocs | ForEach-Object { Write-Host "    $_" }
+  if (($saidaDocs -join "`n") -match 'NAO conferido|NÃO conferido') {
+    Write-Warning 'o docs-check avisou que NÃO conferiu parte do formato (falta pacote no venv?): a subida segue, mas essa parte está sem prova.'
+  }
+  if ($codigoDocs -ne 0) {
+    throw ('o docs-check reprovou (acima): corrija antes de parar qualquer coisa. Se o erro é só de documentação e a ' +
+           'subida não pode esperar, -PularDocsCheck.')
+  }
+}
+# <<< docs-check (29.166)
 
 if ($Ensaio) {
   Write-Host ''
@@ -176,6 +237,7 @@ if (-not $PularFrontend) {
 # só o processo faria o supervisor religar o código velho em até 15 s, disputando a porta com o start.ps1. A
 # tarefa é parada antes e religada depois; sem ela, vale o stop/start de sempre.
 $supervisionado = [bool](Get-ScheduledTask -TaskName 'farm-central' -ErrorAction SilentlyContinue)
+$script:subidaParou = $true     # daqui em diante uma falha deixa o backend parado ou no meio: entra no histórico
 Write-Host ('--- parando o backend' + $(if ($supervisionado) { ' (e a tarefa farm-central)' }) + ' ---')
 if ($supervisionado) { Stop-ScheduledTask -TaskName 'farm-central' -ErrorAction SilentlyContinue }
 & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'stop.ps1') @(if ($StopEmulators) { '-StopEmulators' })
@@ -250,6 +312,27 @@ Write-Host ''
 Write-Host ("depois da subida: status $($depois.status) | commit $($depois.commit) | migração $($depois.migration)")
 $depois.problems | ForEach-Object { Write-Warning "$($_.message) → $($_.hint)" }
 if ($problemas) { throw ("a subida não confere: " + ($problemas -join '; ')) }
+
+# ------------------------------------------------------------------ 6. histórico e tag (29.159)
+# Só aqui, com a subida conferida: a tag nomeia um commit que está no ar e passou na conferência. Tudo no melhor
+# esforço (sem gh, sem rede, sem permissão): o aviso sai na tela e na linha do histórico, e o deploy continua.
+$resultadoDaTag = $null
+if (-not $SemTag) {
+  $resultadoDaTag = Publish-TagDeDeploy -Raiz $root -Commit $esperadoCommit -Migracao $depois.migration
+  if ($resultadoDaTag.aviso) { Write-Warning $resultadoDaTag.aviso }
+  if ($resultadoDaTag.tag) {
+    Write-Host ("tag $($resultadoDaTag.tag)" + $(if ($resultadoDaTag.empurrada) { ' enviada à origem' } else { ' (só local)' }) +
+                $(if ($resultadoDaTag.release) { '; release criado.' } else { '.' }))
+  }
+}
+$script:subidaRegistrada = $true
+try {
+  Add-RegistroDeDeploy -Caminho $arquivoDeDeploys -Registro (New-RegistroDeDeploy -Resultado 'ok' `
+    -CommitAntes $antes.commit -MigracaoAntes $antes.migration -CommitDepois $depois.commit -MigracaoDepois $depois.migration `
+    -Backup $pastaDoBackup -BackupDoEnsaio $backupDoEnsaio -Tag $resultadoDaTag.tag -Motivo $resultadoDaTag.aviso `
+    -DuracaoS ((Get-Date) - $inicioDoDeploy).TotalSeconds -Opcoes $opcoesDoDeploy)
+  Write-Host 'histórico: uma linha em data\deploys.jsonl'
+} catch { Write-Warning "não consegui gravar a linha do histórico de deploys: $($_.Exception.Message)" }
 
 Write-Host ''
 Write-Host 'CONFERÊNCIA DO TÚNEL DO WORKER (o -R aponta para a 8010 desde 23/09):'

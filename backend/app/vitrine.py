@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -33,6 +35,7 @@ from .releases.catalog import ReleaseValidationError
 from .util import now, to_iso
 
 if TYPE_CHECKING:
+    from .devices.manager import DeviceRuntime
     from .state import AppState
 
 log = logging.getLogger(__name__)
@@ -223,23 +226,32 @@ async def entregar_pendentes(state: AppState, rt: Any, pendentes: list[tuple[str
 
 
 def trabalho_ao_ligar(state: AppState, rt: Any, *, motivo: str = "ligou") -> Any:
+    return _montar_trabalho(state, rt, motivo)[0]
+
+
+def _montar_trabalho(state: AppState, rt: DeviceRuntime, motivo: str) -> tuple[Callable[[], Awaitable[None]] | None, bool]:
     """O que o aparelho que acabou de ligar deve receber: a rede pedida (ADR-056, 25.4), as versões desejadas dos apps
     que ele tem e o proxy legado pedido.
 
     `None` = nada. Senão, uma corrotina-fábrica que roda dentro do trabalho de reobservação do aparelho. `motivo` é
     `ligou` (boot, wake, readoção depois de reinício do backend ou do worker: a rede é relida) ou `varredura` (a
     passada de 60 s: a rede só é relida quando vence `rede.deriva_s`).
+
+    O segundo valor (29.163) diz que o trabalho é SÓ a conferência da rede (nenhuma entrega, nenhum proxy, e o passo é ler, não aplicar nem
+    conectar): quem o dispara não o anuncia como "IA assumiu/liberou".
     """
     from .devices.proxy import aplicar_no_aparelho, proxy_pendente  # noqa: PLC0415
 
     if state.quarentena(rt.id) is not None:
         # Quarentena (ADR-055): nem app nem proxy — trocar a rede por baixo de uma conta travada é mexer nela.
-        return None
+        return None, False
     entregas = pendentes_ao_ligar(state, rt)
     proxy = proxy_pendente(state, rt)
     rede = state.rede_convergencia.trabalho(rt, motivo=motivo)
     if not entregas and not proxy and rede is None:
-        return None
+        return None, False
+    so_confere = (not entregas and not proxy and rede is not None and motivo == "varredura"
+                  and state.rede_convergencia.so_confere(rt, "varredura"))
 
     async def trabalho() -> None:
         if rede is not None:
@@ -256,13 +268,24 @@ def trabalho_ao_ligar(state: AppState, rt: Any, *, motivo: str = "ligou") -> Any
                 log.info("%s: proxy ao ligar não concluiu (%s)", rt.id, exc)
         await entregar_pendentes(state, rt, entregas)
 
-    return trabalho
+    return trabalho, so_confere
 
 
 #: De quanto em quanto tempo a varredura procura aparelho LIGADO e LIVRE com entrega pendente. O gancho de "entrou
 #: no ar" não alcança dois casos: o aparelho que estava ocupado na hora de distribuir (fica ligado, nunca "entra no
 #: ar" de novo) e o que já estava ligado quando o backend reiniciou.
 VARREDURA_S = 60.0
+
+
+def _cronometrado(instance_id: str, trabalho: Callable[[], Awaitable[None]]) -> Callable[[], Awaitable[None]]:
+    async def cronometrado() -> None:
+        t0 = time.monotonic()
+        try:
+            await trabalho()
+        finally:
+            log.info("%s: conferência da rede em %.1f s", instance_id, time.monotonic() - t0)
+
+    return cronometrado
 
 
 def convergir_ligados(state: AppState) -> list[str]:
@@ -282,9 +305,15 @@ def convergir_ligados(state: AppState) -> list[str]:
                 or rt.id in esperando_tarefa:
             continue
         state.adotar_promovidas(rt)
-        trabalho = trabalho_ao_ligar(state, rt, motivo="varredura")
-        if trabalho is not None and state.scheduler.run_device_job(rt, trabalho,
-                                                                   label="entrega do que foi distribuído"):
+        trabalho, so_confere = _montar_trabalho(state, rt, "varredura")
+        if trabalho is None:
+            continue
+        if so_confere:
+            # 29.163: a conferência periódica da rede (a cada `rede.deriva_s`) é rotina de 3 a 20 s: um log de uma linha com a duração,
+            # e o painel não mostra "IA assumiu/liberou" por ela.
+            if state.scheduler.run_device_job(rt, _cronometrado(rt.id, trabalho), label="conferência da rede", silencioso=True):
+                iniciados.append(rt.id)
+        elif state.scheduler.run_device_job(rt, trabalho, label="entrega do que foi distribuído"):
             iniciados.append(rt.id)
     return iniciados
 

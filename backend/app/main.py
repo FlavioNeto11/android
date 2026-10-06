@@ -71,6 +71,7 @@ from .modules.identity.presentation.instagram import router as instagram_router
 from .modules.fleet.presentation.proxies import router as proxies_router
 from .modules.execution.presentation.comandos import router as comandos_router
 from .modules.applications.presentation.apps import router as apps_router
+from .modules.operacoes.presentation.router import router as operacoes_router
 from .modules.learning.presentation.router import router as learning_router
 from .modules.pedidos.presentation.aprendizado_da_operacao import router as aprendizado_da_operacao_router
 from .modules.pedidos.presentation.router import router as pedidos_router
@@ -409,6 +410,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
         app.include_router(proxies_router)       # `/api/proxies*` (15.15 F4j): saíram de `api.py`, no mesmo lugar do `router`
         app.include_router(comandos_router)      # `/api/commands*` (15.15 F4j)
         app.include_router(apps_router)          # `/api/apps*`, `/api/app-store`, `/api/app-catalog`, `/api/app-state` (15.15 F4j)
+        app.include_router(operacoes_router)     # `/api/operacoes*` (31.154): a operação com N agentes, atrás do login
         # Depois do `router`: `/api/skills/resolve` (fase I) mora lá e precisa casar antes de `/api/skills/{id}`.
         app.include_router(skills_router)
         app.include_router(context_retrieval_router)   # só leitura (ADR-063)

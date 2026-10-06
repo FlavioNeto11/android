@@ -18,6 +18,7 @@ from pydantic import ValidationError
 
 from app.config import PAPEIS_DE_LISTA_DO_TRELLO, TrelloCfg
 from app.modules.avisos.infrastructure.trello_leitor import (
+    ALVO_DESCONHECIDO,
     AUTORIA_APP_DO_DONO,
     AUTORIA_DE_APP,
     AUTORIA_NAO_CONFIRMADA_TEXTO,
@@ -210,13 +211,35 @@ async def test_sem_o_campo_a_autoria_nao_se_confirma(tmp_path: Path) -> None:
     assert c.avisos == [] and c.acoes_da_central() == []
 
 
-def test_a_autoria_fica_so_nas_listas_de_perguntas(tmp_path: Path) -> None:
-    """Fora das listas de perguntas o `appCreator` não muda nada: lá o segundo fator segue sendo o Telegram (28.30)."""
+def test_fora_das_listas_o_app_que_nao_e_do_dono_nao_digitou(tmp_path: Path) -> None:
+    """28.55: num cartão de alvo desconhecido (fora das listas de perguntas, sem fato) o comentário escrito por um app que o
+    dono NÃO reconheceu não vale como digitado (`outro`, sem texto, com a marca da contagem). O que ele digita (sem
+    `appCreator`) e o app que ele reconheceu seguem como sempre: o segundo fator ali é o Telegram (28.30)."""
     c = Cenario(tmp_path)
-    for kw in ({"app": APP}, {"app": APP_DO_DONO}, {"sem_app": True}):
+    c.cfg.file.trello.apps_do_dono = [APP_DO_DONO["id"]]
+    for kw in ({"app": APP_DO_DONO}, {"sem_app": True}):
         acao = c.trello.comenta(DONO, C_MANUAL, "Autorizado", lista="lista-de-outra-coisa", **kw)  # type: ignore[arg-type]
         r = recebida_da_action(acao, c.cfg.file.trello, chave_do_cartao=lambda _card: None)
-        assert r is not None and r.responde_a is None and r.do_dono
+        assert r is not None and r.responde_a is None and r.do_dono and r.texto == "Autorizado"
+    acao = c.trello.comenta(DONO, C_MANUAL, "Autorizado", lista="lista-de-outra-coisa", app=APP)
+    r = recebida_da_action(acao, c.cfg.file.trello, chave_do_cartao=lambda _card: None)
+    assert r is not None and r.tipo == "outro" and not r.do_dono and r.texto == ""
+    assert r.responde_a == ALVO_DESCONHECIDO + ";autoria=app"
+    # um cartão com fato (aviso da Central) segue o caminho dele, com ou sem app
+    acao = c.trello.comenta(DONO, C_MANUAL, "sim", lista="lista-de-outra-coisa", app=APP)
+    r = recebida_da_action(acao, c.cfg.file.trello, chave_do_cartao=lambda _card: "approval:ap_1")
+    assert r is not None and r.tipo == "mensagem" and r.responde_a == "fato:approval:ap_1"
+
+
+async def test_o_comentario_de_app_em_alvo_desconhecido_nao_pede_nada_e_entra_na_contagem(tmp_path: Path) -> None:
+    c = await _cenario(tmp_path)
+    acao = c.trello.comenta(DONO, C_MANUAL, "Autorizado: publicar", lista="lista-de-outra-coisa", app=APP)
+    await c.volta()
+    linha = c.linha(str(acao["id"]))
+    assert linha["estado"] == "ignorada" and linha["texto"] is None and linha["do_dono"] == 0
+    assert c.avisos == [] and c.acoes_da_central() == []
+    n = c.db.scalar("SELECT COUNT(*) FROM canal_entradas WHERE canal='trello' AND responde_a LIKE 'alvo_desconhecido;%'")
+    assert n == 1
 
 
 # ---------------------------------------------------------------------------------------------- 28.54: o app do dono

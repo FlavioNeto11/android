@@ -86,7 +86,8 @@ async def test_previa_diz_o_mesmo_que_o_save_e_nao_escreve_nada(harness: Harness
     assert _foto(st, sid) == antes                                  # nem fluxo, escopo, receita, status nem proposta
     assert not [m for m in emitidos if "Habilidade" in m]           # nem o evento de "habilidade salva"
 
-    assert set(previa) == {"steps", "warnings", "scope", "pos_condicoes_ja_valem"}            # v1.86: a lista ao lado
+    assert set(previa) == {"steps", "warnings", "scope", "pos_condicoes_ja_valem", "code", "message"}  # v1.86, v1.91
+    assert previa["code"] is None and previa["message"] is None
     assert previa["warnings"] == _SEM_PERSONA and previa["pos_condicoes_ja_valem"] == []    # 30.81: gravado sem persona
     for linha in previa["steps"]:
         assert set(linha) == {"key", "title", "recipe", "reason", "pacotes_aceitos"}    # as ações da receita nunca saem
@@ -178,9 +179,10 @@ async def test_previa_recusa_o_que_o_save_recusaria_antes_de_gravar(harness: Har
 
     sid2 = await _gravar(st, rt, lease, harness.fakes["android-01"])
     antes = _foto(st, sid2)
-    with pytest.raises(TrainingError) as repetido:                                   # o 409 que só o gravar via
-        await st.skills.preview(sid2, proposal=_proposta(), profile_ids=[], group_ids=[])
-    assert (repetido.value.code, repetido.value.status) == ("duplicate_command", 409)
+    # 31.142: a prévia dá o comando repetido no corpo (200), junto do resto; o 409 fica só no `save`
+    repetido = await st.skills.preview(sid2, proposal=_proposta(), profile_ids=[], group_ids=[])
+    assert repetido["code"] == "duplicate_command" and repetido["warnings"][0] == repetido["message"]
+    assert repetido["steps"] and "pos_condicoes_ja_valem" in repetido
     with pytest.raises(TrainingError) as do_save:
         await st.skills.save(sid2, proposal=_proposta(), profile_ids=[], group_ids=[])
     assert do_save.value.code == "duplicate_command"
@@ -287,7 +289,8 @@ async def test_rotas_http_previa_e_refazer(harness: Harness) -> None:
         r = await c.post(f"/api/training/{sid}/preview", json={"proposal": _proposta()})
         assert r.status_code == 200, r.text
         corpo = r.json()
-        assert set(corpo) == {"steps", "warnings", "scope", "pos_condicoes_ja_valem"} and corpo["warnings"] == _SEM_PERSONA
+        assert set(corpo) == {"steps", "warnings", "scope", "pos_condicoes_ja_valem", "code", "message"}
+        assert corpo["warnings"] == _SEM_PERSONA and corpo["code"] is None
         assert [s["key"] for s in corpo["steps"]] == ["abrir", "conversa", "escrever", "enviar"]
         assert all(set(s) == {"key", "title", "recipe", "reason", "pacotes_aceitos"} and isinstance(s["recipe"], bool)
                    for s in corpo["steps"])

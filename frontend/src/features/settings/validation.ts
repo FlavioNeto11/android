@@ -38,6 +38,8 @@ export interface ChoiceField {
 export interface LimitGroup {
   /** Identifica grupos que ganham conteúdo extra na tela (ex.: a linha de recursos do backend no rodízio). */
   id?: 'rotation' | 'capture';
+  /** O grupo só mostra os campos que o servidor manda (backend anterior à mudança que os criou não manda). */
+  soSeOServidorManda?: boolean;
   title: string;
   description: string;
   toggles?: ToggleField[];
@@ -140,6 +142,16 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     ],
   },
   {
+    soSeOServidorManda: true,
+    title: 'Orquestração de operações',
+    description: 'Quantas personas uma operação com vários agentes escolhe, e quantas das mais disponíveis a IA avalia (prova de 07/10).',
+    fields: [
+      int('orquestracao_max_escolhidas', 'Personas escolhidas por operação', 'personas', 'O teto da sugestão de alvos: a operação não passa disto. Padrão 30; vai de 1 a 64.', 1, 64),
+      int('orquestracao_max_candidatas', 'Candidatas avaliadas pela IA', 'personas', 'As mais disponíveis que vão ao modelo para a escolha; nunca menos que as escolhidas. Padrão 60; vai de 1 a 120.', 1, 120),
+      int('operacao_max_acoes_executadas', 'Contas que executam a ação final', 'contas', 'Quantas contas comentam de verdade no post nosso; as outras param até alguém liberar. Padrão 3; vai de 1 a 64.', 1, 64),
+    ],
+  },
+  {
     title: 'Sinais e limites do Instagram',
     description: 'Quando parar de insistir sozinho e como a frota se coordena sobre o mesmo alvo (item 8.3).',
     fields: [
@@ -183,6 +195,11 @@ export function crossValidate(values: Partial<Record<NumericSettingKey, number>>
   const objective = values.objective_timeout_s;
   if (typeof step === 'number' && typeof objective === 'number' && objective < step) {
     errors.objective_timeout_s = 'Deve ser maior ou igual ao tempo limite da etapa.';
+  }
+  const escolhidas = values.orquestracao_max_escolhidas;
+  const candidatas = values.orquestracao_max_candidatas;
+  if (typeof escolhidas === 'number' && typeof candidatas === 'number' && candidatas < escolhidas) {
+    errors.orquestracao_max_candidatas = 'Deve ser maior ou igual às personas escolhidas.';
   }
   // "Ligando ao mesmo tempo ≤ aparelhos ativos" saiu daqui: boots em paralelo são de CADA servidor (cartão em
   // Limites → Por servidor), e o erro cairia num campo que este formulário nem mostra — bloqueando o salvar sem

@@ -65,6 +65,11 @@ class AppDefinition:
     #: Como o dono chama o app num comando, além do nome e do rótulo ("insta"; `apelidos` no `app.yaml`). É o que o filtro
     #: da sombra da intenção (31.9) reconhece como o app, sem lista de app em Python (ADR-052).
     aliases: tuple[str, ...] = ()
+    #: Prova de 07/10 (31.154, adendo v1.94): o rótulo do estágio "app aberto" de um alvo da operação (`instagram_aberto`)
+    #: e que ação do catálogo, concluída, marca qual estágio (`OPEN_POST` → `post_localizado`). `operacao` no `app.yaml`;
+    #: vazio = o alvo deste app só tem os estágios que não dependem do app (o nome do app nunca fica no código).
+    operation_opening: str = "app_aberto"
+    operation_stages: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.label:

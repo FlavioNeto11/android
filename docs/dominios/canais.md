@@ -338,6 +338,11 @@ avisos depois da faxina"), e a trava cai no TTL.
     máquina segue pedindo a confirmação no Telegram (28.30), com ou sem app reconhecido. Dentro das listas de perguntas
     nenhum código pede o 28.30: a resposta vai à orquestradora sem Telegram, e quem barra o efeito externo é ela, ao ler
     a resposta (comentário nunca autoriza efeito em conta real).
+  - **Alvo desconhecido (28.55):** o comentário num cartão FORA das listas de perguntas e sem fato (um cartão que a Central
+    não conhece) escrito por um app que o dono não reconheceu (o app da Central, um script, uma sessão) deixa de valer como
+    digitado: vira `outro`, sem texto, e a linha leva `responde_a = alvo_desconhecido;autoria=app`. O comentário sem
+    `appCreator` (o que ele digita) e o do app em `trello.apps_do_dono` seguem como sempre, com o sim no Telegram (28.30). A
+    contagem sai em `GET /api/canais/estado` (`trello.comentarios_de_app_em_alvo_desconhecido`, só o número).
   - **O id do app é público, o valor é a igualdade com o membro:** o id do aplicativo do Trello no celular é o mesmo para
     qualquer usuário do cliente do Trello; ele não prova quem escreveu. O que lhe dá valor é o autor ser igual a
     `trello.membro_dono` (conferido na tradução, `recebida_da_action`, e de novo no consumo). O teste do membro errado
@@ -597,6 +602,18 @@ avisos depois da faxina"), e a trava cai no TTL.
     de imagem, ícone de PDF, canal, sentido, data e tamanho, sem nome de remetente nem caminho de disco. Só imagem e PDF têm
     prévia (o texto guardado e o anexo de convidado não saem por `/conteudo`), o arquivo sai como download com
     `Cache-Control: no-store`, e "Anexar ao cartão" é a rota da exceção (b) com o id do cartão e a confirmação na própria linha.
+  - **28.57, nome original no envio:** o código nosso (nunca o remetente) pode pedir o `nome` de um arquivo de TEXTO ao
+    `enviar_anexo`/`enviar_conteudo`, para o comando `-File .\script.ps1` valer no destino. Lista fechada de extensões
+    (`.ps1`, `.md`, `.txt`, `.json`, `.csv`, `domain/anexos.EXTENSOES_COM_NOME`), nome só de `[A-Za-z0-9._-]` (até 80, sem
+    `..` nem nome oculto) e conteúdo que de fato seja texto UTF-8 (a assinatura decide); qualquer outro caso é recusa
+    definitiva, sem enviar. O armazém e a recepção não mudam: tudo continua `.txt` em `data/anexos`, e o nome não é guardado.
+  - **28.57, o `.txt` do dono sem legenda não fica mudo:** a recepção já guardava o arquivo (28.24), mas a linha caía em
+    `vazia` e ficava `ignorada`, sem ninguém saber (os 4 `.txt` de 06/10, anexos 1 a 4). Agora a linha vai à orquestradora
+    (`previa.repasse = "anexo_recebido"`) com o id, o tamanho e a CONTAGEM de identificadores por categoria (IP, MAC,
+    e-mail, usuário em caminho, serial, nome da máquina, segredo): só números, nunca o achado nem o nome do arquivo. Sem
+    resposta nova ao dono (ele já recebeu o "guardei"). O conteúdo se lê pelo armazém
+    (`GET /api/canais/anexos/{id}/conteudo`) e se risca antes de repassar. Foto e PDF sem legenda seguem como sempre (o
+    `/ler` em reply). O filtro de credencial do texto colado não mudou: continua apagando saída de script como texto.
 - **Hoje:** nada na operação provisória.
 - **No produto:** item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, `anexos_trello.py`, o
   adaptador do Telegram, `GET /api/canais/anexos/{id}`, `POST /api/canais/anexos/{id}/trello`, `devices/captura_pontual.py`,

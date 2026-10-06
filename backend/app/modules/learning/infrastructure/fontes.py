@@ -450,7 +450,8 @@ def _fluxo(r: Row, resolvedor: ResolvedorDeApp, exigidos: list[str]) -> EntradaD
         side_effect=fluxo_tem_efeito(plano), created_at=linhas.texto(r, "created_at"),
         last_used_at=linhas.texto_ou_nulo(r, "last_used_at"), uses=linhas.inteiro(r, "uses"),
         detail=linhas.texto(r, "name"), content_hash=content_hash(plano) if plano is not None else None,
-        scope_key=escopo_do_fluxo(linhas.texto(r, "match_key")), nasceu_de=_run_de_origem(r, fonte))
+        scope_key=escopo_do_fluxo(linhas.texto(r, "match_key")), nasceu_de=_run_de_origem(r, fonte),
+        nascido_de_prova=bool(linhas.inteiro_ou_nulo(r, "nascido_de_prova")))
 
 
 def _apps_do_fluxo(plano: JsonValue, exigidos: list[str], principal: str | None,

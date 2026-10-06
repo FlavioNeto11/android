@@ -67,6 +67,11 @@ function decisao<T>(p: Promise<T>): Promise<T> {
 }
 
 export const apiAprendizado = {
+  /** 31.146: os fluxos nascidos de prova (`GET /api/flows?nascido_de_prova=true`, 31.130); a guarda cobre o backend que ignora o parâmetro. */
+  fluxosDeProva: async (signal?: AbortSignal): Promise<number> => {
+    const fluxos = await apiRequest<{ nascido_de_prova?: boolean }[]>('GET', '/flows', { query: { nascido_de_prova: 'true' }, signal });
+    return (Array.isArray(fluxos) ? fluxos : []).filter((f) => f?.nascido_de_prova === true).length;
+  },
   livro: (f: FiltroDoLivro = {}, signal?: AbortSignal) =>
     apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem, rotulo: f.rotulo,
                                            nascido_de_prova: f.prova === 'so_prova' ? 'true' : f.prova === 'sem_prova' ? 'false' : undefined }, signal }),

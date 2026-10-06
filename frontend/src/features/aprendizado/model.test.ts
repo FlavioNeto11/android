@@ -5,7 +5,7 @@ import {
   desfazerDoEfeito, estadoDoLivro, lerFeedbackDaExecucao, lerRelatorioDeFalhas, lerRespostaDoVoto, lerSinais, mdDoItem,
   ordenarFalhas, ordenarPendentes, porQueOSistemaNaoPublica, rotuloDaCamada, rotuloDaFalha, rotuloDoEstado,
   rotuloDoKind, motivoDaInvalida, textoDaEvidencia, textoDoEfeito, textoDosOcultos, votoDoItem, capabilityComNome, nomearCapabilityNoTexto, semLacunas, tituloDoItem,
-  titulosDaLista,
+  titulosDaLista, textoDaDecisao, porQuemDecidiu,
 } from './model';
 
 /** Pacote A6 do ADR-054: rótulos de estado e camada, a ordenação do "o que mais falha" e da fila do D1, as ações que
@@ -75,11 +75,11 @@ describe('rótulos', () => {
 describe('o título que a pessoa lê (validação do deploy 3, P3 e P4)', () => {
   const ENVIAR = { title: 'send_message_i1 (v1)', capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem' };
 
-  it('a receita troca a chave da etapa pelo nome da capability; sem nome, ou ambígua, fica a chave', () => {
+  it('a receita troca a chave da etapa pelo nome da capability; sem nome, ou ambígua, a chave vira texto (31.145)', () => {
     const r = entrada(ENVIAR);
     expect(tituloDoItem(r)).toBe('Enviar a mensagem (v1)');
-    expect(tituloDoItem({ ...r, capability_nome: null })).toBe('send_message_i1 (v1)');
-    expect(tituloDoItem({ ...r, capability: null })).toBe('send_message_i1 (v1)');
+    expect(tituloDoItem({ ...r, capability_nome: null })).toBe('Send message i1 (v1)');
+    expect(tituloDoItem({ ...r, capability: null })).toBe('Send message i1 (v1)');
     expect(tituloDoItem({ ...r, title: 'sem versão' })).toBe('sem versão');
     expect(tituloDoItem({ ...r, kind: 'fluxo', title: 'Enviar oi' })).toBe('Enviar oi');
   });
@@ -89,8 +89,31 @@ describe('o título que a pessoa lê (validação do deploy 3, P3 e P4)', () => 
     expect(tituloDoItem(r)).toBe('Digitar a mensagem (v1)');                    // UX do deploy 8: sem a chave crua
     expect(tituloDoItem({ ...r, title: 'sem versão' })).toBe('Digitar a mensagem');
     expect(tituloDoItem({ ...r, capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem' })).toBe('Enviar a mensagem (v1)');
-    expect(tituloDoItem({ ...r, etapa: null })).toBe('send_message_i1 (v1)');
+    expect(tituloDoItem({ ...r, etapa: null })).toBe('Send message i1 (v1)');
     expect(tituloDoItem({ ...r, kind: 'licao', title: 'Em X: tocou' })).toBe('Em X: tocou');      // só a receita
+  });
+
+  it('31.145: a chave em minúsculas com sublinhado vira texto; título com espaço, maiúscula ou acento fica como veio', () => {
+    const r = entrada({ ...ENVIAR, capability: null, capability_nome: null, etapa: null });
+    const titulo = (t: string) => tituloDoItem({ ...r, title: t });
+    expect(titulo('abrir_adicionar_rede (v1)')).toBe('Abrir adicionar rede (v1)');
+    expect(titulo('cancelar (v1)')).toBe('Cancelar (v1)');
+    expect(titulo('digitar_termo')).toBe('Digitar termo');
+    expect(titulo('Abrir Configurações (v1)')).toBe('Abrir Configurações (v1)');
+    expect(titulo('Abrir as mensagens (v1)')).toBe('Abrir as mensagens (v1)');
+    expect(titulo('ligar_Historico (v1)')).toBe('ligar_Historico (v1)');
+    expect(titulo('_abrir (v1)')).toBe('_abrir (v1)');
+    expect(tituloDoItem({ ...r, kind: 'fluxo', title: 'abrir_busca (v1)' })).toBe('abrir_busca (v1)');      // só a receita
+  });
+
+  it('31.145: o "(panel)" do motivo e o "por panel" saem em português, e o resto do texto não muda', () => {
+    expect(textoDaDecisao('desligado por uma pessoa (panel) em 04/10/2026 (31.11: x)')).toBe('desligado por uma pessoa (painel) em 04/10/2026 (31.11: x)');
+    expect(textoDaDecisao('sem marca')).toBe('sem marca');
+    expect(porQuemDecidiu('panel')).toBe('pelo painel');
+    expect(porQuemDecidiu('painel')).toBe('pelo painel');
+    expect(porQuemDecidiu('Ana Ribeiro')).toBe('por Ana Ribeiro');
+    expect(porQueOSistemaNaoPublica(entrada({ por_que_nao_publica: { codigo: 'vetado', espera_o_dono: false, detalhe: 'desligado por uma pessoa (panel) em 04/10' } })))
+      .toBe('desligado por uma pessoa (painel) em 04/10');
   });
 
   it('as lacunas de parâmetro do modelo saem do título como "…" (deploys 9–12: "{…}" em claro)', () => {

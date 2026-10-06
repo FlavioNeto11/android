@@ -275,3 +275,78 @@
   flex: 1;
   min-width: 0;
 }
+
+/* Comando remoto (29.154): o terminal do worker, com a saída em bloco monoespaçado e o histórico dos últimos 50. */
+.terminal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-top: var(--sp-2);
+}
+
+.terminalForm {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: start;
+}
+
+.terminalForm > :last-child {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 720px) {
+  .terminalForm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.saidaDoComando {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.saidaDoComando .code {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+}
+
+.historico {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.historicoLinha {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-1, 6px);
+  padding: var(--sp-1, 4px) var(--sp-2);
+  cursor: pointer;
+  color: inherit;
+}
+
+.historicoLinha:hover,
+.historicoLinha:focus-visible {
+  background: var(--surface-2);
+  border-color: var(--border-1);
+}
+
+.historicoLinhaTexto {
+  min-width: 0;
+  flex: 1 1 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -292,12 +292,65 @@ Conferir **o resultado**, não só o código de saída (lição registrada em 24
 - Aparelhos externos aparecem no snapshot do parque (não só "backend no ar").
 - Config efetivamente lido (não o exemplo) — o painel ou `/api/diagnostics` mostram os valores de produção.
 
+**`docs-check` antes de parar (29.166).** O `deploy.ps1` roda `scripts\docs-check.py` com o Python do **venv do backend**, no
+ensaio e na subida de verdade, depois do backup e da conferência do `site/` e **antes de parar qualquer coisa**. Hoje ele
+cobra links, IDs e o mapa do plano; o formato de `config/config.example.yaml` e de `.claude/plano-100.json` (chave desconhecida,
+tipo errado, com o caminho da chave) entra quando o 29.160 (esquema do docs-check) for integrado, e este passo já o carrega. `ERRO` recusa a subida e o ensaio; `AVISO` não (mas um aviso "NAO conferido" vira `WARNING` do deploy). O venv é obrigatório porque a conferência do
+exemplo precisa de PyYAML e pydantic, e sem eles o `docs-check` só avisa que não conferiu. `-PularDocsCheck` pula o passo, e o
+console diz que o formato NÃO foi conferido: só para erro comprovadamente só de documentação numa subida que não pode esperar.
+O `config.yaml` da instalação nunca é aberto por ele. Teste: `scripts/tests/test_deploy_portao_do_ensaio.py`.
+
 **Dependências.** Desde 25/09 o `deploy.ps1` roda `uv pip install -r requirements.txt` no venv do backend
 **entre parar e subir** (passo 3b; `-PularDependencias` desliga). Antes disso ele não instalava nada, e uma versão
 nova no `requirements.txt` (ex.: `cryptography` 46.0.3 → 50.0.0, item T.4) nunca chegava à produção. O venv é do
 `uv` e não tem `pip` dentro: `python -m pip` falha com "No module named pip". Tem de ser com o backend parado,
 porque no Windows a `.pyd` carregada fica travada. O agente do worker não acompanha: `worker-requirements.txt` se
 instala na máquina dele.
+
+### Histórico, tag e rollback do deploy nativo (29.159)
+
+**O que cada subida deixa.** Uma subida de verdade (a que parou o backend) acrescenta UMA linha a `data\deploys.jsonl`
+(fora do Git, como o resto de `data\`): `ts_utc`, `resultado` (`ok` ou `falhou`), `commit_antes`/`migracao_antes` (o que
+estava no ar), `commit_depois`/`migracao_depois`, `backup` (a pasta em `data\backups` que vale para voltar),
+`backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s` e `opcoes`. Ensaio, recusa
+do portão do `-PularBackup` e falha do build do painel (antes de parar) não entram: não mudaram nada no ar. Ler:
+`Get-Content data\deploys.jsonl | ConvertFrom-Json | Select-Object ts_utc, resultado, commit_antes, commit_depois, backup, tag`.
+
+**Tag e release.** Com a subida conferida (commit e migração batem), o deploy cria a tag anotada
+`deploy-AAAAMMDD-HHMM` (UTC; `-2` se houver duas no mesmo minuto) no commit que subiu, envia à origem e pede ao `gh` um
+release com as notas geradas. É no melhor esforço: sem `gh`, sem rede ou sem permissão a tela mostra o aviso, a linha do
+histórico leva o aviso em `motivo` e o deploy segue (a tag não desfaz nem atrasa nada). `-SemTag` pula a tag e o release; a
+linha do histórico sai sempre. A tag não dispara o `conteiner.yml` (29.157: ele só roda em push da `main`).
+
+**Rollback: o que muda com a migração.** Primeiro responda uma pergunta: o deploy que se quer desfazer trouxe migração
+(`migracao_antes` diferente de `migracao_depois`)? Migração aplicada não se edita, e o código antigo sobre um banco mais
+novo não é um estado testado (o `deploy.ps1` confere código e banco e recusa a subida que não bate: "o banco está em X e o código traz até Y").
+
+1. **Sem migração nova** (só código): volte o código e suba de novo, com backup como sempre.
+   - Achar o alvo: `commit_antes` da linha do deploy ruim, ou a tag do deploy anterior (`git tag --list 'deploy-*'`).
+   - **Preferida:** `git revert <commit ruim>` na `main`, push e `deploy.ps1`. A `main` continua dizendo o que está no ar.
+   - **Emergência** (não dá tempo de revert): `git switch --detach <tag ou commit>` no checkout central, `deploy.ps1` (com o
+     backup dele) e, depois, **voltar** `git switch main` e `git pull --ff-only` ANTES do próximo deploy: com o checkout
+     solto, o `git pull` de um deploy normal não anda.
+2. **Com migração nova** (o banco já foi migrado): o caminho é restaurar o banco do backup do deploy e voltar o código
+   junto, e **o que foi gravado depois do deploy se perde**. Antes de decidir, confira o que entrou desde então.
+   - Pare o backend (`scripts\stop.ps1`, e a tarefa `farm-central` se estiver registrada).
+   - Ensaie primeiro: `pwsh -File scripts\restore.ps1 -De data\backups\<backup da linha> -Para C:\temp\ensaio-rollback` e confira a
+     migração e as contagens que ele imprime.
+   - Restaure: `pwsh -File scripts\restore.ps1 -De data\backups\<backup da linha> -Confirmar` (guarda o que havia em
+     `data\substituido-<carimbo>`).
+   - Volte o código para a tag ou o commit do deploy ANTERIOR (`commit_antes`) como no item 1 e suba com `deploy.ps1`.
+     O banco restaurado estará na migração anterior e o código antigo o abre.
+3. **Agente do notebook.** O agente é cópia manual e não acompanha o deploy. Se o código voltou numa mudança que toca o fio do
+   worker (`backend/app/contracts/worker/protocol.py`, o hash congelado) ou `worker-manifest.txt`, o agente também precisa voltar:
+   monte uma árvore na tag (`git worktree add C:\temp\arvore-rollback <tag>`) e rode, com ela acessível à máquina do worker,
+   `pwsh -File scripts\worker-install.ps1 -Origem <a árvore>`; confira na Infraestrutura que o worker voltou a `online` e sem
+   `agent_outdated`. Remova a árvore temporária depois (`git worktree remove`).
+4. **Depois de qualquer rollback:** `GET /api/health` (commit e migração), a 8010 escutando, a prova de fora, e uma linha
+   nova em `data\deploys.jsonl` (o rollback também é uma subida e fica no histórico).
+
+Limite dito de frente: o histórico e as tags nascem no próximo deploy; os anteriores a eles só se reconstroem pelos nomes das
+pastas de `data\backups` e pelo `git log`. A prova `real` é um deploy com a linha e a tag (`not_run`).
 
 ## 7. Migrações
 
@@ -319,6 +372,13 @@ estado antigo, nunca uma edição retroativa.
   parado**; o script move `poc.sqlite3`/`-wal`/`-shm` atuais para `data/substituido-<carimbo>` antes de trocar.
   **Nunca copiar o `.sqlite3` do backup por cima à mão** — o arquivo do backup fica na raiz da pasta de backup,
   não em `data/`, e pular o script pula a checagem de integridade.
+- **`scripts/restore-ensaio.ps1`** (29.167) — o ensaio **semanal** (tarefa `farm-restore-ensaio`, domingo 04:30, prioridade
+  ociosa; registro com `-Instalar`). Pega a cópia SQLite mais nova de `data/backups`, roda `restore.ps1` SEM `-Confirmar` numa
+  pasta de trabalho própria (apagada no fim), confere integridade, migração e nº de tabelas contra o manifesto e aplica a
+  migração do código atual NA CÓPIA (`-SemMigrar` pula). Falha também se a cópia mais nova tiver mais de 48 h (o `farm-backup`
+  parou). Veredito em `data/restore-ensaio/ultimo.json` e `historico.jsonl` (só fatos, nenhum valor de tabela); saída 0 ok,
+  1 falhou, 2 pulado. **Não manda Telegram**: o canal do § 15 só aceita os tipos de aviso montados no backend; ligar o `falhou`
+  ao aviso é trabalho de backend (ver o resultado do 29.167). PostgreSQL (`parque.dump`) não é ensaiado aqui.
 - **Restaurar o banco regride a cerca** (`commands.fence`, usada para invalidar comando obsoleto por aparelho):
   depois de restaurar, o agente recusa comandos com "cerca N é anterior à última executada (M)" e os `start`
   ficam `failed` sem reparo automático. Procedimento: subir manualmente o `fence` do último comando do aparelho
@@ -700,7 +760,8 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `pg-rapido.py` | P | PG dirigido da suíte no contêiner descartável `farm-pg-rapido` (29.99): recria o contêiner com WAL mínimo, roda a lista em `--partes`, amostra o disco a cada 30 s e aborta a parte com uma linha em 85 % do tmpfs; `--simular` só lista as partes, `--amostrar` lê o contêiner de pé. Só com a vez da orquestradora |
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
-| `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central` |
+| `restore-ensaio.ps1` | S | Ensaio semanal sobre a cópia mais nova (pasta própria, Idle, não toca `data\poc.sqlite3`); `-Instalar` [P] registra a tarefa `farm-restore-ensaio` |
+| `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central`; grava `data\deploys.jsonl` e, conferida a subida, cria a tag `deploy-AAAAMMDD-HHMM` e o release (29.159; `-SemTag` pula a tag) |
 | `eval-run.ps1` (sem `-Yes`) | S | Só imprime o plano da bateria; nenhuma conexão, nenhum adb (26/09: antes, mesmo "simulado" fazia POST no backend vivo e rodava adb) |
 | `eval-run.ps1 -Yes` | P/T | POST no backend vivo e adb nos aparelhos, mesmo com provedor simulado; com provedor real gasta API |
 | `python scripts/rodada_qa_pareada.py` (sem opção) | S | Só o plano da rodada QA pareada (canário do planejador: Opus × perfil `planejador-sonnet`, ABBA por caso); nenhuma conexão |
@@ -739,7 +800,6 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `github_rotina.py` | S | Leitura diária do GitHub (29.155, C10), só leitura: uma linha com o cron da noite, runner, runs ruins, issues `ci` e `agente`, PRs do agente e uma ESTIMATIVA de créditos do Copilot (contagem de runs; o saldo real só a página de uso mostra) |
 | `secret_scan_resumo.py` | S | Resumo redigido do relatório do gitleaks e issue do achado (29.158); roda no workflow hospedado, não toca o parque nem o central; só chama o `gh` com o token do workflow |
 | `ci_issue_falha.py --run-id N --ensaio` | S | Só LÊ o GitHub (`gh api`, `gh run view --log-failed`) e imprime a issue que o aviso do cron abriria para aquele run (29.155); sem `--ensaio` escreve no GitHub, mas só roda dentro do workflow `ci-aviso-de-falha.yml`, em runner hospedado |
-
 | `marcar-fluxo-de-prova.py` (`--fluxo ID` repetível; `--ensaio` padrão / `--aplicar --backup CAMINHO`) | S / P | 31.130: marca como nascidos de uma prova os fluxos dados pelo id (ou referência pública) e a sessão de treino de origem (`nascido_de_prova`, migração 122). O ensaio roda numa cópia do banco (origem em `mode=ro`) e imprime as contagens e os ids; `--aplicar` exige o backup e a mesma migração do código. Idempotente; id inexistente sai com código 1. Não muda status, plano nem trilha. A Android roda como operadora depois do deploy |
 | `abertura-nas-receitas-ensinadas.py` (`--ensaio` padrão / `--aplicar --backup CAMINHO`) | S / P | 31.138: passe único que destila de novo os fluxos ensinados com a regra de hoje (31.121 e 31.139) e troca a receita viva da etapa que agora começa com `open_app` e não começava (a troca do treino, 30.79, na mesma chave, com a trilha no livro). O ensaio roda numa cópia do banco e imprime as contagens antes e depois e os ids de fluxo e receita; `--aplicar` exige o backup e a mesma migração do código. Idempotente. Não muda fluxo, status nem gravação. A Android roda como operadora depois do deploy |
 | `aprendizado-telas.py` | S | Telas aprendidas: o deixa-um-fora sobre as observações reais (`--sem-regra thread --sem-regra feed`), com o banco aberto só para leitura (`mode=ro`); `exportar --app` pede o fragmento YAML ao central. Sem IA |
@@ -1127,3 +1187,38 @@ comentado em `config/config.example.yaml`.
   Trello, `scripts\trello-webhook.py --desligar`.
 
 `simulated`: `backend/tests/test_trello_*.py`. `not_run`: tudo o que fala com o Trello de verdade.
+
+## 17. Parada por limite semanal (95 %), item 29.145
+
+Pedido do dono (05/10): quando o uso semanal da conta de Claude chega a 95 %, tudo para de forma ordenada e ele reinicia
+o processo com OUTRA conta. É um procedimento de sessões, não de código: nada aqui toca o parque, o banco ou o Git além do
+que o handoff já faz.
+
+**Medir.** A orquestradora lê o uso pelo painel da IDE (`get_usage`, "todos os modelos" do semanal), e diz a HORA da leitura
+(só do `date -u` lido no mesmo comando). Longe do gatilho basta a leitura de cada rodada; perto dele, a cada 5 minutos. Para
+SÓ ao ler 95 % (os 5 % acima são a gordura para terminar direito: não antecipar nem ficar ocioso antes). A medida do
+semanal vale para a conta inteira, não por sessão.
+
+**Ordem de parada** (ao ler 95 %):
+
+1. **Handoff curto por frente, PRIMEIRO.** Cada sessão grava o seu em `.claude/handoffs/<frente>.md` (o que fez, o que falta,
+   branches e commits, ids de processo ou tarefa em curso, o que NÃO repetir). O scratchpad que importa (script, medida,
+   rascunho) vai para `.claude/handoffs/` junto, porque o scratchpad some com a sessão.
+2. **Parar crons e subagentes** que a sessão disparou (os da IDE e os agendados), e deixar as suítes em segundo plano
+   terminarem ou anotar no handoff que ficaram a meio.
+3. **Registrar** a parada em `.claude/session-registry.md` (sessão, hora lida do `date -u`, motivo: 95 % do semanal).
+4. **Um handoff único da orquestradora** em `.claude/handoff-current.md`, escrito por último: estado do plano, do deploy,
+   das frentes (apontando para os `<frente>.md`), pendências do dono e a primeira ação de quem retomar. Com ele o dono
+   reinicia com OUTRA conta.
+
+**Quem retoma.** A orquestradora nova (a conta nova) abre as sessões com nome, continuação (o handoff da frente), modelo e
+força (Sonnet por padrão; Opus só onde a leitora não cobre), mede o custo e ajusta depois. Não reabre as sessões da conta
+antiga.
+
+**O que roda sem sessão e continua** durante e depois da parada: a tarefa `farm-central` (o servidor), o agente do notebook
+da LAN, o cron do GitHub (secret-scan semanal, rotinas das 05:17Z e 06:03Z) e os amostradores de medida. O que não continua:
+qualquer coisa que dependa de sessão viva, como a reconciliação do Trello, o vigia do Telegram e a execução de itens do
+plano-100. Por isso o handoff da Canais diz o último id lido do vigia e o que a reconciliação ainda deve.
+
+`not_run`: a parada de verdade (nunca foi disparada); este texto é o runbook, e o gatilho é a leitura humana da
+orquestradora, sem automação.
