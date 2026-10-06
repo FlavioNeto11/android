@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — Reconciliação total dos quadros do Trello e a dinâmica dos cartões (branch canais/reconciliacao-trello)
+
+- Pedido do dono (06/10, ~01:22Z): "98 cartões em validação, nada sai de lá" e "rever o status de todos os cards nos 3 quadros e a
+  dinâmica de mudança". Novo `.claude/trello/reconciliar.py`: confere todos os cartões de Execução com o estado do plano e o deploy
+  de cada item (commit "merge: ID na suíte N", ou o id citado na seção do deploy no CHANGELOG, ou a hora da classificação), move para a
+  lista certa com a linha de prova no topo e só relata Histórico e Programa. Sem `--aplicar` só relata; a segunda rodada sai sem ação.
+- Regra nova C-28 em `docs/dominios/canais.md`: a saída de Em validação (só o `partial` fica, `implemented` implantado vai para
+  Concluído com a linha de prova, `blocked` vai para Bloqueado) e a máquina de estados por tipo de cartão (quem move, o que dispara).
+  A skill `trello` e o fim do `claude-plan-100.py aplicar` lembram de rodar a reconciliação.
+- Prova `simulated`: `.claude/trello/test_reconciliar.py` (17 passed, dados fictícios, sem rede). Prova `real` (06/10, central, API da
+  Central): Execução de 364 para 171 cartões e de 201 divergências para 10 (só listadas: sem estado no plano e "Espera você"),
+  Histórico de 265 para 446, Programa de 72 para 100 (marcos 33, 34 e 36, 16 decisões P-001 a P-015 e a de 05/10 15:13Z); segunda rodada
+  do script sem nenhuma ação de mover ou marcar. `not_run`: a reconciliação dentro da Central (hoje é script da sessão Canais).
+
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e

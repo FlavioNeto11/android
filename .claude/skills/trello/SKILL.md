@@ -59,7 +59,10 @@ Validação no navegador → Prova real.
 
 - **Diária (primeira hora):** mover os cartões de “Concluído nesta semana” do dia anterior para **Histórico** na lista da
   fase (`move` com `boardId` do Histórico); conferir prazos vencidos (due < agora) e comentar o novo prazo ou o motivo.
-- **A cada deploy:** marco + métricas tocadas (M8 aparelhos, M9 testes).
+- **A cada deploy e a cada `claude-plan-100.py aplicar`:** marco + métricas tocadas (M8 aparelhos, M9 testes) e a
+  **reconciliação total** (C-28): `backend/.venv/Scripts/python.exe .claude/trello/reconciliar.py` (só relata) e, lido o
+  relatório, o mesmo com `--aplicar`. Ela move cada item para a lista que o estado do plano manda, escreve a linha de
+  prova no topo e lista o que não pode mover (sem estado, "Espera você"). A rodada seguinte tem de sair sem ação.
 - **Semanal (segunda):** revisar **Métricas** (meta × atual com data e fonte), **Maturidade** e **Riscos**; nada estimado
   sem dizer que é estimado.
 - **Ao trocar de sessão:** o handoff `.claude/handoffs/canais.md` aponta para esta skill; a sessão nova lê
