@@ -378,6 +378,8 @@ interface Settings {
   frota_max_contas_por_alvo?: number;
   /** ADR-081: ligado (padrão), o alvo que é conta nossa ativa não entra nessa contagem; pessoa real sempre entra. Backend anterior ao corte 56 não manda. */
   frota_conta_nossa_fora_da_regra?: boolean;
+  /** 28.61: id de um grupo de política cujas personas não passam pela aprovação de política (recusas, conduta, proteção de conta e tetos seguem); vazio = desligado. Backend anterior ao corte 57 não manda. */
+  grupo_sem_aprovacao?: string;
   fleet_min_spacing_between_accounts_s: number; fleet_spacing_jitter_s: number;
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;
   // item 17.12 — o teto de chamadas cresce por item do for_each (base + por_item × (itens − 1)), até o absoluto

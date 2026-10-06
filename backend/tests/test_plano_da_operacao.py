@@ -125,6 +125,32 @@ async def test_operacao_com_parametros_fixa_o_objetivo_de_cada_alvo(harness: Har
     assert "{contato}" in textos and "{recipient}" not in textos
 
 
+async def test_nome_fixo_em_conflito_recusa_o_alvo_e_a_operacao_le_acao_bloqueada(harness: Harness) -> None:
+    """Achado da revisão do PR 479: o planejador chama o contato de `recipient` (QA-001) e a operação fixa `recipient`
+    com OUTRO valor. Seguir com o do planejador mandaria a ação ao alvo errado: a execução do alvo termina recusada no
+    planejamento, sem objetivo, e a operação lê o alvo em `acao_bloqueada` com "parâmetro em conflito", sem os valores."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Nina", "android-01")
+    _conta(harness, pid, "qa-user-01", sessao_em="android-01")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-conflito", parametros={"recipient": "QA-999"}))
+    run_id = _alvo(op, pid)["run_id"]
+    await harness.wait(lambda: st.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,)) == "failed",
+                       what="alvo recusado no planejamento")
+    assert st.db.one("SELECT id FROM objectives WHERE run_id=?", (run_id,)) is None
+    eventos = [loads(r["data"], {}) for r in st.db.query("SELECT data FROM events WHERE kind='plan.refused' AND run_id=?",
+                                                         (run_id,))]
+    assert eventos and eventos[-1] == {"motivo": "parametro_em_conflito", "parametros": ["recipient"]}
+    lida = s.ler(op["id"])
+    alvo = lida["alvos"][0]
+    assert (alvo["estado"], alvo["estagio"], alvo["parou_em"]) == ("bloqueado", "acao_bloqueada", "acao_bloqueada")
+    assert alvo["motivo"].startswith("parâmetro em conflito: recipient")
+    assert "QA-999" not in alvo["motivo"] and "QA-001" not in alvo["motivo"]
+    assert lida["status"] == "concluida_com_bloqueios" and lida["finished_at"]
+    assert lida["capacidade"]["bloqueadas"] == 1
+
+
 async def test_execucao_fora_de_operacao_nao_muda(harness: Harness) -> None:
     st = harness.state
     assert st is not None
@@ -169,6 +195,27 @@ async def test_credencial_em_parametro_e_recusada_pelo_nome_ou_pelo_formato(harn
         _servico(harness).criar(_pedido([AlvoPedido("p-x")], chave="teste-op-param-cred", parametros=parametros))
     assert exc.value.code == "credencial_no_comando"
     assert st.db.scalar("SELECT COUNT(*) FROM operacoes WHERE idempotency_key='teste-op-param-cred'") == 0
+
+
+@pytest.mark.parametrize("parametros", [
+    {"senha_Xk9mP2q": "loja.exemplo"}, {"Hunter2xyQ": "loja.exemplo"}, {"username": "loja.exemplo", "tok3n_A": "{x}"},
+])
+async def test_a_recusa_nao_devolve_o_nome_do_parametro(harness: Harness, parametros: dict[str, str]) -> None:
+    """Achado do Copilot no PR 487: a credencial pode estar no NOME da chave, e a recusa devolvia o nome no corpo do
+    erro (que volta ao cliente e vai ao log). A recusa diz a posição, nunca o nome nem o valor."""
+    with pytest.raises(OperacaoError) as exc:
+        _servico(harness).criar(_pedido([AlvoPedido("p-x")], chave="teste-op-param-nome", parametros=parametros))
+    for nome in parametros:
+        assert nome not in exc.value.message and nome.lower() not in exc.value.message.lower()
+    assert "parâmetro" in exc.value.message
+
+
+def test_o_valor_comparavel_nao_tem_espaco_nenhum() -> None:
+    """Achado do Copilot no PR 487: o contrato diz "sem espaços"; `strip` só tirava as pontas."""
+    assert pdo.normal(" @ Loja .Exemplo ") == pdo.normal("loja.exemplo") == "loja.exemplo"
+    plano = Plan(summary="x", planner=PLANEJADOR, parameters={"perfil_alvo": "@ loja . exemplo"},
+                 steps=[_etapa("ab", "OPEN_PROFILE", "perfil de {perfil_alvo}")])
+    assert pdo.fixar_parametros(plano, {"username": LOJA}).parameters == {"username": LOJA}
 
 
 def test_dado_da_persona_e_nome_sensivel_do_plano_nao_sao_renomeados() -> None:
