@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.170: coletor dos achados das revisões automáticas de PR (branch ci/29-170-coletor-achados)
+
+- `scripts/coletar_achados_revisao.py`: só LEITURA pelo `gh`; junta numa tabela os comentários em linha e os resumos que o Codex e o Copilot escreveram nos PRs da janela (`--horas`, padrão 48; ou `--prs`), com PR, revisor, gravidade (P0 a P3, quando o texto traz), arquivo:linha e a primeira frase, mascarada por formato (e-mail, IPv4, sequência longa) e encurtada. Todo achado sai como a conferir, nunca ordem. Motivo: hoje cada achado está espalhado em PRs que fecham depois do corte. Prova `simulated`: `scripts/tests/test_coletar_achados_revisao.py` (13 testes). Observação `real`, não prova de entrega: o comando `python scripts/coletar_achados_revisao.py --repo FlavioNeto11/android --prs 487`, rodado nesta máquina de Windows Server em 06/10/2026 às 21:49Z (lido de `date -u`) sobre a árvore ainda sem commit, devolveu 8 linhas do PR 487 (7 achados em linha, 5 P1 e 2 P2, mais o resumo do Copilot) e não escreveu nada. Máscara por formato inclui `Bearer`, `senha=` e similares (revisão do `revisor-segredos`). Sem workflow novo e sem custo (não dispara revisão).
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.
