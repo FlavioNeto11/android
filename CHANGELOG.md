@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F4, corte 7 (F4g): as 18 rotas de aparelhos (`/api/instances*`) saem de `api.py` (branch feat/15-15-f4g-router-instances)
+
+- `GET/POST /instances`, `DELETE/PUT /instances/{id}`, instalar e verificar o app, o contexto operacional, os pacotes, o lote, as ações, o quadro e a hierarquia, a conta
+  travada, a pausa do reparo e o controle manual (pegar, soltar, entrada) moram agora em `backend/app/modules/fleet/presentation/instancias.py`, montado em
+  `main.py` no mesmo lugar do `api.router`, com o que só elas usam (a partida encadeada depois de criar, a recusa de provisionamento e a de mudar de servidor).
+  Ficam em `api.py` as 5 de `/commands*` e `/profiles/{id}/context` (que dividiam o bloco) e `/instances/{id}/personas`. Mesmo caminho, método, corpo e resposta.
+  Sem importar `app.modules.execution` (ciclo de contextos): o autor do pedido de controle vem de `shared.costuras.autor_do_gesto`. Teto de `Any` de `app.api` 100 → 84.
+- Prova do OpenAPI contra a ponta do F4f (32ccfb08): 271 método+caminho idênticos; os schemas só diferem no título automático de resposta
+  (`response_model=None`, como nos cortes anteriores). `test_ordem_das_rotas.py` ganhou o caso das 18 rotas.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
 ## 2026-10-06 — 15.15 F4, corte 6 (F4f): as 10 rotas de rede por aparelho saem de `api.py` (branch feat/15-15-f4f-router-network)
 
 - `/api/network/*` (perfis de VPN e de proxy, atribuição, aplicar, reaplicar, verificar, o servidor e a conferência do Firewall) agora moram em

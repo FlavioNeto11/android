@@ -97,6 +97,24 @@ def test_as_dez_rotas_de_rede_seguem_no_app_e_cada_uma_uma_vez() -> None:
         ("POST", "/api/network/server/firewall-check")])
 
 
+def test_as_dezoito_rotas_de_aparelhos_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4g: `/api/instances*` (menos `personas`, que fica com as personas, e `training`, que é do treino) saiu de `api.py` para
+    `modules/fleet/presentation/instancias.py`; o conjunto (método e modelo) é o de antes. `/instances/bulk` (literal) vem antes dos
+    modelos de um segmento que ela também casaria."""
+    fora = {"/api/instances/{instance_id}/personas", "/api/instances/{instance_id}/training"}
+    rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/instances") and r[1] not in fora]
+    assert sorted(rotas) == sorted([
+        ("GET", "/api/instances"), ("POST", "/api/instances"), ("DELETE", "/api/instances/{instance_id}"),
+        ("PUT", "/api/instances/{instance_id}"), ("POST", "/api/instances/{instance_id}/app/install"),
+        ("POST", "/api/instances/{instance_id}/app/verify"), ("GET", "/api/instances/{instance_id}/operational-context"),
+        ("GET", "/api/instances/{instance_id}/packages"), ("POST", "/api/instances/bulk"),
+        ("POST", "/api/instances/{instance_id}/actions/{action}"), ("GET", "/api/instances/{instance_id}/frame"),
+        ("GET", "/api/instances/{instance_id}/hierarchy"), ("POST", "/api/instances/{instance_id}/locked-account/resolve"),
+        ("PUT", "/api/instances/{instance_id}/repair-pause"), ("DELETE", "/api/instances/{instance_id}/repair-pause"),
+        ("POST", "/api/instances/{instance_id}/control/take"), ("POST", "/api/instances/{instance_id}/control/release"),
+        ("POST", "/api/instances/{instance_id}/input")])
+
+
 def test_modulos_de_apresentacao_nao_importam_app_api() -> None:
     """Ciclo: `app.api` importa os módulos; um módulo que importa `app.api` de volta só funciona por acidente de ordem."""
     raiz = Path(__file__).resolve().parent.parent / "app" / "modules"
