@@ -154,10 +154,15 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
 
 def _da_espera(e: EntradaDoLivro, servico: LearningService | None) -> JsonObject:
     """30.81, só no fluxo: `espera_a_pessoa`, o motivo literal quando o ensinado espera a decisão de uma pessoa (o
-    "Confirmar que fica" vale para ele), ou `null`."""
+    "Confirmar que fica" vale para ele), ou `null`.
+
+    30.85: `ensinado_em_prova` `{persona, sessao}` enquanto o fluxo ensinado espera a prova, AUSENTE fora disso (o mesmo
+    campo e a mesma regra das outras respostas do 30.81). Sem ele, o Livro mostrava "Publicado" sem o selo."""
     if servico is None or e.kind is not LivroKind.FLUXO:
         return {}
-    return {"espera_a_pessoa": servico.espera_a_pessoa(e)}
+    em_prova = servico.ensinado_em_prova(e)
+    return {"espera_a_pessoa": servico.espera_a_pessoa(e),
+            **({"ensinado_em_prova": dict(em_prova)} if em_prova is not None else {})}
 
 
 def _do_legado(e: EntradaDoLivro, legado: LegadoDecidido | None) -> JsonObject:

@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.85: o Livro leva o selo do ensinado em prova (branch feat/30-85-selo-em-prova-no-livro)
+
+- Achado da Portal no percurso do deploy 42: a entrada de fluxo do Livro não levava `ensinado_em_prova`, e o fluxo em
+  prova aparecia "Publicado" sem selo.
+- `presentation/livro.py::_da_espera` põe `ensinado_em_prova` `{persona, sessao}` na entrada do fluxo ensinado em
+  prova, pela regra do casamento (`taskqueue.flows.ensinado_em_prova`), por `LearningService.ensinado_em_prova` e pela
+  porta nova `LeitorDoEnsinado.em_prova`. Ausente fora disso. Adendo v1.73.
+- Funções tocadas (K-095): `_da_espera`, `LearningService.ensinado_em_prova` (nova), `AvisadorDoEnsinado.em_prova`
+  (nova), `LeitorDoEnsinadoSql.em_prova` (nova), `LeitorDoEnsinado` (método novo na porta).
+- Prova `simulated`: `backend/tests/test_livro_selo_em_prova.py` (7). Real: `not_run`.
+
 ## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
 
 - O fluxo ensinado que a prova real desligou (30.81) renasce na mesma linha quando a pessoa ensina o mesmo comando de

@@ -6690,3 +6690,16 @@ Nenhum campo novo, sem migração. Muda quando `POST /api/training/{session_id}/
 - **Quem consome:** o painel do treino (`TrainingReview`) mostra o `flow_id` devolvido e oferece a adoção dele; o
   mesmo id de antes não muda nada ali.
 - **Prova:** `simulated` (`backend/tests/test_reensinar_o_desligado_pela_prova.py`).
+
+## Adendo v1.73 (05/10/2026; número da orquestradora; item 30.85) — o Livro leva o selo do ensinado em prova
+
+Aditivo. Achado da Portal no percurso do deploy 42: o Livro mostrava o fluxo ensinado em prova como "Publicado", sem
+selo, porque a entrada não levava o campo do adendo v1.65.
+- **`ensinado_em_prova`** `{"persona": string|null, "sessao": "trn-…"}` passa a ir também em cada item de fluxo de
+  `GET /api/aprendizado` (a lista do Livro) e em `GET /api/aprendizado/fluxo/{ref}` (a mesma entrada). Forma e regra são as do
+  v1.65: enquanto o fluxo ensinado, ativo, espera a prova. AUSENTE quando não se aplica: provado, confirmado por uma
+  pessoa, desligado, ou fluxo que não veio do treino. Receita e lição não o levam.
+- `state` não muda: o fluxo em prova segue `published`. O selo é o campo.
+- **O que o painel precisa mudar:** o Livro mostra o `SeloEmProva` (o mesmo de `GuiaHabilidades` e da cobertura) quando o
+  item tem `ensinado_em_prova`.
+- **Prova:** `simulated` (`backend/tests/test_livro_selo_em_prova.py`); `real`: `not_run`.
