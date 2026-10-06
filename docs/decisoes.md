@@ -4766,6 +4766,9 @@ catálogo, comando), que o ADR-063 não cobre.
     intenção), pode ir ao Jev também:
     - **na sugestão de apps do comando** (R5, item 31.13), em sombra. Condição: ela só liga depois de o filtro estar
       provado com 10 comandos reais, isto é, depois do GO do 31.10;
+      *Emenda de 05/10/2026 (P-013, resposta do dono às 23:32Z pelo Trello): a sombra da R5 liga ANTES do GO, justamente
+      para gerar a amostra que faltou ao 31.10 (NO-GO sem amostra); o GO/NO-GO é refeito com ela. Só sombra: nada age
+      nem pergunta na hora (item 31.13, chave `R5_LIBERADA`).*
     - **no reprocessamento em lote de comandos antigos** (o braço offline do 31.11, partes R2, R3 e R5). Condição: o
       lote usa só comandos que já foram enviados ao Jev pela sombra da intenção depois de 15:29:51Z (o T_on do
       deploy 11), de modo que nenhum comando sai pela primeira vez por ele.
