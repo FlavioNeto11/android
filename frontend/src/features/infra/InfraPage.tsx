@@ -26,6 +26,7 @@ import { toast, toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { personasPorAparelho } from '../profiles/pessoa';
 import { usePersonas } from '../profiles/usePersonas';
+import { TerminalDoWorker } from './TerminalDoWorker';
 import {
   centralMeta, eventosDoServidor, filaDoServidor, fracaoDeDisco, groupByWorker, instanceStateMeta, isStale,
   ocupacaoDoServidor, orphanInstances, pausaDoReparoMeta, renderizadorMeta, tipoDoAparelho,
@@ -400,6 +401,7 @@ function CartaoWorker({ worker, instancias, now, dados, onRotated }: {
         <CapacidadesDoServidor worker={worker} />
         <ListaDeAparelhos instancias={instancias} personas={dados.personas} doWorker={worker.devices} />
         <AparelhosParaAdotar worker={worker} />
+        <TerminalDoWorker worker={worker} />
         <AbasDoServidor id={worker.id} instancias={instancias} dados={dados} now={now} />
       </CardBody>
     </Card>
