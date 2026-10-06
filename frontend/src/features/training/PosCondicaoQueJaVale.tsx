@@ -6,7 +6,7 @@
  * lista de avisos e na dica do "Salvar".
  */
 import { TriangleAlert } from 'lucide-react';
-import type { PosCondicaoQueJaVale } from '../../api/types';
+import type { PosCondicaoQueJaVale, SugestaoPronta } from '../../api/types';
 import { Button } from '../../components/Button';
 import styles from './Training.module.css';
 
@@ -14,6 +14,24 @@ export type { PosCondicaoQueJaVale };
 
 /** No máximo três sugestões por item (contrato); mais que isso é descartado, e o resto do item vale. */
 const MAXIMO_DE_SUGESTOES = 3;
+
+/**
+ * 31.142 (adendo v1.91): as sugestões prontas dizem o `kind` e o `value` que o botão aplica (`element_present` com `desc==Back`
+ * quando o texto era o de um elemento, `text_visible` nos outros). Backend anterior só manda `sugestoes` (texto): vira
+ * `text_visible`, como o painel sempre fez.
+ */
+function lerProntas(bruto: unknown, sugestoes: string[]): SugestaoPronta[] {
+  const prontas: SugestaoPronta[] = [];
+  if (Array.isArray(bruto)) {
+    for (const x of bruto) {
+      if (!x || typeof x !== 'object') continue;
+      const o = x as Record<string, unknown>;
+      if (typeof o.kind !== 'string' || !o.kind || typeof o.value !== 'string' || !o.value.trim() || typeof o.texto !== 'string' || !o.texto.trim()) continue;
+      prontas.push({ kind: o.kind, value: o.value, texto: o.texto });
+    }
+  }
+  return prontas.length ? prontas.slice(0, MAXIMO_DE_SUGESTOES) : sugestoes.map((s) => ({ kind: 'text_visible', value: s, texto: s }));
+}
 
 /**
  * O leitor da lista, tolerante como os outros: item sem etapa ou sem valor cai fora, sugestão que não é texto ou é vazia
@@ -29,7 +47,7 @@ export function lerPosCondicoes(bruto: unknown): PosCondicaoQueJaVale[] {
     const sugestoes = (Array.isArray(o.sugestoes) ? o.sugestoes : [])
       .filter((s): s is string => typeof s === 'string' && s.trim() !== '')
       .slice(0, MAXIMO_DE_SUGESTOES);
-    saida.push({ etapa: o.etapa, valor: o.valor, sugestoes, message: typeof o.message === 'string' ? o.message : '' });
+    saida.push({ etapa: o.etapa, valor: o.valor, sugestoes, sugestoes_prontas: lerProntas(o.sugestoes_prontas, sugestoes), message: typeof o.message === 'string' ? o.message : '' });
   }
   return saida;
 }
@@ -43,19 +61,19 @@ export function motivoDaPosCondicao(itens: readonly PosCondicaoQueJaVale[], titu
     : `Troque o que as etapas ${nomes.map((n) => `“${n}”`).join(', ')} conferem: o texto já aparece na tela em que elas começam.`;
 }
 
-export function AvisoDaPosCondicao({ item, onUsar }: { item: PosCondicaoQueJaVale; onUsar: (texto: string) => void }) {
+export function AvisoDaPosCondicao({ item, onUsar }: { item: PosCondicaoQueJaVale; onUsar: (pronta: SugestaoPronta) => void }) {
   return (
     <div className={styles.posJaVale} role="alert" aria-label="A conferência da etapa já vale na tela de partida">
       <p>
         <TriangleAlert size={14} aria-hidden /> O texto <strong>“{item.valor}”</strong> já aparece na tela em que esta etapa começa: ela
         passaria sem agir. Troque o que ela confere por um texto que só aparece depois da etapa.
       </p>
-      {item.sugestoes.length ? (
+      {item.sugestoes_prontas.length ? (
         <div className={styles.posJaValeSugestoes}>
           <span className={styles.muted}>Da tela seguinte:</span>
-          {item.sugestoes.map((s) => (
-            <Button key={s} size="sm" variant="outline" onClick={() => onUsar(s)} label={`Usar “${s}” como o texto que a etapa confere`}>
-              Usar “{s}”
+          {item.sugestoes_prontas.map((s) => (
+            <Button key={`${s.kind}:${s.value}`} size="sm" variant="outline" onClick={() => onUsar(s)} label={`Usar “${s.texto}” como o texto que a etapa confere`}>
+              Usar “{s.texto}”
             </Button>
           ))}
         </div>

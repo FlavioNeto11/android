@@ -2168,12 +2168,20 @@ export interface TrainingSaveResult {
 
 /** `POST /training/{id}/preview` (adendo v1.58): o que o salvar faria, sem gravar. */
 /** 31.128 (adendo v1.86): a etapa cuja pós-condição `text_visible` já aparece na tela de partida, com até 3 textos da tela seguinte. */
+export interface SugestaoPronta {
+  kind: string;
+  value: string;
+  texto: string;
+}
+
 export interface PosCondicaoQueJaVale {
   /** A `key` da etapa na proposta. */
   etapa: string;
   /** O texto da pós-condição que já vale. */
   valor: string;
   sugestoes: string[];
+  /** 31.142 (adendo v1.91): na mesma ordem de `sugestoes`; o que o botão aplica (`kind` e `value`) e o texto do botão. */
+  sugestoes_prontas: SugestaoPronta[];
   /** A mesma frase da linha de `warnings` (e da recusa). */
   message: string;
 }
@@ -2181,6 +2189,9 @@ export interface PosCondicaoQueJaVale {
 export interface TrainingPreview {
   steps: TrainingStepReport[];
   warnings: string[];
+  /** 31.142 (adendo v1.91): `duplicate_command` quando o comando já existe (200, não 409); nulo sem recusa; backend anterior não manda. */
+  code?: string | null;
+  message?: string | null;
   /** 31.128 (adendo v1.86): ao lado de `warnings`; vazia sem ocorrência; backend anterior não manda. */
   pos_condicoes_ja_valem?: PosCondicaoQueJaVale[];
   /** Adendo v1.71; backend anterior não manda. */
