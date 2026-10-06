@@ -192,6 +192,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
   para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
 
+## 2026-10-06 — 15.15 F4, corte 10 (F4j): proxies, comandos e apps (20 rotas) saem de `api.py` (branch feat/15-15-f4j-routers-restantes)
+
+- `/api/proxies*` (4) vão para `backend/app/modules/fleet/presentation/proxies.py`; `/api/commands*` (6, com a triagem de credencial da nota em
+  `_decisao_sobre_comando`) para `modules/execution/presentation/comandos.py`; `/api/apps*`, `apps-overview`, `app-store`, `app-catalog` e `app-state` (10)
+  para `modules/applications/presentation/apps.py`. Montados em `main.py` no mesmo lugar do `api.router`, depois do Instagram. Mesmo caminho, método, corpo e
+  resposta. Os comandos ficaram em `execution` (e não em `fleet`) porque `execution → fleet` já existe e o contrário fecharia um ciclo de contextos. `api.py`
+  mantém a sua `_TRIAGEM_DE_NOTA` (a das exceções de política; sem estado) e o módulo de comandos tem a própria. Os 6 imports tardios das rotas viraram imports
+  do topo; teto de `Any` de `app.api` 45 → 28 e de imports tardios de `app.api` 7 → 1. `tests/test_cancelamento.py` importa `_entregar_cancelamento` de
+  `app.commands.despacho`, onde ele mora.
+- Três `cast` no módulo de apps (a linha acabou de ser gravada; o corpo do PUT é `CamposDeApp`), porque o retorno `Any` antigo escondia o mypy.
+- Prova do OpenAPI contra a ponta 0b383265: 271 método+caminho idênticos; os schemas só diferem no título automático das respostas das rotas que devolviam
+  `Any` (`response_model=None`, 14 de 200 e o 201 de `POST /api/proxies`). `test_ordem_das_rotas.py` ganhou o caso das 20 rotas.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
 ## 2026-10-06 — 15.15 F4, corte 9 (F4i): as 41 rotas de perfis do Instagram (`/api/instagram/*`) saem de `api.py` (branch feat/15-15-f4i-router-instagram)
 
 - Perfis (cadastro, edição, sessão: iniciar, encerrar, verificar; conta âncora e contas por perfil; credencial; memória; grupos de política; política por perfil;

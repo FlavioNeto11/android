@@ -9,7 +9,6 @@ import os
 import re
 import threading
 import time
-from dataclasses import asdict
 from datetime import timedelta
 from time import monotonic
 from typing import Any, Literal
@@ -21,15 +20,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .automation.appium_driver import appium_no_ar
 from .storage import DISK, DiskStorage, Storage
-from .commands.states import COMMAND_OPEN, COMMAND_UNSETTLED, InvalidCommandTransition
-from .commands.reconciler import VERIFICAVEL_POR_ESTADO, verificar_comando
 from .commands.store import command_dto
 # O despacho de comandos mora em `commands/despacho.py` (não é HTTP, e o `state` precisa dele sem importar a API).
 # Os nomes seguem acessíveis por aqui: as rotas os usam, e os testes os importam de `app.api`.
 from .commands.despacho import (DespachoRecusado, _anunciar_inflight, _despachar_trabalho, _do_action,
-                                _entregar_cancelamento, _fechar_cancelado, _publish_command, _reconciliar_uma_vez,
-                                _tratar_mensagem_do_worker, executar_envelope, reconciliar_estado_desejado, remediar,
-                                remediar_reiniciando)
+                                _fechar_cancelado, _reconciliar_uma_vez, _tratar_mensagem_do_worker,
+                                executar_envelope, reconciliar_estado_desejado, remediar, remediar_reiniciando)
 from .db import Row, loads
 from .training.recorder import TrainingError
 from .devices.adb import AdbError
@@ -38,19 +34,15 @@ from .modules.fleet.presentation.comum import quem
 from .modules.identity.presentation.comum import servir_do_storage as _servir_do_storage
 from .modules.identity.presentation.comum import social_error as _social_error
 from .modules.applications.presentation.comum import device
-from .devices.proxy import ProxyApplyBody, ProxyInput  # modelos da loja de apps fora de models.py (menos conflito)
-from .integrations.app_declarado.prova import prova_do_pacote
 from .devices.verbs import PRAZO_POR_VERBO, verbos_suportados
-from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ApprovalBatchBody, ApprovalDecision, AppInput,
-                     AppPatch, CapabilityDTO, CommandCancelBody, CommandResolveBody, CommandState, InstanceState,
-                     TrainingSaveBody, TrainingStartBody, StoreBody, LoginBody, PanelSessionInfo, ResolveBody,
-                     RunCreate, RunTargetsPreview, RunTargetsResolveBody)
+from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ApprovalBatchBody, ApprovalDecision,
+                     CapabilityDTO, InstanceState, TrainingSaveBody, TrainingStartBody, StoreBody, LoginBody,
+                     PanelSessionInfo, ResolveBody, RunCreate, RunTargetsPreview, RunTargetsResolveBody)
 from .metricas import metricas
 from .contracts.skills.resolve import SkillResolveRequest
 from .modules.learning.domain.vocabulario import LivroKind
 from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.presentation.livro import mudar_status_legado
-from .modules.execution.presentation.comum import autor_do_sinal, run_error
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .modules.skills.presentation.schemas import EscopoDoFluxoBody, TrainingDeFalhaBody, TrainingStopBody, TrainingUndoBody
@@ -61,7 +53,7 @@ from .security import access as acesso           # o módulo, não os nomes: `LO
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
 from .security.sessions import COOKIE, VALIDADE_S, NomeInvalido, normalizar_nome
-from .shared.costuras import PAINEL, ResolucaoDeComando, autor_do_gesto, avisar
+from .shared.costuras import autor_do_gesto
 from .state import AppState
 from .workers.captura import ErroDeMidia
 from .workers.protocol import EnvioDeMidia, Hello, Refused, parse_upstream
@@ -69,19 +61,16 @@ from .workers.portao import BLOQUEIO_S
 from .workers.registry import WorkerError, motivo_do_conflito
 from .version import agent_version, codigo_do_agente
 from .planning.capabilities import load_catalog
-from .planning.catalog import registered
 from .social.excecoes import ExcecaoEmUso, ExcecaoInvalida
 from .social.service import SocialError
 from .taskqueue import observabilidade
 from .taskqueue.flows import id_do_fluxo
 from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
-from .modules.execution.domain.command_refinement import CommandRefinement
-from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
+from .taskqueue.assistente import RunSuccessorBody
 from .taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody, RunTargetsSuggestion
-from .taskqueue.service import RunError
 from .util import iso_in, new_token, now, now_iso, parse_iso, to_iso
-from .vitrine import _apps_changed, app_dto, apps_list, vitrine
+from .vitrine import apps_list
 
 from .devices.verbs import sem_hibernacao
 
@@ -116,44 +105,6 @@ async def recusa_do_despacho(request: Request, exc: DespachoRecusado) -> Respons
 #: A triagem de credencial do voto do D2 (`registrar_sinal(recusar_nota=True)`), para a nota livre que uma pessoa
 #: escreve numa rota daqui e que entraria crua no banco e no evento (segredo nunca em evento).
 _TRIAGEM_DE_NOTA = TriagemDeCredencial()
-
-#: O contexto que o painel punha NA NOTA até 29/09 ("decidido no painel a partir de <aparelho>: <texto>"). Com a
-#: triagem, um id de aparelho com maiúscula, dígito e símbolo (um AVD como `Pixel_7a-Lab.02`) recusava toda decisão
-#: pelo painel por causa do prefixo, não do texto da pessoa. Hoje o painel manda `origin=panel` e o backend compõe o
-#: contexto; a aba aberta antes do deploy ainda manda o prefixo, que só é reconhecido com o id do PRÓPRIO comando.
-_PREFIXO_ANTIGO_DO_PAINEL = {"resolve": "decidido no painel a partir de ", "cancel": "cancelado no painel a partir de "}
-
-
-def _decisao_sobre_comando(row: Row, nota: str | None, requested_by: str | None, origem: str | None, autor: str,
-                           gesto: Literal["resolve", "cancel"], o_que: str) -> tuple[str | None, str]:
-    """O texto da pessoa (sem o contexto) e o contexto que o motivo do comando acrescenta depois de "por <autor>":
-    ", no painel a partir de <aparelho>" — ou só ", a partir de <aparelho>" quando o autor já é `panel` (ninguém se
-    identificou; "por panel, no painel" repetiria o painel) —, ou nada fora do painel. Recusa com 409
-    `note_looks_secret` ANTES de qualquer escrita, pela triagem do voto do D2:
-
-    - a nota, só o texto da pessoa — o contexto é do backend e nunca passa pela triagem;
-    - o `requested_by` do corpo, sempre que vier, COM ou sem sessão: sem sessão ele é o autor gravado cru no motivo,
-      em `result.resolved_by` e no evento do comando; com sessão é ignorado, mas um rótulo com cara de credencial
-      não tem uso legítimo e a regra fica uma só."""
-    texto = (nota or "").strip()
-    antigo = f"{_PREFIXO_ANTIGO_DO_PAINEL[gesto]}{row['instance_id']}"
-    do_painel = origem == "panel"
-    if texto == antigo or texto.startswith(f"{antigo}:"):
-        texto, do_painel = texto[len(antigo) + 1:].strip(), True
-    if texto and _TRIAGEM_DE_NOTA.recusa(texto):
-        # A nota iria crua para `commands.reason` (e `result.note`), e dali para o evento do comando no bus. Nada é
-        # gravado, nem a decisão: o comando segue como estava até vir uma nota limpa.
-        raise err(409, "note_looks_secret", f"A nota tem formato ou assunto de credencial e não foi gravada, nem "
-                                            f"{o_que}. Reescreva a observação sem o segredo.")
-    rotulo = (requested_by or "").strip()
-    if rotulo and _TRIAGEM_DE_NOTA.recusa(rotulo):
-        raise err(409, "note_looks_secret", f"O requested_by tem formato ou assunto de credencial e não foi gravado, "
-                                            f"nem {o_que}. Mande um rótulo sem o segredo, ou nenhum (com sessão, o "
-                                            f"autor é o operador dela).")
-    if not do_painel:
-        return texto or None, ""
-    return texto or None, f", {'' if autor == PAINEL else 'no painel '}a partir de {row['instance_id']}"
-
 
 # ====================================================================== sessão do painel
 #: Caminhos que o `main.guarda` deixa responder ANTES de haver credencial — senão a tela de login levaria 401 no
@@ -474,32 +425,6 @@ def _price(prices: dict[str, list[float]], model: str) -> list[float] | None:
     return costs.price_for(prices, model)
 
 
-@router.get("/apps-overview")
-async def apps_overview_route(request: Request, days: int = Query(7, ge=1, le=90)) -> Any:
-    """Item 12.2: um resumo por aplicativo — contas, aparelhos, execuções, custo de IA, receitas, fluxos, versões."""
-    from .apps_overview import apps_overview  # noqa: PLC0415
-    return apps_overview(st(request), days)
-
-
-@router.get("/apps/{app_id}/overview")
-async def app_overview_route(request: Request, app_id: str, days: int = Query(30, ge=1, le=180)) -> Any:
-    from .apps_overview import app_detail  # noqa: PLC0415
-    detalhe = app_detail(st(request), app_id, days)
-    if detalhe is None:
-        raise err(404, "not_found", "Aplicativo não encontrado.")
-    return detalhe
-
-
-@router.get("/apps/{pacote}/conhecimento")
-async def app_conhecimento_route(pacote: str) -> dict[str, object]:
-    """RA-24: os YAML do conhecimento do app (`app/conhecimento/apps/<pacote>/`) com sha256 e o hash de blob do Git,
-    que confere com `git rev-parse <commit>:<caminho>` sem abrir a máquina. O parâmetro é o PACOTE, e não o id do app."""
-    prova = prova_do_pacote(pacote)
-    if prova is None:
-        raise err(404, "not_found", "Nenhum conhecimento declarado para este pacote.")
-    return asdict(prova)
-
-
 @router.get("/desempenho")
 async def desempenho(request: Request, janelas: int = Query(24, ge=0, le=672),
                      dias: int = Query(0, ge=0, le=90), irq_horas: int = Query(0, ge=0, le=336),
@@ -681,93 +606,11 @@ async def delete_recipe(request: Request, recipe_id: int) -> Response:
 
 
 # ====================================================================== apps
-@router.get("/apps")
-async def list_apps(request: Request) -> Any:
-    return apps_list(st(request))
-
-
-def _validate_apk(state: AppState, apk_path: str | None) -> None:
-    if apk_path:
-        try:
-            state.devices.resolve_apk(apk_path)
-        except ValueError as exc:
-            raise err(400, "invalid_apk_path", str(exc)) from exc
-
-
-@router.post("/apps")
-async def create_app(request: Request, body: AppInput) -> Any:
-    s = st(request)
-    _validate_apk(s, body.apk_path)
-    if s.apps.id_do_pacote(body.package) is not None:
-        # Loja de apps: o pacote é a identidade que as versões, o estado por aparelho e a vitrine usam. Dois
-        # cadastros do mesmo pacote dividiriam as contagens em dois cartões que falam do mesmo aplicativo.
-        raise err(409, "package_exists", f"O pacote {body.package} já está cadastrado.")
-    app_id = s.apps.criar(name=body.name, package=body.package, activity=body.activity or None,
-                          apk_path=body.apk_path or None, nav_hints=body.nav_hints or None,
-                          known_selectors=body.known_selectors, category=body.category)
-    _apps_changed(s)
-    return app_dto(s.apps.obter(app_id), s)
-
-
-@router.put("/apps/{app_id}")
-async def update_app(request: Request, app_id: str, body: AppPatch) -> Any:
-    s = st(request)
-    if s.apps.obter(app_id) is None:
-        raise err(404, "not_found", "App não encontrado.")
-    data = body.model_dump(exclude_unset=True)
-    if data.get("package") and s.apps.id_do_pacote(data["package"], exceto=app_id) is not None:
-        # Mesma regra do cadastro: dois apps com o mesmo pacote dividiriam a vitrine em dois cartões do mesmo app.
-        raise err(409, "package_exists", f"O pacote {data['package']} já está cadastrado em outro app.")
-    _validate_apk(s, data.get("apk_path"))
-    # Texto vazio vindo do formulário quer dizer "sem valor" (o repositório grava o que recebe).
-    for k in ("activity", "apk_path", "nav_hints"):
-        if k in data and not data[k]:
-            data[k] = None
-    s.apps.atualizar(app_id, data)
-    _apps_changed(s)
-    return app_dto(s.apps.obter(app_id), s)
-
-
-@router.delete("/apps/{app_id}", status_code=204)
-async def delete_app(request: Request, app_id: str) -> Response:
-    s = st(request)
-    row = s.apps.obter(app_id)
-    if row is None:
-        raise err(404, "not_found", "App não encontrado.")
-    if row["builtin"]:
-        raise err(409, "builtin", "O app de QA embutido não pode ser removido.")
-    s.apps.remover(app_id)
-    _apps_changed(s)
-    for rt in s.devices.devices.values():
-        s.devices.publish(rt)
-    return Response(status_code=204)
-
-
 # ====================================================================== instâncias
 # ====================================================================== perfis do Instagram
 # ---------------------------------------------------------------- credencial e sessão POR CONTA (ADR-040)
 # ====================================================================== persona, memória e histórico
 # ---------------------------------------------------------------- imagens da persona (048)
-@router.get("/app-store")
-async def app_store(request: Request) -> Any:
-    """A vitrine da loja de apps: por app, ícone, versão promovida, aparelhos por versão e o que pede atenção."""
-    return vitrine(st(request))
-
-
-@router.get("/app-catalog")
-async def app_catalog(request: Request) -> Any:
-    """Os aplicativos que o registro conhece: quem tem catálogo, quem provê conta, quem exige perfil.
-
-    É o que a interface usa para deixar de assumir um pacote por omissão — a loja, as capacidades e o painel de
-    contas passam a perguntar "qual app?" em vez de cair no Instagram. `profile_anchor` (23.10) é o que o painel
-    usa para achar o app da conta de cadastro da persona sem comparar nome ou pacote (`ehInstagram` fixo).
-    """
-    return [{"package": c.package, "name": c.name, "label": c.label, "has_catalog": c.has_catalog,
-             "session_provider": c.session_provider, "needs_profile": c.needs_profile,
-             "profile_anchor": c.profile_anchor}
-            for c in registered()]
-
-
 @router.get("/capabilities")
 async def list_capabilities(request: Request, package: str = Query(..., min_length=1)) -> Any:
     """Catálogo do app: o que o sistema sabe fazer, com efeito, risco e política padrão de cada ação.
@@ -939,186 +782,9 @@ async def store_sync(request: Request, body: StoreBody | None = None) -> Any:
 
 
 # ---------------------------------------------------------------------- proxy do aparelho (loja de apps, 26/09)
-def _proxy_error(exc: Any) -> HTTPException:
-    return err(exc.status, exc.code, exc.message)
-
-
-@router.get("/proxies")
-async def list_proxies(request: Request) -> Any:
-    from .devices.proxy import listar  # noqa: PLC0415
-    return listar(st(request))
-
-
-@router.post("/proxies", status_code=201)
-async def create_proxy(request: Request, body: ProxyInput) -> Any:
-    from .devices.proxy import criar  # noqa: PLC0415
-    return criar(st(request), body, quem(request))
-
-
-@router.delete("/proxies/{proxy_id}", status_code=204)
-async def delete_proxy(request: Request, proxy_id: str) -> Response:
-    from .devices.proxy import ProxyError, remover  # noqa: PLC0415
-    try:
-        remover(st(request), proxy_id)
-    except ProxyError as exc:
-        raise _proxy_error(exc) from exc
-    return Response(status_code=204)
-
-
-@router.post("/proxies/apply")
-async def apply_proxy(request: Request, body: ProxyApplyBody) -> Any:
-    """Pede um proxy (ou nenhum, com `proxy_id` nulo) para os aparelhos. `dry_run` = prévia, nada é gravado."""
-    from .devices.proxy import ProxyError, aplicar  # noqa: PLC0415
-    try:
-        devices = aplicar(st(request), body)
-    except ProxyError as exc:
-        raise _proxy_error(exc) from exc
-    return {"accepted": not body.dry_run, "dry_run": body.dry_run, "devices": devices}
-
-
-@router.get("/app-state")
-async def app_state(request: Request, package: str | None = None) -> Any:
-    return st(request).release_repo.list_app_state(package)
-
-
 # ====================================================================== provisionamento (migração 050)
-@router.get("/commands/{command_id}")
-async def get_command(request: Request, command_id: str) -> Any:
-    row = st(request).commands.get(command_id)
-    if row is None:
-        raise err(404, "not_found", f"Comando {command_id} não existe.")
-    return command_dto(row)
-
-
-@router.get("/commands")
-async def list_commands(request: Request, instance_id: str | None = None, unsettled: bool = False,
-                        limit: int = Query(50, ge=1, le=200)) -> Any:
-    """`unsettled=true` devolve só os comandos que terminaram sem desfecho conhecido — a fila de quem ainda
-    espera uma resposta (da sonda ou de uma pessoa). É o que o painel precisa para eles pararem de sumir."""
-    s = st(request)
-    linhas = s.commands.unsettled(limit) if unsettled else s.commands.recent(instance_id, limit)
-    if unsettled and instance_id:
-        linhas = [r for r in linhas if r["instance_id"] == instance_id]
-    return [command_dto(r) for r in linhas]
-
-
-@router.post("/commands/{command_id}/verify")
-async def verify_command(request: Request, command_id: str) -> Any:
-    """"Verificar agora": pergunta ao estado real se aquele comando incerto deu certo.
-
-    Para os verbos de ciclo de vida o desfecho é observável (`start` promete o aparelho no ar, `stop` promete o
-    contrário), e ver o estado prometido é prova de sucesso. Não ver NÃO é prova de fracasso — então o comando
-    que a sonda não fecha volta como está, esperando a decisão de alguém. Sempre 200: "continua incerto" é
-    resposta legítima, e não erro.
-    """
-    s = st(request)
-    row = s.commands.get(command_id)
-    if row is None:
-        raise err(404, "not_found", f"Comando {command_id} não existe.")
-    novo = verificar_comando(s, row)
-    mudou = novo["state"] != row["state"]
-    if mudou:
-        _publish_command(s, novo)
-    return {"command": command_dto(novo).model_dump(mode="json"), "changed": mudou,
-            "verifiable": row["verb"] in VERIFICAVEL_POR_ESTADO}
-
-
-@router.post("/commands/{command_id}/cancel")
-async def cancel_command(request: Request, command_id: str, body: CommandCancelBody | None = None) -> Any:
-    """Pedir o cancelamento de um comando ABERTO — a ponta que faltava do que a máquina de estados já previa.
-
-    `cancel_requested` não encerra nada: ele diz "quero que pare" e o desfecho continua sendo de quem executa.
-    Por isso a resposta é sempre 200 com o comando como está, mais o que foi possível fazer: um `start` remoto de
-    540 s é interrompido no agente, um boot local é interrompido aqui, e um verbo sem ponto seguro apenas fica
-    registrado — mentir sobre isso seria pior do que a espera.
-
-    Repetir o pedido é seguro: o estado não muda de novo e o sinal é reenviado, que é o que alguém faz quando o
-    worker acabou de reconectar. A nota ou o `requested_by` com cara de credencial é recusado (409
-    `note_looks_secret`) antes de qualquer escrita; `origin=panel` acrescenta o contexto ao motivo
-    (`_decisao_sobre_comando`).
-    """
-    s = st(request)
-    row = s.commands.get(command_id)
-    if row is None:
-        raise err(404, "not_found", f"Comando {command_id} não existe.")
-    if CommandState(row["state"]) not in COMMAND_OPEN:
-        raise err(409, "not_open", f"O comando {command_id} está em '{row['state']}': só um comando aberto pode "
-                                   "ser cancelado.")
-    corpo = body or CommandCancelBody()
-    # `quem` só lê; o `requested_by` que ele pode devolver é triado logo abaixo, antes de qualquer escrita.
-    autor = quem(request, corpo.requested_by)
-    nota, contexto = _decisao_sobre_comando(row, corpo.note, corpo.requested_by, corpo.origin, autor, "cancel",
-                                            "o pedido de cancelamento")
-    if CommandState(row["state"]) is not CommandState.cancel_requested:
-        motivo = f"cancelamento pedido por {autor}{contexto}" + (f": {nota}" if nota else "")
-        try:
-            row = s.commands.transition(command_id, CommandState.cancel_requested, reason=motivo)
-        except InvalidCommandTransition as exc:
-            # O desfecho chegou entre a leitura e a escrita: o comando já fechou sozinho, e não há o que cancelar.
-            atual = s.commands.get(command_id)
-            raise err(409, "not_open", f"O comando {command_id} fechou antes do cancelamento "
-                                       f"('{atual['state'] if atual else '?'}').") from exc
-        _publish_command(s, row)
-    entregue, detalhe = await _entregar_cancelamento(s, row)
-    s.bus.emit("log", f"{row['instance_id']}: cancelamento do comando {command_id} ({row['verb']}) pedido por "
-                      f"{autor} — {detalhe}", level="warn", instance_id=row["instance_id"])
-    atual = s.commands.get(command_id) or row
-    return {"command": command_dto(atual).model_dump(mode="json"), "delivered": entregue, "detail": detalhe}
-
-
-@router.post("/commands/{command_id}/resolve")
-async def resolve_command(request: Request, command_id: str, body: CommandResolveBody) -> Any:
-    """A decisão humana que tira um comando de `uncertain` — a outra porta de saída, para o que nenhuma sonda
-    prova (o `reset` apagou os dados? o APK entrou?).
-
-    Só `uncertain` é resolvível: comando terminal já tem desfecho, e reabrir seria apagar história. Quem
-    resolveu e por quê ficam gravados no comando, porque "alguém decidiu" sem dizer quem é o mesmo tipo de
-    afirmação vaga que esta fase inteira existe para eliminar. A nota ou o `requested_by` com cara de credencial é
-    recusado (409 `note_looks_secret`) antes de qualquer escrita; `origin=panel` acrescenta o contexto ao motivo, e
-    `result.note` guarda só o texto da pessoa (`_decisao_sobre_comando`).
-    """
-    s = st(request)
-    row = s.commands.get(command_id)
-    if row is None:
-        raise err(404, "not_found", f"Comando {command_id} não existe.")
-    if CommandState(row["state"]) not in COMMAND_UNSETTLED:
-        raise err(409, "not_unsettled", f"O comando {command_id} está em '{row['state']}': só um comando "
-                                        "'uncertain' é resolvido à mão.")
-    autor = quem(request, body.requested_by)       # só lê: a triagem abaixo vem antes de qualquer escrita
-    nota, contexto = _decisao_sobre_comando(row, body.note, body.requested_by, body.origin, autor, "resolve",
-                                            "a resolução")
-    alvo = {"succeeded": CommandState.succeeded, "failed": CommandState.failed,
-            "cancelled": CommandState.cancelled}[body.outcome]
-    motivo = f"resolvido à mão por {autor}{contexto}" + (f": {nota}" if nota else "")
-    anterior = loads(row["result"], {}) if row["result"] else {}
-    dados = {**(anterior or {}), "resolved_by": autor, "resolved_at": now_iso(), "resolution": body.outcome,
-             "note": nota, "previous_reason": row["reason"], **({"origin": "panel"} if contexto else {})}
-    novo = s.commands.transition(command_id, alvo, reason=motivo, result=dados)
-    _publish_command(s, novo)
-    s.bus.emit("log", f"{novo['instance_id']}: o comando {command_id} ({novo['verb']}) era incerto e foi "
-                      f"marcado como '{body.outcome}' por {autor}.", level="warn",
-               instance_id=novo["instance_id"])
-    # Sinal `comando_incerto_resolvido` (ADR-054), só depois de a decisão valer. A falha do livro nunca desfaz nem
-    # derruba a resolução (`avisar`).
-    avisar(s.costuras.comando_incerto_resolvido, ResolucaoDeComando(
-        command_id=command_id, resolucao=body.outcome, nota=nota, quem=autor_do_sinal(request),
-        simulated=s.provider.simulated))
-    return command_dto(novo)
-
-
 # ---------------------------------------------------------------------- controle manual
 # ====================================================================== execuções
-@router.post("/commands/refine")
-async def refine_command(request: Request, body: CommandRefineBody) -> CommandRefinement:
-    """Assistente do comando (ADR-047): o comando reescrito em blocos, o que ainda falta e se está pronto para
-    planejar. Uma chamada de IA pelo papel `plan`; não cria execução. Com `run_id`, fecha as perguntas daquela
-    execução em `needs_input` (as de destino ficam de fora: 409 `pergunta_de_destino`)."""
-    try:
-        return await ComandoAssistido(st(request).runs).refinar(body)
-    except RunError as exc:
-        raise run_error(exc) from exc
-
-
 def _armazem_de(s: AppState, onde: str) -> Storage | None:
     """O back-end daquela LINHA. `disk` sempre existe (é a pasta local); os outros, só se forem o configurado."""
     if onde == s.storage.name:

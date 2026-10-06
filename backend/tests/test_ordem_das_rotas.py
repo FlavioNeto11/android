@@ -189,6 +189,21 @@ def test_as_quarenta_e_uma_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_vez()
         ("GET", "/api/instagram/profiles/{profile_id}/operational-context")])
 
 
+def test_as_vinte_rotas_de_proxies_comandos_e_apps_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4j: `/api/proxies*`, `/api/commands*` e os apps (`/api/apps*`, `app-store`, `app-catalog`, `app-state`) saíram de `api.py`
+    para `fleet/presentation/proxies.py`, `execution/presentation/comandos.py` e `applications/presentation/apps.py`; o conjunto (método e
+    modelo) é o de antes, sem repetição nem rota perdida."""
+    prefixos = ("/api/proxies", "/api/commands", "/api/apps", "/api/app-store", "/api/app-catalog", "/api/app-state")
+    rotas = [r for r in _rotas_na_ordem() if r[1].startswith(prefixos)]
+    assert sorted(rotas) == sorted([
+        ("GET", "/api/proxies"), ("POST", "/api/proxies"), ("DELETE", "/api/proxies/{proxy_id}"), ("POST", "/api/proxies/apply"),
+        ("GET", "/api/commands/{command_id}"), ("GET", "/api/commands"), ("POST", "/api/commands/{command_id}/verify"),
+        ("POST", "/api/commands/{command_id}/cancel"), ("POST", "/api/commands/{command_id}/resolve"), ("POST", "/api/commands/refine"),
+        ("GET", "/api/apps-overview"), ("GET", "/api/apps/{app_id}/overview"), ("GET", "/api/apps/{pacote}/conhecimento"),
+        ("GET", "/api/apps"), ("POST", "/api/apps"), ("PUT", "/api/apps/{app_id}"), ("DELETE", "/api/apps/{app_id}"),
+        ("GET", "/api/app-store"), ("GET", "/api/app-catalog"), ("GET", "/api/app-state")])
+
+
 def test_modulos_de_apresentacao_nao_importam_app_api() -> None:
     """Ciclo: `app.api` importa os módulos; um módulo que importa `app.api` de volta só funciona por acidente de ordem."""
     raiz = Path(__file__).resolve().parent.parent / "app" / "modules"
