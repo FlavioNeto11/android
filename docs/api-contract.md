@@ -1102,6 +1102,7 @@ campo.
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
 | `POST /api/training/from-run` | `TrainingDeFalhaBody {run_id, step_id, lease_id, intent?, app_id?, profile_id?}` | `TrainingSession` (201) com `origin {run_id, step_id, step_key, attempt_id, motivo}`: abre o ensino a partir de uma etapa que falhou (31.111 F1 e F2, adendo v1.75); 404 `step_not_found`, 409 `step_not_failed` e as recusas de `POST /instances/{id}/training` |
+| `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` | — | `{intent, pergunta, rotulo}` ou `null` (sem tentativa): o que "Ensinar a corrigir" pré-preenche antes da sessão, pelo diagnóstico do 31.111 F4; só leitura, sem IA (31.116, adendo v1.80); 404 `step_not_found`, 409 `step_not_failed` |
 | `POST /api/training/{session_id}/undo` | `TrainingUndoBody {lease_id, seq?}` | `TrainingSession` com `undone: {seq, type}`: tira a última entrada da gravação viva (31.90-D, adendo v1.70) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
@@ -3641,7 +3642,7 @@ de um seletor o parâmetro sigiloso vira `{segredo}`.
 | `sombra` | `shadow_agree`, `shadow_total` |
 | `substitui`, `substituida_por` | `{id, versao, estado}` da versão vizinha da mesma chave (app, versão do app, assinatura, variante, `step_hash`), ou `null` |
 
-**`fluxo`**: `nome`, `comando_modelo`, `origem` (`{tipo: "execucao"|"treino", fonte, source_run_id}`), `etapas[]` (`indice`, `chave`,
+**`fluxo`**: `nome`, `comando_modelo`, `origem` (`{tipo: "execucao"|"treino", fonte, source_run_id, session_id, run_id, step_id, attempt_id}`; os quatro ids, adendo v1.81, são a origem da correção ensinada e ficam `null` no fluxo que não veio de uma falha), `etapas[]` (`indice`, `chave`,
 `capability`, `alvo` = `commit_selector`, `efeito`, `pos_condicao` = `{tipo, descricao}` ou `null`, `parametros[]` = nomes dos `bindings`,
 `segredo`) e `efeito` (`externo`, `etapas_com_efeito[]`).
 
@@ -6935,3 +6936,26 @@ O formato das rotas não muda; muda o que o pedido GUARDA e o que a tela recebe.
   `porta_do_plano.previa_para_o_canal` (também o `objeto_alvo`).
 - A persona trocada depois do sim muda a `chave`, e a porta pergunta de novo na execução.
 - **Prova:** `simulated` (`backend/tests/test_bindings_com_marcador_da_persona.py`); `real`: `not_run`.
+
+## Adendo v1.80 (06/10/2026; número da orquestradora; item 31.116, parte 2) — a sugestão do ensino antes da sessão
+
+- **`GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido`** → `{intent, pergunta, rotulo}`, pelo mesmo diagnóstico do
+  v1.77 (`FontesDaTentativa.chave_da_tentativa`): só leitura, sem IA, sem gravar e sem o controle do aparelho. Responde
+  `null` quando não há tentativa, e `pergunta`/`rotulo` nulos quando o diagnóstico falha. As recusas são as do
+  `from-run` (404 `step_not_found`, 409 `step_not_failed`).
+- O painel pré-preenche o formulário de "Ensinar a corrigir"; a intenção que a pessoa escrever vence (vai no
+  `POST /api/training/from-run`). **Prova:** `simulated` (`backend/tests/test_ensino_sugerido.py`); `real`: `not_run`.
+
+## Adendo v1.81 (06/10/2026; número da orquestradora; item 31.117) — o Livro lê a origem da execução do fluxo
+
+Aditivo, sem migração. Achado da Portal no 31.79: `GET /api/aprendizado/fluxo/{ref}` não trazia a execução de onde nasceu um
+fluxo ensinado a partir de uma falha (adendo v1.75), que `GET /api/flows[].origin` já trazia.
+- **`conteudo.origem`** do fluxo ganha `session_id`, `run_id`, `step_id` e `attempt_id`: a mesma forma e a mesma regra de
+  `flows[].origin` (a sessão de treino em `flows.source = "training:<id>"` que veio de uma falha). Os quatro são sempre
+  presentes e `null` quando o fluxo não veio de uma falha.
+- **`conteudo.origem.source_run_id`** cai para o `run_id` da falha quando a coluna `flows.source_run_id` é `null` (o treino não a
+  grava); quando a coluna existe, ela manda.
+- Não muda `state`, o selo `ensinado_em_prova` nem a lista `GET /api/aprendizado`.
+- **O que o painel precisa mudar:** nada obrigatório; o Livro pode mostrar a execução de origem do fluxo ensinado.
+- **Prova:** `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`, `test_learning_conteudo.py`); `real`: `not_run` até o deploy, onde se
+  lê `GET /api/aprendizado/fluxo/{ref}` de um fluxo com origem e compara com `GET /api/flows`.

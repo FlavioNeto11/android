@@ -944,6 +944,9 @@ do provedor nas chamadas dela. `domain/ensino_da_falha.py` traduz a causa em ró
 "Corrigir a etapa «…»: <rótulo>". A causa `indeterminada` não acrescenta nada à intenção, e a intenção da pessoa vence.
 Nenhuma IA: a única chamada continua sendo a proposta do próprio ensino. Sem tentativa, sem tipo ou com erro na leitura,
 `diagnostico` é `null` e a sessão abre igual. Quem liga é o `AppState` (`TrainingRecorder.diagnostico_da_falha`).
+Antes da sessão existir, `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` (31.116, parte 2) devolve a mesma
+sugestão (`{intent, pergunta, rotulo}`) para o painel pré-preencher o formulário: só leitura, sem IA, `null` sem
+tentativa.
 
 ## Evidência inválida e o reaprendido (30.23)
 
@@ -1037,6 +1040,12 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
   com o motivo. Ordem: tipo sem execução (lição, tela), desligado, vetado, sessão ou autenticação, sem origem (o item
   não nasceu de execução), comando com credencial (a triagem do aprendizado), efeito real, receita sem fluxo ativo
   para o comando. Há um pedido vivo por item (índice parcial da 082), que vale 72 h.
+- **O `observar` da classe B (30.34, sim da orquestradora em 06/10).** Desde o 30.73, o parecer B fica em `observar`
+  com `execucao_real` e não pede mais a pessoa. O `observar` B com falta que uma execução produz também gera pedido, mas
+  SÓ no app de prova (`qa`). O efeito real não gera nem registro, e A e C seguem como antes. A classe é a mais
+  restritiva entre o dossiê e a faixa do parecer. O teto, a verba e o ritmo são os de sempre. O que nasce por aqui é
+  contado à parte, por estado, em `GET /api/health` (`features.validacao_pelo_observar_b`, persistido em `settings`).
+  Sem isso, o fluxo B nunca ganhava a 2ª execução, e a sombra da autopublicação ficava sem casos (re-medida do 30.72).
 - **Grupos.** `qa` é o app de categoria `qa`, sem efeito fora da máquina; `leitura` é sem efeito; `efeito_real` nunca roda
   nesta fatia.
 - **O despachante** (`LacoDaValidacao`, sob a trava de líder; `intervalo_s` 600). Expira os pedidos velhos: pendente há
