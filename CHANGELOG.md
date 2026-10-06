@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)
+
+- Une o painel do 31.89 já sobre a junção do corte 43 (`feat/31-89-painel-corte-44`, 5cb96676) e a tela do 30.85 (`feat/30-85-selo-no-livro`, b083e683, sobre a
+  main 07b803d5). Conflitos só de CHANGELOG e do fim de `DetalheRico.test.tsx` (31.88 F2 e 30.85 acrescentaram blocos ao fim): ficaram os dois.
+- Prova `simulated`: frontend inteiro, typecheck e build com os números do commit de junção. `not_run`: percurso real (depende dos backends 30.85 e 31.89).
+
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e
@@ -185,6 +191,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `scripts/tests/test_trocar_nomes_ids.py` (6; o novo prova o aborto sem a chave e a passagem com ela).
   Ensaio real em cb6742d4: 171 arquivos e 1584 linhas, checagem passou (também com `--banco`); nada escrito.
 
+## 2026-10-05 — 30.85 (painel): o Livro mostra o selo "em prova" no fluxo ensinado (branch feat/30-85-selo-no-livro)
+
+- Só frontend, contra o adendo v1.73 (backend `feat/30-85-selo-em-prova-no-livro`, ainda sem merge): a entrada e o detalhe do fluxo no Livro passam a
+  trazer `ensinado_em_prova {persona, sessao}` enquanto ele espera a prova (ausente quando provado, confirmado, desligado ou sem treino; o `state`
+  segue `published`). Achado do percurso do deploy 42: o fluxo salvo com a gravação sem persona aparecia só como "Publicado".
+- `ItemDoLivro`: o mesmo `SeloEmProva` do 30.81 ao lado do estado, e, sem `espera_a_pessoa`, a nota curta de quem pode usar até a prova (com a persona
+  ou sem ela); com `espera_a_pessoa` vale a nota de "Confirmar que fica" e a explicação não se repete. `DetalheRico`: o selo no fato "Estado".
+  Sem o campo (backend anterior), nada muda na tela.
+- Prova `simulated`: `AprendizadoPage.test.tsx::30.85` (2 testes) e `DetalheRico.test.tsx::o selo em prova do fluxo ensinado` (1); tirar o selo do item
+  ou do detalhe reprova os três. Frontend inteiro 1701/1701, typecheck e build ok (4 workers, Idle). `not_run`: o percurso real (depende do backend).
+
 ## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
 
 - O fluxo ensinado que a prova real desligou (30.81) renasce na mesma linha quando a pessoa ensina o mesmo comando de
@@ -224,6 +241,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   linhas antigas do CHANGELOG e a avaliação original de UX (`docs/revisoes-ux/00-avaliacao-original.txt`), 1 linha.
 - Prova: `not_run` em teste de comportamento (só comentário e doc); conferido por busca que nenhuma linha acrescentada tem
   pedaço de nome real; `docs-check` verde; frontend `typecheck` e os 334 testes de `profiles` e `lib` verdes. Real: `not_run`.
+
+## 2026-10-05 — 31.89 (painel): "isto parece com…" no comando e o aviso de colisão no salvar (branch feat/31-89-painel)
+
+- Só frontend, contra o adendo v1.72 (backend `feat/31-89-sugestao-e-colisao`, ponta b70974ba no momento da leitura, ainda sem merge). Sem a rota
+  `POST /api/flows/similar` o painel não mostra nada e segue como era: a falha da rota é engolida, como a do `flows/match`.
+- **Comando** (`CommandPanel`): quando `POST /api/flows/match` volta `null`, o painel chama `flows/similar` e mostra "Nenhum fluxo casa este comando.
+  Isto parece com:" com até 3 moldes. Clicar só reescreve o campo como o molde (a pessoa troca o que está entre chaves); nada é criado nem executado.
+  `matches: true` e fluxo que já casa não mostram sugestão (e, com match, a rota nem é chamada).
+- **Revisão do salvar:** os avisos de colisão (`warnings` da prévia e do salvar, "…colide com a habilidade “…”…") já apareciam como lista de avisos, sem
+  travar o Salvar nem virar recusa do comando; ganhou o teste que fixa isso, sem mudar o componente.
+- Prova `simulated`: `CommandPanel.test.tsx::31.89` (4 testes; sem o corte quando o match não é nulo, o teste falha) e `TrainingReview.test.tsx::31.89`.
+  Frontend inteiro 1691/1691 e typecheck limpos (4 workers, Idle). `not_run`: o percurso real (depende do backend).
 
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 

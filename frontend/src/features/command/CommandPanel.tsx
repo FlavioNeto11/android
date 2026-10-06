@@ -3,7 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ApiError, api, toApiError } from '../../api/client';
 import type { PedidoCorpo } from '../../api/pedidos';
 import type {
-  CreateRunRequest, DevicePolicy, FlowCoverage, PreflightRefusal, ResolvedTarget, ResolveTargetsRequest,
+  CreateRunRequest, DevicePolicy, FlowCoverage, FlowSimilar, PreflightRefusal, ResolvedTarget, ResolveTargetsRequest,
   ResolveTargetsResponse, RunMode, RunTargetsSuggestion, TargetQuestion,
 } from '../../api/types';
 import { Button } from '../../components/Button';
@@ -196,6 +196,8 @@ export function CommandPanel() {
   const pessoas = usePersonas(porPersona || confirmacao !== null);
   // Item 7.7: quanto vai custar repetir o fluxo que este comando casa — só um palpite de leitura, nunca bloqueia.
   const [estimate, setEstimate] = useState<FlowCoverage | null>(null);
+  // 31.89 (adendo v1.72): quando nenhum fluxo casa o comando, até 3 moldes parecidos. Só pergunta: nada executa.
+  const [parecidos, setParecidos] = useState<FlowSimilar['suggestions']>([]);
   // ADR-050: a sugestão de quem faz e onde, no modo Automático. Nada é criado até confirmar.
   const [sugestao, setSugestao] = useState<Sugestao | null>(null);
   // ADR-047: o assistente aberto (a chave remonta a conversa a cada "Refinar com IA").
@@ -215,11 +217,18 @@ export function CommandPanel() {
     const trimmed = command.trim();
     if (trimmed.length === 0) {
       setEstimate(null);
+      setParecidos([]);
       return;
     }
     const ctrl = new AbortController();
     const t = setTimeout(() => {
-      api.flowsMatch(trimmed, ctrl.signal).then(setEstimate).catch(() => setEstimate(null));
+      api.flowsMatch(trimmed, ctrl.signal).then(async (m) => {
+        setEstimate(m);
+        setParecidos([]);
+        if (m) return;
+        const r = await api.flowsSimilar(trimmed, ctrl.signal);
+        if (!ctrl.signal.aborted) setParecidos(r.matches ? [] : r.suggestions.slice(0, 3));
+      }).catch(() => { setEstimate(null); setParecidos([]); });
     }, 400);
     return () => {
       clearTimeout(t);
@@ -688,6 +697,19 @@ export function CommandPanel() {
               Limpar
             </Button>
           </div>
+
+          {parecidos.length ? (
+            <div className={styles.parecidos} role="note" aria-label="Fluxos parecidos com o comando">
+              <span className={styles.parecidosTexto}>Nenhum fluxo casa este comando. Isto parece com:</span>
+              {parecidos.map((p) => (
+                <button key={p.ref} type="button" className={styles.parecido}
+                        title="Só reescreve o comando como este molde: troque o que está entre chaves pelo valor. Nada é executado."
+                        onClick={() => { setCommand(p.template); textRef.current?.focus(); }}>
+                  “{p.template}”
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div className={styles.actions}>
             {/* 30.81: o comando casa um fluxo ensinado que ainda espera a prova; o selo diz o que isso muda. */}

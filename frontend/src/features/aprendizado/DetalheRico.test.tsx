@@ -688,3 +688,21 @@ describe('detalhe rico: a quem o fluxo ensinado vale (31.88 F2)', () => {
   });
 });
 
+describe('detalhe rico: o selo em prova do fluxo ensinado (30.85)', () => {
+  const FLUXO = (extra: object = {}) => detalhe({
+    conteudo: { tipo: 'fluxo', nome: 'Voltar', comando_modelo: 'volte', origem: { tipo: 'treino', fonte: 't', source_run_id: null },
+                apps: [], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } },
+    item: { kind: 'fluxo', ref: 'f-0a1b2c3d4e5f', state: 'published', ...extra },
+  });
+
+  it('o Estado "Publicado" leva o selo enquanto o fluxo espera a prova, e não leva depois', async () => {
+    let t = await mostrar(FLUXO({ ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' } }));
+    const estado = Array.from(container.querySelectorAll('dt')).find((d) => d.textContent === 'Estado')!.nextElementSibling as HTMLElement;
+    expect(text(estado)).toContain('Publicado');
+    expect(Array.from(estado.querySelectorAll('span')).some((x) => x.textContent === 'em prova')).toBe(true);
+    t = await mostrar(FLUXO());
+    const depois = Array.from(container.querySelectorAll('dt')).find((d) => d.textContent === 'Estado')!.nextElementSibling as HTMLElement;
+    expect(Array.from(depois.querySelectorAll('span')).some((x) => x.textContent === 'em prova')).toBe(false);
+    expect(t).toContain('Publicado');
+  });
+});

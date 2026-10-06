@@ -823,3 +823,19 @@ it('junção 30.81 + 31.88 F2: no resultado o selo "em prova" vem primeiro e a l
   expect(t).not.toContain('Até a prova passar, só a persona que ensinou usa o fluxo');         // a do 30.81 já diz isso
 });
 
+// ---------------------------------------------------------------- 31.89 (adendo v1.72): colisão de comando ao salvar
+it('31.89: o aviso de colisão do comando aparece na prévia e no resultado como AVISO: não trava o Salvar e não vira recusa', async () => {
+  const colisao = 'O comando “mande {mensagem} para {contato}” colide com a habilidade “enviar mensagem” (f-0a1b2c3d4e5f): os dois casam o mesmo texto e o novo passa na frente.';
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, warnings: [colisao] }));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'f-0a1b2c3d4e5f',
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }], warnings: [colisao],
+  }));
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(regiao('Avisos da prévia', 'ul').textContent).toContain('colide com a habilidade “enviar mensagem”'));
+  expect(byRole('textbox', /Comando/).getAttribute('aria-invalid')).toBeNull();      // aviso, não recusa do comando
+  expect(byRole('button', /^Salvar como fluxo/).getAttribute('aria-disabled')).toBeNull();
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(regiao('Avisos do salvar', 'ul').textContent).toContain('colide com a habilidade “enviar mensagem”'));
+});
+
