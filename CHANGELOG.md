@@ -220,6 +220,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   intencionais). `test_ordem_das_rotas.py` ganhou o caso das 41 rotas.
 - Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
 
+## 2026-10-06 — 15.15 K, F5c (recorte A): três blocos de `AppState.__init__` viram funções de `app/bootstrap.py` (branch feat/15-15-f5c-bootstrap)
+
+- `montar_armazenamento(cfg)` (storage de evidências e avatares), `montar_lideranca_e_canais(cfg, db)` (trava de líder, canais da frota e anexos dos canais) e
+  `montar_decisoes(cfg, db, avisos, lider)` (registro e serviço das decisões automáticas) saem do `__init__`, que chama as funções na mesma ordem e continua
+  dono dos atributos (`storage`, `avatares`, `lideranca`, `canais_da_frota`, `anexos_canal`, `decisoes_registro`, `decisoes`): quem lê `state.<atributo>` e o mypy
+  não notam. Só entrou o que não lê `self`; a trava `self._lider` e o `ServicoDeAvisos` entram como argumento. Sem mudar construção, argumento nem ordem.
+  O corte inteiro (declarar os 82 atributos na classe e mover o `__init__`) é o recorte B, numa janela em que nenhuma frente toque `state.py`.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
 ## 2026-10-06 — 15.15 K, F5b: o cluster de apps de `state.py` (a entrega do aplicativo ao parque) vai para `app/convergencia.py` (branch feat/15-15-f5b-convergencia)
 
 - 18 métodos do `AppState` (`release_no_aparelho`, `fora_da_convergencia`, `aplicar_versao_promovida`, `adotar_promovidas`, `_entregar`, `_rebaixa_do_parque`,
