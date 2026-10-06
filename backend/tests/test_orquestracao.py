@@ -65,7 +65,7 @@ def _chamadas(h: Harness) -> int:
 
 async def test_propaganda_ou_voto_nao_e_roteado(harness: Harness) -> None:
     _persona(harness, "Marina", "android-01", CATOLICA)
-    _persona(harness, "Rafael", "android-02", ATEIA)
+    _persona(harness, "Nelson", "android-02", ATEIA)
     s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="comente nos posts pedindo voto no candidato X"))
     assert s.modo == "ia" and s.alerta_conduta
     assert s.targets == [] and s.escolhidas == []
@@ -74,18 +74,18 @@ async def test_propaganda_ou_voto_nao_e_roteado(harness: Harness) -> None:
 
 async def test_quem_contradiz_o_pedido_nunca_e_escolhida(harness: Harness) -> None:
     marina = _persona(harness, "Marina", "android-01", CATOLICA)
-    rafael = _persona(harness, "Rafael", "android-02", ATEIA)
+    nelson = _persona(harness, "Nelson", "android-02", ATEIA)
     s = await _orq(harness).sugerir(RunTargetsSuggestBody(
         command="responda à tia no direct contando como foi a missa de domingo, com a sua fé"))
     assert [e.profile_id for e in s.escolhidas] == [marina]
     assert s.escolhidas[0].instance_id == "android-01" and s.escolhidas[0].motivo
-    assert [d.profile_id for d in s.descartadas] == [rafael] and s.descartadas[0].motivo
+    assert [d.profile_id for d in s.descartadas] == [nelson] and s.descartadas[0].motivo
     assert [(t.instance_id, t.profile_id) for t in s.targets] == [("android-01", marina)]
 
 
 async def test_sem_crencas_num_pedido_de_crenca_e_nao_avaliavel(harness: Harness) -> None:
     marina = _persona(harness, "Marina", "android-01", CATOLICA)
-    bia = _persona(harness, "Beatriz", "android-02")                 # sem crença registrada
+    bia = _persona(harness, "Sueli", "android-02")                 # sem crença registrada
     s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="fale sobre a sua igreja com a prima"))
     assert [n.profile_id for n in s.nao_avaliaveis] == [bia] and "crença" in s.nao_avaliaveis[0].falta
     assert [e.profile_id for e in s.escolhidas] == [marina]
@@ -161,10 +161,10 @@ async def test_a_quantidade_do_texto_manda_ate_o_teto(harness: Harness) -> None:
 
 
 async def test_texto_que_diz_quem_faz_vai_pela_previa_sem_ia(harness: Harness) -> None:
-    lucas = _persona(harness, "Lucas", "android-02", CATOLICA)
-    s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="peça para o Lucas abrir o QA Messenger"))
+    tadeu = _persona(harness, "Tadeu", "android-02", CATOLICA)
+    s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="peça para o Tadeu abrir o QA Messenger"))
     assert s.modo == "texto" and [(t.instance_id, t.profile_id, t.origem) for t in s.targets] == [
-        ("android-02", lucas, "texto")]
+        ("android-02", tadeu, "texto")]
     assert _chamadas(harness) == 0
 
 

@@ -284,14 +284,14 @@ async def test_automatico_so_sugere_quem_tem_conta_em_todos_os_apps(harness: Har
     st = harness.state
     _outlook(harness)
     alice = _persona(harness, "Alice", "android-01")                    # só o Instagram; pelo nome, viria primeiro
-    beatriz = _persona(harness, "Beatriz", "android-02", outlook=True)
+    sueli = _persona(harness, "Sueli", "android-02", outlook=True)
     orq = Orquestrador(st.runs, st.social_repo)
     s = await orq.sugerir(RunTargetsSuggestBody(command=ENTRE_APPS))
     assert s.modo == "ia" and s.app_ids == ["outlook", "instagram"] and s.app_id == "outlook"
-    assert [e.profile_id for e in s.escolhidas] == [beatriz]
+    assert [e.profile_id for e in s.escolhidas] == [sueli]
     assert alice not in {d.profile_id for d in s.descartadas} | {n.profile_id for n in s.nao_avaliaveis}
     assert [(t.instance_id, t.profile_id, t.app_ids) for t in s.targets] == [
-        ("android-02", beatriz, ["outlook", "instagram"])]
+        ("android-02", sueli, ["outlook", "instagram"])]
 
 
 async def test_automatico_sem_persona_com_todas_as_contas_diz_quais_apps(harness: Harness) -> None:

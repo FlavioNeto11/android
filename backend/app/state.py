@@ -540,7 +540,7 @@ class AppState:
         self.training = TrainingRecorder(
             self.db, self.bus, self.devices,
             lambda iid, app: [str(v["profile_id"]) for v in self.social_repo.profiles_of_instance(iid, app)],
-            owner_id=cfg.owner_id)
+            owner_id=cfg.owner_id, variaveis_da_persona=self.repo.variaveis_da_persona)
         self.devices.on_training_input = self.training.record
         from .training.skills import TrainingSkills  # noqa: PLC0415
         self.skills = TrainingSkills(self)

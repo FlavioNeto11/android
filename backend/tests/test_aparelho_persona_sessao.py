@@ -1,6 +1,6 @@
 """Aparelho → App → Perfil → Sessão: cada camada é independente e nenhuma implica a seguinte.
 
-Motivado pelo android-06 (André Carvalho): "Conectar" e "Verificar conta" apareciam antes de o Instagram existir
+Motivado pelo android-06 (Ravenna Sampaio): "Conectar" e "Verificar conta" apareciam antes de o Instagram existir
 no aparelho, "Desatualizado" dizia a mesma coisa para cinco situações, e "Instalar versão promovida" não dizia
 qual app nem qual versão. Tudo aqui é prova `simulated`: sem aparelho, sem worker, sem Instagram real.
 """
@@ -158,11 +158,11 @@ def _tree(*textos: str) -> UiTree:
 
 def test_dialogo_unable_to_log_in_nao_vira_sucesso_nem_senha_errada() -> None:
     v = classify_after_submit(_tree("Unable to log in", "An unexpected error occurred. Please try logging in again.",
-                                    "OK"), package=PKG, expected_username="andre.carvalho")
+                                    "OK"), package=PKG, expected_username="ottilie.sampaio")
     assert v.outcome is Outcome.UNCERTAIN
     assert v.detail.startswith(LOGIN_ERROR_DETAIL)
     v_pt = classify_after_submit(_tree("Não foi possível entrar", "Ocorreu um erro inesperado."), package=PKG,
-                                 expected_username="andre.carvalho", locale="pt")
+                                 expected_username="ottilie.sampaio", locale="pt")
     assert v_pt.outcome is Outcome.UNCERTAIN and v_pt.detail.startswith(LOGIN_ERROR_DETAIL)
 
 
@@ -179,7 +179,7 @@ async def test_verificar_conta_recusa_sem_app_e_contexto_mostra_as_camadas(harne
     rt = s.devices.get("android-01")
     rt.state = InstanceState.online
     async with _cliente(harness) as c:
-        criado = await c.post("/api/instagram/profiles", json={"username": "andre.carvalho", "first_name": "André"})
+        criado = await c.post("/api/instagram/profiles", json={"username": "ottilie.sampaio", "first_name": "Ravenna"})
         assert criado.status_code == 201, criado.text
         pid = criado.json()["id"]
         s.social_repo.bind(pid, "android-01", reason="teste")

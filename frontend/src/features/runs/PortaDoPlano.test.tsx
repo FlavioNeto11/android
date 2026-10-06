@@ -17,7 +17,7 @@ const CHAVE_EDITADA = 'b'.repeat(64);
 function item(over: Partial<ItemDaPorta>): ItemDaPorta {
   return {
     objective_id: 'run-p:android-01', step_id: 'run-p:android-01:v1:dm', aparelho: 'android-01', titulo: 'Mandar DM',
-    persona_rotulo: '@lucas', profile_id: 'p-1', app: 'ig', acao: 'SEND_MESSAGE', alvo: 'ana', selo: 'aprovacao',
+    persona_rotulo: '@tadeu', profile_id: 'p-1', app: 'ig', acao: 'SEND_MESSAGE', alvo: 'ana', selo: 'aprovacao',
     motivo: 'primeira mensagem para quem nunca escreveu', dica: '', retry_at: null, texto: 'oi, tudo bem?',
     texto_na_execucao: false, tem_imagem: false, imagem_sha256: null, chave: CHAVE, dependentes: [], falhou: false,
     ...over,

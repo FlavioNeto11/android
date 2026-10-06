@@ -145,6 +145,7 @@ def aplicar(caminho: Path, indice: dict, ids: list[str]) -> int:
     relatorio(indice, ids, estado)
     duvidosos = [linha['id'] for linha in linhas if linha['conferido'] is False]
     print(f'{len(linhas)} item(ns) registrado(s). Relatório: {RELATORIO}')
+    print('Trello: rode .claude/trello/reconciliar.py para conferir os cartões dos três quadros com este estado (C-28).')
     if duvidosos:
         print('A conferência questionou: ' + ', '.join(duvidosos) + '. Olhe o diff antes de commitar.')
     return 2 if duvidosos else 0

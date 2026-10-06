@@ -194,7 +194,7 @@ def test_com_a_conversa_ligada_aprovacao_e_pergunta_levam_o_conteudo_redigido_e_
         "content": "oi! a senha: Abc!2345xyz " + "x" * 600}}, 3)
     servico.enfileirar_evento("run.updated", {"run": {"id": "r9", "status": "needs_input",
                                                       "status_detail": "Para qual contato do QA Messenger?"}}, 4)
-    servico.enfileirar_evento("session.needs_person", {"active": True, "detail": "senha errada da conta lucas.real"}, 5)
+    servico.enfileirar_evento("session.needs_person", {"active": True, "detail": "senha errada da conta tadeu.real"}, 5)
     corpos = {str(x["tipo"]): str(x["corpo"]) for x in banco.query("SELECT tipo, corpo FROM avisos_entregas")}
     aprovacao = corpos["approval.pending"]
     # O @ do resumo é contato e sai oculto; o alvo é a exceção do ADR-071 (d) e sai como está (28.31).
@@ -205,20 +205,20 @@ def test_com_a_conversa_ligada_aprovacao_e_pergunta_levam_o_conteudo_redigido_e_
     assert corpos["run.needs_input"] == "Pergunta: Para qual contato do QA Messenger?\n" + COMO_RESPONDER
     assert corpos["session.needs_person"] == ("Nada é tentado na tela até alguém resolver.\n"
                                               "Espera você: resolva no aparelho pelo painel.")
-    assert "lucas" not in corpos["session.needs_person"]
+    assert "tadeu" not in corpos["session.needs_person"]
 
 
 def test_conteudo_da_fila_nao_leva_dado_de_persona(tmp_path: Path) -> None:
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     servico.enfileirar_evento("approval.pending", {"approval": {
-        "id": "ap1", "summary": "responder a Maria", "target": "@maria", "content": "meu CPF é 123", "profile_id": "p-lucas"}}, 3)
-    servico.enfileirar_evento("session.needs_person", {"active": True, "profile_id": "p-lucas", "instance_id": "android-01",
-                                                       "detail": "senha errada da conta lucas.real"}, 4)
+        "id": "ap1", "summary": "responder a Maria", "target": "@maria", "content": "meu CPF é 123", "profile_id": "p-tadeu"}}, 3)
+    servico.enfileirar_evento("session.needs_person", {"active": True, "profile_id": "p-tadeu", "instance_id": "android-01",
+                                                       "detail": "senha errada da conta tadeu.real"}, 4)
     linhas = banco.query("SELECT * FROM avisos_entregas")
     assert len(linhas) == 2
     for linha in linhas:
         texto = repr(dict(linha))
-        for proibido in ("Maria", "maria", "CPF", "123", "p-lucas", "lucas", "senha"):   # o aparelho pode (28.31)
+        for proibido in ("Maria", "maria", "CPF", "123", "p-tadeu", "tadeu", "senha"):   # o aparelho pode (28.31)
             assert proibido not in texto, proibido
 
 

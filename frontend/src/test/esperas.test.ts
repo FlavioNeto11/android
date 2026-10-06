@@ -298,7 +298,7 @@ describe('catraca das esperas', () => {
       "await waitFor(() => !a?.5:c.querySelector('x'));",
     ];
     const poupa = [
-      "await waitFor(() => container.querySelector('h1')?.textContent === 'Mariana Costa');",
+      "await waitFor(() => container.querySelector('h1')?.textContent === 'Luciana Bastos');",
       "await waitFor(() => document.querySelector('table') !== null);",
       "await waitFor(() => document.querySelector('table') === null);",
       "await waitFor(() => expect(container.querySelector('li img')).not.toBeNull());",

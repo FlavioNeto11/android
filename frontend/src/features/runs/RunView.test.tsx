@@ -20,7 +20,7 @@ let container: HTMLElement;
 let backend: FakeBackend;
 
 const PERGUNTA = {
-  code: 'persona_no_aparelho', question: 'android-01 tem mais de uma persona (Marina Costa, Rafael Lima): qual delas faz isto?',
+  code: 'persona_no_aparelho', question: 'android-01 tem mais de uma persona (Marina Bastos, Nelson Lima): qual delas faz isto?',
   field: 'profile_id', options: ['ig-1', 'ig-2'], instance_id: 'android-01', profile_id: null,
 };
 
@@ -29,7 +29,7 @@ beforeAll(() => installBrowserStubs());
 beforeEach(() => {
   backend = new FakeBackend();
   backend.install();
-  backend.on('GET', /^\/api\/personas$/, () => json([makePersona('ig-1', 'Marina Costa'), makePersona('ig-2', 'Rafael Lima')]));
+  backend.on('GET', /^\/api\/personas$/, () => json([makePersona('ig-1', 'Marina Bastos'), makePersona('ig-2', 'Nelson Lima')]));
   const run = makeRun({ status: 'needs_input', status_detail: PERGUNTA.question });
   useAppStore.setState({
     ...initialDataState,
@@ -58,9 +58,9 @@ it('needs_input por destino mostra a pergunta do evento, com o campo e as opçõ
   await act(async () => { root.render(<RunView />); });
   await waitFor(() => expect(text(container)).toContain('Falta decidir quem faz e onde'));
   const t = text(container);
-  expect(t).toContain('tem mais de uma persona (Marina Costa, Rafael Lima)');
+  expect(t).toContain('tem mais de uma persona (Marina Bastos, Nelson Lima)');
   expect(t).toContain('persona');                              // o campo, em português (não `profile_id`)
-  await waitFor(() => expect(text(container)).toContain('Opções: Marina Costa, Rafael Lima.'));
+  await waitFor(() => expect(text(container)).toContain('Opções: Marina Bastos, Nelson Lima.'));
   expect(t).not.toContain('O backend não informou quais dados faltam');
   expect(t).toContain('Por persona');                          // diz onde responder
 });

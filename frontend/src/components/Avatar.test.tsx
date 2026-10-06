@@ -35,14 +35,14 @@ it('profileAvatarUrl: sem foto (ou campo ausente) não há endereço; com foto, 
 });
 
 it('sem foto: iniciais no círculo e nenhuma <img> (logo, nenhuma requisição)', async () => {
-  await render(<Avatar src={profileAvatarUrl('ig-1', false)} name="Mariana Costa" />);
+  await render(<Avatar src={profileAvatarUrl('ig-1', false)} name="Luciana Bastos" />);
   expect(container.querySelector('img')).toBeNull();
-  expect(container.textContent).toBe('MC');
+  expect(container.textContent).toBe('LB');
 });
 
 it('com foto: a imagem continua, com o texto alternativo', async () => {
-  await render(<Avatar src={profileAvatarUrl('ig-1', true)} name="Mariana Costa" />);
+  await render(<Avatar src={profileAvatarUrl('ig-1', true)} name="Luciana Bastos" />);
   const img = container.querySelector('img');
   expect(img?.getAttribute('src')).toMatch(/\/instagram\/profiles\/ig-1\/avatar$/);
-  expect(img?.getAttribute('alt')).toBe('Foto de Mariana Costa');
+  expect(img?.getAttribute('alt')).toBe('Foto de Luciana Bastos');
 });

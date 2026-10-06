@@ -329,6 +329,11 @@ class TrainingSkills:
             raise TrainingError("empty", "Nada foi gravado neste treinamento.", 400)
         # 31.91: a forma e o formato de segredo são conferidos ANTES do provedor e sem tocar na sessão; as respostas
         # já guardadas na proposta anterior são lidas aqui, porque o UPDATE abaixo troca a proposta inteira.
+        # 31.112: a proposta lida já vem com o marcador; o corpo também passa pela troca, para a pergunta devolvida com
+        # o valor (cliente que ainda mostrava a antiga) casar com a guardada.
+        persona = self._persona_demonstrada(sess)
+        if isinstance(body, dict):
+            body = dado_da_persona.nas_perguntas(body, persona)
         respostas = acumular(guardadas(sess.get("proposal")), validar_respostas(body, sess.get("proposal")))
         apps = self._apps()
         app_id = self._app_da_sessao(sess, apps)
@@ -344,7 +349,8 @@ class TrainingSkills:
         proposta["app_id"] = app_id
         proposta.pop("answers", None)
         # 31.87 F2: o dado da persona que a pessoa digitou vira o marcador, não parâmetro do comando nem literal.
-        proposta, _ = dado_da_persona.na_proposta(proposta, self._persona_demonstrada(sess))
+        proposta, _ = dado_da_persona.na_proposta(proposta, persona)
+        proposta = dado_da_persona.nas_perguntas(proposta, persona)   # 31.112: a pergunta nova da IA, ao guardar
         if respostas:           # sem resposta nenhuma a proposta fica como sempre foi (sem a chave)
             proposta["questions"] = sem_as_respondidas([q for q in proposta.get("questions") or [] if isinstance(q, str)],
                                                        respostas)
@@ -374,6 +380,7 @@ class TrainingSkills:
         # 31.87 F2: a mesma troca da proposta, para a que a pessoa editou à mão; antes de conferir o comando.
         persona = self._persona_demonstrada(sess)
         p, marcadores = dado_da_persona.na_proposta(p, persona)
+        p = dado_da_persona.nas_perguntas(p, persona)   # 31.112: a proposta editada pelo cliente pode trazer a pergunta
         if not isinstance(p.get("command_template"), (str, type(None))):
             raise TrainingError("invalid_command", "O comando da habilidade tem de ser um texto.", 400)
         comando = (p.get("command_template") or "").strip()
@@ -449,8 +456,11 @@ class TrainingSkills:
                                           prep, session_id, gravar=True)
         self.s.db.execute("UPDATE training_sessions SET status='saved', flow_id=?, proposal=?, updated_at=? WHERE id=?",
                           (flow_id, dumps(prep.p), now_iso(), session_id))
-        self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento",
-                        data={"training_session_id": session_id, "flow_id": flow_id})
+        origem = {k: v for k, v in (sess.get("origin") or {}).items() if k in ("run_id", "step_id", "attempt_id")}
+        self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento"
+                               f"{' (correção de uma execução que falhou)' if origem else ''}",
+                        data={"training_session_id": session_id, "flow_id": flow_id,
+                              **({"origin": origem} if origem else {})})       # 31.111 F3: a trilha do ensino liga à execução
         return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio,
                 "warnings": [*prep.avisos, *_aviso_sem_persona(sess)], "scope": _escopo_da_resposta(prep, scope_on_proof),
                 **self._em_prova(flow_id)}

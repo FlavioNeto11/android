@@ -349,6 +349,13 @@ marcador também nos `bindings` da linha: a porta calcula a chave com a persona 
 As execuções anteriores ficam como estão. O registro nasce mascarado a partir do deploy 46, que leva a F1
 (`feat/31-113-f1-registro-mascarado`) e a F2 (`feat/31-113-f2-etapa-com-marcador`).
 
+**A pergunta da IA também leva o marcador (31.112; achado da prova real do 31.87).** `questions[]` e
+`answers[].question` (31.91) trocam o dado por palavra, como o título (`dado_da_persona.nas_perguntas`). A troca vale
+ao guardar: no `propose`, para a pergunta nova da IA e para a pergunta que o corpo devolve, e no `save` e na prévia.
+Vale também ao mostrar: `TrainingRecorder.get` e `list` mascaram a proposta gravada antes do 31.112, pela mesma regra do
+dado digitado inteiro. A resposta da pessoa (`answer`) fica como ela escreveu. A pergunta devolvida com o valor (cliente
+aberto antes) casa com a guardada, e a IA passa a receber o marcador na pergunta respondida.
+
 **Rotas por conta** (`api.py`; as antigas por perfil são apelidos da conta âncora):
 
 | Rota | Faz |

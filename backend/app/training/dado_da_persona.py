@@ -116,6 +116,24 @@ def na_proposta(p: Mapping[str, object], persona: Mapping[str, str]) -> tuple[di
     return novo, usados
 
 
+def nas_perguntas(p: Mapping[str, object], persona: Mapping[str, str]) -> dict[str, object]:
+    """31.112: as perguntas da IA (`questions[]`) e a pergunta de cada resposta guardada (`answers[].question`, 31.91)
+    com o dado da persona trocado pelo mesmo marcador da proposta. A pergunta é texto que DESCREVE, então troca por
+    palavra, como o título. A resposta da pessoa (`answer`) fica como ela escreveu. Serve à proposta e ao corpo do
+    `propose`: a pergunta que o cliente devolve casa com a guardada nos dois jeitos, com o valor ou com o marcador."""
+    if not persona:
+        return dict(p)
+    trocas = {valor: "{" + nome + "}" for nome, valor in persona.items()}
+    novo = dict(p)
+    if isinstance(p.get("questions"), list):
+        novo["questions"] = [_trocar(q, trocas) if isinstance(q, str) else q for q in _lista(p.get("questions"))]
+    if isinstance(p.get("answers"), list):
+        novo["answers"] = [{**r, "question": _trocar(r["question"], trocas)}
+                           if isinstance(r, dict) and isinstance(r.get("question"), str) else r
+                           for r in _lista(p.get("answers"))]
+    return novo
+
+
 def aviso(usados: Iterable[str]) -> list[str]:
     """A linha que o painel mostra no salvar e na prévia: o que vem do perfil da persona de cada aparelho."""
     marcadores = ", ".join("{" + n + "}" for n in usados)
@@ -123,4 +141,4 @@ def aviso(usados: Iterable[str]) -> list[str]:
             ] if marcadores else []
 
 
-__all__ = ["MINIMO", "aviso", "demonstrados", "na_proposta"]
+__all__ = ["MINIMO", "aviso", "demonstrados", "na_proposta", "nas_perguntas"]

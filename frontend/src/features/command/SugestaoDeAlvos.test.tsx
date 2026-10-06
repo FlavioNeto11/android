@@ -25,8 +25,8 @@ const SUGESTAO: RunTargetsSuggestion = {
               app_ids: ['instagram'] }],
   escolhidas: [{ profile_id: 'p-marina', nome: 'Marina', motivo: 'católica devota, fala de fé com naturalidade',
                  aderencia: 'alta', instance_id: 'android-02', servidor: 'Central' }],
-  descartadas: [{ profile_id: 'p-rafael', nome: 'Rafael', motivo: 'ateu: o pedido exige falar como fiel' }],
-  nao_avaliaveis: [{ profile_id: 'p-bia', nome: 'Beatriz', falta: 'crenças não registradas' }],
+  descartadas: [{ profile_id: 'p-nelson', nome: 'Nelson', motivo: 'ateu: o pedido exige falar como fiel' }],
+  nao_avaliaveis: [{ profile_id: 'p-bia', nome: 'Sueli', falta: 'crenças não registradas' }],
   alerta_conduta: null, perguntas: [], questions: [], command_sem_destinos: 'responda à tia sobre a missa',
   resumo: 'Marina: a única com fé declarada e sessão pronta.', warnings: [],
 };
@@ -69,7 +69,7 @@ describe('Modo Automático', () => {
     expect(backend.callsTo('POST', /^\/api\/runs$/)).toHaveLength(0);          // nada criado antes de confirmar
     expect(text(container)).toContain('Central');
     expect(text(container)).toContain('1 persona descartada');
-    expect(text(container)).toContain('Beatriz');
+    expect(text(container)).toContain('Sueli');
 
     await click(byRole('button', /^Confirmar e executar/));
     await waitFor(() => expect(backend.callsTo('POST', /^\/api\/runs$/)).toHaveLength(1));
@@ -103,8 +103,8 @@ describe('Modo Automático', () => {
   it('persona sem dados abre a própria persona para completar (sem formulário novo aqui)', async () => {
     await setValue(campo(), 'responda à tia sobre a missa de domingo');
     await click(byRole('button', /^Executar/));
-    await waitFor(() => expect(text(container)).toContain('Beatriz'));
-    await click(byRole('button', /Beatriz/));
+    await waitFor(() => expect(text(container)).toContain('Sueli'));
+    await click(byRole('button', /Sueli/));
     expect(useUiStore.getState().view).toBe('personas');
   });
 });

@@ -25,7 +25,7 @@ function detalhe(): AppDetail {
   return {
     app_id: 'instagram', name: 'Instagram', package: 'com.instagram.android', activity: null, has_catalog: true,
     automated_login: true,
-    accounts: [{ id: 'acc-1', profile_id: 'ig-1', username: 'mariana', handle: 'mariana', status: 'active',
+    accounts: [{ id: 'acc-1', profile_id: 'ig-1', username: 'luciana', handle: 'luciana', status: 'active',
                  session_status: 'session_ready', session_verified_at: null }],
     devices: [
       { instance_id: 'android-01', state: 'ready', observed_version_name: '448.0', verified_at: null, drift_kind: null },

@@ -90,6 +90,17 @@ def test_a_palavra_de_ligacao_sai_com_o_parametro_e_outra_palavra_fica() -> None
     assert nova["command_template"] == "entre usando agora"
 
 
+def test_a_precondition_troca_por_palavra_porque_so_descreve() -> None:
+    """Nota da Ferramentas no F2: a `precondition` troca por palavra, como o título, enquanto só DESCREVE. Medido em 06/10:
+    ela só entra no texto do pedido à IA (`planning/prompts.py`, "pré-condição"), e nada a confere literalmente na tela.
+    Se um dia for conferida, passa à régua do campo inteiro, como `postcondition.value`."""
+    p = _proposta("fale com a cliente")
+    p["parameters"] = []
+    p["steps"][0]["precondition"] = "conversa com Ana aberta"
+    nova, _ = dp.na_proposta(p, {"perfil_nome": "Ana"})
+    assert nova["steps"][0]["precondition"] == "conversa com {perfil_nome} aberta"
+
+
 def test_sem_persona_ou_com_outro_valor_a_proposta_nao_muda() -> None:
     original = _proposta()
     assert dp.na_proposta(original, {}) == (original, [])

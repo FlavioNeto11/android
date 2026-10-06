@@ -178,8 +178,8 @@ describe('DeviceCard — sem ruído e versão compacta', () => {
 describe('DeviceCard — perfil do Instagram vinculado', () => {
   // Desde o N:N (v0.29) o cartão recebe as personas DO APARELHO (a forma de `GET /instances/{id}/personas`), cada
   // uma com a sessão da conta AQUI — não mais o perfil inteiro, cuja sessão é a do principal.
-  const mariana: PersonaOnDevice = {
-    profile_id: 'ig-1', username: 'luciana.bastos73519', display_name: null, name: 'Mariana Costa', status: 'active',
+  const luciana: PersonaOnDevice = {
+    profile_id: 'ig-1', username: 'luciana.bastos73519', display_name: null, name: 'Luciana Bastos', status: 'active',
     app_id: 'instagram', is_primary: true, bound_at: '2026-09-17T10:00:00Z',
     session: { status: 'session_ready', instance_id: 'android-06', observed_username: 'luciana.bastos73519',
                verified_at: '2026-09-17T11:00:00Z', detail: null, stale: false },
@@ -187,7 +187,7 @@ describe('DeviceCard — perfil do Instagram vinculado', () => {
 
   it('mostra a conta e o estado da sessão quando há perfil', async () => {
     await act(async () => {
-      root.render(<DeviceCard instance={makeInstance(6, { state: 'online' })} appName="Instagram" personas={[mariana]}
+      root.render(<DeviceCard instance={makeInstance(6, { state: 'online' })} appName="Instagram" personas={[luciana]}
                               selected={false} focused={false} onToggle={noop} onRange={noop} onOpen={noop} />);
     });
     expect(text(container)).toContain('@luciana.bastos73519');
@@ -195,14 +195,14 @@ describe('DeviceCard — perfil do Instagram vinculado', () => {
   });
 
   it('com N personas (uma por app), mostra os N avatares, a primeira com conta e "+N"', async () => {
-    const rafael: PersonaOnDevice = { ...mariana, profile_id: 'ig-2', username: null, name: 'Rafael Lima', app_id: 'chrome',
+    const nelson: PersonaOnDevice = { ...luciana, profile_id: 'ig-2', username: null, name: 'Nelson Lima', app_id: 'chrome',
                                       is_primary: false, session: null };
     await act(async () => {
-      root.render(<DeviceCard instance={makeInstance(6, { state: 'online' })} appName="Instagram" personas={[rafael, mariana]}
+      root.render(<DeviceCard instance={makeInstance(6, { state: 'online' })} appName="Instagram" personas={[nelson, luciana]}
                               selected={false} focused={false} onToggle={noop} onRange={noop} onOpen={noop} />);
     });
-    const linha = container.querySelector('[title*="Rafael Lima"]') as HTMLElement;
-    expect(linha.getAttribute('title')).toBe('Mariana Costa (@luciana.bastos73519) · Rafael Lima');
+    const linha = container.querySelector('[title*="Nelson Lima"]') as HTMLElement;
+    expect(linha.getAttribute('title')).toBe('Luciana Bastos (@luciana.bastos73519) · Nelson Lima');
     expect(text(linha)).toContain('@luciana.bastos73519');            // quem tem conta primeiro
     expect(text(linha.parentElement as HTMLElement)).toContain('+1');  // fora do corte das reticências
     expect(text(linha)).toContain('Personas:');

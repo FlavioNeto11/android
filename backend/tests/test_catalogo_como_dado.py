@@ -118,7 +118,7 @@ MUDANCAS: dict[tuple[str, str], object] = {
     ("ACCEPT_FOLLOW_REQUEST", "counterparty"): "username",
     ("DECLINE_FOLLOW_REQUEST", "counterparty"): "username",
     # ADR-055 (pacote dm-verificador) — 19/09: o verificador por modelo deu 5 DMs enviadas por não enviadas e a da
-    # beatriz, com "Sending…" congelado, por ENVIADA. Critério objetivo pela árvore, antes do modelo: pendente nunca é
+    # sueli, com "Sending…" congelado, por ENVIADA. Critério objetivo pela árvore, antes do modelo: pendente nunca é
     # enviada; bolha com o texto e o campo de escrita da conversa (declarado) sem ele = enviada.
     ("SEND_MESSAGE", "pending_marks"): ["Sending…", "Sending...", "Enviando…", "Enviando..."],
     # 30.64 — aprovar "comentar no post A de @ana" valia para o post B dela depois de uma revisão do plano: a pessoa

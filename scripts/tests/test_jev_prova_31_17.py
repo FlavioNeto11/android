@@ -25,7 +25,7 @@ _spec = importlib.util.spec_from_file_location("jev_prova_31_17", ROOT / "script
 prova = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(prova)  # type: ignore[union-attr]
 
-TEXTO_DA_PESSOA = "a senha do lucas fica no caderno azul"
+TEXTO_DA_PESSOA = "a senha do tadeu fica no caderno azul"
 DEPOIS = "2026-10-03T11:30:00.000Z"
 ANTES = "2026-10-03T10:00:00.000Z"
 

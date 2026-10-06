@@ -80,7 +80,7 @@ transcripts nem raciocínio no coordenador. Estado durável em Git/docs. Antes d
 `.claude/session-registry.md` para não duplicar uma frente. Integração, testes e documentação de fechamento cabem no próprio
 coordenador: um "agente integrador" separado só se justifica com carga paralela real.
 
-`.claude/handoff-current.md` e `.claude/session-registry.md` são **locais** (excluídos em `.git/info/exclude`, não versionados): se faltarem em um clone novo, a skill `handoff` os cria.
+`.claude/handoff-current.md`, `.claude/handoffs/` (um handoff por sessão, para sessões simultâneas) e `.claude/session-registry.md` são **locais** (excluídos em `.git/info/exclude`, não versionados): se faltarem em um clone novo, a skill `handoff` os cria.
 
 ## 7. Memória
 

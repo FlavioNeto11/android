@@ -35,8 +35,8 @@ TS = "2026-09-27T12:00:00.000Z"
 INDICES_ANTIGOS = ("idx_binding_profile_ativo", "idx_binding_device_ativo")
 INDICES_NOVOS = ("ux_binding_par_ativo", "ux_binding_conta_do_app_no_aparelho", "ux_binding_principal")
 #: O retrato de produção em 27/09 (design §2.7): 8 linhas de vínculo, 3 ativas.
-PERFIS = ("p-lucas", "p-bruno", "p-andre", "p-mariana", "p-julia", "p-carla", "p-pedro", "p-ana")
-ATIVOS = {"p-lucas": "android-01", "p-bruno": "android-02", "p-andre": "android-03"}
+PERFIS = ("p-tadeu", "p-quillon", "p-ottilie", "p-luciana", "p-julia", "p-carla", "p-pedro", "p-ana")
+ATIVOS = {"p-tadeu": "android-01", "p-quillon": "android-02", "p-ottilie": "android-03"}
 
 
 def _assinatura(db: Database, sql: str) -> str:
@@ -53,10 +53,10 @@ def _semear_producao(db: Database) -> None:
                    " VALUES (?,?,?,?,?,?)",
                    (pid, ATIVOS.get(pid, f"android-{i:02d}"), 1 if pid in ATIVOS else 0, TS,
                     None if pid in ATIVOS else TS, None if pid in ATIVOS else "bloqueado (ADR-029)"))
-    # Contas: Lucas e Bruno têm só a do Instagram (o vínculo ganha `app_id`); André tem Instagram E Chrome (fica
+    # Contas: Tadeu e Quillon têm só a do Instagram (o vínculo ganha `app_id`); Ravenna tem Instagram E Chrome (fica
     # NULL: não se adivinha de qual app é o vínculo); as demais não têm conta nenhuma.
-    for cid, pid, app in (("c-lucas", "p-lucas", "instagram"), ("c-bruno", "p-bruno", "instagram"),
-                          ("c-andre", "p-andre", "instagram"), ("c-andre-chrome", "p-andre", "chrome")):
+    for cid, pid, app in (("c-tadeu", "p-tadeu", "instagram"), ("c-quillon", "p-quillon", "instagram"),
+                          ("c-ottilie", "p-ottilie", "instagram"), ("c-ottilie-chrome", "p-ottilie", "chrome")):
         db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
                    " VALUES (?,?,?,?,?,?,?)", (cid, pid, app, pid[2:], "active", TS, TS))
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
@@ -91,9 +91,9 @@ def test_atualizacao_050_para_051_com_o_retrato_de_producao(tmp_path: Path, monk
         ativos = db.query("SELECT profile_id, instance_id, app_id, is_primary FROM device_profile_bindings"
                           " WHERE active=1 ORDER BY profile_id")
         assert ativos == [
-            {"profile_id": "p-andre", "instance_id": "android-03", "app_id": None, "is_primary": 1},
-            {"profile_id": "p-bruno", "instance_id": "android-02", "app_id": "instagram", "is_primary": 1},
-            {"profile_id": "p-lucas", "instance_id": "android-01", "app_id": "instagram", "is_primary": 1}]
+            {"profile_id": "p-ottilie", "instance_id": "android-03", "app_id": None, "is_primary": 1},
+            {"profile_id": "p-quillon", "instance_id": "android-02", "app_id": "instagram", "is_primary": 1},
+            {"profile_id": "p-tadeu", "instance_id": "android-01", "app_id": "instagram", "is_primary": 1}]
         assert db.scalar("SELECT COUNT(*) FROM device_profile_bindings WHERE active=0 AND is_primary=1") == 0
         assert db.scalar("SELECT COUNT(*) FROM device_profile_bindings WHERE active=0 AND app_id IS NOT NULL") == 0
         assert _assinatura(db, "SELECT profile_id, instance_id, active, bound_at, unbound_at, reason"
@@ -141,7 +141,7 @@ def repo(tmp_path: Path) -> SocialRepository:
     db.migrate()
     db.execute("INSERT INTO apps(id, name, package, builtin) VALUES ('instagram','Instagram','com.instagram.android',1)")
     db.execute("INSERT INTO apps(id, name, package, builtin) VALUES ('chrome','Chrome','com.android.chrome',0)")
-    for pid in ("p-andre", "p-bruno", "p-lucas"):
+    for pid in ("p-ottilie", "p-quillon", "p-tadeu"):
         db.execute("INSERT INTO instagram_profiles(id, username, created_at, updated_at) VALUES (?,?,?,?)",
                    (pid, pid[2:], TS, TS))
     r = SocialRepository(db)
@@ -155,54 +155,54 @@ def _pares(repo: SocialRepository, pid: str) -> list[tuple[str, str | None, bool
 
 
 def test_uma_persona_em_dois_aparelhos_com_um_principal(repo: SocialRepository) -> None:
-    repo.bind("p-andre", "android-01", app_id="instagram")
-    repo.bind("p-andre", "android-02", app_id="instagram")
-    assert _pares(repo, "p-andre") == [("android-01", "instagram", True), ("android-02", "instagram", False)]
-    assert repo.binding_principal("p-andre")["instance_id"] == "android-01"
+    repo.bind("p-ottilie", "android-01", app_id="instagram")
+    repo.bind("p-ottilie", "android-02", app_id="instagram")
+    assert _pares(repo, "p-ottilie") == [("android-01", "instagram", True), ("android-02", "instagram", False)]
+    assert repo.binding_principal("p-ottilie")["instance_id"] == "android-01"
     with pytest.raises(ValueError):
-        repo.binding_row("p-andre")                                  # a leitura antiga não escolhe em silêncio
-    repo.set_primary("p-andre", "android-02")
-    assert repo.binding_principal("p-andre")["instance_id"] == "android-02"
-    assert sum(b["is_primary"] for b in repo.bindings_of_profile("p-andre")) == 1
+        repo.binding_row("p-ottilie")                                  # a leitura antiga não escolhe em silêncio
+    repo.set_primary("p-ottilie", "android-02")
+    assert repo.binding_principal("p-ottilie")["instance_id"] == "android-02"
+    assert sum(b["is_primary"] for b in repo.bindings_of_profile("p-ottilie")) == 1
     # Desvincular o principal promove o que sobra: a persona vinculada nunca fica sem aparelho principal.
-    repo.unbind("p-andre", "android-02")
-    assert _pares(repo, "p-andre") == [("android-01", "instagram", True)]
-    assert repo.binding("p-andre", "android-02") is None
+    repo.unbind("p-ottilie", "android-02")
+    assert _pares(repo, "p-ottilie") == [("android-01", "instagram", True)]
+    assert repo.binding("p-ottilie", "android-02") is None
 
 
 def test_dois_aparelhos_com_personas_diferentes_e_duas_personas_de_apps_diferentes_no_mesmo(repo: SocialRepository) -> None:
-    repo.bind("p-andre", "android-01", app_id="instagram")
-    repo.bind("p-bruno", "android-02", app_id="instagram")
-    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-01")] == ["p-andre"]
-    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-02")] == ["p-bruno"]
-    # Bruno usa o Chrome no aparelho do André: apps diferentes convivem no mesmo aparelho.
-    repo.bind("p-bruno", "android-01", app_id="chrome")
-    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-01")] == ["p-andre", "p-bruno"]
-    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-01", "instagram")] == ["p-andre"]
-    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-01", "chrome")] == ["p-bruno"]
+    repo.bind("p-ottilie", "android-01", app_id="instagram")
+    repo.bind("p-quillon", "android-02", app_id="instagram")
+    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-01")] == ["p-ottilie"]
+    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-02")] == ["p-quillon"]
+    # Quillon usa o Chrome no aparelho do Ravenna: apps diferentes convivem no mesmo aparelho.
+    repo.bind("p-quillon", "android-01", app_id="chrome")
+    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-01")] == ["p-ottilie", "p-quillon"]
+    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-01", "instagram")] == ["p-ottilie"]
+    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-01", "chrome")] == ["p-quillon"]
     assert repo.perfil_unico_da_instancia("android-01") is None
     with pytest.raises(ValueError):
         repo.profile_id_for_instance("android-01")
-    # `bind` não toma mais o aparelho de ninguém: o André continua lá.
-    assert _pares(repo, "p-andre") == [("android-01", "instagram", True)]
+    # `bind` não toma mais o aparelho de ninguém: o Ravenna continua lá.
+    assert _pares(repo, "p-ottilie") == [("android-01", "instagram", True)]
 
 
 def test_duas_contas_do_mesmo_app_no_mesmo_aparelho_sao_recusadas(repo: SocialRepository) -> None:
-    repo.bind("p-andre", "android-01", app_id="instagram")
+    repo.bind("p-ottilie", "android-01", app_id="instagram")
     with pytest.raises(BindingConflict) as exc:
-        repo.bind("p-bruno", "android-01", app_id="instagram")
-    assert exc.value.code == "conta_do_app_ja_no_aparelho" and "p-andre" in str(exc.value)
-    assert _pares(repo, "p-bruno") == []
+        repo.bind("p-quillon", "android-01", app_id="instagram")
+    assert exc.value.code == "conta_do_app_ja_no_aparelho" and "p-ottilie" in str(exc.value)
+    assert _pares(repo, "p-quillon") == []
     # E o índice segura mesmo quem escreve por fora do repositório (INSERT à mão, só com os tipos da 051).
     with pytest.raises(INTEGRITY_ERRORS):
         repo.db.execute("INSERT INTO device_profile_bindings(profile_id, instance_id, active, bound_at, app_id,"
-                        " is_primary) VALUES (?,?,1,?,?,0)", ("p-bruno", "android-01", TS, "instagram"))
+                        " is_primary) VALUES (?,?,1,?,?,0)", ("p-quillon", "android-01", TS, "instagram"))
     # O vínculo repetido do MESMO par também é recusado pelo repositório, sem duplicar linha.
-    repo.bind("p-andre", "android-01", app_id="instagram")           # idempotente: já existe, nada muda
+    repo.bind("p-ottilie", "android-01", app_id="instagram")           # idempotente: já existe, nada muda
     assert repo.db.scalar("SELECT COUNT(*) FROM device_profile_bindings WHERE active=1") == 1
     # Sem app (apps sem conta gerenciada) o mesmo aparelho aceita várias personas.
-    repo.bind("p-bruno", "android-01")
-    repo.bind("p-lucas", "android-01")
+    repo.bind("p-quillon", "android-01")
+    repo.bind("p-tadeu", "android-01")
     assert len(repo.profiles_of_instance("android-01")) == 3
 
 
@@ -210,13 +210,13 @@ def test_vinculo_sem_app_de_quem_tem_conta_no_app_tambem_e_recusado(repo: Social
     """O vínculo sem app de uma persona que TEM conta do Instagram serve ao Instagram (`profiles_of_instance`):
     entrar assim num aparelho que já tem outra conta do Instagram seriam duas — recusado pela mesma regra (D2-a)."""
     repo.db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
-                    " VALUES (?,?,?,?,?,?,?)", ("c-bruno", "p-bruno", "instagram", "bruno", "active", TS, TS))
-    repo.bind("p-andre", "android-01", app_id="instagram")
+                    " VALUES (?,?,?,?,?,?,?)", ("c-quillon", "p-quillon", "instagram", "quillon", "active", TS, TS))
+    repo.bind("p-ottilie", "android-01", app_id="instagram")
     with pytest.raises(BindingConflict) as exc:
-        repo.bind("p-bruno", "android-01")
-    assert exc.value.app_id == "instagram" and exc.value.other_profile_id == "p-andre"
+        repo.bind("p-quillon", "android-01")
+    assert exc.value.app_id == "instagram" and exc.value.other_profile_id == "p-ottilie"
     # E a outra direção: quem entrou sem app, tendo conta, segura o app para si.
-    repo.bind("p-bruno", "android-02")
+    repo.bind("p-quillon", "android-02")
     with pytest.raises(BindingConflict):
-        repo.bind("p-andre", "android-02", app_id="instagram")
-    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-02", "instagram")] == ["p-bruno"]
+        repo.bind("p-ottilie", "android-02", app_id="instagram")
+    assert [str(b["profile_id"]) for b in repo.profiles_of_instance("android-02", "instagram")] == ["p-quillon"]

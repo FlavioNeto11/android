@@ -36,7 +36,7 @@ from .pacote_instagram import mensagem_de
 
 SENHA = "$a=B7ee1#<b-C?S-{"
 PERSONA = PersonaCreate(
-    name="Lucas — corredor", summary="Fala de corrida e trilha.", persona_prompt="Responda curto e animado.",
+    name="Tadeu — corredor", summary="Fala de corrida e trilha.", persona_prompt="Responda curto e animado.",
     traits={"tone": "animado", "formality": "informal", "typical_length": "curta", "interests": ["corrida"]})
 
 
@@ -68,7 +68,7 @@ def tela(*elementos: UiElement, sensitive: bool = False) -> UiTree:
 
 def pedido(**over: object) -> SocialRequest:
     base: dict[str, object] = {"profile_id": "p", "username": "tadeu.quintela4821", "kind": "dm_initiate",
-                               "context_text": "<persona>\nperfil: @lucas\n</persona>"}
+                               "context_text": "<persona>\nperfil: @tadeu\n</persona>"}
     return SocialRequest(**{**base, **over})   # type: ignore[arg-type]
 
 
@@ -416,7 +416,7 @@ async def test_levantar_a_caixa_de_entrada_nao_inventa_fala_de_ninguem(harness: 
     obj, _srow, _run = _prepara_run(state, pid)
     state.db.execute("UPDATE steps SET capability='COLLECT_THREADS' WHERE id='o-dm:v1:r1'")
     leitura = state.db.one("SELECT * FROM steps WHERE id='o-dm:v1:r1'")
-    state.scheduler.on_items_collected(obj, state.repo.step_dto(leitura), ["ana.silva", "bruno.mendes"])
+    state.scheduler.on_items_collected(obj, state.repo.step_dto(leitura), ["ana.silva", "quillon.cardoso"])
     assert state.social.list_interactions(pid, limit=10) == []
 
 

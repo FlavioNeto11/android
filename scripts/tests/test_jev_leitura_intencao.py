@@ -30,7 +30,7 @@ DEPOIS = "2026-10-03T16:10:00.000Z"
 ANTES = "2026-10-03T15:00:00.000Z"
 A, B, NENHUMA = id_opaco("ig.abrir_conversa"), id_opaco("ig.abrir_numero"), "opt:nenhuma"
 #: Um texto de pessoa: se ele aparecer em qualquer saída, o script vazou o que achou.
-TEXTO_DA_PESSOA = "entre com a senha girassol do lucas"
+TEXTO_DA_PESSOA = "entre com a senha girassol do tadeu"
 
 
 class Banco:

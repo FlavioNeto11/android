@@ -13,8 +13,8 @@ import { ProfileDetail } from './ProfileDetail';
 
 function perfil(over: Partial<InstagramProfile> = {}): InstagramProfile {
   return {
-    id: 'ig-1', username: 'luciana.bastos73519', display_name: 'Mariana Costa', first_name: 'Mariana',
-    last_name: 'Costa', birth_date: null, email: null, persona_id: 'ig-1', persona_name: 'Mariana Costa',
+    id: 'ig-1', username: 'luciana.bastos73519', display_name: 'Luciana Bastos', first_name: 'Luciana',
+    last_name: 'Bastos', birth_date: null, email: null, persona_id: 'ig-1', persona_name: 'Luciana Bastos',
     status: 'active', instance_id: null, locality: null, offline_policy: 'wait',
     credential: { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null,
                   updated_at: null, last_used_at: null },

@@ -74,8 +74,8 @@ def _parque(db: Database) -> None:
                    (rid, IG, f"{code}.0", code, "apk", "ab" * 32, f"apks/{rid}", "upload", to_iso(AGORA),
                     "installable", "promoted", to_iso(AGORA)))
     for idx, (iid, pid, nome, instalada, sessao) in enumerate(
-            (("android-01", "p-lucas", "lucas", "r-447", "session_ready"),
-             ("android-02", "p-bruno", "bruno", "r-440", "auth_required")), 1):
+            (("android-01", "p-tadeu", "tadeu", "r-447", "session_ready"),
+             ("android-02", "p-quillon", "quillon", "r-440", "auth_required")), 1):
         db.execute("INSERT INTO instances(id, idx, avd_name, console_port, system_port, mjpeg_port,"
                    " chromedriver_port, app_id) VALUES (?,?,?,?,?,?,?,?)",
                    (iid, idx, iid, 5640 + 2 * idx, 8300 + idx, 9300 + idx, 9600 + idx, "instagram"))
@@ -165,7 +165,7 @@ def test_relatorio_da_skill_abrir_conversa_sobre_o_parque(banco: Database) -> No
                                    "blocked": 0, "unsupported": 0, "actions": 3, "human_interventions": 1,
                                    "blockers": 0, "ready_to_run": False}
     texto = json.dumps(canonico, ensure_ascii=False)
-    for nome in ("lucas", "bruno"):
+    for nome in ("tadeu", "quillon"):
         assert f"ref-de-{nome}" not in texto and f"login-de-{nome}" not in texto   # credencial: só "tem/não tem"
     assert _foto(banco) == antes                                                      # ler e montar não gravam
 
@@ -178,7 +178,7 @@ def test_segunda_passada_depois_de_convergir_nao_tem_acao(banco: Database) -> No
     # O que o apply faria (e ainda não existe): o aparelho no ar, a promovida instalada e a conta entrada.
     banco.execute("UPDATE device_app_state SET installed_release_id='r-447', desired_release_id='r-447',"
                   " observed_version_code=447 WHERE instance_id='android-02'")
-    banco.execute("UPDATE account_sessions SET status='session_ready' WHERE account_id='acc-p-bruno'")
+    banco.execute("UPDATE account_sessions SET status='session_ready' WHERE account_id='acc-p-quillon'")
     leitores = Leitores(banco, runtimes)
     primeira = build_plan_report(specs, alvos, leitores.ler(specs, alvos), skill=ref)
     segunda = build_plan_report(specs, alvos, leitores.ler(specs, alvos), skill=ref)
@@ -205,7 +205,7 @@ def test_mesma_entrada_em_outra_ordem_da_o_mesmo_relatorio(banco: Database) -> N
 
 def test_par_nao_lido_e_desconhecido_sem_acao_e_listado_como_risco() -> None:
     spec = ResourceSpec.of("app.session", "instagram", {"session": "ready"}, "apply")
-    rel = build_plan_report([spec], [Target("android-07", "p-lucas")], [])
+    rel = build_plan_report([spec], [Target("android-07", "p-tadeu")], [])
     (linha,) = rel.lines
     assert (linha.drift.status, linha.drift.code, linha.actions) == (DriftStatus.unknown, NOT_READ, ())
     assert rel.ok == () and not rel.ready_to_run

@@ -7704,16 +7704,16 @@
   },
   "31.45": {
    "id": "31.45",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "04/10/2026, central WIN-7S2UASNLFOP, deploy 32 no ar (2c47b9fa, migração 106_pedidos_autor): r-20261004232524-2e0775 no android-01 (só leitura), chave lote:jev:31.45-02, 23:25:24Z. completed, 1 tentativa. A pós-condição de OPEN_MAIL_INBOX fechou pela árvore local SEM IA (selector:id=conversation_list & text==Inbox|dentro=toolbar), com o título da pasta conferido. Etapa em 50 s (104 s na 7d3527). Plano reaproveitado do fluxo (0 chamadas ao planejador). US$ 0,111971.",
-   "blocker": "O 'sem ator' não: a etapa declara saidas [remetente, assunto], e só o ator chama read_value (8 decide, 2 leitura, 2 verify; 2 step_done rejeitados antes das saídas). Vira o 31.61 (suíte 34).",
-   "grupo": "orquestrador-resultado-suite32-b",
-   "modelo": "claude-fable-5-1",
-   "esforco": "sessao orquestradora",
+   "evidence": "O que o item pede está provado em real: abrir a caixa de entrada do Outlook com a pós-condição determinística. 04/10/2026, deploy 32 (2c47b9fa, migração 106), r-20261004232524-2e0775 no android-01, só leitura, chave lote:jev:31.45-02: completed, 1 tentativa; OPEN_MAIL_INBOX fechou pela árvore local SEM IA (selector id=conversation_list, text Inbox dentro da toolbar), título da pasta conferido; etapa em 50 s (era 104 s na 7d3527); plano reaproveitado do fluxo (0 chamadas ao planejador); US$ 0,111971. O que ficou de fora ('sem ator': a etapa declara as saídas remetente e assunto e só o ator chama read_value) já tem item próprio, o 31.61, no plano; não é pendência do 31.45.",
+   "blocker": null,
+   "grupo": "jev",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:55:48+00:00"
+   "quando": "2026-10-06T03:41:14+00:00"
   },
   "31.46": {
    "id": "31.46",
@@ -8354,16 +8354,17 @@
   },
   "29.83": {
    "id": "29.83",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP, central em 584ac9c8 com a migração 109_portal_exclusoes (/api/health às 03:31:03Z, deploy 34). Prova de fora às 03:30:23Z contra https://dev.nvit.com.br: POST /api/portal/contatos/busca 401 e POST /api/portal/contatos/excluir 401 sem sessão (corpos inválidos de propósito), nenhum Set-Cookie na raiz. A prova de fora da orquestradora às 03:21:37Z (rc=0, 41 ok) cobre as mesmas linhas. Simulado: ver .claude/handoffs/portal-resultado-suite34.json (test_portal_exclusao, test_configuracao_de_exemplo, painel isolado no navegador). not_run: a caminhada pós-deploy no painel logado (.claude/handoffs/portal-caminhada-2983.md) e a exclusão de verdade com um contato de TESTE (pede o sim do dono). Caminhada da orquestradora no painel logado (real, 05/10/2026 de 03:24Z a 03:26Z, Chrome do dono, central em 584ac9c8): Configuração, 'Site e privacidade', 'Exclusão a pedido do titular': número só de zeros é recusado no navegador sem ir à rede; a busca com um número fictício respondeu 200 em 61 ms com 'Nenhum contato com esse telefone'; nenhum controle de apagar aparece sem resultado; nada foi apagado.",
-   "blocker": "Falta a exclusão de verdade de um contato, que só acontece a pedido de um titular ou com um contato de teste autorizado pelo dono (envio válido pelo formulário e exclusão de dado pedem o sim dele).",
-   "grupo": "resultado-orquestradora-suite34a",
-   "modelo": "claude-fable-5-1",
-   "esforco": "sessao orquestradora",
+   "evidence": "Real, 06/10/2026 ~03:31Z, central 7154d7cf, sessão do painel 'Portal (sessão Claude)'. Configuração > Site e privacidade > Exclusão a pedido do titular, com um contato de TESTE fictício (nome, empresa, telefone e mensagem inventados, estado entregue) de id 3: Buscar pelo telefone inteiro devolveu uma linha só: '1 contato encontrado', 'Contato nº 3', 'Entregue', 'telefone final 0147' (sem nome, empresa, mensagem nem o número inteiro; POST /api/portal/contatos/busca -> 200). Marquei o contato (1 selecionado), 'O pedido chegou por: Outro' e 'Excluir selecionados': o diálogo 'Apagar definitivamente?' disse o que será e o que não será apagado e 'Não há como desfazer'; confirmado: POST /api/portal/contatos/excluir -> 200, tela 'Nenhum contato com esse telefone. 1 contato apagado. 0 mensagens do bot apagadas no Telegram.'; nova busca (200) sem achados. Leitura somente leitura do SQLite depois: portal_contatos tem só os ids 1 e 2 (não são meus, intactos) e portal_exclusoes tem 1 registro: executado_por o operador da sessão, pedido_por 'outro', ids [3], mantidos [], mensagens_apagadas 0, mensagens_a_mao 0, sem dado do titular.",
+   "blocker": null,
+   "nota": "Desvio do que o orquestrador pediu (criar pela API do central): como contato_ligado é true neste central, o POST /api/portal/contato mandaria um aviso ao Telegram do dono (efeito fora da máquina que o estado do plano diz pedir o sim dele) e exige token anti-robô; por isso gravei a linha fictícia direto em portal_contatos (INSERT pelo sqlite3, estado entregue, para o laço de reenvio não a mandar). Consequência: não provei o ramo 'avisos da Canais primeiro' com mensagem de verdade (0 mensagens, esperado porque nunca houve aviso) nem o segundo gesto de 'em_envio'; também não vi a criação pela rota pública. A exclusão e a busca pela tela e pela rota são reais.",
+   "grupo": "portal-29105-e-2983",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T03:46:54+00:00"
+   "quando": "2026-10-06T03:36:17+00:00"
   },
   "29.81": {
    "id": "29.81",
@@ -9024,23 +9025,16 @@
   },
   "30.80": {
    "id": "30.80",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR 439 (ba75b9c9) e 30.80 B (f61aa2b9). Simulado: backend/tests/test_learning_ensinado_rebaixado.py::*, backend/tests/test_d1_receitas.py::*, backend/tests/test_treino_substitui_receita.py::*, backend/tests/test_treino_previa_e_refazer_receitas.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "evidence": "As duas partes do item estão na main e no ar (deploy 41, depois 45): A, a divergência por tela de partida diferente não conta como falha da receita (PR 439 ba75b9c9; migração 115 `recipes.nao_aplicavel_seguidas`; `RecipeStore.nao_aplicavel`, `NAO_APLICAVEL_CONTA_APOS=3`; `test_receita_nao_aplicavel.py`, 4 testes, verificado por mutação) e B, o aviso a quem ensinou quando o sistema rebaixa o ensinado (f61aa2b9; `test_learning_ensinado_rebaixado.py`, 7 testes, verificado por mutação com 7 regras; eventos `learning.ensinado_rebaixado` e `learning.ensinado_sem_receita` com payload fechado). Suíte 41 verde (backend 11990 passed, 0 falhas; PG dirigido sem falhas). O estado 'partial' vinha de a ponta cobrir só uma parte quando foi registrada; com A e B na main, o que ficou foi o de sempre dos itens de comportamento: real: not_run. A prova real exige uma divergência real por tela de partida diferente (A) e uma quarentena real de receita ensinada (B), ambas em execução em que a IA conduz a etapa depois (chamada paga) e que não se provoca sem criar a falha de propósito; fica para a próxima ocorrência natural no parque, sem gasto novo.",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_learning_ensinado_rebaixado.py",
-    "backend/tests/test_d1_receitas.py",
-    "backend/tests/test_treino_substitui_receita.py",
-    "backend/tests/test_treino_previa_e_refazer_receitas.py"
-   ],
-   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha",
-   "grupo": "android-suite-41",
+   "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T22:07:09+00:00"
+   "quando": "2026-10-06T03:41:14+00:00"
   },
   "29.118": {
    "id": "29.118",
@@ -9277,15 +9271,17 @@
   },
   "31.90": {
    "id": "31.90",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "31.90-C: 06/10/2026 ~00:52Z a ~01:02Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (notebook da LAN), com 2 personas (Teste Portal Um e Dois) vinculadas, o formulário do Modo treinamento mostrou 'De quem é o ensino?' com as duas, o 'Iniciar treinamento' ficou indisponível com o motivo 'Escolha de qual persona é o ensino.' até a escolha; escolhi a Um e a gravação iniciou sem 409; a sessão trn-5s0gF_li3BaMdlNA nasceu com profile_id ig-P4F67DC5D6EdoNni (GET /api/training). Antes de vincular, GET /api/instances/android-04/personas devolvia lista vazia e só depois das duas. 2ª rodada: de novo 'De quem é o ensino?' com as 2 personas e a sessão trn-1nuBzRHaAkM09f6K nasceu com profile_id ig-P4F67DC5D6EdoNni. | 31.90-F: 06/10/2026 ~00:52Z a ~01:02Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (notebook da LAN), na revisão da sessão trn-5s0gF_li3BaMdlNA as entradas mostraram o reconhecimento: '#1 toque (reconhecido por id, id page_indicator)' e '#2 toque em Home (reconhecido por descrição)'. | 31.90-D: 06/10/2026 ~01:03Z a ~01:11Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (Configurações do Android, sem conta real, sem efeito externo), persona de teste Teste Portal Um, sessão trn-1nuBzRHaAkM09f6K (6 entradas: busca, texto com o nome da persona, tecla back, Notificações, Histórico, interruptor), fluxo f-fe11676e54e3. o painel implantado NÃO tem botão de desfazer a última entrada (a rota POST /training/{id}/undo é só backend e o botão é da Portal, ainda não construído), então o 'desfazer' real não foi exercitado. O que existe e foi provado: descartar e 'Devolver' a entrada #3 a uma etapa: '#3 voltou à etapa 3 (Abrir Notificações).' e depois Descartar de novo: '#3 foi para Descartadas; para desfazer, devolva a uma etapa.' (reconhecido como 31.90-A/B). | 31.90-E: 06/10/2026 ~01:03Z a ~01:11Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (Configurações do Android, sem conta real, sem efeito externo), persona de teste Teste Portal Um, sessão trn-1nuBzRHaAkM09f6K (6 entradas: busca, texto com o nome da persona, tecla back, Notificações, Histórico, interruptor), fluxo f-fe11676e54e3. corrigi o que a etapa 5 (interruptor, julgada pela tela) confere: troquei o texto para 'O interruptor de Use notification history aparece ligado' e a linha 'Confere' da etapa passou a mostrar exatamente isso. As etapas com receita ('sem IA') mostram o editor mas o texto vem do catálogo.",
-   "grupo": "portal-percurso-deploy-43",
+   "evidence": "06/10/2026 ~03:20Z, deploy 45 (7154d7cf). Sub-item D (adendo v1.70): no Foco do android-04, 'Assumir controle' e 'Iniciar treinamento' (persona de teste Teste Portal Um, intenção 'percurso 45: provar o Desfazer a última'); dois toques em área vazia da tela da busca das Configurações geraram 2 entradas (#1 toque, #2 toque; GET /api/training/trn-PLTrZkx3t7NDtfzj: input_count 2). O botão 'Desfazer a última' apareceu abaixo da lista; o clique chamou POST /api/training/trn-PLTrZkx3t7NDtfzj/undo -> 200 OK e o painel mostrou o aviso 'Entrada desfeita: A entrada #2 saiu da gravação; o aparelho não voltou, só a gravação.' e a barra passou para '1 entrada' (#1 toque); a leitura da API confirmou status recording, inputs [1] e origin null.",
+   "blocker": null,
+   "nota": "Não testei o 409 entrada_mudou (outra entrada chegando entre a leitura e o clique): só com dois operadores ao mesmo tempo; está coberto por teste com fetch falso.",
+   "grupo": "portal-percurso-deploy-45",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T01:13:11+00:00"
+   "quando": "2026-10-06T03:24:36+00:00"
   },
   "31.89": {
    "id": "31.89",
@@ -9670,20 +9666,18 @@
    "id": "31.101",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "Ponta 5054ec81. Simulado: backend/tests/test_alvos_no_texto.py::*, backend/tests/test_comentario_ensina.py::*, backend/tests/test_capabilities.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "evidence": "Parte final (--amplo real): Jev a3b4ff7c e fbbc231e, troca ampla dos nomes de contas reais por valores de exemplo nos testes (94 arquivos de teste, só testes). Simulado: backend/tests/test_trocar_nomes_ids.py::*. Suíte 45 sobre a integração 7154d7cf (origin/main 985bd580 + Canais 95f95242 e 1647a2ab, Portal 6c235a13, Aprendizado e5f719bb, Copilot 7df32759 e 46d07d08, Jev fbbc231e (--amplo) e 31.111 ff710d13 (F1, F2 e F3), mais a main 6c03214f; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; migração nova 119): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12120 passed, 13 skipped, 0 falhas (sobre a parcial f8ea1275); SQLite dos 268 arquivos afetados desde f8ea1275 5131 passed, 3 skipped, 0 falhas; frontend typecheck limpo, 1739 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 352 arquivos em 2 partes: 4885 passed, 8 skipped e 2939 passed, 3 skipped, 0 falhas (fim 03:10:49Z).",
    "blocker": null,
    "arquivos": [
-    "backend/tests/test_alvos_no_texto.py",
-    "backend/tests/test_comentario_ensina.py",
-    "backend/tests/test_capabilities.py"
+    "backend/tests/test_trocar_nomes_ids.py"
    ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-41",
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; o commit cita 31.101",
+   "grupo": "android-suite-45",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T22:07:09+00:00"
+   "quando": "2026-10-06T03:16:40+00:00"
   },
   "31.102": {
    "id": "31.102",
@@ -10346,6 +10340,95 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "31.111": {
+   "id": "31.111",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "06/10/2026 03:19Z a 03:35Z, central no deploy 45 (commit 7154d7cf, migração 119), android-04, sem conta real, nenhuma execução nova do parque na parte B. F1-F3 provados no ar: (1) POST /api/training/from-run sobre a falha REAL r-20261006012340-d92795 (etapa abrir_notificacoes, tentativa a1, status failed, 'passou do orçamento de 10 chamadas de IA') abriu a sessão trn-jrE1zcBoKSoHFqX5 com origin {run_id, step_id, step_key, attempt_id, motivo} (201); (2) uma gravação (1 swipe, controle pela API, liberado ao fim); a proposta da IA fez 2 perguntas (a gravação sem árvore perdeu as coordenadas do arraste) e foi respondida pela API (caminho 31.86), propose 2 com 'answers' fechou sem perguntas; (2b) GET /api/training/{id} trouxe origin.context real: trilha de 4 etapas da execução no aparelho com a de origem marcada falhou, esperado {kind, value, description}, tentativa failed com failure_kind ia_orcamento; (3) save com scope_on_proof=quem_ensinou criou o fluxo f-6d07590e1db6 com escopo [persona do treino] e ensinado_em_prova (30.81); GET /api/flows traz origin {session_id, run_id, step_id, attempt_id} para ele; (4) FlowStore.match lido só leitura no banco do central: casa para a persona que ensinou (f-6d07590e1db6) e dá None para a outra persona do android-04, para execução sem persona e para as duas juntas. Custo: execuções f6-1 r-20261006031948-60fd9b (US$ 0,0000, needs_input por duas personas) e f6-2 r-20261006032040-eb32fe (US$ 0,2027, spent_usd) + parte B, duas chamadas 'ensino' de proposta (US$ 0,0153 lido por spent_usd desde 03:30Z; antes 0, depois 0,0153): total da F6 US$ 0,2180, abaixo do teto de 0,35 e de 0,10 na parte B. Bloqueio da f6-2 (por que existe o item A): a IA concluiu que o item pedido não existe nas Configurações e emitiu step_blocked; o executor o rejeitou e a execução parou em awaiting_person com a etapa em waiting_user, sem etapa failed; cancelada por mim (a etapa terminou cancelled). Ressalvas: o fluxo salvo nasce com status active mas só vale para quem ensinou até a prova (30.81), não 'candidate'; a etapa de só um arraste não gerou receita ('rolagem sem ação-alvo depois dela'), então a prova de receita da correção não foi feita; a tentativa de origem não tinha evidência (nenhuma imagem), então `evidencias` veio vazio.",
+   "blocker": "F4 (diagnóstico, Aprendizado) e F5 (tela, Portal) ainda não entregues; A (STATUS_ENSINAVEIS aceitar waiting_user) em ponta própria para o corte 46.",
+   "grupo": "jev",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T03:33:09+00:00"
+  },
+  "31.112": {
+   "id": "31.112",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "06/10/2026 ~03:21Z, deploy 45. Leitura somente leitura de GET /api/training/trn-1nuBzRHaAkM09f6K (android-04, salva): proposal.answers[1].question = \"A busca por '{perfil_nome_exibicao}' não deu resultados; ela é necessária para a tarefa ou pode ser pulada?\", ou seja, a pergunta guardada leva o marcador da persona e não o nome. O nome de teste só aparece nas entradas gravadas (texto digitado e linhas de tela), como esperado. [Orquestradora: implemented; a tela não foi vista porque exige proposta paga, mas a pergunta guardada com o marcador foi lida pela API no android-04 (prova real); o que falta é só o percurso de tela, not_run.]",
+   "blocker": "o painel só mostra a pergunta da IA na revisão de uma sessão com proposta nova (chamada paga de IA, não feita); a sessão salva não reabre na revisão",
+   "nota": "A pergunta acima é de uma proposta feita antes do deploy 45 já mascarada pela troca do 31.87 ou pelo 31.112; não distingo qual das duas a mascarou. A exibição na tela não foi vista.",
+   "grupo": "portal-percurso-deploy-45",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T03:24:36+00:00"
+  },
+  "29.137": {
+   "id": "29.137",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR 462 do Copilot, ponta 7df32759 (lido como achado pela executora, aprovado no corte). Simulado: frontend/src/test/harness.test.ts::*, frontend/src/features/rede/RedePage.test.tsx::*. Suíte 45 sobre a integração 7154d7cf (origin/main 985bd580 + Canais 95f95242 e 1647a2ab, Portal 6c235a13, Aprendizado e5f719bb, Copilot 7df32759 e 46d07d08, Jev fbbc231e (--amplo) e 31.111 ff710d13 (F1, F2 e F3), mais a main 6c03214f; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; migração nova 119): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12120 passed, 13 skipped, 0 falhas (sobre a parcial f8ea1275); SQLite dos 268 arquivos afetados desde f8ea1275 5131 passed, 3 skipped, 0 falhas; frontend typecheck limpo, 1739 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 352 arquivos em 2 partes: 4885 passed, 8 skipped e 2939 passed, 3 skipped, 0 falhas (fim 03:10:49Z).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/test/harness.test.ts",
+    "frontend/src/features/rede/RedePage.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-45",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T03:16:40+00:00"
+  },
+  "30.82": {
+   "id": "30.82",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR 463 do Copilot, ponta 46d07d08 (lido como achado: os 239 literais de falhas.py idênticos e na mesma ordem). Simulado: backend/tests/test_revisao_receitas.py::*, backend/tests/test_learning_falhas.py::*. Suíte 45 sobre a integração 7154d7cf (origin/main 985bd580 + Canais 95f95242 e 1647a2ab, Portal 6c235a13, Aprendizado e5f719bb, Copilot 7df32759 e 46d07d08, Jev fbbc231e (--amplo) e 31.111 ff710d13 (F1, F2 e F3), mais a main 6c03214f; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; migração nova 119): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12120 passed, 13 skipped, 0 falhas (sobre a parcial f8ea1275); SQLite dos 268 arquivos afetados desde f8ea1275 5131 passed, 3 skipped, 0 falhas; frontend typecheck limpo, 1739 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 352 arquivos em 2 partes: 4885 passed, 8 skipped e 2939 passed, 3 skipped, 0 falhas (fim 03:10:49Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_revisao_receitas.py",
+    "backend/tests/test_learning_falhas.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-45",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T03:16:40+00:00"
+  },
+  "28.56": {
+   "id": "28.56",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Pontas 95f95242 e 1647a2ab (Canais): .claude/trello/reconciliar.py, aviso no scripts/claude-plan-100.py aplicar, regra C-28 em docs/dominios/canais.md e na skill trello. Simulado: .claude/trello/test_reconciliar.py::*, na suíte 45 (7154d7cf) e no ar desde o deploy 45. Real (06/10 ~02:00Z, central, pela API do Trello): Execução 364 para 171 cartões, divergências 201 para 10, Em validação 98 para 27, Histórico 265 para 446, Programa 72 para 100. Falta: .claude/trello/mapa.json fora do Git como estado por instalação (ramo da Canais no corte 46).",
+   "grupo": "orquestrador-pos-deploy-45",
+   "modelo": "claude-fable-5-1",
+   "esforco": "medium",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T03:16:40+00:00"
+  },
+  "29.105": {
+   "id": "29.105",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 ~03:26Z a ~03:30Z, central 7154d7cf (contém f7153ddf do 29.105), android-04 sem conta real. No Foco, com o controle: Abrir app > Chrome (rodou Abrir app, concluído) e, no menu do Chrome, 'New Incognito tab': o quadro congelou e o painel mostrou 'Desatualizado (Sem imagem nova) — última imagem há 11 s' e depois 20 s e 40 s. Um TOQUE na tela: POST /api/instances/android-04/input -> 409 e o aviso 'A captura da tela está falhando (FalhaDeLeitura: captura na origem falhou: ... screencap falhou em emulator-5566) e o quadro não se renova: toque, arraste, texto, Enter e Apagar precisam de um quadro atual. Voltar, Início e Recentes seguem aceitos e não dependem do quadro. Uma tela protegida contra captura (aba anônima, app bancário) faz isso. Use Voltar, Início ou Recentes para sair dessa tela; toque, texto, Enter e Apagar voltam quando a imagem voltar.' O botão Voltar com o quadro velho: POST /input -> 200 OK. O botão Início: 200 OK, a tela foi à tela inicial e o quadro voltou a 'última imagem agora'. Simulado: backend/tests/test_tela_protegida.py, 7 passed em 8,36 s no checkout central (06/10, Idle, sem outra pytest rodando); o CHANGELOG do ramo registra test_execution, test_contrato_http, catracas (88) e arquitetura (9) verdes.",
+   "blocker": null,
+   "nota": "Medi o 409 do toque pelo status HTTP (visto na rede) e pelo aviso da tela; não li o corpo JSON do 409 (o código capture_failing não foi visto à mão). Enter e Apagar na tela protegida não foram exercitados na prova real (só toque, Voltar e Início); estão nos testes do backend.",
+   "grupo": "portal-29105-e-2983",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T03:36:17+00:00"
   }
  },
  "rodadas": [
@@ -13302,6 +13385,69 @@
    ],
    "grupos": [
     "portal-percurso-deploy-44"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:16:40+00:00",
+   "itens": [
+    "31.111",
+    "31.112",
+    "31.90",
+    "29.137",
+    "30.82",
+    "31.101"
+   ],
+   "grupos": [
+    "android-suite-45"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:16:40+00:00",
+   "itens": [
+    "28.56"
+   ],
+   "grupos": [
+    "orquestrador-pos-deploy-45"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:24:36+00:00",
+   "itens": [
+    "31.90",
+    "31.111",
+    "31.112"
+   ],
+   "grupos": [
+    "portal-percurso-deploy-45"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:33:09+00:00",
+   "itens": [
+    "31.111"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:36:17+00:00",
+   "itens": [
+    "29.105",
+    "29.83"
+   ],
+   "grupos": [
+    "portal-29105-e-2983"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:41:14+00:00",
+   "itens": [
+    "30.80",
+    "31.45"
+   ],
+   "grupos": [
+    "jev"
    ]
   }
  ]

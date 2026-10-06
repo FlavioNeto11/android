@@ -600,12 +600,20 @@ class FlowStore:
         for r in self.db.query("SELECT flow_id, app_id FROM flow_required_apps ORDER BY app_id"):
             exigidos.setdefault(r["flow_id"], []).append(r["app_id"])
         saida = []
+        # 31.111 F3: o fluxo que nasceu de uma correção ensinada a partir de uma execução que falhou tem a sessão de treino de
+        # origem com os três ids; o LEFT JOIN mantém as duas consultas (e traz `null` para quem não veio de uma falha).
         for r in self.db.query(
-                "SELECT id, name, command_template, app_id, source_run_id, status, uses, created_at, last_used_at, plan"
-                " FROM flows ORDER BY last_used_at DESC, created_at DESC"):
+                "SELECT f.id, f.name, f.command_template, f.app_id, f.source_run_id, f.status, f.uses, f.created_at,"
+                " f.last_used_at, f.plan, ts.id AS session_id, ts.origin_run_id, ts.origin_step_id, ts.origin_attempt_id"
+                " FROM flows f LEFT JOIN training_sessions ts ON f.source = ? || ts.id AND ts.origin_run_id IS NOT NULL"
+                " ORDER BY f.last_used_at DESC, f.created_at DESC", (PREFIXO_DO_TREINO,)):
             linha = dict(r)
             plano = linha.pop("plan")
+            sessao, run, etapa, tentativa = (linha.pop(k) for k in
+                                             ("session_id", "origin_run_id", "origin_step_id", "origin_attempt_id"))
             linha["required_apps"] = apps_na_ordem_do_plano(_json_ou_vazio(plano), exigidos.get(linha["id"], []))
+            linha["origin"] = ({"session_id": sessao, "run_id": run, "step_id": etapa, "attempt_id": tentativa}
+                               if run else None)
             saida.append(linha | {"plan": None})
         return saida
 

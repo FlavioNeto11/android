@@ -225,7 +225,7 @@ def test_app_installation_so_persegue_a_promovida(desejado: str | dict[str, str]
 
 # =============================================================================================== account.binding
 def _vinc(**kw: object) -> BindingObserved:
-    base: dict[str, object] = {"ref": VINCULO.ref, "target": ALVO, "profile_id": "p-lucas", "username": "lucas",
+    base: dict[str, object] = {"ref": VINCULO.ref, "target": ALVO, "profile_id": "p-tadeu", "username": "tadeu",
                                "bound_at": "2026-09-20T10:00:00.000Z"}
     base.update(kw)
     return BindingObserved(**base)  # type: ignore[arg-type]
@@ -233,11 +233,11 @@ def _vinc(**kw: object) -> BindingObserved:
 
 CASOS_VINCULO = [
     ("vinculado", {}, DriftStatus.in_sync, BindingCode.bound, []),
-    ("vinculado ao perfil pedido", {"target": Target("android-01", "p-lucas")}, DriftStatus.in_sync,
+    ("vinculado ao perfil pedido", {"target": Target("android-01", "p-tadeu")}, DriftStatus.in_sync,
      BindingCode.bound, []),
     ("sem vínculo", {"profile_id": None, "username": None}, DriftStatus.diverged, BindingCode.unbound,
      [("ask", None)]),
-    ("vinculado a outro perfil", {"target": Target("android-01", "p-bruno")}, DriftStatus.diverged,
+    ("vinculado a outro perfil", {"target": Target("android-01", "p-quillon")}, DriftStatus.diverged,
      BindingCode.bound_to_other, [("ask", None)]),
 ]
 
@@ -259,26 +259,26 @@ def test_vincular_e_sempre_de_pessoa(on_missing: str) -> None:
 
 
 # =============================================================================================== app.session
-PRONTA = ProviderSession(SessionStatus.session_ready, "android-01", "lucas", "2026-09-27T10:00:00.000Z",
+PRONTA = ProviderSession(SessionStatus.session_ready, "android-01", "tadeu", "2026-09-27T10:00:00.000Z",
                          credential=CredentialState.usable)
 
 
 def _sess(spec: ResourceSpec = SESSAO, **kw: object) -> SessionObserved:
-    base: dict[str, object] = {"ref": spec.ref, "target": ALVO, "app_registered": True, "profile_id": "p-lucas",
-                               "username": "lucas", "profile_status": ProfileStatus.active, "provider": PRONTA}
+    base: dict[str, object] = {"ref": spec.ref, "target": ALVO, "app_registered": True, "profile_id": "p-tadeu",
+                               "username": "tadeu", "profile_status": ProfileStatus.active, "provider": PRONTA}
     base.update(kw)
     return SessionObserved(**base)  # type: ignore[arg-type]
 
 
 CASOS_SESSAO = [
     ("pronta", SESSAO, {}, DriftStatus.in_sync, SessionCode.ready, []),
-    ("pronta, conta com arroba e maiúscula", SESSAO, {"provider": replace(PRONTA, observed_username="@Lucas")},
+    ("pronta, conta com arroba e maiúscula", SESSAO, {"provider": replace(PRONTA, observed_username="@Tadeu")},
      DriftStatus.in_sync, SessionCode.ready, []),
     ("app não cadastrado", SESSAO, {"app_registered": False}, DriftStatus.blocked, SessionCode.app_unknown,
      [("ask", None)]),
     ("sem perfil vinculado", SESSAO, {"profile_id": None, "username": None, "profile_status": None},
      DriftStatus.blocked, SessionCode.no_profile, [("ask", None)]),
-    ("outro perfil que o pedido", SESSAO, {"target": Target("android-01", "p-bruno")}, DriftStatus.blocked,
+    ("outro perfil que o pedido", SESSAO, {"target": Target("android-01", "p-quillon")}, DriftStatus.blocked,
      SessionCode.other_profile, [("ask", None)]),
     ("perfil bloqueado (ADR-029)", SESSAO, {"profile_status": ProfileStatus.blocked}, DriftStatus.blocked,
      SessionCode.profile_inactive, [("ask", None)]),
@@ -318,7 +318,7 @@ CASOS_SESSAO = [
      DriftStatus.unknown, SessionCode.account_unproven, [("observe", "session.verify")]),
     ("pronta sem conta lida, sem exigir conta", SESSAO_APPLY, {"provider": replace(PRONTA, observed_username=None)},
      DriftStatus.in_sync, SessionCode.ready, []),
-    ("pronta com a conta de outro", SESSAO, {"provider": replace(PRONTA, observed_username="bruno")},
+    ("pronta com a conta de outro", SESSAO, {"provider": replace(PRONTA, observed_username="quillon")},
      DriftStatus.blocked, SessionCode.wrong_account, [("ask", None)]),
     # app sem provedor de sessão (profile_accounts)
     ("sem provedor: marcada pronta", OUTLOOK,

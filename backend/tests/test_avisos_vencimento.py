@@ -84,12 +84,12 @@ def test_execucao_com_um_aparelho_diz_qual_e_com_varios_nao() -> None:
 
 def test_com_o_nome_do_catalogo_sai_o_nome_e_nao_a_chave() -> None:
     a = aviso_de_evento("pendencia.vence_em", _dados(acao="SEND_MESSAGE", acao_nome="Mandar mensagem"), 1,
-                        redigir=REDIGIR, nomes=["Bruno Lima", "Bruno"])
+                        redigir=REDIGIR, nomes=["Quillon Lima", "Quillon"])
     assert a is not None and "Etapa que espera: Mandar mensagem." in a.corpo and "SEND_MESSAGE" not in a.corpo
     # O nome que não passa inteiro pelos filtros não sai: fica a chave.
-    b = aviso_de_evento("pendencia.vence_em", _dados(acao="SEND_MESSAGE", acao_nome="Falar com o Bruno"), 1,
-                        redigir=REDIGIR, nomes=["Bruno Lima", "Bruno"])
-    assert b is not None and "Etapa que espera: SEND_MESSAGE." in b.corpo and "Bruno" not in b.corpo
+    b = aviso_de_evento("pendencia.vence_em", _dados(acao="SEND_MESSAGE", acao_nome="Falar com o Quillon"), 1,
+                        redigir=REDIGIR, nomes=["Quillon Lima", "Quillon"])
+    assert b is not None and "Etapa que espera: SEND_MESSAGE." in b.corpo and "Quillon" not in b.corpo
     sujo = aviso_de_evento("pendencia.vence_em", _dados(acao="SEND_MESSAGE", acao_nome="Mandar a @fulano"), 1,
                            redigir=REDIGIR)
     assert sujo is not None and "fulano" not in sujo.corpo

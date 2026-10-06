@@ -695,7 +695,7 @@ def _observacoes_do_duble() -> list[dominio.Observacao]:
     for i, conversa in enumerate(("ana", "bia", "ana")):
         for tela, kw in (("feed", {"show_username_on_feed": False}), ("profile", {}), ("inbox", {}),
                          ("thread", {"thread_with": conversa})):
-            arvore = parse_hierarchy(FakeInstagram(account="mariana", screen=tela, **kw).page_source())
+            arvore = parse_hierarchy(FakeInstagram(account="luciana", screen=tela, **kw).page_source())
             saida.append(dominio.Observacao(
                 origem=f"attempt:{tela}-{i}", ids=frozenset(dominio.estaveis(telas.sufixos(arvore, PKG))),
                 classificada=ig.reconhecer(arvore, package=PKG).tela,

@@ -2063,6 +2063,11 @@ export interface TrainingSession {
   input_count?: number;
 }
 
+/** Resposta do desfazer a última entrada (adendo v1.70): a sessão, mais a entrada que saiu. */
+export interface TrainingUndoResult extends TrainingSession {
+  undone: { seq: number; type: string };
+}
+
 /** Uma etapa no relatório do salvar, da prévia e do refazer: `recipe` diz se roda (ou rodaria) sem IA, e `reason` por quê. */
 export interface TrainingStepReport {
   key: string;

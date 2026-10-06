@@ -111,15 +111,15 @@ async def test_comentario_com_o_prefixo_de_ia_nao_pede_nada(tmp_path: Path) -> N
 
 async def test_nome_e_texto_com_dado_que_nao_sai_ficam_de_fora(tmp_path: Path) -> None:
     c = await _cenario(tmp_path)
-    c.portas.personas = ["Bruno Lima", "Bruno", "Lima", "bruno.qa"]     # como `portas_da_central.nomes_de_persona`
-    c.trello.nomes[C_MANUAL] = "Falar com o Bruno"
+    c.portas.personas = ["Quillon Lima", "Quillon", "Lima", "quillon.qa"]     # como `portas_da_central.nomes_de_persona`
+    c.trello.nomes[C_MANUAL] = "Falar com o Quillon"
     c.trello.comenta(DONO, C_MANUAL, "pode mandar para maria@exemplo.com")
     await c.volta()
     a = c.avisos[0]
     assert a.titulo.endswith("💬 Você comentou num cartão do Trello")
     assert a.corpo.split("\n")[0] == "O texto fica no cartão: tem dado que não sai por aqui."
     texto = a.titulo + a.corpo
-    assert "Bruno" not in texto and "maria" not in texto
+    assert "Quillon" not in texto and "maria" not in texto
 
 
 async def test_quem_o_dono_autorizou_nao_dispara_pergunta(tmp_path: Path) -> None:
