@@ -157,6 +157,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - A varredura achou um defeito real: a etapa mostrava "existe o elemento “desc==Back”"; agora lê "existe o elemento com a descrição “Back”" (`elementoEmPalavras`: `text==`, `desc==` e `id==`).
 - Prova `simulated`: vitest de `src/features/training` 128 testes, tsc limpo, 2 mutações mortas; a parte `real` (prévia de pacotes e resultado numa sessão `proposed` do android-04, só leitura) segue `not_run`.
 
+## 2026-10-06 — 31.144 (Portal): os filtros do Livro viajam no endereço (branch feat/31-144-filtros-no-endereco)
+
+- Tipo, Estado, Origem, Prova e a visão Produto/QA/Todos passam a ser `tipo`, `estado`, `origem`, `prova` e `visao` na query de `#/aprendizado`; recarregar ou mandar o link mantém o filtro, valor desconhecido é ignorado e um link que troca de app larga o `visao` (RA-19).
+- Prova `simulated`: `FiltrosNoEndereco.test.tsx` (6 casos) e `AprendizadoPage.test.tsx` (22), 233 testes de `src/features/aprendizado`, 4 mutações mortas; `real` `not_run` até o deploy.
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
