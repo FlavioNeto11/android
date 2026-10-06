@@ -92,7 +92,8 @@ async def suggest_run_targets(request: Request, body: RunTargetsSuggestBody) -> 
 
 @router.get("/runs")
 async def list_runs(request: Request, limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0),
-                    instance_id: str | None = None, worker_id: str | None = None) -> object:
+                    instance_id: str | None = None, worker_id: str | None = None,
+                    operacao_id: str | None = Query(None, max_length=64)) -> object:
     """A lista de execuções, paginada e filtrável por ONDE rodou.
 
     Sem paginação, o painel pedia 50 e as execuções mais antigas simplesmente sumiam — não havia como chegar
@@ -111,6 +112,10 @@ async def list_runs(request: Request, limit: int = Query(20, ge=1, le=200), offs
     if worker_id:
         where.append("EXISTS (SELECT 1 FROM objectives o WHERE o.run_id=r.id AND o.worker_id=?)")
         params.append(worker_id)
+    if operacao_id:
+        # 31.154: as execuções dos alvos de uma operação com N agentes.
+        where.append("r.operacao_id=?")
+        params.append(operacao_id)
     sql = "SELECT r.* FROM runs r" + (" WHERE " + " AND ".join(where) if where else "")
     total = s.db.scalar("SELECT COUNT(*) FROM (" + sql + ") x", tuple(params)) or 0
     rows = s.db.query(sql + " ORDER BY r.created_at DESC LIMIT ? OFFSET ?", tuple(params) + (limit, offset))

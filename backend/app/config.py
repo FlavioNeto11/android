@@ -385,6 +385,10 @@ class LimitsCfg(BaseModel):
     # subir a segunda sobe o custo da chamada.
     orquestracao_max_escolhidas: int = Field(30, ge=1, le=64)
     orquestracao_max_candidatas: int = Field(60, ge=1, le=120)
+    # 31.154: numa operação com N agentes, quantos alvos podem EXECUTAR a ação final (o comentário no post nosso); os
+    # demais param em `acao_preparada` com o motivo "limite de ações executadas". Pedido do dono (06/10): configurável
+    # aqui, junto dos outros limites, e lido a cada liberação.
+    operacao_max_acoes_executadas: int = Field(3, ge=0, le=64)
     fleet_max_accounts_per_target: int = Field(3, ge=1, le=50)
     fleet_target_window_days: int = Field(30, ge=1, le=365)
     fleet_target_window_s: int = Field(3600, ge=60, le=86400)

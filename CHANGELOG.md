@@ -19,6 +19,33 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.154 e 31.156: a operação com N agentes e os tetos da seleção (prova de 07/10; branch feat/prova30-j1-j2-candidata)
+
+- **31.156 (J1)**: a sugestão de alvos escolhia no máximo 10 personas entre 20 candidatas (constantes do domínio); um pedido
+  de 30 voltava com 10. Agora `LimitsCfg.orquestracao_max_escolhidas` (padrão 30) e `orquestracao_max_candidatas` (padrão 60),
+  lidos a cada sugestão; `max_personas` do corpo aceita até 64. Simulado em `tests/test_orquestracao.py`. O campo no formulário
+  de Configurações é da frente Portal (até lá, `PUT /api/settings`).
+- **31.154 (J2, migração 124, adendo v1.94)**: `POST/GET /api/operacoes`, `GET /api/operacoes/{id}`, `POST .../cancelar` e
+  `POST .../liberar`, e o filtro `GET /api/runs?operacao_id=` (`RunSummary.operacao_id`).
+  - Cada alvo é persona + conta + aparelho numa execução própria (chave `op:<operacao>:<persona>`, execução do sistema).
+  - A conferência persona → conta → sessão → aparelho para o alvo no estágio, com o motivo (`sem conta`, `sem sessão`…), e
+    nunca troca de app.
+  - O estágio de cada alvo é derivado na leitura, no vocabulário e na ordem do dono (`app/modules/operacoes/domain/estagios.py`).
+    Os estágios do app vêm do `app.yaml` (`operacao.abertura`/`operacao.estagios`; o Instagram declara `instagram_aberto`,
+    `OPEN_PROFILE`/`OPEN_POST`/`OPEN_COMMENTS`), e `conteudo_lido`/`conhecimento_recuperado` vêm de `registrar_estagio`, chamado
+    pela frente de aprendizado.
+  - Todo alvo nasce com o teto de autonomia `preparar` (28.23): o efeito para depois do rascunho, com o pedido de aprovação,
+    e esse é o `acao_preparada`. `liberar` aprova pelo serviço de sempre só com o eco do texto lido (31.49) e até
+    `LimitsCfg.operacao_max_acoes_executadas` (padrão 3).
+  - `max_usd` é obrigatório e tem régua própria no roteamento (`AIError(kind="budget", motivo="operacao")`, somado em todas
+    as execuções da operação).
+  - A capacidade (solicitados, contas existentes, sessões válidas, contas disponíveis, concluídas, bloqueadas, motivos) vem em
+    toda leitura.
+  - Prova: simulada em `tests/test_operacoes.py` e `tests/test_operacoes_estagios.py` (30 alvos com 1 falha sem derrubar os
+    outros). A real fica `not_run` até o deploy e a onda de 07/10 (Instagram, contas reais já logadas, uma por aparelho).
+  - Limite honesto: o estágio é derivado quando alguém lê a operação (o painel ou o GET), e os eventos `operacao.alvo` saem
+    nessa leitura, não no instante da mudança.
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
