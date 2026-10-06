@@ -4,13 +4,18 @@
  * revisão. Nada é automático: o botão pede o controle do aparelho (a IA fica em espera nele) só depois da escolha da
  * pessoa, e o treino abre no Foco. É o ÚNICO caminho de ensino na etapa (31.91 T1, ADR-078): o ensino por habilidade (v2)
  * saiu da tela.
+ *
+ * 31.116 parte 2 (adendo v1.80): ao abrir, o campo vem preenchido com a intenção que o diagnóstico da falha sugere
+ * (`GET .../ensino-sugerido`), e a causa provável e o que mostrar aparecem como dica. A intenção da pessoa vence: só
+ * se manda `intent` quando o texto difere da sugestão (o backend usa a mesma sugestão quando o `intent` falta).
+ * "O que mostrar" fica em destaque acima do campo, "Lendo a sugestão…" cobre a espera, e "Voltar à sugestão" desfaz a edição.
  */
 import { Wrench } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { api, toApiError } from '../../api/client';
-import type { PersonaOnDevice, RunDetail, Step, StepStatus } from '../../api/types';
+import type { EnsinoSugerido, PersonaOnDevice, RunDetail, Step, StepStatus } from '../../api/types';
 import { Button } from '../../components/Button';
-import { Field, Select, TextInput } from '../../components/Field';
+import { Field, Select, TextArea } from '../../components/Field';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { toast } from '../../store/toasts';
@@ -24,6 +29,16 @@ import styles from './EnsinarACorrigir.module.css';
  */
 export const ETAPA_CORRIGIVEL: ReadonlySet<StepStatus> = new Set<StepStatus>(['failed', 'uncertain', 'waiting_user']);
 
+/**
+ * A linha da causa pelo CÓDIGO do diagnóstico (v1.82), nunca pela frase: `null` = sem linha (o diagnóstico falhou),
+ * `indeterminada` = "não deu para saber". Sem o campo (backend anterior ao v1.82) vale o rótulo, como no v1.80.
+ */
+export function linhaDaCausa(s: Pick<EnsinoSugerido, 'rotulo' | 'causa'>): string | null {
+  if (s.causa === null) return null;
+  if (s.causa === 'indeterminada') return 'Causa: não deu para saber.';
+  return s.rotulo ? `Causa provável: ${s.rotulo}.` : null;
+}
+
 /** O texto de abertura que o backend usaria sozinho (adendo v1.75): só se manda quando a pessoa o reescreve. */
 export function intencaoDaCorrecao(titulo: string): string {
   return `Corrigir a etapa «${titulo}»`.slice(0, 400);
@@ -33,6 +48,9 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
   const [aberto, setAberto] = useState(false);
   const padrao = intencaoDaCorrecao(step.title);
   const [texto, setTexto] = useState(padrao);
+  const [sugestao, setSugestao] = useState<EnsinoSugerido | null>(null);
+  const [lendoSugestao, setLendoSugestao] = useState(false);
+  const editou = useRef(false);                                  // a pessoa mexeu no campo: a sugestão que chega depois não o sobrescreve
   const [personas, setPersonas] = useState<PersonaOnDevice[] | null>(null);
   const [quem, setQuem] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -52,12 +70,32 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
     return () => { vivo = false; };
   }, [aberto, aparelho]);
 
+  // A sugestão é só leitura e não toma controle: se não vem (404, 409, falha de rede), vale o texto padrão, que o backend também usaria.
+  useEffect(() => {
+    if (!aberto) return;
+    let vivo = true;
+    editou.current = false;
+    setSugestao(null);
+    setTexto(padrao);
+    setLendoSugestao(true);
+    api.ensinoSugerido(detail.id, step.id)
+      .then((s) => {
+        if (!vivo || !s) return;
+        setSugestao(s);
+        if (!editou.current) setTexto(s.intent);
+      })
+      .catch(() => {})
+      .finally(() => { if (vivo) setLendoSugestao(false); });
+    return () => { vivo = false; };
+  }, [aberto, detail.id, step.id, padrao]);
+
   if (!ETAPA_CORRIGIVEL.has(step.status)) return null;
 
   const candidatas = personasDoEnsino(personas ?? [], step.app_id ?? '');
   const precisaEscolher = candidatas.length > 1;
   const escolhaValida = candidatas.some((p) => p.profile_id === quem);
   const lendo = aberto && personas === null;
+  const base = sugestao?.intent ?? padrao;                       // o que o backend usaria sozinho: só o que difere disto vai como `intent`
 
   const fechar = () => {
     setAberto(false);
@@ -84,7 +122,7 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
       const intencao = texto.trim();
       await api.startTrainingFromRun({
         run_id: detail.id, step_id: step.id, lease_id: lease.leaseId,
-        ...(intencao && intencao !== padrao ? { intent: intencao } : {}),
+        ...(intencao && intencao !== base ? { intent: intencao } : {}),
         ...(precisaEscolher && escolhaValida ? { profile_id: quem } : {}),
       });
       toast({ tone: 'success', title: 'Treino aberto a partir da falha', message: `Ensine a tarefa em ${aparelho}; a gravação segue a etapa «${step.title}».` });
@@ -96,6 +134,20 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
     } finally {
       setEnviando(false);
     }
+  };
+
+  const causa = sugestao ? linhaDaCausa(sugestao) : null;
+  const dica = lendoSugestao ? 'Lendo a sugestão…' : sugestao && (causa || sugestao.pergunta) ? (
+    <>
+      {causa ? <>{causa} </> : null}
+      O texto é uma sugestão da plataforma; o que você escrever vale no lugar.
+    </>
+  ) : null;
+  const editado = sugestao !== null && texto !== base;           // a pessoa mexeu e há sugestão a que voltar
+
+  const voltarASugestao = () => {
+    editou.current = false;
+    setTexto(base);
   };
 
   return (
@@ -113,9 +165,15 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
             Isto assume o controle de <strong>{aparelho}</strong> (a IA fica em espera nele até você devolver) e abre o treino no Foco.
             Nada roda sozinho.
           </p>
-          <Field label="O que você vai ensinar?">
-            {({ id }) => <TextInput id={id} value={texto} maxLength={400} onChange={(e) => setTexto(e.target.value)} />}
+          {sugestao?.pergunta ? <p className={styles.mostrar}><strong>O que mostrar:</strong> {sugestao.pergunta}</p> : null}
+          <Field label="O que você vai ensinar?" hint={dica}>
+            {({ id, describedBy }) => (
+              <TextArea id={id} aria-describedby={describedBy} aria-busy={lendoSugestao || undefined} rows={2} value={texto} maxLength={400}
+                        onChange={(e) => { editou.current = true; setTexto(e.target.value.replace(/\s*\n\s*/g, ' ')); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
+            )}
           </Field>
+          {editado ? <div className={styles.linha}><Button size="sm" variant="ghost" onClick={voltarASugestao}>Voltar à sugestão</Button></div> : null}
           {precisaEscolher ? (
             <Field label="De quem é o ensino?">
               {({ id }) => (

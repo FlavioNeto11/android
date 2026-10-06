@@ -30,6 +30,39 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_readocao_espera_o_aparelho.py` (8) e os 204 testes de prontidão, readoção, boot e
   arquitetura. Real: `not_run` até o deploy seguinte, onde o A10 (readoção dos aparelhos) mede quanto cada um leva.
 
+## 2026-10-06 — 31.119: descartar o treino já concluído, na revisão e em "Para revisar" (branch feat/31-116-formulario-sugerido)
+
+- Achado do percurso 48b: quem concluía a gravação e desistia ficava com a sessão "só gravada" para sempre; o "Descartar" só existia na gravação viva. Agora a
+  **revisão** (rodapé, só em sessão gravada ou com proposta) e cada item da lista **"Para revisar"** (botão só com ícone, nome acessível `Descartar “<intenção>”`)
+  descartam a sessão. O diálogo pede confirmação (nada vira fluxo nem habilidade, com a conta das entradas gravadas: a lista traz `input_count`, a revisão as
+  entradas), chama `POST /api/training/{id}/discard` e, se o controle do aparelho é desta aba, avisa "O controle de <aparelho> volta para a IA." e o devolve
+  depois do descarte (`release`). Recusa do backend avisa, mantém a sessão na lista e NÃO devolve o controle. Descartada, a revisão fecha e a lista se relê.
+  O "Descartar" da gravação viva fica como era (o controle continua com a pessoa). `features/training/descartarSessao.ts` divide a lógica entre os dois lugares.
+- Prova `simulated`: `DescartarSessao.test.tsx` (6) com sete mutações (seis derrubadas; a que tira a guarda "só com o lease desta aba" é equivalente, porque
+  `release` já não faz nada sem lease). Prova `real`: `not_run`, depende do deploy 49.
+
+## 2026-10-06 — 31.116 parte 2 (painel): "Ensinar a corrigir" abre com a intenção que o diagnóstico sugere (branch feat/31-116-formulario-sugerido)
+
+- Contra o adendo v1.80 (Aprendizado, `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}` ou `null`): ao abrir
+  o formulário da etapa, o painel lê a sugestão (só leitura, sem IA, sem tomar o controle) e preenche "O que você vai ensinar?" com a `intent`. A causa
+  provável e o que mostrar entram como dica do campo (ligada por `aria-describedby`). A intenção da pessoa vence: `intent` só vai no
+  `POST /api/training/from-run` quando o texto difere da sugestão (o backend usa a mesma sugestão quando falta). Quem já escreveu antes de a resposta chegar
+  não tem o texto trocado. Sem tentativa (`null`), com a rota recusando (404/409) ou com a rede falhando, fica o texto padrão de antes, sem dica e sem erro
+  na tela; com `pergunta` e `rotulo` nulos (diagnóstico falhou) o campo vem com a intenção e sem dica. Fechar e abrir de novo lê outra vez e volta à sugestão.
+- Ajustes da leitura de UX (decididos pela orquestradora): "O que mostrar" vira uma linha em destaque ACIMA do campo (a dica fica só com a causa); enquanto a
+  resposta não chega a dica diz "Lendo a sugestão…" (e some também quando não há sugestão), sem nunca trocar o que a pessoa já digitou; "Voltar à sugestão"
+  aparece só depois de editar, havendo sugestão; o campo passa a ser uma caixa de duas linhas (Enter envia como antes, Shift+Enter não, quebra de linha colada
+  vira espaço).
+- Adendo v1.82 (Aprendizado, `feat/31-116-ensino-sugerido-causa`): a resposta ganha `causa`, o código do diagnóstico, e a `pergunta` passa a ser a do estado da etapa
+  (em `waiting_user`, a própria dela, mesmo com o diagnóstico em erro). O painel escolhe a linha da causa pelo CÓDIGO, nunca pela frase: `indeterminada` diz
+  "Causa: não deu para saber."; `null` não tem linha de causa (mesmo que um rótulo venha junto); os demais dizem "Causa provável: <rótulo>."; sem o campo (backend
+  anterior ao v1.82) vale o rótulo, como no v1.80. A pergunta aparece como vier, em "O que mostrar". `EnsinoSugerido.causa?` em `types.ts`.
+- `api.ensinoSugerido` e `EnsinoSugerido` em `client.ts` e `types.ts`.
+- Prova `simulated`: `EnsinarACorrigir.test.tsx` (14 novos, fixture de resposta) com catorze mutações que derrubam o teste (sobrescrever o que a pessoa escreveu,
+  comparar com o padrão em vez da sugestão, mandar `intent` sempre, não zerar ao reabrir, tirar o `aria-describedby`, sem o estado de leitura, a pergunta de volta
+  na dica, o "Voltar" sempre visível, Enter que não envia, quebra de linha mantida, o "Voltar" que não devolve a sugestão, a indeterminada decidida pelo rótulo, a causa nula com rótulo, a linha sem causa nem rótulo). Prova `real`: `not_run`; depende
+  da rota no ar (deploy 48) e de uma falha real para ver a sugestão na tela.
+
 ## 2026-10-06 — 31.116 (parte 2): a sugestão do ensino antes da sessão (branch feat/31-116-ensino-sugerido)
 
 - `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}`. Usa o mesmo diagnóstico do

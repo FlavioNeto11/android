@@ -16,6 +16,7 @@ import { isRecord, plural } from '../../lib/format';
 import { useAppStore } from '../../store/app';
 import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
+import { descartarSessaoConcluida } from './descartarSessao';
 import { OrigemDoTreino, SeloDeOrigem } from './OrigemDoTreino';
 import { RefazerReceitas, TrainingReview, toqueSemAlvo } from './TrainingReview';
 import { useTrainingStore } from './trainingStore';
@@ -172,6 +173,12 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
     }
   }
 
+  // 31.119: descartar da lista "Para revisar" (a sessão já concluída), com confirmação; devolve o controle se ele é desta aba.
+  async function descartarPendente(s: TrainingSession) {
+    if (ocupado) return;
+    if (await descartarSessaoConcluida(s)) await carregar();
+  }
+
   // 31.90-D (v1.70): desfaz só a última entrada da gravação viva; o aparelho não volta, só a gravação. Leva o `seq` que a
   // tela mostra como último: se outra entrada chegou antes do pedido, o backend recusa (409 `entrada_mudou`) e nada se apaga.
   async function desfazerAUltima() {
@@ -300,14 +307,18 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
         <div className={styles.pending}>
           <span className={styles.muted}>Para revisar:</span>
           {pendentes.map((s) => (
-            <Button key={s.id} size="sm" variant="ghost" onClick={() => setRevisando(s.id)}
-                    label={`Revisar “${s.intent}”${s.status === 'proposed' ? ', proposta pronta' : ', só gravada'}${s.origin ? ', corrige uma falha' : ''}`}>
-              {/* 29.142: o rótulo leva o nome inteiro; o estado aparece nas duas situações, para a só gravada não
-                  parecer igual à de proposta pronta. */}
-              {encurtar(s.intent)}
-              {s.status === 'proposed' ? ' · proposta pronta' : ' · só gravada'}
-              {s.origin ? <> <SeloDeOrigem origin={s.origin} /></> : null}
-            </Button>
+            <span key={s.id} className={styles.pendente}>
+              <Button size="sm" variant="ghost" onClick={() => setRevisando(s.id)}
+                      label={`Revisar “${s.intent}”${s.status === 'proposed' ? ', proposta pronta' : ', só gravada'}${s.origin ? ', corrige uma falha' : ''}`}>
+                {/* 29.142: o rótulo leva o nome inteiro; o estado aparece nas duas situações, para a só gravada não
+                    parecer igual à de proposta pronta. */}
+                {encurtar(s.intent)}
+                {s.status === 'proposed' ? ' · proposta pronta' : ' · só gravada'}
+                {s.origin ? <> <SeloDeOrigem origin={s.origin} /></> : null}
+              </Button>
+              <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label={`Descartar “${s.intent}”`}
+                      disabledReason={ocupado ? 'Espere a ação em andamento.' : null} onClick={() => void descartarPendente(s)} />
+            </span>
           ))}
         </div>
       ) : null}
