@@ -4,11 +4,15 @@
  * `POST /api/operacoes` (adendo v1.94/v1.95). A tela nunca cria conta nem persona: só escolhe entre as que já existem.
  */
 import type { ProfileAccount } from '../../api/types';
+import { fonteComoLink, type Operacao } from './modelo';
 
 export const MAX_ALVOS = 64;
 export const MAX_TETO_USD = 100;
 export const ASSUNTO_MIN = 3;
 export const ASSUNTO_MAX = 500;
+
+export const MAX_FONTES = 10;
+export const PARAMETRO_MAX = 300;
 
 export type AcaoFinal = 'preparar' | 'executar';
 
@@ -85,6 +89,23 @@ export interface FormularioDaOperacao {
   /** Texto do campo (aceita vírgula decimal). */
   maxUsd: string;
   selecionados: readonly string[];
+  /** Uma URL por linha (opcional). */
+  fontes: string;
+  /** Parâmetros fixos (v1.95): o perfil alvo e o trecho da legenda, quando o comando não os diz. */
+  username: string;
+  legenda: string;
+}
+
+/** As fontes do campo: uma por linha, sem linha vazia nem repetida. */
+export const fontesDoCampo = (texto: string): string[] => [...new Set(texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean))];
+
+const normalizado = (v: string): string => v.replace(/@/g, '').replace(/\s+/g, '').toLowerCase();
+
+/** O que a pessoa preencheu como parâmetros fixos, sem espaço sobrando e sem o campo vazio. */
+export function parametrosDoFormulario(f: Pick<FormularioDaOperacao, 'username' | 'legenda'>): Record<string, string> {
+  const u = f.username.trim();
+  const l = f.legenda.trim();
+  return { ...(u ? { username: u } : {}), ...(l ? { caption_contains: l } : {}) };
 }
 
 /** O teto em US$ lido do campo: aceita "2,5" e "2.5"; qualquer outra coisa não é número. */
@@ -106,7 +127,51 @@ export function erroDoFormulario(f: FormularioDaOperacao): string | null {
   if (teto > MAX_TETO_USD) return `O teto de custo vai até US$ ${MAX_TETO_USD}.`;
   const assunto = f.assunto.trim();
   if (assunto && (assunto.length < ASSUNTO_MIN || assunto.length > ASSUNTO_MAX)) return `O assunto tem de ${ASSUNTO_MIN} a ${ASSUNTO_MAX} caracteres, ou fica vazio.`;
+  const fontes = fontesDoCampo(f.fontes);
+  if (fontes.length > MAX_FONTES) return `Até ${MAX_FONTES} fontes.`;
+  const ruim = fontes.find((x) => !fonteComoLink(x));
+  if (ruim) return 'Cada fonte é uma URL https:// sem usuário nem parâmetros (?…).';
+  const par = parametrosDoFormulario(f);
+  for (const [nome, valor] of Object.entries(par)) {
+    if (valor.length > PARAMETRO_MAX || /[{}]/.test(valor)) return `${nome === 'username' ? 'O perfil alvo' : 'O trecho da legenda'} vai até ${PARAMETRO_MAX} caracteres e não leva { nem }.`;
+  }
+  if (par.username && par.caption_contains && normalizado(par.username) === normalizado(par.caption_contains)) return 'O perfil alvo e o trecho da legenda não podem ser o mesmo valor.';
   return null;
+}
+
+/**
+ * "Repetir como nova": o que a gaveta de uma operação leva ao formulário. Fica na memória da aba (não vai na URL: o objetivo e as
+ * fontes são longos) e vale para UMA abertura do formulário.
+ */
+export interface Rascunho {
+  command: string;
+  appId: string;
+  acaoFinal: AcaoFinal;
+  assunto: string;
+  maxUsd: string;
+  fontes: string;
+  username: string;
+  legenda: string;
+  profileIds: string[];
+  /** Parâmetros fixos além de `username` e `caption_contains`, que o formulário não oferece e não copia. */
+  parametrosNaoCopiados: string[];
+}
+
+let guardado: Rascunho | null = null;
+export const guardarRascunho = (r: Rascunho): void => { guardado = r; };
+export const lerRascunho = (): Rascunho | null => guardado;
+export const limparRascunho = (): void => { guardado = null; };
+
+/** Conta e aparelho NÃO se copiam: a operação nova resolve o que existe agora (sessões e vínculos mudam entre uma operação e outra). */
+export function rascunhoDaOperacao(op: Operacao): Rascunho {
+  const par = op.parametros ?? {};
+  return {
+    command: op.command, appId: op.app_id ?? '', acaoFinal: op.acao_final === 'executar' ? 'executar' : 'preparar', assunto: op.assunto ?? '',
+    maxUsd: op.max_usd === null ? '' : String(op.max_usd).replace('.', ','), fontes: op.fontes.join('\n'),
+    username: par.username ?? '', legenda: par.caption_contains ?? '',
+    profileIds: [...new Set(op.alvos.map((a) => a.profile_id).filter((x): x is string => !!x))],
+    parametrosNaoCopiados: Object.keys(par).filter((k) => k !== 'username' && k !== 'caption_contains'),
+  };
 }
 
 export interface CorpoDaOperacao {
@@ -116,11 +181,15 @@ export interface CorpoDaOperacao {
   acao_final: AcaoFinal;
   max_usd: number;
   assunto?: string;
+  fontes?: string[];
+  parametros?: Record<string, string>;
 }
 
 /** O corpo sem a `idempotency_key` (a tela a guarda por corpo, para a nova tentativa reaproveitar a mesma). */
 export function montarCorpo(f: FormularioDaOperacao, alvos: readonly AlvoResolvido[]): CorpoDaOperacao {
   const assunto = f.assunto.trim();
+  const fontes = fontesDoCampo(f.fontes);
+  const par = parametrosDoFormulario(f);
   return {
     command: f.command.trim(),
     app_id: f.appId,
@@ -132,5 +201,7 @@ export function montarCorpo(f: FormularioDaOperacao, alvos: readonly AlvoResolvi
     acao_final: f.acaoFinal,
     max_usd: lerTeto(f.maxUsd) ?? 0,
     ...(assunto ? { assunto } : {}),
+    ...(fontes.length ? { fontes } : {}),
+    ...(Object.keys(par).length ? { parametros: par } : {}),
   };
 }

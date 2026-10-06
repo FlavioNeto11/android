@@ -7,7 +7,10 @@ import { ConfirmHost } from '../../components/Confirm';
 import { useUiStore } from '../../store/ui';
 import { APPS, makeInstance } from '../../test/fixtures';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { erroDoFormulario, lerTeto, montarCorpo, previaDaCapacidade, resolverAlvo, type FormularioDaOperacao } from './criar';
+import {
+  erroDoFormulario, fontesDoCampo, lerRascunho, lerTeto, limparRascunho, montarCorpo, previaDaCapacidade, rascunhoDaOperacao, resolverAlvo, type FormularioDaOperacao,
+} from './criar';
+import { lerOperacao } from './modelo';
 import { OperacaoPage } from './OperacaoPage';
 
 /**
@@ -71,7 +74,7 @@ describe('prévia, validação e corpo', () => {
     expect(lerTeto(' 3.1234 ')).toBe(3.1234);
     for (const t of ['', 'abc', '-1', '1,2,3', '1e3', '2,55555']) expect(lerTeto(t)).toBeNull();
   });
-  const base: FormularioDaOperacao = { command: 'comentar', appId: 'instagram', acaoFinal: 'preparar', assunto: '', maxUsd: '2', selecionados: ['p1'] };
+  const base: FormularioDaOperacao = { command: 'comentar', appId: 'instagram', acaoFinal: 'preparar', assunto: '', maxUsd: '2', selecionados: ['p1'], fontes: '', username: '', legenda: '' };
   it('erroDoFormulario: a ordem em que a pessoa preenche, e os limites do contrato', () => {
     expect(erroDoFormulario(base)).toBeNull();
     expect(erroDoFormulario({ ...base, command: '  ' })).toMatch(/objetivo/);
@@ -84,6 +87,37 @@ describe('prévia, validação e corpo', () => {
     expect(erroDoFormulario({ ...base, assunto: 'ab' })).toMatch(/assunto/);
     expect(erroDoFormulario({ ...base, assunto: 'x'.repeat(501) })).toMatch(/assunto/);
     expect(erroDoFormulario({ ...base, assunto: 'abc' })).toBeNull();
+  });
+  it('fontes e parâmetros fixos (v1.95): só https sem usuário nem query, até 10, valores sem chaves e diferentes entre si', () => {
+    expect(fontesDoCampo(' https://a.com/x \n\n https://a.com/x\r\nhttps://b.com ')).toEqual(['https://a.com/x', 'https://b.com']);
+    expect(erroDoFormulario({ ...base, fontes: 'https://a.com/x\nhttps://b.com' })).toBeNull();
+    for (const ruim of ['http://a.com', 'https://u:p@a.com', 'https://a.com/?q=1', 'não é url']) expect(erroDoFormulario({ ...base, fontes: ruim })).toMatch(/URL https/);
+    expect(erroDoFormulario({ ...base, fontes: Array.from({ length: 11 }, (_, i) => `https://a.com/${i}`).join('\n') })).toMatch(/Até 10/);
+    expect(erroDoFormulario({ ...base, username: 'perfil', legenda: 'trecho' })).toBeNull();
+    expect(erroDoFormulario({ ...base, legenda: 'tem {chave}' })).toMatch(/não leva/);
+    expect(erroDoFormulario({ ...base, username: 'x'.repeat(301) })).toMatch(/até 300/);
+    expect(erroDoFormulario({ ...base, username: '@Perfil Um', legenda: 'perfilum' })).toMatch(/mesmo valor/);
+  });
+  it('montarCorpo leva fontes e parametros só quando preenchidos', () => {
+    const c = montarCorpo({ ...base, fontes: 'https://a.com/x', username: ' perfil ', legenda: '' }, [ok]);
+    expect(c.fontes).toEqual(['https://a.com/x']);
+    expect(c.parametros).toEqual({ username: 'perfil' });
+    const vazio = montarCorpo(base, [ok]);
+    expect('fontes' in vazio).toBe(false);
+    expect('parametros' in vazio).toBe(false);
+  });
+  it('lerOperacao lê os parametros (só texto) e rascunhoDaOperacao copia o pedido sem conta nem aparelho', () => {
+    const op = lerOperacao({
+      id: 'op-9', command: 'comentar', app_id: 'instagram', acao_final: 'executar', max_usd: 2.5, assunto: 'tema', fontes: ['https://a.com'],
+      parametros: { username: 'perfil', caption_contains: 'trecho', outro_campo: 'v', vazio: '', numero: 3 },
+      alvos: [{ profile_id: 'p1', account_id: 'a', instance_id: 'android-02' }, { profile_id: 'p1' }, { profile_id: 'p2' }, { run_id: 'r' }],
+    })!;
+    expect(op.parametros).toEqual({ username: 'perfil', caption_contains: 'trecho', outro_campo: 'v' });
+    expect(lerOperacao({ id: 'op-8', parametros: {} })!.parametros).toBeNull();
+    expect(rascunhoDaOperacao(op)).toEqual({
+      command: 'comentar', appId: 'instagram', acaoFinal: 'executar', assunto: 'tema', maxUsd: '2,5', fontes: 'https://a.com', username: 'perfil', legenda: 'trecho',
+      profileIds: ['p1', 'p2'], parametrosNaoCopiados: ['outro_campo'],
+    });
   });
   it('montarCorpo: instance_id e account_id explícitos só onde existem; assunto vazio não vai', () => {
     expect(montarCorpo({ ...base, command: '  comentar  ', maxUsd: '2,5' }, [ok, semConta])).toEqual({
@@ -236,6 +270,56 @@ describe('a tela "Nova operação"', () => {
     await act(async () => root.render(<><OperacaoPage /><ConfirmHost /></>));
     await waitFor(() => expect(text(container)).toContain('Tentar de novo'));
     expect(container.querySelector('form')).toBeNull();
+  });
+});
+
+describe('fontes, parâmetros fixos e "Repetir como nova"', () => {
+  it('fonte inválida bloqueia o envio; fontes e parâmetros preenchidos vão no corpo', async () => {
+    backend.on('POST', /^\/api\/operacoes$/, () => json({ id: 'op-4', alvos: [] }, 201));
+    await abrir();
+    await preencher();
+    await setValue(campo<HTMLTextAreaElement>(/^Fontes públicas/), 'http://inseguro.com');
+    expect(botao().getAttribute('aria-disabled')).toBe('true');
+    await setValue(campo<HTMLTextAreaElement>(/^Fontes públicas/), 'https://a.com/lancamento\nhttps://b.com/nota');
+    await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'perfil_alvo');
+    await setValue(campo<HTMLInputElement>(/^Trecho da legenda/), 'lançamento');
+    expect(text(container)).toContain('Fixa o alvo quando o comando não diz.');
+    await click(botao());
+    const d = await waitFor(() => byRole('dialog', /Criar a operação\?/));
+    await click(byRole('button', /^Criar a operação$/, d));
+    await waitFor(() => expect(backend.callsTo('POST', /operacoes$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /operacoes$/)[0]!.body).toMatchObject({
+      fontes: ['https://a.com/lancamento', 'https://b.com/nota'], parametros: { username: 'perfil_alvo', caption_contains: 'lançamento' },
+    });
+  });
+
+  it('"Repetir como nova" na gaveta abre o formulário preenchido; persona que sumiu fica de fora e a conta se resolve de novo', async () => {
+    limparRascunho();
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({
+      id: 'op-1', command: 'Comentar na publicação', app_id: 'instagram', acao_final: 'preparar', max_usd: 1.5, assunto: 'tema do lote',
+      fontes: ['https://a.com/x'], parametros: { username: 'perfil_alvo', caption_contains: 'trecho', extra: 'v' },
+      alvos: [{ profile_id: 'p1', account_id: 'ana', instance_id: 'android-03' }, { profile_id: 'p2' }, { profile_id: 'sumiu' }],
+    }));
+    useUiStore.setState({ rota: { ...useUiStore.getState().rota, tela: 'operacoes', segmentos: ['op-1'] } });
+    await act(async () => root.render(<><OperacaoPage /><ConfirmHost /></>));
+    await click(await waitFor(() => byRole('button', /^Repetir como nova$/, container)));
+    expect(useUiStore.getState().rota.segmentos).toEqual(['nova']);
+    await waitFor(() => expect(container.querySelector('form')).not.toBeNull());
+    expect(campo<HTMLTextAreaElement>(/^Objetivo/).value).toBe('Comentar na publicação');
+    expect(campo<HTMLInputElement>(/^Teto de custo/).value).toBe('1,5');
+    expect(campo<HTMLInputElement>(/^Assunto/).value).toBe('tema do lote');
+    expect(campo<HTMLTextAreaElement>(/^Fontes públicas/).value).toBe('https://a.com/x');
+    expect(campo<HTMLInputElement>(/^Perfil alvo/).value).toBe('perfil_alvo');
+    expect(caixa('p1').checked).toBe(true);
+    expect(caixa('p2').checked).toBe(true);
+    expect(caixa('p3').checked).toBe(false);
+    const tudo = text(container);
+    expect(tudo).toContain('Copiado de uma operação anterior');
+    expect(tudo).toContain('1 persona não existe mais e ficou de fora');
+    expect(tudo).toContain('não foram copiados: extra');
+    // conta e aparelho são resolvidos de novo: o aparelho do alvo antigo (android-03) não foi copiado
+    await waitFor(() => expect(text(container.querySelector('li[data-persona="p1"]')!)).toContain('Aparelho: android-02'));
+    expect(lerRascunho()).toBeNull();                                                       // vale para uma abertura só
   });
 });
 

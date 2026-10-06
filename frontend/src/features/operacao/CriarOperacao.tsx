@@ -1,4 +1,4 @@
-import { Plus, Users } from 'lucide-react';
+import { Copy, Plus, Users } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client';
 import type { AppConfig, Instance, InstagramProfile, ProfileAccount } from '../../api/types';
@@ -16,8 +16,8 @@ import { toast } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { apiOperacoes } from './api';
 import {
-  ASSUNTO_MAX, ASSUNTO_MIN, MAX_ALVOS, MAX_TETO_USD, contasDoApp, erroDoFormulario, lerTeto, montarCorpo, previaDaCapacidade, resolverAlvo,
-  type AcaoFinal, type EscolhaDoAlvo, type FormularioDaOperacao,
+  ASSUNTO_MAX, ASSUNTO_MIN, MAX_ALVOS, MAX_FONTES, MAX_TETO_USD, PARAMETRO_MAX, contasDoApp, erroDoFormulario, lerRascunho, lerTeto, limparRascunho, montarCorpo,
+  previaDaCapacidade, resolverAlvo, type AcaoFinal, type Rascunho, type EscolhaDoAlvo, type FormularioDaOperacao,
 } from './criar';
 import styles from './Operacao.module.css';
 
@@ -40,6 +40,8 @@ const ROTULO_DA_ACAO: Record<AcaoFinal, { titulo: string; explica: string }> = {
 
 export function CriarOperacao() {
   const [listas, setListas] = useState<Listas | null>(null);
+  // Lido UMA vez ao abrir (o formulário o limpa depois de montar): sem isso, o re-render já o veria vazio.
+  const [rascunho] = useState(lerRascunho);
   const [erro, setErro] = useState<LoadError | null>(null);
   const [vez, setVez] = useState(0);
   useEffect(() => {
@@ -54,18 +56,24 @@ export function CriarOperacao() {
   const voltar = <a className={styles.link} href={hashDe('operacoes')}>← Todas as operações</a>;
   if (erro && !listas) return <Page title="Nova operação"><p className={styles.cabecalho}>{voltar}</p><LoadErrorState what="as personas, os apps e os aparelhos" error={erro} onRetry={() => setVez((n) => n + 1)} /></Page>;
   if (!listas) return <Page title="Nova operação"><LoadingRegion label="Lendo personas, apps e aparelhos"><Skeleton height={160} /></LoadingRegion></Page>;
-  return <Formulario listas={listas} voltar={voltar} />;
+  // O rascunho de "Repetir como nova" vale para esta abertura: lido aqui, limpo depois que o formulário montou.
+  return <Formulario listas={listas} voltar={voltar} rascunho={rascunho} />;
 }
 
-function Formulario({ listas, voltar }: { listas: Listas; voltar: ReactNode }) {
+function Formulario({ listas, voltar, rascunho }: { listas: Listas; voltar: ReactNode; rascunho: Rascunho | null }) {
   const { apps, perfis, aparelhos } = listas;
-  const [command, setCommand] = useState('');
-  const [appId, setAppId] = useState(() => apps.find((a) => a.id === 'instagram')?.id ?? '');
-  const [acaoFinal, setAcaoFinal] = useState<AcaoFinal>('preparar');
-  const [assunto, setAssunto] = useState('');
-  const [maxUsd, setMaxUsd] = useState('');
+  const [command, setCommand] = useState(rascunho?.command ?? '');
+  const [appId, setAppId] = useState(() => (rascunho && apps.some((a) => a.id === rascunho.appId) ? rascunho.appId : apps.find((a) => a.id === 'instagram')?.id ?? ''));
+  const [acaoFinal, setAcaoFinal] = useState<AcaoFinal>(rascunho?.acaoFinal ?? 'preparar');
+  const [assunto, setAssunto] = useState(rascunho?.assunto ?? '');
+  const [maxUsd, setMaxUsd] = useState(rascunho?.maxUsd ?? '');
+  const [fontes, setFontes] = useState(rascunho?.fontes ?? '');
+  const [username, setUsername] = useState(rascunho?.username ?? '');
+  const [legenda, setLegenda] = useState(rascunho?.legenda ?? '');
   const [busca, setBusca] = useState('');
-  const [escolhas, setEscolhas] = useState<Record<string, EscolhaDoAlvo>>({});
+  // Só as personas que ainda existem voltam marcadas; conta e aparelho começam no padrão (o que existe agora).
+  const daOperacao = useMemo(() => (rascunho?.profileIds ?? []).filter((id) => perfis.some((p) => p.id === id)), [rascunho, perfis]);
+  const [escolhas, setEscolhas] = useState<Record<string, EscolhaDoAlvo>>(() => Object.fromEntries(daOperacao.map((id) => [id, { conta: '', aparelho: '' }])));
   const [contas, setContas] = useState<Record<string, ContasDaPersona>>({});
   const [enviando, setEnviando] = useState(false);
   const [recusa, setRecusa] = useState<LoadError | null>(null);
@@ -73,7 +81,15 @@ function Formulario({ listas, voltar }: { listas: Listas; voltar: ReactNode }) {
 
   const idsDeAparelho = useMemo(() => new Set(aparelhos.map((a) => a.id)), [aparelhos]);
   const selecionados = Object.keys(escolhas);
-  const form: FormularioDaOperacao = { command, appId, acaoFinal, assunto, maxUsd, selecionados };
+  const form: FormularioDaOperacao = { command, appId, acaoFinal, assunto, maxUsd, selecionados, fontes, username, legenda };
+  const carregarContas = (id: string) => {
+    api.listAccounts(id).then((c) => setContas((x) => ({ ...x, [id]: c }))).catch(() => setContas((x) => ({ ...x, [id]: 'erro' })));
+  };
+  useEffect(() => {
+    daOperacao.forEach(carregarContas);
+    limparRascunho();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const alternar = (p: InstagramProfile, ligado: boolean) => {
     setEscolhas((e) => {
@@ -82,9 +98,7 @@ function Formulario({ listas, voltar }: { listas: Listas; voltar: ReactNode }) {
       else delete n[p.id];
       return n;
     });
-    if (ligado && !contas[p.id]) {
-      api.listAccounts(p.id).then((c) => setContas((x) => ({ ...x, [p.id]: c }))).catch(() => setContas((x) => ({ ...x, [p.id]: 'erro' })));
-    }
+    if (ligado && !contas[p.id]) carregarContas(p.id);
   };
   const mudar = (id: string, parcial: Partial<EscolhaDoAlvo>) => setEscolhas((e) => (e[id] ? { ...e, [id]: { ...e[id]!, ...parcial } } : e));
   // Trocar de app muda quais contas servem: a escolha de conta de um app não vale no outro.
@@ -165,9 +179,27 @@ function Formulario({ listas, voltar }: { listas: Listas; voltar: ReactNode }) {
           </Field>
         </div>
         <p className={styles.mudo}>{ROTULO_DA_ACAO[acaoFinal].explica}</p>
+        {rascunho ? (
+          <Banner tone="info" icon={Copy} compact role="status" title="Copiado de uma operação anterior">
+            Objetivo, app, teto, fontes e personas vieram da operação anterior; conta e aparelho são resolvidos de novo, com o que existe agora.
+            {rascunho.profileIds.length > daOperacao.length ? ` ${plural(rascunho.profileIds.length - daOperacao.length, 'persona não existe mais e ficou de fora', 'personas não existem mais e ficaram de fora')}.` : ''}
+            {rascunho.parametrosNaoCopiados.length ? ` Parâmetros fixos que este formulário não oferece não foram copiados: ${rascunho.parametrosNaoCopiados.join(', ')}.` : ''}
+          </Banner>
+        ) : null}
         <Field label="Assunto (opcional)" hint={`O que precisa ser compreendido antes (${ASSUNTO_MIN} a ${ASSUNTO_MAX} caracteres).`}>
           {({ id }) => <TextInput id={id} value={assunto} onChange={(e) => setAssunto(e.target.value)} />}
         </Field>
+        <Field label="Fontes públicas (opcional)" hint={`Uma URL https:// por linha, até ${MAX_FONTES}, sem usuário nem parâmetros (?…). É a única origem da pesquisa externa.`}>
+          {({ id }) => <TextArea id={id} rows={2} mono value={fontes} placeholder="https://exemplo.com.br/lancamento" onChange={(e) => setFontes(e.target.value)} />}
+        </Field>
+        <div className={styles.filtros}>
+          <Field label="Perfil alvo (opcional)" hint="Fixa o alvo quando o comando não diz.">
+            {({ id }) => <TextInput id={id} maxLength={PARAMETRO_MAX} value={username} onChange={(e) => setUsername(e.target.value)} />}
+          </Field>
+          <Field label="Trecho da legenda (opcional)" hint="Fixa a publicação quando o comando não diz.">
+            {({ id }) => <TextInput id={id} maxLength={PARAMETRO_MAX} value={legenda} onChange={(e) => setLegenda(e.target.value)} />}
+          </Field>
+        </div>
 
         <section aria-labelledby="nova-operacao-personas">
           <h2 id="nova-operacao-personas" className={styles.subtitulo}>Personas ({plural(selecionados.length, 'escolhida', 'escolhidas')} de {perfis.length}; até {MAX_ALVOS})</h2>
