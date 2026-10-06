@@ -101,7 +101,7 @@ from .social.service import SocialError
 from .taskqueue import observabilidade
 from .taskqueue.flows import id_do_fluxo
 from .taskqueue.repository import CONTENT_TYPES
-from .models import RunSummary
+from .models import CustosExecucao, RunDetail, RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
 from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
 from .taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody, RunTargetsSuggestion
@@ -2960,10 +2960,15 @@ async def preview_distribution_get_removido() -> None:
 
 
 @router.get("/runs/{run_id}")
-async def get_run(request: Request, run_id: str) -> Any:
-    detail = st(request).repo.run_detail(run_id)
+async def get_run(request: Request, run_id: str) -> RunDetail:
+    s = st(request)
+    detail = s.repo.run_detail(run_id)
     if detail is None:
         raise err(404, "not_found", "Execução não encontrada.")
+    detail.costs = CustosExecucao(
+        spent_usd=costs.spent_usd(s.db, s.cfg.file.ai.prices, run_id=run_id),
+        calls=int(s.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE run_id=?", (run_id,))),
+    )
     return detail
 
 

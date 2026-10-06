@@ -259,7 +259,7 @@ IMPORTS_TARDIOS: dict[str, int] = {
 #: `app.integrations` saiu (27 → 0) na fatia 3 do ADR-052: o login do Instagram virou o motor genérico
 #: `integrations/app_declarado/`, tipado sem `Any`, e o conhecimento do app virou dado.
 ANY_LEGADO: dict[str, int] = {
-    "app.api": 130, "app.taskqueue": 120, "app.social": 91, "app.devices": 91, "app.planning": 70, "app.state": 50,
+    "app.api": 129, "app.taskqueue": 120, "app.social": 91, "app.devices": 91, "app.planning": 70, "app.state": 50,
     "app.worker": 45, "app.releases": 32, "app.desempenho": 26, "app.vitrine": 23,
     "app.commands": 26, "app.training": 16, "app.workers": 14, "app.automation": 16, "app.db": 12,
     "app.apps_overview": 9, "app.metricas": 9, "app.main": 8, "app.security": 8, "app.config": 6, "app.models": 5,

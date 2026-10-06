@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.models import TrainingSaveBody, TrainingStartBody
+from app.modules.learning.domain.ensino_da_falha import intencao_sugerida
 from app.modules.skills.presentation.schemas import TrainingDeFalhaBody, TrainingStopBody, TrainingUndoBody
 from app.planning.provider import AIError
 from app.training.recorder import TrainingError
@@ -68,7 +69,10 @@ async def start_training_from_run(request: Request, body: TrainingDeFalhaBody) -
         if body.profile_id and body.profile_id not in s.social.profiles_of(origem.instance_id):
             raise _err(400, "profile_not_on_device", f"A persona {body.profile_id} não está vinculada a "
                                                     f"{origem.instance_id}: o treino é de uma persona deste aparelho.")
-        intent = body.intent or f"Corrigir a etapa «{origem.titulo}»"[:400]
+        # 31.111 F4: sem intenção escrita pela pessoa, a sugerida leva a causa provável da tentativa (30.13, sem IA)
+        diagnostico = (s.training.diagnostico_da_falha(origem.attempt_id)
+                       if origem.attempt_id and s.training.diagnostico_da_falha is not None else None)
+        intent = body.intent or intencao_sugerida(origem.titulo, diagnostico)
         return s.training.start(origem.instance_id, intent=intent, lease_id=body.lease_id, app_id=body.app_id,
                                 operator=getattr(request.state, "operator", None), profile_id=body.profile_id,
                                 origem=origem)

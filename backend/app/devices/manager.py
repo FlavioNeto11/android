@@ -4194,6 +4194,15 @@ class DeviceManager:
         self._lembrar_dimensoes(rt, *dims)
         return dims
 
+    async def tamanho_da_tela(self, rt: DeviceRuntime) -> tuple[int, int] | None:
+        """31.114 F1: (largura, altura) do aparelho em retrato, ou `None` se ele não respondeu a tempo (fora do ar, ligando).
+        Só diz de onde um arraste gravado saiu; nunca é motivo para recusar nada."""
+        try:
+            fisico = await self._wm_size(rt, timeout=8)
+        except DriverTimeout:
+            return None
+        return (min(fisico), max(fisico)) if fisico else None
+
     async def _wm_size(self, rt: DeviceRuntime, *, timeout: float) -> tuple[int, int] | None:
         # No harness, `rt.adb` é o adb DE VERDADE apontado para um serial que não existe: nunca chamá-lo em teste.
         fn = getattr(rt.io, "wm_size", None) if self.io_factory is not None else rt.adb.wm_size
