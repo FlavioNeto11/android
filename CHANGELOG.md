@@ -217,6 +217,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `PortaDoPlano.test.tsx` "mostra a validade dos sins do plano…" usava `2026-10-05T21:00Z` como instante futuro; às 21:00Z de hoje o sim passou a "vencido" e o teste falhou (determinístico, também em ramos que passavam antes). A validade agora é relativa ao relógio (6 h à frente; a renovação, 30 h).
 - Prova `simulated`: o arquivo sozinho, 22/22 em duas rodadas, em 05/10 depois das 21:00Z. Outras datas fixas próximas em testes (a conferir, sem mudança aqui): `ValidacaoTab.test.tsx` (`expira_em` em 06/10), `NovoPedido.test.tsx` (prazo em 09/10), `MetricasTab.test.tsx` (17/10).
 
+## 2026-10-06 — Deploy 43 (suíte 43: ensino com dados da persona, escopo ao provar e revisão do ensino)
+
+- **Implantado** às 00:50Z: central em `f15ef2e1`, sem migração nova (segue a `116_ref_publico_do_fluxo`), 7 pontas sobre `2e41f18b` mais a main `824c8caa`. Itens: 28.54 (teste do leitor), 31.87 F2 (identidade: o dado da persona só mascara em evento, com marcador próprio; ensino: o fluxo ensinado usa os dados da persona, adendo v1.69), 31.88 F2 (escopo ao provar, `scope_on_proof` e `PUT /api/flows/{id}/scope`, adendo v1.71, com o painel "Vale para"), 31.90-C, 31.90-D (`POST /api/training/{id}/undo`, adendo v1.70), 31.90-E, 31.90-F, 31.91 F1, 31.108 e 29.104 (segundo ramo).
+- Prova `real`: ensaio `deploy.ps1 -Ensaio` com a cópia `dataackups61005-214529` (nada a migrar); `GET /api/health` ok, problemas `[]`; prova de fora como esperado (46 verificações; `/api/instances` 401 de fora e 403 com Host forjado); agente do notebook em `0.1.0+f15ef2e`; aparelhos 01, 03 e 06 online com automação pronta depois da readoção, sem reinício a frio; hooks do Claude sem erro na primeira sessão após o deploy.
+- Prova `simulated` (suíte 43 sobre `0a96c1f6`): `scripts/tests` 683 passed; backend em SQLite 12030 passed e 13 skipped, mais 7651 passed nos 401 arquivos afetados pelas duas últimas pontas; frontend 1724 passed, typecheck e build; catracas 88 e 6; mypy 257 igual ao teto; PostgreSQL dirigido nos 456 arquivos afetados, em duas partes, 5416 e 4390 passed (12 skipped) e 0 falhas.
+- `not_run`: percurso no navegador das telas do ensino (frente Portal, a seguir), com a prova real do 31.90-C numa segunda persona de teste no android-04.
+
 ## 2026-10-05 — Deploy 42 (suíte 42: privacidade de nomes, hooks na nuvem, catracas e ensino)
 
 - **Implantado** às 23:33Z: central em `cb6742d4`, sem migração nova (segue a `116_ref_publico_do_fluxo`), 12 pontas sobre `095a43b6`. Itens: 31.105, 31.107, 28.54 (com o 28.52), 29.147 (hooks em forma exec `python`), 29.148, 30.81 (painel), 29.150, 29.136, 29.135, 31.96, 31.109 e 30.84 com a fatia 4 do 30.83.
