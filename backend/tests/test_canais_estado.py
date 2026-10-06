@@ -35,6 +35,7 @@ CAMINHOS = {
     "conversa_telegram.entradas", "conversa_telegram.problemas",
     "trello", "trello.ligado", "trello.webhook_ligado", "trello.cadastro_automatico",
     "trello.ultima_reconciliacao_em", "trello.cartoes", "trello.entradas", "trello.problemas",
+    "trello.comentarios_de_app_em_alvo_desconhecido",
     *(f"aviso_telegram.fila.{e}" for e in ESTADOS_DA_FILA),
     *(f"conversa_telegram.entradas.{e}" for e in ESTADOS_DA_ENTRADA),
     *(f"trello.entradas.{e}" for e in ESTADOS_DA_ENTRADA),

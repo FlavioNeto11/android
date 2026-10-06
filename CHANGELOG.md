@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 28.55: o comentário de app em cartão de alvo desconhecido não vale como digitado pelo dono (branch canais/28-55-comentario-desconhecido)
+
+- Achado da leitura do 28.54: fora das listas de perguntas o `appCreator` não mudava nada, e o comentário que o app da Central, um script ou uma sessão escrevia com o token do dono num cartão sem fato contava como `do_dono` (e pedia o sim no Telegram, 28.30).
+- **Leitor do Trello:** o comentário sem fato, fora das listas de perguntas, escrito por um app que NÃO está em `trello.apps_do_dono` vira `outro`, sem texto, com `responde_a = alvo_desconhecido;autoria=app`. O que o dono digita (sem `appCreator`), o app que ele reconheceu e o cartão com fato seguem como sempre. **Estado dos canais:** `GET /api/canais/estado` ganha `trello.comentarios_de_app_em_alvo_desconhecido` (só o número; contrato de chaves e `docs/api-contract.md` atualizados).
+- Prova `simulated`: `test_canais_respostas_as_perguntas.py` (o teste de "fora das listas" trocou o caso do app comum e ganhou o do cartão com fato e o ponta a ponta na contagem); `test_canais_estado.py` (lista fechada de chaves); canais, Trello e Telegram inteiros 721 passed; catracas 88; mypy 257 no teto; docs-check 0. `not_run`: leitura real do Trello depois do deploy.
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).

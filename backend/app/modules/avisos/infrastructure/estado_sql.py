@@ -145,6 +145,9 @@ class EstadoDosCanais:
             "ultima_reconciliacao_em": str(reconciliada) if reconciliada else None,
             "cartoes": _por_estado(((str(r["estado"]), int(r["n"])) for r in cartoes), ESTADOS_DO_CARTAO),
             "entradas": self._entradas("trello"),
+            # 28.55: comentários escritos por app em cartão de alvo desconhecido, tratados como `outro` (só a contagem)
+            "comentarios_de_app_em_alvo_desconhecido": int(self.db.scalar(
+                "SELECT COUNT(*) FROM canal_entradas WHERE canal='trello' AND responde_a LIKE 'alvo_desconhecido;%'") or 0),
             "problemas": _codigos(self._do_trello, prefixo="trello_"),
         }
 
