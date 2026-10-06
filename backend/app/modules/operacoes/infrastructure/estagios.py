@@ -21,8 +21,9 @@ def operacao_da_execucao(db: Database, run_id: str) -> str | None:
     try:
         row = db.one("SELECT operacao_id FROM runs WHERE id=?", (run_id,))
     except OPERATIONAL_ERRORS:
-        # Só a coluna ausente num banco antigo vira "sem operação". Outro erro (transação abortada, conexão caída)
-        # propaga: engoli-lo apagaria em silêncio a marca de estágio de um alvo que É de operação.
+        # Só o erro de recurso ausente (`OPERATIONAL_ERRORS`, o mesmo de `app.db`: a coluna de um banco antigo) vira
+        # "sem operação". O resto (transação abortada, integridade) propaga: engoli-lo apagaria em silêncio a marca de
+        # estágio de um alvo que É de operação.
         return None
     return str(row["operacao_id"]) if row is not None and row["operacao_id"] else None
 

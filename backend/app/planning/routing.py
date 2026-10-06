@@ -259,7 +259,9 @@ class RoutingProvider:
             # Reserva das chamadas EM VOO (achado do Codex, corte 56): os alvos rodam em paralelo e o custo só é gravado
             # depois da resposta, então N alvos liam o mesmo gasto abaixo do teto e o estouravam juntos. Cada chamada
             # em voo conta pelo custo MÉDIO das já gravadas da operação; antes da primeira resposta não há média e a
-            # reserva é zero (o estouro possível fica em uma chamada por vaga de IA). Um processo só: o deploy é um.
+            # reserva é zero (o estouro possível fica em uma chamada por vaga de IA). A chamada conta desde aqui, também
+            # enquanto espera a vaga da função, então a reserva pode sobrar um pouco (no máximo as vagas de IA). Um
+            # processo só: a reserva é da instância do roteador, e o deploy é um processo.
             em_voo = self._em_voo_da_operacao.get(str(operacao["id"]), 0)
             reservado = em_voo * self._custo_medio_da_chamada(str(operacao["id"]), gasto) if em_voo else 0.0
             if gasto + reservado >= float(operacao["max_usd"]):
