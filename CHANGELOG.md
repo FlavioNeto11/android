@@ -24,7 +24,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Todo fluxo de prova termina desligado, e a volta era o `PUT /api/flows/{id}` genérico, com o motivo opcional. O Livro
   não distinguia "fluxo de prova em uso real" de "esquecido ligado".
 - Ligar um fluxo `nascido_de_prova` exige `motivo` (`400 motivo_obrigatorio`) e aceita `escopo` no mesmo gesto. A trilha
-  grava "religado para uso real: <motivo>", e a marca de origem fica.
+  grava "religado para uso real: <motivo>", e a marca de origem fica. O "Ligar" do Livro (`POST
+  /api/aprendizado/fluxo/{id}/status`, achado da Portal) segue a mesma regra
+  (`::test_o_ligar_do_livro_segue_a_mesma_regra_do_religamento`, reprova no código anterior).
 - `em_uso_real_desde` em `GET /api/flows`, na `Entrada` do Livro e em `conteudo.origem` do detalhe: lido da trilha
   (`modules/learning/domain/uso_real.py`), sem migração. Volta a `null` quando o fluxo sai de uso.
 - Prova `simulated`:

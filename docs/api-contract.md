@@ -7336,6 +7336,9 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
     habilidade mudou" sai como no `/scope`.
   - Fora desse caso (desligar, ou ligar um fluxo de uso real), `escopo` no corpo dá `400 invalid`; o caminho é o `/scope`.
   - A marca `nascido_de_prova` nunca se apaga.
+- **`POST /api/aprendizado/fluxo/{id}/status` com `to: "published"` num fluxo de prova desligado** (o "Ligar" do Livro;
+  achado da Portal): a mesma regra. Motivo só com espaços dá `400 motivo_obrigatorio`, e a trilha grava "religado para
+  uso real: <reason>", que acende `em_uso_real_desde`. O escopo continua sendo pelo `PUT` ou pelo `/scope`.
 - **`em_uso_real_desde`** (texto ISO ou `null`): sai em cada fluxo de `GET /api/flows` e na resposta do `PUT`. Sai também
   em cada `Entrada` do Livro (`GET /api/aprendizado`, `/pendentes`, `/revisar` e o `item` do detalhe) e em
   `conteudo.origem` do detalhe do fluxo. É a data da linha "religado para uso real" enquanto ela for a última da trilha
