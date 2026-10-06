@@ -1377,6 +1377,29 @@ class DecisoesAutomaticasCfg(BaseModel):
     intervalo_s: float = Field(30.0, ge=5, le=3600)
 
 
+class RestoreEnsaioAvisoCfg(BaseModel):
+    """28.60: o aviso do ensaio de restauração. A Central lê o veredito que `scripts/restore-ensaio.ps1` grava e avisa
+    (rotina) quando ele `falhou`, foi `pulado`, não pôde ser lido ou ficou velho. Só vale com `avisos.enabled`."""
+
+    enabled: bool = True
+    intervalo_min: int = Field(15, ge=1, le=1440)             # de quanto em quanto tempo o veredito é relido
+    ultimo_json: str = "data/restore-ensaio/ultimo.json"      # relativo à raiz do projeto; ausente = nada a avisar
+    #: Idade máxima do veredito. O ensaio é SEMANAL (domingo 04:30), então 48 h alarmaria toda terça: o padrão é 7 dias
+    #: mais 1 de folga. A cópia com mais de 48 h já vira `falhou` no próprio script (a tarefa diária `farm-backup` parou).
+    idade_max_h: float = Field(192.0, gt=0, le=8760)
+
+
+class DiscoAvisoCfg(BaseModel):
+    """28.58: o aviso de disco baixo no central. O livre do disco (o mesmo leitor da saúde) abaixo de `piso_gb` avisa, e
+    de novo a cada `degrau_gb` abaixo dele; ao voltar ao piso, rearma. NUNCA apaga nada. Só vale com `avisos.enabled`."""
+
+    enabled: bool = True
+    piso_gb: float = Field(100.0, gt=0, le=100_000)
+    degrau_gb: float = Field(20.0, gt=0, le=100_000)
+    critico_gb: float = Field(60.0, ge=0, le=100_000)         # abaixo disto o aviso diz que backup e criação podem falhar
+    intervalo_min: int = Field(15, ge=1, le=1440)
+
+
 class AvisosCfg(BaseModel):
     """Aviso fora do painel (item 28.11; decisão do dono, 02/10: Telegram). Espelho da caixa de Pendências (ADR-062).
     Desde o 28.15 (ADR-071) o aviso leva o conteúdo (a pergunta, o que se aprova), redigido e cortado, e o mesmo bot
@@ -1406,6 +1429,8 @@ class AvisosCfg(BaseModel):
     aprendizado_faixas: list[Literal["B", "C"]] = Field(default_factory=lambda: ["C"])
     entrada: EntradaDoTelegramCfg = EntradaDoTelegramCfg()
     decisoes_automaticas: DecisoesAutomaticasCfg = DecisoesAutomaticasCfg()
+    restore_ensaio: RestoreEnsaioAvisoCfg = RestoreEnsaioAvisoCfg()    # 28.60
+    disco: DiscoAvisoCfg = DiscoAvisoCfg()                             # 28.58
 
 
 #: Os papéis que `trello.listas` aceita (32.2): onde a Central cria os cartões, as listas cujo destino vale sim e não, e
