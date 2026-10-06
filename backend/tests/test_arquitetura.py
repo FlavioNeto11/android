@@ -181,7 +181,7 @@ INFRA = frozenset({"fastapi", "starlette", "uvicorn", "sqlite3", "psycopg", "app
                    "openai", "httpx", "websockets", "nats", "boto3", "PIL", "psutil", "subprocess", "socket",
                    "asyncio"})
 #: Pacotes internos que são IMPLEMENTAÇÃO do central (banco, estado, API, fila, IA, aparelhos...).
-CENTRAL = ("app.api", "app.main", "app.state", "app.gates", "app.db", "app.taskqueue", "app.planning", "app.commands",
+CENTRAL = ("app.api", "app.main", "app.state", "app.gates", "app.convergencia", "app.db", "app.taskqueue", "app.planning", "app.commands",
            "app.releases", "app.social", "app.integrations", "app.training", "app.automation", "app.events",
            "app.storage", "app.supervisor", "app.vitrine", "app.desempenho", "app.apps_overview", "app.contexto",
            "app.tools", "app.devices.manager", "app.devices.proxy", "app.workers.local", "app.workers.registry",
@@ -250,7 +250,7 @@ CICLOS_LEGADOS: tuple[frozenset[str], ...] = (
 #: Comandos `import` internos DENTRO de função, por pacote (quase todos contornam ciclo). Catraca: só desce.
 IMPORTS_TARDIOS: dict[str, int] = {
     "app.api": 7, "app.automation": 1, "app.commands": 1, "app.config": 1, "app.devices": 3, "app.planning": 8,
-    "app.releases": 15, "app.social": 5, "app.state": 5, "app.supervisor": 1, "app.training": 1,
+    "app.releases": 15, "app.social": 5, "app.state": 3, "app.convergencia": 2, "app.supervisor": 1, "app.training": 1,
     "app.vitrine": 1, "app.workers": 1,
 }
 #: `Any` em anotação (parâmetro, retorno, variável anotada), por pacote. Catraca: só desce. Código novo: zero.
@@ -259,8 +259,8 @@ IMPORTS_TARDIOS: dict[str, int] = {
 #: `app.integrations` saiu (27 → 0) na fatia 3 do ADR-052: o login do Instagram virou o motor genérico
 #: `integrations/app_declarado/`, tipado sem `Any`, e o conhecimento do app virou dado.
 ANY_LEGADO: dict[str, int] = {
-    "app.api": 45, "app.taskqueue": 120, "app.social": 91, "app.devices": 91, "app.planning": 70, "app.state": 28,
-    "app.gates": 20, "app.worker": 45, "app.releases": 32, "app.desempenho": 26, "app.vitrine": 23,
+    "app.api": 45, "app.taskqueue": 120, "app.social": 91, "app.devices": 91, "app.planning": 70, "app.state": 13,
+    "app.gates": 20, "app.convergencia": 15, "app.worker": 45, "app.releases": 32, "app.desempenho": 26, "app.vitrine": 23,
     "app.commands": 26, "app.training": 16, "app.workers": 14, "app.automation": 16, "app.db": 12,
     "app.apps_overview": 9, "app.metricas": 9, "app.main": 8, "app.security": 8, "app.config": 6, "app.models": 5,
     "app.contexto": 3, "app.tools": 3, "app.events": 2, "app.identidade": 2, "app.storage": 2,
