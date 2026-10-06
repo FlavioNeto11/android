@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from reconciliar import (  # noqa: E402
     MARCA,
+    SEPARADOR,
     Acao,
     auditar_historico_e_programa,
     com_linha,
@@ -200,3 +201,14 @@ def test_raiz_trocada_depois_do_import_vale_para_as_consultas_ao_git(monkeypatch
     assert reconciliar.suite_do_commit("29.1") is None
     assert reconciliar.horas_dos_deploys() == {}
     assert all(str(tmp_path) in c for c in chamadas) and len(chamadas) == 2
+
+
+def test_prova_real_nova_troca_a_linha_simulada_do_cartao_concluido():
+    est = estado(**{"29.1": {"status": "implemented", "proof": "real", "quando": "2026-10-05T17:00:00+00:00",
+                             "evidence": "validado em 06/10 na execução r-20261006012340-abc"}})
+    velha = MARCA + "estado do plano (06/10/2026 02:00Z):** fica em Concluído. Prova simulada (a.py::t), no ar desde o deploy 38." + SEPARADOR + "corpo"
+    a = roda([cartao("c1", "29.1 · algo", "✅ Concluído nesta semana", desc=velha)], est).acoes
+    assert [(x.tipo, x.motivo) for x in a] == [("marcar", "o plano ganhou prova real")]
+    assert a[0].linha.startswith("prova real (06/10, r-20261006012340-abc")
+    nova = com_linha("corpo", topo_da_linha(a[0], "06/10/2026 03:30Z"))
+    assert roda([cartao("c1", "29.1 · algo", "✅ Concluído nesta semana", desc=nova)], est).acoes == []

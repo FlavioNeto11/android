@@ -9277,20 +9277,17 @@
   },
   "31.90": {
    "id": "31.90",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "31.90-D, painel, ponta 6c235a13 (Portal). Simulado: frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 45 sobre a integração 7154d7cf (origin/main 985bd580 + Canais 95f95242 e 1647a2ab, Portal 6c235a13, Aprendizado e5f719bb, Copilot 7df32759 e 46d07d08, Jev fbbc231e (--amplo) e 31.111 ff710d13 (F1, F2 e F3), mais a main 6c03214f; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; migração nova 119): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12120 passed, 13 skipped, 0 falhas (sobre a parcial f8ea1275); SQLite dos 268 arquivos afetados desde f8ea1275 5131 passed, 3 skipped, 0 falhas; frontend typecheck limpo, 1739 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 352 arquivos em 2 partes: 4885 passed, 8 skipped e 2939 passed, 3 skipped, 0 falhas (fim 03:10:49Z).",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "06/10/2026 ~03:20Z, deploy 45 (7154d7cf). Sub-item D (adendo v1.70): no Foco do android-04, 'Assumir controle' e 'Iniciar treinamento' (persona de teste Teste Portal Um, intenção 'percurso 45: provar o Desfazer a última'); dois toques em área vazia da tela da busca das Configurações geraram 2 entradas (#1 toque, #2 toque; GET /api/training/trn-PLTrZkx3t7NDtfzj: input_count 2). O botão 'Desfazer a última' apareceu abaixo da lista; o clique chamou POST /api/training/trn-PLTrZkx3t7NDtfzj/undo -> 200 OK e o painel mostrou o aviso 'Entrada desfeita: A entrada #2 saiu da gravação; o aparelho não voltou, só a gravação.' e a barra passou para '1 entrada' (#1 toque); a leitura da API confirmou status recording, inputs [1] e origin null.",
    "blocker": null,
-   "arquivos": [
-    "frontend/src/features/training/TrainingBar.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-45",
+   "nota": "Não testei o 409 entrada_mudou (outra entrada chegando entre a leitura e o clique): só com dois operadores ao mesmo tempo; está coberto por teste com fetch falso.",
+   "grupo": "portal-percurso-deploy-45",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T03:16:40+00:00"
+   "quando": "2026-10-06T03:24:36+00:00"
   },
   "31.89": {
    "id": "31.89",
@@ -10353,37 +10350,30 @@
   "31.111": {
    "id": "31.111",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "F1 dd02b47a, F2 0c82b8e0 e F3 ff710d13 (migração 119_origem_do_treino_na_falha). Simulado: backend/tests/test_treino_a_partir_da_falha.py::*. Suíte 45 sobre a integração 7154d7cf (origin/main 985bd580 + Canais 95f95242 e 1647a2ab, Portal 6c235a13, Aprendizado e5f719bb, Copilot 7df32759 e 46d07d08, Jev fbbc231e (--amplo) e 31.111 ff710d13 (F1, F2 e F3), mais a main 6c03214f; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; migração nova 119): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12120 passed, 13 skipped, 0 falhas (sobre a parcial f8ea1275); SQLite dos 268 arquivos afetados desde f8ea1275 5131 passed, 3 skipped, 0 falhas; frontend typecheck limpo, 1739 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 352 arquivos em 2 partes: 4885 passed, 8 skipped e 2939 passed, 3 skipped, 0 falhas (fim 03:10:49Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_treino_a_partir_da_falha.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; a migração entra no ensaio do deploy",
-   "grupo": "android-suite-45",
+   "proof": "real",
+   "evidence": "06/10/2026 ~03:19Z, deploy 45. O backend F1-F3 está no ar: GET /api/training devolve a chave origin em todas as sessões (null em todas as que li, nenhuma nasceu de uma falha) e a gravação comum do percurso nasceu com origin null. A tela do deploy 45 não lê origin (o bundle servido não tem 'corrige uma falha' nem chama /training/from-run): botão e selo são a F5 (feat/31-111-f5-ensinar-a-corrigir, 732e6c30), que entra no corte 46.",
+   "blocker": "painel F5 só no corte 46; POST /api/training/from-run não foi chamado (exige controle do aparelho e uma etapa failed/uncertain de uma execução real, e não criei execução para isso)",
+   "nota": "Não há execução com origin no detalhe: nenhuma sessão tem origin preenchido, então 'execução com origin no detalhe' não tem o que mostrar hoje.",
+   "grupo": "portal-percurso-deploy-45",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T03:16:40+00:00"
+   "quando": "2026-10-06T03:24:36+00:00"
   },
   "31.112": {
    "id": "31.112",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Ponta e5f719bb (Aprendizado). Simulado: backend/tests/test_treino_pergunta_mascarada.py::*, backend/tests/test_treino_dado_da_persona.py::*. Suíte 45 sobre a integração 7154d7cf (origin/main 985bd580 + Canais 95f95242 e 1647a2ab, Portal 6c235a13, Aprendizado e5f719bb, Copilot 7df32759 e 46d07d08, Jev fbbc231e (--amplo) e 31.111 ff710d13 (F1, F2 e F3), mais a main 6c03214f; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; migração nova 119): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12120 passed, 13 skipped, 0 falhas (sobre a parcial f8ea1275); SQLite dos 268 arquivos afetados desde f8ea1275 5131 passed, 3 skipped, 0 falhas; frontend typecheck limpo, 1739 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 352 arquivos em 2 partes: 4885 passed, 8 skipped e 2939 passed, 3 skipped, 0 falhas (fim 03:10:49Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_treino_pergunta_mascarada.py",
-    "backend/tests/test_treino_dado_da_persona.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-45",
+   "proof": "real",
+   "evidence": "06/10/2026 ~03:21Z, deploy 45. Leitura somente leitura de GET /api/training/trn-1nuBzRHaAkM09f6K (android-04, salva): proposal.answers[1].question = \"A busca por '{perfil_nome_exibicao}' não deu resultados; ela é necessária para a tarefa ou pode ser pulada?\", ou seja, a pergunta guardada leva o marcador da persona e não o nome. O nome de teste só aparece nas entradas gravadas (texto digitado e linhas de tela), como esperado. [Orquestradora: implemented; a tela não foi vista porque exige proposta paga, mas a pergunta guardada com o marcador foi lida pela API no android-04 (prova real); o que falta é só o percurso de tela, not_run.]",
+   "blocker": "o painel só mostra a pergunta da IA na revisão de uma sessão com proposta nova (chamada paga de IA, não feita); a sessão salva não reabre na revisão",
+   "nota": "A pergunta acima é de uma proposta feita antes do deploy 45 já mascarada pela troca do 31.87 ou pelo 31.112; não distingo qual das duas a mascarou. A exibição na tela não foi vista.",
+   "grupo": "portal-percurso-deploy-45",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T03:16:40+00:00"
+   "quando": "2026-10-06T03:24:36+00:00"
   },
   "29.137": {
    "id": "29.137",
@@ -13411,6 +13401,17 @@
    ],
    "grupos": [
     "orquestrador-pos-deploy-45"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:24:36+00:00",
+   "itens": [
+    "31.90",
+    "31.111",
+    "31.112"
+   ],
+   "grupos": [
+    "portal-percurso-deploy-45"
    ]
   }
  ]
