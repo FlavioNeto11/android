@@ -21,7 +21,7 @@ from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrig
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa, run_valida
 from app.modules.learning.domain.livro import (EntradaDoLivro, apps_na_ordem_do_plano, escopo_da_receita,
                                                escopo_do_fluxo, estado_nativo, fluxo_tem_efeito, hash_da_receita,
-                                               receita_tem_efeito)
+                                               receita_tem_efeito, ref_da_trilha)
 from app.modules.learning.domain.relacoes import Sucessora
 from app.modules.learning.domain.versao import (ReceitaDaChave, VersaoViva, agrupar_vivas, quadro_da_receita,
                                                 versao_canonica)
@@ -307,15 +307,23 @@ class FontesSql:
                              fonte=linhas.texto_ou_nulo(row, "source"),
                              source_run_id=linhas.texto_ou_nulo(row, "source_run_id"), apps=exigidos.get(ref, []),
                              nascido_de_prova=bool(linhas.inteiro_ou_nulo(row, "nascido_de_prova")),
-                             em_uso_real_desde=self._em_uso_real_desde(ref) if linhas.inteiro_ou_nulo(
-                                 row, "nascido_de_prova") and linhas.texto(row, "status") == "active" else None)
+                             em_uso_real_desde=self._selos_de_uso_real([ref]).get(ref)
+                             if _ligado_de_prova(row) else None)
 
-    def _em_uso_real_desde(self, ref: str) -> str | None:
-        """31.150: a data do religamento para uso real, se ele ainda for a última linha da trilha do fluxo."""
-        return em_uso_real_desde((linhas.texto_ou_nulo(r, "to_state"), linhas.texto_ou_nulo(r, "reason"),
-                                  linhas.texto_ou_nulo(r, "decided_at"))
-                                 for r in self._db.query("SELECT to_state, reason, decided_at FROM learning_transitions"
-                                                         " WHERE item_ref=? ORDER BY decided_at, id", (f"fluxo:{ref}",)))
+    def _selos_de_uso_real(self, ids: list[str]) -> dict[str, str]:
+        """31.150: de cada fluxo, a data do religamento para uso real, se ele ainda for a última linha da trilha. Uma
+        consulta para todos."""
+        if not ids:
+            return {}
+        por_ref: dict[str, list[tuple[str | None, str | None, str | None]]] = {}
+        refs = [ref_da_trilha(LivroKind.FLUXO, i) for i in ids]
+        for r in self._db.query("SELECT item_ref, to_state, reason, decided_at FROM learning_transitions WHERE item_ref"
+                                f" IN ({','.join('?' * len(refs))}) ORDER BY decided_at, id", tuple(refs)):
+            por_ref.setdefault(linhas.texto(r, "item_ref"), []).append(
+                (linhas.texto_ou_nulo(r, "to_state"), linhas.texto_ou_nulo(r, "reason"),
+                 linhas.texto_ou_nulo(r, "decided_at")))
+        selos = {i: em_uso_real_desde(por_ref.get(ref_da_trilha(LivroKind.FLUXO, i), [])) for i in ids}
+        return {i: d for i, d in selos.items() if d}
 
     def _conteudo_da_habilidade(self, ref: str) -> JsonObject | None:
         row = self._db.one("SELECT skill_id, version, state, schema_version, content, content_hash, command_template,"
@@ -333,15 +341,18 @@ class FontesSql:
     def fluxos(self) -> list[EntradaDoLivro]:
         resolvedor = self._resolvedor()
         exigidos = self._exigidos("SELECT flow_id, app_id FROM flow_required_apps", "flow_id", None)
-        return [_fluxo(r, resolvedor, exigidos.get(linhas.texto(r, "id"), []))
-                for r in self._db.query("SELECT * FROM flows ORDER BY created_at, id")]
+        linhas_ = self._db.query("SELECT * FROM flows ORDER BY created_at, id")
+        selos = self._selos_de_uso_real([linhas.texto(r, "id") for r in linhas_ if _ligado_de_prova(r)])
+        return [_fluxo(r, resolvedor, exigidos.get(linhas.texto(r, "id"), []), selos.get(linhas.texto(r, "id")))
+                for r in linhas_]
 
     def fluxo(self, ref: str) -> EntradaDoLivro | None:
         row = self._db.one("SELECT * FROM flows WHERE id=?", (ref,))
         if not row:
             return None
         exigidos = self._exigidos("SELECT flow_id, app_id FROM flow_required_apps", "flow_id", ref)
-        return _fluxo(row, self._resolvedor(), exigidos.get(ref, []))
+        selo = self._selos_de_uso_real([ref]).get(ref) if _ligado_de_prova(row) else None
+        return _fluxo(row, self._resolvedor(), exigidos.get(ref, []), selo)
 
     # ------------------------------------------------------------------ habilidade
     _SQL_HABILIDADE = ("SELECT v.id, v.state, v.source_kind, v.created_at, v.state_at, v.state_detail, v.content_hash,"
@@ -435,7 +446,12 @@ def _ids_do_json(bruto: str | None) -> list[str]:
     return [i for i in valor if isinstance(i, str)] if isinstance(valor, list) else []
 
 
-def _fluxo(r: Row, resolvedor: ResolvedorDeApp, exigidos: list[str]) -> EntradaDoLivro:
+def _ligado_de_prova(r: Row) -> bool:
+    return bool(linhas.inteiro_ou_nulo(r, "nascido_de_prova")) and linhas.texto(r, "status") == "active"
+
+
+def _fluxo(r: Row, resolvedor: ResolvedorDeApp, exigidos: list[str],
+           em_uso_real_desde: str | None = None) -> EntradaDoLivro:
     status = linhas.texto(r, "status")
     plano = linhas.json_legado(linhas.texto(r, "plan"))
     app_id = linhas.texto_ou_nulo(r, "app_id")
@@ -451,7 +467,7 @@ def _fluxo(r: Row, resolvedor: ResolvedorDeApp, exigidos: list[str]) -> EntradaD
         last_used_at=linhas.texto_ou_nulo(r, "last_used_at"), uses=linhas.inteiro(r, "uses"),
         detail=linhas.texto(r, "name"), content_hash=content_hash(plano) if plano is not None else None,
         scope_key=escopo_do_fluxo(linhas.texto(r, "match_key")), nasceu_de=_run_de_origem(r, fonte),
-        nascido_de_prova=bool(linhas.inteiro_ou_nulo(r, "nascido_de_prova")))
+        nascido_de_prova=bool(linhas.inteiro_ou_nulo(r, "nascido_de_prova")), em_uso_real_desde=em_uso_real_desde)
 
 
 def _apps_do_fluxo(plano: JsonValue, exigidos: list[str], principal: str | None,

@@ -277,6 +277,9 @@ class EntradaDoLivro:
     #: 31.143: o fluxo nasceu de uma prova (`flows.nascido_de_prova`, 31.130), não de uso real. Só o fluxo tem a marca;
     #: os outros tipos ficam `False`. É o dado do selo e do filtro "Prova" da lista (31.131).
     nascido_de_prova: bool = False
+    #: 31.150: quando uma pessoa religou o fluxo de prova para uso real (`uso_real.em_uso_real_desde`, da trilha);
+    #: `None` nos outros e no fluxo de prova que não foi religado, ou que saiu de uso depois.
+    em_uso_real_desde: str | None = None
 
     @property
     def requires_owner(self) -> bool:

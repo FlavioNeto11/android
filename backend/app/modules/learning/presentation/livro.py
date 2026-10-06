@@ -150,6 +150,7 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
                 "codigo": motivo.codigo, "espera_o_dono": motivo.espera_o_dono, "detalhe": motivo.detalhe},
             "saude": _saude(saude), "nasceu_de": e.nasceu_de, "nasceu_em": e.nasceu_em, "reaprendido": _reaprendido(e.reaprendido),
             "nascido_de_prova": e.nascido_de_prova,                 # 31.143 (v1.92): o selo e o filtro "Prova" (31.131)
+            "em_uso_real_desde": e.em_uso_real_desde,               # 31.150: o selo "em uso real desde"
             **_do_legado(e, legado), **_da_espera(e, servico)}
 
 

@@ -123,6 +123,8 @@ async def test_religar_fluxo_de_prova_exige_motivo_troca_o_escopo_e_sela_o_uso_r
         assert lista[fid]["em_uso_real_desde"] == ultima["decided_at"]
         livro = (await c.get(f"/api/aprendizado/fluxo/{fid}")).json()["conteudo"]["origem"]
         assert livro["em_uso_real_desde"] == ultima["decided_at"] and livro["nascido_de_prova"] is True
+        itens = {i["ref"]: i for i in (await c.get("/api/aprendizado", params={"rotulo": "todos"})).json()["itens"]}
+        assert itens[fid]["em_uso_real_desde"] == ultima["decided_at"]                       # a lista do Livro também
         # desligado de novo: o selo sai; a marca de origem fica
         r = await c.put(f"/api/flows/{fid}", json={"status": "disabled", "motivo": "voltou para a prova"})
         assert r.status_code == 200 and r.json()["em_uso_real_desde"] is None and r.json()["nascido_de_prova"] is True

@@ -7322,3 +7322,25 @@ depois de `<intencao>`, com o pedido de relacionar o texto ao assunto só quando
 
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.
+
+## Adendo (06/10/2026; número pela orquestradora; item 31.150, K-106) — o fluxo de prova religado para uso real
+
+Todo fluxo de prova (`nascido_de_prova`, 31.130) termina desligado. A volta era o `PUT /api/flows/{id}` genérico, com o
+motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esquecido ligado".
+
+- **`PUT /api/flows/{id}` com `status: "active"` num fluxo `nascido_de_prova`:**
+  - `motivo` passa a ser obrigatório: sem ele, `400 motivo_obrigatorio`. O fluxo de uso real segue como antes.
+  - A trilha grava `religado para uso real: <motivo>`.
+  - `escopo: {profile_ids: [...], group_ids: [...]}` (opcional) troca a quem o fluxo vale no mesmo gesto e na mesma
+    transação, com as recusas do `/scope` (`400 unknown_profile`, `400 unknown_group`). O evento `log` "Escopo da
+    habilidade mudou" sai como no `/scope`.
+  - Fora desse caso (desligar, ou ligar um fluxo de uso real), `escopo` no corpo dá `400 invalid`; o caminho é o `/scope`.
+  - A marca `nascido_de_prova` nunca se apaga.
+- **`em_uso_real_desde`** (texto ISO ou `null`): sai em cada fluxo de `GET /api/flows` e na resposta do `PUT`. Sai também
+  em cada `Entrada` do Livro (`GET /api/aprendizado`, `/pendentes`, `/revisar` e o `item` do detalhe) e em
+  `conteudo.origem` do detalhe do fluxo. É a data da linha "religado para uso real" enquanto ela for a última da trilha
+  e o fluxo estiver ligado. Desligar de novo, pela pessoa ou pelo sistema, volta a `null`.
+- **Prova:** `simulated`
+  (`backend/tests/test_fluxo_nascido_de_prova.py::test_religar_fluxo_de_prova_exige_motivo_troca_o_escopo_e_sela_o_uso_real`,
+  que reprova no código anterior). `real`: `not_run` (religar um fluxo de prova para uma persona real só com o sim do
+  dono).

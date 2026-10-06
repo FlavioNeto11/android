@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.150 (K-106): o fluxo de prova religado para uso real, com motivo e escopo (branch feat/31-150-fluxo-religado)
+
+- Todo fluxo de prova termina desligado, e a volta era o `PUT /api/flows/{id}` genérico, com o motivo opcional. O Livro
+  não distinguia "fluxo de prova em uso real" de "esquecido ligado".
+- Ligar um fluxo `nascido_de_prova` exige `motivo` (`400 motivo_obrigatorio`) e aceita `escopo` no mesmo gesto. A trilha
+  grava "religado para uso real: <motivo>", e a marca de origem fica.
+- `em_uso_real_desde` em `GET /api/flows`, na `Entrada` do Livro e em `conteudo.origem` do detalhe: lido da trilha
+  (`modules/learning/domain/uso_real.py`), sem migração. Volta a `null` quando o fluxo sai de uso.
+- Prova `simulated`:
+  `backend/tests/test_fluxo_nascido_de_prova.py::test_religar_fluxo_de_prova_exige_motivo_troca_o_escopo_e_sela_o_uso_real`
+  (reprova no código anterior). O teste do 31.130 que religava o fluxo de prova sem motivo agora espera o 400. Bateria do
+  Livro, fluxos, aprendizado e arquitetura: 1529 passaram. `real`: `not_run`, só com o sim do dono.
+
 ## 2026-10-06 — 31.165: no empate de valor, a identidade da etapa fica com o marcador da persona (branch feat/31-165-empate-para-hash)
 
 - Achado da onda 1: a receita ensinada 221 ficava em "perfil de {conta_instagram_usuario} aberto", porque o alvo do
