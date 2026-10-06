@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-622 de 675 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+624 de 675 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -416,14 +416,14 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.106 | implemented | simulated | claude-fable-5-1 | — | PR #393, ponta FINAL 23ef490a, branch fix/29-106-partir-de, sobre o #392. Mudança de produto: no editor de grupo novo, o 'começar a partir de' não descartava a resposta velha (A respondendo depois de B deixava o rascunh… | Prova real not_run de 'só vale a última' e da trava durante a leitura: os perfis do central rendem o mesmo rascunho. |
 | 29.107 | pendente | — | — | — |  |  |
 | 29.108 | pendente | — | — | — |  |  |
-| 29.109 | pendente | — | — | — |  |  |
+| 29.109 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/profiles/ProfilesPage.test.tsx (4 casos: leitura que falha solta a trava e avisa; troca para o padrão no meio destrava e a resposta velha não entra; erro de leitura aposentada não vira toast; volta… | None |
 | 29.110 | implemented | real | claude-fable-5-1 | — | Real, 05/10/2026, WIN-7S2UASNLFOP. Ordem do dono em chat (sessão do Portal, entre 08:29Z e 08:35Z): 'tire o trecho abaixo agora do portal' (seção 'O que a ANA não faz'). PR #394 (ponta cb71b523): sai o <aside class="lim… | None |
 | 29.111 | implemented | real | claude-fable-5-1 | — | Real, 05/10/2026, WIN-7S2UASNLFOP. Pedido do dono pelo Telegram, repassado pela orquestradora: o site diz o que ANA significa. Texto final 'Agente Neural Avançada', com a frase 'rege as personas que dão voz' (ADR-075: a… | None |
 | 29.112 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/aprendizado/SaudeDoApp.test.tsx (segura o Livro, abre o Fluxo à mão, solta: a Receita abre e o Fluxo segue aberto; falha no código anterior), Disclosure.openWhen em frontend/src/components/Disclosu… | None |
 | 29.113 | implemented | simulated | claude-opus-5-5 | — | Ramo 8d26b1bb (sem PR; entrou como ramo na suíte 38). O próprio pg-rapido.py rodou o PG dirigido da 38 (real como ferramenta). Simulado: scripts/tests/test_pg_rapido.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9… | None |
 | 29.114 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/profiles/AcoesEmLote.test.tsx (releitura segurada: sem 'Terminado' nem fechar antes dela; tirar do grupo depois manda o PATCH das duas; falha, rejeição, releitura mais nova, X e Esc); commit c33938… | None |
 | 29.115 | implemented | simulated | claude-opus-5-5 | — | #425, ponta 0068c114. Simulado: frontend/src/features/settings/LimitsSection.test.tsx::*, frontend/src/features/rede/RedePage.test.tsx::*, frontend/src/app.integration.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (… | None |
-| 29.116 | pendente | — | — | — |  |  |
+| 29.116 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/profiles/AcoesEmLote.test.tsx (releitura que falha ou é rejeitada vira o aviso 'A lista de personas não se releu', releitura mais nova é esperada, X e Esc travados com o motivo via Dialog closeBloc… | None |
 | 29.117 | implemented | simulated | claude-opus-5-5 | — | Ramo 0358381a (sem PR; entrou como ramo na suíte 38), com o Job Object; usado no PG dirigido da 38. Simulado: scripts/tests/test_pg_rapido.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, cent… | None |
 | 29.118 | implemented | simulated | claude-opus-5-5 | — | #423, ponta d155c902. Simulado: frontend/src/features/profiles/AcoesEmLote.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; back… | None |
 | 29.119 | implemented | simulated | claude-opus-5-5 | — | #424, ponta f2a17d75. Simulado: frontend/src/test/esperas.test.ts::*, frontend/src/components/Disclosure.test.tsx::*, frontend/src/features/profiles/GuiaImagens.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f… | None |
@@ -682,7 +682,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (53): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.109, 29.116, 29.122, 29.126, 29.145, 29.151, 29.152, 30.34, 31.11, 31.12, 31.26, 31.81, 31.87, 31.113, 31.115, 31.116, 31.117, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (51): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.122, 29.126, 29.145, 29.151, 29.152, 30.34, 31.11, 31.12, 31.26, 31.81, 31.87, 31.113, 31.115, 31.116, 31.117, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

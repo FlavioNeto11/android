@@ -10572,6 +10572,34 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T06:49:51+00:00"
+  },
+  "29.109": {
+   "id": "29.109",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/profiles/ProfilesPage.test.tsx (4 casos: leitura que falha solta a trava e avisa; troca para o padrão no meio destrava e a resposta velha não entra; erro de leitura aposentada não vira toast; voltar ao padrão depois de A cria o grupo com {}) e PolicyGroups.tsx (dica da leitura após 300 ms, padrão do catálogo substitui o rascunho); commits 1046729a e 2d51026e na main; 413/413 reexecutados em 06/10 sobre dd134ec8 com atraso semeado 7/11/22/44/88/99.",
+   "blocker": null,
+   "nota": "Prova real na tela não feita.",
+   "grupo": "portal-29-109-29-116-ja-na-main",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T07:02:59+00:00"
+  },
+  "29.116": {
+   "id": "29.116",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/profiles/AcoesEmLote.test.tsx (releitura que falha ou é rejeitada vira o aviso 'A lista de personas não se releu', releitura mais nova é esperada, X e Esc travados com o motivo via Dialog closeBlockedReason); commit 700687f6 na main; 413/413 reexecutados em 06/10 sobre dd134ec8 com atraso semeado 7/11/22/44/88/99.",
+   "blocker": null,
+   "nota": "Prova real na tela não feita.",
+   "grupo": "portal-29-109-29-116-ja-na-main",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T07:02:59+00:00"
   }
  },
  "rodadas": [
@@ -13740,6 +13768,16 @@
    ],
    "grupos": [
     "portal-percurso-47"
+   ]
+  },
+  {
+   "quando": "2026-10-06T07:02:59+00:00",
+   "itens": [
+    "29.109",
+    "29.116"
+   ],
+   "grupos": [
+    "portal-29-109-29-116-ja-na-main"
    ]
   }
  ]
