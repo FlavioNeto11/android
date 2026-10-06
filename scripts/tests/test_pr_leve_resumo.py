@@ -19,7 +19,7 @@ def passo(nome, ini, fim, conclusao="success"):
     return {"name": nome, "conclusion": conclusao, "started_at": ini, "completed_at": fim}
 
 
-JOB = {"name": "docs-check + scripts/tests", "runner_name": "RUNNER-1", "steps": [
+JOB = {"name": "docs-check + scripts/tests", "runner_name": "RUNNER-1", "labels": ["ubuntu-latest"], "started_at": "2026-10-06T22:00:00Z", "steps": [
     passo("Set up job", "2026-10-06T22:00:00Z", "2026-10-06T22:00:02Z"),
     passo("Run actions/checkout@v4", "2026-10-06T22:00:02Z", "2026-10-06T22:00:05Z"),
     passo("instalar dependências", "2026-10-06T22:00:05Z", "2026-10-06T22:00:35Z"),
@@ -77,6 +77,19 @@ class Resumo(unittest.TestCase):
         sem_runner = dict(JOB, runner_name="outro")
         _, texto = rodar(gh_com(OUTRO, sem_runner))
         self.assertIn("instalar dependências 30 s", texto)
+
+    def test_minutos_cobrados_no_hospedado_arredondam_para_cima(self) -> None:
+        self.assertEqual(mod.cobrado(JOB), "~3 min cobrados")  # 22:00:00 a 22:02:40 = 160 s
+        _, texto = rodar(gh_com(JOB))
+        self.assertIn("~3 min cobrados", texto)
+
+    def test_runner_proprio_nao_cobra(self) -> None:
+        proprio = dict(JOB, labels=["self-hosted", "central"])
+        self.assertEqual(mod.cobrado(proprio), "0 min cobrados (runner próprio)")
+        self.assertNotIn("central", rodar(gh_com(proprio))[1])  # o rótulo do runner não vai para o texto
+
+    def test_sem_hora_de_inicio_nao_inventa_custo(self) -> None:
+        self.assertEqual(mod.cobrado({"labels": [], "steps": []}), "")
 
     def test_nunca_derruba_o_job(self) -> None:
         def falha(*a):

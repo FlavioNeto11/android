@@ -144,6 +144,16 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
+      # 29.184: uma linha por job (tempo por etapa, soma, minutos cobrados estimados) no job summary e no log; só leitura, nunca
+      # derruba o job (continue-on-error; o script sai com 0 mesmo se o `gh` faltar). Sem contagem de testes aqui: o pytest deste
+      # job não passa por `tee` para não mexer no comando da rede da noite.
+      - name: Resumo do job
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/pr_leve_resumo.py --nome "backend · pytest (SQLite)" --repo $env:GITHUB_REPOSITORY --run $env:GITHUB_RUN_ID --tentativa $env:GITHUB_RUN_ATTEMPT --runner $env:RUNNER_NAME | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
   backend-postgres:
     name: backend · pytest (PostgreSQL)
@@ -184,9 +194,20 @@ jobs:
       # um esquema por teste (uuid), então os workers não se pisam. O xdist NÃO está no requirements.txt (deploy.ps1 o instala no venv
       # de produção), por isso entra só aqui.
       - run: pip install -r requirements.txt pytest-xdist==3.8.0
-      - run: python -m pytest -q -n 2
+      - name: pytest
+        shell: bash   # bash explícito liga o pipefail: o `tee` não esconde a falha do pytest
+        run: python -m pytest -q -n 2 2>&1 | tee "$RUNNER_TEMP/pytest.out"
         # conftest.pytest_sessionfinish apaga, no fim, os schemas que esta corrida criou (achado #163) — o
         # serviço 'postgres' nasce vazio a cada job de qualquer forma, mas o hábito é o que vale.
+      # 29.184: uma linha por job (tempo por etapa, soma, minutos cobrados e testes) no job summary e no log; só leitura, nunca derruba o job.
+      - name: Resumo do job
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/pr_leve_resumo.py --nome "backend · pytest (PostgreSQL)" --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --tentativa "$GITHUB_RUN_ATTEMPT" --runner "$RUNNER_NAME" --pytest "$RUNNER_TEMP/pytest.out" | tee -a "$GITHUB_STEP_SUMMARY"
 
   frontend:
     name: frontend · typecheck + vitest
@@ -333,3 +354,13 @@ jobs:
       - run: pip install -c backend/requirements.txt pytest pyyaml pydantic pydantic-settings
       - run: python scripts/docs-check.py
       - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py scripts/tests/test_github_rotulos.py scripts/tests/test_github_rotina.py scripts/tests/test_workflows_pins.py scripts/tests/test_secret_scan_resumo.py scripts/tests/test_ci_gatilhos.py scripts/tests/test_issue_do_pacote.py scripts/tests/test_github_custo.py scripts/tests/test_pr_leve_resumo.py
+      # 29.184: uma linha por job (tempo por etapa, soma, minutos cobrados estimados) no job summary e no log; só leitura, nunca
+      # derruba o job (continue-on-error; o script sai com 0 mesmo se o `gh` faltar). Sem contagem de testes aqui: o pytest deste
+      # job não passa por `tee` para não mexer no comando da rede da noite.
+      - name: Resumo do job
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/pr_leve_resumo.py --nome "docs · docs-check e livro-razão do plano-100" --repo $env:GITHUB_REPOSITORY --run $env:GITHUB_RUN_ID --tentativa $env:GITHUB_RUN_ATTEMPT --runner $env:RUNNER_NAME | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append

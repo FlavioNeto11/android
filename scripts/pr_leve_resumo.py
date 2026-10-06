@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -71,12 +72,22 @@ def _ler(arq: Path | None) -> str:
         return ""
 
 
-def linha(nome: str, passos: list[tuple[str, int]], pytest: str, vitest: str) -> str:
+def cobrado(job: dict[str, object]) -> str:
+    """Minutos cobrados ESTIMADOS: do início do job ao fim da última etapa concluída, arredondado para cima; 0 no runner próprio."""
+    if "self-hosted" in [str(x) for x in (job.get("labels") or [])]:  # type: ignore[union-attr]
+        return "0 min cobrados (runner próprio)"
+    fins = [str(p.get("completed_at")) for p in (job.get("steps") or []) if p.get("completed_at")]  # type: ignore[union-attr]
+    s = _segundos(job.get("started_at"), max(fins)) if fins and job.get("started_at") else None
+    return f"~{max(1, math.ceil(s / 60))} min cobrados" if s is not None else ""
+
+
+def linha(nome: str, passos: list[tuple[str, int]], pytest: str, vitest: str, cobrados: str = "") -> str:
     partes = [f"{n} {s} s" for n, s in passos]
     total = sum(s for _, s in passos)
     testes = " · ".join(x for x in (f"pytest {_contagem(pytest)}" if _contagem(pytest) else "",
                                     f"vitest {_contagem(vitest, 'Tests')}" if _contagem(vitest, "Tests") else "") if x)
-    return f"**{nome}**: " + " · ".join(partes) + f" · soma das etapas {total} s" + (f" · {testes}" if testes else "")
+    return (f"**{nome}**: " + " · ".join(partes) + f" · soma das etapas {total} s" + (f" · {cobrados}" if cobrados else "")
+            + (f" · {testes}" if testes else ""))
 
 
 def main(argv: list[str] | None = None, gh: Gh | None = None) -> int:
@@ -100,11 +111,11 @@ def main(argv: list[str] | None = None, gh: Gh | None = None) -> int:
     try:
         jobs = [json.loads(x) for x in (gh or gh_real)(
             "api", f"repos/{a.repo}/actions/runs/{a.run}/attempts/{a.tentativa}/jobs?per_page=100",
-            "--jq", ".jobs[] | {name, runner_name, steps}").splitlines() if x.strip()]
+            "--jq", ".jobs[] | {name, runner_name, labels, started_at, steps}").splitlines() if x.strip()]
         meu = next((j for j in jobs if j.get("runner_name") == a.runner), None) or next((j for j in jobs if j.get("name") == a.nome), None)
         if meu is None:
             raise ValueError("job não encontrado")
-        print(linha(a.nome, etapas(meu.get("steps") or []), _ler(a.pytest), _ler(a.vitest)))
+        print(linha(a.nome, etapas(meu.get("steps") or []), _ler(a.pytest), _ler(a.vitest), cobrado(meu)))
     except (RuntimeError, ValueError, KeyError, TypeError, AttributeError, OSError, json.JSONDecodeError):
         print(f"**{a.nome}**: resumo indisponível")
     return 0
