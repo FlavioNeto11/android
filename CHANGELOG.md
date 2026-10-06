@@ -19,6 +19,36 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.140: os pacotes aceitos por etapa na prévia e no Livro (branch feat/31-130-fluxo-de-prova)
+
+- Achado da Portal (06/10): `pacotes_aceitos` (31.123) não aparecia em nenhuma proposta das 16 sessões do android-04; existia só no plano salvo e nas etapas da execução.
+- Adendo v1.89: cada linha de `steps[]` da prévia, do `save` e do reparo das receitas traz `pacotes_aceitos`, e a etapa do fluxo no Livro (`conteudo.etapas[]`) também. O texto do v1.84 foi corrigido (a lista de `GET /api/flows` devolve `plan` nulo).
+- Prova `simulated`: `tests/test_pacotes_aceitos_na_previa_e_no_livro.py` (2) e o ajuste de `tests/test_treino_previa_e_refazer_receitas.py`. Real: `not_run`.
+
+## 2026-10-06 — 31.138: a abertura do app nas receitas ensinadas antes do 31.121 (branch feat/31-130-fluxo-de-prova)
+
+- Achado da leitura dos fluxos ensinados (06/10): a 1ª receita do único fluxo ensinado ativo (194) e de três desligados (200, 201, 205) é só o toque; "alvo ausente ou ambíguo" em 6 de 7 divergências, todas na 1ª ou 2ª etapa.
+- `training/reparo_da_abertura.py` e `scripts/abertura-nas-receitas-ensinadas.py`: destila de novo cada fluxo ensinado com a regra de hoje e troca a receita viva da etapa que agora começa com `open_app` (a troca do treino, 30.79, na mesma chave, com a trilha no livro). Ensaio por padrão, `--aplicar --backup`, idempotente, contagem antes e depois.
+- Prova `simulated`: `tests/test_treino_reparo_da_abertura.py` (2) e `scripts/tests/test_abertura_nas_receitas_ensinadas.py` (1). Real: `not_run` até a Android aplicar no central.
+
+## 2026-10-06 — 31.139: a abertura pelo lançador vira open_app na receita (branch feat/31-130-fluxo-de-prova)
+
+- Achado da leitura dos fluxos ensinados (06/10): 2 de 9 começam no lançador (gaveta e ícone); a receita 198 guardava o toque no ícone, no layout daquele aparelho, e nunca reproduziu.
+- A destilação tira das etapas o trecho do começo feito no lançador quando a entrada seguinte já está no app da sessão, e a etapa da 1ª entrada ganha `open_app` do app (`training/lancador.py`). A gravação não muda.
+- Prova `simulated`: `tests/test_treino_abertura_pelo_lancador.py` (3). Real: `not_run`.
+
+## 2026-10-06 — 31.135: a origem de todo fluxo ensinado (branch feat/31-130-fluxo-de-prova)
+
+- Adendo v1.88, sem migração: `GET /api/flows[].origin` e `conteudo.origem` do fluxo no Livro trazem, de todo fluxo cuja fonte é `training:<id>`, `session_id`, `instance_id`, `operator` e `ensinado_em` (antes, só o fluxo que veio de uma falha tinha origem). Os ids da falha seguem como no v1.81.
+- Prova `simulated`: `tests/test_fluxo_nascido_de_prova.py` (1 novo) e os ajustes de `tests/test_treino_a_partir_da_falha.py` e `tests/test_learning_conteudo.py`. Real: `not_run`.
+
+## 2026-10-06 — 31.130: o fluxo nascido de uma prova leva a marca de origem (branch feat/31-130-fluxo-de-prova)
+
+- Achado da Portal (06/10): em Salvas e no Livro, os três fluxos de prova de sessão do dia pareciam fluxos reais desligados por uma pessoa.
+- Migração 122 e adendo v1.87: `POST /api/instances/{id}/training` aceita `nascido_de_prova: true`; a marca fica na sessão (`training_sessions.nascido_de_prova`) e o `save` a leva ao fluxo (`flows.nascido_de_prova`). Sai no GET e na listagem das sessões, em `GET /api/flows` e em `conteudo.origem` do fluxo no Livro, com o filtro `nascido_de_prova=true|false` nas listagens. `PUT /api/flows/{id}` aceita `motivo` (1 a 300 caracteres), que vai à trilha do livro.
+- `scripts/marcar-fluxo-de-prova.py`: marca pelo id os fluxos de prova anteriores e a sessão de origem; ensaio por padrão, `--aplicar --backup`, idempotente.
+- Prova `simulated`: `tests/test_fluxo_nascido_de_prova.py` (2) e `scripts/tests/test_marcar_fluxo_de_prova.py` (3). Real: `not_run` até o deploy e o script rodado pela Android nos três ids.
+
 ## 2026-10-06 — 31.128 e 31.129: a conferência que já vale vira aviso na etapa, e os pacotes que a etapa aceita aparecem (branch feat/31-128-pos-condicao-na-etapa)
 
 - Achados da conferência do painel contra os adendos v1.83 e v1.84 (deploy 50): as linhas novas de `warnings` e a recusa 400 `pos_condicao_ja_vale` chegavam como frase solta (lista de avisos da prévia, dica do "Salvar", toast), sem dizer onde mexer, e o campo `pacotes_aceitos` não aparecia em tela nenhuma.

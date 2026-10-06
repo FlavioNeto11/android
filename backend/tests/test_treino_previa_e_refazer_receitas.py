@@ -89,7 +89,7 @@ async def test_previa_diz_o_mesmo_que_o_save_e_nao_escreve_nada(harness: Harness
     assert set(previa) == {"steps", "warnings", "scope", "pos_condicoes_ja_valem"}            # v1.86: a lista ao lado
     assert previa["warnings"] == _SEM_PERSONA and previa["pos_condicoes_ja_valem"] == []    # 30.81: gravado sem persona
     for linha in previa["steps"]:
-        assert set(linha) == {"key", "title", "recipe", "reason"}    # as ações da receita nunca saem
+        assert set(linha) == {"key", "title", "recipe", "reason", "pacotes_aceitos"}    # as ações da receita nunca saem
     dela = _por_chave(previa["steps"])
     assert dela["escrever"]["recipe"] is False and "sigiloso" in dela["escrever"]["reason"]
     assert dela["enviar"]["recipe"] is False and "tecla back" in dela["enviar"]["reason"]
@@ -289,7 +289,8 @@ async def test_rotas_http_previa_e_refazer(harness: Harness) -> None:
         corpo = r.json()
         assert set(corpo) == {"steps", "warnings", "scope", "pos_condicoes_ja_valem"} and corpo["warnings"] == _SEM_PERSONA
         assert [s["key"] for s in corpo["steps"]] == ["abrir", "conversa", "escrever", "enviar"]
-        assert all(set(s) == {"key", "title", "recipe", "reason"} and isinstance(s["recipe"], bool) for s in corpo["steps"])
+        assert all(set(s) == {"key", "title", "recipe", "reason", "pacotes_aceitos"} and isinstance(s["recipe"], bool)
+                   for s in corpo["steps"])
         assert SEGREDO not in r.text
         assert _foto(st, sid) == antes
 
@@ -312,7 +313,7 @@ async def test_rotas_http_previa_e_refazer(harness: Harness) -> None:
         assert r.status_code == 200, r.text
         corpo = r.json()
         assert set(corpo) == {"session", "flow_id", "steps", "created", "ensinado_em_prova"} and corpo["created"] >= 2
-        assert all(set(s) == {"key", "title", "recipe", "reason"} for s in corpo["steps"])
+        assert all(set(s) == {"key", "title", "recipe", "reason", "pacotes_aceitos"} for s in corpo["steps"])
         r = await c.post(f"/api/training/{sid}/recipes")
         assert r.status_code == 200 and r.json()["created"] == 0
         assert st.db.scalar("SELECT COUNT(*) FROM recipes") == corpo["created"]

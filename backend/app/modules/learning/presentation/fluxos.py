@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     from app.state import AppState
 
 router = APIRouter(prefix="/api")
+#: 31.130: o tamanho máximo do motivo de quem liga ou desliga um fluxo (vai à trilha do livro).
+MOTIVO_MAX = 300
 
 
 def _st(request: Request) -> AppState:
@@ -37,8 +39,10 @@ def _err(status: int, code: str, message: str, **extra: object) -> HTTPException
 
 
 @router.get("/flows", response_model=None)
-async def list_flows(request: Request) -> object:
-    return _st(request).scheduler.flows.list()
+async def list_flows(request: Request, nascido_de_prova: bool | None = None) -> object:
+    """`nascido_de_prova` (31.130): `true` só os fluxos de prova; `false` só os de uso real; sem ele, todos."""
+    fluxos = _st(request).scheduler.flows.list()
+    return fluxos if nascido_de_prova is None else [f for f in fluxos if f["nascido_de_prova"] is nascido_de_prova]
 
 
 @router.get("/flows/cobertura", response_model=None)
@@ -96,6 +100,11 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, object]) 
     if patch.get("status") not in ("active", "disabled"):
         raise _err(400, "invalid", "status deve ser 'active' ou 'disabled'.")
     status = str(patch["status"])
+    # 31.130 (adendo v1.87): o motivo de quem liga ou desliga vai à trilha do livro ("fluxo de prova do 31.xxx, desligado
+    # de propósito"); sem ele, o texto de sempre
+    motivo = patch.get("motivo")
+    if motivo is not None and (not isinstance(motivo, str) or not motivo.strip() or len(motivo.strip()) > MOTIVO_MAX):
+        raise _err(400, "invalid", f"motivo deve ser um texto de 1 a {MOTIVO_MAX} caracteres.")
     # Fase G (guarda apontada pela fase D): fluxo ADOTADO por uma habilidade publicada não se religa por aqui — o
     # mesmo comando ficaria vivo nos dois backends. Voltar ao fluxo é desfazer a adoção, que desabilita a versão
     # na mesma transação.
@@ -116,7 +125,8 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, object]) 
         # nenhum dos dois. Sem a trilha, o fluxo que ela desligou aqui podia renascer do próximo plano (a última
         # linha da trilha seguia sendo a refutação do sistema) e o conteúdo não ficava vetado.
         mudar_status_legado(request, LivroKind.FLUXO, flow_id, status,
-                            reason="ligado na lista de fluxos do painel" if status == "active"
+                            reason=motivo.strip() if isinstance(motivo, str)
+                            else "ligado na lista de fluxos do painel" if status == "active"
                             else "desligado na lista de fluxos do painel")
     return next(f for f in s.scheduler.flows.list() if f["id"] == flow_id)
 

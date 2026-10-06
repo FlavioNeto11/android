@@ -50,7 +50,8 @@ async def start_training(request: Request, instance_id: str, body: TrainingStart
                                                 "o treino é de uma persona deste aparelho.")
     try:
         return s.training.start(instance_id, intent=body.intent, lease_id=body.lease_id, app_id=body.app_id,
-                                operator=getattr(request.state, "operator", None), profile_id=body.profile_id)
+                                operator=getattr(request.state, "operator", None), profile_id=body.profile_id,
+                                nascido_de_prova=body.nascido_de_prova)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -103,8 +104,9 @@ async def ensino_sugerido(request: Request, run_id: str, step_id: str) -> dict[s
 
 
 @router.get("/training", response_model=None)
-async def list_training(request: Request, instance_id: str | None = None, limit: int = Query(30, ge=1, le=200)) -> object:
-    return _st(request).training.list(instance_id=instance_id, limit=limit)
+async def list_training(request: Request, instance_id: str | None = None, limit: int = Query(30, ge=1, le=200),
+                        nascido_de_prova: bool | None = None) -> object:
+    return _st(request).training.list(instance_id=instance_id, limit=limit, nascido_de_prova=nascido_de_prova)
 
 
 @router.get("/training/{session_id}", response_model=None)
