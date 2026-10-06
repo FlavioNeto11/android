@@ -720,3 +720,61 @@ async def test_o_get_traz_a_latencia_por_estagio_por_alvo_e_da_operacao(harness:
     assert alvo["latencia"] == {"duracao_ms": 540_000, "espera_do_liberar_ms": 360_000}
     assert lida["latencia_por_estagio"]["acao_executada"] == {"n": 1, "p50_ms": 60_000, "p95_ms": 60_000,  # type: ignore[index]
                                                               "max_ms": 60_000}
+
+
+async def test_cancelar_alvos_por_filtro_cancela_so_os_que_casam_e_a_operacao_segue(harness: Harness) -> None:
+    """Rodada de 30 alvos: cancelar é tudo ou nada; `cancelar_alvos` cancela só os que casam com TODOS os filtros
+    (perfil, estado, estágio, aparelho), pula a execução terminada e deixa a operação seguir com os outros."""
+    st = harness.state
+    assert st is not None
+    pids = []
+    for i, iid in enumerate(("android-01", "android-02", "android-03")):
+        pid = _persona(harness, f"Zoe{i}", iid)
+        _conta(harness, pid, f"qa-user-8{i}", sessao_em=iid)
+        pids.append(pid)
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-cancelar-alvos"))
+    runs = [_alvo(op, p)["run_id"] for p in pids]
+    st.db.execute("UPDATE runs SET status='completed' WHERE id=?", (runs[0],))
+    for vazio in ({}, {"estados": []}):
+        with pytest.raises(OperacaoError) as exc:
+            s.cancelar_alvos(op["id"], **vazio)
+        assert exc.value.code == "filtro_vazio" and exc.value.status == 422
+    with pytest.raises(OperacaoError) as exc:
+        s.cancelar_alvos(op["id"], estados=["travado"])
+    assert exc.value.code == "estado_desconhecido"
+    # o filtro por aparelho pega o 1º (já terminado: ignorado) e o 2º; o 3º fica de fora
+    feito = s.cancelar_alvos(op["id"], instance_ids=["android-01", "android-02"], quem="Flavio")
+    assert feito["cancelados"] == [pids[1]]
+    assert feito["ignorados"] == [{"profile_id": pids[0], "motivo": "ja_terminou"}]
+    r1 = st.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (runs[1],))
+    assert r1["cancel_requested"] == 1 or r1["status"] == "cancelled"
+    assert st.db.scalar("SELECT status FROM runs WHERE id=?", (runs[2],)) not in ("cancelled",)
+    assert st.db.scalar("SELECT cancel_requested FROM runs WHERE id=?", (runs[2],)) in (0, None)
+    assert feito["operacao"]["status"] != "cancelada"  # type: ignore[index]
+    # os filtros se somam: perfil certo com aparelho errado não casa com ninguém
+    nada = s.cancelar_alvos(op["id"], profile_ids=[pids[2]], instance_ids=["android-01"])
+    assert (nada["cancelados"], nada["ignorados"]) == ([], [])
+    st.db.execute("UPDATE operacoes SET status='cancelada' WHERE id=?", (op["id"],))
+    with pytest.raises(OperacaoError) as exc:
+        s.cancelar_alvos(op["id"], profile_ids=[pids[2]])
+    assert exc.value.code == "ja_encerrada"
+
+
+async def test_rota_http_cancelar_alvos(harness: Harness) -> None:
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Ivy", "android-01")
+    _conta(harness, pid, "qa-user-91", sessao_em="android-01")
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    op = _servico(harness).criar(_pedido([AlvoPedido(pid)], chave="teste-op-http-cancelar-alvos"))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post(f"/api/operacoes/{op['id']}/cancelar-alvos", json={})
+        assert r.status_code == 422 and r.json()["detail"]["code"] == "filtro_vazio"
+        r = await c.post(f"/api/operacoes/{op['id']}/cancelar-alvos", json={"perfis": [pid]})
+        assert r.status_code == 422                                  # campo desconhecido
+        r = await c.post(f"/api/operacoes/{op['id']}/cancelar-alvos", json={"profile_ids": [pid]})
+        assert r.status_code == 200 and r.json()["cancelados"] == [pid]
+        r = await c.post("/api/operacoes/nao-existe/cancelar-alvos", json={"profile_ids": [pid]})
+        assert r.status_code == 404

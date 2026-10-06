@@ -27,7 +27,7 @@ from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loa
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain import latencia
-from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
+from app.modules.operacoes.domain.estagios import ESTADOS, EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs
 from app.social.service import SocialError
@@ -481,6 +481,46 @@ class ServicoDeOperacoes:
                 continue
         self.db.execute("UPDATE operacoes SET status='cancelada', updated_at=? WHERE id=?", (now_iso(), op_id))
         return self.ler(op_id)
+
+    def cancelar_alvos(self, op_id: str, *, profile_ids: Sequence[str] = (), estados: Sequence[str] = (),
+                       estagios: Sequence[str] = (), instance_ids: Sequence[str] = (),
+                       quem: str | None = None) -> dict[str, object]:
+        """Cancela só os alvos que casam com TODOS os filtros dados e deixa a operação seguir com os outros (rodada de 30
+        alvos: o aparelho travado, ou os que esperam o liberar e não vão ser liberados). Filtro vazio é recusado: cancelar
+        tudo é `cancelar`, de propósito, e um corpo esquecido não pode virar isso."""
+        if not (profile_ids or estados or estagios or instance_ids):
+            raise OperacaoError("filtro_vazio", "Diga quais alvos cancelar (perfil, estado, estágio ou aparelho); para a"
+                                                " operação inteira, use cancelar.", 422)
+        fora = sorted(set(estados) - set(ESTADOS))
+        if fora:
+            raise OperacaoError("estado_desconhecido", f"Estado desconhecido no filtro: {', '.join(fora)}.", 422)
+        atual = self.ler(op_id)
+        if atual["finished_at"] or atual["status"] == "cancelada":
+            raise OperacaoError("ja_encerrada", f"A operação já terminou ({atual['status']}).", 409)
+        cancelados: list[str] = []
+        ignorados: list[dict[str, str]] = []
+        terminais = (RunStatus.completed.value, RunStatus.cancelled.value, RunStatus.failed.value)
+        for a in atual["alvos"]:  # type: ignore[attr-defined]
+            if ((profile_ids and a["profile_id"] not in profile_ids) or (estados and a["estado"] not in estados)
+                    or (estagios and a["estagio"] not in estagios)
+                    or (instance_ids and a["instance_id"] not in instance_ids)):
+                continue
+            # O critério é a EXECUÇÃO não ter terminado, não o estado lido: o alvo que espera o liberar está `bloqueado`
+            # na leitura, mas a execução dele segue aberta (aguarda a pessoa) e cancelá-la é justamente o que se quer.
+            run = self.db.one("SELECT status FROM runs WHERE id=?", (a["run_id"],)) if a["run_id"] else None
+            if run is None:
+                ignorados.append({"profile_id": str(a["profile_id"]), "motivo": "sem_execucao"})
+                continue
+            if run["status"] in terminais:
+                ignorados.append({"profile_id": str(a["profile_id"]), "motivo": "ja_terminou"})
+                continue
+            try:
+                self.runs.cancel(str(a["run_id"]), por=quem)
+            except RunError:   # terminou entre a leitura e o pedido
+                ignorados.append({"profile_id": str(a["profile_id"]), "motivo": "ja_terminou"})
+                continue
+            cancelados.append(str(a["profile_id"]))
+        return {"cancelados": cancelados, "ignorados": ignorados, "operacao": self.ler(op_id)}
 
     def liberar(self, op_id: str, itens: Sequence[tuple[str, str]], *, quem: str | None = None) -> dict[str, object]:
         """Aprova, pelo serviço de aprovações de sempre, a ação preparada de cada alvo pedido, com o eco do texto que a

@@ -75,6 +75,15 @@ class LiberarBody(BaseModel):
     itens: list[ItemDeLiberacao] = Field(min_length=1, max_length=64)
 
 
+class CancelarAlvosBody(BaseModel):
+    """Os filtros se somam (E). Nenhum filtro dá 422 `filtro_vazio`: a operação inteira é `POST …/cancelar`."""
+    model_config = ConfigDict(extra="forbid")
+    profile_ids: list[str] = Field(default_factory=list, max_length=200)
+    estados: list[str] = Field(default_factory=list, max_length=8)
+    estagios: list[str] = Field(default_factory=list, max_length=20)
+    instance_ids: list[str] = Field(default_factory=list, max_length=200)
+
+
 def _st(request: Request) -> AppState:
     state: AppState = request.app.state.poc
     return state
@@ -118,6 +127,16 @@ async def ler_operacao(request: Request, operacao_id: str) -> object:
 async def cancelar_operacao(request: Request, operacao_id: str) -> object:
     try:
         return _servico(request).cancelar(operacao_id, quem=quem(request))
+    except OperacaoError as exc:
+        raise _erro(exc) from exc
+
+
+@router.post("/operacoes/{operacao_id}/cancelar-alvos", response_model=None)
+async def cancelar_alvos_da_operacao(request: Request, operacao_id: str, body: CancelarAlvosBody) -> object:
+    try:
+        return _servico(request).cancelar_alvos(operacao_id, profile_ids=body.profile_ids, estados=body.estados,
+                                                estagios=body.estagios, instance_ids=body.instance_ids,
+                                                quem=quem(request))
     except OperacaoError as exc:
         raise _erro(exc) from exc
 
