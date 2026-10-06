@@ -10496,15 +10496,15 @@
   "15.15": {
    "id": "15.15",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "Parcial, três dos seis tópicos, todos mergeados com 8721158e e empurrados. F7 (impor as máquinas de estado), feat/15-15-f7-impor-maquinas 6c5a8c96: Repository._conferir recusa a transição fora das tabelas de execution/domain/states.py com InvalidTransition ANTES de escrever (set_run_status, set_objective, finish_attempt), main.py devolve 409 invalid_transition, aresta completed_with_issues->cancelled declarada, ADR-038, adendo v1.78; 1765 testes dirigidos verdes (76 arquivos). F4 (routers por contexto, 3 cortes sem mudar caminho, método, corpo nem resposta): fluxos 7 rotas (f4a 8e30a011), treino 11 rotas (f4b 6bf397a0), execuções 16 rotas mais a escondida (f4c 7a708220, ponta); main.py monta os três routers no lugar do api.router; OpenAPI contra a main: 270 método+caminho idênticos, schemas só diferem em 16 títulos automáticos de resposta 200, ordem protegida por tests/test_ordem_das_rotas.py (3 testes); 2230 testes dirigidos verdes (119 arquivos). F2 (saúde fora de state.py), feat/15-15-f2-saude f1d0b60b: app/saude.py com SaudeDoSistema (health, ai_status, ultima_migracao, checar e os 6 auxiliares), AppState só delega em uma linha; o teste de caracterização (31 cenários, golden) não mudou e passa igual antes e depois; 132 testes (caracterização, saude_ao_vivo, arquitetura, catracas) e 61 arquivos que chamam a saúde verdes; catraca Any de app.state 50->48. Em todas: catracas 88, mypy 257 no teto, docs-check 0/0, sem migração. Faltam do 15.15: cluster de apps e portões, bootstrap, adapters ai|android, identidade de receita por capability, ligar o apply no ciclo e a conversão dos fluxos reais (recomendação em avaliacao-15-15.md: tirar do 15.15). Prova real = not_run: depois do deploy, comparar GET /api/health (problems e features) antes e depois, e o 409 invalid_transition num pedido recusado.",
+   "proof": "real",
+   "evidence": "Parcial, três dos seis tópicos, todos mergeados com 8721158e e empurrados. F7 (impor as máquinas de estado), feat/15-15-f7-impor-maquinas 6c5a8c96: Repository._conferir recusa a transição fora das tabelas de execution/domain/states.py com InvalidTransition ANTES de escrever (set_run_status, set_objective, finish_attempt), main.py devolve 409 invalid_transition, aresta completed_with_issues->cancelled declarada, ADR-038, adendo v1.78; 1765 testes dirigidos verdes (76 arquivos). F4 (routers por contexto, 3 cortes sem mudar caminho, método, corpo nem resposta): fluxos 7 rotas (f4a 8e30a011), treino 11 rotas (f4b 6bf397a0), execuções 16 rotas mais a escondida (f4c 7a708220, ponta); main.py monta os três routers no lugar do api.router; OpenAPI contra a main: 270 método+caminho idênticos, schemas só diferem em 16 títulos automáticos de resposta 200, ordem protegida por tests/test_ordem_das_rotas.py (3 testes); 2230 testes dirigidos verdes (119 arquivos). F2 (saúde fora de state.py), feat/15-15-f2-saude f1d0b60b: app/saude.py com SaudeDoSistema (health, ai_status, ultima_migracao, checar e os 6 auxiliares), AppState só delega em uma linha; o teste de caracterização (31 cenários, golden) não mudou e passa igual antes e depois; 132 testes (caracterização, saude_ao_vivo, arquitetura, catracas) e 61 arquivos que chamam a saúde verdes; catraca Any de app.state 50->48. Em todas: catracas 88, mypy 257 no teto, docs-check 0/0, sem migração. Faltam do 15.15: cluster de apps e portões, bootstrap, adapters ai|android, identidade de receita por capability, ligar o apply no ciclo e a conversão dos fluxos reais (recomendação em avaliacao-15-15.md: tirar do 15.15). Prova real = not_run: depois do deploy, comparar GET /api/health (problems e features) antes e depois, e o 409 invalid_transition num pedido recusado. PROVA REAL (06/10/2026, central WIN-7S2UASNLFOP, deploy 47 = d2d346cd, migração 119, só leitura): GET /api/health com problems [] e features idênticos aos de antes do deploy (F2, registrado pela orquestradora); eventos '(recusada)' = 0 desde 06:30Z e 0 warns de transição fora da tabela em todo o histórico (F7). A contagem de 409 invalid_transition não é observável (sem access log e o handler não grava evento): fica 'nenhum caso visível', não 'zero 409'. F4: rotas movidas respondem no central em d2d346cd com o mesmo conjunto de 270 rotas (prova simulada do OpenAPI). Falha achada e corrigida depois: test_ref_do_fluxo_fora_do_log reprovava 2 _err(409) de presentation/fluxos.py (ajuste no commit do 31.117, 3d3a9072).",
    "blocker": null,
    "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T06:49:50+00:00"
+   "quando": "2026-10-06T07:03:58+00:00"
   },
   "30.72": {
    "id": "30.72",
@@ -13778,6 +13778,15 @@
    ],
    "grupos": [
     "portal-29-109-29-116-ja-na-main"
+   ]
+  },
+  {
+   "quando": "2026-10-06T07:03:58+00:00",
+   "itens": [
+    "15.15"
+   ],
+   "grupos": [
+    "jev"
    ]
   }
  ]
