@@ -3,7 +3,10 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ConfirmHost } from '../../components/Confirm';
+import { useAppStore } from '../../store/app';
+import { useToastStore } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
+import { SETTINGS } from '../../test/fixtures';
 import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import {
   agregadoPorApp, contarPorEstado, ESTAGIOS, estagioDeParada, estagiosAlcancados, lerAlvo, lerCapacidade, lerEstagio, lerOperacao, verificacaoDoAlvo,
@@ -85,6 +88,9 @@ describe('o leitor tolerante', () => {
     expect(estagiosAlcancados({ estagio: 'aparelho', estagios: [{ estagio: 'persona', em: null }, { estagio: 'conta', em: null }] })).toBe(2);
     expect(estagioDeParada({ estagio: 'persona', estagios: [{ estagio: 'persona', em: null }] })).toBe('conta');
     expect(estagioDeParada({ estagio: 'resultado_verificado', estagios: [] })).toBeNull();
+    // o backend manda onde parou (há estágios que só existem se a Aprendizado marcar): vale o dele, não o seguinte calculado
+    expect(estagioDeParada({ estagio: 'persona', estagios: [], parou_em: 'sessao' })).toBe('sessao');
+    expect(lerAlvo({ profile_id: 'p', estagio: 'persona', estado: 'bloqueado', parou_em: 'conta' }, 0)!.parou_em).toBe('conta');
   });
 
   it('verificação: só `verificada: true` conta; tentada sem prova é "não verificada"; sem ação final não há o que verificar', () => {
@@ -218,27 +224,50 @@ describe('com a rota no central', () => {
     await waitFor(() => expect(backend.callsTo('POST', /cancelar$/)).toHaveLength(1));
   });
 
-  it('"Liberar": com alvos parados no limite pede confirmação, diz quantos e chama a rota; sem eles fica desligado', async () => {
-    const NO_LIMITE = { ...OPERACAO.alvos[1], estado: 'bloqueado', motivo: 'limite de ações executadas', estagio: 'acao_preparada', estagios: [] };
-    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, alvos: [OPERACAO.alvos[0], NO_LIMITE] }));
-    backend.on('POST', /^\/api\/operacoes\/op-1\/liberar$/, () => json(OPERACAO));
+  const PREPARADO = (p: string, nome: string, texto: string) => ({ ...OPERACAO.alvos[1], profile_id: p, persona_nome: nome, estado: 'bloqueado', motivo: 'limite de ações executadas',
+    estagio: 'acao_preparada', estagios: [], resultado: { texto, conhecimento_ids: [], evidencia_id: null, acao_final: null } });
+
+  it('"Liberar": mostra os textos parados, começa tudo desmarcado, respeita o limite que sobra e envia exatamente o texto lido', async () => {
+    useAppStore.setState({ settings: { ...SETTINGS, operacao_max_acoes_executadas: 2 } });
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, alvos: [OPERACAO.alvos[0], PREPARADO('p2', 'Bia', 'Texto da Bia.'), PREPARADO('p3', 'Caio', 'Texto do Caio.'), PREPARADO('p4', 'Dani', 'Texto da Dani.')] }));
+    backend.on('POST', /^\/api\/operacoes\/op-1\/liberar$/, () => json({ liberados: ['p2', 'p3'], recusados: [], operacao: OPERACAO }));
+    await ir(['op-1']);
+    await waitFor(() => expect(linhas()).toHaveLength(4));
+    await click(byRole('button', /^Liberar$/, container));
+    const d = await waitFor(() => byRole('dialog', /Liberar as ações paradas\?/));
+    expect(text(d)).toContain('Texto da Bia.');
+    expect(text(d)).toContain('Ainda cabem 2 contas');
+    const caixas = allByRole('checkbox', /./, d) as HTMLInputElement[];
+    expect(caixas.map((c) => c.checked)).toEqual([false, false, false]);                    // nenhuma aprovação automática
+    expect(byRole('button', /^Liberar — indisponível: Marque ao menos um agente/, d).getAttribute('aria-disabled')).toBe('true');
+    await click(caixas[0]!);
+    await click(caixas[1]!);
+    expect(caixas[2]!.disabled).toBe(true);                                                  // o limite que sobra
+    await click(byRole('button', /^Liberar 2$/, d));
+    await waitFor(() => expect(backend.callsTo('POST', /liberar$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /liberar$/)[0]!.body).toEqual({ itens: [{ profile_id: 'p2', texto: 'Texto da Bia.' }, { profile_id: 'p3', texto: 'Texto do Caio.' }] });
+  });
+
+  it('"Liberar": a decisão é item a item: o recusado (texto mudou) é avisado com o motivo e a operação é relida', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, alvos: [OPERACAO.alvos[0], PREPARADO('p2', 'Bia', 'Texto da Bia.')] }));
+    backend.on('POST', /^\/api\/operacoes\/op-1\/liberar$/, () => json({ liberados: [], recusados: [{ profile_id: 'p2', motivo: 'texto_divergente' }], operacao: OPERACAO }));
     await ir(['op-1']);
     await waitFor(() => expect(linhas()).toHaveLength(2));
     await click(byRole('button', /^Liberar$/, container));
     const d = await waitFor(() => byRole('dialog', /Liberar as ações paradas\?/));
-    expect(text(d)).toContain('1 agente parou no limite de contas que executam a ação final');
-    await click(byRole('button', /^Voltar$/, d));
-    expect(backend.callsTo('POST', /liberar$/)).toHaveLength(0);
-    await click(byRole('button', /^Liberar$/, container));
-    await click(byRole('button', /^Liberar$/, await waitFor(() => byRole('dialog', /Liberar as ações paradas\?/))));
-    await waitFor(() => expect(backend.callsTo('POST', /liberar$/)).toHaveLength(1));
+    await click(allByRole('checkbox', /./, d)[0]!);
+    await click(byRole('button', /^Liberar 1$/, d));
+    await waitFor(() => expect(backend.callsTo('GET', /operacoes\/op-1$/).length).toBeGreaterThan(1));
+    const aviso = useToastStore.getState().toasts.find((x) => x.title === 'Nada foi liberado');
+    expect(aviso?.message).toContain('o texto mudou depois que você o leu');
+    expect(container.querySelector('dialog[open]')).toBeNull();
   });
 
-  it('"Liberar" sem ninguém parado no limite fica desligado, com o motivo', async () => {
+  it('"Liberar" sem ninguém esperando fica desligado, com o motivo', async () => {
     backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json(OPERACAO));
     await ir(['op-1']);
     await waitFor(() => expect(linhas()).toHaveLength(2));
-    expect(byRole('button', /^Liberar — indisponível: Nenhum agente parou no limite/, container).getAttribute('aria-disabled')).toBe('true');
+    expect(byRole('button', /^Liberar — indisponível: Nenhum agente espera a liberação/, container).getAttribute('aria-disabled')).toBe('true');
   });
 
   it('operação inexistente (404 operacao_inexistente) é erro, nunca o exemplo; o status encerrado desliga o cancelar', async () => {

@@ -14,11 +14,13 @@ import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError
 import type { Tone } from '../../lib/status';
 import { formatClock } from '../../lib/time';
 import { toast, toastError } from '../../store/toasts';
+import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { apiOperacoes, type ListaDeOperacoes } from './api';
+import { LiberarAcoes } from './LiberarAcoes';
 import styles from './Operacao.module.css';
 import {
-  agregadoPorApp, alvosNoLimite, contarPorEstado, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, isEstadoDoAlvo, isEstagio,
+  acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, isEstadoDoAlvo, isEstagio,
   ROTULO_DA_VERIFICACAO, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, rotuloDaAcao, rotuloDoEstagio, verificacaoDoAlvo, type Alvo, type EstadoDoAlvo,
   type EstagioId, type Operacao, type ResumoDaOperacao, type StatusDaOperacao, type Verificacao,
 } from './modelo';
@@ -210,7 +212,8 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const [parou, setParou] = useState<EstagioId | ''>('');
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
   const [cancelando, setCancelando] = useState(false);
-  const [liberando, setLiberando] = useState(false);
+  const [abrirLiberar, setAbrirLiberar] = useState(false);
+  const limiteDeAcoes = useAppStore((s) => s.settings?.operacao_max_acoes_executadas);
   const contagem = useMemo(() => contarPorEstado(op?.alvos ?? []), [op]);
 
   if (carregando && !op) return <LoadingRegion label="Lendo a operação"><Skeleton height={160} /></LoadingRegion>;
@@ -219,29 +222,13 @@ function DetalheDaOperacao({ id }: { id: string }) {
 
   const alvos = op.alvos.filter((a) => (!estado || a.estado === estado) && (!parou || estagioDeParada(a) === parou));
   const encerrada = op.status !== null && op.status !== 'em_curso';
-  const paradosNoLimite = alvosNoLimite(op.alvos);
-  const motivoSemLiberar = op.exemplo ? 'É um exemplo: não há o que liberar.' : encerrada && paradosNoLimite === 0 ? 'A operação já terminou.'
-    : paradosNoLimite === 0 ? 'Nenhum agente parou no limite de ações executadas.' : null;
+  const preparados = alvosPreparados(op.alvos);
+  // Quantas contas ainda cabem no limite configurado (as que já executaram contam); sem o limite à mão, a lista inteira.
+  const vagas = typeof limiteDeAcoes === 'number' ? Math.max(0, limiteDeAcoes - acoesJaExecutadas(op.alvos)) : preparados.length;
+  const motivoSemLiberar = op.exemplo ? 'É um exemplo: não há o que liberar.'
+    : preparados.length === 0 ? 'Nenhum agente espera a liberação da ação final.'
+      : vagas === 0 ? 'O limite de contas que executam a ação final já foi atingido.' : null;
   const motivoSemCancelar = op.exemplo ? 'É um exemplo: não há o que cancelar.' : encerrada ? 'A operação já terminou.' : null;
-
-  async function liberar() {
-    if (!op) return;
-    const r = await confirm({
-      title: 'Liberar as ações paradas?', confirmLabel: 'Liberar',
-      body: `${paradosNoLimite} ${paradosNoLimite === 1 ? 'agente parou' : 'agentes pararam'} no limite de contas que executam a ação final. Liberar faz ${paradosNoLimite === 1 ? 'esse agente seguir' : 'esses agentes seguirem'} até a ação e a verificação, no post do alvo.`,
-    });
-    if (!r.confirmed) return;
-    setLiberando(true);
-    try {
-      await apiOperacoes.liberar(op.id);
-      toast({ tone: 'success', title: 'Ações liberadas' });
-      recarregar();
-    } catch (e) {
-      toastError('Não foi possível liberar as ações', e);
-    } finally {
-      setLiberando(false);
-    }
-  }
 
   async function cancelar() {
     if (!op) return;
@@ -266,11 +253,15 @@ function DetalheDaOperacao({ id }: { id: string }) {
     <Page title="Operação" lead={op.command || 'Sem objetivo informado.'}
           actions={(
             <>
-              <Button size="sm" variant="primary" loading={liberando} disabledReason={motivoSemLiberar} onClick={() => void liberar()}>Liberar</Button>
+              <Button size="sm" variant="primary" disabledReason={motivoSemLiberar} onClick={() => setAbrirLiberar(true)}>Liberar</Button>
               <Button size="sm" variant="danger" loading={cancelando} disabledReason={motivoSemCancelar} onClick={() => void cancelar()}>Cancelar a operação</Button>
             </>
           )}>
       {op.exemplo ? AVISO_DE_EXEMPLO : null}
+      {abrirLiberar ? (
+        <LiberarAcoes operacaoId={op.id} preparados={preparados} vagas={vagas} onFechar={() => setAbrirLiberar(false)}
+                      onLiberado={() => { setAbrirLiberar(false); recarregar(); }} />
+      ) : null}
       <p className={styles.cabecalho}>
         <a className={styles.link} href={hashDe('operacoes')}>← Todas as operações</a>
         {op.status ? <Badge tone={TOM_DO_STATUS[op.status]} size="sm">{ROTULO_DO_STATUS[op.status]}</Badge> : null}

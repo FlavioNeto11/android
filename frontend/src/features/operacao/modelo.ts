@@ -76,6 +76,8 @@ export interface Alvo {
   /** Os estágios alcançados, com a hora; vazio quando o backend não os manda. */
   estagios: { estagio: EstagioId; em: string | null }[];
   estado: EstadoDoAlvo | null;
+  /** O estágio em que o alvo parou (só em `bloqueado`/`cancelado`); o backend manda, o painel não calcula o seguinte. */
+  parou_em: EstagioId | null;
   /** Frase curta e estável do backend (`sem conta`, `sem sessão`, `aguarda aprovação`…); nunca um código. */
   motivo: string | null;
   resultado: Resultado | null;
@@ -142,7 +144,7 @@ export function lerAlvo(v: unknown, posicao: number): Alvo | null {
     id: texto(o.run_id) ?? texto(o.profile_id) ?? `alvo-${posicao + 1}`,
     profile_id: texto(o.profile_id), persona: texto(o.persona_nome), app_id: texto(o.app_id), account_id: texto(o.account_id),
     conta: texto(o.conta), instance_id: texto(o.instance_id), run_id: texto(o.run_id),
-    estagio: lerEstagio(o.estagio), estagios, estado: isEstadoDoAlvo(o.estado) ? o.estado : null, motivo: texto(o.motivo),
+    estagio: lerEstagio(o.estagio), estagios, estado: isEstadoDoAlvo(o.estado) ? o.estado : null, parou_em: lerEstagio(o.parou_em), motivo: texto(o.motivo),
     resultado: lerResultado(o.resultado),
   };
 }
@@ -159,12 +161,38 @@ export function lerCapacidade(v: unknown): Capacidade {
   };
 }
 
-/** O motivo do alvo que parou no teto de ações executadas: é o que o botão "Liberar" destrava. */
+/** A resposta do "Liberar": decisão item a item; o que foi recusado vem com o motivo, e a operação já relida. */
+export interface ResultadoDaLiberacao { liberados: string[]; recusados: { profile_id: string; motivo: string }[]; operacao: Operacao | null }
+export function lerLiberacao(v: unknown): ResultadoDaLiberacao | null {
+  const o = registro(v);
+  if (!o || !Array.isArray(o.liberados) || !Array.isArray(o.recusados)) return null;
+  return {
+    liberados: o.liberados.filter((x): x is string => typeof x === 'string'),
+    recusados: o.recusados.flatMap((r) => { const x = registro(r); const p = x && texto(x.profile_id); const m = x && texto(x.motivo); return p && m ? [{ profile_id: p, motivo: m }] : []; }),
+    operacao: lerOperacao(o.operacao),
+  };
+}
+
+/** O motivo do alvo que parou no teto de ações executadas (a frase estável do backend). */
 export const MOTIVO_DO_LIMITE = 'limite de ações executadas';
 
-/** Quantos alvos esperam a liberação do teto de ações executadas. */
-export const alvosNoLimite = (alvos: readonly Pick<Alvo, 'motivo' | 'estado'>[]): number =>
-  alvos.filter((a) => a.estado === 'bloqueado' && a.motivo === MOTIVO_DO_LIMITE).length;
+/**
+ * Os alvos que esperam a liberação da ação final: pararam em `acao_preparada`, com o texto gerado e a pessoa do alvo, e ainda não
+ * executaram. É a lista do "Liberar": a pessoa vê o texto e libera exatamente ele (nenhuma aprovação automática).
+ */
+export interface AlvoPreparado { profile_id: string; persona: string; conta: string | null; texto: string }
+export function alvosPreparados(alvos: readonly Alvo[]): AlvoPreparado[] {
+  return alvos.flatMap((a) => {
+    const texto = a.resultado?.texto;
+    const acaoFeita = a.resultado?.acao_final !== null && a.resultado?.acao_final !== undefined && a.estado === 'concluido';
+    if (!a.profile_id || !texto || a.estagio !== 'acao_preparada' || acaoFeita || a.estado === 'concluido' || a.estado === 'cancelado') return [];
+    return [{ profile_id: a.profile_id, persona: a.persona ?? 'Persona não informada', conta: a.conta, texto }];
+  });
+}
+
+/** Quantas contas já executaram a ação final (contam no limite configurado). */
+export const acoesJaExecutadas = (alvos: readonly Alvo[]): number =>
+  alvos.filter((a) => a.estado === 'concluido' && a.resultado?.acao_final !== null && a.resultado?.acao_final !== undefined).length;
 
 /** `null` quando o corpo não é uma operação (sem id): a tela diz que não leu, não inventa. */
 export function lerResumo(v: unknown): ResumoDaOperacao | null {
@@ -201,8 +229,9 @@ export function rotuloDoEstagio(id: EstagioId | null): string {
   return ESTAGIOS.find((e) => e.id === id)?.rotulo ?? '—';
 }
 
-/** O estágio onde o alvo está parado: o seguinte ao último alcançado; `null` quando já chegou ao fim. */
-export function estagioDeParada(a: Pick<Alvo, 'estagio' | 'estagios'>): EstagioId | null {
+/** O estágio onde o alvo está parado: o `parou_em` do backend; sem ele (backend antigo), o seguinte ao último alcançado; `null` ao fim. */
+export function estagioDeParada(a: Pick<Alvo, 'estagio' | 'estagios'> & { parou_em?: EstagioId | null }): EstagioId | null {
+  if (a.parou_em) return a.parou_em;
   const prox = estagiosAlcancados(a);
   return prox < ESTAGIOS.length ? ESTAGIOS[prox]!.id : null;
 }

@@ -4,7 +4,7 @@
  * no exemplo fixo e AVISA; assim que a rota responder, a mesma tela passa a ler o real sem mudança.
  */
 import { ApiError, apiRequest, toApiError } from '../../api/client';
-import { lerLista, lerOperacao, type Operacao, type ResumoDaOperacao } from './modelo';
+import { lerLiberacao, lerLista, lerOperacao, type Operacao, type ResultadoDaLiberacao, type ResumoDaOperacao } from './modelo';
 import { OPERACAO_DE_EXEMPLO } from './operacaoDeExemplo';
 
 const enc = encodeURIComponent;
@@ -39,10 +39,11 @@ export const apiOperacoes = {
     }
   },
   /** Libera os alvos parados no teto de ações executadas: eles seguem até a ação final. */
-  async liberar(id: string): Promise<Operacao> {
-    const op = lerOperacao(await apiRequest<unknown>('POST', `/operacoes/${enc(id)}/liberar`, { body: {} }));
-    if (!op) throw new ApiError(502, 'resposta_invalida', 'A resposta não é uma operação.');
-    return op;
+  async liberar(id: string, itens: { profile_id: string; texto: string }[]): Promise<ResultadoDaLiberacao> {
+    // O corpo é o eco do texto que a pessoa viu; a decisão é item a item: o servidor recusa o que mudou (`texto_divergente`).
+    const r = lerLiberacao(await apiRequest<unknown>('POST', `/operacoes/${enc(id)}/liberar`, { body: { itens } }));
+    if (!r) throw new ApiError(502, 'resposta_invalida', 'A resposta da liberação não tem o formato esperado.');
+    return r;
   },
   async cancelar(id: string): Promise<Operacao> {
     const op = lerOperacao(await apiRequest<unknown>('POST', `/operacoes/${enc(id)}/cancelar`, { body: {} }));

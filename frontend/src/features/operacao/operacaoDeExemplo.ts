@@ -14,12 +14,12 @@ const ate = (n: number) => ESTAGIOS.slice(0, n).map((e, i) => ({ estagio: e.id, 
 const base = (n: number) => ({
   profile_id: `ig-${doisDigitos(n)}`, persona_nome: `Persona ${doisDigitos(n)}`, app_id: 'com.instagram.android', account_id: null as string | null,
   conta: null as string | null, instance_id: null as string | null, run_id: null as string | null,
-  estagio: 'persona', estagios: ate(1), estado: 'bloqueado', motivo: 'sem conta', resultado: null as unknown,
+  estagio: 'persona', estagios: ate(1), estado: 'bloqueado', parou_em: 'conta' as string | null, motivo: 'sem conta', resultado: null as unknown,
 });
 
 const concluido = (n: number, aparelho: string, texto: string, verificada: boolean) => ({
   ...base(n), account_id: `acc-${doisDigitos(n)}`, conta: `@exemplo_${doisDigitos(n)}`, instance_id: aparelho, run_id: `r-exemplo-${doisDigitos(n)}`,
-  estagio: verificada ? 'resultado_verificado' : 'acao_executada', estagios: ate(verificada ? 14 : 13), estado: 'concluido', motivo: null,
+  estagio: verificada ? 'resultado_verificado' : 'acao_executada', estagios: ate(verificada ? 14 : 13), estado: 'concluido', parou_em: null, motivo: null,
   resultado: {
     texto, conhecimento_ids: ['fluxo:comentar-no-post', 'licao:voz-da-persona'], evidencia_id: 1000 + n,
     acao_final: { tipo: 'CREATE_COMMENT', verificada, evidencia_id: verificada ? 2000 + n : null },
@@ -32,10 +32,10 @@ alvos[1] = concluido(2, 'android-05', 'Adorei o acabamento, já quero o meu.', t
 alvos[2] = concluido(3, 'android-07', 'Muito bom ver a novidade chegando.', false);
 alvos[3] = {
   ...base(4), account_id: 'acc-04', conta: '@exemplo_04', instance_id: 'android-08', run_id: 'r-exemplo-04',
-  estagio: 'acao_preparada', estagios: ate(12), estado: 'bloqueado', motivo: MOTIVO_DO_LIMITE,
+  estagio: 'acao_preparada', estagios: ate(12), estado: 'bloqueado', parou_em: 'acao_executada', motivo: MOTIVO_DO_LIMITE,
   resultado: { texto: 'Gostei do detalhe da embalagem.', conhecimento_ids: ['fluxo:comentar-no-post'], evidencia_id: 1004, acao_final: null },
 };
-alvos[4] = { ...base(5), account_id: 'acc-05', conta: '@exemplo_05', estagio: 'conta', estagios: ate(2), motivo: 'sem sessão' };
+alvos[4] = { ...base(5), account_id: 'acc-05', conta: '@exemplo_05', estagio: 'conta', estagios: ate(2), parou_em: 'sessao', motivo: 'sem sessão' };
 
 export const OPERACAO_DE_EXEMPLO = {
   id: 'op-exemplo',
