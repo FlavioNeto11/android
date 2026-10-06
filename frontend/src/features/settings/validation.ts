@@ -152,23 +152,15 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     ],
   },
   {
-    soSeOServidorManda: true,
-    title: 'Regra da frota sobre o mesmo alvo',
-    description: 'Quantas contas nossas podem mexer com o mesmo perfil e por quantos dias a regra lembra disso (ADR-081). Vale na hora, sem reiniciar.',
-    fields: [
-      int('frota_max_contas_por_alvo', 'Contas da frota por alvo', 'contas', 'Quantas contas da frota podem ter mexido com o mesmo perfil dentro da janela; passando disso, a próxima conta para com o motivo "já mexeram". Padrão 10; vai de 1 a 64.', 1, 64),
-      int('frota_janela_dias', 'Janela da regra da frota', 'dias', 'Há quantos dias a regra olha para trás ao contar as contas que já mexeram com o mesmo perfil ou têm pedido em aberto para ele. Padrão 30; vai de 1 a 365.', 1, 365),
-    ],
-  },
-  {
     title: 'Sinais e limites do Instagram',
     description: 'Quando parar de insistir sozinho e como a frota se coordena sobre o mesmo alvo (item 8.3).',
     fields: [
       int('session_unknown_retry_cap', 'Reobservações antes de pedir uma pessoa', 'tentativas',
          'Tela não reconhecida repetidas vezes seguidas vira "precisa de pessoa" em vez de insistir a cada tick.', 1, 20),
-      int('fleet_max_accounts_per_target', 'Contas da frota sobre o mesmo alvo', 'contas',
-         'Acima disso, a próxima conta que tentar mexer com o mesmo @usuário espera.', 1, 50),
-      int('fleet_target_window_s', 'Janela da coordenação de frota', 'segundos', '', 60, 86_400),
+      int('fleet_max_accounts_per_target', 'Contas da frota que podem curtir o mesmo alvo', 'contas',
+         'Só vale para curtidas: acima disso, a próxima conta que quiser curtir o mesmo perfil é recusada. Seguir, comentar e mandar mensagem são de uma conta por alvo, regra fixa. Padrão 3; vai de 1 a 50.', 1, 50),
+      int('fleet_target_window_days', 'Janela da regra da frota', 'dias',
+         'Por quantos dias a ação de outra conta sobre o mesmo perfil conta para a regra de contas por alvo (o "nos últimos 30 dias" do motivo de parada). Padrão 30; vai de 1 a 365.', 1, 365),
       int('fleet_min_spacing_between_accounts_s', 'Espaçamento mínimo entre contas no mesmo alvo', 'segundos', '', 0, 3600),
       int('fleet_spacing_jitter_s', 'Variação aleatória do espaçamento', 'segundos',
          'Soma ao espaçamento mínimo, para não virar um padrão regular.', 0, 3600),

@@ -19,9 +19,9 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-10-06 — ADR-081 (Portal): os dois campos da regra da frota em Configurações (branch feat/adr-081-frota-em-configuracao-portal, sobre 53c7e28b)
+## 2026-10-06 — ADR-081 (Portal): a regra da frota em Configurações com os nomes reais (branch feat/adr-081-frota-em-configuracao-portal, sobre 53c7e28b)
 
-- Em Configuração › Limites, o grupo "Regra da frota sobre o mesmo alvo" mostra `frota_max_contas_por_alvo` ("Contas da frota por alvo", padrão 10, 1 a 64) e `frota_janela_dias` ("Janela da regra da frota", padrão 30, 1 a 365 — faixa provisória até a Jev confirmar o teto) com a ajuda em português; só aparece se o servidor mandar os campos (backend anterior não mostra o grupo), salva só o que mudou e a recusa do backend aparece sem perder o valor digitado. Prova `simulated`: `LimitsSection.test.tsx` (3 casos novos, 5 de faixa) e `validation.test.ts`; vitest 147 arquivos/1920 verdes, 3 mutações mortas; `real` `not_run` até o deploy 56.
+- Os nomes `frota_max_contas_por_alvo` e `frota_janela_dias` da primeira versão desta branch NÃO existem no backend (confirmado pela Jev: o `PUT /api/settings` os recusaria com 400); os campos reais são `fleet_max_accounts_per_target` (padrão 3, 1 a 50, só nas curtidas) e `fleet_target_window_days` (padrão 30, 1 a 365, em dias). Em Configuração › Limites › "Sinais e limites do Instagram": "Contas da frota que podem curtir o mesmo alvo" (a ajuda diz que só vale para curtidas e que seguir, comentar e mandar mensagem são de uma conta por alvo, regra fixa) e "Janela da regra da frota" em dias (substitui a "Janela da coordenação de frota" em segundos, `fleet_target_window_s`, que o backend já não usa). Prova `simulated`: `LimitsSection.test.tsx` (3 casos novos, 5 de faixa) e `validation.test.ts`; vitest inteiro verde, 3 mutações mortas; `real` `not_run` até o deploy 56.
 
 ## 2026-10-06 — 31.162 (Portal): relatório exportável da operação (branch feat/31-162-relatorio-da-operacao, sobre a7f03152)
 
