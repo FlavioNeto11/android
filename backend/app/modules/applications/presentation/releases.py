@@ -262,7 +262,7 @@ async def release_lifecycle(request: Request, release_id: str, body: ReleaseLife
         # de propósito — a API nunca escolhe esse caminho sozinha.
         preserve = not body.confirm_reinstall
 
-        async def trabalho() -> object:
+        async def trabalho() -> dict[str, object]:
             resultado = await s.releases.rollback(rt, package, s.installer, preserve=preserve, note=body.note)
             # ADR-026: a versão de onde este aparelho saiu virou "substituída" para o parque inteiro. Quem está nela
             # (ou a esperava) volta para a promovida anterior já, em vez de esperar a varredura de 60 s.
