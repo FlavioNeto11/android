@@ -229,7 +229,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         <div className={styles.itemAcoes}>
           {acoes.map((a) => (
             <Button key={a.to} size="sm" variant={a.perigo ? 'dangerGhost' : a.to === 'published' || a.to === 'validated' ? 'primary' : 'secondary'}
-                    onClick={() => setAberta(a)}>
+                    title={a.efeito} onClick={() => setAberta(a)}>
               {a.label}
             </Button>
           ))}
@@ -238,6 +238,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
       {aberta ? (
         <DecisaoInline
           acao={aberta}
+          resumo={aberta.efeito}
           motivoOpcional={aberta.confirmaQueFica}
           onCancelar={() => setAberta(null)}
           onConfirmar={async (motivo) => {

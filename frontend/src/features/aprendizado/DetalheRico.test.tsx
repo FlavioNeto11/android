@@ -736,3 +736,20 @@ describe('detalhe rico: o selo em prova do fluxo ensinado (30.85)', () => {
     expect(t).not.toContain('Etapa de origem');
   });
 });
+
+describe('detalhe rico: texto do fluxo para uma pessoa (31.134)', () => {
+  it('a etapa mostra o nome em palavras (a chave crua vai no title) e o Confere troca o marcador da persona por palavras', async () => {
+    const etapa = (indice: number, chave: string, descricao: string) => ({ indice, chave, capability: null, alvo: null, efeito: false,
+      pos_condicao: { tipo: 'text_visible', descricao }, parametros: [], segredo: false });
+    await mostrar(detalhe({ conteudo: { tipo: 'fluxo', nome: 'Adicionar rede', comando_modelo: 'adicione uma rede', origem: { tipo: 'treino', fonte: 't', source_run_id: null },
+      apps: [], efeito: { externo: false, etapas_com_efeito: [] },
+      etapas: [etapa(0, 'abrir_rede_internet', 'A tela mostra a opção Internet'), etapa(1, 'digitar_nome_rede', 'O campo mostra o texto {perfil_nome}')] }, item: { kind: 'fluxo' } }));
+    const nomes = Array.from(container.querySelectorAll('ol[aria-label="Etapas do fluxo"] strong'));
+    expect(nomes.map((n) => n.textContent)).toEqual(['Abrir rede internet', 'Digitar nome rede']);
+    expect(nomes[0]!.getAttribute('title')).toBe('abrir_rede_internet');
+    const t = text(container);
+    expect(t).toContain('Confere: O campo mostra o texto [nome da persona]');
+    expect(t).not.toContain('{perfil_nome}');
+    expect(t).not.toContain('digitar_nome_rede');
+  });
+});

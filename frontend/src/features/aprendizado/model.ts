@@ -299,6 +299,12 @@ export interface ConteudoDaReceita {
   substituida_por: VizinhaDaReceita | null;
 }
 
+/** 31.134: a chave da etapa (`abrir_rede_internet`) em palavras ("Abrir rede internet"); a chave crua vai no `title`. */
+export function nomeDaEtapa(chave: string): string {
+  const palavras = chave.replace(/[_-]+/g, ' ').trim();
+  return palavras ? palavras.charAt(0).toUpperCase() + palavras.slice(1) : chave;
+}
+
 export interface EtapaDoFluxo {
   indice: number;
   chave: string | null;
@@ -661,6 +667,8 @@ export interface AcaoDoItem {
   perigo: boolean;
   /** 30.24: "Confirmar que fica" não muda o estado (rota própria) e o motivo é opcional. */
   confirmaQueFica?: boolean;
+  /** 31.134: o que o botão faz, em uma frase (no `title` do botão e acima do motivo quando a decisão abre). */
+  efeito?: string;
 }
 
 const A = (to: EstadoDoLivro, label: string, confirmar: string, perigo = false): AcaoDoItem => ({ to, label, confirmar, perigo });
@@ -669,18 +677,20 @@ const A = (to: EstadoDoLivro, label: string, confirmar: string, perigo = false):
  *  Nada muda no item, e o motivo é opcional. No ensinado que espera a pessoa (30.81), é o "liberado". */
 export const ACAO_CONFIRMAR_QUE_FICA: AcaoDoItem = {
   to: 'published', label: 'Confirmar que fica', confirmar: 'Confirmar que fica', perigo: false, confirmaQueFica: true,
+  efeito: 'Mantém o fluxo como está e o libera para quem estiver no escopo; volta para Revisar se aparecer evidência contrária.',
 };
 
 /** Texto dos botões por chave do backend (apresentação). `perigo` pinta o que tira o item de circulação. */
-const TEXTO_DA_ACAO: Record<RotuloDaAcao, { label: string; confirmar: string; perigo: boolean }> = {
-  validar: { label: 'Validar', confirmar: 'Confirmar validação', perigo: false },
-  aprovar: { label: 'Aprovar', confirmar: 'Confirmar aprovação', perigo: false },
-  rejeitar: { label: 'Rejeitar', confirmar: 'Confirmar rejeição', perigo: true },
-  aposentar: { label: 'Aposentar', confirmar: 'Confirmar aposentadoria', perigo: false },
-  desligar: { label: 'Desligar', confirmar: 'Confirmar desligamento', perigo: true },
-  reativar: { label: 'Reativar', confirmar: 'Confirmar reativação', perigo: false },
+const TEXTO_DA_ACAO: Record<RotuloDaAcao, { label: string; confirmar: string; perigo: boolean; efeito: string }> = {
+  validar: { label: 'Validar', confirmar: 'Confirmar validação', perigo: false, efeito: 'Marca o item como validado, sem publicar.' },
+  aprovar: { label: 'Aprovar', confirmar: 'Confirmar aprovação', perigo: false, efeito: 'Publica o item: ele passa a valer para quem estiver no escopo.' },
+  rejeitar: { label: 'Rejeitar', confirmar: 'Confirmar rejeição', perigo: true, efeito: 'Desliga o item sem publicar; o sistema não o traz de volta.' },
+  aposentar: { label: 'Aposentar', confirmar: 'Confirmar aposentadoria', perigo: false, efeito: 'Tira o item de circulação; uma pessoa pode reativar depois.' },
+  desligar: { label: 'Desligar', confirmar: 'Confirmar desligamento', perigo: true, efeito: 'Desliga o item: ele deixa de valer e só uma pessoa o reativa.' },
+  reativar: { label: 'Reativar', confirmar: 'Confirmar reativação', perigo: false, efeito: 'Publica o item de novo, já valendo, sem uma nova prova.' },
   // 30.31: o fluxo desligado volta a provar-se (inerte, sem publicar); a evidência conta de novo a partir daqui.
-  devolver: { label: 'Devolver à prova', confirmar: 'Confirmar volta à prova', perigo: false },
+  devolver: { label: 'Devolver à prova', confirmar: 'Confirmar volta à prova', perigo: false,
+              efeito: 'Tira o fluxo de desligado sem publicar: ele fica parado e volta a se provar, com a evidência contada de novo.' },
 };
 
 /**

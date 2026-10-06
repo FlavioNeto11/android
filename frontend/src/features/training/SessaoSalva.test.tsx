@@ -156,3 +156,13 @@ it('31.132: o fluxo da sessão salva mostra o estado no Livro (Desligado) e o li
   expect(byRole('link', /Abrir no Livro/, d).getAttribute('href')).toBe('#/aprendizado?aba=aprendido&item=fluxo%3Af-455f91437856');
   await flush(ATRASO_MAXIMO + 30);
 });
+
+// 31.134: o "confere" da proposta salva também fala em palavras, sem o marcador cru do dado da persona.
+it('31.134: o confere da etapa na sessão salva troca o marcador da persona por palavras', async () => {
+  const marcada = { ...SALVA, proposal: { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, postcondition: { kind: 'text_visible', value: 'x', description: 'O campo mostra o texto {perfil_nome}' } }] } };
+  backend.on('GET', /\/training\/trn-s$/, () => json(marcada));
+  const d = await abrirSalva();
+  await waitFor(() => expect(d.textContent).toContain('confere: O campo mostra o texto [nome da persona]'));
+  expect(d.textContent).not.toContain('{perfil_nome}');
+  await flush(ATRASO_MAXIMO + 30);
+});

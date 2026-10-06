@@ -16,6 +16,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { plural } from '../../lib/format';
+import { textoComMarcadores } from '../../lib/marcadores';
 import { FluxoNoLivro } from './FluxoNoLivro';
 import { OrigemDoTreino } from './OrigemDoTreino';
 import { DescricaoEntrada, agruparTeclas, falhaDe } from './TrainingReview';
@@ -122,7 +123,7 @@ export function SessaoSalva({ sessionId, onClose }: { sessionId: string; onClose
                     <span className={styles.muted}>
                       {s.inputs.length ? ` · ${s.inputs.map((n) => `#${n}`).join(', ')}` : ''}
                       {s.side_effect ? ' · com efeito fora do sistema' : ''}
-                      {s.postcondition?.description ? ` · confere: ${s.postcondition.description}` : ''}
+                      {s.postcondition?.description ? ` · confere: ${textoComMarcadores(s.postcondition.description)}` : ''}
                     </span>
                     <PacotesAceitos pacotes={s.pacotes_aceitos} />
                   </li>

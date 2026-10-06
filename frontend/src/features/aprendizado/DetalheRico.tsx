@@ -8,6 +8,7 @@ import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { textoDosApps } from '../../lib/appsDoFluxo';
 import { formatInt } from '../../lib/format';
+import { textoComMarcadores } from '../../lib/marcadores';
 import { hashDe } from '../../lib/rotas';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { useAppStore } from '../../store/app';
@@ -26,7 +27,7 @@ import {
   type ConteudoDoFluxo, type ConteudoDoItem, type DetalheDoLivro, type EntradaDoLivro, type EvidenciaDoLivro,
   type LivroKind, type OrigemDaReceita, type RelacaoDoItem, type SaudeDoItem, type TransicaoDoLivro, type VersaoDoItem,
   type VizinhaDaReceita, ORIGEM_LABEL, acoesDoItem, nomearCapabilityNoTexto, porQueOSistemaNaoPublica, rotuloDoEstado,
-  rotuloDoKind, motivoDaInvalida, textoDaEvidencia,
+  rotuloDoKind, motivoDaInvalida, nomeDaEtapa, textoDaEvidencia,
 } from './model';
 import { formatUsd } from './metricas';
 import styles from './Aprendizado.module.css';
@@ -265,12 +266,12 @@ function ConteudoFluxo({ c, appsNaIdentidade }: { c: ConteudoDoFluxo; appsNaIden
         {c.etapas.map((e) => (
           <li key={e.indice}>
             <span className={styles.passoTitulo}>
-              <strong>{e.chave ?? `Etapa ${e.indice + 1}`}</strong>
+              <strong title={e.chave ?? undefined}>{e.chave ? nomeDaEtapa(e.chave) : `Etapa ${e.indice + 1}`}</strong>
               {e.efeito ? <Badge tone="warning" size="sm" icon={Zap} title="Esta etapa tem efeito externo">efeito</Badge> : null}
             </span>
             {e.capability ? <span className={styles.passoLinha}>Capacidade <Mono>{e.capability}</Mono></span> : null}
             {e.alvo ? <span className={styles.passoLinha}>Alvo: <Mono>{e.alvo}</Mono></span> : null}
-            {e.pos_condicao ? <span className={styles.passoLinha}>Confere: {e.pos_condicao.descricao ?? e.pos_condicao.tipo ?? SEM_DADO}</span> : null}
+            {e.pos_condicao ? <span className={styles.passoLinha}>Confere: {e.pos_condicao.descricao ? textoComMarcadores(e.pos_condicao.descricao) : e.pos_condicao.tipo ?? SEM_DADO}</span> : null}
             {e.segredo ? <span className={styles.passoLinha}>Usa um dado sigiloso (nunca mostrado)</span> : null}
             {e.parametros.length > 0 ? <span className={styles.passoLinha}>Parâmetros {nomesDeParametro(e.parametros)}</span> : null}
           </li>

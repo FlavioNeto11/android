@@ -675,20 +675,20 @@ it('31.90-E: etapa com ação do catálogo não tem editor da conferência (o sa
 it('31.90-F: a coluna da gravação diz por que a gravação reconhece o elemento (seletor e id, sem o pacote)', async () => {
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('QA-001'));
-  expect(text()).toContain('(reconhecido por id e texto, id conversation_name)');
+  expect(text()).toContain('(reconhecido por identificador e texto: conversation_name)');
   expect(text()).not.toContain('x:id/conversation_name');
 });
 
 it('31.90-F: alvoReconhecido cobre cada seletor, o alvo sem identificador e o que não é toque', () => {
   const entrada = (parcial: Partial<TrainingInput>) => ({ ...SESSAO.inputs[0], ...parcial }) as unknown as TrainingInput;
   expect(alvoReconhecido(entrada({ target: { desc: 'Enviar', unique: ['desc'] } }))).toBe('reconhecido por descrição');
-  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/ok', unique: ['rid', 'text'], text: 'OK' } }))).toBe('reconhecido por id (ou texto), id ok');
+  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/ok', unique: ['rid', 'text'], text: 'OK' } }))).toBe('reconhecido por identificador (ou texto): ok');
   expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [] } }))).toBe('sem identificador único: este toque não vira receita');
   expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [], filhos: [{}] } }))).toBe('reconhecido pelo que o elemento contém');
   // O contêiner sem identidade: a pessoa vê o filho rotulado (e o id) pelo qual a receita o acha, até três.
   expect(alvoReconhecido(entrada({ target: { unique: [], filhos: [
     { text: 'Fulano', resource_id: 'a:id/row_name', unique: ['text'] }, { desc: 'Foto', unique: ['desc'] }, { resource_id: 'a:id/so_id' }, { text: 'quarto' }] } })))
-    .toBe('reconhecido pelo que o elemento contém: “Fulano”, id row_name; “Foto”; id so_id');
+    .toBe('reconhecido pelo que o elemento contém: “Fulano”, identificador row_name; “Foto”; identificador so_id');
   expect(alvoReconhecido(entrada({ target: null }))).toBeNull();                      // sem alvo: a frase é de toqueSemAlvo
   expect(alvoReconhecido(entrada({ type: 'text', target: { unique: ['text'], text: 'x' } }))).toBeNull();
 });
@@ -904,4 +904,30 @@ it('31.132: o resultado do salvar mostra o estado do fluxo no Livro, o próximo 
   expect(estado.textContent).toContain('No Livro agora: Publicado');
   expect(estado.textContent).toContain('Falta a prova');
   expect(byRole('link', /Abrir no Livro/).getAttribute('href')).toBe('#/aprendizado?aba=aprendido&item=fluxo%3Amandar-mensagem');
+});
+
+// 31.134: "Depois" diz o que faz, e o marcador do dado da persona aparece em palavras.
+it('31.134: "Depois" explica que a gravação continua em "Para revisar"', async () => {
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  expect(byRole('button', /^Depois$/).getAttribute('title')).toBe('Fecha a revisão sem salvar: a gravação continua na lista “Para revisar”.');
+});
+
+it('31.134: o texto gravado com marcador da persona aparece em palavras, sem o marcador cru', async () => {
+  const marcada = { ...SESSAO, inputs: [...SESSAO.inputs, { ...SESSAO.inputs[0], seq: 9, type: 'text', text: '{perfil_nome}', has_text: true, text_len: 13, sensitive: false, target: null }] };
+  backend.on('GET', /\/training\/trn-1$/, () => json(marcada));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('[nome da persona]'));
+  expect(text()).toContain('(preenchido na hora com o dado da persona)');
+  expect(text()).not.toContain('{perfil_nome}');
+});
+
+it('31.134: o "Confere" da etapa proposta também troca o marcador da persona por palavras', async () => {
+  const comMarcador = { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, postcondition: { kind: 'text_visible', value: '{perfil_nome}', description: 'campo com {perfil_sobrenome}' } }] };
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => json({ ...SESSAO, status: 'proposed', proposal: comMarcador }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  await click(byRole('button', /Pedir proposta à IA/i));
+  await waitFor(() => expect(text()).toContain('Confere: aparece o texto “[nome da persona]” (campo com [sobrenome da persona])'));
+  expect(text()).not.toContain('{perfil_');
 });

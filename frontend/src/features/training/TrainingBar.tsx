@@ -72,6 +72,9 @@ export function personasDoEnsino(personas: readonly PersonaOnDevice[], appId: st
   });
 }
 
+/** 31.134: diz ONDE a opção fica (no Foco, em "Controle manual", ao lado do campo de texto), não só o nome dela. */
+const DICA_DE_TROCAR_TEXTO = 'trocar um texto já digitado, marque “Limpar o campo antes” (em Controle manual, ao lado do campo de texto) em vez de apertar Apagar.';
+
 const DESCRICAO: Record<string, string> = {
   tap: 'toque', long_press: 'toque longo', swipe: 'deslize', text: 'texto', key: 'tecla', open_app: 'abrir app',
 };
@@ -280,7 +283,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
           </ol>
           {/* A região viva nasce vazia com a gravação: o texto que entra depois é anunciado, o que já nasce com ele não. */}
           <p className={styles.hint} role="status" aria-live="polite">{recusadas ? `${plural(recusadas, 'entrada recusada', 'entradas recusadas')}: refaça` : ''}</p>
-          <p className={styles.hint}>Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.</p>
+          <p className={styles.hint}>{`Para ${DICA_DE_TROCAR_TEXTO}`}</p>
           {/* Só a gravação de quem tem o controle (este ramo): quem só olha, ou a gravação órfã, não desfaz a de ninguém. */}
           <Button size="sm" variant="ghost" icon={Undo2} loading={ocupado === 'desfazer'}
                   disabledReason={!leaseId ? 'Retome o controle para desfazer.' : !(ativa.inputs ?? []).length ? 'Ainda não há entrada para desfazer.'
@@ -326,10 +329,10 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             Iniciar treinamento
           </Button>
           <p className={styles.hint}>Senhas e códigos digitados não são gravados. Devolver o controle encerra a gravação.</p>
-          <p className={styles.hint}>Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.</p>
+          <p className={styles.hint}>{`Na gravação, para ${DICA_DE_TROCAR_TEXTO}`}</p>
         </div>
       ) : (
-        <p className={styles.hint}>Assuma o controle para ensinar uma tarefa: você faz, a IA mapeia o processo e ele vira habilidade para os perfis que você escolher.</p>
+        <p className={styles.hint}>Assuma o controle para ensinar uma tarefa: você faz, a IA mapeia o processo e ele vira um fluxo (na revisão você escolhe para quais perfis ele vale).</p>
       )}
       {pendentes.length ? (
         <div className={styles.pending}>

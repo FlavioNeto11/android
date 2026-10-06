@@ -538,3 +538,20 @@ it('31.90-D: enquanto o desfazer corre, Concluir e Descartar explicam por que es
   await act(async () => soltar(json({ ...GRAVANDO, inputs: [], undone: { seq: 1, type: 'tap' } })));
   await waitFor(() => expect(text()).not.toContain('Desfazendo a última entrada…'));
 });
+
+// 31.134: o texto de entrada diz o que a gravação vira (um fluxo) e onde fica a opção que a dica cita.
+it('31.134: sem o controle, a barra diz que o ensino vira um fluxo (e não "habilidade")', async () => {
+  backend.on('GET', /\/training$/, () => json([]));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Assuma o controle para ensinar uma tarefa'));
+  expect(text()).toContain('ele vira um fluxo (na revisão você escolhe para quais perfis ele vale)');
+  expect(text()).not.toContain('habilidade');
+});
+
+it('31.134: com o controle, o formulário diz ONDE fica o "Limpar o campo antes"', async () => {
+  backend.on('GET', /\/training$/, () => json([]));
+  backend.on('GET', /\/instances\/android-01\/personas$/, () => json([]));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
+  await waitFor(() => expect(text()).toContain('O que você vai ensinar?'));
+  expect(text()).toContain('Na gravação, para trocar um texto já digitado, marque “Limpar o campo antes” (em Controle manual, ao lado do campo de texto) em vez de apertar Apagar.');
+});

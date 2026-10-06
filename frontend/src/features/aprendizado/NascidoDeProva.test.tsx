@@ -105,3 +105,35 @@ describe('31.131: o fluxo nascido de uma prova no Livro', () => {
     expect(allByRole('listitem', /.*/, container).filter((e) => e.hasAttribute('data-item'))).toHaveLength(0);
   });
 });
+
+// 31.134: cada botão de decisão no Livro diz o efeito (no title e, ao abrir, acima do motivo).
+describe('31.134: o efeito de cada botão do Livro', () => {
+  const ACAO = (to: string, rotulo: string) => ({ to, rotulo, exige_motivo: true });
+  const TEXTOS: Record<string, string> = {
+    reativar: 'Publica o item de novo, já valendo, sem uma nova prova.',
+    devolver: 'Tira o fluxo de desligado sem publicar: ele fica parado e volta a se provar, com a evidência contada de novo.',
+  };
+
+  it('"Reativar" e "Devolver à prova" explicam o efeito no title, e a decisão aberta repete a frase antes do motivo', async () => {
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [{ ...DE_PROVA, acoes: [ACAO('published', 'reativar'), ACAO('candidate', 'devolver')] }], total: 1, contagem: {} }));
+    await montar();
+    await waitFor(() => expect(item('fluxo:f-prova')).toBeTruthy());
+    const linha = item('fluxo:f-prova')!;
+    expect(byRole('button', /^Reativar$/, linha).getAttribute('title')).toBe(TEXTOS.reativar);
+    expect(byRole('button', /^Devolver à prova$/, linha).getAttribute('title')).toBe(TEXTOS.devolver);
+    await click(byRole('button', /^Devolver à prova$/, linha));
+    expect(text(linha)).toContain(TEXTOS.devolver);
+    expect(allByRole('button', /^Confirmar volta à prova/, linha)).toHaveLength(1);
+  });
+
+  it('cada rótulo de ação do backend tem a sua frase de efeito', async () => {
+    const rotulos = ['validar', 'aprovar', 'rejeitar', 'aposentar', 'desligar', 'reativar', 'devolver'];
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [{ ...REAL, acoes: rotulos.map((r, i) => ACAO(['validated', 'published', 'disabled', 'deprecated', 'disabled', 'published', 'candidate'][i]!, r)) }], total: 1, contagem: {} }));
+    await montar();
+    await waitFor(() => expect(item('fluxo:f-real')).toBeTruthy());
+    const botoes = allByRole('button', /^(Validar|Aprovar|Rejeitar|Aposentar|Desligar|Reativar|Devolver à prova)$/, item('fluxo:f-real')!);
+    expect(botoes).toHaveLength(7);
+    for (const b of botoes) expect((b.getAttribute('title') ?? '').length).toBeGreaterThan(20);
+    expect(new Set(botoes.map((b) => b.getAttribute('title'))).size).toBe(7);
+  });
+});

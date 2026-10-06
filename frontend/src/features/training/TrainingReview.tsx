@@ -27,6 +27,7 @@ import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { AvisoDaPosCondicao, lerPosCondicoes, motivoDaPosCondicao } from './PosCondicaoQueJaVale';
 import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
 import { descartarSessaoConcluida } from './descartarSessao';
+import { temMarcadorDaPersona, textoComMarcadores } from '../../lib/marcadores';
 import { FluxoNoLivro } from './FluxoNoLivro';
 import { OrigemDoTreino, SeloDeOrigem } from './OrigemDoTreino';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
@@ -101,7 +102,7 @@ export function toqueSemAlvo(e: TrainingInput): string | null {
 }
 
 /** Como o seletor `unique` da gravação se lê (`recorder._CAMPOS_DO_SELETOR`): o que a receita compara no aparelho. */
-const SELETOR: Record<string, string> = { 'rid+text': 'id e texto', 'rid+desc': 'id e descrição', rid: 'id', desc: 'descrição', text: 'texto' };
+const SELETOR: Record<string, string> = { 'rid+text': 'identificador e texto', 'rid+desc': 'identificador e descrição', rid: 'identificador', desc: 'descrição', text: 'texto' };
 
 /**
  * 31.90-F: como a gravação RECONHECE o elemento tocado, para a pessoa conferir antes de salvar (a receita só vale se o
@@ -119,22 +120,22 @@ export function alvoReconhecido(e: TrainingInput): string | null {
     const filhos = t.filhos.slice(0, 3).map((f) => {
       const rotulo = f.text || f.desc;
       const fid = f.resource_id ? f.resource_id.split('/').pop() : '';
-      return [rotulo ? `“${rotulo}”` : '', fid ? `id ${fid}` : ''].filter(Boolean).join(', ');
+      return [rotulo ? `“${rotulo}”` : '', fid ? `identificador ${fid}` : ''].filter(Boolean).join(', ');
     }).filter(Boolean);
     return `reconhecido pelo que o elemento contém${filhos.length ? `: ${filhos.join('; ')}` : ''}`;
   }
-  return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `, id ${id}` : ''}`;
+  return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `: ${id}` : ''}`;
 }
 
 /** O que a etapa confere, em palavras da pessoa; o tipo cru só aparece se o backend mandar um que a tela não conhece. */
 export function textoDoConfere(pc: TrainingStep['postcondition']): string {
-  const valor = pc.value ? `“${pc.value}”` : '';
+  const valor = pc.value ? `“${textoComMarcadores(pc.value)}”` : '';
   const frase = pc.kind === 'text_visible' ? `aparece o texto ${valor || 'esperado'}`
     : pc.kind === 'element_present' ? `existe o elemento ${valor || 'esperado'}`
       : pc.kind === 'app_foreground' ? `o app ${valor || 'certo'} está na frente`
         : pc.kind === 'model_judged' ? 'a IA julga pela tela'
           : `${pc.kind} ${valor}`.trim();
-  return pc.description ? `${frase} (${pc.description})` : frase;
+  return pc.description ? `${frase} (${textoComMarcadores(pc.description)})` : frase;
 }
 
 /**
@@ -163,7 +164,9 @@ export function DescricaoEntrada({ e }: { e: TrainingInput }) {
       {e.target?.text || e.target?.desc ? <> em <strong>{e.target.text || e.target.desc}</strong></> : null}
       {semAlvo ? <span className={styles.muted}> {semAlvo}</span> : null}
       {alvo ? <span className={styles.muted}> ({alvo})</span> : null}
-      {e.type === 'text' ? (e.text !== null && !e.sensitive ? <> “{e.text}”</> : <span className={styles.muted}> (texto não gravado)</span>) : null}
+      {e.type === 'text' ? (e.text !== null && !e.sensitive
+        ? <> “{textoComMarcadores(e.text)}”{temMarcadorDaPersona(e.text) ? <span className={styles.muted}> (preenchido na hora com o dado da persona)</span> : null}</>
+        : <span className={styles.muted}> (texto não gravado)</span>) : null}
       {e.type === 'open_app' ? <> {e.app_id}</> : null}
       {e.type === 'key' ? <> {e.key_name}</> : null}
     </>
@@ -617,7 +620,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                   <Button variant="dangerGhost" icon={Trash2} loading={descartando}
                           disabledReason={salvando ? 'Salvando o fluxo…' : null} onClick={() => void descartarSessao()}>Descartar</Button>
                 ) : null}
-                <Button variant="ghost" onClick={() => void fechar()}>Depois</Button>
+                <Button variant="ghost" title="Fecha a revisão sem salvar: a gravação continua na lista “Para revisar”." onClick={() => void fechar()}>Depois</Button>
                 <Button variant={proposta ? 'primary' : 'secondary'} icon={Sparkles} loading={salvando}
                         disabledReason={motivoNaoSalvar()} onClick={() => void salvar()}>
                   Salvar como fluxo
