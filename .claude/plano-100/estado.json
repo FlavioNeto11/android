@@ -7620,14 +7620,18 @@
    "id": "29.75",
    "status": "partial",
    "proof": "real",
-   "evidence": "05/10/2026, central WIN-7S2UASNLFOP, só leitura (mode=ro), janela 28/09 23:28Z a 05/10 ~23:45Z (268 execuções reais, 967 etapas). Teto de chamadas de IA por objetivo: 22 batidas em 2 execuções (61 e 62 chamadas), última 02/10 18:22Z, 0 desde o aumento 60 para 90 de 04/10 17:58Z. Prazo da etapa: 3 batidas, última 04/10 17:21Z, 0 desde o piso de 120 s (deploy 31). Orçamento do pedido: 85 eventos em 9 execuções, última 04/10 16:04Z. Rede: tunel nao subiu depois do boot 15 em 140 h antes do deploy 31 e 1 em 28 h depois; device.network falhou 18 e 0. Nenhum limite atrapalha hoje; nenhum ajuste novo proposto. Tabela e JSON: .claude/handoffs/jev/limites-29-75-2026-10-05.md e .json.",
-   "blocker": "Janela curta depois dos ajustes (28 h desde o deploy 31): reler as contagens em 7 dias inteiros, em 11/10.",
-   "grupo": "Jev",
+   "evidence": "Medida real em 06/10/2026 16:05Z no central (data/poc.sqlite3 aberto só para leitura; config efetiva por load_config, sem .env): canal_entradas desde 04/10 (1.448 linhas), avisos_entregas desde 03/10 (62 linhas). Barrado: 1 mensagem do dono por avisos.entrada.limite_por_min (Trello, 04/10 18:33Z); pico do dono em 60 s: Trello 11, Telegram 4; max_chars, idade_max_s, anexos.max_bytes, validade_h, max_tentativas, janela do resumo e retenção sem barramento (maior mensagem 750 caracteres; 4 anexos de texto, maior 7.288 B; 0 expirados; 0 falhas de entrega; 41 decisões automáticas, 39 na mesma hora, todas resumidas). Latência aviso criado-enviado: mediana 1,1 s, p95 3,7 s, máximo 39 s em 61 avisos. Proposta: limite_por_min 10 para 20; os demais ficam. Recusas do filtro de credencial (3) são invariante de segredo e não entram na calibração.",
+   "blocker": "Parcial: os limites das outras frentes; a aplicação do novo valor (depois de 11/10, no central, com reinício da farm-central) é da orquestradora; re-medir uma semana depois.",
+   "arquivos": [
+    ".claude/handoffs/canais-29-75-limites.md"
+   ],
+   "nota": "Sem código e sem mudança de valor.",
+   "grupo": "canais-29-75",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T23:36:03+00:00"
+   "quando": "2026-10-06T17:22:53+00:00"
   },
   "28.25": {
    "id": "28.25",
@@ -11005,7 +11009,7 @@
    "id": "29.154",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "Fatia 1 do comando remoto (ADR-079) na branch feat/29-154-comando-remoto-f1, ponta cdcb5eba (base main 4aa46764): agente (worker/comando.py, feature remote_exec), central (workers/comando_remoto.py), seis rotas em /api/workers/{id} (adendo v1.90) com sessão nomeada obrigatória e 404 no host público, migração 123 (worker_comandos e worker_comando_remoto), auditoria worker.comando como pré-condição, linha com cara de credencial recusada antes de gravar ou despachar, saída redigida antes do corte, 422 sem eco, queda ou reinício = uncertain, cancelamento. Fio congelado do worker mudou de propósito (5 mensagens novas, nenhuma existente; hash d840bd78f67ef1a8 -> cfb85c95fbc75962). Revisor-segredos no desenho e no código (bloqueio do 422 e ressalvas de pasta/chave/corte bruto corrigidos). Simulado: backend/tests/test_comando_remoto_agente.py::* (15), backend/tests/test_comando_remoto_central.py::* (24), backend/tests/test_contratos_do_worker.py::*, backend/tests/test_ordem_das_rotas.py::*; dirigidos vizinhos de worker, contrato, config e migração 280 passed; catracas backend 88 + scripts 6; scripts/tests 684 passed; mypy 257 = teto; docs-check 0 (Windows, central WIN-7S2UASNLFOP, 06/10 12:39Z-13:02Z). Real: not_run (nada roda no notebook antes do deploy, do procedimento escrito em docs/worker.md e do sim do dono). Falta: fatia 2 (terminal com histórico na tela de Infraestrutura), fatia 3 (cliente para sessões nomeadas), fatia 4 (procedimento e prova real) e LIGAR só com o sim explícito do dono por cartão (os três interruptores nascem desligados: comando_remoto.ativo no config do central, o interruptor por worker no painel e comando_remoto: true no worker.yaml), depois do deploy com a migração 123 e da atualização do agente do notebook.\nNo ar desde o deploy 52 (cdee6620, 15:08Z).",
+   "evidence": "Fatia 1 do comando remoto (ADR-079) na branch feat/29-154-comando-remoto-f1, ponta cdcb5eba (base main 4aa46764): agente (worker/comando.py, feature remote_exec), central (workers/comando_remoto.py), seis rotas em /api/workers/{id} (adendo v1.90) com sessão nomeada obrigatória e 404 no host público, migração 123 (worker_comandos e worker_comando_remoto), auditoria worker.comando como pré-condição, linha com cara de credencial recusada antes de gravar ou despachar, saída redigida antes do corte, 422 sem eco, queda ou reinício = uncertain, cancelamento. Fio congelado do worker mudou de propósito (5 mensagens novas, nenhuma existente; hash d840bd78f67ef1a8 -> cfb85c95fbc75962). Revisor-segredos no desenho e no código (bloqueio do 422 e ressalvas de pasta/chave/corte bruto corrigidos). Simulado: backend/tests/test_comando_remoto_agente.py::* (15), backend/tests/test_comando_remoto_central.py::* (24), backend/tests/test_contratos_do_worker.py::*, backend/tests/test_ordem_das_rotas.py::*; dirigidos vizinhos de worker, contrato, config e migração 280 passed; catracas backend 88 + scripts 6; scripts/tests 684 passed; mypy 257 = teto; docs-check 0 (Windows, central WIN-7S2UASNLFOP, 06/10 12:39Z-13:02Z). Real: not_run (nada roda no notebook antes do deploy, do procedimento escrito em docs/worker.md e do sim do dono). Falta: fatia 2 (terminal com histórico na tela de Infraestrutura), fatia 3 (cliente para sessões nomeadas), fatia 4 (procedimento e prova real) e LIGAR só com o sim explícito do dono por cartão (os três interruptores nascem desligados: comando_remoto.ativo no config do central, o interruptor por worker no painel e comando_remoto: true no worker.yaml), depois do deploy com a migração 123 e da atualização do agente do notebook. Fatia 2 (terminal do comando remoto na Infraestrutura, desligado de fábrica; branch feat/29-154-comando-remoto-f2, 5cbf0c1e): frontend/src/features/infra/TerminalDoWorker.test.tsx::* (11 testes). Corte 53: Corte 53 (integ/suite-53, ponta 2579893c, base main c0d2fd5f; Windows, central WIN-7S2UASNLFOP, 06/10/2026 16:07Z-16:55Z, Idle): scripts/tests 767 passed; backend SQLite inteiro 12414 passed, 13 skipped (17 min 32 s); frontend typecheck ok e 1870 testes em 145 arquivos passed, build ok; catracas backend 88 passed + scripts 7 passed; docs-check 0 erros, 0 avisos; mypy 257 = teto; PostgreSQL dirigido, 298 arquivos em 2 partes: parte 1 com 3129 passed, 5 skipped; parte 2 com 2799 passed, 1 skipped e 1 falha de tempo esgotado (test_sempre_na_promovida.py::test_quarentena_para_de_espalhar_mas_nao_rebaixa_quem_esta_na_versao, 'android-02 ligado', sob a carga da parte 2) que passa isolada: 17 passed no SQLite e 17 passed no PostgreSQL (pg-rapido, 16:55Z).",
    "blocker": "Falta: fatia 2 (terminal com histórico na tela de Infraestrutura), fatia 3 (cliente para sessões nomeadas), fatia 4 (procedimento e prova real) e LIGAR só com o sim explícito do dono por cartão (os três interruptores nascem desligados: comando_remoto.ativo no config do central, o interruptor por worker no painel e comando_remoto: true no worker.yaml), depois do deploy com a migração 123 e da atualização do agente do notebook.",
    "arquivos": [
     "backend/app/worker/comando.py",
@@ -11014,13 +11018,13 @@
     "backend/tests/test_comando_remoto_agente.py",
     "backend/tests/test_comando_remoto_central.py"
    ],
-   "nota": "a frente confirma a prova real depois do deploy e do sim do dono",
-   "grupo": "android",
-   "modelo": "misto",
-   "esforco": "misto",
+   "nota": "fatias 3 (cliente scripts/worker-comando.py) e 4 (procedimento e prova real) pendentes; LIGAR só com o sim explícito do dono por cartão; a frente confirma a prova real",
+   "grupo": "android-suite-53",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T15:12:25+00:00"
+   "quando": "2026-10-06T17:22:53+00:00"
   },
   "29.155": {
    "id": "29.155",
@@ -11151,6 +11155,117 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T16:05:07+00:00"
+  },
+  "31.142": {
+   "id": "31.142",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "A sugestão de pós-condição sai pronta (kind e value), 'Usar' a aplica e a prévia mostra o comando repetido, com recusa no Salvar (Aprendizado f1b9de58 e Portal 503e31f0). Simulado: backend/tests/test_sugestao_pronta_e_previa_com_recusa.py::*, backend/tests/test_treino_partida_f2_e_sequencia.py::*, backend/tests/test_treino_previa_e_refazer_receitas.py::*, frontend/src/features/training/PosCondicaoQueJaVale.test.tsx::*. Corte 53 (integ/suite-53, ponta 2579893c, base main c0d2fd5f; Windows, central WIN-7S2UASNLFOP, 06/10/2026 16:07Z-16:55Z, Idle): scripts/tests 767 passed; backend SQLite inteiro 12414 passed, 13 skipped (17 min 32 s); frontend typecheck ok e 1870 testes em 145 arquivos passed, build ok; catracas backend 88 passed + scripts 7 passed; docs-check 0 erros, 0 avisos; mypy 257 = teto; PostgreSQL dirigido, 298 arquivos em 2 partes: parte 1 com 3129 passed, 5 skipped; parte 2 com 2799 passed, 1 skipped e 1 falha de tempo esgotado (test_sempre_na_promovida.py::test_quarentena_para_de_espalhar_mas_nao_rebaixa_quem_esta_na_versao, 'android-02 ligado', sob a carga da parte 2) que passa isolada: 17 passed no SQLite e 17 passed no PostgreSQL (pg-rapido, 16:55Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_sugestao_pronta_e_previa_com_recusa.py",
+    "backend/tests/test_treino_partida_f2_e_sequencia.py",
+    "backend/tests/test_treino_previa_e_refazer_receitas.py",
+    "frontend/src/features/training/PosCondicaoQueJaVale.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-53",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T17:22:53+00:00"
+  },
+  "31.143": {
+   "id": "31.143",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "nascido_de_prova na lista do Livro, com filtro (Aprendizado 1c1e738b). Simulado: backend/tests/test_livro_nascido_de_prova.py::*. Corte 53 (integ/suite-53, ponta 2579893c, base main c0d2fd5f; Windows, central WIN-7S2UASNLFOP, 06/10/2026 16:07Z-16:55Z, Idle): scripts/tests 767 passed; backend SQLite inteiro 12414 passed, 13 skipped (17 min 32 s); frontend typecheck ok e 1870 testes em 145 arquivos passed, build ok; catracas backend 88 passed + scripts 7 passed; docs-check 0 erros, 0 avisos; mypy 257 = teto; PostgreSQL dirigido, 298 arquivos em 2 partes: parte 1 com 3129 passed, 5 skipped; parte 2 com 2799 passed, 1 skipped e 1 falha de tempo esgotado (test_sempre_na_promovida.py::test_quarentena_para_de_espalhar_mas_nao_rebaixa_quem_esta_na_versao, 'android-02 ligado', sob a carga da parte 2) que passa isolada: 17 passed no SQLite e 17 passed no PostgreSQL (pg-rapido, 16:55Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_livro_nascido_de_prova.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-53",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T17:22:53+00:00"
+  },
+  "28.55": {
+   "id": "28.55",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Comentário de app em cartão de alvo desconhecido não vale como digitado pelo dono (Canais e0e5d558). Simulado: backend/tests/test_canais_estado.py::*, backend/tests/test_canais_respostas_as_perguntas.py::*. Corte 53 (integ/suite-53, ponta 2579893c, base main c0d2fd5f; Windows, central WIN-7S2UASNLFOP, 06/10/2026 16:07Z-16:55Z, Idle): scripts/tests 767 passed; backend SQLite inteiro 12414 passed, 13 skipped (17 min 32 s); frontend typecheck ok e 1870 testes em 145 arquivos passed, build ok; catracas backend 88 passed + scripts 7 passed; docs-check 0 erros, 0 avisos; mypy 257 = teto; PostgreSQL dirigido, 298 arquivos em 2 partes: parte 1 com 3129 passed, 5 skipped; parte 2 com 2799 passed, 1 skipped e 1 falha de tempo esgotado (test_sempre_na_promovida.py::test_quarentena_para_de_espalhar_mas_nao_rebaixa_quem_esta_na_versao, 'android-02 ligado', sob a carga da parte 2) que passa isolada: 17 passed no SQLite e 17 passed no PostgreSQL (pg-rapido, 16:55Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_canais_estado.py",
+    "backend/tests/test_canais_respostas_as_perguntas.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-53",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T17:22:53+00:00"
+  },
+  "28.57": {
+   "id": "28.57",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Nome original no envio de arquivo de texto e repasse do .txt sem legenda (Canais aadc393a). Simulado: backend/tests/test_canais_anexos.py::*. Corte 53 (integ/suite-53, ponta 2579893c, base main c0d2fd5f; Windows, central WIN-7S2UASNLFOP, 06/10/2026 16:07Z-16:55Z, Idle): scripts/tests 767 passed; backend SQLite inteiro 12414 passed, 13 skipped (17 min 32 s); frontend typecheck ok e 1870 testes em 145 arquivos passed, build ok; catracas backend 88 passed + scripts 7 passed; docs-check 0 erros, 0 avisos; mypy 257 = teto; PostgreSQL dirigido, 298 arquivos em 2 partes: parte 1 com 3129 passed, 5 skipped; parte 2 com 2799 passed, 1 skipped e 1 falha de tempo esgotado (test_sempre_na_promovida.py::test_quarentena_para_de_espalhar_mas_nao_rebaixa_quem_esta_na_versao, 'android-02 ligado', sob a carga da parte 2) que passa isolada: 17 passed no SQLite e 17 passed no PostgreSQL (pg-rapido, 16:55Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_canais_anexos.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-53",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T17:22:53+00:00"
+  },
+  "29.163": {
+   "id": "29.163",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "A conferência periódica da rede não publica 'IA assumiu/liberou' (e00fc72c), mais a medida de abertura sem run em K-106 (4ea95585). Simulado: backend/tests/test_conferencia_da_rede_silenciosa.py::*. Corte 53 (integ/suite-53, ponta 2579893c, base main c0d2fd5f; Windows, central WIN-7S2UASNLFOP, 06/10/2026 16:07Z-16:55Z, Idle): scripts/tests 767 passed; backend SQLite inteiro 12414 passed, 13 skipped (17 min 32 s); frontend typecheck ok e 1870 testes em 145 arquivos passed, build ok; catracas backend 88 passed + scripts 7 passed; docs-check 0 erros, 0 avisos; mypy 257 = teto; PostgreSQL dirigido, 298 arquivos em 2 partes: parte 1 com 3129 passed, 5 skipped; parte 2 com 2799 passed, 1 skipped e 1 falha de tempo esgotado (test_sempre_na_promovida.py::test_quarentena_para_de_espalhar_mas_nao_rebaixa_quem_esta_na_versao, 'android-02 ligado', sob a carga da parte 2) que passa isolada: 17 passed no SQLite e 17 passed no PostgreSQL (pg-rapido, 16:55Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_conferencia_da_rede_silenciosa.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-53",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T17:22:53+00:00"
+  },
+  "29.159": {
+   "id": "29.159",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Deploy 54 em 06/10/2026 17:07Z no central, ponta 2193a8b50ea34e: primeira tag deploy-20261006-1707 e release na origem, linha ok em data/deploys.jsonl (commit_antes 6e7b87cf, 102,7 s); backup 20261006-140601. deploy.ps1 grava uma linha por subida que parou o backend em data\\deploys.jsonl (fora do Git: hora UTC, resultado ok ou falhou pelo trap, commit e migração antes e depois, pasta do backup, tag, motivo em 1 linha de até 300 caracteres); com a subida conferida cria a tag anotada deploy-AAAAMMDD-HHMM, envia à origem e pede ao gh o release com notas geradas (--generate-notes --verify-tag --latest=false), no melhor esforço (sem gh, rede ou permissão: aviso, e o deploy segue); -SemTag pula só a tag; scripts/lib/historico-de-deploy.ps1; runbook único de rollback em docs/operacao.md § 6 (código por revert ou git switch --detach, banco por restore.ps1 em ensaio e -Confirmar, agente do notebook por worker-install.ps1 -Origem de uma árvore da tag). Branch feat/29-159-historico-deploy, ponta f859cc50 (base main 543781d4, sem migração, sem backend/app). Simulado: scripts/tests/test_historico_de_deploy.py::* (7 testes: as funções rodam de verdade no pwsh contra um repositório de mentira com origem local e um gh falso; a posição da marca, da tag e da linha no deploy.ps1 é lida do texto), backend/tests/test_backup.py e test_identidade_do_backend.py (40 passed), scripts/tests inteiro 767 passed em 101 s (Idle), catracas de scripts 7 passed (a nova entrou), docs-check 0/0 (06/10/2026, máquina central). Falta: a prova real, que é um deploy com a linha em data\\deploys.jsonl e a tag no GitHub (o deploy 54 será o primeiro, sem -SemTag; repositório privado). Corte 53: Corte 53 (integ/suite-53, ponta 2579893c, base main c0d2fd5f; Windows, central WIN-7S2UASNLFOP, 06/10/2026 16:07Z-16:55Z, Idle): scripts/tests 767 passed; backend SQLite inteiro 12414 passed, 13 skipped (17 min 32 s); frontend typecheck ok e 1870 testes em 145 arquivos passed, build ok; catracas backend 88 passed + scripts 7 passed; docs-check 0 erros, 0 avisos; mypy 257 = teto; PostgreSQL dirigido, 298 arquivos em 2 partes: parte 1 com 3129 passed, 5 skipped; parte 2 com 2799 passed, 1 skipped e 1 falha de tempo esgotado (test_sempre_na_promovida.py::test_quarentena_para_de_espalhar_mas_nao_rebaixa_quem_esta_na_versao, 'android-02 ligado', sob a carga da parte 2) que passa isolada: 17 passed no SQLite e 17 passed no PostgreSQL (pg-rapido, 16:55Z).",
+   "blocker": null,
+   "arquivos": [
+    "scripts/deploy.ps1",
+    "scripts/lib/historico-de-deploy.ps1",
+    "scripts/tests/test_historico_de_deploy.py",
+    "scripts/tests/catracas.txt",
+    "docs/operacao.md",
+    "CHANGELOG.md"
+   ],
+   "nota": "a prova real é o deploy 54: linha em data\\deploys.jsonl e a tag deploy-AAAAMMDD-HHMM no GitHub (primeira tag e primeiro release; sem -SemTag)",
+   "grupo": "android-suite-53",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T17:22:53+00:00"
   }
  },
  "rodadas": [
@@ -14649,6 +14764,23 @@
    ],
    "grupos": [
     "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T17:22:53+00:00",
+   "itens": [
+    "31.142",
+    "31.143",
+    "28.55",
+    "28.57",
+    "29.163",
+    "29.154",
+    "29.159",
+    "29.75"
+   ],
+   "grupos": [
+    "android-suite-53",
+    "canais-29-75"
    ]
   }
  ]

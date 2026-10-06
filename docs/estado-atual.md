@@ -1,10 +1,17 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `6e7b87cf` (migração 123, deploy 53); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `2193a8b50ea34e` (migração 123, deploy 54); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 54 no ar (06/10/2026, 17:07Z, central `2193a8b50ea34e`, sem migração; suíte 53).** 8 pontas: canais 28.57 e 28.55, parque 29.154 f2 e
+  29.159 (histórico, tag e rollback), Jev 29.163, ensino 31.142 e 31.143 (adendos v1.91 e v1.92). Primeira tag: deploy-20261006-1707 (release criado).
+  - `real` (central WIN-7S2UASNLFOP): deploy com backup `20261006-140601`; saúde ok, migração 123; prova de fora; agente `0.1.0+2193a8b`; A10 ok.
+  - `simulated` (suíte 53): números do CHANGELOG.
+  - `not_run`: percurso 53; antes/depois do 29.163; provas reais do 28.57 e 28.55.
+  - Prioridade a partir de 16:22Z: prova de capacidade com 20–30 agentes em 07/10 (`.claude/handoffs/prova30/`); corte 54 fica
+    subordinado ao caminho crítico dela.
 - **Deploy 53 no ar (06/10/2026, 15:45Z, central `6e7b87cf`, sem migração; hotfix do 31.137).** 1 ponta (`c580a9db`): `Adb.start_app` com
   tarefa limpa mandava `--activity-new-task`, que o `am` do Android 34 recusa; toda abertura do Configurações por esse caminho falhava
   no deploy 52 (ação manual, ponto de partida da prova, LT-6 do executor). Só o Configurações usa a tarefa limpa; Instagram intacto.
