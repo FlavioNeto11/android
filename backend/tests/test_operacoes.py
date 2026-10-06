@@ -361,6 +361,32 @@ async def test_cancelar_pula_a_execucao_terminada_e_segue_quando_uma_termina_no_
     assert r["cancel_requested"] == 1 or r["status"] == "cancelled"
 
 
+async def test_acao_aprovada_por_fora_do_liberar_reabre_e_fecha_na_hora_do_ultimo_estagio(harness: Harness) -> None:
+    """Onda 1 de 06/10: a ação foi aprovada no Telegram, não pelo liberar. A operação ficava `preparar`, `concluida`, com o
+    `finished_at` da preparação (19:44:58) e a ação verificada depois (19:48:05). Agora vira `executar`, reabre e fecha
+    na hora do último estágio, não na da leitura."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Nora", "android-01")
+    _conta(harness, pid, "qa-user-61", sessao_em="android-01")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-aprovada-por-fora"))
+    st.db.execute("UPDATE operacoes SET status='concluida', finished_at=? WHERE id=?", ("2026-10-06T19:44:58.051Z", op["id"]))
+    st.db.execute("INSERT INTO pending_approvals(id, profile_id, run_id, capability, status, created_at)"
+                  " VALUES (?,?,?,?,?,?)", ("apr-fora", pid, _alvo(op, pid)["run_id"], "CREATE_COMMENT", "approved",
+                                            now_iso()))
+    ultimo = "2026-10-06T19:48:05.915Z"
+    em_curso = Leitura("acao_preparada", "em_curso", None, (("acao_preparada", "2026-10-06T19:44:40.000Z"),))
+    feito = Leitura("resultado_verificado", "concluido", None,
+                    (("acao_preparada", "2026-10-06T19:44:40.000Z"), ("resultado_verificado", ultimo)))
+    s._ler_alvo = lambda op_, a, d: (em_curso, None)  # type: ignore[method-assign]
+    lida = s.ler(op["id"])
+    assert (lida["acao_final"], lida["status"], lida["finished_at"]) == ("executar", "em_curso", None)
+    s._ler_alvo = lambda op_, a, d: (feito, None)  # type: ignore[method-assign]
+    lida = s.ler(op["id"])
+    assert (lida["status"], lida["finished_at"]) == ("concluida", ultimo)
+
+
 # ------------------------------------------------------------------ a rota
 async def test_rota_http_criar_ler_listar_filtrar_cancelar_liberar(harness: Harness) -> None:
     st = harness.state
@@ -417,7 +443,9 @@ async def test_o_limite_conta_a_acao_ja_aprovada_e_uma_segunda_liberacao_nao_pas
     s._pedido_pendente = lambda alvo: _Pedido(id="apr-2", texto="t") if alvo else None  # type: ignore[method-assign]
     out = s.liberar(op["id"], [(pids[1], "t")])
     assert out["liberados"] == [] and out["recusados"] == [{"profile_id": pids[1], "motivo": "limite de ações executadas"}]
-    assert out["operacao"]["acao_final"] == "preparar"          # nada liberado: a operação não muda
+    # A ação já aprovada (por fora do liberar) leva a operação a `executar` (28.61, o fim real); esta liberação não
+    # aprovou nada a mais.
+    assert out["operacao"]["acao_final"] == "executar"
 
 
 async def test_credencial_no_assunto_ou_na_fonte_e_recusada_e_o_motivo_sai_redigido(harness: Harness) -> None:

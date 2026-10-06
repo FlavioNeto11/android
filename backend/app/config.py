@@ -405,6 +405,14 @@ class LimitsCfg(BaseModel):
     # contagem (três contas nossas no mesmo post nosso); pessoa real sempre entra. Os dois são lidos ao vivo.
     frota_max_contas_por_alvo: int = Field(10, ge=1, le=64)
     frota_conta_nossa_fora_da_regra: bool = True
+    # 28.61 (dono, 06/10 19:46Z: "crie um grupo com tudo liberado para todas as personas … para que nao seja necessario
+    # permissoes por enquanto"): o id do grupo de política cujas personas NÃO passam pela aprovação de POLÍTICA
+    # (a escolha do perfil ou do grupo, a DM fria, a publicação no feed, a pessoa real num pedido, a citação da família e a
+    # repetição já conhecida no `check`). Continuam: as recusas (frota, tetos, repetido, retirada), a exceção do 30.65, o
+    # teto `preparar` da execução (a operação segue pelo liberar e por `operacao_max_acoes_executadas`), as confirmações
+    # do despacho (o mesmo pedido a várias contas, a repetição e a família vistas depois do rascunho), a conduta e a
+    # proteção de conta. Vazio = desligado. Lido ao vivo; desfazer é `PUT /api/settings {"grupo_sem_aprovacao": ""}`.
+    grupo_sem_aprovacao: str = Field("", max_length=80)
     # 30.60 (N4): publicar no feed (balde `posts`) passa por uma pessoa mesmo com perfil ou grupo `autonomous`, como a DM
     # fria do ADR-055. Só a instalação afrouxa, aqui; um perfil não tem esse poder.
     publicar_sem_aprovacao: bool = False
