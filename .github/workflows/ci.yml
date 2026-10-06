@@ -179,8 +179,12 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: backend/requirements.txt
-      - run: pip install -r requirements.txt
-      - run: python -m pytest -q
+      # 29.179: o job é o maior consumidor de minutos hospedados (489 de 641 na semana de 06/10: 42 a 69 min, crescendo com a suíte).
+      # O runner hospedado tem 2 núcleos; `-n 2` (pytest-xdist, o mesmo pino do requirements-dev.txt) divide a suíte, e o conftest cria
+      # um esquema por teste (uuid), então os workers não se pisam. O xdist NÃO está no requirements.txt (deploy.ps1 o instala no venv
+      # de produção), por isso entra só aqui.
+      - run: pip install -r requirements.txt pytest-xdist==3.8.0
+      - run: python -m pytest -q -n 2
         # conftest.pytest_sessionfinish apaga, no fim, os schemas que esta corrida criou (achado #163) — o
         # serviço 'postgres' nasce vazio a cada job de qualquer forma, mas o hábito é o que vale.
 
