@@ -1680,9 +1680,13 @@ class Scheduler:
             for app in apps:
                 await self.devices.force_stop_app(rt, app.package)         # type: ignore[arg-type]
             principal = apps[0]
+            # 31.137: os pacotes vizinhos que as etapas declaram (31.123) valem como "na frente" na espera do foco
+            aceitos = {p for r in self.repo.db.query(
+                "SELECT pacotes_aceitos FROM steps WHERE objective_id=? AND plan_version=? AND pacotes_aceitos IS NOT NULL",
+                (obj["id"], obj["plan_version"])) for p in loads(r["pacotes_aceitos"], []) or []}
             abriu, detalhe = await self.devices.open_app(
                 rt, {"id": principal.id, "package": principal.package, "activity": principal.activity},
-                pela_execucao=True)
+                pela_execucao=True, aceitos=aceitos)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - a prova segue: a etapa de abertura comprova (ou reprova) o ponto de partida

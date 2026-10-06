@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Literal
 
@@ -29,8 +30,11 @@ JANELA_INICIAL_DO_FOCO_S = 5.0
 
 
 async def esperar_foco(ler: Callable[[], Awaitable[tuple[str | None, str | None]]], pacote: str, *,
-                       ate: float | None = None) -> bool:
+                       ate: float | None = None, aceitos: Collection[str] = ()) -> bool:
     """Espera `pacote` ter a janela em foco. `True` só com o foco LIDO; o prazo vencido é `False`, nunca "abriu".
+
+    `aceitos` (31.137, a mesma lista de `StepDTO.pacotes_aceitos` do 31.123): pacotes vizinhos que a etapa declara e que valem como o app
+    quando estão na frente (a busca do Configurações é de outro pacote e o foco do Configurações nunca chegava).
 
     `ate` (relógio monotônico) corta a espera antes de `ESPERA_DO_FOCO_S` — o executor passa o prazo da etapa. Ler o
     foco é só leitura: erro de leitura é "ainda não"; tempo esgotado na fila do aparelho encerra a espera (a próxima
@@ -47,7 +51,7 @@ async def esperar_foco(ler: Callable[[], Awaitable[tuple[str | None, str | None]
             return False
         except DriverError:
             dono = None
-        if dono == pacote:
+        if dono == pacote or (dono is not None and dono in aceitos):
             return True
         agora = time.monotonic()
         if agora >= limite:
