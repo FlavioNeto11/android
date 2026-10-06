@@ -10729,15 +10729,15 @@
    "id": "31.120",
    "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 06/10/2026 10:20Z, central bec1621c. (a) Leitura da sessão salva: pelo botão 'Abrir o treino salvo' do aviso do 31.124 abre o diálogo 'Treinamento salvo: Corrigir a etapa «Abrir Notificações»' (sessão trn-jrE1zcBoKSoHFqX5, fluxo f-6d07590e1db6): selo 'salvo', a persona só como marca (iniciais; o nome não está impresso, só no rótulo acessível), 'em android-04 · fluxo f-6d07590e1db6', 'Só leitura: nada daqui roda nem muda.', a origem com 'corrige uma falha', a etapa r-20261006012340-d92795:android-04:v2:abrir_notificacoes e a tentativa …:a1 em ids, o motivo, 'Causa provável: a IA gastou o orçamento da etapa', 'O que mostrar' e os recolhíveis, 'O que você fez (1 entrada)' e 'A proposta' (resumo, comando modelo, etapa com o que confere); só o botão Fechar. (b) Livro: GET do item aberto pelo link (#/aprendizado?aba=aprendido&item=fluxo%3Af-6d07590e1db6) mostra os fatos 'Etapa de origem' r-20261006012340-d92795:android-04:v2:abrir_notificacoes, 'Tentativa de origem' …:a1 e 'Sessão do treino' trn-jrE1zcBoKSoHFqX5. Ajuste da orquestradora: o item está completo no código (vitest 1768) e no ar desde o deploy 50; o que não foi visto na tela (Ver em Salvas; confirmação ao reenviar) depende do android-04, ocupado pela prova da Aprendizado, e será visto no percurso seguinte.",
+   "evidence": "Real, 06/10/2026 10:33Z, central bec1621c. Foco do android-04 (controle Livre), 'Salvas (as 5 mais novas de 8)': cada item tem o selo 'corrige uma falha' (quando nasceu de uma falha) e o botão 'Ver o treinamento salvo “…”'. O Ver de 'Corrigir a etapa «Abrir Notificações»' (sessão trn-jrE1zcBoKSoHFqX5) abre o diálogo 'Treinamento salvo: …' em leitura: selo 'salvo', 'em android-04 · fluxo f-6d07590e1db6', 'Só leitura: nada daqui roda nem muda.', origem com a etapa r-20261006012340-d92795:android-04:v2:abrir_notificacoes e a tentativa …:a1 em ids, 'Causa provável: a IA gastou o orçamento da etapa', 'O que mostrar', 'O que você fez (1 entrada)' e 'A proposta'; só o botão Fechar. Junto com a leitura pelo aviso do 31.124 e o Livro (etapa, tentativa e sessão de origem) do percurso 50, as três entradas do item estão vistas.",
    "blocker": null,
-   "nota": "Falta o botão Ver na lista Salvas da barra do treino (Foco do android-04, em uso pela Aprendizado): a leitura é o mesmo componente, aberto por outro caminho, mas o caminho do item não foi percorrido na tela. Fica para quando o controle voltar a none.",
-   "grupo": "portal-percurso-50-ensino-aviso-atalho-livro",
+   "nota": null,
+   "grupo": "portal-percurso-50b-ver-em-salvas-e-confirmacao",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:21:33+00:00"
+   "quando": "2026-10-06T10:34:28+00:00"
   },
   "31.121": {
    "id": "31.121",
@@ -10782,15 +10782,15 @@
    "id": "31.124",
    "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 06/10/2026 10:20Z, central bec1621c. Na execução r-20261006012340-d92795 o atalho do cartão de resultado abre 'Ensinar a corrigir: Abrir Notificações'; antes do campo aparece o aviso 'Esta etapa já foi ensinada. Se o que foi ensinado não resolveu, ensine de novo; senão, confira o fluxo antes.' com uma linha, '«Corrigir a etapa «Abrir Notificações»» · salvo há 6 h', o botão 'Abrir o treino salvo' (abre a leitura, ver 31.120) e o link 'Ver o fluxo no Livro' (href #/aprendizado?aba=aprendido&item=fluxo%3Af-6d07590e1db6, que abre o fluxo no Livro). As sessões descartadas da mesma etapa (percurso 49) não aparecem. O formulário continua com 'O que mostrar', o campo pré-preenchido com a sugestão e 'Escolha a persona'. Nenhuma sessão foi criada. Ajuste da orquestradora: o item está completo no código (vitest 1768) e no ar desde o deploy 50; o que não foi visto na tela (Ver em Salvas; confirmação ao reenviar) depende do android-04, ocupado pela prova da Aprendizado, e será visto no percurso seguinte.",
+   "evidence": "Real, 06/10/2026 10:34Z, central bec1621c, execução r-20261006012340-d92795. Com o aviso 'Esta etapa já foi ensinada…' à vista e uma persona de teste escolhida, 'Assumir o controle e abrir o treino' abre o diálogo 'Ensinar esta etapa de novo?' com 'Esta etapa já foi ensinada em «Corrigir a etapa «Abrir Notificações»». Ensinar de novo abre outra sessão de gravação; nada do que foi ensinado antes é apagado.' e os botões Cancelar e Ensinar de novo. Cancelar fecha só a confirmação: o formulário continua aberto, não houve POST /api/training/from-run, nenhuma sessão nova foi criada e o controle do android-04 seguiu none (GET /api/instances e GET /api/training depois). O formulário foi fechado com Cancelar.",
    "blocker": null,
-   "nota": "Falta a confirmação 'Ensinar esta etapa de novo?' ao enviar: o envio toma o controle do aparelho se algo falhar, e o android-04 já estava com a Aprendizado. Simulated nos testes (EnsinoJaFeito).",
-   "grupo": "portal-percurso-50-ensino-aviso-atalho-livro",
+   "nota": null,
+   "grupo": "portal-percurso-50b-ver-em-salvas-e-confirmacao",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:21:33+00:00"
+   "quando": "2026-10-06T10:34:28+00:00"
   },
   "31.125": {
    "id": "31.125",
@@ -14178,6 +14178,16 @@
    "grupos": [
     "aprendizado-31-118-gravacao-com-marcador",
     "aprendizado-31-121-123-prova-conjunta"
+   ]
+  },
+  {
+   "quando": "2026-10-06T10:34:28+00:00",
+   "itens": [
+    "31.120",
+    "31.124"
+   ],
+   "grupos": [
+    "portal-percurso-50b-ver-em-salvas-e-confirmacao"
    ]
   }
  ]
