@@ -60,6 +60,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `POST /runs/{id}/feedback` vem antes do coringa `POST /runs/{run_id}/{op}`, e nenhum módulo de apresentação importa `app.api`.
 - Prova `simulated`: 395 testes (os de fluxos, contrato HTTP, cobertura de rotas, arquitetura, os 3 novos e as catracas); mypy 257.
   `real`: `not_run`. Sem migração e sem adendo de contrato.
+
+## 2026-10-06 — A1: a prévia da porta pelo Telegram mascara o dado da persona (decisão da orquestradora, 04:22Z)
+
+- **A1 da leitura do 31.113 F3 (06/10):** a prévia da porta pelo Telegram (`_mostrar_porta`) passa a filtrar o título e o texto da etapa com os nomes E os dados da biografia (o `Alvo:` segue só redigido, ADR-071 (d)) (`PortasReais.nomes_e_dados_de_persona`), que saem como `<dado da persona>`; o item cujo texto traz um dado vai ao painel. A resposta da ANA e o eco do Trello seguem só com nomes. Sem migração. Prova `simulated`: `test_telegram_entrada.py` (2) e `test_perfil_variaveis_da_persona.py` (1). Real: `not_run`.
 ## 2026-10-05 — 31.111 F5: "Ensinar a corrigir" na etapa que falhou e selo de origem no treino (branch feat/31-111-f5-ensinar-a-corrigir)
 
 - Contra o adendo v1.75 (Jev, `feat/31-111-f1-ensinar-a-partir-da-falha`): na etapa `failed` ou `uncertain` de uma execução (aba Aparelhos), o botão
