@@ -76,6 +76,7 @@ from .modules.identity.infrastructure.sessions import SessionDeps, SessionProvid
 from .modules.learning import esquecer_conta
 from .modules.learning.application.falhas import ServicoDeFalhas
 from .modules.learning.infrastructure import ligar_intencao, ligar_validacao, ligar_voz
+from .modules.learning.infrastructure.contador_pelo_observar import ContadorPeloObservar
 from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
 from .modules.learning.infrastructure.montagem import montar_aprendizado
@@ -3759,6 +3760,9 @@ class AppState:
                                 # 31.91 T1 (ADR-078): chamadas às rotas OBSOLETAS do ensino v2, desde o início da medição.
                                 # É a régua do T2: 14 dias com `total` parado em zero autorizam tirar o código.
                                 "ensino_v2_chamadas": ContadorDoEnsinoV2(self.db).resumo(),
+                                # 30.34: pedidos de prova nascidos do `observar` da classe B (no app de prova), por
+                                # estado, desde a ligação. A régua da medida do efeito (leitura de 12/10 do 30.72).
+                                "validacao_pelo_observar_b": ContadorPeloObservar(self.db).resumo(),
                                 # Aparelhos com o reparo automático PAUSADO (experimento/manutenção): `{id: {until, reason, by,
                                 # remaining_s}}`; vazio = nenhum. Informativo: não é problema de saúde.
                                 "repair_pause": {rt.id: dto.model_dump(mode="json") for rt in self.devices.devices.values()
