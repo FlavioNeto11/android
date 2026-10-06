@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-583 de 662 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+583 de 664 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -543,6 +543,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.82 | pendente | — | — | — |  |  |
 | 30.83 | partial | simulated | claude-sonnet-5-5 | — | Ponta 62d7259e (traz a migração 116_ref_publico_do_fluxo). Simulado: backend/tests/test_ref_publico_do_fluxo.py::*, backend/tests/test_conversao_de_fluxo.py::*, backend/tests/test_avisos_ensinado.py::*. Suíte 41 sobre a… | None |
 | 30.84 | partial | simulated | claude-sonnet-5-5 | — | Ponta 0ef8c2c7 (com a fatia 4 do 30.83 sobre 999f0793). Simulado: backend/tests/test_reensinar_o_desligado_pela_prova.py::*, backend/tests/test_ref_do_fluxo_fora_do_log.py::*, backend/tests/test_ref_publico_do_fluxo.py:… | None |
+| 30.85 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
@@ -652,6 +653,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.107 | implemented | simulated | claude-sonnet-5-5 | — | Ponta b8d1d63e (sobre o 31.105). Simulado: backend/tests/test_trocar_nomes_ids.py::*, backend/tests/test_social_dm.py::*. Suíte 42 sobre a integração cb6742d4 (origin/main 095a43b6 + 12 pontas; conflitos só de texto jun… | None |
 | 31.108 | implemented | simulated | claude-sonnet-5-5 | — | Ponta ca16b4f1 (sem teste novo próprio; revalidação de UX, texto). Simulado: . Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1,… | None |
 | 31.109 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 063d7d37 (sobre o 31.96). Simulado: backend/tests/test_fluxo_casamento_especifico.py::*, backend/tests/test_recipes.py::*. Suíte 42 sobre a integração cb6742d4 (origin/main 095a43b6 + 12 pontas; conflitos só de te… | None |
+| 31.110 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -669,7 +671,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (79): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.42, 28.43, 28.44, 28.45, 28.46, 28.51, 28.53, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.83, 29.102, 29.105, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.134, 29.137, 29.145, 29.151, 30.34, 30.72, 30.73, 30.74, 30.76, 30.77, 30.78, 30.79, 30.80, 30.82, 30.83, 30.84, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.55, 31.58, 31.79, 31.81, 31.87, 31.88, 31.89, 31.90, 31.91, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (81): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.42, 28.43, 28.44, 28.45, 28.46, 28.51, 28.53, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.83, 29.102, 29.105, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.134, 29.137, 29.145, 29.151, 30.34, 30.72, 30.73, 30.74, 30.76, 30.77, 30.78, 30.79, 30.80, 30.82, 30.83, 30.84, 30.85, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.55, 31.58, 31.79, 31.81, 31.87, 31.88, 31.89, 31.90, 31.91, 31.110, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
