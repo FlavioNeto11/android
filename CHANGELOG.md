@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.155: troca de conta declarada pelo app (ADR-080, proposto) (branch feat/31-155-troca-de-conta)
+
+- Seção opcional `troca: {sair: [{tela, sinal_do_botao}]}` no `sessao.yaml` (`TrocaDeConta`, recusada na carga se mal
+  declarada). O motor de sessão troca de conta só no app que a declara. Antes de tocar, confere se a conta esperada pode
+  entrar (senha com consentimento, teto diário, parada, canal sensível). Depois toca a saída, um candidato por passo;
+  tela de verificação não é tocada. Por fim, invalida as sessões do app no aparelho e entra pelo `_login` de sempre: a
+  senha vem do cofre, só pelo canal sensível. Desvio vira `wrong_account` com o motivo, sem laço. O "Verificar conta"
+  nunca troca.
+- `AppDefinition.account_switch`, derivado do `sessao.yaml` na descoberta. `quem_ja_serve` (D2-a) só aceita outra
+  persona do mesmo app no aparelho para quem declara. O índice único da 051 continua; a migração dele vem depois da
+  prova.
+- Nenhum app do parque declara a troca (o Instagram não declara nesta prova). O QA Messenger não ganhou sessão
+  declarada: isso mudaria a porta de sessão de todo objetivo de QA.
+- Prova `simulated`: `backend/tests/test_troca_de_conta.py`, com o correio de exemplo declarado só no teste e duas
+  personas.
+- `not_run`: prova real (exige declarar a troca num app, com os sinais lidos num aparelho de conta de teste).
+
 ## 2026-10-06 — 28.57: arquivo de texto com o nome original no envio e repasse do `.txt` do dono sem legenda (branch canais/anexos-28-57)
 
 - Achado de 06/10 ao mandar os arquivos do 29.161: `enviar_anexo` renomeava tudo para `anexo-<sha>.<ext>` e não aceitava `.ps1`/`.md`, o que quebraria o comando `-File .\script.ps1`; e o `.txt` que o dono mandou sem legenda ficava `ignorada`. A premissa de que o canal não recebia o anexo estava errada: a recepção do 28.24 já guardava os 4 `.txt` (`canal_anexos` 1 a 4), só faltava o repasse (K-105).

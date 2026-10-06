@@ -85,6 +85,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-077](#adr-077--um-caminho-só-de-ensino-o-modo-treinamento) | Um caminho só de ensino: o Modo treinamento (item 31.91) | aceito (dono, 05/10; F2 e a tela do F1 implementados) | 05/10 |
 | [ADR-078](#adr-078--o-ensino-v2-sai-em-dois-tempos-obsoleto-e-contado-agora-apagado-depois-de-14-dias-sem-uso) | O ensino v2 sai em dois tempos: obsoleto e contado agora, apagado depois de 14 dias sem uso (item 31.91, T1 e T2) | aceito (orquestradora, 06/10; T1 implementado) | 06/10 |
 | [ADR-079](#adr-079--comando-remoto-nos-notebooks-da-rede-um-módulo-de-controle-desligado-de-fábrica) | Comando remoto nos notebooks da rede: um módulo de controle, desligado de fábrica (item 29.154) | aceito (dono, 06/10; fatia 1 implementada, desligada) | 06/10 |
+| [ADR-080](#adr-080--troca-de-conta-declarada-pelo-app-o-motor-sai-da-conta-aberta-e-entra-na-esperada-pelo-cofre) | Troca de conta declarada pelo app: o motor sai da conta aberta e entra na esperada pelo cofre (item 31.155) | proposto (Jev, 06/10; mecanismo implementado, nenhum app do parque o declara) | 06/10 |
 
 ---
 
@@ -5641,3 +5642,69 @@ disparável por injeção de prompt seria execução no notebook. É decisão da
 `backend/app/worker/comando.py`, `backend/app/workers/comando_remoto.py`, `backend/app/contracts/worker/protocol.py`
 (`FEATURE_COMANDO_REMOTO`), `backend/app/modules/fleet/presentation/workers.py`, `backend/migrations/123_comando_remoto.sql`;
 testes `backend/tests/test_comando_remoto_agente.py` e `backend/tests/test_comando_remoto_central.py`.
+
+## ADR-080 — Troca de conta declarada pelo app: o motor sai da conta aberta e entra na esperada pelo cofre
+
+**Data:** 06/10/2026 · **Estado:** proposto (Jev, 06/10/2026; item 31.155, pedido da orquestradora às 17:27Z). Mecanismo
+implementado e provado `simulated`; **nenhum app do parque declara a troca**, então nada muda no ambiente central.
+
+**Contexto.** O dono vai cadastrar contas novas e quer todas usadas (prova de capacidade de 07/10). Hoje vale uma conta
+por app em cada aparelho (D2-a, migração 051), e conta errada na tela é caso de pessoa (achado #115): são 4 contas reais
+em 4 aparelhos. Passar de 4 para 30 contas sem um aparelho por conta exige tirar a conta aberta e entrar na esperada.
+
+**Decisão** (desenho da Jev, não é fala do dono):
+
+1. **A troca é dado do app.** O `sessao.yaml` ganha a seção opcional `troca: {sair: [{tela, sinal_do_botao}, …]}`. O
+   primeiro passo é numa tela autenticada (a de onde a conta foi lida); os seguintes, numa autenticada ou intersticial
+   (a confirmação); nunca na tela do campo de senha; o sinal existe em todo idioma. App sem a seção segue como hoje.
+2. **Só no motor de sessão** (`SessaoDeclarada._garantir`), quando a conta lida não é a esperada, e nunca no "Verificar
+   conta" (`observe_only`). A ordem:
+   - a conta esperada pode entrar? Conferido sem tocar no aparelho: senha guardada com consentimento (ADR-040), teto
+     diário, conta parada ou login em revisão, canal sensível. Recusado aqui, a conta aberta continua logada;
+   - os toques de saída, com um candidato só em cada um. Tela de verificação: nada é tocado;
+   - a tela tem de ser a de login, e só então o `_login` de sempre digita a senha da conta esperada, do cofre, pelo
+     canal sensível.
+
+   Qualquer desvio vira `wrong_account` com o motivo. É caso de pessoa e não entra em laço: a porta de sessão e
+   `_needs_person` não reentram.
+3. **Depois de um toque de saída, toda sessão daquele app naquele aparelho vira `unknown`**
+   (`invalidate_sessions_of_instance` pelo pacote), não só a da conta que saiu.
+4. **D2-a relaxa só no app que declara a troca.** `AppDefinition.account_switch` é derivado do `sessao.yaml` na
+   descoberta, e `quem_ja_serve` não vê conflito nesse app. O índice único `ux_binding_conta_do_app_no_aparelho` (051)
+   continua no banco, então o vínculo POR APP de duas personas do mesmo app ainda é recusado ali. Trocá-lo pede
+   migração, com número dado pela orquestradora, depois da prova.
+5. **É mecanismo do despacho, não ação do planejador.** O `LOGOUT` do catálogo do Instagram segue `manual_only`, e o
+   Instagram **não** declara a troca nesta prova.
+6. **QA Messenger sem sessão declarada.** Declarar provedor de sessão no QA mudaria a porta de sessão de todo objetivo
+   de QA, da suíte e do uso: os aparelhos do harness rodam sem persona. A prova usa o correio de exemplo, declarado só
+   no teste; a regressão do QA é a bateria dirigida dele, sem mudança.
+
+**Custo e riscos aceitos.**
+
+- **Cada troca é um login.** Com `acao_final: preparar` (31.154), o alvo estaciona na aprovação, o aparelho fica livre, a
+  próxima conta entra e o `liberar` faz a primeira voltar. Com 30 contas em 9 aparelhos, são 1 a 2 logins por conta por
+  rodada, contra `max_logins_per_day: 3`, cujo texto diz que entrar mais que isso é sinal de sessão perdida. O teto se
+  ajusta por app em `contas.sessao.<pacote>` no `config.yaml`. Preferir no despacho o objetivo da conta já logada fica
+  para depois da prova.
+- **Login repetido numa conta real pode chamar verificação da plataforma.** A verificação para tudo (ADR-055) e a
+  pessoa assume.
+- **App que lembra contas pode abrir a tela de login com a conta anterior.** O `_login` só digita a senha com o usuário
+  preenchido e conferido (formulário de uma tela) ou numa tela que mostra este identificador (login em etapas), como
+  sempre.
+
+**Falta para usar em conta real (depois da prova):**
+
+- declarar `troca` no `sessao.yaml` do app, com os sinais lidos num aparelho de conta de teste;
+- a migração do índice 051;
+- a preferência no despacho;
+- a prova `real`.
+
+**Relação.** [ADR-040](#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial); ADR-052;
+ADR-055; achado #115; D2-a (051); 31.154. Código:
+- `backend/app/integrations/app_declarado/conhecimento.py` (`TrocaDeConta`, `_troca`, `botao_da_troca`);
+- `backend/app/integrations/app_declarado/sessao.py` (`_trocar_de_conta`, `_antes_de_sair`);
+- `backend/app/integrations/app_declarado/pacote.py`;
+- `backend/app/modules/applications/domain/definition.py` (`account_switch`);
+- `backend/app/social/repository.py` (`_troca_declarada`).
+
+Teste: `backend/tests/test_troca_de_conta.py`.

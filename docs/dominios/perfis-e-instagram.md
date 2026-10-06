@@ -233,6 +233,16 @@ Caminhos relativos a `backend/app/`.
     digitar, na MESMA árvore do campo (`_fill_password`: o `locate` do canal sensível só acha campo no pacote da conta
     ou no navegador no site permitido); fora disso o canal recusa com a mensagem fixa dele.
 
+- **Troca de conta declarada (31.155, [ADR-080](../decisoes.md#adr-080--troca-de-conta-declarada-pelo-app-o-motor-sai-da-conta-aberta-e-entra-na-esperada-pelo-cofre))**:
+  `troca: {sair: [{tela, sinal_do_botao}, …]}` no `sessao.yaml`. O primeiro passo é numa tela `autenticada`; os
+  seguintes, numa `autenticada` ou `intersticial` (a confirmação). Com ela, a conta errada lida pelo motor deixa de ser
+  caso de pessoa: `SessaoDeclarada._trocar_de_conta` primeiro confere, sem tocar, se a esperada pode entrar
+  (`_antes_de_sair`: senha com consentimento, teto diário, parada, canal sensível). Depois toca a saída, um candidato
+  por passo; invalida as sessões do app no aparelho e só entra pelo `_login` de sempre se a tela for a de login. Qualquer
+  desvio vira `wrong_account` com o motivo. O "Verificar conta" nunca troca. O app que declara a troca ganha
+  `AppDefinition.account_switch`, e só nele `quem_ja_serve` aceita outra persona do mesmo app no aparelho; o índice
+  único da 051 continua no banco. **Nenhum app do parque declara a troca hoje**, nem o Instagram.
+
   O `type_secret` do executor (`taskqueue/executor.py::_conferir_destino`) ainda recusa a Custom Tab (exige o pacote da
   conta em primeiro plano): só o motor de sessão a aceita. O `telas.yaml`/`sessao.yaml` do Outlook veio no 23.8
   ([abaixo](#o-outlook-como-dado-item-238)); aparelho real: `not_run`.
