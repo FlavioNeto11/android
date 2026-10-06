@@ -77,7 +77,7 @@ def inicio_da_semana(agora: datetime) -> str:
 
 
 def id_do_item(nome: str) -> str | None:
-    m = re.match(r"^(?:\[A\]\s*)?(?:🙋\s*)?(?:#\d+\s*·\s*)?(\d+\.\d+)(?![\d.])", nome)
+    m = re.match(r"^(?:\[A\]\s*)?(?:🙋\s*)?(?:#\d+\s*·\s*)?(\d+\.\d+|T\.\d+)(?![\d.])", nome)
     return m.group(1) if m else None
 
 
@@ -251,6 +251,8 @@ def _prova_subiu(c: dict, linha: str) -> bool:
 
 
 def _lista_da_fase(pid: str, listas: dict[str, str]) -> str | None:
+    if not pid.split(".")[0].isdigit():
+        return None        # os T.N (transversais) não têm lista de fase no Histórico: ficam em Concluído
     n = int(pid.split(".")[0])
     for nome, lid in listas.items():
         m = re.search(r"Fases?\s+(\d+)(?:\s*[–-]\s*(\d+))?", nome)
