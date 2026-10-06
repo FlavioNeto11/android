@@ -223,13 +223,14 @@ class LeitorDoAprendizadoDaOperacao:
             citadas = tuple(r for r in runs if f'"{r}"' in str(li["provenance"] or ""))
             estado = str(li["state"])
             dona = str(li["scope_profile_id"] or "") or None
-            personas = {runs[r] for r in citadas}
+            personas = {p for r in citadas if (p := runs[r])}
             escopo = ("persona" if dona else
                       "processo" if li["scope_capability"] or li["scope_step_hash"] else "app")
             itens.append(Item(ref=ref, tipo=str(li["kind"]), escopo=escopo,
                               resumo=_resumo(li["summary"]), origem=str(li["source_kind"] or "execucao"),
                               confianca=confianca_do_livro(estado), estado=estado, evidencia=ev or citadas,
-                              persona=dona or (personas.pop() if len(personas) == 1 else None),
+                              persona=dona or (next(iter(personas)) if len(personas) == 1 else None),
+                              personas=() if dona or len(personas) < 2 else tuple(sorted(personas)),
                               observado_em=ult or li["updated_at"], a_favor=a or int(li["evidence_for"] or 0),
                               contra=c))
         return itens
