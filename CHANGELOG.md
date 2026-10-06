@@ -19,6 +19,32 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.151: o pedido parecido chega ao fluxo pelo planejador (branch feat/31-151-fluxo-por-semelhanca)
+
+- Medido em 06/10: 8 de 275 execuções foram planejadas por fluxo ensinado, todas lote de prova; 0 uso real. `match` só
+  casava o texto inteiro do molde e o planejador não conhecia fluxo nenhum.
+- No ramo livre do `_plan`, os fluxos ativos e no escopo que o comando PARECE vão ao planejador como habilidades
+  conhecidas (`planning/habilidades.py`). O bloco `<habilidades_conhecidas>` vai no texto de usuário e leva:
+  - a referência pública, o molde, os nomes dos parâmetros e os apps;
+  - nunca o valor demonstrado nem o nome do fluxo.
+
+  Vão no máximo 3, com nota mínima de 0,3. A paráfrase do item dá 0,333; o valor é a calibrar.
+- O planejador devolve o plano de sempre e o campo `habilidade` (`{ref, valores: [{nome, valor}]}` ou `null`), nos
+  5 formatos de saída do plano. É lista de pares porque o esquema estrito fecha todo objeto.
+- O código confere a escolha: a referência foi oferecida, os parâmetros são exatamente os do molde, e cada valor está
+  no comando. Valendo, o plano é o do fluxo, como no `match`:
+  - `planner.model = fluxo:<id>`, `runs.flow_id` gravado e `flows.uses` sobe;
+  - a trilha diz "Plano do fluxo X por semelhança, nota N".
+
+  Recusada, fica o plano livre, com o motivo na trilha; sem escolha, a trilha lista o que foi oferecido.
+- Decisão do dono pendente (roda sem confirmação ou só com a prévia aprovada): até ela, `habilidades.SEM_CONFIRMACAO =
+  False`. A execução `execute` planejada por semelhança para em `planned` e espera o início por uma pessoa.
+- `Plan.escolha_por_semelhanca` é só de passagem (`exclude=True`): o plano gravado não muda.
+- Prova `simulated`: `backend/tests/test_fluxo_por_semelhanca.py` (5 testes: casa, parece e é escolhido, parece e é
+  recusado, não escolhido; o valor demonstrado não vai ao prompt; o JSON do provedor real). Planejamento, parsing,
+  prompts, fluxos e arquitetura: 3373 passaram; as 2 falhas da rodada (o teste novo do provedor real e a catraca de Any) foram corrigidas e rerodadas (48 passaram). Revisor de segredos: sem alto; o médio (molde com literal de alvo, como @, endereço ou número longo, não vai ao prompt) e três baixos (referência fora do oferecido não vai à trilha; parâmetros reservados fora; uses só sobe ao aprovar) corrigidos. `real`: `not_run` (um pedido parafraseado no android-04 planejado pelo
+  fluxo ensinado, cerca de US$ 0,02, com o sim do dono).
+
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 
 - Na onda 1 (06/10), a pesquisa da operação deixou 6 de 8 fatos como `hipotese` (uma fonte só), e nada os

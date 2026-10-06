@@ -6,6 +6,7 @@ from ..contracts.identidade import REGRA_DE_IDENTIDADE
 from ..modules.identity.domain.available_data import AvailableDatum
 from ..modules.learning.domain.licoes import bloco_de_licoes
 from ..util import sem_marcacao
+from . import habilidades as habilidades_conhecidas
 from .provider import AppContext, DecisionRequest, PlanRequest, SocialRequest, StepContext
 
 UNTRUSTED_RULE = (
@@ -474,6 +475,7 @@ def planner_user(req: PlanRequest, max_steps: int) -> str:
     return (f"<comando_do_usuario>\n{req.command}\n</comando_do_usuario>\n\n"
             f"run_id desta execução: {req.run_id}\n\nApps configurados:\n{apps}\n\n"
             f"{licoes_block(req.lessons)}"
+            f"{habilidades_conhecidas.bloco(req.habilidades)}"
             f"{dados_block(req.available_data)}\n\n"
             f"Aparelhos selecionados ({len(req.instances)}):\n{insts}\n\n"
             f"Limite de etapas: {max_steps}. Produza o plano.")
@@ -487,6 +489,7 @@ def planner_capability_user(req: PlanRequest, max_steps: int) -> str:
             f"Aplicativo: {app.name if app else req.catalog.package} ({req.catalog.package})\n\n"
             f"Ações disponíveis:\n{req.catalog.prompt_block()}\n\n"
             f"{licoes_block(req.lessons)}"
+            f"{habilidades_conhecidas.bloco(req.habilidades)}"
             f"{dados_block(req.available_data)}\n\n"
             f"Aparelhos selecionados ({len(req.instances)}):\n{insts}\n\n"
             f"Limite de etapas: {max_steps}. Produza o plano usando só estas ações.")
@@ -510,6 +513,7 @@ def planner_multiapp_user(req: PlanRequest, max_steps: int) -> str:
             "Apps COM catálogo (etapa = uma ação do app, pelo nome exato):\n" + "\n".join(com_catalogo) + "\n\n"
             f"Apps SEM catálogo (etapa livre):\n{livres}\n\n"
             f"{licoes_block(req.lessons)}"
+            f"{habilidades_conhecidas.bloco(req.habilidades)}"
             f"{dados_block(req.available_data)}\n\n"
             f"Aparelhos selecionados ({len(req.instances)}; app = o da conta do aparelho):\n{insts}\n\n"
             f"Limite de etapas: {max_steps}. Produza o plano: cada etapa no app dela.")

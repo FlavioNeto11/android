@@ -20,6 +20,7 @@ from ..shared.validacao import erros_sem_valor
 if TYPE_CHECKING:
     from ..config import ResolvedRole
     from .capabilities import CapabilityCatalog
+    from .habilidades import HabilidadeConhecida
 
 
 #: O que o painel PROMETE ao operador sobre o que sai desta máquina. Uma frase só, usada por todo provedor —
@@ -239,6 +240,9 @@ class PlanRequest:
     #: contexto, nunca ordem; sem lição, o pedido é o de antes. Quem monta é a costura `licoes_para` (A2); quem põe no
     #: prompt é o A7. O provedor que não as conhece as ignora.
     lessons: list[str] = field(default_factory=list)
+    #: 31.151: os fluxos ativos e no escopo que o comando PARECE (`habilidades.HabilidadeConhecida`): referência, molde,
+    #: nomes dos parâmetros e apps, nunca o valor demonstrado. Vazio = o pedido de antes.
+    habilidades: list[HabilidadeConhecida] = field(default_factory=list)
 
 
 @dataclass(slots=True)
