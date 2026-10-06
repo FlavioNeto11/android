@@ -64,6 +64,7 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 
 | Área | Código | Doc principal |
 |---|---|---|
+| Montagem do `AppState` (o que o `__init__` constrói) | `backend/app/state.py`, `backend/app/bootstrap.py` (`montar_*`: armazenamento, líder e canais, decisões) | [`arquitetura.md`](arquitetura.md) |
 | API, eventos, rotas | `backend/app/api.py`, `modules/fleet/presentation/proxies.py`, `modules/execution/presentation/comandos.py`, `modules/applications/presentation/apps.py`, `models.py`, `events.py` | [`api-contract.md`](api-contract.md) |
 | Comandos e worker | `backend/app/commands/`, `workers/`, `worker/` | [`arquitetura.md`](arquitetura.md), [`worker.md`](worker.md) |
 | Aparelhos e parque | `backend/app/devices/`, `taskqueue/scheduler.py` | [`dominios/parque.md`](dominios/parque.md) |

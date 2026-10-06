@@ -20,7 +20,8 @@ from .commands.limpeza_ao_retirar import LimpezaAoRetirar
 from .commands.reconciler import reconciliar_incertos
 from .commands.outbox import CommandOutbox
 from .commands.states import COMMAND_TERMINAL
-from .storage import DISK, DiskStorage, build_storage
+from .bootstrap import montar_armazenamento, montar_decisoes, montar_lideranca_e_canais
+from .storage import DISK
 
 from .commands.store import CommandStore, command_dto
 from .commands.transport import build_transport
@@ -36,7 +37,6 @@ from .devices.sdk import SdkTools
 from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
-from .modules.avisos.infrastructure.canais_frota import CanaisDaFrota
 from .modules.avisos.infrastructure.contatos_sql import ContatosDoCanal
 from .modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from .modules.avisos.infrastructure.entrada import ServicoDeEntrada, parece_codigo
@@ -45,7 +45,6 @@ from .modules.avisos.application.espelho import LinhaDeCusto
 from .modules.avisos.infrastructure.espelho import EspelhoDoTrello, FontesDaCentral
 from .modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
 from .devices.captura_pontual import capturar_para_o_dono
-from .modules.avisos.infrastructure.anexos import ArmazemDeAnexos
 from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
@@ -55,11 +54,6 @@ from .porta_do_plano import (AprovarPlanoBody, ItemAprovado, aprovar_pelo_canal,
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos, trava_de_avisos_em_uso
 from .decisoes_inversas import inversas_das_filas
 from .modules.decisoes.application.desfazer import DesfazerDecisoes
-from .modules.decisoes.infrastructure.adaptador_sql import AdaptadorDeDecisoes
-from .modules.decisoes.infrastructure.estado_sql import EstadoDasDecisoes
-from .modules.decisoes.infrastructure.registro_sql import RegistroSql as RegistroDeDecisoes
-from .modules.decisoes.infrastructure.resumo_sql import ResumoDasDecisoes
-from .modules.decisoes.infrastructure.servico import ServicoDeDecisoes
 from .modules.avisos.infrastructure.trello_leitor import ComentariosDoTrello, LeitorDoTrello
 from .modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook, PortaDoWebhook
 from .modules.context_retrieval.adapters.jev import JevSemanticProvider
@@ -125,7 +119,7 @@ from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
 from .taskqueue.sombra_intencao import SombraDaIntencao, catalogo_de
-from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
+from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
 from .util import iso_in, now, now_iso, parse_iso, to_iso
@@ -280,17 +274,8 @@ class AppState:
         self.devices.seed()
         marca_de_partida.gravar(pasta_da_marca, marca_de_partida.APARELHOS)
         self.provider: AIProvider = provider or build_provider(cfg)
-        # Storage de evidências (item 5.7): disco local por omissão, S3-compatível por bandeira. A chave gravada
-        # em `evidence.path` passa a ser chave de storage, e é a mesma nas duas pontas.
-        self.storage = build_storage(
-            cfg.env.evidence_storage, evidence_dir=cfg.evidence_dir, bucket=cfg.env.s3_bucket,
-            endpoint_url=cfg.env.s3_endpoint_url, region=cfg.env.s3_region,
-            access_key=cfg.env.s3_access_key_id.get_secret_value() if cfg.env.s3_access_key_id else None,
-            secret_key=cfg.env.s3_secret_access_key.get_secret_value() if cfg.env.s3_secret_access_key else None)
-        #: Avatares de perfil, sob a chave `avatars/<id>.jpg` — pelo mesmo motivo das evidências: no disco de
-        #: uma réplica, eles respondem 404 na outra. Em disco a raiz é `data/`, então o arquivo continua
-        #: exatamente onde sempre esteve (`data/avatars/<id>.jpg`): nada a mover.
-        self.avatares = DiskStorage(cfg.data_dir) if self.storage.name == DISK else self.storage
+        # Storage de evidências e avatares (item 5.7): `bootstrap.montar_armazenamento`.
+        self.storage, self.avatares = montar_armazenamento(cfg)
         self.repo = Repository(self.db, self.bus, cfg.evidence_dir, owner_id=cfg.owner_id, storage=self.storage)
         # Comando do painel como entidade: sem isto a ação era um 202 sem registro, e a interface chamava de
         # sucesso o que só tinha sido aceito.
@@ -298,13 +283,8 @@ class AppState:
         # Outbox: a entrega DEVIDA gravada na mesma transação que aceita o comando (item 5.6). Sem ela, uma
         # queda entre gravar `dispatched` e agendar a tarefa perdia o comando para sempre.
         self.outbox = CommandOutbox(self.db, owner_id=cfg.owner_id, transport=cfg.env.command_transport)
-        # Trava de líder dos laços de fundo (item 28.1): com dois backends com scheduler no mesmo banco, só um roda
-        # saldos, curadoria e retenção; os outros pulam a volta sem erro.
-        self.lideranca = Lideranca(self.db, dono=cfg.owner_id)
-        # Quais canais cada backend liga (28.37): a saúde acusa quando o líder da trava `avisos` não liga um deles.
-        self.canais_da_frota = CanaisDaFrota(self.db, cfg, dono=cfg.owner_id, roda=cfg.roda_scheduler)
-        # Os anexos dos canais (28.24): o arquivo em `data/anexos/` (fora do Git), pelo sha256; a faxina do 28.16 os apaga.
-        self.anexos_canal = ArmazemDeAnexos(self.db, cfg.data_dir / "anexos")
+        # Trava de líder dos laços de fundo (28.1), canais da frota (28.37) e anexos dos canais (28.24): `bootstrap.montar_lideranca_e_canais`.
+        self.lideranca, self.canais_da_frota, self.anexos_canal = montar_lideranca_e_canais(cfg, self.db)
         # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
         self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider,
                                       redigir=TriagemDeCredencial().redigir,
@@ -312,17 +292,8 @@ class AppState:
                                       nomes_de_persona=lambda: nomes_e_dados_da_persona(self.db))
         # O contato do site institucional (29.77, ADR-075): grava antes de avisar e entrega pela Canais. Desligado de fábrica.
         self.portal = Portal(cfg, self.db, self.avisos)
-        # O que a plataforma decide sozinha (28.25): o registro único, o adaptador que recolhe os produtores e o resumo
-        # agrupado (no máximo uma mensagem por janela) pelo mesmo caminho dos avisos. O desfazer entra pelas rotas.
-        self.decisoes_registro = RegistroDeDecisoes(self.db)
-        _estado_das_decisoes = EstadoDasDecisoes(self.db)
-        self.decisoes = ServicoDeDecisoes(
-            cfg, AdaptadorDeDecisoes(self.db, self.decisoes_registro, _estado_das_decisoes,
-                                     redigir=TriagemDeCredencial().redigir),
-            ResumoDasDecisoes(self.db, _estado_das_decisoes, enfileirar=self.avisos.enfileirar_aviso,
-                              pode_avisar=lambda: self.avisos.ligado and self.avisos.canal() is not None,
-                              redigir=TriagemDeCredencial().redigir),
-            lider=self._lider)
+        # O que a plataforma decide sozinha (28.25): `bootstrap.montar_decisoes`.
+        self.decisoes_registro, self.decisoes = montar_decisoes(cfg, self.db, self.avisos, self._lider)
         self.transport = build_transport(cfg.env.command_transport, owner_id=cfg.owner_id or "local",
                                          url=cfg.env.nats_url)
         self.commands = CommandStore(self.db, owner_id=cfg.owner_id, outbox=self.outbox)
