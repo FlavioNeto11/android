@@ -10496,20 +10496,14 @@
    "id": "15.15",
    "status": "partial",
    "proof": "real",
-   "evidence": "Parcial, três dos seis tópicos, todos mergeados com 8721158e e empurrados. F7 (impor as máquinas de estado), feat/15-15-f7-impor-maquinas 6c5a8c96: Repository._conferir recusa a transição fora das tabelas de execution/domain/states.py com InvalidTransition ANTES de escrever (set_run_status, set_objective, finish_attempt), main.py devolve 409 invalid_transition, aresta completed_with_issues->cancelled declarada, ADR-038, adendo v1.78; 1765 testes dirigidos verdes (76 arquivos). F4 (routers por contexto, 3 cortes sem mudar caminho, método, corpo nem resposta): fluxos 7 rotas (f4a 8e30a011), treino 11 rotas (f4b 6bf397a0), execuções 16 rotas mais a escondida (f4c 7a708220, ponta); main.py monta os três routers no lugar do api.router; OpenAPI contra a main: 270 método+caminho idênticos, schemas só diferem em 16 títulos automáticos de resposta 200, ordem protegida por tests/test_ordem_das_rotas.py (3 testes); 2230 testes dirigidos verdes (119 arquivos). F2 (saúde fora de state.py), feat/15-15-f2-saude f1d0b60b: app/saude.py com SaudeDoSistema (health, ai_status, ultima_migracao, checar e os 6 auxiliares), AppState só delega em uma linha; o teste de caracterização (31 cenários, golden) não mudou e passa igual antes e depois; 132 testes (caracterização, saude_ao_vivo, arquitetura, catracas) e 61 arquivos que chamam a saúde verdes; catraca Any de app.state 50->48. Em todas: catracas 88, mypy 257 no teto, docs-check 0/0, sem migração. Faltam do 15.15: cluster de apps e portões, bootstrap, adapters ai|android, identidade de receita por capability, ligar o apply no ciclo e a conversão dos fluxos reais (recomendação em avaliacao-15-15.md: tirar do 15.15). Prova real = not_run: depois do deploy, comparar GET /api/health (problems e features) antes e depois, e o 409 invalid_transition num pedido recusado. PROVA REAL (06/10/2026, central WIN-7S2UASNLFOP, deploy 47 = d2d346cd, migração 119, só leitura): GET /api/health com problems [] e features idênticos aos de antes do deploy (F2, registrado pela orquestradora); eventos '(recusada)' = 0 desde 06:30Z e 0 warns de transição fora da tabela em todo o histórico (F7). A contagem de 409 invalid_transition não é observável (sem access log e o handler não grava evento): fica 'nenhum caso visível', não 'zero 409'. F4: rotas movidas respondem no central em d2d346cd com o mesmo conjunto de 270 rotas (prova simulada do OpenAPI). Falha achada e corrigida depois: test_ref_do_fluxo_fora_do_log reprovava 2 _err(409) de presentation/fluxos.py (ajuste no commit do 31.117, 3d3a9072). Suíte 49 (simulado, Android): F7: evento warn do 409 (Jev 61930aa2) e F4d: as 7 rotas de /api/releases* em modules/applications/presentation/releases.py (Jev 870fd7bd, OpenAPI com as mesmas 270 rotas). Simulado: backend/tests/test_maquinas_de_estado_http.py::*, backend/tests/test_ordem_das_rotas.py::*, backend/tests/test_arquitetura.py::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152 a6d8cfdf, Portal 8e8cf588, Canais 64bfc633, Aprendizado 4d2ec6a1 e 25878b0a, Jev 61930aa2 e 870fd7bd; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12282 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1746 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 353 arquivos em 2 partes: parte 1 3429 passed, 6 skipped; parte 2 2937 passed, 4 skipped, com 1 falha e 1 erro de infraestrutura do host (WSAENOBUFS 10055, 'No buffer space available', em test_pedidos_api e test_revisao_previa, arquivos que esta suíte não toca), e os dois arquivos repetidos sozinhos no PG: 26 passed, 0 falhas (08:53:43Z). Real, 06/10/2026 08:57Z, central 1b86bd6b (deploy 49): eventos warn '(recusada)' e 409 invalid_transition desde 08:55Z = 0 (F7 com o evento do 409 no ar).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_maquinas_de_estado_http.py",
-    "backend/tests/test_ordem_das_rotas.py",
-    "backend/tests/test_arquitetura.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; faltam as demais fatias do 15.15",
-   "grupo": "android-suite-49",
+   "evidence": "Leitura real no central WIN-7S2UASNLFOP (só leitura), deploy 49 = 1b86bd6b às 08:56Z, migração 119, 06/10/2026 08:58Z. F7 (máquinas de estado impostas, deploy 47) e o evento do 409 (deploy 49): 0 eventos warn '409 invalid_transition' desde 08:55Z e 0 em todo o histórico (portanto, por modelo de rota: nenhum); 0 eventos '(recusada)' (execução, objetivo e tentativa) desde 08:55Z, por tipo: nenhum; GET /api/health com 0 problemas, commit 1b86bd6b. F2 (saúde em app/saude.py, deploy 47): /api/health com problems [] e features iguais aos de antes (leitura anterior da orquestradora). F4d (as 7 rotas de /api/releases* em modules/applications/presentation/releases.py, deploy 49): GET /api/releases 200 com a lista (6 releases); GET /api/releases/{id}/targets 200 application/json; GET /api/releases/{id}/icon 404 sem_icone (release sem ícone) e o mesmo código para release inexistente, como o desenho original. F4a, F4b e F4c (routers de fluxos, treino e execuções) no ar desde o deploy 47. Prova real: o central responde pelas rotas movidas; os 409 reais ainda não ocorreram para serem contados. Entregues e ainda sem deploy (corte 50): F4e workers/limites (2142b2a2, 10 rotas), F4f rede (32ccfb08, 10 rotas) e F4g aparelhos (807ac237, 18 rotas), com prova simulated. Faltam: routers de instagram (41 rotas), personas (19), proxies (4), commands (5), apps (6) e o resto de api.py; cluster de apps e portões de state.py; bootstrap; adapters ai e android; identidade de receita por capability (medir antes); ligar o apply no ciclo (decisão do dono); conversão dos fluxos reais (a recomendação é tirar do 15.15, ADR-078).",
+   "blocker": "Faltam os routers restantes e os itens listados na evidência; o corte 50 leva F4e, F4f e F4g e a prova real deles vem depois do deploy 50.",
+   "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T08:58:09+00:00"
+   "quando": "2026-10-06T08:59:40+00:00"
   },
   "30.72": {
    "id": "30.72",
@@ -13974,6 +13968,15 @@
    ],
    "grupos": [
     "android-suite-49"
+   ]
+  },
+  {
+   "quando": "2026-10-06T08:59:40+00:00",
+   "itens": [
+    "15.15"
+   ],
+   "grupos": [
+    "jev"
    ]
   }
  ]
