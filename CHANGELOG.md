@@ -35,6 +35,40 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   sempre enviado, origem perdida na proposta, lease velho) e sementes de atraso do fetch. `not_run`: percurso real (depende do backend `POST /api/training/from-run`
   no deploy e do controle de um aparelho de teste).
 
+## 2026-10-06 — 31.101, o `--amplo` real: pedaços de nome de conta trocados por valores de exemplo nos testes (branch chore/trocar-nomes-amplo)
+
+- `scripts/trocar-nomes-nos-testes.py --amplo --aplicar` sobre a ponta da suíte 44: 119 arquivos e 1438 linhas, todos de teste
+  (91 de backend, 8 de `scripts/tests`, 20 de frontend). Nenhum arquivo de produção mudou.
+- Palavras que são nome de conta E também código ou domínio ficam na lista `fora` da tabela privada (que continua fora do
+  Git) e não são trocadas: trocá-las quebrava a coleta de 36 testes (um módulo importado) e o papel de lista "marcos" do
+  Trello. A tabela ganhou 5 palavras assim neste corte.
+- Oito expectativas que dependiam de iniciais, ordem alfabética ou subtexto do nome foram ajustadas à mão.
+- Limite conhecido: o script troca por palavra inteira (``); um pedaço colado a `_` ou a `%40` (ids e URLs) não casa e
+  fica (cerca de 100 ocorrências em testes). Não foi mexido; fica para uma rodada própria se o dono quiser.
+- Prova: `simulated` (91 arquivos de backend, 3551 testes; `scripts/tests`, 684; frontend, 486; mypy 257; docs-check 0/0).
+
+## 2026-10-06 — 31.111 F1 e F2: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
+
+## 2026-10-06 — 31.111 F1, F2 e F3: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
+
+- `POST /api/training/from-run` `{run_id, step_id, lease_id, intent?, app_id?, profile_id?}` abre uma sessão de ensino ligada à
+  etapa que falhou (ou ficou incerta). O aparelho é o da etapa; as travas são as do treino de hoje: só a pessoa com o
+  controle do aparelho abre, nada é automático, a loja não é aparelho de treino. Etapa de outra execução: 404
+  `step_not_found`; etapa que deu certo ou foi cancelada: 409 `step_not_failed`. Sem `intent`, o texto sai do título da etapa.
+- A sessão guarda três ids opacos (migração 119, `origin_run_id`, `origin_step_id`, `origin_attempt_id`, sem chave
+  estrangeira) e `GET /api/training/{id}` e a lista passam a trazer `origin: {run_id, step_id, step_key, attempt_id, motivo}`
+  (`null` na gravação comum); o motivo é o literal do executor, lido da etapa na hora. As colunas `origin_*` não vazam.
+- F2: `GET /api/training/{id}` traz também `origin.context` (a lista não): a trilha da execução naquele aparelho, a
+  pós-condição esperada, a tentativa que falhou e as evidências dela (o `id` que `GET /api/evidence/{id}` serve; a imagem
+  redigida vem como indisponível). Só leitura, sem IA, e todo texto do executor passa pelo mascaramento de segredo, o
+  `motivo` do F1 também (o teste do F2 pegou o `motivo` saindo sem máscara). Adendo v1.75 do contrato.
+- F3: a correção salva (caminho comum: gravar, propor, salvar) nasce candidata com o escopo do 31.88 e a prova do 30.81 e
+  fica ligada à execução: `GET /api/flows` ganha `origin` por item (`null` se o fluxo não veio de uma falha) e o evento do
+  salvar leva `data.origin` (ids opacos). Sem campo novo no corpo do `save`; o teste percorre a sessão da falha até o
+  fluxo candidato, que só casa para quem ensinou.
+- Fica para o F4 (Aprendizado): `origin.diagnostico`.
+- Prova: `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
+
 ## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)
 
 - Une o painel do 31.89 já sobre a junção do corte 43 (`feat/31-89-painel-corte-44`, 5cb96676) e a tela do 30.85 (`feat/30-85-selo-no-livro`, b083e683, sobre a
@@ -51,6 +85,46 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Funções tocadas (K-095): `_da_espera`, `LearningService.ensinado_em_prova` (nova), `AvisadorDoEnsinado.em_prova`
   (nova), `LeitorDoEnsinadoSql.em_prova` (nova), `LeitorDoEnsinado` (método novo na porta).
 - Prova `simulated`: `backend/tests/test_livro_selo_em_prova.py` (7). Real: `not_run`.
+
+## 2026-10-06 — Reconciliação total dos quadros do Trello e a dinâmica dos cartões (branch canais/reconciliacao-trello)
+
+- Pedido do dono (06/10, ~01:22Z): "98 cartões em validação, nada sai de lá" e "rever o status de todos os cards nos 3 quadros e a
+  dinâmica de mudança". Novo `.claude/trello/reconciliar.py`: confere todos os cartões de Execução com o estado do plano e o deploy
+  de cada item (commit "merge: ID na suíte N", ou o id citado na seção do deploy no CHANGELOG, ou a hora da classificação), move para a
+  lista certa com a linha de prova no topo e só relata Histórico e Programa. Sem `--aplicar` só relata; a segunda rodada sai sem ação.
+- Regra nova C-28 em `docs/dominios/canais.md`: a saída de Em validação (só o `partial` fica, `implemented` implantado vai para
+  Concluído com a linha de prova, `blocked` vai para Bloqueado) e a máquina de estados por tipo de cartão (quem move, o que dispara).
+  A skill `trello` e o fim do `claude-plan-100.py aplicar` lembram de rodar a reconciliação.
+- Prova `simulated`: `.claude/trello/test_reconciliar.py` (17 passed, dados fictícios, sem rede). Prova `real` (06/10, central, API da
+  Central): Execução de 364 para 171 cartões e de 201 divergências para 10 (só listadas: sem estado no plano e "Espera você"),
+  Histórico de 265 para 446, Programa de 72 para 100 (marcos 33, 34 e 36, 16 decisões P-001 a P-015 e a de 05/10 15:13Z); segunda rodada
+  do script sem nenhuma ação de mover ou marcar. `not_run`: a reconciliação dentro da Central (hoje é script da sessão Canais).
+
+## 2026-10-06 — 31.90-D (painel): "Desfazer a última" na barra de gravação (branch feat/31-90-d-painel-desfazer)
+
+- Só frontend, contra o adendo v1.70 (`POST /api/training/{id}/undo`, já no deploy 43): a barra do Modo treinamento ganha o
+  botão "Desfazer a última", só no ramo da gravação de quem tem o controle (quem só olha e a gravação órfã não o veem).
+  Manda o `lease_id` e o `seq` da última entrada que a tela mostra; a resposta já é a sessão sem ela, e o número desfeito
+  é reaproveitado pela próxima entrada (nada se guarda por `seq`). O aparelho não volta, só a gravação, e o aviso diz isso.
+- Recusas (`entrada_mudou`, `control_required`, `nao_esta_gravando`, `sem_entrada`): o aviso mostra a mensagem do backend e a barra
+  relê a gravação, então a última passa a ser a de verdade; nada se apaga. Sem entrada ou sem lease o botão diz o motivo;
+  enquanto o desfazer corre, Concluir e Descartar explicam que esperam.
+- Prova `simulated`: `TrainingBar.test.tsx` (6 testes novos, fetch falso; 3 mutações pegas: `seq` fixo, sem reler na recusa,
+  sem o motivo no Concluir); frontend inteiro, typecheck e build com os números do commit. `real`: `not_run` (o percurso do deploy 43
+  provou a revisão, mas o desfazer da gravação viva ainda não foi exercitado no aparelho; depende de deploy com este painel).
+
+## 2026-10-06 — 31.112: a pergunta da IA guardada na proposta leva o marcador da persona (branch fix/31-112-pergunta-mascarada)
+
+- Achado da prova real do 31.87: `training_sessions.proposal` tinha o nome da persona em claro em `answers[].question`,
+  porque a troca do F2 não cobria `questions[]` nem `answers[].question` (31.91).
+- `dado_da_persona.nas_perguntas` (nova) troca o dado por palavra na pergunta e deixa a resposta da pessoa como está.
+  Roda ao guardar (`TrainingSkills.propose`, no corpo e na proposta nova, e `_preparar` do `save` e da prévia) e ao
+  mostrar (`TrainingRecorder.get` e `list`, por `variaveis_da_persona`, ligada em `state.py`). A forma das respostas
+  da API não muda.
+- Funções tocadas (K-095): `TrainingSkills.propose`, `TrainingSkills._preparar`, `TrainingRecorder.__init__`,
+  `TrainingRecorder.get`, `TrainingRecorder.list`, `TrainingRecorder._proposta_mascarada` (nova),
+  `dado_da_persona.nas_perguntas` (nova).
+- Prova `simulated`: `backend/tests/test_treino_pergunta_mascarada.py` (6; 5 reprovam sem a mudança). Real: `not_run`.
 
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
@@ -360,6 +434,13 @@ Da leitura do 31.78.
 
 - `PortaDoPlano.test.tsx` "mostra a validade dos sins do plano…" usava `2026-10-05T21:00Z` como instante futuro; às 21:00Z de hoje o sim passou a "vencido" e o teste falhou (determinístico, também em ramos que passavam antes). A validade agora é relativa ao relógio (6 h à frente; a renovação, 30 h).
 - Prova `simulated`: o arquivo sozinho, 22/22 em duas rodadas, em 05/10 depois das 21:00Z. Outras datas fixas próximas em testes (a conferir, sem mudança aqui): `ValidacaoTab.test.tsx` (`expira_em` em 06/10), `NovoPedido.test.tsx` (prazo em 09/10), `MetricasTab.test.tsx` (17/10).
+
+## 2026-10-06 — Deploy 45 (suíte 45: Trello reconciliado, ensinar a partir da falha, nomes trocados nos testes)
+
+- **Implantado** às 03:13Z (aparelhos readotados às 03:16Z): central em `7154d7cf`, migração `119_origem_do_treino_na_falha` (nova), 7 pontas sobre `6c03214f`. Itens: 31.111 F1+F2+F3 (ensinar correções a partir de uma execução que falhou, escolha do dono na P-014: `POST /api/training/from-run`, origem e contexto da falha, correção salva ligada à execução de origem e `GET /api/flows[].origin`, adendo v1.75), 31.112 (pergunta da IA guardada com o marcador), 31.90-D painel (botão "Desfazer a última"), 28.56/C-28 (reconciliação total do Trello nos três quadros a cada espelho e `aplicar`: `.claude/trello/reconciliar.py`), 29.137 e 30.82 (piloto do agente de nuvem do Copilot, PRs 462 e 463) e 31.101 (troca ampla de nomes nos testes, só testes).
+- Prova `real` (06/10, central WIN-7S2UASNLFOP): ensaio `deploy.ps1 -Ensaio` às 03:12Z com a cópia `dataackups61006-001227` restaurada (integridade ok, migração 118, 510 execuções, 16 perfis), que migrou a 119 e passou na integridade; deploy `-PularBackup` às 03:13Z; `GET /api/health` ok, commit `7154d7cf`, migração mais alta 119, `problems []`; prova de fora às 03:14Z como esperado (46 checagens; `/api/instances` 401 de fora e 403 com Host forjado); agente do notebook `0.1.0+7154d7c`, `agent_outdated false`; aparelhos 01, 03 e 06 online com automação `ready` (13 também), sem reinício a frio, reset ou login; hooks do 29.147 ok.
+- Prova `simulated` (suíte 45 sobre `7154d7cf`): `scripts/tests` 684 passed (119 com sha256); backend em SQLite 12120 passed e 13 skipped na ponta parcial `f8ea1275`, mais 5131 passed e 3 skipped nos 268 afetados; frontend 1739 passed e build; catracas 88 (backend) e 6 (scripts); docs-check 0; mypy 257 igual ao teto; PostgreSQL dirigido 352 arquivos em 2 partes, 7824 passed, 11 skipped e 0 falhas.
+- `not_run`: percurso no navegador (Portal, a seguir); prova real do 31.111 (F6, uma execução em aparelho de teste, depois deste deploy). Ficam para o corte 46: 31.111 F4 (Aprendizado) e F5 (Portal, `d52a9ee8`), 31.113 F1 (`80b22dbc`) e F2, 29.153 (PR 465) e a saída do `.claude/trello/mapa.json` do Git (estado por instalação, 28.56).
 
 ## 2026-10-06 — Deploy 44 (suíte 44: parecer versionado, fuso na inspeção, sombra da R5 e casamento do comando)
 

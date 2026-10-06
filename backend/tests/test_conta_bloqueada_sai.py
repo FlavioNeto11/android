@@ -34,8 +34,8 @@ __all__ = ["correio_registrado"]
 
 #: A janela que o `app.yaml` do Instagram declara como conta perdida (`atividades_de_conta_perdida`), como o dumpsys a dá.
 ATIVIDADE = "com.instagram.challenge.activity.ChallengeActivity"
-FELIPE = "felipe.teste01"
-LUCAS = "lucas.teste02"
+GILBERTO = "gilberto.teste01"
+TADEU = "tadeu.teste02"
 
 #: Tabelas FORA da varredura do "o @ não sobra": o histórico de execução fica intacto por decisão do dono (opção A do
 #: ADR-068: events, runs, steps, pending_approvals, social_interactions, ai_calls podem citar o @ em texto, e as provas
@@ -47,7 +47,7 @@ FORA_DA_VARREDURA = {"events", "runs", "steps", "pending_approvals", "social_int
 
 def _montar(tmp_path: Path) -> tuple[Any, Any, Any, str, str]:
     svc, repo, _pol, db = build(tmp_path)
-    return svc, repo, db, perfil(svc, FELIPE, "android-01"), perfil(svc, LUCAS, "android-02")
+    return svc, repo, db, perfil(svc, GILBERTO, "android-01"), perfil(svc, TADEU, "android-02")
 
 
 def _ancora(repo: Any, pid: str) -> str:
@@ -59,7 +59,7 @@ def _legada(db: Any, repo: Any, pid: str) -> str:
     ref = str(repo.credential_row(pid)["secret_ref"])
     db.execute("INSERT INTO instagram_credentials(profile_id, login_identifier, secret_ref, key_id, status,"
                " failed_attempts, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-               (pid, FELIPE, ref, "k", "active", 0, now_iso(), now_iso()))
+               (pid, GILBERTO, ref, "k", "active", 0, now_iso(), now_iso()))
     return ref
 
 
@@ -98,13 +98,13 @@ def test_retirada_apaga_credencial_conta_legada_e_o_ciphertext_e_a_persona_fica(
     ref = _legada(db, repo, pid)
     repo.set_account_session(pid, conta, "android-01", status=SessionStatus.session_ready, verified_at=now_iso())
     repo.mudar_status(pid, "blocked", origem="observado", autor="teste", evidencia="tela de verificação")
-    _memoria(db, pid, f"@{FELIPE.upper()}", f"{FELIPE} gosta de café; falou com a conta {conta}", "a")
+    _memoria(db, pid, f"@{GILBERTO.upper()}", f"{GILBERTO} gosta de café; falou com a conta {conta}", "a")
     _memoria(db, pid, "Ana", "treina para a maratona", "b")
     assert svc.secrets.exists(ref) and svc.instance_of(pid) == "android-01"
     chamadas: list[tuple[str, bool]] = []
     svc.ao_retirar_conta = lambda p, c, estava: chamadas.append((c, estava))
 
-    r = svc.retirar_conta_bloqueada(pid, conta, origem="declarado", autor="dono", evidencia=f"vi @{FELIPE} travada")
+    r = svc.retirar_conta_bloqueada(pid, conta, origem="declarado", autor="dono", evidencia=f"vi @{GILBERTO} travada")
 
     assert r["retirada"] and r["ancora"] and r["status_da_persona"] == "active"
     assert not svc.secrets.exists(ref)                                  # o CIPHERTEXT saiu do cofre
@@ -116,7 +116,7 @@ def test_retirada_apaga_credencial_conta_legada_e_o_ciphertext_e_a_persona_fica(
     assert pid in repo.list_persona_ids() and pid not in repo.list_profile_ids() and outro in repo.list_profile_ids()
     linha = repo.profile_row(pid)
     assert linha["username"] == "" and linha["status"] == "active" and linha["blocked_at"] is None
-    assert svc.get_profile(outro).username == LUCAS
+    assert svc.get_profile(outro).username == TADEU
     assert svc.repo.bindings_of_profile(pid) == []                      # o app do aparelho tem a conta bloqueada logada
     assert chamadas == [(conta, True)]                                  # o disjuntor de conta é acionado na hora
     assert [e["data"]["status"] for e in _eventos(db, "profile.status")][-1] == "active"
@@ -126,7 +126,7 @@ def test_retirada_apaga_credencial_conta_legada_e_o_ciphertext_e_a_persona_fica(
     assert mem["m-b"] == ("Ana", "treina para a maratona")
     ev = _eventos(db, "profile.account_retired")
     assert len(ev) == 1 and ev[0]["data"]["limpezas"] == {"memory_items": 1, "memory_items_de_outras_personas": 0}
-    assert FELIPE not in json.dumps(ev[0]).lower()                      # o @ não vai no evento
+    assert GILBERTO not in json.dumps(ev[0]).lower()                      # o @ não vai no evento
     assert ev[0]["data"]["account_id"] == conta                        # o id é a lápide, legível nas provas
 
 
@@ -157,13 +157,13 @@ def test_o_texto_do_arroba_nao_sobra_e_so_o_hash_fica_na_lapide(tmp_path: Path) 
     svc, repo, db, pid, _ = _montar(tmp_path)
     conta = _ancora(repo, pid)
     _legada(db, repo, pid)
-    _memoria(db, pid, FELIPE, f"visto em @{FELIPE}", "a")
-    assert _texto_em_tabelas(db, FELIPE), "sanidade: antes da retirada o @ está nas tabelas"
+    _memoria(db, pid, GILBERTO, f"visto em @{GILBERTO}", "a")
+    assert _texto_em_tabelas(db, GILBERTO), "sanidade: antes da retirada o @ está nas tabelas"
     svc.retirar_conta_bloqueada(pid, conta, autor="dono")
-    assert _texto_em_tabelas(db, FELIPE) == []
+    assert _texto_em_tabelas(db, GILBERTO) == []
     assert _texto_em_tabelas(db, conta) == []
-    esperado = hash_do_handle(f"@{FELIPE}")
-    assert esperado == hash_do_handle(f"  {FELIPE.upper()} ")                # normalizado: caixa, @ e espaços
+    esperado = hash_do_handle(f"@{GILBERTO}")
+    assert esperado == hash_do_handle(f"  {GILBERTO.upper()} ")                # normalizado: caixa, @ e espaços
     assert [(r["handle_sha256"], r["profile_id"]) for r in db.query("SELECT * FROM contas_retiradas")] == [
         (esperado, pid)]
 
@@ -198,17 +198,17 @@ def test_eh_conta_nossa_vale_para_viva_e_para_a_retirada_e_o_filtro_de_terceiro_
     svc, repo, db, pid, outro = _montar(tmp_path)
     policies = PolicyEngine(repo, lambda: _Frota(curtidas=3))
     follow = capability_of(IG, "FOLLOW")
-    assert eh_conta_nossa(db, FELIPE) and eh_conta_nossa(db, f"@{LUCAS.upper()}")        # vivas
+    assert eh_conta_nossa(db, GILBERTO) and eh_conta_nossa(db, f"@{TADEU.upper()}")        # vivas
     assert not eh_conta_nossa(db, "alguem.de.fora") and not eh_conta_nossa(db, "") and not eh_conta_nossa(db, None)
-    # Viva: desde a emenda do ADR-050 (29.28) a persona do Lucas PODE agir sobre uma conta nossa viva (passa pelas demais
+    # Viva: desde a emenda do ADR-050 (29.28) a persona do Tadeu PODE agir sobre uma conta nossa viva (passa pelas demais
     # regras; o ritmo baixo entre gestos está em `test_interacao_entre_contas_nossas.py`).
-    assert policies.check(outro, follow, counterparty=f"@{FELIPE}").allowed
+    assert policies.check(outro, follow, counterparty=f"@{GILBERTO}").allowed
     assert policies.check(outro, follow, counterparty="@alguem.de.fora").allowed
 
     svc.retirar_conta_bloqueada(pid, _ancora(repo, pid))
 
-    assert eh_conta_nossa(db, FELIPE) and eh_conta_nossa(db, f"@{FELIPE}") and eh_conta_nossa(db, FELIPE.upper())
-    depois = policies.check(outro, follow, counterparty=f"@{FELIPE.title()}")             # o filtro real do produto
+    assert eh_conta_nossa(db, GILBERTO) and eh_conta_nossa(db, f"@{GILBERTO}") and eh_conta_nossa(db, GILBERTO.upper())
+    depois = policies.check(outro, follow, counterparty=f"@{GILBERTO.title()}")             # o filtro real do produto
     assert not depois.allowed and depois.retry_at is None and "retirada" in depois.reason      # retirada segue recusada
     assert policies.check(outro, follow, counterparty="@alguem.de.fora").allowed
 
@@ -235,7 +235,7 @@ def test_limpeza_registrada_e_chamada_com_os_argumentos_e_as_contagens_entram_no
     svc.limpezas_ao_retirar.append(lambda banco, **kw: {"rastro_do_aprendizado": 2, "outra": 1})
     r = svc.retirar_conta_bloqueada(pid, conta)
     assert len(vistas) == 1 and set(vistas[0]) == {"profile_id", "account_id", "handle", "app_id"}
-    assert vistas[0]["profile_id"] == pid and vistas[0]["account_id"] == conta and vistas[0]["handle"] == FELIPE
+    assert vistas[0]["profile_id"] == pid and vistas[0]["account_id"] == conta and vistas[0]["handle"] == GILBERTO
     assert r["limpezas"] == {"rastro_do_aprendizado": 5, "outra": 1, "memory_items": 0,
                             "memory_items_de_outras_personas": 0}
     assert _eventos(db, "profile.account_retired")[0]["data"]["limpezas"] == r["limpezas"]
@@ -246,7 +246,7 @@ def test_limpeza_que_levanta_erro_desfaz_a_retirada_inteira(tmp_path: Path) -> N
     conta = _ancora(repo, pid)
     ref = _legada(db, repo, pid)
     repo.mudar_status(pid, "blocked", origem="observado", autor="teste")
-    _memoria(db, pid, FELIPE, f"visto em @{FELIPE}", "a")
+    _memoria(db, pid, GILBERTO, f"visto em @{GILBERTO}", "a")
 
     def quebra(banco: Any, **kw: Any) -> dict[str, int]:
         raise RuntimeError("limpeza com defeito")
@@ -259,8 +259,8 @@ def test_limpeza_que_levanta_erro_desfaz_a_retirada_inteira(tmp_path: Path) -> N
     assert db.scalar("SELECT COUNT(*) FROM account_credentials WHERE account_id=?", (conta,)) == 1
     assert db.scalar("SELECT COUNT(*) FROM instagram_credentials WHERE profile_id=?", (pid,)) == 1
     assert repo.account_row(pid, conta) is not None
-    assert repo.profile_row(pid)["username"] == FELIPE and repo.profile_row(pid)["status"] == "blocked"
-    assert db.scalar("SELECT content FROM memory_items WHERE id='m-a'") == f"visto em @{FELIPE}"
+    assert repo.profile_row(pid)["username"] == GILBERTO and repo.profile_row(pid)["status"] == "blocked"
+    assert db.scalar("SELECT content FROM memory_items WHERE id='m-a'") == f"visto em @{GILBERTO}"
     assert db.scalar("SELECT COUNT(*) FROM contas_retiradas") == 0 and not repo.bindings_of_profile(pid) == []
     assert _eventos(db, "profile.account_retired") == []
 
@@ -426,7 +426,7 @@ async def test_costura_o_appstate_liga_o_esquecer_conta_do_aprendizado_na_retira
 async def test_persona_sem_conta_e_aceita_e_roteada_para_automacao_sem_conta(harness: Harness) -> None:
     s = estado(harness)
     pid = s.social.create_profile(__import__("app.modules.identity.presentation.schemas", fromlist=["ProfileCreate"])
-                                  .ProfileCreate(username="beatriz.teste03", password="Senha#Falsa1",
+                                  .ProfileCreate(username="sueli.teste03", password="Senha#Falsa1",
                                                  instance_id="android-02")).id
     s.social.retirar_conta_bloqueada(pid, str(s.social_repo.conta_ancora(pid)["id"]), autor="dono")
     assert s.social_repo.profile_row(pid)["username"] == "" and s.social_repo.bindings_of_profile(pid) == []
@@ -487,8 +487,8 @@ def test_responder_a_terceiro_num_post_nosso_segue_permitido_e_conta_retirada_se
     responder = capability_of(IG, "REPLY_COMMENT")
     assert policies.check(pid, responder, counterparty="@terceiro.qualquer").allowed
     svc.retirar_conta_bloqueada(outro, _ancora(repo, outro))
-    # Conta nossa APOSENTADA (lucas, retirado agora) continua recusada para qualquer ação com efeito; a VIVA (felipe) passa a
+    # Conta nossa APOSENTADA (tadeu, retirado agora) continua recusada para qualquer ação com efeito; a VIVA (gilberto) passa a
     # poder receber a interação de outra conta nossa (29.28, emenda do ADR-050).
-    assert not policies.check(pid, responder, counterparty=f"@{LUCAS}").allowed
-    assert not policies.check(pid, capability_of(IG, "FOLLOW"), counterparty=f"@{LUCAS}").allowed
-    assert policies.check(outro, responder, counterparty=f"@{FELIPE}").allowed
+    assert not policies.check(pid, responder, counterparty=f"@{TADEU}").allowed
+    assert not policies.check(pid, capability_of(IG, "FOLLOW"), counterparty=f"@{TADEU}").allowed
+    assert policies.check(outro, responder, counterparty=f"@{GILBERTO}").allowed

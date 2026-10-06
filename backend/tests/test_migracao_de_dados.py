@@ -28,7 +28,7 @@ def semear(db: Database) -> None:
     for i in (1, 2):
         # Uma persona por perfil: `instagram_profiles.persona_id` é UNIQUE (o vínculo é 1 para 1).
         db.execute("INSERT INTO personas(id, name, summary, created_at, updated_at) VALUES (?,?,?,?,?)",
-                   (f"per-{i}", f"Mariana {i}", "gosta de São Paulo", AGORA, AGORA))
+                   (f"per-{i}", f"Luciana {i}", "gosta de São Paulo", AGORA, AGORA))
         db.execute("INSERT INTO instagram_profiles(id, username, persona_id, created_at, updated_at)"
                    " VALUES (?,?,?,?,?)", (f"prof-{i}", f"perfil.teste{i}", f"per-{i}", AGORA, AGORA))
     db.execute("INSERT INTO secrets(ref, key_id, nonce, ciphertext, created_at, updated_at) VALUES (?,?,?,?,?,?)",

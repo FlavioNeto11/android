@@ -28,7 +28,7 @@ from app.planning.decisao_fechada.curador import (CAMPOS, CAMPOS_DE_SINAL, CAMPO
 
 AGORA = datetime(2026, 10, 3, 18, 0, tzinfo=UTC)
 HASH = "b" * 64
-NOME = "Lucas Girassol"                  # nome de pessoa: nunca pode sair
+NOME = "Tadeu Girassol"                  # nome de pessoa: nunca pode sair
 TEXTO = "texto livre escrito por alguém"
 
 #: (b) A lista exata, escrita à mão aqui: mudar a privacidade exige mudar este teste, num diff que se veja.

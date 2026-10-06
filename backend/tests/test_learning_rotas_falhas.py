@@ -124,7 +124,7 @@ async def test_backlog_get_e_patch(mundo: Mundo, cliente: httpx.AsyncClient) -> 
     assert (await cliente.patch(rota, json={"state": "reopened"})).status_code == 409
     assert (await cliente.patch(rota, json={"state": "fixed_pending_proof"})).status_code == 422
     assert (await cliente.patch(rota, json={"state": "planned", "x": 1})).status_code == 422
-    segredo = await cliente.patch(rota, json={"state": "triaged", "notes": "a senha do lucas é hunter2"})
+    segredo = await cliente.patch(rota, json={"state": "triaged", "notes": "a senha do tadeu é hunter2"})
     assert segredo.status_code == 409 and segredo.json()["detail"]["code"] == "note_looks_secret"
     assert mundo.db.scalar("SELECT COUNT(*) FROM learning_backlog") == 0
     assert (await cliente.patch("/api/aprendizado/backlog/fk-0000000000", json={"state": "triaged"})).status_code == 404

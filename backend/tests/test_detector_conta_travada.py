@@ -2,7 +2,7 @@
 
 Decisão do dono (29/09/2026): "toda vez que para na tela de confirmar se você é humano é uma confirmação que a conta
 está bloqueada; essa é uma das formas de perder a conta". Cinco das oito contas do Instagram estão bloqueadas
-(beatriz, felipe, juliana, mariana, thiago). Os buracos que deixavam a regra sem efeito:
+(sueli, gilberto, fabiana, luciana, osvaldo). Os buracos que deixavam a regra sem efeito:
 
 1. No meio de uma etapa, "Confirm you’re human" só contava como desafio se a tela tivesse campo de texto
    (`hierarchy.parse_hierarchy`); sem campo, decidiam a receita e o ator — e o ator era instruído a dispensar
@@ -13,8 +13,8 @@ está bloqueada; essa é uma das formas de perder a conta". Cinco das oito conta
    tipográfico (U+2019) em idioma nenhum: tela "desconhecida" → o motor tocava a dispensa e voltava.
 4. O tipo e o trecho que casaram eram calculados e descartados.
 
-E a outra metade da decisão: código de login por e-mail/2FA é "precisa de pessoa", SEM bloquear o perfil — bruno e
-andre passaram por isso em 18/09 e estão vivos.
+E a outra metade da decisão: código de login por e-mail/2FA é "precisa de pessoa", SEM bloquear o perfil — quillon e
+ottilie passaram por isso em 18/09 e estão vivos.
 
 Nível de prova: `simulated` — o parser de hierarquia de verdade, o motor de sessão com o `FakeInstagram`, e o Harness
 (porta base 5640) com o `FakeInstagram` e um ator por regras. A prova `real` numa conta travada fica `not_run`.
@@ -373,7 +373,7 @@ def test_trava_e_codigo_na_mesma_tela_sao_conta_travada() -> None:
 
 
 async def test_codigo_de_login_depois_do_envio_pede_pessoa_sem_bloquear(tmp_path: Path) -> None:
-    """Decisão (b): o código de login por e-mail/2FA é da pessoa, mas NÃO é conta travada — bruno e andre passaram por
+    """Decisão (b): o código de login por e-mail/2FA é da pessoa, mas NÃO é conta travada — quillon e ottilie passaram por
     ele em 18/09 e seguem vivos. A tentativa registra o tipo e o trecho."""
     app = FakeInstagram(stored_password=SENHA, two_factor_on_login=True)
     auth, repo, social, db = build(tmp_path, app)

@@ -19,7 +19,7 @@ from app.modules.identity.domain.available_data import (AccountRecord, account_d
 if TYPE_CHECKING:
     from .conftest import Harness
 
-EMAIL = "lucas.login@exemplo.test"
+EMAIL = "tadeu.login@exemplo.test"
 
 
 def _conta(app_id: str, *, handle: str, login: str | None, managed: bool, credencial: bool = True,
@@ -32,9 +32,9 @@ def _conta(app_id: str, *, handle: str, login: str | None, managed: bool, creden
 
 
 def test_login_gerenciado_entrega_o_handle_e_nunca_o_email() -> None:
-    ig = _conta("instagram", handle="lucas.teste", login=EMAIL, managed=True)
+    ig = _conta("instagram", handle="tadeu.teste", login=EMAIL, managed=True)
     valores = profile_variables(None, [ig])
-    assert valores == {"conta_instagram_usuario": "lucas.teste"}
+    assert valores == {"conta_instagram_usuario": "tadeu.teste"}
     assert EMAIL not in repr(valores) and EMAIL not in repr(available_data(None, [ig]))
     # A senha do app gerenciado continua fora do modelo (ADR-040): só o usuário é dado disponível.
     assert [d.name for d in account_data([ig])] == ["conta_instagram_usuario"]
@@ -47,9 +47,9 @@ def test_login_gerenciado_sem_handle_nao_oferece_variavel() -> None:
 
 
 def test_contraprova_login_por_formulario_segue_com_o_identificador() -> None:
-    chrome = _conta("chrome", handle="Portal do Lucas", login="lucas.portal", managed=False, host="portal.exemplo.test")
+    chrome = _conta("chrome", handle="Portal do Tadeu", login="tadeu.portal", managed=False, host="portal.exemplo.test")
     valores = profile_variables(None, [chrome])
-    assert valores == {"conta_chrome_portal_exemplo_test_usuario": "lucas.portal"}
+    assert valores == {"conta_chrome_portal_exemplo_test_usuario": "tadeu.portal"}
     nomes = [d.name for d in account_data([chrome])]
     assert nomes == ["conta_chrome_portal_exemplo_test_usuario", "conta_chrome_portal_exemplo_test_senha"]
     # Os nomes das variáveis seguem os mesmos para o canal sensível (a contagem de colisões é a do `account_data`).
@@ -59,8 +59,8 @@ def test_contraprova_login_por_formulario_segue_com_o_identificador() -> None:
 def test_os_nomes_nao_mudam_entre_apps_com_e_sem_handle() -> None:
     """Gerenciado sem handle some da lista sem empurrar o nome de quem vem depois (a colisão conta igual)."""
     ig = _conta("instagram", handle="", login=EMAIL, managed=True, credencial=False)
-    chrome = _conta("chrome", handle="", login="lucas.portal", managed=False)
-    assert profile_variables(None, [ig, chrome]) == {"conta_chrome_usuario": "lucas.portal"}
+    chrome = _conta("chrome", handle="", login="tadeu.portal", managed=False)
+    assert profile_variables(None, [ig, chrome]) == {"conta_chrome_usuario": "tadeu.portal"}
     assert resolve_secret([ig, chrome], "conta_chrome_senha").secret is not None
 
 
@@ -74,7 +74,7 @@ def test_a_materializacao_e_o_planejador_veem_o_mesmo_valor_do_instagram(harness
 
     st = harness.state
     assert st is not None
-    pid = st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01", first_name="Lucas",
+    pid = st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id="android-01", first_name="Tadeu",
                                                  last_name="Teste")).id
     conta = st.social_repo.conta_ancora(pid)
     assert conta is not None and conta["app_id"] == "instagram"
@@ -83,7 +83,7 @@ def test_a_materializacao_e_o_planejador_veem_o_mesmo_valor_do_instagram(harness
 
     da_materializacao = st.repo._variaveis_da_persona(pid)                      # noqa: SLF001
     do_planejador = profile_variables_do_servico(st, pid)
-    assert da_materializacao["conta_instagram_usuario"] == "lucas.teste"
+    assert da_materializacao["conta_instagram_usuario"] == "tadeu.teste"
     assert da_materializacao == do_planejador
     assert EMAIL not in repr(da_materializacao)
 

@@ -349,16 +349,16 @@ def test_gesto_e_um_sinal_por_evento_e_o_primeiro_autor_fica(db: Database) -> No
     gesto = {"kind": SignalKind.TOMOU_CONTROLE, "source_ref": "takeover:r1:s1:a1", "verdict": None, "reason": None}
     primeiro = r.registrar_sinal(_sinal(**gesto, created_by="Ana Ribeiro"), um_por_evento=True)
     assert primeiro is not None
-    assert r.registrar_sinal(_sinal(**gesto, created_by="Bruno Lima"), um_por_evento=True) is None
+    assert r.registrar_sinal(_sinal(**gesto, created_by="Quillon Lima"), um_por_evento=True) is None
     assert r.registrar_sinal(_sinal(**gesto, created_by="Ana Ribeiro"), um_por_evento=True) is None
     assert db.query("SELECT id, created_by FROM learning_signals WHERE kind='tomou_controle'") == [
         {"id": primeiro, "created_by": "Ana Ribeiro"}]
     # outro evento (outra tentativa) é outra linha, de quem quer que seja
-    assert r.registrar_sinal(_sinal(**{**gesto, "source_ref": "takeover:r1:s1:a2"}, created_by="Bruno Lima"),
+    assert r.registrar_sinal(_sinal(**{**gesto, "source_ref": "takeover:r1:s1:a2"}, created_by="Quillon Lima"),
                              um_por_evento=True) is not None
     # o voto (sem a opção): duas pessoas no mesmo item são duas opiniões
     assert r.registrar_sinal(_sinal(created_by="Ana Ribeiro")) is not None
-    assert r.registrar_sinal(_sinal(created_by="Bruno Lima")) is not None
+    assert r.registrar_sinal(_sinal(created_by="Quillon Lima")) is not None
     assert db.scalar("SELECT COUNT(*) FROM learning_signals") == 4
 
 

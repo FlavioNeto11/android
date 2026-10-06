@@ -100,6 +100,7 @@ import type {
   TrainingSaveResult,
   TrainingFromRunBody,
   TrainingSession,
+  TrainingUndoResult,
   SkillSummary,
   SkillState,
   SkillVersionDetail,
@@ -764,6 +765,9 @@ export const api = {
     request<TrainingSession>('POST', `/training/${enc(id)}/discard`, leaseId ? { body: { lease_id: leaseId } } : {}),
   /** Adendo v1.75: abre o treino já ligado à etapa que falhou (`failed`/`uncertain`). Só quem está com o controle abre. */
   startTrainingFromRun: (body: TrainingFromRunBody) => request<TrainingSession>('POST', '/training/from-run', { body }),
+  /** Adendo v1.70: tira a ÚLTIMA entrada da gravação viva. `seq` é a que a pessoa viu como última: se outra chegou, 409 `entrada_mudou`. */
+  undoTraining: (id: string, leaseId: string, seq: number) =>
+    request<TrainingUndoResult>('POST', `/training/${enc(id)}/undo`, { body: { lease_id: leaseId, seq } }),
   /** Adendo v1.63: com `answers`, a IA propõe de novo levando as respostas da pessoa; sem elas, o corpo não vai (igual a antes). */
   proposeTraining: (id: string, answers?: TrainingAnswer[]) =>
     request<TrainingSession>('POST', `/training/${enc(id)}/propose`, answers?.length ? { body: { answers } } : {}),

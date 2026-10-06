@@ -48,7 +48,7 @@ from .fake_skills import banco, perfil
 
 AGORA = datetime(2026, 9, 29, 12, 0, tzinfo=UTC)
 PACOTE = "com.instagram.android"
-ANDRE, BIA = "p-andre", "p-bia"
+OTTILIE, BIA = "p-ottilie", "p-bia"
 DONO = "flavio"
 
 
@@ -64,7 +64,7 @@ class Mundo:
 
     def __post_init__(self) -> None:
         self.db.execute("INSERT INTO apps(id, name, package, builtin) VALUES ('instagram','Instagram',?,0)", (PACOTE,))
-        perfil(self.db, ANDRE)
+        perfil(self.db, OTTILIE)
         perfil(self.db, BIA)
         # O relógio do livro é o mesmo `AGORA` das aprovações semeadas: a publicação (`state_at`) é o marco da medida.
         repo = SqlLearningRepository(self.db, precos=dict, clock=lambda: to_iso(AGORA))
@@ -77,7 +77,7 @@ class Mundo:
     def modo(self, modo: Modo) -> None:
         self.ajustes[0] = Ajustes(modo_voz=modo)
 
-    def aprovacao(self, *, perfil_id: str = ANDRE, acao: str = "send_dm", status: str = "edited",
+    def aprovacao(self, *, perfil_id: str = OTTILIE, acao: str = "send_dm", status: str = "edited",
                   gerado: str | None = "Oi @ana.souza, bom dia! Tudo certo por aí?",
                   editado: str | None = "E aí @ana.souza, bom dia!! Saudade de você", alvo: str | None = "@ana.souza",
                   simulado: bool = False, criada: timedelta = timedelta(hours=-2),
@@ -143,7 +143,7 @@ def test_editada_vira_candidata_com_efeito_e_so_o_dono_publica(mundo: Mundo) -> 
     [voz] = mundo.vozes()
     assert voz.state is SkillState.CANDIDATE and voz.side_effect and voz.human_origin and voz.requires_owner
     assert (voz.escopo.profile_id, voz.escopo.capability, voz.escopo.app, voz.escopo.role) == (
-        ANDRE, "send_dm", PACOTE, "writer")
+        OTTILIE, "send_dm", PACOTE, "writer")
     assert voz.content["gerado"] == "Oi {alvo}, bom dia! Tudo certo por aí?"
     assert voz.content["editado"] == "E aí {alvo}, bom dia!! Saudade de você"
     assert voz.provenance["approval_id"] == aid
@@ -222,7 +222,7 @@ def test_recusa_de_segredo(mundo: Mundo) -> None:
 
 
 # ------------------------------------------------------------------ consumo: o bloco
-def _publicadas(mundo: Mundo, *editados: str, perfil_id: str = ANDRE, acao: str = "send_dm") -> list[str]:
+def _publicadas(mundo: Mundo, *editados: str, perfil_id: str = OTTILIE, acao: str = "send_dm") -> list[str]:
     for texto in editados:
         mundo.aprovacao(perfil_id=perfil_id, acao=acao, editado=texto)
     mundo.voz.executar(AGORA)
@@ -236,17 +236,17 @@ def _publicadas(mundo: Mundo, *editados: str, perfil_id: str = ANDRE, acao: str 
 def test_bloco_so_do_mesmo_perfil_e_acao_com_ate_2_pares_e_150_tokens(mundo: Mundo) -> None:
     _publicadas(mundo, "E aí, bom dia!!", "Bom diaaa, saudade", "Opa, tudo joia? bom dia")
     _publicadas(mundo, "Texto da Bia para DM", perfil_id=BIA)
-    _publicadas(mundo, "Comentário do André", acao="comment")
-    assert mundo.voz.bloco(ANDRE, "send_dm") == ""                  # modo shadow: grava e mede, não vai ao prompt
+    _publicadas(mundo, "Comentário do Ravenna", acao="comment")
+    assert mundo.voz.bloco(OTTILIE, "send_dm") == ""                  # modo shadow: grava e mede, não vai ao prompt
     mundo.modo(Modo.ON)
-    bloco = mundo.voz.bloco(ANDRE, "send_dm")
+    bloco = mundo.voz.bloco(OTTILIE, "send_dm")
     assert bloco.startswith('<exemplos_de_voz origem="pessoa"') and bloco.endswith("</exemplos_de_voz>")
     pares = [linha for linha in bloco.splitlines() if linha.startswith("- ")]
     assert 1 <= len(pares) <= 2
     assert sum(estimar_tokens(p) for p in pares) <= 150
     assert "Bia" not in bloco and "Comentário" not in bloco        # nunca outro perfil, nunca outra ação
     mundo.ajustes[0] = Ajustes(enabled=False, modo_voz=Modo.ON)     # `aprendizado.enabled: false` desliga tudo
-    assert mundo.voz.bloco(ANDRE, "send_dm") == ""
+    assert mundo.voz.bloco(OTTILIE, "send_dm") == ""
     mundo.modo(Modo.ON)
     assert "Texto da Bia" in mundo.voz.bloco(BIA, "send_dm") and mundo.voz.bloco(BIA, "comment") == ""
     # Textos longos: o que não cabe fica de fora inteiro (nunca cortado no meio).
@@ -264,23 +264,23 @@ def test_o_contexto_social_leva_o_bloco_so_da_acao_e_do_perfil(mundo: Mundo) -> 
     repo = SocialRepository(mundo.db)
     contextos = SocialContextBuilder(repo, MemoryStore(repo))
     planejador = SkillRunPlanner(_SemCandidatos(), lambda app_id: None)
-    sem_voz = contextos.build(ANDRE, capability="send_dm", touch=False).rendered
+    sem_voz = contextos.build(OTTILIE, capability="send_dm", touch=False).rendered
     assert "preference" not in planejador.stages
     pendurar(mundo.servico, mundo.db, contextos=contextos, planejador=planejador)
     pendurar(mundo.servico, mundo.db, contextos=contextos, planejador=planejador)   # de novo: não duplica o passo
     assert planejador.stages == ("template", "typed", "semantic", "preference", "llm")
-    com_voz = contextos.build(ANDRE, capability="send_dm", touch=False).rendered
+    com_voz = contextos.build(OTTILIE, capability="send_dm", touch=False).rendered
     assert "<exemplos_de_voz" not in sem_voz and "Saudade" in com_voz
     assert com_voz.index("</persona>") < com_voz.index("<exemplos_de_voz")   # logo depois de quem a pessoa é
-    assert "<exemplos_de_voz" not in contextos.build(ANDRE, touch=False).rendered           # sem ação, sem voz
-    assert "<exemplos_de_voz" not in contextos.build(ANDRE, capability="comment", touch=False).rendered
+    assert "<exemplos_de_voz" not in contextos.build(OTTILIE, touch=False).rendered           # sem ação, sem voz
+    assert "<exemplos_de_voz" not in contextos.build(OTTILIE, capability="comment", touch=False).rendered
     assert "<exemplos_de_voz" not in contextos.build(BIA, capability="send_dm", touch=False).rendered
     # Os passos da curadoria estão registrados (uma vez só) e rodam no curar(); a voz que falha nunca derruba a escrita.
     feito = mundo.servico.curar()
     assert {"voz", "preferencias"} <= set(feito.feito) and not feito.falhas
     assert [p.nome for p in mundo.servico._passos].count("voz") == 1                      # noqa: SLF001
     contextos.voz = _VozQuebrada()
-    assert "<exemplos_de_voz" not in contextos.build(ANDRE, capability="send_dm", touch=False).rendered
+    assert "<exemplos_de_voz" not in contextos.build(OTTILIE, capability="send_dm", touch=False).rendered
 
 
 class _SemCandidatos:
@@ -349,16 +349,16 @@ async def cliente(mundo: Mundo) -> AsyncIterator[httpx.AsyncClient]:
 
 
 async def test_previa_da_voz_sem_ia(mundo: Mundo, cliente: httpx.AsyncClient) -> None:
-    r = await cliente.get("/api/aprendizado/voz/previa", params={"profile_id": ANDRE})
+    r = await cliente.get("/api/aprendizado/voz/previa", params={"profile_id": OTTILIE})
     assert r.status_code == 200, r.text
     corpo = r.json()
     assert (corpo["profile_id"], corpo["aprovacoes_editadas"], corpo["candidatas"], corpo["publicadas"]) == (
-        ANDRE, 0, 0, 0)
+        OTTILIE, 0, 0, 0)
     assert corpo["blocos"] == [] and "nenhuma aprovação editada" in corpo["mensagem"].lower()
     assert (await cliente.get("/api/aprendizado/voz/previa", params={"profile_id": "p-nao-existe"})).status_code == 404
     assert (await cliente.get("/api/aprendizado/voz/previa")).status_code == 422
     _publicadas(mundo, "E aí, bom dia!!")
-    corpo = (await cliente.get("/api/aprendizado/voz/previa", params={"profile_id": ANDRE})).json()
+    corpo = (await cliente.get("/api/aprendizado/voz/previa", params={"profile_id": OTTILIE})).json()
     assert (corpo["aprovacoes_editadas"], corpo["publicadas"], corpo["modo"], corpo["vai_ao_prompt"]) == (
         1, 1, "shadow", False)
     [bloco] = corpo["blocos"]

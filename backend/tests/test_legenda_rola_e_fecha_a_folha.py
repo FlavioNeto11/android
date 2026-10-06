@@ -59,7 +59,7 @@ def test_as_arvores_reais_nao_trazem_dado_de_persona() -> None:
     for arquivo in FIXTURES.glob("*.json"):
         texto = arquivo.read_text(encoding="utf-8")
         assert "@" not in texto.replace("@2131955697", ""), arquivo.name      # o desc sem resolver do fundo, só
-        for fora in ("Seduce", "Drake", "God's Plan", "Carvalho", "Andr"):       # música sugerida e conta do 13
+        for fora in ("Seduce", "Drake", "God's Plan", "Sampaio", "Andr"):       # música sugerida e conta do 13
             assert fora not in texto, (arquivo.name, fora)
 
 

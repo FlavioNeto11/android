@@ -650,7 +650,7 @@ async def test_convergencia_verifica_com_vazamento_e_libera_a_tarefa(parque: Har
                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
     st = parque.state
     assert st is not None
-    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01"))
+    st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id="android-01"))
     exigidos = rede.apps_exigidos(st, "android-01")
     assert INSTAGRAM in exigidos
     ap, reinicios = _preparar_sonda(parque, monkeypatch)
@@ -711,7 +711,7 @@ async def test_app_parado_nao_segura_o_parcial_e_o_trafego_seguinte_tira_a_ressa
     tarefa. Quando o app trafega numa janela seguinte, a medição o reavalia e a ressalva sai sozinha."""
     st = parque.state
     assert st is not None
-    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01"))
+    st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id="android-01"))
     exigidos = rede.apps_exigidos(st, "android-01")
     ap, _ = _preparar_sonda(parque, monkeypatch, policy="exigida")
     for i, pkg in enumerate(exigidos):
@@ -745,7 +745,7 @@ async def test_nenhum_app_trafegou_segura_o_parcial_e_a_tarefa_segurada_abre_o_a
     como antes do 29.44."""
     st = parque.state
     assert st is not None
-    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01"))
+    st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id="android-01"))
     exigidos = rede.apps_exigidos(st, "android-01")
     ap, _ = _preparar_sonda(parque, monkeypatch, policy="exigida")
     for i, pkg in enumerate(exigidos):
@@ -899,7 +899,7 @@ async def test_parcial_so_de_app_parado_nao_dispensa_a_medicao(parque: Harness,
 
     st = parque.state
     assert st is not None
-    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01"))
+    st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id="android-01"))
     ap, _ = _preparar_sonda(parque, monkeypatch)
     for i, pkg in enumerate(rede.apps_exigidos(st, "android-01")):
         ap.uids.setdefault(pkg, 10300 + i)

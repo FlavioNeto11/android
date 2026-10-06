@@ -165,8 +165,8 @@ async def test_nova_tentativa_conta_consulta_reproducao_e_retorno_por_tentativa(
 
     encontradas = metricas.valor("receita.consulta", resultado="encontrada")
     reproducoes = metricas.total("receita.reproducao")
-    # n etapas elegíveis, uma delas com 2 tentativas: n+1 consultas "encontrada" e n+1 vereditos de reprodução — as
-    # duas tentativas de `open_conversation` divergiram (a receita segue quebrada na 2ª) e as outras n-1 reproduziram
+    # n etapas elegíveis, uma delas com 2 tentativas: n+1 consultas "encontrada" e n+1 vereditos de reprodução — a 1ª
+    # tentativa de `open_conversation` divergiu, a 2ª não se aplicou, e as outras n-1 reproduziram
     assert encontradas == n + 1 == reproducoes, (encontradas, reproducoes, n, tentativas)
     # a 1ª tentativa (em `retry`) conta `divergiu`, como antes; a 2ª, comprovada pela IA depois da divergência na
     # ação 1, é `nao_aplicavel` (30.80)

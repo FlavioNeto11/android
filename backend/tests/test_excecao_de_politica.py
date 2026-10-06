@@ -26,7 +26,7 @@ from .test_protecao_de_frota import _execucao_em_duas_contas, _fez, _frota, _por
 from .test_alvo_por_legenda import por_posicao  # noqa: F401 - fixture do Instagram falso (ponta a ponta)
 
 #: O alvo da exceção é uma conta NOSSA (a do 31.26 é a DM entre duas contas nossas). Perfil sem aparelho.
-ALVO = "@nossa.alvo91182"
+ALVO = "@nossa.alvo40517"
 #: Hora sem segundos: "19:02:26Z" cai na triagem de nota (formato de par chave:valor) e a rota recusa com 409.
 AUTORIZACAO = "dono pelo Telegram em 04/10 às 19:02 UTC, entrada 1189"
 
@@ -51,14 +51,14 @@ def _criar(excecoes: ExcecoesDePolitica, pid: str, *, acao: str = "SEND_MESSAGE"
 
 def test_sem_excecao_recusa_e_com_ela_pede_aprovacao_nunca_autonomo(tmp_path: Path) -> None:
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent, ALVO)
     dm = capability_of(IG, "SEND_MESSAGE")
-    antes = policies.check(contas["mariana"], dm, run_id="r-2", counterparty=ALVO, step_id="r-2:x")
+    antes = policies.check(contas["luciana"], dm, run_id="r-2", counterparty=ALVO, step_id="r-2:x")
     assert not antes.allowed and antes.retry_at is None and antes.excecao is None
     excecoes, eventos = _excecoes(repo)
-    exc = _criar(excecoes, contas["mariana"])
+    exc = _criar(excecoes, contas["luciana"])
     assert [t for t, _ in eventos] == ["politica.excecao_criada"]
-    veredito = policies.check(contas["mariana"], dm, run_id="r-2", counterparty="Nossa.Alvo91182", step_id="r-2:x")
+    veredito = policies.check(contas["luciana"], dm, run_id="r-2", counterparty="Nossa.Alvo40517", step_id="r-2:x")
     assert veredito.allowed and veredito.needs_approval and veredito.policy == "approval_required"
     assert veredito.excecao == exc and "30.65" in veredito.reason and "30 dias" in veredito.reason
 
@@ -67,16 +67,16 @@ def test_o_cartao_diz_quem_criou_e_so_atesta_o_dono_com_sessao(tmp_path: Path) -
     """Revisão do #309, item 1: sem sessão (o loopback aceita), o cartão diz quem criou e quando e cita a autorização
     como texto; "autorizada pelo dono" só quando quem criou era operador com sessão."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent, ALVO)
     excecoes, _ = _excecoes(repo)
     dm = capability_of(IG, "SEND_MESSAGE")
-    sem_sessao = _criar(excecoes, contas["mariana"])
-    motivo = policies.check(contas["mariana"], dm, counterparty=ALVO, step_id="r-2:x").reason
+    sem_sessao = _criar(excecoes, contas["luciana"])
+    motivo = policies.check(contas["luciana"], dm, counterparty=ALVO, step_id="r-2:x").reason
     assert "criada por orquestradora em " in motivo and "sem sessão de operador" in motivo
     assert f"autorização citada: {AUTORIZACAO}" in motivo and "autorizada pelo dono" not in motivo
     excecoes.revogar(sem_sessao, por="orquestradora")
-    _criar(excecoes, contas["mariana"], com_sessao=True)
-    motivo = policies.check(contas["mariana"], dm, counterparty=ALVO, step_id="r-2:x").reason
+    _criar(excecoes, contas["luciana"], com_sessao=True)
+    motivo = policies.check(contas["luciana"], dm, counterparty=ALVO, step_id="r-2:x").reason
     assert "autorizada pelo dono (operador com sessão)" in motivo and "autorização citada:" in motivo
 
 
@@ -85,68 +85,68 @@ def test_so_vale_entre_contas_nossas(tmp_path: Path) -> None:
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
     excecoes, eventos = _excecoes(repo)
     try:
-        _criar(excecoes, contas["mariana"], alvo=PESSOA_REAL)
+        _criar(excecoes, contas["luciana"], alvo=PESSOA_REAL)
     except ExcecaoInvalida as exc:
         assert "conta nossa" in str(exc)
     else:
         raise AssertionError("aceitou pessoa real")
     # nem uma linha gravada à mão passa: a porta só usa exceção para conta nossa viva
-    _fez(svc, contas["lucas"], InteractionType.dm_sent, PESSOA_REAL)
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent, PESSOA_REAL)
     repo.db.execute("INSERT INTO excecoes_de_politica(id, regra, profile_id, alvo, capability, motivo, autorizacao,"
                     " autor, criada_em, expira_em) VALUES ('exc-mao','uma_conta_por_alvo',?,?,'SEND_MESSAGE','m','a',"
-                    "'x',?,?)", (contas["mariana"], PESSOA_REAL, to_iso(now()), to_iso(now() + timedelta(hours=1))))
-    v = policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=PESSOA_REAL, step_id="s")
+                    "'x',?,?)", (contas["luciana"], PESSOA_REAL, to_iso(now()), to_iso(now() + timedelta(hours=1))))
+    v = policies.check(contas["luciana"], capability_of(IG, "SEND_MESSAGE"), counterparty=PESSOA_REAL, step_id="s")
     assert not v.allowed and v.excecao is None and eventos == []
 
 
 def test_excecao_de_outro_perfil_alvo_ou_acao_nao_vale(tmp_path: Path) -> None:
     """A exceção da DM não libera comentário nem seguir para o mesmo alvo, nem a DM de outra conta ou a outro alvo."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
-    _fez(svc, contas["lucas"], InteractionType.dm_sent, "@outra.pessoa")
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent, ALVO)
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent, "@outra.pessoa")
     excecoes, _ = _excecoes(repo)
     # a de outro perfil: a exceção é do perfil de ORIGEM que ela nomeia
-    _criar(excecoes, contas["lucas"])
-    assert not policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO,
+    _criar(excecoes, contas["tadeu"])
+    assert not policies.check(contas["luciana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO,
                               step_id="r-2:x").allowed
-    _criar(excecoes, contas["mariana"])
+    _criar(excecoes, contas["luciana"])
     for acao in ("CREATE_COMMENT", "FOLLOW"):
-        v = policies.check(contas["mariana"], capability_of(IG, acao), counterparty=ALVO, step_id="r-2:x")
+        v = policies.check(contas["luciana"], capability_of(IG, acao), counterparty=ALVO, step_id="r-2:x")
         assert not v.allowed and v.excecao is None, acao
-    outro_alvo = policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty="@outra.pessoa",
+    outro_alvo = policies.check(contas["luciana"], capability_of(IG, "SEND_MESSAGE"), counterparty="@outra.pessoa",
                                 step_id="r-2:x")
     assert not outro_alvo.allowed
 
 
 def test_presa_a_uma_etapa_nao_vale_para_outra_e_gasta_volta_a_recusar(tmp_path: Path) -> None:
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent, ALVO)
     excecoes, eventos = _excecoes(repo)
-    exc = _criar(excecoes, contas["mariana"])
+    exc = _criar(excecoes, contas["luciana"])
     dm = capability_of(IG, "SEND_MESSAGE")
     excecoes.prender(exc, "r-2:etapa-a")
-    assert policies.check(contas["mariana"], dm, counterparty=ALVO, step_id="r-2:etapa-a").excecao == exc
-    assert not policies.check(contas["mariana"], dm, counterparty=ALVO, step_id="r-3:etapa-b").allowed
+    assert policies.check(contas["luciana"], dm, counterparty=ALVO, step_id="r-2:etapa-a").excecao == exc
+    assert not policies.check(contas["luciana"], dm, counterparty=ALVO, step_id="r-3:etapa-b").allowed
     assert excecoes.reservar("r-2:etapa-a") is None                    # o executor, logo antes do gesto
     assert excecoes.obter(exc).estado == "em_uso"                                  # type: ignore[union-attr]
     excecoes.disparou("r-2:etapa-a", "int-1")                           # o `open_effect`
     excecoes.liquidar("int-1", houve_efeito=True)                       # o `settle_effect`
     assert excecoes.obter(exc).estado == "usada"                                   # type: ignore[union-attr]
     assert eventos[-1][0] == "politica.excecao_usada"
-    assert not policies.check(contas["mariana"], dm, counterparty=ALVO, step_id="r-2:etapa-a").allowed
+    assert not policies.check(contas["luciana"], dm, counterparty=ALVO, step_id="r-2:etapa-a").allowed
 
 
 def test_vencida_recusa_vira_evento_e_a_reserva_falha(tmp_path: Path) -> None:
     """Releitura do #309, O2: a exceção que vence depois da porta continua apontando a etapa, e a reserva no commit falha
     com o motivo próprio ("venceu antes do efeito"); o gesto não acontece."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent, ALVO)
     excecoes, eventos = _excecoes(repo)
-    exc = _criar(excecoes, contas["mariana"])
+    exc = _criar(excecoes, contas["luciana"])
     excecoes.prender(exc, "r-2:etapa-a")
     repo.db.execute("UPDATE excecoes_de_politica SET expira_em=? WHERE id=?",
                     (to_iso(now() - timedelta(minutes=1)), exc))
-    assert not policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO).allowed
+    assert not policies.check(contas["luciana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO).allowed
     assert excecoes.vencer() == 1 and excecoes.vencer() == 0
     vencida = excecoes.obter(exc)
     assert eventos[-1][0] == "politica.excecao_vencida" and vencida is not None
@@ -159,11 +159,11 @@ def test_vencida_recusa_vira_evento_e_a_reserva_falha(tmp_path: Path) -> None:
 def test_duplicata_em_aberto_recusada_revogar_encerra_e_o_gasto_nao_pega_encerrada(tmp_path: Path) -> None:
     """Revisão do #309, itens 4 e 5: uma em aberto por trio; revogada não volta a valer nem é gasta."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent, ALVO)
     excecoes, eventos = _excecoes(repo)
-    exc = _criar(excecoes, contas["mariana"])
+    exc = _criar(excecoes, contas["luciana"])
     try:
-        _criar(excecoes, contas["mariana"])
+        _criar(excecoes, contas["luciana"])
     except ExcecaoInvalida as e:
         assert exc in str(e)
     else:
@@ -175,7 +175,7 @@ def test_duplicata_em_aberto_recusada_revogar_encerra_e_o_gasto_nao_pega_encerra
     motivo = excecoes.reservar("r-2:etapa-a")                          # revogar antes da reserva: a reserva falha
     assert motivo is not None and "foi revogada antes do efeito" in motivo and "orquestradora" not in motivo
     assert excecoes.obter(exc).usada_em is None                                    # type: ignore[union-attr]
-    assert not policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO,
+    assert not policies.check(contas["luciana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO,
                               step_id="r-2:etapa-a").allowed
     try:
         excecoes.revogar(exc, por="orquestradora")
@@ -183,7 +183,7 @@ def test_duplicata_em_aberto_recusada_revogar_encerra_e_o_gasto_nao_pega_encerra
         assert "já terminou" in str(e)
     else:
         raise AssertionError("revogou duas vezes")
-    _criar(excecoes, contas["mariana"])                         # encerrada não conta como em aberto
+    _criar(excecoes, contas["luciana"])                         # encerrada não conta como em aberto
 
 
 def test_a_criacao_recusa_prazo_longo_alvo_vazio_e_perfil_desconhecido(tmp_path: Path) -> None:
@@ -191,7 +191,7 @@ def test_a_criacao_recusa_prazo_longo_alvo_vazio_e_perfil_desconhecido(tmp_path:
     excecoes, eventos = _excecoes(repo)
     for kw, motivo in (({"horas": 73}, "72 h"), ({"horas": -1}, "já passou"), ({"alvo": "  "}, "alvo")):
         try:
-            _criar(excecoes, contas["mariana"], **kw)                             # type: ignore[arg-type]
+            _criar(excecoes, contas["luciana"], **kw)                             # type: ignore[arg-type]
         except ExcecaoInvalida as exc:
             assert motivo in str(exc)
         else:
@@ -369,10 +369,10 @@ def test_duas_reservas_so_uma_ganha_e_sem_efeito_fecha_fechado(tmp_path: Path) -
     """Releitura do #309: a reserva é um UPDATE condicional; a segunda perde. O gesto sem efeito encerra a exceção
     `sem_efeito`, que não volta a aberta (uso único fecha fechado)."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent, ALVO)
     excecoes, eventos = _excecoes(repo)
     outra, _ = _excecoes(repo)                                         # outro processo, o mesmo banco
-    exc = _criar(excecoes, contas["mariana"])
+    exc = _criar(excecoes, contas["luciana"])
     excecoes.prender(exc, "r-2:etapa-a")
     assert excecoes.reservar("r-2:etapa-a") is None
     perdeu = outra.reservar("r-2:etapa-a")
@@ -382,7 +382,7 @@ def test_duas_reservas_so_uma_ganha_e_sem_efeito_fecha_fechado(tmp_path: Path) -
     excecoes.disparou("r-2:etapa-a", "int-1")
     excecoes.liquidar("int-1", houve_efeito=False)
     assert excecoes.obter(exc).estado == "sem_efeito" and eventos[-1][0] == "politica.excecao_sem_efeito"  # type: ignore[union-attr]
-    assert not policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO,
+    assert not policies.check(contas["luciana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO,
                               step_id="r-2:etapa-b").allowed
 
 
@@ -435,12 +435,12 @@ async def test_decisao_da_propria_etapa_anterior_a_excecao_nao_vale(harness: Any
 def test_o_cartao_cita_no_maximo_80_caracteres_da_autorizacao(tmp_path: Path) -> None:
     """Releitura do #309, R2: o aviso do Telegram corta em 500; "Alvo" e "Texto" não podem sair do corte."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
-    _fez(svc, contas["lucas"], InteractionType.dm_sent, ALVO)
+    _fez(svc, contas["tadeu"], InteractionType.dm_sent, ALVO)
     excecoes, _ = _excecoes(repo)
     longa = "dono pelo Telegram em 04/10 às 19:02 UTC, entrada 1189, " + "com contexto " * 20
-    excecoes.criar(profile_id=contas["mariana"], alvo=ALVO, capability="SEND_MESSAGE", motivo="prova",
+    excecoes.criar(profile_id=contas["luciana"], alvo=ALVO, capability="SEND_MESSAGE", motivo="prova",
                    autorizacao=longa.strip(), autor="orquestradora", expira_em=to_iso(now() + timedelta(hours=1)))
-    motivo = policies.check(contas["mariana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO, step_id="s").reason
+    motivo = policies.check(contas["luciana"], capability_of(IG, "SEND_MESSAGE"), counterparty=ALVO, step_id="s").reason
     citada = motivo.split("autorização citada: ", 1)[1].split(";", 1)[0]
     assert len(citada) <= 80 and citada.endswith("…") and longa.strip() not in motivo
 
@@ -533,7 +533,7 @@ def test_porta_sem_excecao_solta_a_vencida_e_o_commit_segue(tmp_path: Path) -> N
     presa a ela; a porta a solta."""
     _svc, repo, _policies, contas = _frota_com_alvo_nosso(tmp_path)
     excecoes, _ = _excecoes(repo)
-    exc = _criar(excecoes, contas["mariana"])
+    exc = _criar(excecoes, contas["luciana"])
     excecoes.prender(exc, "r-2:etapa-a")
     repo.db.execute("UPDATE excecoes_de_politica SET expira_em=? WHERE id=?", (to_iso(now() - timedelta(minutes=1)), exc))
     excecoes.vencer()
@@ -546,7 +546,7 @@ def test_eventos_levam_so_ids_e_estado(tmp_path: Path) -> None:
     """Releitura 6c, item 4: alvo, motivo e autorização ficam no GET, nunca no barramento."""
     _svc, repo, _policies, contas = _frota_com_alvo_nosso(tmp_path)
     excecoes, eventos = _excecoes(repo)
-    exc = _criar(excecoes, contas["mariana"])
+    exc = _criar(excecoes, contas["luciana"])
     excecoes.prender(exc, "r-2:etapa-a")
     excecoes.reservar("r-2:etapa-a")
     excecoes.disparou("r-2:etapa-a", "int-1")

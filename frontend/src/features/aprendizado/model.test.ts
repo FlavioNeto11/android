@@ -327,7 +327,7 @@ describe('leitura tolerante (contrato de A3/A4 ainda em implementação)', () =>
     expect(votoDoItem(f, 'obj-2')).toBeNull();
     // um voto por pessoa: com quem pergunta, o voto de outra pessoa não marca o botão
     expect(votoDoItem(f, 'obj-1', 'ana')?.verdict).toBe('errado');
-    expect(votoDoItem(f, 'obj-1', 'bruno')).toBeNull();
+    expect(votoDoItem(f, 'obj-1', 'quillon')).toBeNull();
     expect(f.aprendizado).toBeNull();
     expect(lerFeedbackDaExecucao(undefined).votos).toEqual([]);
   });

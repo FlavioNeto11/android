@@ -294,7 +294,7 @@ describe('FocusPanel — celular (P1.1 da auditoria UX de 27/09)', () => {
 function conta(over: Partial<ProfileAccount>): ProfileAccount {
   return {
     id: 'acc-1', profile_id: 'ig-1', app_id: 'instagram', app_name: 'Instagram', package: 'com.instagram.android',
-    handle: 'mariana', host: null, login_identifier: null, status: 'active', session_status: 'unknown',
+    handle: 'luciana', host: null, login_identifier: null, status: 'active', session_status: 'unknown',
     session_detail: null, session_verified_at: null, automated_login: true, credential_configured: false,
     notes: '', created_at: '2026-09-27T10:00:00Z', updated_at: '2026-09-27T10:00:00Z',
     ...over,
@@ -313,7 +313,7 @@ function contexto(over: Partial<OperationalContext> = {}): OperationalContext {
              installed_version_name: '447.0', installed_version_code: 447, verified_at: null, pending_op: null, detail: null,
              promoted_release_id: 'rel-448', promoted_version_name: '448.0', promoted_version_code: 448 }],
     profiles: [
-      { profile_id: 'ig-1', username: 'mariana', display_name: 'Mariana Souza', persona_id: 'p-1', persona_name: 'Mariana',
+      { profile_id: 'ig-1', username: 'luciana', display_name: 'Luciana Souza', persona_id: 'p-1', persona_name: 'Luciana',
         credential_configured: true, credential_status: 'active', session: sessao('auth_required'), app_on_device: null,
         session_actions: null,
         accounts: [
@@ -326,7 +326,7 @@ function contexto(over: Partial<OperationalContext> = {}): OperationalContext {
                                 blocked_until: null, updated_at: null, last_used_at: null, consent_at: null } }),
         ] },
       // Persona sem conta (onda D): `username` vazio — nada de "@" solto na tela.
-      { profile_id: 'ig-2', username: '', display_name: 'Bruno', persona_id: 'p-2', persona_name: 'Bruno',
+      { profile_id: 'ig-2', username: '', display_name: 'Quillon', persona_id: 'p-2', persona_name: 'Quillon',
         credential_configured: false, credential_status: null, session: sessao('auth_required'), app_on_device: null,
         session_actions: null, accounts: [] },
     ],
@@ -385,12 +385,12 @@ describe('FocusPanel — seções da coluna lateral', () => {
     const el = await renderFocus(makeInstance(1, { state: 'online' }));
     const personas = await waitFor(() => {
       const s = secao(el, 'Personas neste aparelho');
-      expect(text(s)).toContain('Mariana Souza');
+      expect(text(s)).toContain('Luciana Souza');
       return s;
     });
-    expect(text(personas)).toContain('@mariana');
+    expect(text(personas)).toContain('@luciana');
     expect(text(personas)).toContain('Precisa entrar');           // sessão do perfil, traduzida
-    expect(text(personas)).toContain('Bruno');
+    expect(text(personas)).toContain('Quillon');
     expect(text(personas)).not.toMatch(/@(\s|·|$)/);              // sem usuário, sem "@" solto
     expect(allByRole('button', 'Abrir persona', personas)).toHaveLength(2);
 
@@ -402,7 +402,7 @@ describe('FocusPanel — seções da coluna lateral', () => {
     expect(contas).toContain('portal.exemplo.com.br');
     expect(contas).toContain('Fora da conta');
     expect(contas).toContain('consentimento: não');
-    expect(contas).toContain('Bruno ainda não tem conta cadastrada.');
+    expect(contas).toContain('Quillon ainda não tem conta cadastrada.');
     expect(backend.callsTo('GET', /\/accounts$/)).toHaveLength(0); // uma leitura só, sem N chamadas por persona
 
     const apps = text(secao(el, 'Apps'));
@@ -418,35 +418,35 @@ describe('FocusPanel — seções da coluna lateral', () => {
     backend.on('GET', /^\/api\/instances\/android-01\/personas$/, () => {
       leituras += 1;
       return json([
-        { profile_id: 'ig-1', username: 'mariana', display_name: 'Mariana Souza', name: 'Mariana Souza', status: 'active',
+        { profile_id: 'ig-1', username: 'luciana', display_name: 'Luciana Souza', name: 'Luciana Souza', status: 'active',
           app_id: 'instagram', is_primary: true, bound_at: null,
           session: { status: 'session_ready', instance_id: 'android-01', observed_username: null, verified_at: null,
                      detail: null, stale: false } },
-        { profile_id: 'ig-3', username: null, display_name: 'Rafael Lima', name: 'Rafael Lima', status: 'active',
+        { profile_id: 'ig-3', username: null, display_name: 'Nelson Lima', name: 'Nelson Lima', status: 'active',
           app_id: 'chrome', is_primary: false, bound_at: null, session: null },
       ]);
     });
-    backend.on('GET', /^\/api\/personas$/, () => json([makePersona('ig-4', 'Beatriz Almeida')]));
-    backend.on('POST', /^\/api\/personas\/ig-4\/devices$/, () => json(makePersona('ig-4', 'Beatriz Almeida', {
+    backend.on('GET', /^\/api\/personas$/, () => json([makePersona('ig-4', 'Sueli Quintela')]));
+    backend.on('POST', /^\/api\/personas\/ig-4\/devices$/, () => json(makePersona('ig-4', 'Sueli Quintela', {
       devices: [makeBinding('android-01', { app_id: null, is_primary: true })] }), 201));
     useAppStore.setState({ apps: [{ ...APPS[0]!, id: 'instagram', name: 'Instagram' }, { ...APPS[0]!, id: 'chrome', name: 'Chrome' }] });
     const el = await renderFocus(makeInstance(1, { state: 'online' }));
     const personas = await waitFor(() => {
       const s = secao(el, 'Personas neste aparelho');
-      expect(text(s)).toContain('Rafael Lima');
+      expect(text(s)).toContain('Nelson Lima');
       return s;
     });
     const t = text(personas);
-    expect(t).toContain('Mariana Souza');
-    expect(t).toContain('Principal');                              // android-01 é o principal da Mariana
-    expect(t).toContain('@mariana · conta do Instagram');
+    expect(t).toContain('Luciana Souza');
+    expect(t).toContain('Principal');                              // android-01 é o principal da Luciana
+    expect(t).toContain('@luciana · conta do Instagram');
     expect(t).toContain('conta do Chrome');
     expect(t).toContain('sem conta que sirva a este vínculo');
-    expect(t).not.toContain('Bruno');                             // o contexto operacional não manda mais na lista
+    expect(t).not.toContain('Quillon');                             // o contexto operacional não manda mais na lista
     expect(allByRole('button', 'Abrir persona', personas)).toHaveLength(2);
 
     await click(byRole('button', /Vincular persona/, personas));
-    await waitFor(() => expect(text(personas)).toContain('Beatriz Almeida'));
+    await waitFor(() => expect(text(personas)).toContain('Sueli Quintela'));
     await setValue(byRole('combobox', 'Persona', personas) as HTMLSelectElement, 'ig-4');
     const antes = leituras;
     await click(byRole('button', /^Vincular$/, personas));
@@ -461,7 +461,7 @@ describe('FocusPanel — seções da coluna lateral', () => {
     const el = await renderFocus(makeInstance(1, { state: 'online' }));
     const personas = await waitFor(() => {
       const s = secao(el, 'Personas neste aparelho');
-      expect(text(s)).toContain('Mariana Souza');
+      expect(text(s)).toContain('Luciana Souza');
       return s;
     });
     await click(allByRole('button', 'Abrir persona', personas)[0] as HTMLElement);

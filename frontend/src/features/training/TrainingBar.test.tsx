@@ -7,7 +7,7 @@ import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { makeInstance } from '../../test/fixtures';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import type { PersonaOnDevice } from '../../api/types';
 import { TrainingBar, personasDoEnsino } from './TrainingBar';
 import { useTrainingStore } from './trainingStore';
@@ -346,4 +346,115 @@ it('31.111: "Para revisar" leva o selo na sessão que nasceu de uma falha e só 
   const marcados = botoes.filter((b) => (b.getAttribute('aria-label') ?? '').endsWith(', corrige uma falha') && b.textContent!.includes('corrige uma falha'));
   expect(marcados).toHaveLength(1);
   expect(marcados[0]!.textContent).toContain('Corrigir a etapa');
+});
+
+// 31.90-D (adendo v1.70): "Desfazer a última" tira só a última entrada da gravação viva. Manda o lease_id e o seq que a
+// tela mostra como último; o número desfeito é reaproveitado pela próxima entrada, então nada se guarda por seq.
+const entrada = (seq: number) => ({ ...GRAVANDO.inputs[0]!, seq });
+const COM_DUAS = { ...GRAVANDO, inputs: [entrada(1), entrada(2)] };
+
+it('31.90-D: "Desfazer a última" manda lease_id e o seq da última entrada, mostra a sessão sem ela e avisa', async () => {
+  useToastStore.setState({ toasts: [] });
+  backend.on('GET', /\/training$/, () => json([COM_DUAS]));
+  backend.on('GET', /\/training\/trn-9$/, () => json(COM_DUAS));
+  backend.on('POST', /\/training\/trn-9\/undo$/, () => json({ ...GRAVANDO, inputs: [entrada(1)], undone: { seq: 2, type: 'tap' } }));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
+  await waitFor(() => expect(text()).toContain('2 entradas'));
+  expect(text()).toContain('#2');
+  await click(await botaoPronto(/^Desfazer a última$/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/training\/trn-9\/undo$/)).toHaveLength(1));
+  expect(backend.callsTo('POST', /\/undo$/)[0]!.body).toEqual({ lease_id: 'lease-1', seq: 2 });
+  await waitFor(() => expect(text()).toContain('1 entrada'));
+  expect(text()).not.toContain('#2');
+  expect(useToastStore.getState().toasts.some((t) => t.title === 'Entrada desfeita' && (t.message ?? '').includes('#2'))).toBe(true);
+  // O que a tela mostra agora como última é a #1: o próximo pedido leva seq 1, não o 2 de antes.
+  await click(await botaoPronto(/^Desfazer a última$/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/undo$/)).toHaveLength(2));
+  expect(backend.callsTo('POST', /\/undo$/)[1]!.body).toEqual({ lease_id: 'lease-1', seq: 1 });
+});
+
+it('31.90-D: entrada_mudou (outra chegou antes): mostra a mensagem, relê a gravação e a última passa a ser a nova', async () => {
+  useToastStore.setState({ toasts: [] });
+  const tres = { ...GRAVANDO, inputs: [entrada(1), entrada(2), entrada(3)] };
+  backend.on('GET', /\/training$/, () => json([COM_DUAS]));
+  backend.on('GET', /\/training\/trn-9$/, () => json(COM_DUAS));
+  backend.on('POST', /\/undo$/, () => apiError(409, 'entrada_mudou', 'A última entrada agora é a 3, não a 2; confira antes de desfazer.'));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
+  await waitFor(() => expect(text()).toContain('2 entradas'));
+  backend.on('GET', /\/training$/, () => json([tres]));
+  backend.on('GET', /\/training\/trn-9$/, () => json(tres));
+  await click(await botaoPronto(/^Desfazer a última$/));
+  await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'A gravação continua como estava')).toBe(true));
+  expect(useToastStore.getState().toasts.find((t) => t.title === 'A gravação continua como estava')?.message)
+    .toContain('A última entrada agora é a 3, não a 2');
+  await waitFor(() => expect(text()).toContain('3 entradas'));
+  expect(text()).toContain('Gravando: Responder a DM');
+  // Nada foi apagado e o próximo pedido leva o seq que a tela mostra agora.
+  backend.on('POST', /\/undo$/, () => json({ ...GRAVANDO, inputs: [entrada(1), entrada(2)], undone: { seq: 3, type: 'tap' } }));
+  await click(await botaoPronto(/^Desfazer a última$/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/undo$/)).toHaveLength(2));
+  expect(backend.callsTo('POST', /\/undo$/)[1]!.body).toEqual({ lease_id: 'lease-1', seq: 3 });
+});
+
+it('31.90-D: control_required: mostra o motivo, mantém a barra gravando e relê a lista', async () => {
+  useToastStore.setState({ toasts: [] });
+  backend.on('POST', /\/undo$/, () => apiError(409, 'control_required', 'Só quem está com o controle do aparelho desfaz a última entrada.'));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-velho" mine />));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  const leituras = backend.callsTo('GET', /\/training$/).length;
+  await click(await botaoPronto(/^Desfazer a última$/));
+  await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'A gravação continua como estava')).toBe(true));
+  expect(useToastStore.getState().toasts.find((t) => t.title === 'A gravação continua como estava')?.message)
+    .toContain('Só quem está com o controle do aparelho desfaz a última entrada.');
+  await waitFor(() => expect(backend.callsTo('GET', /\/training$/).length).toBeGreaterThan(leituras));
+  expect(text()).toContain('Gravando: Responder a DM');
+  expect(text()).toContain('1 entrada');
+});
+
+it('31.90-D: quem só olha (outra aba) e a gravação órfã não têm o botão de desfazer', async () => {
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Há uma gravação em andamento neste aparelho por quem está com o controle'));
+  expect(allByRole('button', /Desfazer a última/)).toHaveLength(0);
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('não está mais gravando'));
+  expect(allByRole('button', /Desfazer a última/)).toHaveLength(0);
+});
+
+it('31.90-D: sem entrada ou sem lease o botão explica por que não dá e não chama a rota', async () => {
+  const vazia = { ...GRAVANDO, inputs: [] };
+  backend.on('GET', /\/training$/, () => json([vazia]));
+  backend.on('GET', /\/training\/trn-9$/, () => json(vazia));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  const vazio = byRole('button', /Desfazer a última/);
+  expect(vazio.getAttribute('aria-disabled')).toBe('true');
+  expect(vazio.textContent).toContain('Ainda não há entrada para desfazer.');
+  await click(vazio);
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId={null} mine />));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  const semLease = byRole('button', /Desfazer a última/);
+  expect(semLease.getAttribute('aria-disabled')).toBe('true');
+  expect(semLease.textContent).toContain('Retome o controle para desfazer.');
+  await click(semLease);
+  expect(backend.callsTo('POST', /\/undo$/)).toHaveLength(0);
+});
+
+it('31.90-D: enquanto o desfazer corre, Concluir e Descartar explicam por que esperam', async () => {
+  let soltar: (r: Response) => void = () => {};
+  // Com atraso no fetch o pedido é registrado antes de o handler correr: só se solta a resposta depois de ela ser pedida.
+  let pedida = false;
+  backend.on('POST', /\/undo$/, () => new Promise<Response>((resolve) => { pedida = true; soltar = resolve; }));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  await click(await botaoPronto(/^Desfazer a última$/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/undo$/)).toHaveLength(1));
+  await waitFor(() => expect(pedida).toBe(true));
+  await waitFor(() => expect(byRole('button', /^Concluir e revisar/).textContent).toContain('Desfazendo a última entrada…'));
+  expect(byRole('button', /^Descartar/).textContent).toContain('Desfazendo a última entrada…');
+  await act(async () => soltar(json({ ...GRAVANDO, inputs: [], undone: { seq: 1, type: 'tap' } })));
+  await waitFor(() => expect(text()).not.toContain('Desfazendo a última entrada…'));
 });

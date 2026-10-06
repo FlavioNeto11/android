@@ -121,7 +121,7 @@ async def _verificar(ex: StepExecutor, etapa: StepDTO, *, patient: bool,
 
 # ==================================================================== LT-5
 async def test_lt5_tela_parada_depois_do_nao_sai_cedo_com_o_mesmo_veredito(tmp_path: Path) -> None:
-    ex, aparelho, juiz = _executor(tmp_path, [_tela("Conversas", "Bruno")])
+    ex, aparelho, juiz = _executor(tmp_path, [_tela("Conversas", "Quillon")])
     ex.cfg.file.ai.verify_budget_s = 15.0      # o orçamento de hoje: antes, a falha esperava os 15 s inteiros
     ok, texto, dt = await _verificar(ex, _etapa(), patient=False)
     assert ok is False
@@ -132,7 +132,7 @@ async def test_lt5_tela_parada_depois_do_nao_sai_cedo_com_o_mesmo_veredito(tmp_p
 
 
 async def test_lt5_tela_que_muda_reabre_a_contagem(tmp_path: Path) -> None:
-    a, b = _tela("Conversas", "Bruno"), _tela("Conversas", "Carla")
+    a, b = _tela("Conversas", "Quillon"), _tela("Conversas", "Carla")
     ex, aparelho, juiz = _executor(tmp_path, [a, a, b], max_chamadas=3)
     ok, _texto, _dt = await _verificar(ex, _etapa(), patient=False)
     # A julgada; A parada (1); B julgada (a contagem volta a zero); B parada 3 vezes
@@ -142,7 +142,7 @@ async def test_lt5_tela_que_muda_reabre_a_contagem(tmp_path: Path) -> None:
 
 async def test_lt5_efeito_disparado_sem_marca_e_nivel_appeared_tambem_sai_cedo(tmp_path: Path) -> None:
     """Os três casos de 55–60 s da janela medida: efeito, `appeared`, ação sem catálogo (sem `pending_marks`)."""
-    ex, aparelho, _juiz = _executor(tmp_path, [_tela("Conversas", "Bruno")])
+    ex, aparelho, _juiz = _executor(tmp_path, [_tela("Conversas", "Quillon")])
     ok, texto, _dt = await _verificar(ex, _etapa(side_effect=True, nivel=DeliveryLevel.appeared), patient=True)
     assert ok is False and aparelho.leituras == 1 + SONDAGENS_DA_TELA_PARADA
     assert "a tela não mudou" in texto
@@ -151,7 +151,7 @@ async def test_lt5_efeito_disparado_sem_marca_e_nivel_appeared_tambem_sai_cedo(t
 async def test_lt5_patient_com_marca_pendente_declarada_espera_ate_o_teto(tmp_path: Path) -> None:
     """ADR-055: o SEND_MESSAGE declara "Sending…". Com o efeito disparado, a tela parada ainda pode sair de "enviando"
     — a verificação espera o orçamento inteiro, como antes."""
-    ex, aparelho, juiz = _executor(tmp_path, [_tela("Conversas", "Bruno")])
+    ex, aparelho, juiz = _executor(tmp_path, [_tela("Conversas", "Quillon")])
     envio = CapabilityRef("com.instagram.android", "SEND_MESSAGE")
     ok, texto, dt = await _verificar(ex, _etapa(side_effect=True), patient=True, capability=envio)
     assert ok is False and juiz.chamadas == 1
@@ -162,14 +162,14 @@ async def test_lt5_patient_com_marca_pendente_declarada_espera_ate_o_teto(tmp_pa
 
 @pytest.mark.parametrize("nivel", [DeliveryLevel.delivered, DeliveryLevel.read])
 async def test_lt5_nivel_que_depende_do_outro_lado_espera_ate_o_teto(tmp_path: Path, nivel: DeliveryLevel) -> None:
-    ex, aparelho, _juiz = _executor(tmp_path, [_tela("Conversas", "Bruno")])
+    ex, aparelho, _juiz = _executor(tmp_path, [_tela("Conversas", "Quillon")])
     ok, texto, _dt = await _verificar(ex, _etapa(side_effect=True, nivel=nivel), patient=True)
     assert ok is False and aparelho.leituras > 1 + SONDAGENS_DA_TELA_PARADA * 3
     assert "a tela não mudou" not in texto
 
 
 async def test_lt5_uma_rodada_continua_com_uma_leitura_so(tmp_path: Path) -> None:
-    ex, aparelho, juiz = _executor(tmp_path, [_tela("Conversas", "Bruno")])
+    ex, aparelho, juiz = _executor(tmp_path, [_tela("Conversas", "Quillon")])
     etapa = _etapa()
     ok, _texto, _nivel, _obs, _nao = await ex._verify(  # noqa: SLF001
         SimpleNamespace(id=IID), etapa, lambda: SimpleNamespace(step_key=etapa.key, instance_id=IID),  # type: ignore[arg-type]

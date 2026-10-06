@@ -219,8 +219,10 @@ diária.
   legada ou noutra versão; assinatura diferente nunca doa, e a chave esperando o dono ou posta de lado não herda. A
   herdeira passa pelo veto de `save`, guarda a origem da doadora (`learned_from_step`) e só age depois de concordar em
   sombra (`recipes_promote_after`); com `commit`, para em `validated`. `ai.recipes_heranca: false` só mede a causa, e
-  com `recipes_promote_after: 0` não há herança (a aprendida já nasce ativa). Quando a herdeira vira `active`, a legada
-  ativa da mesma etapa e versão sai (`superseded`, "provou-se na chave completa").
+  com `recipes_promote_after: 0` não há herança. Quando a herdeira vira `active`, a legada ativa da mesma etapa e
+  versão sai (`superseded`, "provou-se na chave completa").
+- Com `recipes_promote_after: 0`, a receita aprendida em execução real nasce ativa; a de origem simulada continua
+  candidata.
 - **O que uma execução simulada ensina não publica (RA-19, fatia B, 03/10; leitura 2, decidida pela orquestradora).**
   - Origem simulada (`runs.simulated=1`) nunca NASCE ativa. A receita nasce candidata mesmo com
     `ai.recipes_promote_after: 0` (`executor.py::_after_step`, `_origem_simulada`). O fluxo nasce candidato mesmo com

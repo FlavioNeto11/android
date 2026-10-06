@@ -773,7 +773,7 @@ def test_fixed_e_reopened_nunca_por_pessoa_e_as_outras_recusas(mundo: Mundo) -> 
     with pytest.raises(EntradaInvalida):
         mundo.falhas.alterar(fk, estado=E.FIXED_PENDING_PROOF, fixed_in_commit="não-é-sha", by="flavio")
     with pytest.raises(NotaComCaraDeSegredo):
-        mundo.falhas.alterar(fk, estado=E.TRIAGED, notes="a senha do lucas é hunter2", by="flavio")
+        mundo.falhas.alterar(fk, estado=E.TRIAGED, notes="a senha do tadeu é hunter2", by="flavio")
     assert db.scalar("SELECT COUNT(*) FROM learning_backlog") == 0                      # a recusa não grava nada
     with pytest.raises(NaoEncontrado):
         mundo.falhas.alterar("fk-0000000000", estado=E.TRIAGED, by="flavio")

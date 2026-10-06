@@ -38,10 +38,10 @@ def test_perfil_nasce_com_a_conta_do_instagram_e_ganha_outras(tmp_path: Path) ->
 
     # Senha de conta só com o consentimento da pessoa (ADR-040): sem ele, 409 e nenhuma conta criada.
     with pytest.raises(SocialError) as sem:
-        svc.add_account(pid, ProfileAccountCreate(app_id="outlook", handle="mariana@exemplo.com",
+        svc.add_account(pid, ProfileAccountCreate(app_id="outlook", handle="luciana@exemplo.com",
                                                   password=SecretStr(SENHA_OUTLOOK)))
     assert sem.value.code == "consentimento_de_credencial" and [c.app_id for c in svc.list_accounts(pid)] == ["instagram"]
-    conta = svc.add_account(pid, ProfileAccountCreate(app_id="outlook", handle="mariana@exemplo.com",
+    conta = svc.add_account(pid, ProfileAccountCreate(app_id="outlook", handle="luciana@exemplo.com",
                                                       password=SecretStr(SENHA_OUTLOOK), consent=True))
     # Desde o 23.8 o Outlook tem login gerenciado (`provedor_de_sessao: microsoft`): a conta nasce com login automático.
     assert conta.app_name == "Outlook" and conta.automated_login and conta.credential_configured

@@ -62,7 +62,7 @@ async def test_perfil_bloqueado_no_meio_da_execucao_para_o_objetivo_com_o_motivo
     await h.boot()
     assert h.state is not None
     try:
-        pid["p"] = h.state.social.create_profile(ProfileCreate(username="juliana.teste", password=SENHA,
+        pid["p"] = h.state.social.create_profile(ProfileCreate(username="fabiana.teste", password=SENHA,
                                                                 instance_id="android-01")).id
         run = h.run(["android-01"])
         detalhe = await h.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "cancelled", "awaiting_person"))
@@ -70,7 +70,7 @@ async def test_perfil_bloqueado_no_meio_da_execucao_para_o_objetivo_com_o_motivo
         assert h.state.repo.objective_row(obj.id)["profile_id"] == pid["p"]
         # Parou no ponto seguro seguinte, com o motivo NO OBJETIVO — e não seguiu até concluir a tarefa.
         assert obj.status == "waiting_user", obj.status
-        assert "bloqueada" in (obj.blocked_reason or "") and "@juliana.teste" in (obj.blocked_reason or "")
+        assert "bloqueada" in (obj.blocked_reason or "") and "@fabiana.teste" in (obj.blocked_reason or "")
         assert provedor.calls == 1                        # nenhuma decisão a mais depois do bloqueio
     finally:
         await h.state.stop()
@@ -81,7 +81,7 @@ async def test_objetivo_de_conta_bloqueada_nao_e_despachado_mesmo_sem_porta_de_s
     app sem provedor (o QA Messenger aqui; o Chrome no parque) passava direto e agia pela pessoa bloqueada."""
     state = harness.state
     assert state is not None
-    pid = state.social.create_profile(ProfileCreate(username="mariana.teste", password=SENHA,
+    pid = state.social.create_profile(ProfileCreate(username="luciana.teste", password=SENHA,
                                                     instance_id="android-01")).id
     # Bloqueada ANTES de a execução existir, com o disjuntor já disparado (nada a pausar): quem segura o item aqui é
     # o despacho, não a pausa.
@@ -116,7 +116,7 @@ async def test_bloqueio_pausa_as_execucoes_da_conta_e_das_que_agiram_no_mesmo_al
     def perfil(nome: str) -> str:
         return state.social.create_profile(ProfileCreate(username=nome, password=None)).id
 
-    p, q, r, s = perfil("beatriz.teste"), perfil("felipe.teste"), perfil("lucas.teste"), perfil("bruno.teste")
+    p, q, r, s = perfil("sueli.teste"), perfil("gilberto.teste"), perfil("tadeu.teste"), perfil("quillon.teste")
     # P e Q seguiram a MESMA pessoa nas últimas 48 h; R agiu sobre outra; S agiu sobre a mesma, mas há 60 h.
     social.record_interaction(p, type="followed", direction="outbound", status="confirmed", counterparty="alvo",
                               occurred_at=iso_in(-10 * 3600))
@@ -135,21 +135,21 @@ async def test_bloqueio_pausa_as_execucoes_da_conta_e_das_que_agiram_no_mesmo_al
     await harness.ticks(2)                                 # a linha de base do disjuntor já foi tirada
 
     social.update_profile(p, {"status": "blocked"})
-    await harness.wait(lambda: repo.run_row("run-q")["pause_requested"] == 1, what="execução de @felipe pausada")
+    await harness.wait(lambda: repo.run_row("run-q")["pause_requested"] == 1, what="execução de @gilberto pausada")
     await harness.ticks(2)
 
     run_p, run_q = repo.run_row("run-p"), repo.run_row("run-q")
     assert run_p["pause_requested"] == 1 and run_p["status"] == "paused"
-    assert "@beatriz.teste" in (run_p["status_detail"] or "")
+    assert "@sueli.teste" in (run_p["status_detail"] or "")
     assert run_q["status"] == "paused"
-    assert "@felipe.teste" in (run_q["status_detail"] or "") and "@alvo" in (run_q["status_detail"] or "")
+    assert "@gilberto.teste" in (run_q["status_detail"] or "") and "@alvo" in (run_q["status_detail"] or "")
     assert repo.run_row("run-r")["pause_requested"] == 0   # outro alvo
     assert repo.run_row("run-s")["pause_requested"] == 0   # mesmo alvo, fora da janela de 48 h
 
     eventos = [e for e in db.query("SELECT data FROM events WHERE data LIKE '%disjuntor_de_conta%'")]
     assert len(eventos) == 1
 
-    # Uma pessoa confere e retoma a execução de @felipe: o disjuntor não a pausa de novo pelo MESMO bloqueio.
+    # Uma pessoa confere e retoma a execução de @gilberto: o disjuntor não a pausa de novo pelo MESMO bloqueio.
     state.runs.resume("run-q")
     await harness.ticks(3)
     assert repo.run_row("run-q")["pause_requested"] == 0

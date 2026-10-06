@@ -173,7 +173,7 @@ async def test_conta_vinculada_depois_da_medicao_pede_medir_o_app_dela(parque: H
     ap = await _verificado(parque, monkeypatch)
     conv = st.rede_convergencia
     assert conv.motivo_de_espera(IID) is None and rede.apps_sem_prova(st, _linha(parque)) == []
-    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id=IID))
+    st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id=IID))
     assert INSTAGRAM in rede.apps_exigidos(st, IID)
     assert _linha(parque)["state"] == "trafego_verificado" and conv.invalida(_linha(parque)) == "apps"
     _liberar_a_porta(parque)
@@ -417,7 +417,7 @@ async def test_app_nunca_aberto_nao_trava_a_tarefa_com_politica_exigida(parque: 
     st = parque.state
     assert st is not None
     assert st.cfg.file.rede.sonda.abrir_apps is False
-    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id=IID))
+    st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id=IID))
     exigidos = rede.apps_exigidos(st, IID)
     assert INSTAGRAM in exigidos
     ap, _ = _preparar_sonda(parque, monkeypatch, policy="exigida")

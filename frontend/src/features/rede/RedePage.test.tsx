@@ -12,7 +12,7 @@ import type { NetworkDeviceRow, NetworkProfileListed, NetworkServerStatus } from
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, atrasoMaximoDoFetchMs, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { RedePage, nomeDoPacote } from './RedePage';
 
 function perfil(over: Partial<NetworkProfileListed> = {}): NetworkProfileListed {
@@ -203,7 +203,7 @@ it('política fica de fora do pedido quando ninguém mexe nela: não rebaixa um 
 
 it('aparelho com conta real pede confirmação POR APARELHO antes de aplicar (ADR-056 §7): o backend, não uma heurística', async () => {
   backend.on('GET', /\/network\/devices/, () => json({
-    devices: [linha({ instance_id: 'android-01', real_account: '@mariana', network: rede({ policy: 'livre' }), effective_state: 'pendente' })],
+    devices: [linha({ instance_id: 'android-01', real_account: '@luciana', network: rede({ policy: 'livre' }), effective_state: 'pendente' })],
   }));
   backend.on('POST', /\/network\/assign/, (call) => {
     const b = call.body as { dry_run?: boolean; instance_ids?: string[]; confirm_real_account?: string[] };
@@ -213,9 +213,9 @@ it('aparelho com conta real pede confirmação POR APARELHO antes de aplicar (AD
         confirmado || b.dry_run === false
           ? { id, outcome: 'assigned', reason: 'ok', from: { vpn_profile_id: null, proxy_profile_id: null, policy: 'livre' },
               to: { vpn_profile_id: 'vpn-1', proxy_profile_id: null, policy: 'livre' }, reapply: true,
-              warnings: confirmado ? ['conta real vinculada, confirmada pela pessoa neste pedido: @mariana'] : [] }
+              warnings: confirmado ? ['conta real vinculada, confirmada pela pessoa neste pedido: @luciana'] : [] }
           : { id, outcome: 'refused', code: 'real_account_confirm_required',
-              reason: `${id} tem conta real vinculada: @mariana. Mudar a saída pede confirmação`,
+              reason: `${id} tem conta real vinculada: @luciana. Mudar a saída pede confirmação`,
               from: { vpn_profile_id: null, proxy_profile_id: null, policy: 'livre' },
               to: { vpn_profile_id: 'vpn-1', proxy_profile_id: null, policy: 'livre' }, reapply: true, warnings: [] }
       )),
@@ -229,7 +229,7 @@ it('aparelho com conta real pede confirmação POR APARELHO antes de aplicar (AD
   await waitFor(() => backend.callsTo('POST', /\/network\/assign/).length === 1);
   await click(await botaoPronto(/^Aplicar/));
   const dialogo = await waitFor(() => byRole('dialog', /Mudar a saída de android-01/));
-  expect(text(dialogo)).toContain('@mariana');
+  expect(text(dialogo)).toContain('@luciana');
   // Ainda não mandou o pedido de verdade: a confirmação é obrigatória antes.
   expect(backend.callsTo('POST', /\/network\/assign/).length).toBe(1);
   await click(byRole('button', /Mudar mesmo assim/, dialogo));
@@ -240,7 +240,7 @@ it('aparelho com conta real pede confirmação POR APARELHO antes de aplicar (AD
 
 it('recusar a confirmação de conta real aborta o lote inteiro: nenhum segundo POST', async () => {
   backend.on('GET', /\/network\/devices/, () => json({
-    devices: [linha({ instance_id: 'android-01', real_account: '@mariana', network: rede({ policy: 'livre' }), effective_state: 'pendente' })],
+    devices: [linha({ instance_id: 'android-01', real_account: '@luciana', network: rede({ policy: 'livre' }), effective_state: 'pendente' })],
   }));
   backend.on('POST', /\/network\/assign/, (call) => {
     const b = call.body as { dry_run?: boolean; instance_ids?: string[] };
@@ -794,7 +794,7 @@ it('duas releituras fora de ordem: vale a mais nova, e o 2º perfil criado não 
   await act(async () => { soltar[0]!(); });                              // a velha chega depois e não escreve
   // Afirmar a AUSÊNCIA de mudança só prova algo depois de a resposta velha passar por todo o caminho (fetch falso,
   // json, Promise.all com os aparelhos), inclusive com o atraso do modo ATRASO_DO_FETCH_MS.
-  await flush(Number(process.env.ATRASO_DO_FETCH_MS ?? 0) + 30);
+  await flush(atrasoMaximoDoFetchMs() + 30);
   await flush();
   expect(text()).toContain('Dedicada-02');
 });

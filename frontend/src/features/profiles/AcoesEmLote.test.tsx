@@ -21,8 +21,8 @@ import { ProfilesPage } from './ProfilesPage';
 
 function pessoa(over: Partial<PersonaDTO> = {}): PersonaDTO {
   return {
-    id: 'ig-1', name: 'Mariana Costa', summary: null, username: 'luciana.bastos73519', display_name: 'Mariana Costa',
-    first_name: 'Mariana', last_name: 'Costa', birth_date: null, email: null, persona_id: 'ig-1', persona_name: 'Mariana Costa',
+    id: 'ig-1', name: 'Luciana Bastos', summary: null, username: 'luciana.bastos73519', display_name: 'Luciana Bastos',
+    first_name: 'Luciana', last_name: 'Bastos', birth_date: null, email: null, persona_id: 'ig-1', persona_name: 'Luciana Bastos',
     status: 'active', instance_id: null, locality: null, offline_policy: 'wait',
     credential: { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null,
                   updated_at: null, last_used_at: null },
@@ -37,12 +37,12 @@ const GRUPO = {
   id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [], members: [],
   created_at: '', updated_at: '',
 } as unknown as PolicyGroup;
-const MARIANA = pessoa();
-const LUCAS = pessoa({ id: 'ig-2', name: 'Lucas Almeida', username: 'tadeu.quintela4821', display_name: 'Lucas Almeida',
-                       first_name: 'Lucas', last_name: 'Almeida', persona_id: 'ig-2', persona_name: 'Lucas Almeida',
+const LUCIANA = pessoa();
+const TADEU = pessoa({ id: 'ig-2', name: 'Tadeu Quintela', username: 'tadeu.quintela4821', display_name: 'Tadeu Quintela',
+                       first_name: 'Tadeu', last_name: 'Quintela', persona_id: 'ig-2', persona_name: 'Tadeu Quintela',
                        status: 'blocked' });
-const HELENA = pessoa({ id: 'ig-9', name: 'Helena Prado', username: null, display_name: 'Helena Prado',
-                        first_name: 'Helena', last_name: 'Prado', persona_id: 'ig-9', persona_name: 'Helena Prado',
+const ELAINE = pessoa({ id: 'ig-9', name: 'Elaine Prado', username: null, display_name: 'Elaine Prado',
+                        first_name: 'Elaine', last_name: 'Prado', persona_id: 'ig-9', persona_name: 'Elaine Prado',
                         accounts_count: 0 });
 
 const SOCIAL_SIMULADO = { role: 'social', provider: 'simulated', kind: 'simulated', model: 'simulado', endpoint: '',
@@ -96,7 +96,7 @@ async function render(): Promise<void> {
 
 // ---------------------------------------------------------------- operações em lote na lista
 describe('ações em lote', () => {
-  function rotas(pessoas: PersonaDTO[] = [MARIANA, LUCAS, HELENA]) {
+  function rotas(pessoas: PersonaDTO[] = [LUCIANA, TADEU, ELAINE]) {
     backend.on('GET', /^\/api\/personas$/, () => json(pessoas));
     // O "Completar" relê a persona antes do pedido (29.128). Uma rota específica registrada depois, no teste, vence esta:
     // o FakeBackend tenta da mais nova para a mais velha.
@@ -119,13 +119,13 @@ describe('ações em lote', () => {
   it('seleção: cada cartão tem a caixa pelo nome; "Selecionar todas" marca todas; limpar some com a barra', async () => {
     rotas();
     await render();
-    await waitFor(() => text().includes('Helena Prado'));
+    await waitFor(() => text().includes('Elaine Prado'));
     expect(() => barra()).toThrow();
-    await selecionar('Helena Prado');
+    await selecionar('Elaine Prado');
     await waitFor(() => text().includes('1 selecionada'));
     await click(byRole('checkbox', /Selecionar todas as 3 personas/));
     await waitFor(() => text().includes('3 selecionadas'));
-    expect((byRole('checkbox', /^Selecionar Mariana Costa$/) as HTMLInputElement).checked).toBe(true);
+    expect((byRole('checkbox', /^Selecionar Luciana Bastos$/) as HTMLInputElement).checked).toBe(true);
     await click(byRole('button', /Limpar seleção/, barra()));
     await waitFor(() => { expect(() => barra()).toThrow(); });
   });
@@ -138,8 +138,8 @@ describe('ações em lote', () => {
     backend.on('POST', /\/personas\/ig-9\/images$/,
                () => apiError(409, 'persona_minor', 'A persona tem 17 anos; só se fotografa pessoa adulta.'));
     await render();
-    await waitFor(() => text().includes('Helena Prado'));
-    await selecionar('Mariana Costa', 'Helena Prado');
+    await waitFor(() => text().includes('Elaine Prado'));
+    await selecionar('Luciana Bastos', 'Elaine Prado');
     await click(byRole('button', /Gerar mais fotos/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Gerar mais fotos/));
     await waitFor(() => text(dialogo).includes('É uma geração paga de imagem'));
@@ -158,11 +158,11 @@ describe('ações em lote', () => {
   it('completar com IA: avisa que é pago e manda a instrução comum a cada persona', async () => {
     rotas();
     backend.on('GET', /^\/api\/ai$/, () => json(IA_PAGA));
-    backend.on('POST', /\/personas\/ig-1\/enrich$/, () => json({ ...MARIANA, updated_at: '2026-09-28T12:00:00Z' }));
-    backend.on('POST', /\/personas\/ig-2\/enrich$/, () => json(LUCAS));
+    backend.on('POST', /\/personas\/ig-1\/enrich$/, () => json({ ...LUCIANA, updated_at: '2026-09-28T12:00:00Z' }));
+    backend.on('POST', /\/personas\/ig-2\/enrich$/, () => json(TADEU));
     await render();
-    await waitFor(() => text().includes('Lucas Almeida'));
-    await selecionar('Mariana Costa', 'Lucas Almeida');
+    await waitFor(() => text().includes('Tadeu Quintela'));
+    await selecionar('Luciana Bastos', 'Tadeu Quintela');
     await click(byRole('button', /Completar com IA/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Completar/));
     await waitFor(() => text(dialogo).includes('É uma chamada paga de IA por persona'));
@@ -180,31 +180,31 @@ describe('ações em lote', () => {
 
   // 29.128: a frase compara com a persona relida antes do pedido, não com a da lista na tela.
   it('completar com a lista velha: sem o modelo chamado diz "nada faltava", mesmo com o updated_at da tela antigo', async () => {
-    const agora = { ...MARIANA, updated_at: '2026-09-28T13:00:00Z' };   // editada noutra aba: a tela tem a anterior
+    const agora = { ...LUCIANA, updated_at: '2026-09-28T13:00:00Z' };   // editada noutra aba: a tela tem a anterior
     rotas();
     backend.on('GET', /^\/api\/ai$/, () => json(IA_PAGA));
     backend.on('GET', /\/personas\/ig-1$/, () => json(agora));
     backend.on('GET', /\/personas\/ig-2$/, () => apiError(503, 'unavailable', 'banco ocupado'));
     backend.on('POST', /\/personas\/ig-1\/enrich$/, () => json(agora));             // sem lacuna: o mesmo de agora
-    backend.on('POST', /\/personas\/ig-2\/enrich$/, () => json({ ...LUCAS, updated_at: '2026-09-28T13:05:00Z' }));
+    backend.on('POST', /\/personas\/ig-2\/enrich$/, () => json({ ...TADEU, updated_at: '2026-09-28T13:05:00Z' }));
     await render();
-    await waitFor(() => text().includes('Lucas Almeida'));
-    await selecionar('Mariana Costa', 'Lucas Almeida');
+    await waitFor(() => text().includes('Tadeu Quintela'));
+    await selecionar('Luciana Bastos', 'Tadeu Quintela');
     await click(byRole('button', /Completar com IA/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Completar/));
     await click(await waitFor(() => byRole('button', /^Completar 2/, dialogo)));
     await waitFor(() => text().includes('Terminado: 2 ok · 0 falharam.'));
     const itens = [...dialogo.querySelectorAll('ul[aria-label="Resultado por persona"] li')].map((li) => text(li));
     expect(itens).toHaveLength(2);
-    expect(itens.find((t) => t.includes('Mariana'))).toContain('nada faltava: o modelo não foi chamado');
-    expect(text(dialogo)).not.toMatch(/Mariana[^·]*completada/);
+    expect(itens.find((t) => t.includes('Luciana'))).toContain('nada faltava: o modelo não foi chamado');
+    expect(text(dialogo)).not.toMatch(/Luciana[^·]*completada/);
     // Sem a leitura de antes, a frase não afirma nada que não sabe; o pedido ao modelo vai assim mesmo.
-    expect(itens.find((t) => t.includes('Lucas'))).toContain('não dá para dizer se o modelo foi chamado');
+    expect(itens.find((t) => t.includes('Tadeu'))).toContain('não dá para dizer se o modelo foi chamado');
     expect(backend.callsTo('POST', /\/personas\/ig-2\/enrich$/)).toHaveLength(1);
   });
 
   it('grupo de acesso: PATCH do perfil com policy_group_id; sem conta falha com motivo e sem requisição', async () => {
-    let lista = [MARIANA, LUCAS, HELENA];
+    let lista = [LUCIANA, TADEU, ELAINE];
     rotas();
     backend.on('GET', /^\/api\/personas$/, () => json(lista));
     backend.on('PATCH', /\/instagram\/profiles\//, (c) => {
@@ -213,8 +213,8 @@ describe('ações em lote', () => {
       return json(lista.find((p) => p.id === id));
     });
     await render();
-    await waitFor(() => text().includes('Helena Prado'));
-    await selecionar('Mariana Costa', 'Helena Prado');
+    await waitFor(() => text().includes('Elaine Prado'));
+    await selecionar('Luciana Bastos', 'Elaine Prado');
     await click(byRole('button', /Grupo de acesso/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
     await waitFor(() => text(dialogo).includes('1 selecionada não tem conta'));
@@ -238,10 +238,10 @@ describe('ações em lote', () => {
   // 29.141 (achado 5 da volta da 38): todas sem conta dariam "0 ok"; o botão nem começa, e o texto não fala de "outras".
   it('grupo de acesso com todas as selecionadas sem conta: "Pôr no grupo" travado com o motivo, sem requisição', async () => {
     rotas();
-    backend.on('GET', /^\/api\/personas$/, () => json([MARIANA, HELENA]));
+    backend.on('GET', /^\/api\/personas$/, () => json([LUCIANA, ELAINE]));
     await render();
-    await waitFor(() => text().includes('Helena Prado'));
-    await selecionar('Helena Prado');
+    await waitFor(() => text().includes('Elaine Prado'));
+    await selecionar('Elaine Prado');
     await click(byRole('button', /Grupo de acesso/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
     await waitFor(() => text(dialogo).includes('1 selecionada não tem conta'));
@@ -260,7 +260,7 @@ describe('ações em lote', () => {
   // 29.114: com o "Terminado" na tela antes de a lista se reler, quem fechava e reabria o lote decidia pela lista
   // velha: "já estava sem grupo", ok e sem PATCH, com a persona ainda no grupo.
   it('o resumo só aparece depois de a lista se reler; até lá o diálogo não fecha', async () => {
-    let lista = [MARIANA, LUCAS];
+    let lista = [LUCIANA, TADEU];
     let soltar: (() => void) | null = null;
     rotas();
     backend.on('GET', /^\/api\/personas$/, () => (soltar === null && lista[0]!.policy_group_id
@@ -272,8 +272,8 @@ describe('ações em lote', () => {
       return json(lista.find((p) => p.id === id));
     });
     await render();
-    await waitFor(() => text().includes('Lucas Almeida'));
-    await selecionar('Mariana Costa', 'Lucas Almeida');
+    await waitFor(() => text().includes('Tadeu Quintela'));
+    await selecionar('Luciana Bastos', 'Tadeu Quintela');
     await click(byRole('button', /Grupo de acesso/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
     await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
@@ -298,15 +298,15 @@ describe('ações em lote', () => {
   // 29.116 (S1): a releitura que falha resolvia como a boa, e o resumo dizia "Terminado" sobre a lista velha.
   it('a releitura que falha: o resumo diz que a lista não se releu, e o foco vai para o Fechar', async () => {
     let leituras = 0;
-    rotas([MARIANA, LUCAS]);
+    rotas([LUCIANA, TADEU]);
     backend.on('GET', /^\/api\/personas$/, () => {
       leituras += 1;
-      return leituras === 1 ? json([MARIANA, LUCAS]) : apiError(503, 'unavailable', 'banco fora do ar');
+      return leituras === 1 ? json([LUCIANA, TADEU]) : apiError(503, 'unavailable', 'banco fora do ar');
     });
-    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...LUCIANA, ...(c.body as object) }));
     await render();
-    await waitFor(() => text().includes('Lucas Almeida'));
-    await selecionar('Mariana Costa', 'Lucas Almeida');
+    await waitFor(() => text().includes('Tadeu Quintela'));
+    await selecionar('Luciana Bastos', 'Tadeu Quintela');
     await click(byRole('button', /Grupo de acesso/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
     await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
@@ -317,10 +317,10 @@ describe('ações em lote', () => {
 
   // 29.116: a rejeição (contrato futuro do onConcluido) não prende o diálogo nem some no `void confirmar()`.
   it('a releitura que rejeita: o resumo sai, com o mesmo aviso', async () => {
-    rotas([MARIANA, LUCAS]);
-    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
+    rotas([LUCIANA, TADEU]);
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...LUCIANA, ...(c.body as object) }));
     await act(async () => {
-      root.render(<><BarraDeLote selecionadas={[MARIANA, LUCAS]} grupos={[GRUPO]} onLimpar={() => {}}
+      root.render(<><BarraDeLote selecionadas={[LUCIANA, TADEU]} grupos={[GRUPO]} onLimpar={() => {}}
                                  onConcluido={() => Promise.reject(new Error('releitura caiu'))} /><ConfirmHost /></>);
     });
     await click(byRole('button', /Grupo de acesso/, barra()));
@@ -333,7 +333,7 @@ describe('ações em lote', () => {
   // 29.116 (N2): uma releitura começada DEPOIS da do lote (reconexão) fazia a do lote voltar pela ficha, sem gravar, e
   // o "Terminado" saía antes da lista nova.
   it('com outra releitura começada depois da do lote, o resumo espera a mais nova', async () => {
-    let lista = [MARIANA, LUCAS];
+    let lista = [LUCIANA, TADEU];
     const presas: (() => void)[] = [];
     rotas();
     backend.on('GET', /^\/api\/personas$/, () => (lista[0]!.policy_group_id
@@ -345,8 +345,8 @@ describe('ações em lote', () => {
       return json(lista.find((p) => p.id === id));
     });
     await render();
-    await waitFor(() => text().includes('Lucas Almeida'));
-    await selecionar('Mariana Costa', 'Lucas Almeida');
+    await waitFor(() => text().includes('Tadeu Quintela'));
+    await selecionar('Luciana Bastos', 'Tadeu Quintela');
     await click(byRole('button', /Grupo de acesso/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
     await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
@@ -365,13 +365,13 @@ describe('ações em lote', () => {
   // 29.116 (N): durante a espera, o X dizia nada e o Esc não fazia nada; agora o X diz por quê, e nem ele nem o Esc fecham.
   it('enquanto executa, o X fica indisponível com o motivo e o Esc não fecha', async () => {
     let soltar: (() => void) | null = null;
-    rotas([MARIANA, LUCAS]);
+    rotas([LUCIANA, TADEU]);
     backend.on('PATCH', /\/instagram\/profiles\//, (c) => new Promise<Response>((r) => {
-      soltar = () => r(json({ ...MARIANA, ...(c.body as object) }));
+      soltar = () => r(json({ ...LUCIANA, ...(c.body as object) }));
     }));
     await render();
-    await waitFor(() => text().includes('Lucas Almeida'));
-    await selecionar('Mariana Costa');
+    await waitFor(() => text().includes('Tadeu Quintela'));
+    await selecionar('Luciana Bastos');
     await click(byRole('button', /Grupo de acesso/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
     await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
@@ -390,15 +390,15 @@ describe('ações em lote', () => {
   it('com a lista sem se reler, grupo, bloquear e reativar ficam indisponíveis com o motivo até o "Tentar de novo"', async () => {
     let leituras = 0;
     let cair = true;
-    rotas([MARIANA, LUCAS]);
+    rotas([LUCIANA, TADEU]);
     backend.on('GET', /^\/api\/personas$/, () => {
       leituras += 1;
-      return leituras > 1 && cair ? apiError(503, 'unavailable', 'banco fora do ar') : json([MARIANA, LUCAS]);
+      return leituras > 1 && cair ? apiError(503, 'unavailable', 'banco fora do ar') : json([LUCIANA, TADEU]);
     });
-    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...LUCIANA, ...(c.body as object) }));
     await render();
-    await waitFor(() => text().includes('Lucas Almeida'));
-    await selecionar('Mariana Costa', 'Lucas Almeida');
+    await waitFor(() => text().includes('Tadeu Quintela'));
+    await selecionar('Luciana Bastos', 'Tadeu Quintela');
     await click(byRole('button', /Grupo de acesso/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
     await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
@@ -425,13 +425,13 @@ describe('ações em lote', () => {
   // 29.118: o clique fora (backdrop) também não fecha enquanto executa.
   it('enquanto executa, o clique fora não fecha', async () => {
     let soltar: (() => void) | null = null;
-    rotas([MARIANA, LUCAS]);
+    rotas([LUCIANA, TADEU]);
     backend.on('PATCH', /\/instagram\/profiles\//, (c) => new Promise<Response>((r) => {
-      soltar = () => r(json({ ...MARIANA, ...(c.body as object) }));
+      soltar = () => r(json({ ...LUCIANA, ...(c.body as object) }));
     }));
     await render();
-    await waitFor(() => text().includes('Lucas Almeida'));
-    await selecionar('Mariana Costa');
+    await waitFor(() => text().includes('Tadeu Quintela'));
+    await selecionar('Luciana Bastos');
     await click(byRole('button', /Grupo de acesso/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
     await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
@@ -451,10 +451,10 @@ describe('ações em lote', () => {
   // até ela assentar, senão o resumo avisava e os três ficavam livres sobre a lista velha.
   it('a releitura que não volta no prazo: o resumo sai com o aviso, e a barra trava até ela assentar', async () => {
     let soltar: ((relida: boolean) => void) | null = null;
-    rotas([MARIANA, LUCAS]);
-    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
+    rotas([LUCIANA, TADEU]);
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...LUCIANA, ...(c.body as object) }));
     await act(async () => {
-      root.render(<><BarraDeLote selecionadas={[MARIANA, LUCAS]} grupos={[GRUPO]} onLimpar={() => {}}
+      root.render(<><BarraDeLote selecionadas={[LUCIANA, TADEU]} grupos={[GRUPO]} onLimpar={() => {}}
                                  onConcluido={() => new Promise<boolean>((r) => { soltar = r; })} prazoDaReleituraMs={50} />
         <ConfirmHost /></>);
     });
@@ -478,11 +478,11 @@ describe('ações em lote', () => {
   // 29.128 (nota P do #423): com duas releituras pendentes, a primeira que assenta não solta a trava.
   it('duas releituras passam do prazo: a trava só sai quando a última assenta', async () => {
     const soltas: ((relida: boolean) => void)[] = [];
-    rotas([MARIANA, LUCAS]);
-    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
+    rotas([LUCIANA, TADEU]);
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...LUCIANA, ...(c.body as object) }));
     backend.on('DELETE', /\/personas\//, () => new Response(null, { status: 204 }));
     await act(async () => {
-      root.render(<><BarraDeLote selecionadas={[MARIANA, LUCAS]} grupos={[GRUPO]} onLimpar={() => {}}
+      root.render(<><BarraDeLote selecionadas={[LUCIANA, TADEU]} grupos={[GRUPO]} onLimpar={() => {}}
                                  onConcluido={() => new Promise<boolean>((r) => { soltas.push(r); })} prazoDaReleituraMs={50} />
         <ConfirmHost /></>);
     });
@@ -511,10 +511,10 @@ describe('ações em lote', () => {
 
   it('bloquear e reativar: PATCH status por persona; quem já está no status não é chamado', async () => {
     rotas();
-    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...LUCIANA, ...(c.body as object) }));
     await render();
-    await waitFor(() => text().includes('Lucas Almeida'));
-    await selecionar('Mariana Costa', 'Lucas Almeida');
+    await waitFor(() => text().includes('Tadeu Quintela'));
+    await selecionar('Luciana Bastos', 'Tadeu Quintela');
     await click(byRole('button', /^Bloquear$/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Bloquear 2 personas/));
     await click(byRole('button', /^Bloquear 2$/, dialogo));
@@ -537,8 +537,8 @@ describe('ações em lote', () => {
     backend.on('DELETE', /^\/api\/personas\/ig-9$/,
                () => apiError(409, 'persona_in_use', 'Esta pessoa está vinculada a um aparelho. Desvincule antes de apagar.'));
     await render();
-    await waitFor(() => text().includes('Helena Prado'));
-    await selecionar('Mariana Costa', 'Helena Prado');
+    await waitFor(() => text().includes('Elaine Prado'));
+    await selecionar('Luciana Bastos', 'Elaine Prado');
     await click(byRole('button', /Apagar…/, barra()));
     const dialogo = await waitFor(() => byRole('dialog', /Apagar 2 personas/));
     const apagar = byRole('button', /^Apagar 2/, dialogo);

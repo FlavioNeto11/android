@@ -43,7 +43,7 @@ const HABILIDADE = entrada({ kind: 'habilidade', ref: 'instagram.abrir-conversa@
                              title: 'Abrir a conversa com o contato', state_at: '2026-09-26T10:00:00Z',
                              por_que_nao_publica: DONO('habilidade') });
 const MEMORIA = entrada({ kind: 'memoria', ref: 'ig-1', state: null, native_status: null, side_effect: false,
-                          requires_owner: false, title: 'Marina Costa', count: 12 });
+                          requires_owner: false, title: 'Marina Bastos', count: 12 });
 
 const FALHAS = {
   dias: 14, outro_pct: 4,
