@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F7: o 409 `invalid_transition` deixa um evento (branch feat/15-15-f7-evento-409)
+
+- O handler do 409 em `main.py` grava um evento `log` `warn` (`Pedido recusado por transição inválida (409 invalid_transition): <método> <modelo da rota>`),
+  com `data {code, method, route, detail}`: o modelo da rota, nunca o caminho com o id, e o texto da recusa, que só tem nomes de estados. Fecha a lacuna
+  da leitura real do deploy 47: o backend não tem log de acesso e o 409 não aparecia em lugar nenhum (a recusa de execução, objetivo e tentativa já deixava o
+  evento `(recusada)` em `Repository._conferir`; a da etapa não deixava nenhum). A resposta HTTP não muda. Sem migração e sem adendo.
+- Prova `simulated` (`test_maquinas_de_estado_http.py`); `real`: `not_run` até o deploy.
+
 ## 2026-10-06 — K-104: a caracterização da saúde não fotografa o dialeto do banco (branch fix/saude-caracterizacao-dialeto)
 
 - Na suíte 47 o PG dirigido reprovou os 31 cenários de `test_saude_caracterizacao.py`: o dourado foi gerado em SQLite e a fotografia levava `database.dialect`
