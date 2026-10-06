@@ -9381,13 +9381,14 @@
    "id": "31.87",
    "status": "partial",
    "proof": "real",
-   "evidence": "31.87 F2: 06/10/2026 ~01:03Z a ~01:11Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (Configurações do Android, sem conta real, sem efeito externo), persona de teste Teste Portal Um, sessão trn-1nuBzRHaAkM09f6K (6 entradas: busca, texto com o nome da persona, tecla back, Notificações, Histórico, interruptor), fluxo f-fe11676e54e3. a proposta (1ª chamada paga) trocou o texto digitado, que era o nome da persona, por {perfil_nome_exibicao}: a etapa 'Pesquisar o nome da persona' confere 'aparece o texto “{perfil_nome_exibicao}”', o comando ficou 'pesquise nas configurações e ligue o histórico de notificações' (sem o termo), e a revisão e o relatório do salvar trazem o aviso '{perfil_nome_exibicao}: vem do perfil da persona de cada aparelho (o aparelho sem esse dado não roda o fluxo)'. No Livro (GET /api/aprendizado/fluxo/f-fe11676e54e3) o nome da persona aparece 0 vezes e só existe o marcador perfil_nome_exibicao.",
-   "grupo": "portal-percurso-deploy-43",
-   "modelo": "claude-sonnet-5-5",
+   "evidence": "Real, só leitura e sem IA (06/10 01:21Z, máquina central, backend no ar no commit f15ef2e1, migração 116; leitura do SQLite central em mode=ro pelo script .claude/handoffs/aprendizado/prova3187_mascara.py, que nunca imprime valor da persona, só o nome da coluna e contagens). Sessão de treino trn-1nuBzRHaAkM09f6K (android-04, persona de teste, status saved, 06/10 01:03Z) e fluxo f-fe11676e54e3 (source training:trn-1nuBzRHaAkM09f6K, criado 01:09Z). Valores da persona procurados: display_name, first_name, last_name e birth_date (os que têm 3 ou mais caracteres). PROVADO: (a) eventos sem o dado em claro em nenhuma das três buscas: os 18 eventos que citam a sessão, os 34 eventos do android-04 desde o início do treino e o evento que cita o fluxo (log de 01:09:14Z). Nenhum deles traz o marcador '<dado da persona>' nem '{perfil_', ou seja, nenhum evento carregou o dado; (b) fluxo salvo (name, command_template, match_key, plan) sem o dado em claro. A persona aparece só como {perfil_nome_exibicao}, em steps[1].postcondition.value e .description (etapa pesquisar_persona, post text_visible). O comando não tem parâmetro, e plan.parameters está vazio: o marcador não virou parâmetro; (c) as 4 receitas do treino (201 a 204) são só tap, sem texto. NÃO PROVADO: a reprodução. Nenhuma execução tem flow_id ou prova_fluxo_id deste fluxo, e nenhuma execução no android-04 depois da criação. A Portal desligou o fluxo no percurso do deploy 43 (trilha: published por training:trn-1nuBzRHaAkM09f6K, depois disabled por 'Portal (sessão Claude)'). ACHADOS: (1) a proposta guardada em training_sessions.proposal tem o nome da persona em claro em um único lugar, answers[1].question, o texto da pergunta da IA a quem ensinou (31.91). Não é evento nem reprodução, mas fica no banco; o na_proposta do F2 não troca questions nem answers; (2) a entrada digitada (seq 2, texto de 15 caracteres, guardada em training_inputs por desenho, 31.82) não virou binding nem receita na etapa pesquisar_persona. O dado entrou só na pós-condição, então a reprodução dessa etapa depende da IA ler a etapa sem o valor a digitar. Vale conferir na próxima prova real com reprodução.",
+   "blocker": "A reprodução não rodou: o fluxo f-fe11676e54e3 foi desligado pela Portal antes de qualquer execução. Fechar o 31.87 pede uma execução real do fluxo ensinado (ou de outro ensinado com dado da persona) no aparelho da persona, e conferir nos eventos e nas ações da reprodução que só sai o marcador. Isso é execução real com IA paga: pede o sim da orquestradora.",
+   "grupo": "31-87-aprendizado-prova-da-mascara",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T01:13:11+00:00"
+   "quando": "2026-10-06T01:21:54+00:00"
   },
   "31.100": {
    "id": "31.100",
@@ -13090,6 +13091,15 @@
    ],
    "grupos": [
     "portal-percurso-deploy-43"
+   ]
+  },
+  {
+   "quando": "2026-10-06T01:21:54+00:00",
+   "itens": [
+    "31.87"
+   ],
+   "grupos": [
+    "31-87-aprendizado-prova-da-mascara"
    ]
   }
  ]
