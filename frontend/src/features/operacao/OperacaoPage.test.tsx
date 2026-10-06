@@ -345,6 +345,30 @@ describe('com a rota no central', () => {
     expect(container.querySelector('dialog[open]')).toBeNull();
   });
 
+  const FEITO = (p: string, nome: string, verificada: boolean | null) => ({ ...OPERACAO.alvos[0], profile_id: p, persona_nome: nome, estado: 'concluido', estagio: 'resultado_verificado', estagios: [],
+    resultado: { texto: `Texto de ${nome}.`, conhecimento_ids: [], evidencia_id: 9, acao_final: { tipo: 'CREATE_COMMENT', verificada, evidencia_id: 10 } } });
+
+  it('o cabeçalho diz quantas ações a operação JÁ executou e quantas foram verificadas, também com o modo "Só preparar" (depois da liberação)', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, status: 'concluida', alvos: [FEITO('p1', 'Ana', true), FEITO('p2', 'Bia', false), PREPARADO('p3', 'Caio', 'Texto do Caio.')] }));
+    await ir(['op-1']);
+    await waitFor(() => expect(linhas()).toHaveLength(3));
+    const cab = container.querySelector('[data-acoes-feitas]') as HTMLElement;
+    expect(text(cab)).toBe('· 2 ações executadas, 1 verificada');
+    expect(text(container)).toContain('Ação final: Só preparar');                    // o modo da operação segue como o backend o mandou
+  });
+
+  it('singular e sem nada executado: uma ação aparece no singular, e o cabeçalho não afirma nada quando nenhum alvo executou', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, alvos: [FEITO('p1', 'Ana', true), { ...FEITO('p9', 'Zeca', true), estado: 'cancelado' }, OPERACAO.alvos[1]] }));
+    await ir(['op-1']);
+    await waitFor(() => expect(linhas()).toHaveLength(3));
+    expect(text(container.querySelector('[data-acoes-feitas]') as HTMLElement)).toBe('· 1 ação executada, 1 verificada');      // o alvo cancelado depois não conta como executado
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, alvos: [PREPARADO('p3', 'Caio', 'Texto do Caio.'), OPERACAO.alvos[1]] }));
+    await ir([]);
+    await ir(['op-1']);
+    await waitFor(() => expect(text(container)).toContain('Caio'));
+    expect(container.querySelector('[data-acoes-feitas]')).toBeNull();               // texto preparado e parado não é ação executada
+  });
+
   it('liberar numa operação que o "preparar" já fechou a REABRE: a tela e o relatório seguem o estado de agora (idempotente, sem eventos)', async () => {
     const fechada = { ...OPERACAO, status: 'concluida', finished_at: '2026-10-06T17:30:00Z', alvos: [OPERACAO.alvos[0], PREPARADO('p2', 'Bia', 'Texto da Bia.')] };
     const reaberta = { ...fechada, status: 'em_curso', finished_at: null, acao_final: 'executar' };
