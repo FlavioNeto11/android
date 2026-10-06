@@ -13,6 +13,7 @@ import { confirm } from '../../components/Confirm';
 import { Disclosure } from '../../components/Disclosure';
 import { Field, Select, TextInput } from '../../components/Field';
 import { isRecord, plural } from '../../lib/format';
+import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
@@ -26,6 +27,16 @@ import styles from './Training.module.css';
 const ROTULO_DA_GRAVACAO = 40;
 
 /** Corta o nome na última palavra inteira que cabe, com reticências (29.142: antes o corte caía no meio da palavra). */
+/** O estado de uma sessão concluída, em palavras: "sem proposta ainda" diz o que falta (31.119). */
+const estadoDaPendente = (s: TrainingSession): string => (s.status === 'proposed' ? 'proposta pronta' : 'sem proposta ainda');
+const entradasDe = (s: TrainingSession): number => Math.max(s.input_count ?? 0, s.inputs?.length ?? 0);
+
+/** O texto de "Para revisar" depois do nome: estado, há quanto tempo e quantas entradas ("sem proposta ainda · há 3 h · 0 entradas"). */
+function metaDaPendente(s: TrainingSession, agora: number): string {
+  const quando = s.updated_at || s.finished_at || s.created_at;
+  return [estadoDaPendente(s), quando ? tempoRelativo(quando, agora) : null, plural(entradasDe(s), 'entrada', 'entradas')].filter(Boolean).join(' · ');
+}
+
 function encurtar(nome: string): string {
   if (nome.length <= ROTULO_DA_GRAVACAO) return nome;
   const corte = nome.slice(0, ROTULO_DA_GRAVACAO - 1);
@@ -201,7 +212,8 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   const botoesDaGravacao = () => (
     <div className={styles.actions}>
       <Button size="sm" variant="primary" icon={Square} loading={ocupado === 'concluir'}
-              disabledReason={ocupado === 'descartar' ? 'Descartando a gravação…' : ocupado === 'desfazer' ? 'Desfazendo a última entrada…' : null}
+              disabledReason={!(ativa?.inputs ?? []).length ? 'Nada gravado: faça a tarefa no aparelho; sem entradas só dá para descartar.'
+                : ocupado === 'descartar' ? 'Descartando a gravação…' : ocupado === 'desfazer' ? 'Desfazendo a última entrada…' : null}
               onClick={() => void concluir(false)}>Concluir e revisar</Button>
       <Button size="sm" variant="dangerGhost" icon={Trash2} loading={ocupado === 'descartar'}
               disabledReason={ocupado === 'concluir' ? 'Concluindo a gravação…' : ocupado === 'desfazer' ? 'Desfazendo a última entrada…' : null}
@@ -209,6 +221,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
     </div>
   );
 
+  const agora = useNow();
   const pendentes = sessoes.filter((s) => s.status === 'recorded' || s.status === 'proposed');
   // v1.58: a sessão salva some de "Para revisar", mas a etapa que ficou sem receita (aparelho fora do ar no salvar)
   // ainda pode ganhá-la; daqui a pessoa refaz quando o aparelho voltar, sem reabrir a revisão.
@@ -236,6 +249,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             <CircleDot size={14} className={styles.recDot} aria-hidden /> Gravando: <strong>{ativa.intent}</strong>
             <Badge size="sm">{plural((ativa.inputs ?? []).length, 'entrada', 'entradas')}</Badge>
           </p>
+          {!(ativa.inputs ?? []).length ? <p className={styles.hint} role="status">Nada gravado ainda: faça a tarefa no aparelho. Sem entradas só dá para descartar.</p> : null}
           {/* 31.111 F5: o treino aberto a partir de uma etapa que falhou mostra de onde veio e o que a execução fez. */}
           {ativa.origin ? <OrigemDoTreino origin={ativa.origin} /> : null}
           <ol className={styles.liveList}>
@@ -306,20 +320,21 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
       {pendentes.length ? (
         <div className={styles.pending}>
           <span className={styles.muted}>Para revisar:</span>
+          <ul className={styles.pendentes}>
           {pendentes.map((s) => (
-            <span key={s.id} className={styles.pendente}>
+            <li key={s.id} className={styles.pendente}>
+              {/* 29.142: o rótulo leva o nome inteiro; o estado, o tempo e as entradas ficam ao lado (uma linha por sessão, 31.119). */}
               <Button size="sm" variant="ghost" onClick={() => setRevisando(s.id)}
-                      label={`Revisar “${s.intent}”${s.status === 'proposed' ? ', proposta pronta' : ', só gravada'}${s.origin ? ', corrige uma falha' : ''}`}>
-                {/* 29.142: o rótulo leva o nome inteiro; o estado aparece nas duas situações, para a só gravada não
-                    parecer igual à de proposta pronta. */}
+                      label={`Revisar “${s.intent}”, ${estadoDaPendente(s)}`}>
                 {encurtar(s.intent)}
-                {s.status === 'proposed' ? ' · proposta pronta' : ' · só gravada'}
-                {s.origin ? <> <SeloDeOrigem origin={s.origin} /></> : null}
               </Button>
+              <span className={styles.muted}>{metaDaPendente(s, agora)}</span>
+              {s.origin ? <SeloDeOrigem origin={s.origin} /> : null}
               <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label={`Descartar “${s.intent}”`}
                       disabledReason={ocupado ? 'Espere a ação em andamento.' : null} onClick={() => void descartarPendente(s)} />
-            </span>
+            </li>
           ))}
+          </ul>
         </div>
       ) : null}
       {salvas.length ? (
