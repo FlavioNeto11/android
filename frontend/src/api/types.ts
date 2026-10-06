@@ -392,6 +392,9 @@ interface Settings {
   orquestracao_max_candidatas: number;
   /** Quantas contas executam a ação final no post nosso numa operação (as demais ficam paradas até serem liberadas). */
   operacao_max_acoes_executadas: number;
+  /** ADR-081: quantas contas da frota podem ter mexido com o mesmo alvo dentro da janela, e quantos dias ela olha para trás. Backend anterior não manda. */
+  frota_max_contas_por_alvo: number;
+  frota_janela_dias: number;
 }
 
 /** v0.20 (C2): `on_demand` só captura prévia de aparelho que alguém olha; `always` é o laço antigo. */
