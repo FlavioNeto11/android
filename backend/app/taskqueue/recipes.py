@@ -844,6 +844,11 @@ class RecipeStore:
         metricas.contar("receita.consulta", resultado=resultado, chave="generica" if generica_casou else None)
         return row
 
+    def liberada_fora_do_ensino(self, row: Row) -> bool:
+        """30.81, para o rendimento do ensino: a receita vale fora da persona que ensinou (a do treino só depois do
+        "Confirmar que fica" ou da prova real; a que não é do treino, sempre). A mesma régua da consulta."""
+        return not self._restrita_ao_ensino(row, None)
+
     def _restrita_ao_ensino(self, row: Row, persona: str | None, prova_fluxo: str | None = None) -> bool:
         """30.81: a receita do treino só vale fora da persona que ensinou depois de LIBERADA: o "Confirmar que fica"
         explícito de uma pessoa no fluxo da sessão, ou uma evidência a favor DELA (etapa conduzida só pela receita e

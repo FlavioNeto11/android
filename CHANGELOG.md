@@ -19,6 +19,26 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.177: rendimento do ensino por sessão (branch feat/31-177-rendimento-do-ensino)
+
+- Medido em 06/10: 8 de 275 execuções foram planejadas por fluxo ensinado, todas lote de prova; 0 uso real. O número
+  era de uma consulta à mão. Agora `GET /api/training/{id}/rendimento` dá isso por sessão de ensino, sem IA e sem
+  escrita. A régua do uso é a mesma da medida (`domain/rendimento.py`, `tipo_de_uso`):
+  - `simulada`: provedor ou aparelho falso;
+  - `prova`: prova de fluxo, ou chave `lote:`;
+  - `real`: o resto.
+- O que a rota mostra:
+  - por receita: tentativas sem IA (só `recipe`, comprovou), tentativas que caíram na IA (`recipe>…`), as outras, o
+    US$ da IA dentro da retenção de `ai_calls` e se a receita está liberada fora de quem ensinou (30.81,
+    `RecipeStore.liberada_fora_do_ensino`);
+  - o fluxo (estado, usos, selo do 31.150) e as execuções dele por uso;
+  - as lições que a sessão gerou;
+  - os vizinhos (31.152) e as etapas de planos livres que os aceitaram (`steps.pacotes_aceitos`);
+  - um resumo com `usado_de_verdade`.
+- Não há "US$ evitado": seria contrafactual. O número do adendo do contrato vem da orquestradora (pedido).
+- Prova `simulated`: `backend/tests/test_rendimento_do_ensino.py` (2 testes, um pela rota). `real`: `not_run` (o
+  `GET` nas sessões salvas do central, depois do deploy que levar isto).
+
 ## 2026-10-06 — 31.149, caminho alternativo: a correção não ligada vira lição do planejador (branch feat/31-149-licao-do-planejador)
 
 - Quando a correção ensinada não liga à etapa que falhou (nome que a execução não tem, efeito, app diferente), o `save`
