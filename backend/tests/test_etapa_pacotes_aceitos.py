@@ -121,10 +121,11 @@ async def test_o_ensino_declara_o_vizinho_da_demonstracao_e_avisa(harness: Harne
     st, sid = await _gravada_com_busca(harness)
     assert [e["package"] for e in st.training.get(sid)["inputs"]][1:] == ["com.pocqa.messenger", BUSCA]
     previa = await st.skills.preview(sid, proposal=_proposta(), profile_ids=[], group_ids=[])
+    # 31.123 F2: "abrir_busca" TERMINA na busca (a entrada seguinte é dela) e também passa a aceitá-la
     assert [a for a in previa["warnings"] if BUSCA in a] == [
-        f"Etapa “Etapa buscar”: a demonstração terminou fora do app, em {BUSCA}; a etapa passa a aceitar a conclusão "
-        "nessa tela."]
+        f"Etapa “Etapa {k}”: a demonstração terminou fora do app, em {BUSCA}; a etapa passa a aceitar a conclusão "
+        "nessa tela." for k in ("abrir_busca", "buscar")]
     salvo = await st.skills.save(sid, proposal=_proposta(), profile_ids=[], group_ids=[])
     plano = json.loads(st.db.scalar("SELECT plan FROM flows WHERE id=?", (salvo["flow_id"],)))
     por_chave = {p["key"]: p for p in plano["steps"]}
-    assert por_chave["buscar"]["pacotes_aceitos"] == [BUSCA] and "pacotes_aceitos" not in por_chave["abrir_busca"]
+    assert por_chave["buscar"]["pacotes_aceitos"] == [BUSCA] and por_chave["abrir_busca"]["pacotes_aceitos"] == [BUSCA]

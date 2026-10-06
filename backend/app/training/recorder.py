@@ -23,7 +23,7 @@ from ..db import dumps, loads
 from ..security.redaction import looks_secret, mentions_credential, parece_codigo, parece_linha_com_codigo, parece_senha_ou_codigo
 from ..social.observacao import linhas_de_conteudo
 from ..util import new_token, now_iso
-from . import dado_da_persona
+from . import dado_da_persona, partida
 from .origem import OrigemDaFalha, OrigemRecusada, contexto_da_falha, origem_da_falha, origin_da_linha
 
 if TYPE_CHECKING:
@@ -173,9 +173,11 @@ def _alvo_sem_segredo(alvo: dict | None, sensivel: bool = False) -> dict | None:
 
 
 class TrainingError(Exception):
-    def __init__(self, code: str, message: str, status: int = 409):
+    def __init__(self, code: str, message: str, status: int = 409, extra: dict[str, object] | None = None):
         super().__init__(message)
         self.code, self.message, self.status = code, message, status
+        #: Campos estruturados que vão ao `detail` ao lado de `code` e `message` (31.122, adendo v1.86).
+        self.extra: dict[str, object] = dict(extra or {})
 
 
 def titulo_da_tela(tree: Any) -> str | None:
@@ -466,14 +468,18 @@ class TrainingRecorder:
             titulo = None                        # 31.82 (c): a tela com "Seu código é 123456" não vira título
         linhas = ([ln for ln in linhas_de_conteudo(tree.elements, limite_linhas=24) if not _parece_segredo_de_tela(ln)][:8]
                   if tree is not None and not sensivel else None)
+        # 31.122 F2: a tela inteira, compacta, para a regra do verificador (uso interno; fora do GET)
+        elementos = (partida.elementos_compactos(tree.elements, _parece_segredo_de_tela)
+                     if tree is not None and not sensivel and not marcada else None)   # teclado de PIN ou padrão: nada
         self.db.execute(
             "INSERT INTO training_inputs(session_id, seq, ts, type, x, y, x2, y2, key_name, text, has_text, text_len,"
-            " package, app_id, target, screen_title, screen_lines, sensitive) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " package, app_id, target, screen_title, screen_lines, sensitive, screen_elements)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (sid, seq, now_iso(), tipo, x, y, x2, y2,
              entrada.get("key"), texto, int(tem_texto), len(entrada.get("text") or "") if tem_texto else None,
              pacote, entrada.get("app_id"), dumps(alvo) if alvo else None,
              titulo, dumps(linhas) if linhas is not None else None,
-             int(marcada)))
+             int(marcada), dumps(elementos) if elementos is not None else None))
         self.db.execute("UPDATE training_sessions SET updated_at=? WHERE id=?", (now_iso(), sid))
         self.bus.emit("training.input", f"{rt.id}: treinamento — entrada {seq} ({tipo})", instance_id=rt.id,
                       data={"training_session_id": sid, "seq": seq})
@@ -502,10 +508,18 @@ class TrainingRecorder:
             d = dict(r)
             d["target"] = loads(d["target"])
             d["screen_lines"] = loads(d["screen_lines"], []) or []
+            d.pop("screen_elements", None)        # 31.122 F2: uso interno, fora do GET (`elementos_da_tela`)
             d["has_text"] = bool(d["has_text"])
             d["sensitive"] = bool(d["sensitive"])
             saida.append(d)
         return saida
+
+    def elementos_da_tela(self, session_id: str) -> dict[int, list[dict[str, object]]]:
+        """31.122 F2: os elementos compactos da tela de cada entrada, por `seq` (só as que os têm). Uso interno do ensino:
+        não sai no GET da sessão."""
+        return {int(r["seq"]): loads(r["screen_elements"], []) or [] for r in self.db.query(
+            "SELECT seq, screen_elements FROM training_inputs WHERE session_id=? AND screen_elements IS NOT NULL"
+            " ORDER BY seq", (session_id,))}
 
     def get(self, session_id: str) -> dict[str, Any]:
         s = dict(self._row(session_id))
