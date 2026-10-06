@@ -29,6 +29,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   alvo, o parâmetro do planejador com o mesmo valor vira o nome fixo, e as etapas das capabilities do bloco `operacao` do
   app ganham a chave `<capability>_<n>` (`taskqueue/plano_da_operacao.py`, aplicado antes de gravar o plano). A receita
   ensinada com `{username}`/`{caption_contains}` casa e se reproduz; sem isso, dava `RecipeDiverged` "parâmetro ausente".
+  Credencial em `parametros` é recusada pelo nome, pelo par `nome=valor` e pelo formato do valor; a renomeação nunca
+  toca o dado da persona nem nome sensível. O `revisor-segredos` teve 5 achados, todos corrigidos com teste.
 - Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (identidade igual à da etapa ensinada, reprodução e o
   controle sem os fixos, operação no harness, execução fora de operação sem mudança, validação),
   `backend/tests/test_operacoes.py` e `backend/tests/test_migracao_127.py`. `not_run`: prova real (rodada de 07/10).
