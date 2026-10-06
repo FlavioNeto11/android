@@ -268,7 +268,7 @@ avisos depois da faxina"), e a trava cai no TTL.
   5. Pedido novo vai à orquestradora entre aspas. Quem numera é ela.
   6. Segredo achado no cartão: avisa-se o dono para apagar, sem copiar o valor.
 - **Hoje:** leitura dos quadros a cada 20 minutos, por `list_activity` com ações de criação. O cartão entra em
-  `.claude/trello/mapa.json` como `dono:<shortLink>`.
+  `.claude/trello/mapa.json` (estado por instalação, fora do Git) como `dono:<shortLink>`.
 - **No produto:** 32.2; o webhook substitui a leitura periódica.
 
 **C-15 · Mensagem com cara de segredo.**
@@ -371,7 +371,9 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Todo cartão tem uma parte para quem não é técnico (`**Para quem não é técnico:**` e `**Por que importa:**`) e
     uma parte técnica.
   - Cartão se arquiva, nunca se apaga.
-  - Todo cartão que a ANA cria entra em `.claude/trello/mapa.json`.
+  - Todo cartão que a ANA cria entra em `.claude/trello/mapa.json`, que é **estado por instalação e fica fora do Git**
+    (28.56, `.gitignore`, como o `config/config.yaml`): ele é regravado por script a cada espelho de deploy, e arquivo
+    versionado mexido no central trava o fast-forward do deploy. A fonte durável é a tabela `trello_cartoes`.
   - A estrutura dos quadros está em `.claude/trello/estrutura.json`, e as rotinas na skill `trello`.
 - **No produto:** a tabela `trello_cartoes` (migração 087) é o mapa do 32.2.
 
