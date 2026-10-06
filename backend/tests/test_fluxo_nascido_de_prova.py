@@ -8,6 +8,8 @@ desligados por uma pessoa. Agora:
   filtro `nascido_de_prova=true|false` nas duas listagens;
 - `PUT /api/flows/{id}` aceita `motivo`, que vai à trilha do livro ("fluxo de prova do 31.xxx, desligado de propósito").
 
+31.135 (adendo v1.88): a origem de TODO fluxo ensinado traz a sessão, o aparelho, quem ensinou e quando.
+
 Nível de prova: `simulated` (harness com aparelho falso; nenhuma IA).
 """
 from __future__ import annotations
@@ -88,3 +90,15 @@ async def test_o_motivo_de_quem_desliga_vai_a_trilha_e_o_invalido_e_recusado(har
         r = await c.post("/api/instances/android-01/training",
                          json={"intent": "x", "lease_id": "l", "nascido_de_prova": "sim"})
         assert r.status_code == 422, r.text                                          # tipo errado no corpo
+
+
+# ------------------------------------------------------------------ 31.135 (adendo v1.88): a origem de todo fluxo ensinado
+async def test_todo_fluxo_ensinado_traz_a_sessao_o_aparelho_quem_ensinou_e_quando(harness: Harness) -> None:
+    async with _cliente(harness) as c:
+        sid, fid = await _ensinar(harness, c, prova=None, comando="abra a conversa ensinada no app")
+        fim = harness.state.db.scalar("SELECT finished_at FROM training_sessions WHERE id=?", (sid,))
+        esperado = {"session_id": sid, "run_id": None, "step_id": None, "attempt_id": None,
+                    "instance_id": "android-01", "operator": None, "ensinado_em": fim}
+        assert fim and {f["id"]: f["origin"] for f in (await c.get("/api/flows")).json()}[fid] == esperado
+        origem = (await c.get(f"/api/aprendizado/fluxo/{fid}")).json()["conteudo"]["origem"]
+        assert {k: origem[k] for k in esperado} == esperado and origem["tipo"] == "treino"

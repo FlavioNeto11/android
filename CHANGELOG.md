@@ -19,6 +19,11 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.135: a origem de todo fluxo ensinado (branch feat/31-130-fluxo-de-prova)
+
+- Adendo v1.88, sem migração: `GET /api/flows[].origin` e `conteudo.origem` do fluxo no Livro trazem, de todo fluxo cuja fonte é `training:<id>`, `session_id`, `instance_id`, `operator` e `ensinado_em` (antes, só o fluxo que veio de uma falha tinha origem). Os ids da falha seguem como no v1.81.
+- Prova `simulated`: `tests/test_fluxo_nascido_de_prova.py` (1 novo) e os ajustes de `tests/test_treino_a_partir_da_falha.py` e `tests/test_learning_conteudo.py`. Real: `not_run`.
+
 ## 2026-10-06 — 31.130: o fluxo nascido de uma prova leva a marca de origem (branch feat/31-130-fluxo-de-prova)
 
 - Achado da Portal (06/10): em Salvas e no Livro, os três fluxos de prova de sessão do dia pareciam fluxos reais desligados por uma pessoa.

@@ -471,6 +471,11 @@ do fluxo no Livro, com o filtro `nascido_de_prova=true|false` nas duas listagens
 com a marca e, ao desligar o fluxo de prova, mandam `motivo` no `PUT /api/flows/{id}` dizendo que é prova (vai à
 trilha do livro). Os de antes se marcam pelo id com `scripts/marcar-fluxo-de-prova.py`.
 
+**A origem do fluxo ensinado (31.135, adendo v1.88).** O fluxo só dizia "Demonstrado no treino". Agora a `origin` de
+`GET /api/flows` e a `origem` do conteúdo no Livro trazem, de todo fluxo ensinado, a sessão (`session_id`), o
+aparelho, quem ensinou (`operator`) e quando (`ensinado_em`), no molde do v1.81. Os ids da falha seguem `null` quando
+não veio de uma.
+
 **Teclas ao ensinar (31.84).** O texto digitado pelo painel acrescenta ao campo (`clear_first=false`), e quem ensina
 apagava um caractere por vez com "Apagar". Como a receita digita com `clear_first=True`, que já limpa o campo,
 `distill_training` trata assim as teclas gravadas na etapa:

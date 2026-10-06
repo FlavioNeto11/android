@@ -7019,3 +7019,15 @@ fluxo ensinado a partir de uma falha (adendo v1.75), que `GET /api/flows[].origi
   `--aplicar --backup`), que marca também a sessão de origem. Nenhum status, plano ou trilha muda por ele.
 - **Prova:** `simulated` (`backend/tests/test_fluxo_nascido_de_prova.py`, `scripts/tests/test_marcar_fluxo_de_prova.py`);
   `real`: `not_run`.
+
+## Adendo v1.88 (06/10/2026; número da orquestradora; item 31.135) — a origem de todo fluxo ensinado
+
+- **`GET /api/flows[].origin`** e **`conteudo.origem`** do fluxo no Livro (`GET /api/aprendizado/fluxo/{ref}`, a mesma
+  origem do v1.81): `session_id` passa a vir preenchido em TODO fluxo cuja fonte é `training:<id>` (antes, só quando
+  veio de uma falha), e entram `instance_id` (o aparelho da sessão), `operator` (quem ensinou, como a sessão já
+  guarda) e `ensinado_em` (ISO, `training_sessions.finished_at`). `run_id`, `step_id` e `attempt_id` seguem como no
+  v1.81 (`null` quando o fluxo não veio de uma falha).
+- Fora do treino, `GET /api/flows[].origin` continua `null`, e em `conteudo.origem` os campos novos vêm `null`. Sem
+  migração: tudo já está na sessão de treino. Nada de nome de persona entra.
+- **Prova:** `simulated` (`backend/tests/test_fluxo_nascido_de_prova.py::test_todo_fluxo_ensinado_traz_a_sessao_o_aparelho_quem_ensinou_e_quando`,
+  `backend/tests/test_treino_a_partir_da_falha.py`, `backend/tests/test_learning_conteudo.py`); `real`: `not_run`.

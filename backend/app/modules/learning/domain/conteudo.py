@@ -273,7 +273,8 @@ def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: st
     Um comando que atravessa apps (12.1: ler no Outlook, procurar no Instagram) tem o principal e os dois exigidos.
 
     `correcao` (31.117): a execução que falhou e deu origem à correção ensinada (`{session_id, run_id, step_id, attempt_id}`, a
-    mesma forma de `flows[].origin`); `None` quando o fluxo não veio de uma falha. Os quatro ids vão em `origem` (null sem
+    mesma forma de `flows[].origin`); `None` quando o fluxo não veio de uma falha. Desde o 31.135 (v1.88) vem de todo fluxo
+    ensinado, com `instance_id`, `operator` e `ensinado_em`, e os três ids da falha `None` quando não veio de uma. Os quatro ids vão em `origem` (null sem
     correção) e `source_run_id` cai para o run da falha quando a coluna do fluxo é null (o treino não a preenche).
     `nascido_de_prova` (31.130): o fluxo nasceu de uma prova (da sessão aberta com a marca), não de uso real."""
     origem_da_falha = correcao or {}
@@ -288,6 +289,9 @@ def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: st
                    "source_run_id": source_run_id or origem_da_falha.get("run_id"),
                    "session_id": origem_da_falha.get("session_id"), "run_id": origem_da_falha.get("run_id"),
                    "step_id": origem_da_falha.get("step_id"), "attempt_id": origem_da_falha.get("attempt_id"),
+                   # 31.135 (v1.88): a sessão de treino de onde veio, de todo fluxo ensinado; `None` fora do treino
+                   "instance_id": origem_da_falha.get("instance_id"), "operator": origem_da_falha.get("operator"),
+                   "ensinado_em": origem_da_falha.get("ensinado_em"),
                    "nascido_de_prova": nascido_de_prova},
         "etapas": etapas,
         "efeito": {"externo": fluxo_tem_efeito(plano),
