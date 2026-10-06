@@ -234,7 +234,7 @@ JA_HAVIA_RECEITA = "já havia receita ativa para esta etapa"
 Acoes = list[dict[str, Any]]    # o que `distill_training` devolve: as ações da receita (nunca vão ao cliente)
 
 
-def _alvo_marcado(e: Mapping[str, Any], dados: Mapping[str, str]) -> dict[str, Any]:
+def _alvo_marcado(e: Mapping[str, object], dados: Mapping[str, str]) -> dict[str, object]:
     """31.148: o texto e a descrição do elemento tocado vão ao prompt com o marcador da persona, como os textos da tela.
     Sem alvo, nada (a entrada fica como veio)."""
     alvo = e.get("target")
