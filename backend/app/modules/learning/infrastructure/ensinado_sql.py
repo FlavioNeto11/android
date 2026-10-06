@@ -19,6 +19,7 @@ from app.modules.learning.domain.livro import CONFIRMADO_QUE_FICA, EntradaDoLivr
 from app.modules.learning.domain.validacao import MOTIVOS_QUE_ESPERAM_A_PESSOA, PREFIXO_DO_ENSINO, comando_do_ensino
 from app.modules.learning.domain.vocabulario import LivroKind
 from app.modules.learning.infrastructure import linhas
+from app.taskqueue.flows import ensinado_em_prova
 
 if TYPE_CHECKING:
     from app.modules.learning.application.servico import LearningService
@@ -79,6 +80,12 @@ class LeitorDoEnsinadoSql:
     def motivo_da_espera(self, kind: LivroKind, ref: str) -> str | None:
         espera = self._espera(kind, ref)
         return espera[1] if espera is not None else None
+
+    def em_prova(self, kind: LivroKind, ref: str) -> dict[str, str | None] | None:
+        if kind is not LivroKind.FLUXO:
+            return None
+        row = self._db.one("SELECT * FROM flows WHERE id=?", (ref,))
+        return ensinado_em_prova(self._db, row) if row is not None else None
 
     def _espera(self, kind: LivroKind, ref: str) -> tuple[str, str] | None:
         """`(desde, motivo)` do fluxo ensinado que espera a pessoa: o nascimento e o motivo do último pedido recusado

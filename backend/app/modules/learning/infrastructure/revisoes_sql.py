@@ -131,13 +131,13 @@ class RegistroDeRevisoesSql:
         cur = self._db.execute(
             "INSERT INTO learning_reviews(id, created_at, item_ref, item_kind, scope_app, gatilho, dossie_hash, dossie,"
             " template_id, template_versao, provedor, modelo, simulated, usd, saida, validade, classe_de_risco,"
-            " politica, ai_call_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " politica, ai_call_id, instrucao_versao) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT (item_ref, dossie_hash) DO NOTHING",
             (rid, to_iso(agora), nova.item_ref, nova.item_kind, nova.scope_app, nova.gatilho, nova.dossie_hash,
              json.dumps(nova.dossie, ensure_ascii=False, sort_keys=True), nova.template_id, nova.template_versao,
              nova.provedor, nova.modelo, int(nova.simulated), float(nova.usd or 0.0),
              None if nova.saida is None else json.dumps(nova.saida, ensure_ascii=False, sort_keys=True),
-             nova.validade, nova.classe_de_risco, nova.politica, nova.ai_call_id))
+             nova.validade, nova.classe_de_risco, nova.politica, nova.ai_call_id, nova.instrucao_versao))
         return rid if (cur.rowcount or 0) == 1 else None
 
     def janela(self, agora: datetime, dias: int) -> LeituraDaJanela:

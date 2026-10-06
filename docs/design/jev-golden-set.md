@@ -558,8 +558,9 @@ do `app` no estado).* Nenhuma chamada paga foi feita para isto. O código é
   A concordância (`escolha = decisao_real`) não se aplica ao `noul`: uma linha com real `nao` nunca casa.
 - **Sem GO pré-registrado para `on`.** A R5 é candidatura (`Plan.required_apps` segue do planejador), e um `on` pediria
   decisão própria. O 31.13 só mede em sombra.
-- **Travada no código:** `privacidade.R5_LIBERADA = False` até o GO do 31.10 (ADR-069 item 21: o filtro provado com 10
-  comandos reais).
+- **Liberada no código em 05/10/2026** (`privacidade.R5_LIBERADA = True`, sim do dono ao P-013, só sombra); antes ficou
+  travada até o GO do 31.10 (ADR-069 item 21: o filtro provado com 10 comandos reais). O GO/NO-GO do 31.10 é refeito com a
+  amostra que a sombra juntar.
   - Virar é um commit, com suíte e deploy. O YAML `consumidores.apps` sozinho não liga nada.
   - Travada, a sombra não lê o cadastro nem monta pedido, e `/api/ai` não anuncia a R5.
   - O relatório do 31.10 ainda não lê a origem `apps`; ele passa a lê-la quando a R5 for destravada.

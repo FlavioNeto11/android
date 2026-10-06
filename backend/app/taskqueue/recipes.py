@@ -924,6 +924,12 @@ class RecipeStore:
                               " AND variant=? AND step_hash=? ORDER BY version DESC, id DESC LIMIT 1",
                               (package, app_version, signature, variant, step_hash))
 
+    def tem_ativa_em_qualquer_versao(self, package: str, step_hash: str) -> bool:
+        """Há receita ativa ou validada desta etapa em QUALQUER versão do app (31.110)? Só lê. O reparo do treino, com o
+        aparelho sem responder, não sabe a versão do app e então não acha a chave; isto diz se a etapa já tem receita."""
+        return self.db.scalar("SELECT 1 FROM recipes WHERE app_package=? AND step_hash=? AND status IN ('active','validated')"
+                              " LIMIT 1", (package, step_hash)) is not None
+
     def save(self, *, package: str, app_version: str, step_hash: str, step_key: str, actions: list[dict[str, Any]],
              learned_from: str, signature: str = "", variant: str = "", candidate: bool = False,
              replaces: int | None = None, heranca: str | None = None, so_em_chave_virgem: bool = False) -> int | None:

@@ -729,6 +729,10 @@ class LearningService:
         a decisão de uma pessoa e o "Confirmar que fica" vale para ele; `None` em todo o resto."""
         return self._ensinado.motivo_da_espera(e)
 
+    def ensinado_em_prova(self, e: EntradaDoLivro) -> dict[str, str | None] | None:
+        """30.85: `{persona, sessao}` enquanto o fluxo ensinado espera a prova (o mesmo campo do 30.81); `None` fora."""
+        return self._ensinado.em_prova(e)
+
     def avisar_espera_do_ensinado(self, aviso: EsperaDoEnsinado) -> None:
         """30.81: `learning.ensinado_espera_decisao`, pela volta da validação, logo depois de gravar o pedido recusado
         que marca a espera. PROPAGA a falha da porta."""

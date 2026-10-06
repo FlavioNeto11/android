@@ -28,8 +28,8 @@ from .test_learning_curador_dominio import A, B, C, _dossie, _saida
 
 PESSOA = {Falta.VOTO_DA_PESSOA.value, Falta.DECISAO_DA_PESSOA.value}
 #: O hash do `CURADOR_SYSTEM` da `curador-v2`. Mudou o texto: suba a `VERSAO_DO_TEMPLATE` e troque o hash aqui. Prende o
-#: texto à versão no código; o parecer gravado não guarda a `VERSAO_DO_TEMPLATE` (`learning_reviews.template_versao` é
-#: a forma do dossiê, `dossie-v1`). O parecer B da `curador-v2` se reconhece pelo dossiê gravado: tem `risco.classe_b_e`.
+#: texto à versão no código. Desde o 30.76 (migração 117) o parecer pelo hub grava a `VERSAO_DO_TEMPLATE` em
+#: `learning_reviews.instrucao_versao`; a `template_versao` segue sendo a forma do dossiê (`dossie-v1`).
 HASH_DO_CURADOR_V2 = "7c0916f1a669275cc92ada31ef5027cdd56b00738741566ac45231a6666b185b"
 
 

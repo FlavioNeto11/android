@@ -4986,7 +4986,9 @@ no `notice`.
   - Ela já estava no vocabulário (`contrato.Origem` e `ai.decisao_fechada.consumidores`), sem consumidor.
   - Agora entra também na lista das origens que podem mandar C3 (`privacidade.C3_ORIGENS`).
 - **`transparencia.consumidores_ativos` omite `apps` enquanto a trava de código `privacidade.R5_LIBERADA` é falsa.**
-  Ela é falsa de fábrica, até o GO do 31.10, e omite mesmo com `consumidores.apps: shadow` no YAML.
+  Ela foi falsa de fábrica até 05/10/2026 e virou `True` com o sim do dono ao P-013 (31.13, só sombra): agora `apps`
+  aparece quando o YAML o põe em `shadow`. O texto abaixo descreve o comportamento com a trava fechada, que continua valendo
+  se a chave voltar a `False`.
   - Por quê: travada, a R5 não lê o cadastro nem monta pedido, e nada dela sai.
   - Anunciar o consumidor prometeria uma exposição que não acontece. É a regra do 31.17: verdade antes de conforto.
 - **Consequências, com a R5 travada:**
@@ -6696,47 +6698,6 @@ Nenhum campo novo, sem migração. Muda quando `POST /api/training/{session_id}/
   mesmo id de antes não muda nada ali.
 - **Prova:** `simulated` (`backend/tests/test_reensinar_o_desligado_pela_prova.py`).
 
-## Adendo v1.69 (05/10/2026; número da orquestradora; item 31.87 F2) — o ensino usa os dados da persona
-
-Nenhuma rota nova e nenhum campo novo; muda o CONTEÚDO de três respostas do modo treinamento quando a sessão tem
-persona e a pessoa digitou, como uma entrada inteira, um dado não sigiloso dela (`profile_variables`, genérico por chave).
-- `POST /api/training/{session_id}/propose`: o parâmetro do comando cujo exemplo é esse dado sai de `parameters` e de
-  `command_template`, com a palavra de ligação antes dele (lista fechada: "com", "para", "de"…). Nas etapas, `{param}`
-  vira o marcador `{perfil_x}` em todo campo de texto. O valor literal vira o marcador por palavra em `title`, `goal`,
-  `precondition` e `postcondition.description`, e em `bindings[].value` e `postcondition.value` só quando é o campo
-  inteiro (casefold): dentro de uma frase, fica literal.
-- `POST /api/training/{session_id}/save` e `/preview`: a mesma troca na proposta enviada (a editada à mão também), e
-  `warnings` ganha uma linha "{perfil_x}: vem do perfil da persona de cada aparelho (o aparelho sem esse dado não roda o
-  fluxo)." A proposta guardada na sessão é a trocada.
-- O marcador não entra em `plan.parameters` do fluxo salvo; a receita destilada digita `{perfil_x}`, e a reprodução usa o
-  dado da persona do aparelho (os parâmetros do objetivo vencem).
-- Não troca: valor com menos de 3 caracteres, valor só dentro de outro texto, valor não digitado, sessão sem persona.
-- **O que o painel precisa mudar:** nada obrigatório. A revisão mostra `{perfil_x}` como texto e o aviso entra na lista
-  de `warnings` que ela já exibe.
-- **Prova:** `simulated` (`backend/tests/test_treino_dado_da_persona.py`); `real`: `not_run`.
-
-## Adendo v1.71 (05/10/2026; número da orquestradora; item 31.88 F2) — a escolha de escopo do ensinado
-
-Campos novos e uma rota nova; sem migração (o escopo mora na `flow_scope`, que já existia).
-- **`scope_on_proof`** em `POST /api/training/{session_id}/save` e `/preview` (`TrainingSaveBody`): `"todos"` (padrão) ou
-  `"quem_ensinou"`. Valor fora disso: 422. Com `todos`, vale o de sempre: `profile_ids`/`group_ids` do corpo, e vazio é
-  todos. Com `quem_ensinou`, o escopo gravado é a persona do treino (`training_sessions.profile_id`) e continua valendo
-  depois da prova, porque o 30.81 só prende o fluxo à persona ATÉ a prova e este escopo não sai com ela.
-- **Recusas novas** (antes de qualquer escrita, na prévia e no salvar, com o mesmo código): 409 `no_teacher_persona`
-  (o treino não tinha persona: não há "quem ensinou"; sem isso o escopo viraria "todos" em silêncio) e 400
-  `scope_ambiguous` (`quem_ensinou` junto de `profile_ids` ou `group_ids`).
-- **Resposta do salvar e da prévia** ganha `scope: {on_proof, profile_ids, group_ids}`: o que foi (ou será) gravado.
-- **`PUT /api/flows/{id}/scope`**, corpo `{profile_ids[], group_ids[]}` (`EscopoDoFluxoBody`, vazio nos dois = todos): amplia
-  ou restringe a quem o fluxo vale, depois de salvo. Resposta `{flow_id, profile_ids, group_ids}`; 404 `not_found`,
-  400 `unknown_profile` / `unknown_group`. É gesto de PESSOA (o operador do dono), não da IA. Não muda status nem passa
-  pelo Livro. A trilha é o evento `log` "Escopo da habilidade mudou", com `flow_id`, `por`, `antes` e `depois`; ela NÃO
-  entra em `learning_transitions`, porque toda linha de pessoa ali tira o fluxo legado da fila "Revisar".
-- **Nota de tela (Portal):** na revisão do salvar, um seletor "Vale para: todos (depois de provado) / só quem ensinou /
-  escolher perfis e grupos" que manda `scope_on_proof` ou as listas. Desabilitar "só quem ensinou" com a dica do
-  `warnings` quando o treino não tinha persona (a API recusa com 409). Mostrar `scope` da resposta da prévia. No Livro,
-  o fluxo ensinado ganha "Mudar a quem vale", que chama o `PUT`.
-- **Prova:** `simulated` (`backend/tests/test_treino_escopo_ao_provar.py`); `real`: `not_run`.
-
 ## Adendo v1.70 (05/10/2026; número da orquestradora; item 31.90-D) — desfazer a última entrada da gravação viva
 
 Rota nova e aditiva no modo treinamento. Nada muda nas rotas que existem nem no `save`.
@@ -6764,3 +6725,77 @@ Rota nova e aditiva no modo treinamento. Nada muda nas rotas que existem nem no 
   controle. Ele manda o `lease_id` e o `seq` da última entrada que a tela mostra. No 409 `entrada_mudou`, recarrega e mostra
   a mensagem; no `control_required`, mostra a mensagem e mantém a barra.
 - **Prova:** `simulated` (`backend/tests/test_treino_desfazer_a_ultima.py`); `real`: `not_run`.
+
+## Adendo v1.71 (05/10/2026; número da orquestradora; item 31.88 F2) — a escolha de escopo do ensinado
+
+Campos novos e uma rota nova; sem migração (o escopo mora na `flow_scope`, que já existia).
+- **`scope_on_proof`** em `POST /api/training/{session_id}/save` e `/preview` (`TrainingSaveBody`): `"todos"` (padrão) ou
+  `"quem_ensinou"`. Valor fora disso: 422. Com `todos`, vale o de sempre: `profile_ids`/`group_ids` do corpo, e vazio é
+  todos. Com `quem_ensinou`, o escopo gravado é a persona do treino (`training_sessions.profile_id`) e continua valendo
+  depois da prova, porque o 30.81 só prende o fluxo à persona ATÉ a prova e este escopo não sai com ela.
+- **Recusas novas** (antes de qualquer escrita, na prévia e no salvar, com o mesmo código): 409 `no_teacher_persona`
+  (o treino não tinha persona: não há "quem ensinou"; sem isso o escopo viraria "todos" em silêncio) e 400
+  `scope_ambiguous` (`quem_ensinou` junto de `profile_ids` ou `group_ids`).
+- **Resposta do salvar e da prévia** ganha `scope: {on_proof, profile_ids, group_ids}`: o que foi (ou será) gravado.
+- **`PUT /api/flows/{id}/scope`**, corpo `{profile_ids[], group_ids[]}` (`EscopoDoFluxoBody`, vazio nos dois = todos): amplia
+  ou restringe a quem o fluxo vale, depois de salvo. Resposta `{flow_id, profile_ids, group_ids}`; 404 `not_found`,
+  400 `unknown_profile` / `unknown_group`. É gesto de PESSOA (o operador do dono), não da IA. Não muda status nem passa
+  pelo Livro. A trilha é o evento `log` "Escopo da habilidade mudou", com `flow_id`, `por`, `antes` e `depois`; ela NÃO
+  entra em `learning_transitions`, porque toda linha de pessoa ali tira o fluxo legado da fila "Revisar".
+- **Nota de tela (Portal):** na revisão do salvar, um seletor "Vale para: todos (depois de provado) / só quem ensinou /
+  escolher perfis e grupos" que manda `scope_on_proof` ou as listas. Desabilitar "só quem ensinou" com a dica do
+  `warnings` quando o treino não tinha persona (a API recusa com 409). Mostrar `scope` da resposta da prévia. No Livro,
+  o fluxo ensinado ganha "Mudar a quem vale", que chama o `PUT`.
+- **Prova:** `simulated` (`backend/tests/test_treino_escopo_ao_provar.py`); `real`: `not_run`.
+
+## Adendo v1.72 (05/10/2026; número da orquestradora; item 31.89 F4 e F5) — "parece com o fluxo tal" e a colisão ao salvar
+
+Uma rota nova e avisos novos; sem migração. `POST /api/flows/match` não muda.
+- **`POST /api/flows/similar`**, corpo `{command}` (o mesmo `FlowMatchBody`, 1 a 4000 caracteres): `{matches, suggestions}`.
+  - `matches` é verdadeiro quando algum fluxo ativo já casa o comando por inteiro; aí `suggestions` vem vazio.
+  - `suggestions` tem até 3 itens `{ref, template, score}`: a referência pública (`f-…`), o molde e a nota de 0 a 1 (mínimo
+    0,9). Nunca o nome do fluxo (o resumo do treino pode trazer o valor demonstrado).
+  - Só pergunta. Não cria execução e não usa IA. Olha só os fluxos (`FlowStore`), não as habilidades versionadas, e não confere o `ai.flows`.
+- **Colisão ao salvar:** `warnings` do `POST /api/training/{id}/save` e `/preview` ganha um texto "O comando “…” colide com
+  a habilidade “…” (ref): os dois casam o mesmo texto e o novo / o que já existe passa na frente". Duas direções: (a) o
+  molde novo com os exemplos é casado por um molde ativo ou candidato; (b) o molde existente com um valor-sonda é casado
+  pelo novo (só cobre a forma do existente, não os exemplos dele). Não recusa e não grava; o mesmo comando segue sendo o
+  409 `duplicate_command`.
+- **Fora, dito de propósito:** a pergunta "usar o fluxo X?" (`needs_input`) na criação da execução e as frases
+  alternativas (`flow_phrases`, migração 119 reservada e sem uso).
+- **Nota de tela (Portal):** na revisão do salvar, listar os avisos de "colide"; no rascunho do comando, chamar
+  `POST /api/flows/similar` quando o `match` voltar `null` e mostrar "isto parece com <molde>"; clicar não executa, só
+  leva a pessoa a reescrever o comando como o molde.
+- **Prova:** `simulated` (`backend/tests/test_fluxos_parecidos_e_colisao.py`); `real`: `not_run`.
+
+## Adendo v1.69 (05/10/2026; número da orquestradora; item 31.87 F2) — o ensino usa os dados da persona
+
+Nenhuma rota nova e nenhum campo novo; muda o CONTEÚDO de três respostas do modo treinamento quando a sessão tem
+persona e a pessoa digitou, como uma entrada inteira, um dado não sigiloso dela (`profile_variables`, genérico por chave).
+- `POST /api/training/{session_id}/propose`: o parâmetro do comando cujo exemplo é esse dado sai de `parameters` e de
+  `command_template`, com a palavra de ligação antes dele (lista fechada: "com", "para", "de"…). Nas etapas, `{param}`
+  vira o marcador `{perfil_x}` em todo campo de texto. O valor literal vira o marcador por palavra em `title`, `goal`,
+  `precondition` e `postcondition.description`, e em `bindings[].value` e `postcondition.value` só quando é o campo
+  inteiro (casefold): dentro de uma frase, fica literal.
+- `POST /api/training/{session_id}/save` e `/preview`: a mesma troca na proposta enviada (a editada à mão também), e
+  `warnings` ganha uma linha "{perfil_x}: vem do perfil da persona de cada aparelho (o aparelho sem esse dado não roda o
+  fluxo)." A proposta guardada na sessão é a trocada.
+- O marcador não entra em `plan.parameters` do fluxo salvo; a receita destilada digita `{perfil_x}`, e a reprodução usa o
+  dado da persona do aparelho (os parâmetros do objetivo vencem).
+- Não troca: valor com menos de 3 caracteres, valor só dentro de outro texto, valor não digitado, sessão sem persona.
+- **O que o painel precisa mudar:** nada obrigatório. A revisão mostra `{perfil_x}` como texto e o aviso entra na lista
+  de `warnings` que ela já exibe.
+- **Prova:** `simulated` (`backend/tests/test_treino_dado_da_persona.py`); `real`: `not_run`.
+
+## Adendo v1.73 (05/10/2026; número da orquestradora; item 30.85) — o Livro leva o selo do ensinado em prova
+
+Aditivo. Achado da Portal no percurso do deploy 42: o Livro mostrava o fluxo ensinado em prova como "Publicado", sem
+selo, porque a entrada não levava o campo do adendo v1.65.
+- **`ensinado_em_prova`** `{"persona": string|null, "sessao": "trn-…"}` passa a ir também em cada item de fluxo de
+  `GET /api/aprendizado` (a lista do Livro) e em `GET /api/aprendizado/fluxo/{ref}` (a mesma entrada). Forma e regra são as do
+  v1.65: enquanto o fluxo ensinado, ativo, espera a prova. AUSENTE quando não se aplica: provado, confirmado por uma
+  pessoa, desligado, ou fluxo que não veio do treino. Receita e lição não o levam.
+- `state` não muda: o fluxo em prova segue `published`. O selo é o campo.
+- **O que o painel precisa mudar:** o Livro mostra o `SeloEmProva` (o mesmo de `GuiaHabilidades` e da cobertura) quando o
+  item tem `ensinado_em_prova`.
+- **Prova:** `simulated` (`backend/tests/test_livro_selo_em_prova.py`); `real`: `not_run`.

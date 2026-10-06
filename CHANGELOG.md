@@ -31,6 +31,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Fica para o F2: a trilha, a tela e a pós-condição; para o F4 (Aprendizado): `origin.diagnostico`.
 - Prova: `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
 
+## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)
+
+- Une o painel do 31.89 já sobre a junção do corte 43 (`feat/31-89-painel-corte-44`, 5cb96676) e a tela do 30.85 (`feat/30-85-selo-no-livro`, b083e683, sobre a
+  main 07b803d5). Conflitos só de CHANGELOG e do fim de `DetalheRico.test.tsx` (31.88 F2 e 30.85 acrescentaram blocos ao fim): ficaram os dois.
+- Prova `simulated`: frontend inteiro, typecheck e build com os números do commit de junção. `not_run`: percurso real (depende dos backends 30.85 e 31.89).
+
+## 2026-10-05 — 30.85: o Livro leva o selo do ensinado em prova (branch feat/30-85-selo-em-prova-no-livro)
+
+- Achado da Portal no percurso do deploy 42: a entrada de fluxo do Livro não levava `ensinado_em_prova`, e o fluxo em
+  prova aparecia "Publicado" sem selo.
+- `presentation/livro.py::_da_espera` põe `ensinado_em_prova` `{persona, sessao}` na entrada do fluxo ensinado em
+  prova, pela regra do casamento (`taskqueue.flows.ensinado_em_prova`), por `LearningService.ensinado_em_prova` e pela
+  porta nova `LeitorDoEnsinado.em_prova`. Ausente fora disso. Adendo v1.73.
+- Funções tocadas (K-095): `_da_espera`, `LearningService.ensinado_em_prova` (nova), `AvisadorDoEnsinado.em_prova`
+  (nova), `LeitorDoEnsinadoSql.em_prova` (nova), `LeitorDoEnsinado` (método novo na porta).
+- Prova `simulated`: `backend/tests/test_livro_selo_em_prova.py` (7). Real: `not_run`.
+
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e
@@ -141,6 +158,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   Livro, para não tirar o fluxo legado da fila "Revisar"). Sem migração. Adendo v1.71.
 - Prova: `simulated` (`backend/tests/test_treino_escopo_ao_provar.py`); `real`: `not_run`.
 
+## 2026-10-05 — 31.89 F4 e F5: o comando que "parece com o fluxo tal" e o aviso de colisão ao salvar (branch feat/31-89-sugestao-e-colisao)
+
+- `POST /api/flows/similar` `{command}` → `{matches, suggestions[{ref, template, score}]}`: até 3 fluxos ativos cujo texto
+  fixo o comando contém, sem acento, caixa, artigo e preposição, na mesma ordem e com pequenas variações. Só pergunta:
+  não cria execução, não usa IA, não devolve o nome do fluxo, e `/api/flows/match` segue como era.
+  - Nota mínima 0,9, medida só leitura no central: dos 119 comandos de 30 dias que nenhum molde casa, 9 ganham sugestão
+    (até 2 por comando); com 0,85 seriam 13 (até 4).
+- Colisão ao salvar: o salvar e a prévia do treino avisam em `warnings` quando o molde novo (com os exemplos) já é
+  casado por um fluxo ativo ou candidato, ou casa o dele (valor-sonda; só cobre a forma, não os exemplos dele), e dizem
+  quem passa na frente. Não recusa e não grava. Sem migração (a 119, `flow_phrases`, segue reservada e sem uso).
+- Fica fora: a pergunta "usar o fluxo X?" na criação da execução (`needs_input`) e as frases alternativas. Adendo v1.72.
+- Prova: `simulated` (`backend/tests/test_fluxos_parecidos_e_colisao.py`); `real`: `not_run`.
+
 ## 2026-10-05 — 31.90-D (backend): desfazer a última entrada da gravação viva (branch feat/31-90-d-desfazer-a-ultima-entrada)
 
 - Rota nova `POST /api/training/{session_id}/undo` (`TrainingRecorder.desfazer_a_ultima`): tira a última entrada da
@@ -150,6 +180,50 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Funções tocadas (K-095): `TrainingRecorder.desfazer_a_ultima` (nova), `undo_training_input` (rota nova),
   `TrainingUndoBody` (novo). O `save` não muda.
 - Prova `simulated`: `backend/tests/test_treino_desfazer_a_ultima.py`. Real: `not_run`.
+
+## 2026-10-05 — 31.13: a sombra dos apps do comando (R5) liberada no código, pelo sim do dono ao P-013 (branch feat/31-13-r5-sombra)
+
+- `privacidade.R5_LIBERADA` passa a `True`. Decisão do dono: o sim ao P-013 no Trello (entrada 2368, 05/10 às 23:32Z,
+  conferida no banco do central), sob a recomendação "só sombra".
+- Liberar não liga nada: o YAML (`enabled: true` e `consumidores.apps: shadow`) segue sendo o que liga. A R5 não tem `on`
+  (o consumidor sempre pede `shadow`, então `apps: on` é cortado para `shadow`), grava um candidato por app com id opaco e a
+  probabilidade, e não age nem pergunta: o plano, os eventos e o `Plan.required_apps` da execução ficam como sem ela.
+- Os testes que supunham a trava de fábrica agora fecham a chave por conta própria. Novos: a sombra liberada registra e não
+  age (mesma execução com e sem Jev: mesmo status, plano e eventos), e fora do YAML em `shadow` não faz nada.
+- Prova `simulated`: `backend/tests/test_decisao_fechada_apps.py` (25). `real`: `not_run` (o Jev real só roda com o YAML
+  ligado no central). O GO/NO-GO do 31.10 é refeito com a amostra que a sombra juntar, em alguns dias.
+
+## 2026-10-05 — 31.110: "Refazer receitas" com o aparelho que não responde diz a causa e não "sem receita" (branch fix/31-110-refazer-com-aparelho-que-nao-responde)
+
+- Achado do percurso do deploy 42 (sessão de treino do android-04): o salvar gravou a receita (a receita 200, ativa, às
+  23:40:25Z), e minutos depois "Refazer receitas" respondeu "sem receita, versão do app excedeu 25 s". O aparelho estava
+  `online` no estado, mas ligando e sem responder ao ADB: a leitura da versão estoura em 25 s, e o reparo lia a versão UMA VEZ
+  POR ETAPA (3 etapas, até 75 s) e mostrava o erro cru no lugar do motivo.
+- Agora: uma leitura por app em cada relatório; a etapa que já tem receita ativa ou validada (em qualquer versão) diz
+  "já havia receita ativa… o aparelho não respondeu agora à leitura da versão do app"; a que não tem diz "o aparelho do
+  treinamento não respondeu ao ler a versão do app (…): ele está ligando, parado ou sem ADB. Refaça as receitas quando ele
+  estiver no ar". Nada é chutado: sem a versão, nenhuma receita nova é gravada.
+- Prova `simulated`: `backend/tests/test_treino_refazer_aparelho_sem_resposta.py` (2). `real`: `not_run`.
+
+## 2026-10-05 — o ensaio do `--amplo` aceita a forma anterior de um valor de exemplo trocado (branch chore/trocar-nomes-anteriores)
+
+- `scripts/trocar-nomes-nos-testes.py`: a tabela privada ganha a chave opcional `anteriores`, os valores que ela já teve e que
+  já foram aplicados nos testes. Contam como feitos na checagem "um valor de exemplo já existe nos testes". Motivo: três
+  nomes de exemplo da tabela passaram a coincidir com palavras de um teste novo da Canais; trocar na tabela os valores que
+  colidem deixava a forma antiga (aplicada) acusando o outro pedaço dela.
+- Prova `simulated`: `scripts/tests/test_trocar_nomes_ids.py` (6; o novo prova o aborto sem a chave e a passagem com ela).
+  Ensaio real em cb6742d4: 171 arquivos e 1584 linhas, checagem passou (também com `--banco`); nada escrito.
+
+## 2026-10-05 — 30.85 (painel): o Livro mostra o selo "em prova" no fluxo ensinado (branch feat/30-85-selo-no-livro)
+
+- Só frontend, contra o adendo v1.73 (backend `feat/30-85-selo-em-prova-no-livro`, ainda sem merge): a entrada e o detalhe do fluxo no Livro passam a
+  trazer `ensinado_em_prova {persona, sessao}` enquanto ele espera a prova (ausente quando provado, confirmado, desligado ou sem treino; o `state`
+  segue `published`). Achado do percurso do deploy 42: o fluxo salvo com a gravação sem persona aparecia só como "Publicado".
+- `ItemDoLivro`: o mesmo `SeloEmProva` do 30.81 ao lado do estado, e, sem `espera_a_pessoa`, a nota curta de quem pode usar até a prova (com a persona
+  ou sem ela); com `espera_a_pessoa` vale a nota de "Confirmar que fica" e a explicação não se repete. `DetalheRico`: o selo no fato "Estado".
+  Sem o campo (backend anterior), nada muda na tela.
+- Prova `simulated`: `AprendizadoPage.test.tsx::30.85` (2 testes) e `DetalheRico.test.tsx::o selo em prova do fluxo ensinado` (1); tirar o selo do item
+  ou do detalhe reprova os três. Frontend inteiro 1701/1701, typecheck e build ok (4 workers, Idle). `not_run`: o percurso real (depende do backend).
 
 ## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
 
@@ -190,6 +264,60 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   linhas antigas do CHANGELOG e a avaliação original de UX (`docs/revisoes-ux/00-avaliacao-original.txt`), 1 linha.
 - Prova: `not_run` em teste de comportamento (só comentário e doc); conferido por busca que nenhuma linha acrescentada tem
   pedaço de nome real; `docs-check` verde; frontend `typecheck` e os 334 testes de `profiles` e `lib` verdes. Real: `not_run`.
+
+## 2026-10-05 — 31.89 (painel): "isto parece com…" no comando e o aviso de colisão no salvar (branch feat/31-89-painel)
+
+- Só frontend, contra o adendo v1.72 (backend `feat/31-89-sugestao-e-colisao`, ponta b70974ba no momento da leitura, ainda sem merge). Sem a rota
+  `POST /api/flows/similar` o painel não mostra nada e segue como era: a falha da rota é engolida, como a do `flows/match`.
+- **Comando** (`CommandPanel`): quando `POST /api/flows/match` volta `null`, o painel chama `flows/similar` e mostra "Nenhum fluxo casa este comando.
+  Isto parece com:" com até 3 moldes. Clicar só reescreve o campo como o molde (a pessoa troca o que está entre chaves); nada é criado nem executado.
+  `matches: true` e fluxo que já casa não mostram sugestão (e, com match, a rota nem é chamada).
+- **Revisão do salvar:** os avisos de colisão (`warnings` da prévia e do salvar, "…colide com a habilidade “…”…") já apareciam como lista de avisos, sem
+  travar o Salvar nem virar recusa do comando; ganhou o teste que fixa isso, sem mudar o componente.
+- Prova `simulated`: `CommandPanel.test.tsx::31.89` (4 testes; sem o corte quando o match não é nulo, o teste falha) e `TrainingReview.test.tsx::31.89`.
+  Frontend inteiro 1691/1691 e typecheck limpos (4 workers, Idle). `not_run`: o percurso real (depende do backend).
+
+## 2026-10-05 — 30.76: o parecer do curador grava a versão do texto que a IA leu (branch feat/30-76-versao-do-texto-no-parecer)
+
+- Migração 117: `learning_reviews.instrucao_versao` (nula). O adaptador do hub diz a `VERSAO_DO_TEMPLATE` na resposta
+  (`RespostaDeRevisao.instrucao_versao`), e o curador a grava. A `template_versao` segue sendo a forma do dossiê:
+  hash e elegibilidade não mudam. Sem texto mandado a uma IA, a coluna fica NULL.
+- Nenhuma rota nem campo de resposta muda.
+- Funções tocadas (K-095): `CuradorDoHub.revisar`, `CuradorPorIA._gravar` e a volta que o chama,
+  `RegistroDeRevisoesSql.gravar`, `RespostaDeRevisao` e `NovaRevisao` (campo novo com padrão nulo).
+- Prova `simulated`: `backend/tests/test_parecer_versao_do_texto.py`. PostgreSQL: pela fábrica, quando
+  `TEST_DATABASE_URL` existe. Real: `not_run` (a migração entra no próximo deploy).
+
+## 2026-10-05 — 30.77: a reprodução na versão viva não nasce sem versão (branch feat/30-77-fuso-na-inspecao)
+
+- Medido antes de escolher (SQLite central só leitura e `getprop` pelo adb): os 12 emuladores estão em
+  America/Sao_Paulo (−0300). A folga de 12 h do 30.74 perdia à toa a versão da prova que começa de 3 a 12 h depois
+  de uma atualização do app.
+- Escolha (desenho aprovado pela orquestradora): gravar o fuso na inspeção. `Adb.package_info` lê `date +%z` no mesmo
+  shell do `dumpsys`; migração 118, `device_app_state.last_update_offset`; os três caminhos de `ReleaseService` que
+  gravam a observação levam o fuso. `versao_estavel_na_execucao` usa o deslocamento exato com 1 h de margem e, sem
+  fuso legível, a folga de 12 h.
+- Agente do notebook: NÃO precisa de versão nova. O adb dos aparelhos dele roda no central, pelo túnel (o
+  `getprop` respondeu daqui para os seriais `127.0.0.1:155xx`). O A10 do próximo deploy não muda por isto; a leitura
+  sem a linha do fuso continua coberta e cai na folga.
+- Funções tocadas (K-095): `Adb.package_info`, `AppInstaller.inspect` e `InstalledApp`, os três `upsert_app_state` de
+  `ReleaseService`, `versao_estavel_na_execucao` e `LeituraSql.versao_do_fluxo_no_aparelho`.
+- Prova `simulated`: `backend/tests/test_fuso_na_inspecao.py`. Real: `not_run` (a migração entra no próximo deploy;
+  a próxima inspeção de app grava o fuso).
+
+## 2026-10-05 — 30.78: sobras da leitura que não gira (branch feat/30-78-sobras-da-leitura-que-nao-gira)
+
+Da leitura do 31.78.
+- Fato neutro ao juiz: a releitura que muda o valor de uma saída põe no `history` "o valor lido de '<saída>' mudou nesta
+  tentativa; vale a última leitura.", sem os valores e sem instrução.
+- Aviso ao ator: com tudo lido e uma saída divergente, a cópia do ator pede para reler essa saída antes do `step_done`.
+  Não vai ao juiz.
+- Teste com duas saídas, uma estável e uma divergente que se estabiliza: a etapa anda, o juiz recebe o fato e a entrega
+  é a última leitura. O caso em que ela segue divergente até o teto já estava coberto pelo 31.78.
+- Funções tocadas (K-095): o laço do ator em `taskqueue/executor.py` (a leitura do `read_value` e a montagem do
+  histórico do ator).
+- Prova `simulated`: `backend/tests/test_leitura_que_nao_gira_sobras.py` (3). Sem a mudança no executor, os 3
+  reprovam. Real: `not_run`.
 
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 

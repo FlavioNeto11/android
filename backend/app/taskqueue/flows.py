@@ -29,9 +29,12 @@ from ..modules.skills.domain.document import JsonValue
 from ..modules.skills.domain.matching import specificity
 from ..models import Plan, PlannerInfo, StepResult
 from ..util import now_iso
+from .parecidos import parecidos as parecidos_do_texto
 
 RESERVED = {"instance_id", "run_id", "account_label"}
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
+#: O valor que a conferência de colisão põe no lugar de um `{nome}` sem exemplo (31.89 F4).
+SONDA = "valor-sonda"
 #: Quem decide quando a própria loja muda o status (nascimento de execução, reaproveitamento). O treino leva a origem.
 SISTEMA = "sistema"
 #: 30.81: a origem do fluxo ensinado no modo treinamento (`flows.source = 'training:<sessão>'`).
@@ -482,6 +485,44 @@ class FlowStore:
                 continue                              # faltou valor para algum parâmetro: não é este fluxo
             return row, plan
         return None
+
+    def parecidos(self, command: str, profile_ids: list[str | None] | None = None) -> list[dict[str, str | float]]:
+        """31.89 F5: os fluxos ativos que o comando PARECE (e não casa por inteiro): `{ref, template, nota}`, do mais
+        parecido ao menos. Só pergunta; nunca escolhe nem executa. Mesmo escopo do `match` (sem aparelhos, qualquer um).
+        Um fluxo que já casa o comando não aparece. O nome do fluxo (o resumo do treino, que pode trazer o valor
+        demonstrado) não sai: só a referência pública e o molde."""
+        linhas = [r for r in self.db.query("SELECT * FROM flows WHERE status='active' ORDER BY created_at")
+                  if r["ref_publico"] and (profile_ids is None or self._no_escopo(r["id"], profile_ids))
+                  and (profile_ids is None or not self._restrito_ao_ensino(r, profile_ids))]
+        if any(self._extract(r["command_template"], command) is not None for r in linhas):
+            return []
+        achados = parecidos_do_texto(command, [r["command_template"] for r in linhas])
+        return [{"ref": linhas[p.indice]["ref_publico"], "template": linhas[p.indice]["command_template"],
+                 "score": p.nota} for p in achados]
+
+    def colisoes(self, template: str, exemplos: dict[str, str]) -> list[str]:
+        """31.89 F4: avisos de colisão do molde que vai ser salvo com os fluxos ativos e candidatos. Só lê. Duas
+        direções, cada uma com a sua honestidade: (a) o molde novo preenchido com os EXEMPLOS dele já casa um molde
+        existente; (b) o molde existente preenchido com um valor-sonda casa o molde novo (o novo engole o dele). Quem
+        vence é o mais específico (F1), então o aviso diz quem passa na frente. Não recusa: é a pessoa que decide."""
+        chave = _norm(template)
+        com_exemplos = _com_valores(template, {k: v for k, v in exemplos.items() if v})
+        com_sonda = _com_valores(template, {m.group(1): SONDA for m in PLACEHOLDER.finditer(template)})
+        avisos: list[str] = []
+        for r in self.db.query("SELECT * FROM flows WHERE status IN ('active','candidate') ORDER BY created_at"):
+            if r["match_key"] == chave:
+                continue                                  # o mesmo comando é o 409 `duplicate_command`, não colisão
+            outro = r["command_template"]
+            sonda_do_outro = _com_valores(outro, {m.group(1): SONDA for m in PLACEHOLDER.finditer(outro)})
+            ja_casa = self._extract(outro, com_exemplos) is not None or self._extract(outro, com_sonda) is not None
+            engole = self._extract(template, sonda_do_outro) is not None
+            if not (ja_casa or engole):
+                continue
+            ref = f" ({r['ref_publico']})" if r["ref_publico"] else ""
+            vence = "o novo" if specificity(template) > specificity(outro) else "o que já existe"
+            avisos.append(f"O comando “{template}” colide com a habilidade “{outro}”{ref}: os dois casam o mesmo texto "
+                          f"e {vence} passa na frente (o mais específico vence, depois o mais usado).")
+        return avisos
 
     def ativo_para(self, command: str) -> tuple[Row, Plan] | None:
         """30.81 (achado 4 da Reload): o fluxo ativo do comando para a VALIDAÇÃO (sem aparelhos), sem o ensinado que
