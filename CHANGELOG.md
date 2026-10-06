@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F2, passo 1: teste de caracterização da saúde (`GET /api/health`), antes de mover o código (branch feat/15-15-f2-saude)
+
+- Novo `backend/tests/test_saude_caracterizacao.py` com o arquivo dourado `backend/tests/golden/saude_caracterizacao.json`: 31 cenários
+  (um por código de problema, mais o `base` sem defeito e o `tudo_de_uma_vez`, que fixa a ORDEM dos grupos em `problems`). Cada um
+  fotografa `status`, `problems` (código, mensagem e dica, em ordem), banco, SDK, Appium, IA e `features`. O teste mexe só nas ENTRADAS
+  (SDK, banco, aparelhos, workers, Appium, IA, cofre, serviços de canal, RAM do host, relógio, diagnóstico), nunca nos métodos de saúde,
+  então o mesmo arquivo vale antes e depois de a saúde ir para `app/saude.py`.
+- Gravado na `main` de 06/10 (`cb2e8382`), sem mudar código de produção; estável com `PYTHONHASHSEED` diferente e em `-n 4`. Um terceiro
+  teste reprova um código novo em `health()` sem cenário. O move em si vem depois da junção pós-46, no mesmo ramo.
+- Prova `simulated`; `real`: `not_run`. Sem migração e sem adendo.
+
 ## 2026-10-06 — 31.101, o `--amplo` real: pedaços de nome de conta trocados por valores de exemplo nos testes (branch chore/trocar-nomes-amplo)
 
 - `scripts/trocar-nomes-nos-testes.py --amplo --aplicar` sobre a ponta da suíte 44: 119 arquivos e 1438 linhas, todos de teste
