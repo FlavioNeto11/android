@@ -127,11 +127,21 @@ export function alvoReconhecido(e: TrainingInput): string | null {
   return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `: ${id}` : ''}`;
 }
 
+const SELETOR_DA_POS = /^(text|desc|id)==(.+)$/;
+const DO_SELETOR: Record<string, string> = { text: 'com o texto', desc: 'com a descrição', id: 'com o identificador' };
+
+/** 31.147: o valor de `element_present` é um seletor ("desc==Back"); a pessoa lê "com a descrição “Back”". Sem seletor, o valor entre aspas. */
+export function elementoEmPalavras(valor: string): string {
+  if (!valor) return '';
+  const m = SELETOR_DA_POS.exec(valor);
+  return m ? `${DO_SELETOR[m[1]!]} “${textoComMarcadores(m[2]!)}”` : `“${textoComMarcadores(valor)}”`;
+}
+
 /** O que a etapa confere, em palavras da pessoa; o tipo cru só aparece se o backend mandar um que a tela não conhece. */
 export function textoDoConfere(pc: TrainingStep['postcondition']): string {
   const valor = pc.value ? `“${textoComMarcadores(pc.value)}”` : '';
   const frase = pc.kind === 'text_visible' ? `aparece o texto ${valor || 'esperado'}`
-    : pc.kind === 'element_present' ? `existe o elemento ${valor || 'esperado'}`
+    : pc.kind === 'element_present' ? `existe o elemento ${elementoEmPalavras(pc.value) || 'esperado'}`
       : pc.kind === 'app_foreground' ? `o app ${valor || 'certo'} está na frente`
         : pc.kind === 'model_judged' ? 'a IA julga pela tela'
           : `${pc.kind} ${valor}`.trim();
