@@ -157,6 +157,12 @@ def _tem_linha(c: dict) -> bool:
     return str(c.get("desc", "")).startswith(MARCA)
 
 
+def _prova_subiu(c: dict, linha: str) -> bool:
+    """A linha do cartão diz "prova simulada" e o plano agora tem prova real: a linha de prova tem de ser refeita."""
+    primeira = str(c.get("desc", "")).split(SEPARADOR, 1)[0]
+    return primeira.startswith(MARCA) and "Prova simulada" in primeira and linha.startswith("prova real")
+
+
 def _lista_da_fase(pid: str, listas: dict[str, str]) -> str | None:
     n = int(pid.split(".")[0])
     for nome, lid in listas.items():
@@ -218,8 +224,9 @@ def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[i
                 rel.acoes.append(Acao(c["id"], nome, "mover", atual, "historico", linha, "feito em semana anterior", fase))
             elif atual != "concluido":
                 rel.acoes.append(Acao(c["id"], nome, "mover", atual, "concluido", linha, "implementado e implantado"))
-            elif not _tem_linha(c):
-                rel.acoes.append(Acao(c["id"], nome, "marcar", atual, None, linha, "concluído sem a linha de prova"))
+            elif not _tem_linha(c) or _prova_subiu(c, linha):
+                motivo = "concluído sem a linha de prova" if not _tem_linha(c) else "o plano ganhou prova real"
+                rel.acoes.append(Acao(c["id"], nome, "marcar", atual, None, linha, motivo))
     return rel
 
 
