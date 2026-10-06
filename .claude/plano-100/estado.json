@@ -10732,19 +10732,16 @@
   "31.120": {
    "id": "31.120",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Sessão salva em modo leitura (Portal 9bdf193a). Simulado: frontend/src/features/training/SessaoSalva.test.tsx::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 10:20Z, central bec1621c. (a) Leitura da sessão salva: pelo botão 'Abrir o treino salvo' do aviso do 31.124 abre o diálogo 'Treinamento salvo: Corrigir a etapa «Abrir Notificações»' (sessão trn-jrE1zcBoKSoHFqX5, fluxo f-6d07590e1db6): selo 'salvo', a persona só como marca (iniciais; o nome não está impresso, só no rótulo acessível), 'em android-04 · fluxo f-6d07590e1db6', 'Só leitura: nada daqui roda nem muda.', a origem com 'corrige uma falha', a etapa r-20261006012340-d92795:android-04:v2:abrir_notificacoes e a tentativa …:a1 em ids, o motivo, 'Causa provável: a IA gastou o orçamento da etapa', 'O que mostrar' e os recolhíveis, 'O que você fez (1 entrada)' e 'A proposta' (resumo, comando modelo, etapa com o que confere); só o botão Fechar. (b) Livro: GET do item aberto pelo link (#/aprendizado?aba=aprendido&item=fluxo%3Af-6d07590e1db6) mostra os fatos 'Etapa de origem' r-20261006012340-d92795:android-04:v2:abrir_notificacoes, 'Tentativa de origem' …:a1 e 'Sessão do treino' trn-jrE1zcBoKSoHFqX5. Ajuste da orquestradora: o item está completo no código (vitest 1768) e no ar desde o deploy 50; o que não foi visto na tela (Ver em Salvas; confirmação ao reenviar) depende do android-04, ocupado pela prova da Aprendizado, e será visto no percurso seguinte.",
    "blocker": null,
-   "arquivos": [
-    "frontend/src/features/training/SessaoSalva.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-50",
+   "nota": "Falta o botão Ver na lista Salvas da barra do treino (Foco do android-04, em uso pela Aprendizado): a leitura é o mesmo componente, aberto por outro caminho, mas o caminho do item não foi percorrido na tela. Fica para quando o controle voltar a none.",
+   "grupo": "portal-percurso-50-ensino-aviso-atalho-livro",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:18:29+00:00"
+   "quando": "2026-10-06T10:21:33+00:00"
   },
   "31.121": {
    "id": "31.121",
@@ -10801,55 +10798,44 @@
   "31.124": {
    "id": "31.124",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Etapa já ensinada na execução (Portal 9bdf193a). Simulado: frontend/src/features/runs/EnsinoJaFeito.test.tsx::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 10:20Z, central bec1621c. Na execução r-20261006012340-d92795 o atalho do cartão de resultado abre 'Ensinar a corrigir: Abrir Notificações'; antes do campo aparece o aviso 'Esta etapa já foi ensinada. Se o que foi ensinado não resolveu, ensine de novo; senão, confira o fluxo antes.' com uma linha, '«Corrigir a etapa «Abrir Notificações»» · salvo há 6 h', o botão 'Abrir o treino salvo' (abre a leitura, ver 31.120) e o link 'Ver o fluxo no Livro' (href #/aprendizado?aba=aprendido&item=fluxo%3Af-6d07590e1db6, que abre o fluxo no Livro). As sessões descartadas da mesma etapa (percurso 49) não aparecem. O formulário continua com 'O que mostrar', o campo pré-preenchido com a sugestão e 'Escolha a persona'. Nenhuma sessão foi criada. Ajuste da orquestradora: o item está completo no código (vitest 1768) e no ar desde o deploy 50; o que não foi visto na tela (Ver em Salvas; confirmação ao reenviar) depende do android-04, ocupado pela prova da Aprendizado, e será visto no percurso seguinte.",
    "blocker": null,
-   "arquivos": [
-    "frontend/src/features/runs/EnsinoJaFeito.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-50",
+   "nota": "Falta a confirmação 'Ensinar esta etapa de novo?' ao enviar: o envio toma o controle do aparelho se algo falhar, e o android-04 já estava com a Aprendizado. Simulated nos testes (EnsinoJaFeito).",
+   "grupo": "portal-percurso-50-ensino-aviso-atalho-livro",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:18:29+00:00"
+   "quando": "2026-10-06T10:21:33+00:00"
   },
   "31.125": {
    "id": "31.125",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Atalho no cartão da execução que falhou (Portal 9bdf193a); o mapeamento a teste é aproximado. Simulado: frontend/src/features/runs/EnsinoJaFeito.test.tsx::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 10:20Z, central bec1621c, execução r-20261006012340-d92795. No cartão de resultado ('Concluída com problemas…') há o botão 'Ensinar a corrigir' com o nome acessível 'Ensinar a corrigir a etapa «Abrir Notificações» em android-04', ao lado de '«Abrir Notificações» em android-04'. Na guia 'Por aparelho', a faixa do aparelho (fora do botão que abre o objetivo, sem precisar abri-lo) mostra '«Abrir Notificações» · Falhou' e o mesmo atalho. Os dois abrem o mesmo formulário num diálogo ('Ensinar a corrigir: Abrir Notificações') com o aviso do 31.124, 'O que mostrar' e o campo com a sugestão; Cancelar fecha o diálogo sem efeito.",
    "blocker": null,
-   "arquivos": [
-    "frontend/src/features/runs/EnsinoJaFeito.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-50",
+   "nota": "Abrir o treino a partir do atalho (envio) não foi exercitado na tela; a lógica do envio é a do formulário inline, já provada na 49.",
+   "grupo": "portal-percurso-50-ensino-aviso-atalho-livro",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:18:29+00:00"
+   "quando": "2026-10-06T10:21:33+00:00"
   },
   "31.126": {
    "id": "31.126",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "App não identificado no Livro (Portal 9bdf193a). Simulado: frontend/src/features/aprendizado/AppNaoIdentificado.test.tsx::*, frontend/src/features/aprendizado/AplicativosTab.test.tsx::*, frontend/src/features/aprendizado/DetalheRico.test.tsx::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 10:20Z, central bec1621c, fluxo f-6d07590e1db6 aberto no Livro. A linha do item mostra 'App: App não identificado'; em Identidade, 'Aplicativo' mostra 'App não identificado'; nos dois o botão tem a dica 'Ainda não foi ligado a um aplicativo: o pacote não foi identificado quando o item foi aprendido.'; o filtro 'Aplicativo' do catálogo lista 'App não identificado' (sem '(nao_resolvido)'). O código nao_resolvido não aparece em nenhum texto da página. Os apps comuns seguem com o nome (Instagram, Chrome, Configurações do Android) e a dica com o pacote.",
    "blocker": null,
-   "arquivos": [
-    "frontend/src/features/aprendizado/AppNaoIdentificado.test.tsx",
-    "frontend/src/features/aprendizado/AplicativosTab.test.tsx",
-    "frontend/src/features/aprendizado/DetalheRico.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-50",
+   "nota": null,
+   "grupo": "portal-percurso-50-ensino-aviso-atalho-livro",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:18:29+00:00"
+   "quando": "2026-10-06T10:21:33+00:00"
   }
  },
  "rodadas": [
@@ -14184,6 +14170,18 @@
    ],
    "grupos": [
     "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T10:21:33+00:00",
+   "itens": [
+    "31.120",
+    "31.124",
+    "31.125",
+    "31.126"
+   ],
+   "grupos": [
+    "portal-percurso-50-ensino-aviso-atalho-livro"
    ]
   }
  ]
