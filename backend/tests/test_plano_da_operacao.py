@@ -125,6 +125,32 @@ async def test_operacao_com_parametros_fixa_o_objetivo_de_cada_alvo(harness: Har
     assert "{contato}" in textos and "{recipient}" not in textos
 
 
+async def test_nome_fixo_em_conflito_recusa_o_alvo_e_a_operacao_le_acao_bloqueada(harness: Harness) -> None:
+    """Achado da revisão do PR 479: o planejador chama o contato de `recipient` (QA-001) e a operação fixa `recipient`
+    com OUTRO valor. Seguir com o do planejador mandaria a ação ao alvo errado: a execução do alvo termina recusada no
+    planejamento, sem objetivo, e a operação lê o alvo em `acao_bloqueada` com "parâmetro em conflito", sem os valores."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Nina", "android-01")
+    _conta(harness, pid, "qa-user-01", sessao_em="android-01")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-conflito", parametros={"recipient": "QA-999"}))
+    run_id = _alvo(op, pid)["run_id"]
+    await harness.wait(lambda: st.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,)) == "failed",
+                       what="alvo recusado no planejamento")
+    assert st.db.one("SELECT id FROM objectives WHERE run_id=?", (run_id,)) is None
+    eventos = [loads(r["data"], {}) for r in st.db.query("SELECT data FROM events WHERE kind='plan.refused' AND run_id=?",
+                                                         (run_id,))]
+    assert eventos and eventos[-1] == {"motivo": "parametro_em_conflito", "parametros": ["recipient"]}
+    lida = s.ler(op["id"])
+    alvo = lida["alvos"][0]
+    assert (alvo["estado"], alvo["estagio"], alvo["parou_em"]) == ("bloqueado", "acao_bloqueada", "acao_bloqueada")
+    assert alvo["motivo"].startswith("parâmetro em conflito: recipient")
+    assert "QA-999" not in alvo["motivo"] and "QA-001" not in alvo["motivo"]
+    assert lida["status"] == "concluida_com_bloqueios" and lida["finished_at"]
+    assert lida["capacidade"]["bloqueadas"] == 1
+
+
 async def test_execucao_fora_de_operacao_nao_muda(harness: Harness) -> None:
     st = harness.state
     assert st is not None

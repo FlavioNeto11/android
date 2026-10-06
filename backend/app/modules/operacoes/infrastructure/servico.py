@@ -264,20 +264,20 @@ class ServicoDeOperacoes:
             raise OperacaoError("operacao_inexistente", "Operação não encontrada.", 404)
         definicao = self._definicao(str(op["app_id"]))
         limite = int(self.limites().operacao_max_acoes_executadas)
-        alvos, leituras = [], []
-        for a in self.db.query("SELECT * FROM operacao_alvos WHERE operacao_id=? ORDER BY seq, profile_id", (op_id,)):
-            leitura, resultado = self._ler_alvo(op, a, definicao)
-            leituras.append((a, leitura))
-            alvos.append((a, leitura, resultado))
         executadas = self._acoes_comprometidas(op_id)
         aprovados = self._runs_com_acao_aprovada(op_id)
         if aprovados and op["acao_final"] == "preparar" and op["status"] != "cancelada":
             # A ação aprovada POR FORA do liberar (Pendências, Telegram: a onda 1 de 06/10) vai rodar. A operação passa a
             # `executar` e reabre, como no liberar; sem isto, ficava `concluida` com o `finished_at` da preparação e a
-            # ação executada e verificada depois dele.
+            # ação executada e verificada depois dele. A reabertura vem ANTES da leitura dos alvos (achado do Codex no
+            # PR 483): lidos com `preparar`, `acao_preparada` era concluído, e o mesmo GET fechava a operação de novo.
             self.db.execute("UPDATE operacoes SET acao_final='executar', status='em_curso', finished_at=NULL, updated_at=?"
                             " WHERE id=? AND acao_final='preparar'", (now_iso(), op_id))
             op = self.db.one("SELECT * FROM operacoes WHERE id=?", (op_id,)) or op
+        alvos = []
+        for a in self.db.query("SELECT * FROM operacao_alvos WHERE operacao_id=? ORDER BY seq, profile_id", (op_id,)):
+            leitura, resultado = self._ler_alvo(op, a, definicao)
+            alvos.append((a, leitura, resultado))
         saida = []
         for a, lt, resultado in alvos:
             estado, motivo, parou = lt.estado, lt.motivo, lt.parou_em
@@ -335,7 +335,7 @@ class ServicoDeOperacoes:
         etapas: list[EtapaLida] = []
         efeito: Row | None = None
         if a["run_id"]:
-            run = self.db.one("SELECT status FROM runs WHERE id=?", (a["run_id"],))
+            run = self.db.one("SELECT status, status_detail, finished_at FROM runs WHERE id=?", (a["run_id"],))
             obj = self.db.one("SELECT * FROM objectives WHERE run_id=? ORDER BY id LIMIT 1", (a["run_id"],))
             if obj is not None:
                 for s in self.db.query("SELECT * FROM steps WHERE objective_id=? AND plan_version=? ORDER BY seq, id",
@@ -357,7 +357,10 @@ class ServicoDeOperacoes:
             objetivo_motivo=_motivo((obj["blocked_reason"] or obj["status_detail"]) if obj is not None else None),
             run_status=str(run["status"]) if run is not None else None, etapas=etapas, marcas=marcas,
             abertura=abertura, estagio_por_capability=por_cap, acao_final=str(op["acao_final"]),
-            criado_em=str(op["created_at"]), objetivo_bloqueio=obj["blocked_kind"] if obj is not None else None))
+            criado_em=str(op["created_at"]), objetivo_bloqueio=obj["blocked_kind"] if obj is not None else None,
+            recusa_no_plano=(_motivo(run["status_detail"]) or "recusada no planejamento")
+            if obj is None and run is not None and run["status"] == "failed" else None,
+            recusa_em=run["finished_at"] if run is not None else None))
         return leitura, self._resultado(a, efeito, marcas)
 
     def _resultado(self, a: Row, efeito: Row | None, marcas: dict[str, object]) -> dict[str, object] | None:

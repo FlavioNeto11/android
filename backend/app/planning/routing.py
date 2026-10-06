@@ -232,7 +232,7 @@ class RoutingProvider:
             "spend_limit_run_usd": getattr(s, "ai_max_usd_per_run", None)})
 
     # ------------------------------------------------------------------ orçamento em US$
-    def _budget(self, run_id: str | None, origem: str | None = None) -> str | None:
+    def _budget(self, run_id: str | None, origem: str | None = None, *, reservar: bool = False) -> str | None:
         """Teto em DINHEIRO, por execução e por dia (achado #95). Barrar aqui cobre TODO caminho de IA.
 
         Rubrica única (31.6): toda recusa sai com `AIError(kind="budget", motivo=...)` e quem decide o que fazer lê o
@@ -241,7 +241,9 @@ class RoutingProvider:
         `fatia_jev`). A fatia vem depois do dia porque é parte dele: passar no dia é pré-requisito, e uma fatia
         estourada não barra outra origem. O saldo da conta (ADR-051) segue em `_saldo`, fora desta função.
 
-        Devolve a operação da execução (31.154), para `_call` reservar a chamada em voo; `None` fora de operação."""
+        Devolve a operação da execução (31.154); `None` fora de operação. Com `reservar`, a chamada já sai daqui RESERVADA
+        no teto da operação (em voo), e quem chamou a solta com `_soltar` (ou `_reservada`) quando o custo estiver gravado.
+        Barrada, nada fica reservado."""
         if self.repo is None or self.get_settings is None:
             return None
         s = self.get_settings()
@@ -267,13 +269,30 @@ class RoutingProvider:
             # reserva é zero (o estouro possível fica em uma chamada por vaga de IA). A chamada conta desde aqui, também
             # enquanto espera a vaga da função, então a reserva pode sobrar um pouco (no máximo as vagas de IA). Um
             # processo só: a reserva é da instância do roteador, e o deploy é um processo.
+            # A conferência e a reserva ficam na MESMA seção crítica (achado da revisão do PR 479): conferir, soltar a
+            # trava e só depois reservar deixava duas chamadas lerem o mesmo número em voo e passarem juntas.
+            media = self._custo_medio_da_chamada(str(operacao["id"]), gasto)
             with self._em_voo_trava:
                 em_voo = self._em_voo_da_operacao.get(str(operacao["id"]), 0)
-            reservado = em_voo * self._custo_medio_da_chamada(str(operacao["id"]), gasto) if em_voo else 0.0
-            if gasto + reservado >= float(operacao["max_usd"]):
-                emvoo = f" (com {em_voo} chamada(s) em voo, reserva de US$ {reservado:.2f})" if reservado else ""
-                raise AIError(f"Teto de custo da operação atingido: US$ {gasto:.2f} de US$ {float(operacao['max_usd']):.2f}"
-                              f"{emvoo}.", kind="budget", motivo="operacao")
+                reservado = em_voo * media
+                if gasto + reservado >= float(operacao["max_usd"]):
+                    emvoo = f" (com {em_voo} chamada(s) em voo, reserva de US$ {reservado:.2f})" if reservado else ""
+                    raise AIError(f"Teto de custo da operação atingido: US$ {gasto:.2f} de US$ "
+                                  f"{float(operacao['max_usd']):.2f}{emvoo}.", kind="budget", motivo="operacao")
+                if reservar:
+                    self._em_voo_da_operacao[str(operacao["id"])] = em_voo + 1
+        try:
+            self._reguas_do_dinheiro(s, run_id, origem, prices)
+        except BaseException:
+            if reservar and operacao is not None:
+                self._soltar(str(operacao["id"]))          # barrada por outra régua: a reserva não fica
+            raise
+        return str(operacao["id"]) if operacao is not None else None
+
+    def _reguas_do_dinheiro(self, s: object, run_id: str | None, origem: str | None,
+                            prices: dict[str, list[float]]) -> None:
+        """As réguas depois da operação: execução, dia e a fatia da origem (ver `_budget`)."""
+        assert self.repo is not None
         teto_dia = float(getattr(s, "ai_max_usd_per_day", 0) or 0)
         for rotulo, limite, gasto_fn, chave, motivo in (
                 ("desta execução", float(getattr(s, "ai_max_usd_per_run", 0) or 0),
@@ -291,7 +310,6 @@ class RoutingProvider:
                 self._avisados.add(chave)
                 self.repo.bus.emit("log", f"Gasto de IA {rotulo} em US$ {gasto:.2f} de US$ {limite:.2f} "
                                           f"({gasto / limite:.0%} do teto).", level="warn", run_id=run_id)
-        return str(operacao["id"]) if operacao is not None else None
 
     def _custo_medio_da_chamada(self, operacao_id: str, gasto: float) -> float:
         assert self.repo is not None
@@ -316,16 +334,26 @@ class RoutingProvider:
         Sem `reservar`, ou fora de operação, devolve uma função que não faz nada."""
         if self.repo is None or self.get_settings is None:
             raise AIError("Teto de gasto sem como conferir (hub sem repositório).", kind="not_configured")
-        operacao = self._budget(run_id, origem)
-        motivo = saldos.motivo_de_bloqueio(self.repo.db, self.cfg, conta)
+        operacao = self._budget(run_id, origem, reservar=reservar)
+        reservada = operacao if reservar else None
+        try:
+            motivo = saldos.motivo_de_bloqueio(self.repo.db, self.cfg, conta)
+        except BaseException:
+            self._soltar(reservada)
+            raise
         if motivo:
+            self._soltar(reservada)
             raise AIError(f"{motivo} Recarregue no console e registre a recarga em Configuração › IA para retomar.",
                           kind="balance")
-        if not reservar or operacao is None:
+        if reservada is None:
             return lambda: None
-        reserva = self._reserva(operacao)
-        reserva.__enter__()
-        return lambda: reserva.__exit__(None, None, None)
+        soltou = threading.Event()
+
+        def solta() -> None:                          # soltar duas vezes não devolve a vaga de outra chamada
+            if not soltou.is_set():
+                soltou.set()
+                self._soltar(reservada)
+        return solta
 
     def _fatia_da_origem(self, origem: str | None, teto_dia: float, prices: dict[str, list[float]]
                          ) -> tuple[tuple[str, float, Callable[[], float], str, str], ...]:
@@ -410,10 +438,10 @@ class RoutingProvider:
         if r.kind != "simulated":
             # Modo simulado não gasta dinheiro nenhum: conferir teto ali seria uma consulta por chamada para
             # sempre dar zero — e, com teto apertado, dava para BLOQUEAR uma execução que não custa nada.
-            operacao = self._budget(run_id, origem)
-        # A chamada fica reservada no teto da operação até voltar; quem a pediu grava o custo logo depois, sem `await`
-        # no meio (`Executor`), então a reserva sai e o gasto gravado entra na mesma volta do laço.
-        with self._reserva(operacao):
+            operacao = self._budget(run_id, origem, reservar=True)
+        # A chamada sai de `_budget` reservada no teto da operação e fica assim até voltar; quem a pediu grava o custo
+        # logo depois, sem `await` no meio (`Executor`), então a reserva sai e o gasto gravado entra na mesma volta.
+        with self._reservada(operacao):
             try:
                 self._saldo(r)
                 try:
@@ -451,21 +479,21 @@ class RoutingProvider:
                 return resultado, usage
 
     @contextlib.contextmanager
-    def _reserva(self, operacao: str | None) -> Iterator[None]:
-        """Conta a chamada em voo da operação (31.154, ver `_budget`) enquanto ela dura, também quando falha."""
-        if operacao is None:
-            yield
-            return
-        with self._em_voo_trava:
-            self._em_voo_da_operacao[operacao] = self._em_voo_da_operacao.get(operacao, 0) + 1
+    def _reservada(self, operacao: str | None) -> Iterator[None]:
+        """Solta, na volta (também quando falha), a chamada que `_budget(reservar=True)` reservou (31.154)."""
         try:
             yield
         finally:
-            with self._em_voo_trava:
-                if (restam := self._em_voo_da_operacao.get(operacao, 1) - 1) > 0:
-                    self._em_voo_da_operacao[operacao] = restam
-                else:
-                    self._em_voo_da_operacao.pop(operacao, None)
+            self._soltar(operacao)
+
+    def _soltar(self, operacao: str | None) -> None:
+        if operacao is None:
+            return
+        with self._em_voo_trava:
+            if (restam := self._em_voo_da_operacao.get(operacao, 1) - 1) > 0:
+                self._em_voo_da_operacao[operacao] = restam
+            else:
+                self._em_voo_da_operacao.pop(operacao, None)
 
     def _instance(self, papel: str, r: ResolvedRole) -> AIProvider:
         chave = _chave_da_instancia(r)

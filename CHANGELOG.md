@@ -19,6 +19,32 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.154: revisão dos PRs 479 e 483 (branch feat/corte57-jev, corte 57)
+
+- Nome fixo em conflito: quando o plano usa um nome fixo da operação com OUTRO valor (`username` = A no plano e B na
+  operação), a execução do alvo agora termina recusada no planejamento, antes de qualquer etapa. Ela sai com
+  `plan.refused`, motivo `parametro_em_conflito`, e o texto leva só os nomes. A operação lê o alvo em `acao_bloqueada`,
+  com o motivo "parâmetro em conflito: …". Antes, a decisão era registrada e a execução seguia com o valor do
+  planejador.
+- Alvo recusado no planejamento (execução `failed` e sem objetivo): a operação o lê `bloqueado` em `acao_bloqueada`.
+  Antes ficava `pendente` para sempre, e a operação não fechava.
+- Teto da operação: a conferência e a reserva da chamada em voo ficam na mesma seção crítica
+  (`_budget(reservar=True)`). Barrada por outra régua, a reserva sai. A função que solta, devolvida por
+  `conferir_gasto`, pode ser chamada duas vezes sem devolver a vaga de outra chamada.
+- Aprovação por fora do liberar (achado P1 do Codex no PR 483): a operação reabre ANTES da leitura dos alvos. Lidos com
+  `preparar`, os alvos davam `acao_preparada` como concluído, e o mesmo GET fechava a operação de novo. Depois disso,
+  a API dizia `em_curso`, e o cancelar devolvia `ja_encerrada`.
+- Vêm também da 0d8b973d:
+  - `fontes_da_pesquisa` no GET;
+  - a precondição da regra antiga em `test_leque_do_for_each`;
+  - os docs do 28.61 por dado.
+- Prova `simulated`:
+  - `backend/tests/test_plano_da_operacao.py::test_nome_fixo_em_conflito_recusa_o_alvo_e_a_operacao_le_acao_bloqueada`;
+  - `backend/tests/test_operacoes.py::test_a_conferencia_e_a_reserva_do_teto_sao_uma_secao_critica_so` (duas linhas
+    ao mesmo tempo, uma barrada);
+  - `backend/tests/test_operacoes.py::test_a_reabertura_le_os_alvos_ja_como_executar_e_o_mesmo_get_nao_fecha_de_novo`.
+  - Os três reprovam no código anterior (`cb36b9b4`).
+
 ## 2026-10-06 — 28.61: grupo de política sem aprovação e o fim real da operação (branch feat/28-61-grupo-liberado)
 
 - Pedido do dono (06/10 19:46Z): "crie um grupo com tudo liberado para todas as personas e atribua todas elas nesse grupo
