@@ -7169,5 +7169,15 @@ operação (`fato:alvo.conteudo`), quando ela é igual à tela do agente. Quais 
 depois de `<intencao>`, com o pedido de relacionar o texto ao assunto só quando fizer sentido com a publicação. O
 `draft_meta.fatos_da_operacao` da etapa ganha `assunto: true`. Sem assunto, nada muda.
 
+**Revisão do PR 480 (corte 57).**
+- A evidência de uma lição, voz, preferência ou tela é lida pelo id cru do item (`li-…`, como o Livro a grava). A lição
+  reforçada por uma execução da operação aparece mesmo sem `provenance` que a cite.
+- `a_favor` e `contra` seguem a regra de todo leitor do Livro (`promocao.efetivas`/`contrarias`): a linha neutralizada
+  por `forma` ou `invalida` da mesma origem não conta, e `conflict` conta contra. A reprodução da receita conta, porque é
+  o registro do uso nesta operação.
+- Voz e preferência com `scope_profile_id` saem com `escopo: persona` e `persona` = a dona.
+- Campo novo `avisos: [{run_id, step_id, aviso}]`: a etapa cujo `conhecimento_ids` não foi gravado. O texto sai, e o
+  `draft_meta.fatos_da_operacao.conhecimento_ids` da etapa fica `nao_gravados`.
+
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.

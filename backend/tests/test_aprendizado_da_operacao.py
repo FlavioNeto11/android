@@ -188,6 +188,35 @@ def test_persona_simulado_redacao_e_404(banco: Database) -> None:
     assert LeitorDoAprendizadoDaOperacao(banco).ler("op-nenhuma") is None
 
 
+def test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona(banco: Database) -> None:
+    """Revisão do PR 480: (1) a evidência de um item do Livro é gravada pelo id cru (`li-…`), e a lição reforçada pela
+    operação, sem `provenance` que a cite, aparece; (2) a contagem segue `promocao.efetivas`/`contrarias` (a `forma`
+    neutraliza o `against` da mesma origem; o `conflict` conta contra); (3) voz e preferência são da dona
+    (`scope_profile_id`), não da plataforma."""
+    _mundo(banco)
+    base = dict(state="active", scope_app="instagram", content="{}", tokens=10, source_kind="recovery",
+                provenance="{}", evidence_for=0, evidence_against=0, distinct_runs=0, distinct_devices=0,
+                created_by="sistema", created_at=T0, updated_at=T0, state_at=T0)
+    _ins(banco, "learning_items", id="li-2", kind="licao", scope_capability="OPEN_POST", content_hash="c2",
+         summary="Em OPEN_POST: espere a grade.", **base)
+    _ins(banco, "learning_items", id="li-voz", kind="voz", scope_profile_id="p2", content_hash="c3",
+         summary="Fala curta, sem emoji.", **{**base, "provenance": json.dumps({"execucoes": ["r-a"]})})
+    for ref, stance, origem in (("li-2", "for", "step:s1"),
+                                ("li-1", "against", "step:s2"), ("li-1", "forma", "step:s2"),   # neutralizado
+                                ("li-voz", "conflict", "step:s3")):
+        _ins(banco, "learning_evidence", item_ref=ref, stance=stance, origin_ref=origem, run_id="r-a",
+             instance_id="android-01", simulated=0, detail="x", observed_at=T0)
+    resp = _resposta(banco)
+    itens = {i["ref"]: i for i in resp["perguntas"][0]["itens"] + resp["perguntas"][1]["itens"]}  # type: ignore[index]
+    assert itens["licao:li-2"]["a_favor"] == 1 and itens["licao:li-2"]["evidencia"] == ["r-a"]     # (1)
+    assert itens["licao:li-1"]["contra"] == 0                                                         # (2) forma
+    assert itens["voz:li-voz"]["contra"] == 1                                                         # (2) conflict
+    assert "voz:li-voz" in _refs(resp, "persona_aprendeu") and "voz:li-voz" not in _refs(resp, "plataforma_aprendeu")
+    assert itens["voz:li-voz"]["persona"] == "p2"                       # (3) a dona, não quem a execução citou (p1)
+    assert "voz:li-voz" in _refs(_resposta(banco, persona="p2"), "persona_aprendeu")
+    assert "voz:li-voz" not in _refs(_resposta(banco, persona="p1"), "persona_aprendeu")
+
+
 def test_a_rota_responde_e_diz_404_sem_a_124(banco: Database, tmp_path: Path) -> None:
     from fastapi import FastAPI
     app = FastAPI()
@@ -199,7 +228,7 @@ def test_a_rota_responde_e_diz_404_sem_a_124(banco: Database, tmp_path: Path) ->
     r = cliente.get("/api/operacoes/op-1/aprendizado", params={"persona": "p1"})
     assert r.status_code == 200
     corpo = r.json()
-    assert corpo["operacao_id"] == "op-1" and corpo["persona"] == "p1" and len(corpo["perguntas"]) == 10
+    assert corpo["operacao_id"] == "op-1" and corpo["persona"] == "p1" and len(corpo["perguntas"]) == 10 and corpo["avisos"] == []
     assert {n["chave"] for n in corpo["nao_coberto"]} >= {"conhecimento_geral", "pedido_relatorios", "persona_aprendeu"}
     assert cliente.get("/api/operacoes/op-x/aprendizado").json()["detail"]["code"] == "operacao_desconhecida"
 

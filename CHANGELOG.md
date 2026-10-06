@@ -42,6 +42,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   sentido com a publicação. O `draft_meta` marca `fatos_da_operacao.assunto: true`. Prova `simulated`:
   `backend/tests/test_conhecimento_da_operacao.py::test_o_assunto_vai_junto_da_intencao_e_so_relaciona_quando_couber` e
   `backend/tests/test_pesquisa_da_operacao.py`.
+- **Revisão do PR 480 (corte 57), 4 achados confirmados no código e corrigidos:**
+  1. a evidência da lição era buscada por `licao:li-…`, e o Livro a grava por `li-…`: nunca casava;
+  2. a contagem ignorava `conflict` e a neutralização (`forma`/`invalida`); agora passa por `promocao.efetivas`/`contrarias`;
+  3. voz e preferência ignoravam `scope_profile_id`; agora são da persona dona;
+  4. a falha ao gravar `conhecimento_ids` ficava só no log; agora fica no `draft_meta` da etapa e em `avisos` do GET,
+     sem derrubar o texto.
+  
+  Prova `simulated`:
+  `backend/tests/test_aprendizado_da_operacao.py::test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona`
+  (reprova no código anterior) e
+  `backend/tests/test_conhecimento_da_operacao.py::test_falha_ao_gravar_conhecimento_ids_nao_derruba_e_fica_visivel`.
 - O roteador mora no módulo de pedidos, com `prefix=/api/operacoes` e um caminho de dois segmentos que não colide com
   as rotas da Jev, e não mexe no `state.py`.
 - Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
