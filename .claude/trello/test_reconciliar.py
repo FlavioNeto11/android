@@ -184,3 +184,19 @@ def test_leitura_datada():
     assert leitura_datada("**Última leitura registrada: 03/10", AGORA) is None
     assert leitura_datada("**Leitura de 31/02 01:50Z", AGORA) is None
 
+
+
+def test_raiz_trocada_depois_do_import_vale_para_as_consultas_ao_git(monkeypatch, tmp_path):
+    import reconciliar
+
+    chamadas = []
+
+    class R:
+        stdout = ""
+
+    monkeypatch.setattr(reconciliar, "RAIZ", tmp_path)
+    monkeypatch.setattr(reconciliar.subprocess, "run", lambda cmd, **kw: chamadas.append(cmd) or R())
+    (tmp_path / "CHANGELOG.md").write_text("## 2026-10-06 — Deploy 44 (x)\n", encoding="utf-8")
+    assert reconciliar.suite_do_commit("29.1") is None
+    assert reconciliar.horas_dos_deploys() == {}
+    assert all(str(tmp_path) in c for c in chamadas) and len(chamadas) == 2
