@@ -10603,22 +10603,16 @@
   "31.116": {
    "id": "31.116",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Real, 06/10/2026 07:42Z, central 16858086 (deploy 48), android-04, sessão trn-2hGmYRzUYaZaI5Xk. Na barra do treino (Foco, gravando 'Corrigir a etapa «Confirmar item na tela»') a seção Origem do treino mostra o selo 'corrige uma falha', a etapa check_item e a execução r-20261006053318-c04149, o motivo literal, 'Causa: não deu para saber', 'O que mostrar: O que a etapa devia ter feito nesta tela?' e o recolhível 'Por que a plataforma acha isso' com o fato 'sem regra para o texto: o classificador devolveu `outro`'. Na revisão ('Concluir e revisar') a mesma origem aparece com o mesmo diagnóstico (captura vista), e o título da sessão segue 'Corrigir a etapa «Confirmar item na tela»': a intenção não foi alterada. A causa indeterminada não ganhou o rótulo 'provável', como esperado. GET /api/training/trn-2hGmYRzUYaZaI5Xk confirma origin.diagnostico.causa indeterminada. Falta: o formulário de 'Ensinar a corrigir' mostrando a pergunta sugerida e a causa (parte painel, Portal 87c08b32, corte 49). Suíte 49 (simulado, Android): Formulário do ensino com a causa e a pergunta (Portal 8e8cf588) sobre o ensino-sugerido com causa e a pergunta do waiting_user (Aprendizado 4d2ec6a1, adendo v1.82). Simulado: backend/tests/test_ensino_sugerido.py::*, backend/tests/test_treino_diagnostico_da_falha.py::*, frontend/src/features/training/TrainingBar.test.tsx::*, frontend/src/features/runs/EnsinarACorrigir.test.tsx::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152 a6d8cfdf, Portal 8e8cf588, Canais 64bfc633, Aprendizado 4d2ec6a1 e 25878b0a, Jev 61930aa2 e 870fd7bd; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12282 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1746 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 353 arquivos em 2 partes: parte 1 3429 passed, 6 skipped; parte 2 2937 passed, 4 skipped, com 1 falha e 1 erro de infraestrutura do host (WSAENOBUFS 10055, 'No buffer space available', em test_pedidos_api e test_revisao_previa, arquivos que esta suíte não toca), e os dois arquivos repetidos sozinhos no PG: 26 passed, 0 falhas (08:53:43Z). No ar desde o deploy 49 (1b86bd6b, 06/10 08:56Z).",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 09:07Z, central 1b86bd6b, android-04. GET /api/runs/r-20261006012340-d92795/steps/<etapa v2 abrir_notificacoes>/ensino-sugerido devolve intent 'Corrigir a etapa «Abrir Notificações»: a IA gastou o orçamento da etapa', pergunta 'Mostre o caminho curto, toque a toque, para a etapa não depender da IA.', rotulo e causa 'teto_de_ia' (o campo causa, v1.82, já vem). Na tela, 'Ensinar a corrigir' (execução > Por aparelho > etapa que falhou) abre o formulário com: 'O que mostrar: Mostre o caminho curto, toque a toque, para a etapa não depender da IA.' em destaque acima do campo; campo 'O que você vai ensinar?' de 2 linhas pré-preenchido com a sugestão; linha 'Causa provável: a IA gastou o orçamento da etapa. O texto é uma sugestão da plataforma; o que você escrever vale no lugar.'; 'De quem é o ensino?' com a escolha da persona; 'Assumir o controle e abrir o treino' indisponível com o motivo 'Escolha de qual persona é o ensino.' até escolher. Editar o campo faz aparecer 'Voltar à sugestão', que restaura o texto e some. Enviar com a sugestão intacta abriu a trn-zltmJEG8KBpfGGUU com a intenção da própria plataforma; enviar com o texto reescrito ('percurso 49: provar o Descartar na revisão') abriu a trn-RqSeZic06RXXdhbC com esse texto (confirmado em GET /api/training). A origem do treino, na revisão, mostra 'corrige uma falha', 'Causa provável: a IA gastou o orçamento da etapa', 'O que mostrar' e os recolhíveis.",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_ensino_sugerido.py",
-    "backend/tests/test_treino_diagnostico_da_falha.py",
-    "frontend/src/features/training/TrainingBar.test.tsx",
-    "frontend/src/features/runs/EnsinarACorrigir.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-49",
+   "nota": "Não exercitei a causa 'indeterminada' nem a ausência de diagnóstico nesta execução (só 'teto_de_ia'); essas duas linhas ficam provadas pelos testes (simulated). O 31.116 parte 1 (diagnóstico na barra e na revisão) já tinha prova real da 48b.",
+   "grupo": "portal-percurso-49-formulario-e-descartar",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T08:58:09+00:00"
+   "quando": "2026-10-06T09:09:05+00:00"
   },
   "31.117": {
    "id": "31.117",
@@ -10666,20 +10660,16 @@
   "31.119": {
    "id": "31.119",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Descartar sessão e a lista Para revisar (Portal 8e8cf588). Simulado: frontend/src/features/training/DescartarSessao.test.tsx::*, frontend/src/features/training/ParaRevisar.test.tsx::*. Suíte 49 sobre a integração 1b86bd6b (main 95e9b07d dentro; 29.151 8dc6bfed, 29.152 a6d8cfdf, Portal 8e8cf588, Canais 64bfc633, Aprendizado 4d2ec6a1 e 25878b0a, Jev 61930aa2 e 870fd7bd; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12282 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1746 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 353 arquivos em 2 partes: parte 1 3429 passed, 6 skipped; parte 2 2937 passed, 4 skipped, com 1 falha e 1 erro de infraestrutura do host (WSAENOBUFS 10055, 'No buffer space available', em test_pedidos_api e test_revisao_previa, arquivos que esta suíte não toca), e os dois arquivos repetidos sozinhos no PG: 26 passed, 0 falhas (08:53:43Z). No ar desde o deploy 49 (1b86bd6b, 06/10 08:56Z).",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 09:07Z, central 1b86bd6b, android-04. (a) Gravação sem nada: com 0 entradas a barra diz 'Nada gravado ainda' e 'Concluir e revisar' fica indisponível com o motivo no nome ('Nada gravado: faça a tarefa no aparelho; sem entradas só dá para descartar.'); 'Descartar' segue ativo; depois de um toque gravado o aviso some e o botão libera. (b) Lista 'Para revisar' nova (sessão concluída sem proposta): uma linha 'Corrigir a etapa «Abrir Notificações»:…' com o texto 'sem proposta ainda · há 21 s · 1 entrada', o selo 'corrige uma falha' como link com href #/execucoes/r-20261006012340-d92795 (fora do botão Revisar) e o ícone de lixeira 'Descartar “…”'; 'Revisar' com o rótulo 'Revisar “…”, sem proposta ainda'. (c) Descartar na lista: diálogo 'Descartar o treinamento?' com '“…” e 1 entrada gravada se perdem; nada vira fluxo nem habilidade. O controle de android-04 volta para a IA.'; ao confirmar, trn-zltmJEG8KBpfGGUU ficou discarded, a linha saiu da lista, o aviso 'Treinamento descartado' apareceu e o controle de android-04 voltou a none. (d) Descartar na revisão da sessão concluída: o botão 'Descartar' está no rodapé ao lado de 'Depois' e 'Salvar como fluxo'; mesmo diálogo (com '1 entrada gravada'); ao confirmar, trn-RqSeZic06RXXdhbC ficou discarded, a revisão fechou, o controle voltou a none (GET /api/instances: android-04 online, none).",
    "blocker": null,
-   "arquivos": [
-    "frontend/src/features/training/DescartarSessao.test.tsx",
-    "frontend/src/features/training/ParaRevisar.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-49",
+   "nota": "Não cliquei no selo da lista nem o da revisão para navegar (só conferi o href). Sessão já salva ou descartada sem Descartar na revisão está provada só por teste (simulated). Não exercitei descarte com proposta pronta (exigiria IA paga).",
+   "grupo": "portal-percurso-49-formulario-e-descartar",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T08:58:09+00:00"
+   "quando": "2026-10-06T09:09:05+00:00"
   },
   "31.118": {
    "id": "31.118",
@@ -13989,6 +13979,16 @@
    ],
    "grupos": [
     "orquestradora-31-118-residual"
+   ]
+  },
+  {
+   "quando": "2026-10-06T09:09:05+00:00",
+   "itens": [
+    "31.116",
+    "31.119"
+   ],
+   "grupos": [
+    "portal-percurso-49-formulario-e-descartar"
    ]
   }
  ]

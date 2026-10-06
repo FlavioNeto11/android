@@ -663,10 +663,10 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.113 | implemented | real | claude-opus-5-5 | — | Real, mesma execução r-20261006070730-277418 (06/10/2026 07:07Z, deploy 47 d2d346cd). Varredura só leitura do SQLite central (mode=ro), contando o valor da persona sem imprimi-lo: em claro 0 em runs (command, plan, stat… | None |
 | 31.114 | implemented | simulated | claude-sonnet-5-5 | — | Arraste sem árvore vira receita no treino (Jev 2f5d807b, adendo v1.76). ID ainda fora do plano; a orquestradora aplica depois. Simulado: backend/tests/test_treino_arraste_vira_receita.py::*, backend/tests/test_treino_de… | None |
 | 31.115 | pendente | — | — | — |  |  |
-| 31.116 | implemented | simulated | claude-sonnet-5-5 | — | Real, 06/10/2026 07:42Z, central 16858086 (deploy 48), android-04, sessão trn-2hGmYRzUYaZaI5Xk. Na barra do treino (Foco, gravando 'Corrigir a etapa «Confirmar item na tela»') a seção Origem do treino mostra o selo 'cor… | None |
+| 31.116 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 09:07Z, central 1b86bd6b, android-04. GET /api/runs/r-20261006012340-d92795/steps/<etapa v2 abrir_notificacoes>/ensino-sugerido devolve intent 'Corrigir a etapa «Abrir Notificações»: a IA gastou o orçam… | None |
 | 31.117 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 07:35Z, central 16858086: GET /api/aprendizado/fluxo/f-455f91437856 devolve conteudo.origem com tipo treino, fonte training:trn-4lukXbyHNxGubAK0, source_run_id e run_id r-20261006053318-c04149, session_… | None |
 | 31.118 | partial | real | fable | — | Real, 06/10/2026, máquina central, deploy 49 (1b86bd6b, no ar às 08:56Z). O reparo único scripts/gravacao-com-marcador.py foi aplicado pela sessão Android às 08:59:20Z, com o backup data/backups/20261006-055448: o ensai… |  |
-| 31.119 | implemented | simulated | claude-sonnet-5-5 | — | Descartar sessão e a lista Para revisar (Portal 8e8cf588). Simulado: frontend/src/features/training/DescartarSessao.test.tsx::*, frontend/src/features/training/ParaRevisar.test.tsx::*. Suíte 49 sobre a integração 1b86bd… | None |
+| 31.119 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 09:07Z, central 1b86bd6b, android-04. (a) Gravação sem nada: com 0 entradas a barra diz 'Nada gravado ainda' e 'Concluir e revisar' fica indisponível com o motivo no nome ('Nada gravado: faça a tarefa n… | None |
 | 31.120 | pendente | — | — | — |  |  |
 | 31.121 | pendente | — | — | — |  |  |
 | 31.122 | pendente | — | — | — |  |  |
