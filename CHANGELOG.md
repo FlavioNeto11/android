@@ -974,6 +974,15 @@ Da leitura do 31.78.
   pôs o cabeçalho dele no CHANGELOG e o menor deploy cujo commit do central o contém (no primeiro deploy conhecido: "o deploy 38 ou um anterior"), e a linha do concluído é refeita quando o deploy muda.
   Regra no C-28. Prova `simulated`: `.claude/trello/test_reconciliar.py` (30 passed). Prova `real` (06/10): ensaio contra os três quadros, 37 linhas de concluído com deploy corrigido.
 
+## 2026-10-06 — 33.2: especificação do protocolo do consumidor de um serviço externo de autorização (docs)
+
+- `docs/integracao-autorizacao-externa.md` (novo, único documento do item): propósito e falha fechada, esquema do
+  pedido e da resposta, autenticação e verificação do envelope, estados e vereditos (`autorizado`, `recusado`,
+  `aguardando`, erro técnico), validade com uso único, reserva e consumo, modos por domínio (`local`, `sombra`,
+  `externo`), restrições e códigos de erro. Genérico: nenhum domínio habilitado; o controle local nunca afrouxa.
+  Linha no índice de `docs/README.md`. Prova: `docs-check` 0 erros no commit; revisão de segredos sem achado
+  depois de duas trocas de redação.
+
 ## 2026-10-06 — Deploy 49 (suíte 49: formulário do ensino sugerido com causa, descartar sessão concluída, gravação com a marca, evento do 409, router de releases, readoção pelo aparelho)
 
 - **Implantado** às 08:56Z: central em `1b86bd6b`, sem migração nova (mais alta 119), 8 pontas sobre `16858086` (mains até `95e9b07d` dentro). Itens: 31.116 fechado (formulário de "Ensinar a corrigir" com a pergunta sugerida, a causa por código e "o que mostrar" em destaque; adendo v1.82: `ensino-sugerido` devolve `causa` e a pergunta própria do `waiting_user`, coerente com `from-run`; Portal `8e8cf588`, Aprendizado `4d2ec6a1`), 31.119 ("Descartar" na revisão da sessão concluída e em "Para revisar", devolvendo o controle; Portal), 31.118 (`training_inputs.text` recebe a marca ao salvar o fluxo; a gravação aberta segue em claro; Aprendizado `25878b0a`), 15.15 F7 (o 409 `invalid_transition` deixa evento warn com o modelo da rota; Jev `61930aa2`) e F4d (7 rotas de `/api/releases*` em `modules/applications/presentation/releases.py`, OpenAPI idêntico; Jev `870fd7bd`), 29.151 (a readoção espera o `boot_seconds` do aparelho, 120 a 300 s; Android `8dc6bfed`), C-28 (o id que a seção do deploy diz "fica para o corte N" não conta como citado nele; Canais `64bfc633`). 29.152 observabilidade (o primeiro aviso de cada episódio de pressão traz os 3 processos mais pesados e o pacote em primeiro plano, só nomes; Android `a6d8cfdf`). UX da lista "Para revisar" (uma linha por sessão, "sem proposta ainda", hora e entradas, "Nada gravado ainda", selo que abre a execução de origem; Portal `8e8cf588`).

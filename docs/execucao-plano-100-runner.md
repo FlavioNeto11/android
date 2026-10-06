@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-632 de 684 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+634 de 684 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -678,8 +678,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
 | 32.5 | implemented | real | sessao | — | PR #215 (canais/32-5-tela-canais @ a278ccb7, adendo v1.13), suíte 23, deploy 23 em 9add9fb2. Real em 04/10/2026 ~10:23Z no central (WIN-7S2UASNLFOP), no Chrome: #/canais carrega os três cartões com dado vivo e só número… | None |
-| 33.1 | pendente | — | — | — |  |  |
-| 33.2 | pendente | — | — | — |  |  |
+| 33.1 | implemented | real | fable | — | Real, 06/10/2026 09:32Z: os cinco levantamentos (aprendizagem e replay; painel; worker, persistência, migrações e deploy; executor, ações, aprovações e máquinas de estado; canais e avisos) escritos e commitados no repos… |  |
+| 33.2 | implemented | real | sonnet | — | Real, 06/10/2026 09:40Z, máquina central WIN-7S2UASNLFOP: docs/integracao-autorizacao-externa.md (339 linhas, 9 seções: propósito, esquema, autenticação, estados, validade, modos, restrições, erros, fora do escopo) e li… |  |
 | 33.3 | pendente | — | — | — |  |  |
 | 33.4 | pendente | — | — | — |  |  |
 | 33.5 | pendente | — | — | — |  |  |
@@ -691,7 +691,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (52): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.152, 31.11, 31.12, 31.26, 31.81, 31.115, 31.118, 31.120, 31.121, 31.122, 31.123, 31.124, 31.125, 31.126, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (50): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.152, 31.11, 31.12, 31.26, 31.81, 31.115, 31.118, 31.120, 31.121, 31.122, 31.123, 31.124, 31.125, 31.126, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
