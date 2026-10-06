@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.91 T1 (painel): o ensino por habilidade (v2) sai da tela; "Ensinar a corrigir" é o único caminho (branch feat/31-91-t1-painel-sem-ensino-v2)
+
+- Decisão do 31.91 (ADR-078): o caminho único de ensino é o Modo treinamento. Saem do painel `TeachingPanel` (a leitura do ensino v2 na revisão do treino),
+  `CorrigirEtapa` e a marca "corrigível" da etapa (o "Corrigir esta etapa" do ensino de habilidade, plano 22.7), a flag `features.ensino_v2`
+  (`skills.ensino_v2_na_tela`, 31.91 F1), os métodos do cliente das rotas `/teaching-sessions` e `/skill-candidates`, os testes deles e o CSS que só eles usavam.
+  O "Gerar habilidade deste fluxo" (`features.skills`, fase J) e a lista de habilidades ficam. A revisão do treino já não consulta `/teaching-sessions`.
+- **31.111 A:** `ETAPA_CORRIGIVEL` (agora em `EnsinarACorrigir.tsx`) ganha `waiting_user`: o botão "Ensinar a corrigir" aparece também na etapa que parou esperando
+  uma pessoa, como o backend aceita desde a6d52001 (`training/origem.py::STATUS_ENSINAVEIS`). Achado no 31.79: a versão 2 da execução parou em `waiting_user` e o botão não aparecia.
+- Prova `simulated`: `EnsinarACorrigir.test.tsx` (teste novo de `waiting_user`, e `running`, `pending`, `cancelled`, `skipped` sem botão) e `TrainingReview.test.tsx` (a revisão não
+  mostra nem consulta o ensino v2). `not_run`: o percurso real depois do deploy.
+
 ## 2026-10-05 — 31.111 F5: "Ensinar a corrigir" na etapa que falhou e selo de origem no treino (branch feat/31-111-f5-ensinar-a-corrigir)
 
 - Contra o adendo v1.75 (Jev, `feat/31-111-f1-ensinar-a-partir-da-falha`): na etapa `failed` ou `uncertain` de uma execução (aba Aparelhos), o botão

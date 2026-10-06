@@ -245,8 +245,8 @@ export function FlowsRecipesSection() {
 
 // ---- habilidades (fase F) -----------------------------------------------------------------------
 
-/** Estado de uma versão (§10.3): ícone + rótulo + tom, como `RECIPE_STATUS`. O rascunho é neutro aqui e no quadro de
- * ensino (`TeachingPanel.tsx::TEACHING_STATUS.published`), porque "virou rascunho" e "rascunho" são a mesma coisa. */
+/** Estado de uma versão (§10.3): ícone + rótulo + tom, como `RECIPE_STATUS`. O rascunho é neutro: "virou rascunho" e
+ * "rascunho" são a mesma coisa. */
 const SKILL_STATE: Record<SkillState, StatusMeta> = {
   draft: { label: 'rascunho', tone: 'neutral', icon: FilePen, description: 'Conteúdo ainda editável; não casa com comandos.' },
   candidate: { label: 'candidata', tone: 'info', icon: FileSearch, description: 'Conteúdo congelado, à espera da validação.' },
