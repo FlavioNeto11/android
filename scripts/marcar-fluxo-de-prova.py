@@ -70,7 +70,7 @@ def marcar(db: Database, fluxos: Sequence[str]) -> dict[str, object]:
             fonte = str(row["source"] or "")
             if fonte.startswith(PREFIXO_DO_TREINO):
                 sid = fonte[len(PREFIXO_DO_TREINO):]
-                if db.one("SELECT id FROM training_sessions WHERE id=? AND nascido_de_prova IS NOT 1", (sid,)):
+                if db.one("SELECT id FROM training_sessions WHERE id=? AND COALESCE(nascido_de_prova, 0) <> 1", (sid,)):
                     db.execute("UPDATE training_sessions SET nascido_de_prova=1 WHERE id=?", (sid,))
                     sessoes += 1
     return {"fluxos_lidos": len(dict.fromkeys(fluxos)), "fluxos_marcados": len(marcados), "sessoes_marcadas": sessoes,

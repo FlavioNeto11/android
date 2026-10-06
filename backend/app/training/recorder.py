@@ -559,8 +559,8 @@ class TrainingRecorder:
         if instance_id:
             filtros.append("instance_id=?")
             args.append(instance_id)
-        if nascido_de_prova is not None:
-            filtros.append("nascido_de_prova=1" if nascido_de_prova else "nascido_de_prova IS NOT 1")
+        if nascido_de_prova is not None:          # COALESCE, não `IS NOT 1` (só o SQLite aceita; o PostgreSQL recusa)
+            filtros.append("nascido_de_prova=1" if nascido_de_prova else "COALESCE(nascido_de_prova, 0) <> 1")
         if filtros:
             sql += " WHERE " + " AND ".join(filtros)
         sql += " ORDER BY created_at DESC LIMIT ?"
