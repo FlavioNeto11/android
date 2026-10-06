@@ -7252,7 +7252,8 @@ O déficit aparece aqui, não é escondido.
 Eventos novos:
 - `operacao.criada` com `{operacao_id, solicitados}`;
 - `operacao.alvo` com `{operacao_id, profile_id, estagio, estado, motivo}`, a cada mudança de estágio ou de estado;
-- `operacao.encerrada` com `{operacao_id, status, capacidade}`.
+- `operacao.encerrada` com `{operacao_id, status, capacidade, custo}`. O `custo` (`{pesquisa_usd, alvos_usd, total_usd}`, o
+  mesmo da leitura da operação) entra no 28.62, para o aviso do fim da operação; consumidor que o ignora segue valendo.
 
 ## Adendo v1.95 (06/10/2026; número da orquestradora; item 31.154, migração 127) — custo por alvo, vínculo principal e parâmetros fixos da operação
 
