@@ -471,6 +471,12 @@ do fluxo no Livro, com o filtro `nascido_de_prova=true|false` nas duas listagens
 com a marca e, ao desligar o fluxo de prova, mandam `motivo` no `PUT /api/flows/{id}` dizendo que é prova (vai à
 trilha do livro). Os de antes se marcam pelo id com `scripts/marcar-fluxo-de-prova.py`.
 
+**A abertura pelo lançador (31.139).** 2 de 9 fluxos ensinados começavam na tela inicial do aparelho (abrir a gaveta,
+tocar no ícone), e a receita guardava o toque no layout do lançador daquele aparelho (a 198 nunca reproduziu). Na
+destilação, o trecho do começo feito no lançador, seguido de entrada já no app da sessão, sai das etapas, e a etapa da
+1ª entrada ganha `open_app` do app (`training/lancador.py`). O 31.121 cobre a gravação que começa dentro do app. A
+gravação não muda.
+
 **A origem do fluxo ensinado (31.135, adendo v1.88).** O fluxo só dizia "Demonstrado no treino". Agora a `origin` de
 `GET /api/flows` e a `origem` do conteúdo no Livro trazem, de todo fluxo ensinado, a sessão (`session_id`), o
 aparelho, quem ensinou (`operator`) e quando (`ensinado_em`), no molde do v1.81. Os ids da falha seguem `null` quando

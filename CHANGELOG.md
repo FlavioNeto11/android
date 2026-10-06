@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.139: a abertura pelo lançador vira open_app na receita (branch feat/31-130-fluxo-de-prova)
+
+- Achado da leitura dos fluxos ensinados (06/10): 2 de 9 começam no lançador (gaveta e ícone); a receita 198 guardava o toque no ícone, no layout daquele aparelho, e nunca reproduziu.
+- A destilação tira das etapas o trecho do começo feito no lançador quando a entrada seguinte já está no app da sessão, e a etapa da 1ª entrada ganha `open_app` do app (`training/lancador.py`). A gravação não muda.
+- Prova `simulated`: `tests/test_treino_abertura_pelo_lancador.py` (3). Real: `not_run`.
+
 ## 2026-10-06 — 31.135: a origem de todo fluxo ensinado (branch feat/31-130-fluxo-de-prova)
 
 - Adendo v1.88, sem migração: `GET /api/flows[].origin` e `conteudo.origem` do fluxo no Livro trazem, de todo fluxo cuja fonte é `training:<id>`, `session_id`, `instance_id`, `operator` e `ensinado_em` (antes, só o fluxo que veio de uma falha tinha origem). Os ids da falha seguem como no v1.81.
