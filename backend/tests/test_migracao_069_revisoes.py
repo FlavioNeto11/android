@@ -22,7 +22,8 @@ COLUNAS = {"id", "created_at", "item_ref", "item_kind", "scope_app", "gatilho", 
            "template_id", "template_versao", "provedor", "modelo", "simulated", "input_tokens", "output_tokens",
            "usd", "ms", "saida", "validade", "classe_de_risco", "politica", "decisao_final", "decidido_por",
            "transicao_id", "override", "override_motivo", "resultado_posterior", "resultado_em",
-           "ai_call_id"}                                     # a 075 acrescenta a chamada medida do hub
+           "ai_call_id",                                     # a 075 acrescenta a chamada medida do hub
+           "instrucao_versao"}                               # a 117 (30.76): a versão do texto que a IA leu
 
 
 def _insere(db, id_: str, item_ref: str = "li-aaa", dossie_hash: str = "h1", app: str = "com.x") -> None:
