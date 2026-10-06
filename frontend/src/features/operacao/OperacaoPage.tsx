@@ -5,7 +5,7 @@ import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
 import { EmptyState } from '../../components/EmptyState';
-import { Field, Select } from '../../components/Field';
+import { Field, Select, TextInput } from '../../components/Field';
 import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
@@ -13,7 +13,7 @@ import { cx, formatInt, formatUsd4 } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
-import { formatClock } from '../../lib/time';
+import { formatClock, formatQuando } from '../../lib/time';
 import { toast, toastError } from '../../store/toasts';
 import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
@@ -23,7 +23,7 @@ import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
 import {
-  acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
+  acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, contarPorStatus, descricaoDaOperacao, filtrarOperacoes, isStatusDaOperacao, STATUS_DA_OPERACAO, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
   ROTULO_DA_VERIFICACAO, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, rotuloDaAcao, rotuloDoEstagio, verificacaoDoAlvo, type Alvo, type EstadoDoAlvo,
   type EstagioId, type Operacao, type ResumoDaOperacao, type StatusDaOperacao, type Verificacao,
 } from './modelo';
@@ -367,20 +367,45 @@ function DetalheDaOperacao({ id }: { id: string }) {
 
 function ListaDeOperacoes() {
   const { dado, erro, carregando, recarregar } = useCarga<ListaDeOperacoes>((s) => apiOperacoes.lista(s), 'lista');
+  const [estado, setEstado] = useState<StatusDaOperacao | ''>('');
+  const [busca, setBusca] = useState('');
   if (carregando && !dado) return <Page title="Operação"><LoadingRegion label="Lendo as operações"><Skeleton height={120} /></LoadingRegion></Page>;
   if (erro && !dado) return <Page title="Operação"><LoadErrorState what="as operações" error={erro} onRetry={recarregar} /></Page>;
-  const itens: ResumoDaOperacao[] = dado?.itens ?? [];
+  const todas: ResumoDaOperacao[] = dado?.itens ?? [];
+  const itens = filtrarOperacoes(todas, estado, busca);
+  const porStatus = contarPorStatus(todas);
   return (
     <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim.">
       {erro && dado ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {dado?.exemplo ? AVISO_DE_EXEMPLO : null}
-      {itens.length === 0 ? (
+      {todas.length === 0 ? (
         <EmptyState icon={Workflow} title="Nenhuma operação ainda" hint="Quando uma operação for criada, ela aparece aqui, da mais nova para a mais antiga." />
       ) : (
+        <>
+          <div className={styles.filtros}>
+            <Field label="Estado">
+              {({ id }) => (
+                <Select id={id} small value={estado} onChange={(e) => setEstado(isStatusDaOperacao(e.target.value) ? e.target.value : '')}>
+                  <option value="">Todos ({todas.length})</option>
+                  {STATUS_DA_OPERACAO.filter((s) => porStatus[s] > 0).map((s) => <option key={s} value={s}>{ROTULO_DO_STATUS[s]} ({porStatus[s]})</option>)}
+                </Select>
+              )}
+            </Field>
+            <Field label="Buscar no objetivo">
+              {({ id }) => <TextInput id={id} small value={busca} onChange={(e) => setBusca(e.target.value)} />}
+            </Field>
+          </div>
+          <p className={styles.mudo} role="status">{formatInt(itens.length)} de {formatInt(todas.length)} operações, da mais nova para a mais antiga.</p>
+        </>
+      )}
+      {todas.length > 0 && itens.length === 0 ? (
+        <EmptyState icon={Workflow} compact title="Nenhuma operação com este filtro" hint="Limpe o estado ou a busca para ver todas." />
+      ) : todas.length === 0 ? null : (
         <ul className={styles.lista} aria-label="Operações">
           {itens.map((o) => (
             <li key={o.id} className={styles.itemDaLista}>
               <a className={styles.link} href={hashDe('operacoes', { segmentos: [o.id] })}>{o.command || o.id}</a>
+              <span className={styles.mudo} data-meta>{descricaoDaOperacao(o, formatQuando)}</span>
               <span className={styles.mudo}>
                 {o.status ? ROTULO_DO_STATUS[o.status] : 'estado não informado'} · {numero(o.capacidade.solicitados)} solicitados,{' '}
                 {numero(o.capacidade.concluidas)} concluídas, {numero(o.capacidade.bloqueadas)} bloqueadas

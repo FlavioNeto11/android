@@ -43,6 +43,8 @@ export const isEstadoDoAlvo = (v: unknown): v is EstadoDoAlvo => typeof v === 's
 
 export type StatusDaOperacao = 'em_curso' | 'concluida' | 'concluida_com_bloqueios' | 'cancelada';
 const STATUS: readonly string[] = ['em_curso', 'concluida', 'concluida_com_bloqueios', 'cancelada'];
+export const STATUS_DA_OPERACAO = STATUS as readonly StatusDaOperacao[];
+export const isStatusDaOperacao = (v: string): v is StatusDaOperacao => STATUS.includes(v);
 
 export interface AcaoFinal {
   /** A chave da ação de efeito (ex.: `CREATE_COMMENT`); o painel traduz o que conhece. */
@@ -282,6 +284,25 @@ export const ROTULO_DO_STATUS: Record<StatusDaOperacao, string> = {
 const ROTULO_DA_ACAO: Record<string, string> = { CREATE_COMMENT: 'Comentário', SEND_MESSAGE: 'Mensagem', preparar: 'Só preparar', executar: 'Preparar e executar' };
 /** A ação em palavras; a chave que o painel não conhece fica como veio. */
 export const rotuloDaAcao = (tipo: string | null): string => (tipo ? ROTULO_DA_ACAO[tipo] ?? tipo : 'não informada');
+
+/** O filtro da lista: o estado da operação e um trecho do objetivo (sem caixa nem acento); vazio = não filtra. */
+const semAcento = (t: string): string => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+export function filtrarOperacoes<T extends Pick<ResumoDaOperacao, 'status' | 'command'>>(itens: readonly T[], estado: StatusDaOperacao | '', busca: string): T[] {
+  const q = semAcento(busca.trim());
+  return itens.filter((o) => (!estado || o.status === estado) && (!q || semAcento(o.command).includes(q)));
+}
+
+/** Quantas operações há em cada estado (as sem estado não entram em nenhum). */
+export function contarPorStatus(itens: readonly Pick<ResumoDaOperacao, 'status'>[]): Record<StatusDaOperacao, number> {
+  const c: Record<StatusDaOperacao, number> = { em_curso: 0, concluida: 0, concluida_com_bloqueios: 0, cancelada: 0 };
+  for (const o of itens) if (o.status) c[o.status] += 1;
+  return c;
+}
+
+/** "Criada hoje, 19:43 · instagram · Preparar e executar": o que distingue uma operação da outra quando o objetivo é parecido. */
+export function descricaoDaOperacao(o: Pick<ResumoDaOperacao, 'created_at' | 'app_id' | 'acao_final'>, quando: (iso: string) => string = (i) => i): string {
+  return [o.created_at ? `Criada ${quando(o.created_at)}` : 'Criada em data não informada', o.app_id ?? 'app não informado', rotuloDaAcao(o.acao_final)].join(' · ');
+}
 
 export type Verificacao = 'verificada' | 'nao_verificada' | 'sem_acao';
 /** "Verificada" só com a pós-condição comprovada; ação tentada sem prova é "não verificada"; sem ação final, nada a verificar. */
