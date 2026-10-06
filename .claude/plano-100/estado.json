@@ -9273,15 +9273,14 @@
    "id": "31.90",
    "status": "implemented",
    "proof": "real",
-   "evidence": "06/10/2026 ~03:20Z, deploy 45 (7154d7cf). Sub-item D (adendo v1.70): no Foco do android-04, 'Assumir controle' e 'Iniciar treinamento' (persona de teste Teste Portal Um, intenção 'percurso 45: provar o Desfazer a última'); dois toques em área vazia da tela da busca das Configurações geraram 2 entradas (#1 toque, #2 toque; GET /api/training/trn-PLTrZkx3t7NDtfzj: input_count 2). O botão 'Desfazer a última' apareceu abaixo da lista; o clique chamou POST /api/training/trn-PLTrZkx3t7NDtfzj/undo -> 200 OK e o painel mostrou o aviso 'Entrada desfeita: A entrada #2 saiu da gravação; o aparelho não voltou, só a gravação.' e a barra passou para '1 entrada' (#1 toque); a leitura da API confirmou status recording, inputs [1] e origin null.",
+   "evidence": "Real, 06/10/2026 ~05:31Z, deploy 46. No treino aberto pelo F5, duas teclas Voltar geraram '2 entradas'; 'Desfazer a última' chamou POST /api/training/trn-cUIEX-M2QCTokWeA/undo -> 200 OK, o painel mostrou 'Entrada desfeita' e a barra passou para '1 entrada'.",
    "blocker": null,
-   "nota": "Não testei o 409 entrada_mudou (outra entrada chegando entre a leitura e o clique): só com dois operadores ao mesmo tempo; está coberto por teste com fetch falso.",
-   "grupo": "portal-percurso-deploy-45",
+   "grupo": "portal-percurso-deploy-46",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T03:24:36+00:00"
+   "quando": "2026-10-06T05:33:02+00:00"
   },
   "31.89": {
    "id": "31.89",
@@ -10331,22 +10330,17 @@
   },
   "31.111": {
    "id": "31.111",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "F4 8b71120e (diagnóstico da falha no from-run, contrato v1.77), com a F5 do Portal 732e6c30 e o from-run que aceita waiting_user (Jev a6d52001). Simulado: backend/tests/test_treino_diagnostico_da_falha.py::*, backend/tests/test_treino_a_partir_da_falha.py::*, frontend/src/features/runs/EnsinarACorrigir.test.tsx::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z).",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 ~05:28Z a ~05:31Z, deploy 46 (325a04fb). F5 na tela: Execuções > r-20261006012340-d92795 > Por aparelho > android-04 > etapa 'Abrir Notificações' (Falhou): apareceu o botão 'Ensinar a corrigir'. O formulário disse 'Isto assume o controle de android-04 (a IA fica em espera nele até você devolver) e abre o treino no Foco. Nada roda sozinho.', trouxe o texto 'Corrigir a etapa «Abrir N…»' e, com 2 personas no aparelho, exigiu a escolha ('Escolha a persona'); escolhi a persona de teste Teste Portal Um. 'Assumir o controle e abrir o treino' tomou o controle do android-04 e levou ao Foco (?foco=android-04) com 'Controle: Você' e o Modo treinamento 'Gravando: Corrigir a etapa «Abrir Notificações»: a IA gastou o orçamento da etapa' (POST /api/training/from-run sem intent: o backend montou o texto pelo diagnóstico do F4: causa teto_de_ia, rótulo 'a IA gastou o orçamento da etapa', pergunta 'Mostre o caminho curto, toque a toque, para a etapa não depender da IA.'). A origem apareceu na barra: selo 'corrige uma falha', 'Etapa abrir_notificacoes da execução r-20261006012340-d92795', 'Motivo: A etapa passou do orçamento de 10 chamadas de IA…' e, no recolhível 'O que a execução fez, o esperado e as imagens': a trilha (Pesquisar o nome da persona · Cancelada; Abrir Notificações · Falhou · a que falhou; as duas seguintes Canceladas), 'A etapa esperava: A tela de Notificações mostra a opção Notification history (Notification history)' e 'Tentativa 1 (failed) · ia_orcamento · estratégia recipe>ai_actor: …'. GET /api/training/trn-cUIEX-M2QCTokWeA devolveu origin {run_id, step_id, step_key, attempt_id, motivo, context{disponivel, trilha, esperado, tentativa, evidencias []}, diagnostico{causa, rotulo, pergunta, fatos, proposta null, amostra 1}} e o profile_id da persona escolhida. Descartada ao fim.",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_treino_diagnostico_da_falha.py",
-    "backend/tests/test_treino_a_partir_da_falha.py",
-    "frontend/src/features/runs/EnsinarACorrigir.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-46",
+   "nota": "Não provado nesta passagem: a revisão do treino com origem, o salvar e o selo no fluxo candidato (dependem de uma proposta paga; ficam no 31.79) e a evidência em imagem (a tentativa não tem evidência). O painel NÃO mostra o diagnóstico do F4 (origin.diagnostico: rótulo, pergunta e fatos): o rótulo só chega no texto da intenção e a 'pergunta' não aparece em tela; é lacuna do painel (item novo se o dono quiser a pergunta na revisão).",
+   "grupo": "portal-percurso-deploy-46",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T05:23:28+00:00"
+   "quando": "2026-10-06T05:33:02+00:00"
   },
   "31.112": {
    "id": "31.112",
@@ -10432,41 +10426,30 @@
   "31.113": {
    "id": "31.113",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "F1 80b22dbc e F2 a133e58a (marcador da persona na linha da etapa, resolver_persona único em run_step) mais a regra 93898149 (motivo da persona sem o dado = falta_informacao). F3 vai ao corte 47; os bindings ficam com o valor na linha até lá. Simulado: backend/tests/test_etapa_com_marcador_da_persona.py::*, backend/tests/test_registro_mascarado_da_persona.py::*, backend/tests/test_prevoo_dado_da_persona.py::*, backend/tests/test_credenciais_da_conta.py::*, backend/tests/test_learning_falhas.py::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_etapa_com_marcador_da_persona.py",
-    "backend/tests/test_registro_mascarado_da_persona.py",
-    "backend/tests/test_prevoo_dado_da_persona.py",
-    "backend/tests/test_credenciais_da_conta.py",
-    "backend/tests/test_learning_falhas.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; faltam a F3 e a prova real",
-   "grupo": "android-suite-46",
+   "proof": "not_run",
+   "evidence": "not_run: F1/F2 não têm tela (marcador no registro da execução), e não rodei nem criei execução para ver o registro; o percurso não tocou nelas.",
+   "blocker": "só se vê numa execução nova de um fluxo ensinado, o que gasta IA e fica no 31.79",
+   "nota": "Nenhum erro novo apareceu no detalhe da execução existente, mas ela é de antes do 31.113 (execuções antigas ficam como estão).",
+   "grupo": "portal-percurso-deploy-46",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T05:23:28+00:00"
+   "quando": "2026-10-06T05:33:02+00:00"
   },
   "29.153": {
    "id": "29.153",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR 465 do Copilot (ffbfa857, lido como achado e aprovado no corte: costs {spent_usd, calls} no detalhe da execução) e o painel da Portal 56924bee, que tolera costs ausente. Ressalva: uma consulta COUNT extra por GET do detalhe. Simulado: backend/tests/test_run_detalhe_custo.py::*, frontend/src/features/runs/CustoDaExecucao.test.tsx::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z).",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 ~05:27Z, deploy 46 (325a04fb, backend do PR 465 no ar). GET /api/runs/{id} trouxe costs em todas as execuções do android-04 (ex.: r-20261006012340-d92795: spent_usd 0.33082, calls 33; r-20261005222326-913d4b: 0.020079 e 2 chamadas). No detalhe da execução r-20261006012340-d92795 a linha 'CUSTO' mostrou 'US$ 0,3308 · 33 chamadas de IA', igual à API (4 casas). Na lista de Execuções (50 linhas) só a linha dessa execução, já aberta, mostrou o valor (title '33 chamadas de IA'); as outras 49 não mostraram, como projetado (a lista não traz costs na v1.74).",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_run_detalhe_custo.py",
-    "frontend/src/features/runs/CustoDaExecucao.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-46",
+   "nota": "O pedido era custo 'na lista': ele só aparece em execução já aberta, porque o backend não manda costs na lista (v1.74). Para a lista inteira o backend teria de mandar costs na lista (adendo novo).",
+   "grupo": "portal-percurso-deploy-46",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T05:23:28+00:00"
+   "quando": "2026-10-06T05:33:02+00:00"
   },
   "31.114": {
    "id": "31.114",
@@ -13557,6 +13540,18 @@
    ],
    "grupos": [
     "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T05:33:02+00:00",
+   "itens": [
+    "31.111",
+    "29.153",
+    "31.90",
+    "31.113"
+   ],
+   "grupos": [
+    "portal-percurso-deploy-46"
    ]
   }
  ]
