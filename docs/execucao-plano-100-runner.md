@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-610 de 671 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+611 de 671 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -545,7 +545,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.80 | implemented | simulated | claude-sonnet-5-5 | — | As duas partes do item estão na main e no ar (deploy 41, depois 45): A, a divergência por tela de partida diferente não conta como falha da receita (PR 439 ba75b9c9; migração 115 `recipes.nao_aplicavel_seguidas`; `Recip… | None |
 | 30.81 | implemented | real | claude-sonnet-5-5 | — | 05/10/2026 ~23:40Z, cb6742d4, android-04 (sessão sem persona). Salvei a proposta pronta trn-osso9bYL3nq4N4ZJ como fluxo f-21f399425646 (ref público f-…, 30.83): o resultado diz "Fluxo f-21f399425646 salvo [em prova]. At… | None |
 | 30.82 | implemented | simulated | claude-sonnet-5-5 | — | PR 463 do Copilot, ponta 46d07d08 (lido como achado: os 239 literais de falhas.py idênticos e na mesma ordem). Simulado: backend/tests/test_revisao_receitas.py::*, backend/tests/test_learning_falhas.py::*. Suíte 45 sobr… | None |
-| 30.83 | partial | simulated | claude-sonnet-5-5 | — | Ponta 62d7259e (traz a migração 116_ref_publico_do_fluxo). Simulado: backend/tests/test_ref_publico_do_fluxo.py::*, backend/tests/test_conversao_de_fluxo.py::*, backend/tests/test_avisos_ensinado.py::*. Suíte 41 sobre a… | None |
+| 30.83 | implemented | real | claude-sonnet-5-5 | — | As quatro fatias estão na main e no ar: 1 a 3 na suíte 41 (62d7259e, migração 116 `ref_publico_do_fluxo`) e a 4 na 42 (0ef8c2c7); deploy 45 (7154d7cf) as contém. Simulado: test_ref_publico_do_fluxo.py, test_ref_do_fluxo… | None |
 | 30.84 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 0ef8c2c7, na main e no deploy no ar (7154d7cf contém); suíte 42 verde (backend SQLite 12020 passed, PG dirigido sem falhas). Simulado: backend/tests/test_reensinar_o_desligado_pela_prova.py (a demonstração nova en… | None |
 | 30.85 | implemented | real | claude-sonnet-5-5 | — | 06/10/2026 ~02:17Z, deploy 44 (33c7d5ab). Religado o fluxo de teste f-fe11676e54e3 (Livro, Reativar com motivo): GET /api/aprendizado/fluxo/f-fe11676e54e3 trouxe state published e ensinado_em_prova {persona ig-P4F67DC5D… | None |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
@@ -678,7 +678,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (61): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.56, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.145, 29.151, 29.152, 29.153, 30.34, 30.72, 30.73, 30.74, 30.83, 31.11, 31.12, 31.26, 31.79, 31.81, 31.87, 31.91, 31.111, 31.113, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (60): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.56, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.145, 29.151, 29.152, 29.153, 30.34, 30.72, 30.73, 30.74, 31.11, 31.12, 31.26, 31.79, 31.81, 31.87, 31.91, 31.111, 31.113, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

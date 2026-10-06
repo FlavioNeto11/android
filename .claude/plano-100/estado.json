@@ -9765,22 +9765,16 @@
   },
   "30.83": {
    "id": "30.83",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "Ponta 62d7259e (traz a migração 116_ref_publico_do_fluxo). Simulado: backend/tests/test_ref_publico_do_fluxo.py::*, backend/tests/test_conversao_de_fluxo.py::*, backend/tests/test_avisos_ensinado.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "As quatro fatias estão na main e no ar: 1 a 3 na suíte 41 (62d7259e, migração 116 `ref_publico_do_fluxo`) e a 4 na 42 (0ef8c2c7); deploy 45 (7154d7cf) as contém. Simulado: test_ref_publico_do_fluxo.py, test_ref_do_fluxo_fora_do_log.py, test_conversao_de_fluxo.py, test_avisos_ensinado.py (suítes 41 e 42 verdes). Real, só leitura no central em 06/10 (mode=ro, deploy 45): 70 fluxos, 0 sem `ref_publico` (a subida preencheu todos), 3 já nascidos com id igual à referência (`f-` mais 12 hex aleatórios), 67 antigos mantêm o id (decisão do item, que não tem ON UPDATE CASCADE) e ganharam a referência; nenhum evento persistido depois do deploy 41 (22:06Z de 05/10) leva `flow_id` fora do formato `f-…`. O que ficou de fora e é de outro item: o registro da execução (etapas, ações, eventos) ainda guarda o valor resolvido do dado da persona (31.113, da Aprendizado). Os 67 ids antigos continuam dentro do banco e das rotas internas; só a referência pública sai para fora.",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_ref_publico_do_fluxo.py",
-    "backend/tests/test_conversao_de_fluxo.py",
-    "backend/tests/test_avisos_ensinado.py"
-   ],
-   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; a migração 116 entra no ensaio do deploy",
-   "grupo": "android-suite-41",
+   "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T22:07:09+00:00"
+   "quando": "2026-10-06T04:00:21+00:00"
   },
   "29.146": {
    "id": "29.146",
@@ -13458,6 +13452,15 @@
    "quando": "2026-10-06T03:58:16+00:00",
    "itens": [
     "31.55"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T04:00:21+00:00",
+   "itens": [
+    "30.83"
    ],
    "grupos": [
     "jev"
