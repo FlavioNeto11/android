@@ -72,6 +72,9 @@ async def test_lista_mista_proprio_perfil_conta_nossa_na_janela_e_terceiro(harne
     """O próprio perfil sai na expansão (sem etapa); a conta nossa que outra conta nossa já tocou na janela é recusada
     na porta (ADR-055, sem pedido); só o terceiro vira pedido ao dono."""
     state = harness.state
+    # ADR-081: com a configuração de fábrica a conta nossa viva fica fora da regra; este teste é o da instalação que volta
+    # à regra de 02/10 (uma conta por alvo, conta nossa dentro).
+    state.settings.update({"frota_conta_nossa_fora_da_regra": False, "frota_max_contas_por_alvo": 1})
     tadeu = _execucao(state, [])
     ottilie = state.social.create_profile(ProfileCreate(username="rene.sampaio381524", password=SENHA,
                                                       instance_id="android-02")).id
