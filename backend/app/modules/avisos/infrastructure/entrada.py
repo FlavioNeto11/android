@@ -1147,6 +1147,20 @@ class ConversaDoCanal:
             log.exception("telegram: nomes de persona indisponíveis")
             return []
 
+    def _nomes_e_dados_de_persona(self) -> list[str]:
+        """Os nomes MAIS os dados da biografia (31.87 F2), só para a prévia da porta (`_mostrar_porta`): ela leva texto de
+        ETAPA (título, alvo, texto) ao canal, e não a prosa da ANA, que segue com `_nomes_de_persona` (decisão da
+        orquestradora, 05/10 22:26Z; A1 da leitura do 31.113 F3, decisão de 06/10 04:22Z). Sem a porta (as de teste
+        antigas), ou com erro nela, ficam os nomes de sempre, e o erro vai ao log."""
+        ler = getattr(self.portas, "nomes_e_dados_de_persona", None)
+        if ler is None:
+            return self._nomes_de_persona()
+        try:
+            return list(ler())
+        except Exception:  # noqa: BLE001 - a prévia sai mesmo assim, com os nomes; o erro fica no log
+            log.exception("telegram: dados de persona indisponíveis para a prévia da porta")
+            return self._nomes_de_persona()
+
     async def _repassar(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         """A mensagem fica guardada para a orquestradora (estado `orquestradora`), que responde; a Canais entrega a
         resposta em reply à mensagem do dono (o caminho inteiro em docs/dominios/canais.md, 28.28)."""
@@ -1512,7 +1526,7 @@ class ConversaDoCanal:
         """N = 0 (nada aprovável pelo canal): inicia com `aprovar=[]` e manda uma linha. N > 0: a prévia da porta, os
         botões e as imagens; a linha volta a `pergunta` com o retrato do que o dono viu (os pares que o Executar manda).
         `mudou`: quantos itens o 409 `plano_mudou` apontou (0 na primeira prévia)."""
-        nomes = self._nomes_de_persona()
+        nomes = self._nomes_e_dados_de_persona()    # A1 (06/10): texto de etapa, com a biografia
         imagens: dict[str, tuple[bytes, str]] = {}
 
         def conferida(item: Mapping[str, object]) -> bool:

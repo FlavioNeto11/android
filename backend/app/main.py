@@ -48,6 +48,7 @@ from fastapi.staticfiles import StaticFiles
 from . import marca_de_partida
 from .api import ROTAS_DE_SESSAO, recusa_do_despacho, router, worker_router
 from .commands.despacho import DespachoRecusado
+from .taskqueue.states import InvalidTransition
 from .config import Config, ModoDaCspDoPainel, get_config
 from .modules.avisos.presentation.anexos import router as canais_anexos_router
 from .modules.avisos.presentation.estado import router as canais_estado_router
@@ -58,6 +59,9 @@ from .modules.avisos.presentation.webhook_trello import (
 )
 from .modules.avisos.presentation.webhook_trello import router as trello_webhook_router
 from .modules.context_retrieval.presentation.router import router as context_retrieval_router
+from .modules.learning.presentation.fluxos import router as fluxos_router
+from .modules.learning.presentation.treino import router as treino_router
+from .modules.execution.presentation.router import router as execucoes_router
 from .modules.learning.presentation.router import router as learning_router
 from .modules.pedidos.presentation.router import router as pedidos_router
 from .modules.portal.presentation.contato import METODOS_DO_CONTATO, ROTA_DO_CONTATO
@@ -261,6 +265,12 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(erros)})
     # O despacho de comandos recusa sem conhecer HTTP; aqui a recusa vira o 4xx de sempre (`api.err`).
     app.add_exception_handler(DespachoRecusado, recusa_do_despacho)  # type: ignore[arg-type]
+
+    @app.exception_handler(InvalidTransition)
+    async def transicao_recusada(_request: Request, exc: InvalidTransition) -> JSONResponse:
+        """15.15 F7: a tabela de estados é imposta, e um gesto que chega depois de o estado ter mudado (cancelar uma
+        execução que acabou de fechar, por exemplo) não escreve nada. Para quem chamou é 409, como `invalid_state`."""
+        return JSONResponse(status_code=409, content={"detail": {"code": "invalid_transition", "message": str(exc)}})
     app.add_middleware(CORSMiddleware, allow_origins=cfg.file.server.allowed_origins, allow_methods=["*"],
                        allow_headers=["*"], expose_headers=["X-Frame-Id", "X-Frame-Ts", "X-Frame-Width",
                                                             "X-Frame-Height", "X-Frame-Orientation"])
@@ -357,6 +367,9 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
         app.include_router(learning_router)
         app.include_router(pedidos_router)       # `/api/pedidos` (28.9)
         app.include_router(router)
+        app.include_router(fluxos_router)        # `/api/flows*` (15.15 F4): saiu de `api.py`, no mesmo lugar do `router`
+        app.include_router(treino_router)        # `/api/training*` e `/api/instances/{id}/training` (15.15 F4): saiu de `api.py`
+        app.include_router(execucoes_router)     # `/api/runs*` (15.15 F4): saiu de `api.py`; o coringa `{op}` continua por último dele
         # Depois do `router`: `/api/skills/resolve` (fase I) mora lá e precisa casar antes de `/api/skills/{id}`.
         app.include_router(skills_router)
         app.include_router(context_retrieval_router)   # só leitura (ADR-063)

@@ -44,6 +44,52 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Gravado na `main` de 06/10 (`cb2e8382`), sem mudar código de produção; estável com `PYTHONHASHSEED` diferente e em `-n 4`. Um terceiro
   teste reprova um código novo em `health()` sem cenário. O move em si vem depois da junção pós-46, no mesmo ramo.
 - Prova `simulated`; `real`: `not_run`. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 F7: as máquinas de estado de execução, objetivo e tentativa passam a ser impostas (branch feat/15-15-f7-impor-maquinas)
+
+- `Repository._conferir` deixa de só avisar: levanta `InvalidTransition` ANTES de gravar em `set_run_status`, `set_objective` e
+  `finish_attempt` (a etapa já era imposta). O evento `warn` e a contagem seguem. Na tentativa, a cerca da posse continua
+  primeiro (`PosseDaEtapaPerdida`); no `set_run_status` com `so_se` só confere quando a troca vale.
+- Medido no central antes de impor (só leitura, 27/09 a 06/10, ~8,6 dias): 1 transição fora da tabela em ~20 mil,
+  `completed_with_issues → cancelled`, que é o vencimento do 31.50 fechando a execução com cancelamento pedido (não um
+  cancelamento pela API). A aresta foi declarada em `RUN_TRANSITIONS`.
+- Um handler em `main.py` devolve 409 `invalid_transition` ao gesto que chega depois de o estado mudar, em vez de 500.
+  Cancelar execução terminada segue 409 `invalid_state` (já era assim). Sem migração.
+- Prova `simulated`: `tests/test_maquinas_de_estado.py` (19, com recusa de run, objetivo e tentativa, a aresta nova e a
+  posse) e `tests/test_maquinas_de_estado_http.py` (2). Ambiente real: `not_run` até o deploy; depois, o contador de
+  eventos `warn` "(recusada)" no central é a leitura.
+
+## 2026-10-06 — 15.15 F4, corte 3: as 16 rotas de execuções saem de `api.py` (branch feat/15-15-f4c-router-execucoes, sobre o corte 2)
+
+- `POST /api/runs`, `GET /api/runs`, `POST /runs/targets/resolve|suggest`, `POST /runs/distribution` (e o `GET` escondido do OpenAPI que responde 405 `metodo_removido`), `GET /runs/{id}` e `/projection|events|report|porta`, `POST /runs/{id}/aprovar-plano|porta/item|porta/renovar|successor`, o coringa `POST /runs/{id}/{op}` e `POST /runs/{id}/objectives/{oid}/resolve` passam de `backend/app/api.py` para `backend/app/modules/execution/presentation/router.py`, montado em `main.py` depois dos routers de fluxos e de treino. São 16 rotas no OpenAPI mais o `GET` escondido (o plano dizia 17: `POST /api/commands/refine` estava no meio do bloco e FICOU em `api.py`, não é de execução). A ordem interna é a de antes: as literais e as específicas antes do coringa `{op}`, e o `GET /runs/distribution` antes de `GET /runs/{run_id}`.
+- Dois nomes que `api.py` e o módulo novo dividem foram para `modules/execution/presentation/comum.py` (`autor_do_sinal` e `run_error`), importados pelos dois lados; nenhum módulo importa `app.api`. `api.py` perdeu `_autor_do_sinal` e `_run_error` (os usos viraram `autor_do_sinal(` e `run_error(`).
+- Nenhum caminho, método, corpo ou resposta muda: o conjunto método+caminho do OpenAPI é idêntico (270 operações), e só o título automático do schema de 7 respostas some (`{}`). Catraca de `Any` de `app.api` baixada: 130→122.
+- Prova `simulated`: 1290 testes (os 61 arquivos que tocam `/api/runs`, `/api/commands` ou o `RunService`, contrato HTTP, cobertura de rotas, arquitetura, ordem das rotas, `models_fatiado` e as catracas); mypy 257. `real`: `not_run`. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 F4, corte 2: as 11 rotas do modo treinamento saem de `api.py` (branch feat/15-15-f4b-router-treino, sobre o corte 1)
+
+- `POST /api/instances/{id}/training`, `POST /api/training/from-run`, `GET /api/training`, `GET /api/training/{id}` e `POST /api/training/{id}/stop|propose|save|preview|recipes|discard|undo` passam de `backend/app/api.py` para `backend/app/modules/learning/presentation/treino.py`, montado em `main.py` logo depois do router dos fluxos. São 11 rotas (o plano dizia 10: faltava o `POST /instances/{id}/training`, que mora no caminho de aparelhos). `/training/from-run` continua antes de `/training/{session_id}`.
+- Nenhum caminho, método, corpo ou resposta muda: o conjunto método+caminho do OpenAPI é idêntico (270 operações) e só o título automático do schema de 6 respostas some (`{}` = o mesmo "qualquer valor"; a catraca de `Any` impede `-> Any`). A ordem das 11 rotas só muda dentro do bloco movido, sem sobreposição com outra rota.
+- Os imports tardios do bloco (`TrainingError`, `AIError`) viram imports de topo do módulo novo, sem ciclo. Catracas baixadas: imports tardios de `app.api` 16→9 e `Any` 138→130.
+- Prova `simulated`: 1111 testes (os 53 arquivos que tocam as rotas de treino ou de aparelhos, contrato HTTP, cobertura de rotas, arquitetura, ordem das rotas, `models_fatiado` e as catracas); mypy 257. `real`: `not_run`. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 F4, corte 1: as 7 rotas de fluxos saem de `api.py` (branch feat/15-15-f4a-router-fluxos)
+
+- `GET /api/flows`, `/flows/cobertura`, `POST /flows/match`, `/flows/similar`, `PUT /flows/{id}`, `/flows/{id}/scope` e `DELETE /flows/{id}`
+  passam de `backend/app/api.py` para `backend/app/modules/learning/presentation/fluxos.py`, montado em `main.py` logo depois do
+  `router`. Nenhum caminho, método, corpo ou resposta muda: o conjunto método+caminho do OpenAPI é idêntico antes e depois (270
+  operações) e só o título automático do schema de 4 respostas (`Response List Flows…`) sai, ficando `{}`, que é o mesmo "qualquer
+  valor" (a catraca de `Any` impede `-> Any` em módulo novo). Nenhuma delas se sobrepõe a outra rota, então a ordem não muda nada.
+- O módulo não importa `app.api`: estado por `request.app.state.poc` (tipado por `AppState` só em `TYPE_CHECKING`) e erro com o mesmo
+  `{code, message}` do `api.err`. Dois imports tardios e 5 `Any` a menos em `api.py` (bases da catraca baixadas: 18→16 e 143→138).
+- Novo `tests/test_ordem_das_rotas.py`: nenhuma rota-modelo vem antes de uma literal que ela também casa (método a método), o voto
+  `POST /runs/{id}/feedback` vem antes do coringa `POST /runs/{run_id}/{op}`, e nenhum módulo de apresentação importa `app.api`.
+- Prova `simulated`: 395 testes (os de fluxos, contrato HTTP, cobertura de rotas, arquitetura, os 3 novos e as catracas); mypy 257.
+  `real`: `not_run`. Sem migração e sem adendo de contrato.
+
+## 2026-10-06 — A1: a prévia da porta pelo Telegram mascara o dado da persona (decisão da orquestradora, 04:22Z)
+
+- **A1 da leitura do 31.113 F3 (06/10):** a prévia da porta pelo Telegram (`_mostrar_porta`) passa a filtrar o título e o texto da etapa com os nomes E os dados da biografia (o `Alvo:` segue só redigido, ADR-071 (d)) (`PortasReais.nomes_e_dados_de_persona`), que saem como `<dado da persona>`; o item cujo texto traz um dado vai ao painel. A resposta da ANA e o eco do Trello seguem só com nomes. Sem migração. Prova `simulated`: `test_telegram_entrada.py` (2) e `test_perfil_variaveis_da_persona.py` (1). Real: `not_run`.
 ## 2026-10-05 — 31.111 F5: "Ensinar a corrigir" na etapa que falhou e selo de origem no treino (branch feat/31-111-f5-ensinar-a-corrigir)
 
 - Contra o adendo v1.75 (Jev, `feat/31-111-f1-ensinar-a-partir-da-falha`): na etapa `failed` ou `uncertain` de uma execução (aba Aparelhos), o botão

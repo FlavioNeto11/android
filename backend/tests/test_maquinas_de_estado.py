@@ -1,9 +1,9 @@
-"""Máquinas de estado da execução (`app/modules/execution/domain/states.py`), fase "só conferir" do design §16.
+"""Máquinas de estado da execução (`app/modules/execution/domain/states.py`), IMPOSTAS desde o 15.15 F7 (design §16).
 
 A prova de que as tabelas descrevem o comportamento ATUAL não mora aqui: é a suíte inteira, pelo fixture automático
 `tests/conftest.py::_transicoes_dentro_da_tabela`, que reprova qualquer teste cuja execução real produza uma
 transição de execução, objetivo ou tentativa fora da tabela. Aqui ficam a forma das tabelas, a regra `pode`, a
-paridade com os enums de `app.models` e o comportamento do registro: avisa, conta e NÃO bloqueia.
+paridade com os enums de `app.models` e o comportamento do registro: avisa, conta, RECUSA e não grava.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from app.taskqueue import repository as repo_mod
 from app.taskqueue import states as fila
 from app.taskqueue.repository import Repository
 
-from .conftest import make_config
+from .conftest import Harness, make_config
 
 #: A métrica do repositório: (máquina, de, para) → quantas vezes caiu fora da tabela.
 Contagem = Counter[tuple[str, str, str]]
@@ -133,32 +133,87 @@ def _avisos(repo: Repository) -> list[dict[str, object]]:
                          " AND message LIKE 'Transição de %' ORDER BY id")
 
 
-def test_execucao_fora_da_tabela_avisa_conta_e_nao_bloqueia(repo: Repository,
-                                                           contagem_restaurada: Contagem) -> None:
+def test_execucao_fora_da_tabela_e_recusada_conta_e_nao_grava(repo: Repository,
+                                                             contagem_restaurada: Contagem) -> None:
     row, _ = repo.create_run(RunCreate(command="abrir o app", instance_ids=["android-01"],
                                        idempotency_key="k-maquina-1", mode="plan"), simulated=True)
     run_id = row["id"]
     repo.set_run_status(run_id, RunStatus.planned)              # na tabela: nada a registrar
     assert _avisos(repo) == []
-    repo.set_run_status(run_id, RunStatus.needs_input)          # planned → needs_input: fora da tabela
-    assert repo.run_row(run_id)["status"] == "needs_input"      # NÃO bloqueou: a fase é só conferir
+    with pytest.raises(fila.InvalidTransition, match="run: planned → needs_input"):
+        repo.set_run_status(run_id, RunStatus.needs_input)      # planned → needs_input: fora da tabela
+    assert repo.run_row(run_id)["status"] == "planned"          # IMPOSTA (15.15 F7): nada foi gravado
     avisos = _avisos(repo)
     assert len(avisos) == 1 and avisos[0]["run_id"] == run_id
-    assert "planned → needs_input" in str(avisos[0]["message"])
+    assert "planned → needs_input" in str(avisos[0]["message"]) and "(recusada)" in str(avisos[0]["message"])
     assert json.loads(str(avisos[0]["data"])) == {"state_machine": "run", "entity_id": run_id, "from": "planned",
                                                    "to": "needs_input"}
     assert repo_mod.TRANSICOES_FORA_DA_TABELA[("run", "planned", "needs_input")] == \
         contagem_restaurada[("run", "planned", "needs_input")] + 1
 
 
-def test_objetivo_fora_da_tabela_avisa_e_nao_bloqueia(repo: Repository, contagem_restaurada: Contagem) -> None:
+def test_objetivo_fora_da_tabela_e_recusado_e_nao_grava(repo: Repository, contagem_restaurada: Contagem) -> None:
     row, _ = repo.create_run(RunCreate(command="abrir o app", instance_ids=["android-01"],
                                        idempotency_key="k-maquina-2", mode="plan"), simulated=True)
     oid = f"{row['id']}:android-01"
     # INSERT à mão com os tipos da migração 001 (K-029): TEXT nos ids e no status, INTEGER no plan_version.
     repo.db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version) VALUES (?,?,?,?,?)",
                     (oid, row["id"], "android-01", "succeeded", 1))
-    repo.set_objective(oid, ObjectiveStatus.pending, detail="reabrir sucesso")   # sucesso não reabre: fora
-    assert repo.objective_row(oid)["status"] == "pending"
+    with pytest.raises(fila.InvalidTransition, match="objective: succeeded → pending"):
+        repo.set_objective(oid, ObjectiveStatus.pending, detail="reabrir sucesso")   # sucesso não reabre: fora
+    assert repo.objective_row(oid)["status"] == "succeeded"
     assert [a["message"] for a in _avisos(repo)] == \
-        [f"Transição de objective fora da tabela: {oid} succeeded → pending (registrada, não bloqueada)"]
+        [f"Transição de objective fora da tabela: {oid} succeeded → pending (recusada)"]
+
+
+def test_execucao_com_ressalva_fecha_como_cancelada_pela_aresta_declarada(repo: Repository) -> None:
+    """A única aresta que a produção usou fora da tabela (15.15 F7, 1 em ~20 mil): o vencimento do 31.50 fecha o último
+    objetivo parado de uma execução com cancelamento pedido, e `recompute_run` a fecha `cancelled` sem `cancelling`."""
+    assert RUN.pode("completed_with_issues", "cancelled")
+    row, _ = repo.create_run(RunCreate(command="abrir o app", instance_ids=["android-01"],
+                                       idempotency_key="k-maquina-3", mode="plan"), simulated=True)
+    run_id = row["id"]
+    repo.db.execute("UPDATE runs SET status='completed_with_issues' WHERE id=?", (run_id,))
+    repo.set_run_status(run_id, RunStatus.cancelled)
+    assert repo.run_row(run_id)["status"] == "cancelled" and _avisos(repo) == []
+
+
+def test_estado_terminal_nao_reabre_por_set_run_status(repo: Repository, contagem_restaurada: Contagem) -> None:
+    row, _ = repo.create_run(RunCreate(command="abrir o app", instance_ids=["android-01"],
+                                       idempotency_key="k-maquina-4", mode="plan"), simulated=True)
+    repo.db.execute("UPDATE runs SET status='completed' WHERE id=?", (row["id"],))
+    with pytest.raises(fila.InvalidTransition):
+        repo.set_run_status(row["id"], RunStatus.cancelled)
+    assert repo.run_row(row["id"])["status"] == "completed"
+
+
+def test_compare_and_set_do_inicio_nao_confere_quando_a_troca_nao_vale(repo: Repository) -> None:
+    """`so_se` (28.27): a execução já saiu do estado esperado, a troca não vale e devolve `False`, como antes: a tabela
+    só entra em quem de fato troca."""
+    row, _ = repo.create_run(RunCreate(command="abrir o app", instance_ids=["android-01"],
+                                       idempotency_key="k-maquina-5", mode="plan"), simulated=True)
+    repo.db.execute("UPDATE runs SET status='cancelled' WHERE id=?", (row["id"],))
+    assert repo.set_run_status(row["id"], RunStatus.running, so_se=(RunStatus.planned,)) is False
+    assert repo.run_row(row["id"])["status"] == "cancelled" and _avisos(repo) == []
+
+
+async def test_tentativa_fora_da_tabela_e_recusada_e_quem_perdeu_a_posse_segue_perdendo(
+        harness: Harness, contagem_restaurada: Contagem) -> None:
+    from .test_falha_classificada_gravada import _etapa_planejada, _nova_tentativa
+
+    assert harness.state is not None
+    repo = harness.state.repo
+    _, etapa = await _etapa_planejada(harness)
+    a1 = _nova_tentativa(harness, etapa, 1)
+    repo.finish_attempt(a1, AttemptStatus.failed)               # running → failed: na tabela
+    with pytest.raises(fila.InvalidTransition, match="attempt: failed → succeeded"):
+        repo.finish_attempt(a1, AttemptStatus.succeeded)        # a tentativa fecha uma vez só
+    assert repo.db.scalar("SELECT status FROM attempts WHERE id=?", (a1,)) == "failed"
+    assert repo_mod.TRANSICOES_FORA_DA_TABELA[("attempt", "failed", "succeeded")] == \
+        contagem_restaurada[("attempt", "failed", "succeeded")] + 1
+    # Outro dono segura a etapa: a cerca da posse vem primeiro, e a transição nem chega a ser conferida.
+    repo.db.execute("UPDATE steps SET claimed_by=? WHERE id=?", ("outro-dono", etapa))
+    with pytest.raises(repo_mod.PosseDaEtapaPerdida):
+        repo.finish_attempt(a1, AttemptStatus.succeeded)
+    assert repo_mod.TRANSICOES_FORA_DA_TABELA[("attempt", "failed", "succeeded")] == \
+        contagem_restaurada[("attempt", "failed", "succeeded")] + 1
