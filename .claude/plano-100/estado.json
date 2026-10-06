@@ -10496,14 +10496,14 @@
    "id": "15.15",
    "status": "partial",
    "proof": "real",
-   "evidence": "Leitura real no central WIN-7S2UASNLFOP (só leitura), deploy 49 = 1b86bd6b às 08:56Z, migração 119, 06/10/2026 08:58Z. F7 (máquinas de estado impostas, deploy 47) e o evento do 409 (deploy 49): 0 eventos warn '409 invalid_transition' desde 08:55Z e 0 em todo o histórico (portanto, por modelo de rota: nenhum); 0 eventos '(recusada)' (execução, objetivo e tentativa) desde 08:55Z, por tipo: nenhum; GET /api/health com 0 problemas, commit 1b86bd6b. F2 (saúde em app/saude.py, deploy 47): /api/health com problems [] e features iguais aos de antes (leitura anterior da orquestradora). F4d (as 7 rotas de /api/releases* em modules/applications/presentation/releases.py, deploy 49): GET /api/releases 200 com a lista (6 releases); GET /api/releases/{id}/targets 200 application/json; GET /api/releases/{id}/icon 404 sem_icone (release sem ícone) e o mesmo código para release inexistente, como o desenho original. F4a, F4b e F4c (routers de fluxos, treino e execuções) no ar desde o deploy 47. Prova real: o central responde pelas rotas movidas; os 409 reais ainda não ocorreram para serem contados. F4e workers/limites (10 rotas), F4f rede por aparelho (10) e F4g aparelhos (18) no ar desde o deploy 50 (central bec1621c, 06/10/2026 10:16Z; ponta 70e15685 com a main de 1b86bd6b). Leitura real pós-deploy 50, só leitura, 06/10/2026 10:19Z, GET em 127.0.0.1:8000, só contagens e chaves, nenhum valor: GET /api/workers 200 lista[2], GET /api/workers/{id} 200 com as mesmas 26 chaves, GET /api/workers/naoexiste 404 not_found, GET /api/workers/devices/unbound 200 lista[0] (o literal vem antes de /workers/{id}, ordem preservada), GET /api/servers/limits 200 lista[2]; GET /api/network/profiles 200 {profiles}, GET /api/network/devices 200 {central_egress,devices}, GET /api/network/server 200 com 15 chaves; GET /api/instances 200 lista[15] com 41 chaves por item, GET /api/instances/{id}/operational-context 200 com 8 chaves, inexistente 404 not_found. A Android leu os mesmos GET (2, 1, 15) e 0 eventos do 409 desde 10:15Z. Não lidas de propósito: frame, hierarchy e packages (tocam o ADB). As mutações dessas famílias seguem só com prova simulated (nenhuma foi disparada no parque real). Faltam: routers de instagram (41 rotas), personas (19), proxies (4), commands (5), apps (6) e o resto de api.py (workers, rede e aparelhos saíram); cluster de apps e portões de state.py; bootstrap; adapters ai e android; identidade de receita por capability (medir antes); ligar o apply no ciclo (decisão do dono); conversão dos fluxos reais (a recomendação é tirar do 15.15, ADR-078).",
-   "blocker": "Faltam os routers restantes e os itens listados na evidência; o corte 51 leva F5a (portões em gates.py) e F4h (personas), o 52 leva F5b (apps) e F4i (instagram).",
-   "grupo": "jev",
-   "modelo": "claude-sonnet-5-5",
-   "esforco": "high",
+   "evidence": "Leitura real no central WIN-7S2UASNLFOP (só leitura), deploy 49 = 1b86bd6b às 08:56Z, migração 119, 06/10/2026 08:58Z. F7 (máquinas de estado impostas, deploy 47) e o evento do 409 (deploy 49): 0 eventos warn '409 invalid_transition' desde 08:55Z e 0 em todo o histórico (portanto, por modelo de rota: nenhum); 0 eventos '(recusada)' (execução, objetivo e tentativa) desde 08:55Z, por tipo: nenhum; GET /api/health com 0 problemas, commit 1b86bd6b. F2 (saúde em app/saude.py, deploy 47): /api/health com problems [] e features iguais aos de antes (leitura anterior da orquestradora). F4d (as 7 rotas de /api/releases* em modules/applications/presentation/releases.py, deploy 49): GET /api/releases 200 com a lista (6 releases); GET /api/releases/{id}/targets 200 application/json; GET /api/releases/{id}/icon 404 sem_icone (release sem ícone) e o mesmo código para release inexistente, como o desenho original. F4a, F4b e F4c (routers de fluxos, treino e execuções) no ar desde o deploy 47. Prova real: o central responde pelas rotas movidas; os 409 reais ainda não ocorreram para serem contados. F4e workers/limites (10 rotas), F4f rede por aparelho (10) e F4g aparelhos (18) no ar desde o deploy 50 (central bec1621c, 06/10/2026 10:16Z; ponta 70e15685 com a main de 1b86bd6b). Leitura real pós-deploy 50, só leitura, 06/10/2026 10:19Z, GET em 127.0.0.1:8000, só contagens e chaves, nenhum valor: GET /api/workers 200 lista[2], GET /api/workers/{id} 200 com as mesmas 26 chaves, GET /api/workers/naoexiste 404 not_found, GET /api/workers/devices/unbound 200 lista[0] (o literal vem antes de /workers/{id}, ordem preservada), GET /api/servers/limits 200 lista[2]; GET /api/network/profiles 200 {profiles}, GET /api/network/devices 200 {central_egress,devices}, GET /api/network/server 200 com 15 chaves; GET /api/instances 200 lista[15] com 41 chaves por item, GET /api/instances/{id}/operational-context 200 com 8 chaves, inexistente 404 not_found. A Android leu os mesmos GET (2, 1, 15) e 0 eventos do 409 desde 10:15Z. Não lidas de propósito: frame, hierarchy e packages (tocam o ADB). As mutações dessas famílias seguem só com prova simulated (nenhuma foi disparada no parque real). Entregues e ainda sem deploy (corte 51), prova simulated: F5a portões (feat/15-15-f5a-gates, abae0779, base f86bafd8): os 10 métodos de portão de state.py e PortaDaEtapa para app/gates.py (classe Portoes), com métodos finos em AppState que delegam; corpo idêntico ao original a menos de self.→self._st. (conferido por script); revisor-segredos limpo; bateria larga 550 arquivos em Idle: 11925 passed, 13 skipped, 1 failed (guarda de leitura crua de bindings que varria state.py, corrigida para varrer gates.py; isolada 15 passed); mypy 257 (no teto), docs-check 0; Any de app.state 48→28, app.gates 20. F4h personas (feat/15-15-f4h-router-personas, 76dd9859, base f86bafd8): 20 rotas (não 19) para modules/identity/presentation/personas.py, OpenAPI com 271 método+caminho idênticos; revisor-segredos limpo. Faltam: routers de instagram (41 rotas), proxies (4), commands (5), apps (6) e o resto de api.py (workers, rede, aparelhos e personas saíram); cluster de apps de state.py (F5b); bootstrap; adapters ai e android; identidade de receita por capability (medir antes); ligar o apply no ciclo (decisão do dono); conversão dos fluxos reais (a recomendação é tirar do 15.15, ADR-078). | F5a (gates.py) e F4h (router de personas) no ar desde o deploy 51 (8aee8c6b, 12:27Z); leitura real das duas fatias no central: not_run até a Jev ler. Suíte 51 em 58330182: 1 falha flaky declarada em tests/test_acoes_encadeadas.py (arquivo sem diff no corte; 8 passed no arquivo; 3 passed isolado).",
+   "blocker": "Faltam os routers restantes (instagram, proxies, commands, apps), o cluster de apps de state.py e os itens listados na evidência; o corte 51 leva F5a e F4h, o 52 leva F5b e F4i.",
+   "grupo": "deploy-51",
+   "modelo": "orquestradora",
+   "esforco": "n/a",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:20:18+00:00"
+   "quando": "2026-10-06T12:31:41+00:00"
   },
   "30.72": {
    "id": "30.72",
@@ -10754,29 +10754,29 @@
   },
   "31.122": {
    "id": "31.122",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "06/10, central bec1621c (deploy 50, migração 120), android-04 com controle none conferido por /api/instances às 10:19Z, persona de teste, só no Configurações, texto wifi. Recusa FORÇADA por edição da proposta (pedido da orquestradora): pós-condição da etapa 1 trocada para text_visible 'Network & internet'. A prévia avisou, com a sugestão 'Search settings', e o save deu 400 pos_condicao_ja_vale; flows ficou em 73 antes e 73 depois, sem fluxo da sessão. O save com a sugestão gerou f-75b038ead0c8. Na reprodução r-20261006102728-1157c6, a tentativa 2 de abrir_busca passou na tela INICIAL do Configurações: a IA deu press_back e 'Search settings' estava visível na barra de busca. É a falsa conclusão que o item quer evitar.",
-   "blocker": "(a) ja_valem compara só com screen_lines, mas linhas_de_conteudo (social/observacao.py) descarta ids que casam com _ID_DE_INTERFACE (search_action_bar_title cai em search[a-z_]*) e o recorder corta em 8 linhas; o verificador lê a árvore toda. Resultado: a sugestão 'Search settings' já valia na partida, e um 1º save forçado com ela deu 200 (fluxo f-bf935e7c8dee, desligado às 10:25Z; ver nota). Correção sugerida: gravar e comparar todo texto visível da tela de partida, não só as linhas de conteúdo. (b) A IA propôs element_present 'text==Search settings', que já vale na partida e não é coberta: só text_visible é conferida.",
-   "grupo": "aprendizado-31-121-123-prova-conjunta",
-   "modelo": "claude-opus-5-5",
-   "esforco": "high",
+   "evidence": "06/10, central bec1621c (deploy 50, migração 120), android-04 com controle none conferido por /api/instances às 10:19Z, persona de teste, só no Configurações, texto wifi. Recusa FORÇADA por edição da proposta (pedido da orquestradora): pós-condição da etapa 1 trocada para text_visible 'Network & internet'. A prévia avisou, com a sugestão 'Search settings', e o save deu 400 pos_condicao_ja_vale; flows ficou em 73 antes e 73 depois, sem fluxo da sessão. O save com a sugestão gerou f-75b038ead0c8. Na reprodução r-20261006102728-1157c6, a tentativa 2 de abrir_busca passou na tela INICIAL do Configurações: a IA deu press_back e 'Search settings' estava visível na barra de busca. É a falsa conclusão que o item quer evitar. || F2 (corte 51, prova simulada até a demonstração pós-deploy): ponta 040227b8 (feat/31-122-123-f2-127, base 124a1d18), corte 51. Validação: pytest scripts/tests 683 passed, 1 skipped; dirigidos 124 arquivos um por vez, 1944 aprovados (3 falhas corrigidas e rodadas de novo: test_arquitetura Any no app.training; 2 em test_treino_previa_e_refazer_receitas, chave nova da prévia); mypy 257 (teto); docs-check 0 erros. Revisor-segredos (só leitura): sem bloqueio; duas correções aplicadas (nenhuma palavra do dado da persona vira sugestão; entrada marcada, teclado de PIN ou padrão, não guarda screen_elements). F2 (migração 121, adendo v1.86): training_inputs.screen_elements (uso interno, fora do GET) e ja_valem pela regra do verificador, inclusive element_present; 400 e prévia com pos_condicoes_ja_valem. backend/tests/test_treino_partida_f2_e_sequencia.py::test_o_texto_de_id_de_interface_que_ja_vale_na_partida_e_achado, ::test_element_present_que_ja_vale_na_partida_e_achado_pelo_seletor, ::test_sessao_antiga_cai_nas_linhas_e_no_titulo, ::test_os_elementos_compactos_tiram_senha_texto_digitado_e_segredo, ::test_os_elementos_ficam_fora_do_get_e_sem_senha, ::test_a_previa_e_a_recusa_trazem_a_lista_estruturada, ::test_a_lista_estruturada_leva_a_marca_da_persona, ::test_nem_um_pedaco_do_dado_da_persona_vira_sugestao, ::test_o_save_e_o_reparo_marcam_o_dado_da_persona_nos_elementos (backend/tests/test_treino_partida_f2_e_sequencia.py tem 13 no total). | No ar desde o deploy 51 (8aee8c6b, 12:27Z).",
+   "blocker": "real da F2: demonstração que termina no pacote vizinho, depois do deploy 51, com teto",
+   "grupo": "deploy-51",
+   "modelo": "orquestradora",
+   "esforco": "n/a",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:31:54+00:00"
+   "quando": "2026-10-06T12:31:41+00:00"
   },
   "31.123": {
    "id": "31.123",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "06/10, central bec1621c (deploy 50, migração 120), android-04 com controle none conferido por /api/instances às 10:19Z, persona de teste, só no Configurações, texto wifi. O plano de f-75b038ead0c8 leva pacotes_aceitos [com.google.android.settings.intelligence] na etapa digitar_termo, com aviso na prévia e no save. Na reprodução r-20261006102728-1157c6, digitar_termo concluiu PELA RECEITA 211 na tela do pacote vizinho, com 0 decisão de IA ('receita v1 reproduzida (0 decisões de IA)', 10:28:12Z). Antes, essa tela era recusada como fora do app.",
-   "blocker": "A etapa abrir_busca TERMINA no pacote vizinho (o tap no app abre a busca de outro pacote), mas pacotes_vizinhos só olha o pacote das entradas DA etapa, todas em com.android.settings. A tentativa 1 foi recusada ('a tela é do app com.google.android.settings.intelligence'); a tentativa 2 divergiu e a IA assumiu, com 2 decide (ai_calls 4936 e 4937, US$ 0,0393). Correção sugerida: incluir o pacote da tela em que a etapa termina, ou seja, o da 1ª entrada seguinte. Achado vizinho: 7 de 9 fluxos ensinados não têm depends_on entre as etapas, e digitar_termo começou com abrir_busca em retry_wait. O objetivo terminou 'completed' com a tela final no início do Configurações, não nos resultados da busca.",
-   "grupo": "aprendizado-31-121-123-prova-conjunta",
-   "modelo": "claude-opus-5-5",
-   "esforco": "high",
+   "evidence": "06/10, central bec1621c (deploy 50, migração 120), android-04 com controle none conferido por /api/instances às 10:19Z, persona de teste, só no Configurações, texto wifi. O plano de f-75b038ead0c8 leva pacotes_aceitos [com.google.android.settings.intelligence] na etapa digitar_termo, com aviso na prévia e no save. Na reprodução r-20261006102728-1157c6, digitar_termo concluiu PELA RECEITA 211 na tela do pacote vizinho, com 0 decisão de IA ('receita v1 reproduzida (0 decisões de IA)', 10:28:12Z). Antes, essa tela era recusada como fora do app. || F2 (corte 51, prova simulada até a demonstração pós-deploy): ponta 040227b8 (feat/31-122-123-f2-127, base 124a1d18), corte 51. Validação: pytest scripts/tests 683 passed, 1 skipped; dirigidos 124 arquivos um por vez, 1944 aprovados (3 falhas corrigidas e rodadas de novo: test_arquitetura Any no app.training; 2 em test_treino_previa_e_refazer_receitas, chave nova da prévia); mypy 257 (teto); docs-check 0 erros. Revisor-segredos (só leitura): sem bloqueio; duas correções aplicadas (nenhuma palavra do dado da persona vira sugestão; entrada marcada, teclado de PIN ou padrão, não guarda screen_elements). F2: o pacote da tela em que a etapa termina (a entrada seguinte, partida.entrada_seguinte) entra em pacotes_aceitos. backend/tests/test_treino_partida_f2_e_sequencia.py::test_a_entrada_seguinte_pula_a_descartada_e_falta_na_ultima_etapa, ::test_a_previa_e_a_recusa_trazem_a_lista_estruturada (abrir_busca e buscar aceitam o vizinho); backend/tests/test_etapa_pacotes_aceitos.py::test_o_ensino_declara_o_vizinho_da_demonstracao_e_avisa (ajustado: a 1ª etapa também aceita). | No ar desde o deploy 51 (8aee8c6b, 12:27Z).",
+   "blocker": "real da F2: demonstração que termina no pacote vizinho, depois do deploy 51, com teto",
+   "grupo": "deploy-51",
+   "modelo": "orquestradora",
+   "esforco": "n/a",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:31:54+00:00"
+   "quando": "2026-10-06T12:31:41+00:00"
   },
   "31.124": {
    "id": "31.124",
@@ -10819,6 +10819,54 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T10:21:33+00:00"
+  },
+  "31.128": {
+   "id": "31.128",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "A conferência que já vale vira aviso na etapa (Portal a7d95626). Simulado: frontend/src/features/training/PosCondicaoQueJaVale.test.tsx::*. Suíte 51 sobre a integração 58330182 (base main 67e81e60; Portal a7d95626, Canais 29b0dc83, Aprendizado 040227b8, Jev 85f0d686; depois a main de estado 0e649799, só plano e docs, entrou no deploy 8aee8c6b; só conflito de CHANGELOG juntado; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 121_elementos_da_tela_do_treino.sql, só ADD COLUMN training_inputs.screen_elements): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12312 passed, 13 skipped, 1 FALHA DECLARADA: tests/test_acoes_encadeadas.py::test_alvo_que_nao_esta_na_tela_nova_volta_a_decisao_normal_sem_falhar (flaky de tempo sob carga: o arquivo e app/taskqueue não têm diff contra f86bafd8; o arquivo inteiro reexecutado deu 8 passed e o teste sozinho 3 vezes passou; aceita pela orquestradora, SQLite não repetido); frontend typecheck limpo, 1783 passed (138 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 210 arquivos: 1882 passed 8 skipped + 1729 passed 4 skipped, 0 falhas | No ar desde o deploy 51 (8aee8c6b, 12:27Z; migração 121; backup 20261006-092608).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/training/PosCondicaoQueJaVale.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "deploy-51",
+   "modelo": "orquestradora",
+   "esforco": "n/a",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T12:31:41+00:00"
+  },
+  "31.129": {
+   "id": "31.129",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Os pacotes que a etapa aceita aparecem na revisão e na execução (Portal a7d95626); mapeamento a teste aproximado. Simulado: frontend/src/features/runs/PacotesAceitos.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 51 sobre a integração 58330182 (base main 67e81e60; Portal a7d95626, Canais 29b0dc83, Aprendizado 040227b8, Jev 85f0d686; depois a main de estado 0e649799, só plano e docs, entrou no deploy 8aee8c6b; só conflito de CHANGELOG juntado; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 121_elementos_da_tela_do_treino.sql, só ADD COLUMN training_inputs.screen_elements): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12312 passed, 13 skipped, 1 FALHA DECLARADA: tests/test_acoes_encadeadas.py::test_alvo_que_nao_esta_na_tela_nova_volta_a_decisao_normal_sem_falhar (flaky de tempo sob carga: o arquivo e app/taskqueue não têm diff contra f86bafd8; o arquivo inteiro reexecutado deu 8 passed e o teste sozinho 3 vezes passou; aceita pela orquestradora, SQLite não repetido); frontend typecheck limpo, 1783 passed (138 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 210 arquivos: 1882 passed 8 skipped + 1729 passed 4 skipped, 0 falhas | No ar desde o deploy 51 (8aee8c6b, 12:27Z; migração 121; backup 20261006-092608).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/runs/PacotesAceitos.test.tsx",
+    "frontend/src/features/training/TrainingReview.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "deploy-51",
+   "modelo": "orquestradora",
+   "esforco": "n/a",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T12:31:41+00:00"
+  },
+  "31.127": {
+   "id": "31.127",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "ponta 040227b8 (feat/31-122-123-f2-127, base 124a1d18), corte 51. Validação: pytest scripts/tests 683 passed, 1 skipped; dirigidos 124 arquivos um por vez, 1944 aprovados (3 falhas corrigidas e rodadas de novo: test_arquitetura Any no app.training; 2 em test_treino_previa_e_refazer_receitas, chave nova da prévia); mypy 257 (teto); docs-check 0 erros. Revisor-segredos (só leitura): sem bloqueio; duas correções aplicadas (nenhuma palavra do dado da persona vira sugestão; entrada marcada, teclado de PIN ou padrão, não guarda screen_elements). Adendo v1.85: cada etapa ensinada nasce com depends_on = [anterior] (skills.em_sequencia), salvo independente: true; tipo errado dá 400 etapa_invalida. backend/tests/test_treino_partida_f2_e_sequencia.py::test_cada_etapa_espera_a_anterior_salvo_a_independente, ::test_a_etapa_independente_fica_sem_dependencia_e_o_tipo_errado_e_recusado, ::test_a_etapa_seguinte_fica_pendente_enquanto_a_anterior_espera_nova_tentativa (Repository.promote), ::test_a_previa_e_a_recusa_trazem_a_lista_estruturada. Os fluxos ensinados antes seguem sem depends_on (decisão da orquestradora: candidato, sem reparo). | No ar desde o deploy 51 (8aee8c6b, 12:27Z).",
+   "blocker": "real: not_run até o deploy 51 e a demonstração que termina no pacote vizinho",
+   "grupo": "deploy-51",
+   "modelo": "orquestradora",
+   "esforco": "n/a",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T12:31:41+00:00"
   }
  },
  "rodadas": [
@@ -14188,6 +14236,20 @@
    ],
    "grupos": [
     "portal-percurso-50b-ver-em-salvas-e-confirmacao"
+   ]
+  },
+  {
+   "quando": "2026-10-06T12:31:41+00:00",
+   "itens": [
+    "31.128",
+    "31.129",
+    "31.122",
+    "31.123",
+    "31.127",
+    "15.15"
+   ],
+   "grupos": [
+    "deploy-51"
    ]
   }
  ]

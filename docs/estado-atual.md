@@ -1,10 +1,18 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `bec1621c` (migração 120, deploy 50); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `8aee8c6b` (migração 121, deploy 51); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 51 no ar (06/10/2026, 12:27Z, central `8aee8c6b`, migração 121).** 4 pontas: arquitetura (15.15 F5a portões em
+  gates.py, F4h router de personas), ensino (31.122 F2, 31.123 F2, 31.127), painel do ensino (31.128, 31.129), espelho do Trello (T.N).
+  - `real` (central WIN-7S2UASNLFOP): deploy com ensaio; saúde ok, migração 121; prova de fora; agente `0.1.0+8aee8c6b`;
+    A10 ok; readoção 12 online e 3 parados; rotas de personas e despacho pelos portões: leitura da Jev `not_run`.
+  - `simulated` (suíte 51): números do CHANGELOG, com 1 falha flaky declarada no SQLite.
+  - `not_run`: percurso 51; prova real da F2 do ensino; reparo do 31.118 com `screen_elements`.
+  - Plano-100: resultado da suíte 51 aplicado. Corte 52: Portal (31.131, 31.132-31.134, 31.136), Aprendizado (31.130, 31.135),
+    Jev (F5b apps, F4i instagram); 31.115 em 20/10, 29.75 em 11/10, 30.72 em 12/10, 29.152 medida em 07/10.
 - **Deploy 50 no ar (06/10/2026, 10:16Z, central `bec1621c`, migração 120).** 3 pontas: ensino (31.121, 31.122, 31.123,
   31.118 F2), painel do ensino (31.120, 31.124, 31.125, 31.126), routers de fleet (15.15 F4e-F4g).
   - `real` (central WIN-7S2UASNLFOP): deploy com ensaio; saúde ok, migração 120; prova de fora; agente `0.1.0+bec1621c`;
