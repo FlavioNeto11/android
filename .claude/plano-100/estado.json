@@ -11064,15 +11064,15 @@
   "31.137": {
    "id": "31.137",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "feat/31-137-open-app-tela-inicial 233ad194 (também dentro da ponta 0b383265): Adb.start_app(tarefa_limpa=True) com --activity-clear-task --activity-new-task; extensão open_app_tarefa_limpa no driver (fora do DeviceIO); executor (LT-6) e DeviceManager.open_app usam só para ABERTURA_COM_TAREFA_LIMPA = {com.android.settings}; esperar_foco e wait_for_focus aceitam os pacotes_aceitos da etapa (31.123) e a partida da prova junta os das etapas. Decisão: só o app de prova, porque apagar a tarefa de um app com conta real descartaria rascunho ou conversa; force-stop+start descartado porque a tela da busca é de outro processo e sobrevive ao force-stop do Configurações. Testes: test_open_app_tarefa_limpa.py (9) e o caso do LT-6 em test_caminho_rapido_2.py; 1230 passed nos 52 arquivos que citam abertura e foco, com test_arquitetura e catracas; mypy 257; docs-check 0.\nNo ar desde o deploy 52 (cdee6620, 15:08Z).",
-   "blocker": "A latência de open_app antes e depois, na mesma situação (busca do Configurações no topo da tarefa), é real/not_run: pede um aparelho de prova livre depois do funil; fica o procedimento: abrir Configurações, entrar na busca, voltar à tela inicial do aparelho, medir o tempo da abertura sem IA (decisão 'aberto pelo executor, sem IA (… s)') na versão anterior e na nova.",
+   "proof": "real",
+   "evidence": "Medida real, 06/10/2026 15:47Z a 15:53Z, central 6e7b87cf (deploy 53, 15:45:00Z, migração 123, health ok), android-04, ação manual POST /api/instances/android-04/actions/open_app (app Configurações, sem IA, custo de IA US$ 0 nesta medida), tempo = created_at a finished_at do comando (inclui a conferência do foco). Caso 'busca aberta' (Configurações aberto, a busca do intelligence na frente, HOME, depois a ação): #1 c-20261006154828-8371e3 UNCERTAIN em 92,09 s (o foco não chegou em 90 s, aparelho ficou no lançador; não reproduzido nas 5 repetições seguintes e sem causa achada nos eventos); #2 c-20261006155121-3bdff6 succeeded 3,68 s; #3 c-20261006155136-74f599 succeeded 7,58 s; #4 c-20261006155156-0d34e9 succeeded 4,29 s; #5 c-20261006155212-ec0478 succeeded 7,62 s; mais uma repetição de depuração com a mesma preparação, c-20261006155041-c1131e succeeded 3,69 s (foco em Configurações aos 1,9 s medido por adb). Caso 'app fechado' (force-stop do Configurações e da busca, HOME): c-20261006155229-cfe0a7 succeeded 6,10 s; c-20261006155245-e09474 succeeded 6,23 s. Nos 6 sucessos da busca o foco final foi com.android.settings/.Settings (tela inicial, não a busca). Comparação (métricas DIFERENTES, não equivalentes): 1157c6 (sem o 31.137, 10:27Z) etapa 1 inteira de uma execução, falhou em 36,5 s na 1ª tentativa e o run levou 125 s com IA (US$ 0,0393); cebae7 (deploy 51) etapa 1 inteira em 24,8 s; ae97e2 (deploy 52) etapa 1 pelo open_app em 6,0 s. Aqui a métrica é só a abertura (comando open_app até o foco confirmado): mediana dos 5 sucessos da busca 4,29 s (3,68 a 7,62 s), app fechado 6,1 e 6,2 s. Prova do fix (c580a9db): antes, no deploy 52, c-20261006152209-ada35d failed em 0,6 s com 'Unknown option: --activity-new-task'; depois, no 53, o mesmo open_app manual pela tarefa limpa passa (ids acima), inclusive com a busca na frente (o caso do 60 s). Custo de erro de alvo das tentativas de medir por run: US$ 0,020417 (f255eb 0,01604 + 727d42 0,004377), todas failed/cancelled, nada rodou no aparelho. Painel: não consegui conferir se havia abas abertas; a leitura de ADB da prévia pode ter somado ruído (sem prova).",
+   "blocker": "Uma de 6 aberturas com a busca na frente (a 1ª depois do deploy) terminou uncertain em 92 s sem causa achada; não se repetiu em 6 tentativas. A etapa 1 inteira de uma execução e a latência por run seguem com o ae97e2 (6,0 s); medir de novo por run exige religar um fluxo de busca com motivo (não feito).",
    "grupo": "jev",
-   "modelo": "misto",
-   "esforco": "misto",
+   "modelo": "sonnet-5.5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T15:12:25+00:00"
+   "quando": "2026-10-06T15:53:38+00:00"
   },
   "29.156": {
    "id": "29.156",
@@ -14551,6 +14551,15 @@
     "aprendizado",
     "github",
     "portal"
+   ]
+  },
+  {
+   "quando": "2026-10-06T15:53:38+00:00",
+   "itens": [
+    "31.137"
+   ],
+   "grupos": [
+    "jev"
    ]
   }
  ]
