@@ -7348,7 +7348,7 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
   que reprova no código anterior). `real`: `not_run` (religar um fluxo de prova para uma persona real só com o sim do
   dono).
 
-## Adendo (06/10/2026; número pela orquestradora; item 31.149, P-014 b) — a correção ensinada volta ao comando que falhou
+## Adendo v1.98 (06/10/2026; número da orquestradora; item 31.149, P-014 b) — a correção ensinada volta ao comando que falhou
 
 - **`POST /api/training/{id}/save` de uma sessão de correção** (`origin`, 31.111) ganha `correcao`. Além das receitas de
   sempre, a demonstração é gravada na chave da etapa que FALHOU (`steps.template_hash` e a chave dela). Assim, a próxima
