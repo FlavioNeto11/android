@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.119: descartar o treino já concluído, na revisão e em "Para revisar" (branch feat/31-116-formulario-sugerido)
+
+- Achado do percurso 48b: quem concluía a gravação e desistia ficava com a sessão "só gravada" para sempre; o "Descartar" só existia na gravação viva. Agora a
+  **revisão** (rodapé, só em sessão gravada ou com proposta) e cada item da lista **"Para revisar"** (botão só com ícone, nome acessível `Descartar “<intenção>”`)
+  descartam a sessão. O diálogo pede confirmação (nada vira fluxo nem habilidade, com a conta das entradas gravadas: a lista traz `input_count`, a revisão as
+  entradas), chama `POST /api/training/{id}/discard` e, se o controle do aparelho é desta aba, avisa "O controle de <aparelho> volta para a IA." e o devolve
+  depois do descarte (`release`). Recusa do backend avisa, mantém a sessão na lista e NÃO devolve o controle. Descartada, a revisão fecha e a lista se relê.
+  O "Descartar" da gravação viva fica como era (o controle continua com a pessoa). `features/training/descartarSessao.ts` divide a lógica entre os dois lugares.
+- Prova `simulated`: `DescartarSessao.test.tsx` (6) com sete mutações (seis derrubadas; a que tira a guarda "só com o lease desta aba" é equivalente, porque
+  `release` já não faz nada sem lease). Prova `real`: `not_run`, depende do deploy 49.
+
 ## 2026-10-06 — 31.116 parte 2 (painel): "Ensinar a corrigir" abre com a intenção que o diagnóstico sugere (branch feat/31-116-formulario-sugerido)
 
 - Contra o adendo v1.80 (Aprendizado, `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}` ou `null`): ao abrir
