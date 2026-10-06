@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.159: o histórico, a tag e o runbook de rollback do deploy nativo (branch feat/29-159-historico-deploy)
+
+- `deploy.ps1` grava UMA linha por subida de verdade (a que parou o backend) em `data\deploys.jsonl`, fora do Git: hora UTC,
+  resultado (`ok` ou `falhou`, esta pelo `trap` depois do stop), commit e migração antes e depois, pasta do backup, tag e a
+  falha em uma linha de até 300 caracteres. Ensaio, recusa do portão e falha do build antes de parar não entram.
+- Com a subida conferida, cria a tag anotada `deploy-AAAAMMDD-HHMM` (UTC), envia à origem e pede ao `gh` o release com as
+  notas geradas (`scripts/lib/historico-de-deploy.ps1`). No melhor esforço: sem `gh`, rede ou permissão sai o aviso e o deploy
+  segue; `-SemTag` pula a tag. A tag não dispara o `conteiner.yml` (29.157).
+- `docs/operacao.md` § 6 ganha o runbook único de rollback: código (revert na `main`, ou `git switch --detach` na emergência),
+  banco (`restore.ps1`, ensaio antes, com a perda do que entrou depois dito de frente) e agente do notebook.
+- **Prova:** `simulated` (`scripts/tests/test_historico_de_deploy.py`, 7 testes: as funções rodam de verdade no pwsh contra um
+  repositório de mentira com origem local e um `gh` falso; a posição da marca, da tag e da linha no `deploy.ps1` é lida do
+  texto). `real`: `not_run` (falta o próximo deploy, com a linha e a tag).
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).

@@ -299,6 +299,51 @@ nova no `requirements.txt` (ex.: `cryptography` 46.0.3 → 50.0.0, item T.4) nun
 porque no Windows a `.pyd` carregada fica travada. O agente do worker não acompanha: `worker-requirements.txt` se
 instala na máquina dele.
 
+### Histórico, tag e rollback do deploy nativo (29.159)
+
+**O que cada subida deixa.** Uma subida de verdade (a que parou o backend) acrescenta UMA linha a `data\deploys.jsonl`
+(fora do Git, como o resto de `data\`): `ts_utc`, `resultado` (`ok` ou `falhou`), `commit_antes`/`migracao_antes` (o que
+estava no ar), `commit_depois`/`migracao_depois`, `backup` (a pasta em `data\backups` que vale para voltar),
+`backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s` e `opcoes`. Ensaio, recusa
+do portão do `-PularBackup` e falha do build do painel (antes de parar) não entram: não mudaram nada no ar. Ler:
+`Get-Content data\deploys.jsonl | ConvertFrom-Json | Select-Object ts_utc, resultado, commit_antes, commit_depois, backup, tag`.
+
+**Tag e release.** Com a subida conferida (commit e migração batem), o deploy cria a tag anotada
+`deploy-AAAAMMDD-HHMM` (UTC; `-2` se houver duas no mesmo minuto) no commit que subiu, envia à origem e pede ao `gh` um
+release com as notas geradas. É no melhor esforço: sem `gh`, sem rede ou sem permissão a tela mostra o aviso, a linha do
+histórico leva o aviso em `motivo` e o deploy segue (a tag não desfaz nem atrasa nada). `-SemTag` pula a tag e o release; a
+linha do histórico sai sempre. A tag não dispara o `conteiner.yml` (29.157: ele só roda em push da `main`).
+
+**Rollback: o que muda com a migração.** Primeiro responda uma pergunta: o deploy que se quer desfazer trouxe migração
+(`migracao_antes` diferente de `migracao_depois`)? Migração aplicada não se edita, e o código antigo sobre um banco mais
+novo não é um estado testado (o `deploy.ps1` confere código e banco e recusa a subida que não bate: "o banco está em X e o código traz até Y").
+
+1. **Sem migração nova** (só código): volte o código e suba de novo, com backup como sempre.
+   - Achar o alvo: `commit_antes` da linha do deploy ruim, ou a tag do deploy anterior (`git tag --list 'deploy-*'`).
+   - **Preferida:** `git revert <commit ruim>` na `main`, push e `deploy.ps1`. A `main` continua dizendo o que está no ar.
+   - **Emergência** (não dá tempo de revert): `git switch --detach <tag ou commit>` no checkout central, `deploy.ps1` (com o
+     backup dele) e, depois, **voltar** `git switch main` e `git pull --ff-only` ANTES do próximo deploy: com o checkout
+     solto, o `git pull` de um deploy normal não anda.
+2. **Com migração nova** (o banco já foi migrado): o caminho é restaurar o banco do backup do deploy e voltar o código
+   junto, e **o que foi gravado depois do deploy se perde**. Antes de decidir, confira o que entrou desde então.
+   - Pare o backend (`scripts\stop.ps1`, e a tarefa `farm-central` se estiver registrada).
+   - Ensaie primeiro: `pwsh -File scripts\restore.ps1 -De data\backups\<backup da linha> -Para C:\temp\ensaio-rollback` e confira a
+     migração e as contagens que ele imprime.
+   - Restaure: `pwsh -File scripts\restore.ps1 -De data\backups\<backup da linha> -Confirmar` (guarda o que havia em
+     `data\substituido-<carimbo>`).
+   - Volte o código para a tag ou o commit do deploy ANTERIOR (`commit_antes`) como no item 1 e suba com `deploy.ps1`.
+     O banco restaurado estará na migração anterior e o código antigo o abre.
+3. **Agente do notebook.** O agente é cópia manual e não acompanha o deploy. Se o código voltou numa mudança que toca o fio do
+   worker (`backend/app/contracts/worker/protocol.py`, o hash congelado) ou `worker-manifest.txt`, o agente também precisa voltar:
+   monte uma árvore na tag (`git worktree add C:\temp\arvore-rollback <tag>`) e rode, com ela acessível à máquina do worker,
+   `pwsh -File scripts\worker-install.ps1 -Origem <a árvore>`; confira na Infraestrutura que o worker voltou a `online` e sem
+   `agent_outdated`. Remova a árvore temporária depois (`git worktree remove`).
+4. **Depois de qualquer rollback:** `GET /api/health` (commit e migração), a 8010 escutando, a prova de fora, e uma linha
+   nova em `data\deploys.jsonl` (o rollback também é uma subida e fica no histórico).
+
+Limite dito de frente: o histórico e as tags nascem no próximo deploy; os anteriores a eles só se reconstroem pelos nomes das
+pastas de `data\backups` e pelo `git log`. A prova `real` é um deploy com a linha e a tag (`not_run`).
+
 ## 7. Migrações
 
 Nunca editar uma migração já aplicada em produção. A lição está registrada no próprio repositório:
@@ -700,7 +745,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `pg-rapido.py` | P | PG dirigido da suíte no contêiner descartável `farm-pg-rapido` (29.99): recria o contêiner com WAL mínimo, roda a lista em `--partes`, amostra o disco a cada 30 s e aborta a parte com uma linha em 85 % do tmpfs; `--simular` só lista as partes, `--amostrar` lê o contêiner de pé. Só com a vez da orquestradora |
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
-| `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central` |
+| `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central`; grava `data\deploys.jsonl` e, conferida a subida, cria a tag `deploy-AAAAMMDD-HHMM` e o release (29.159; `-SemTag` pula a tag) |
 | `eval-run.ps1` (sem `-Yes`) | S | Só imprime o plano da bateria; nenhuma conexão, nenhum adb (26/09: antes, mesmo "simulado" fazia POST no backend vivo e rodava adb) |
 | `eval-run.ps1 -Yes` | P/T | POST no backend vivo e adb nos aparelhos, mesmo com provedor simulado; com provedor real gasta API |
 | `python scripts/rodada_qa_pareada.py` (sem opção) | S | Só o plano da rodada QA pareada (canário do planejador: Opus × perfil `planejador-sonnet`, ABBA por caso); nenhuma conexão |
