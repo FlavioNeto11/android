@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — K-104: a caracterização da saúde não fotografa o dialeto do banco (branch fix/saude-caracterizacao-dialeto)
+
+- Na suíte 47 o PG dirigido reprovou os 31 cenários de `test_saude_caracterizacao.py`: o dourado foi gerado em SQLite e a fotografia levava `database.dialect`
+  e `database.target`. Agora o teste troca o dialeto e o endereço do banco pelo marcador `<dialeto>` (também no "(dialeto)" da mensagem `database_down`) antes
+  de comparar; `problems` segue inteiro. O dourado mudou só nessas linhas; nenhum código de produção mudou. K-104 em `docs/conhecimento/aprendizados.md`.
+- Prova `simulated` (33 testes em SQLite); no PostgreSQL, `not_run` até a Android repetir o arquivo no PG dirigido.
+
 ## 2026-10-06 — 15.15 F2, passo 2: a saúde sai de `AppState` para `app/saude.py` (branch feat/15-15-f2-saude)
 
 - Novo `backend/app/saude.py` com `SaudeDoSistema`: `health()`, `ai_status()`, `ultima_migracao()` e o que eles usam (`_saude_do_banco`,

@@ -9,9 +9,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -46,9 +46,9 @@
    "running": false
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -83,9 +83,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -120,9 +120,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": false,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -136,7 +136,7 @@
   "problems": [
    [
     "database_down",
-    "O banco (sqlite) não respondeu.",
+    "O banco (<dialeto>) não respondeu.",
     "Confira se o serviço do banco está no ar e alcançável desta máquina. A conexão é reaberta sozinha na próxima consulta que der certo — não é preciso reiniciar o backend."
    ]
   ],
@@ -157,9 +157,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -188,9 +188,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -225,9 +225,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -262,9 +262,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -299,9 +299,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -336,9 +336,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -367,9 +367,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -404,9 +404,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -441,9 +441,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -478,9 +478,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -515,9 +515,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -552,9 +552,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -589,9 +589,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -626,9 +626,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -663,9 +663,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -700,9 +700,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -737,9 +737,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -774,9 +774,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -811,9 +811,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -848,9 +848,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -900,9 +900,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -937,9 +937,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -974,9 +974,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -1041,9 +1041,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -1078,9 +1078,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -1115,9 +1115,9 @@
    "running": false
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,
@@ -1282,9 +1282,9 @@
    "running": true
   },
   "database": {
-   "dialect": "sqlite",
+   "dialect": "<dialeto>",
    "reachable": true,
-   "target": "sqlite"
+   "target": "<dialeto>"
   },
   "features": {
    "ensino_v2": false,

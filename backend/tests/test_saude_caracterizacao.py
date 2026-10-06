@@ -276,17 +276,21 @@ def _fotografia(state: Any, raiz: Path) -> dict[str, Any]:
     saude = state.health()
     dono = {str(raiz): "<raiz>", str(state.cfg.sdk_root): "<sdk>"}
 
+    # O que depende do AMBIENTE não entra no dourado: o dialeto do banco (e o endereço dele) vira o marcador `<dialeto>`, também
+    # no "(dialeto)" da mensagem `database_down`. A suíte em PostgreSQL reprovou o dourado gerado em SQLite (K-104); `problems`
+    # segue inteiro e o resto da fotografia, comparado campo a campo.
+    dialeto = saude.database.dialect
+
     def limpo(texto: str) -> str:
         for de, para in dono.items():
             texto = texto.replace(de, para)
-        return texto
+        return texto.replace(f"({dialeto})", "(<dialeto>)")
 
     features = {k: v for k, v in saude.features.items() if k not in ("system_image", "ensino_v2_chamadas")}
     return {
         "status": saude.status,
         "problems": [[p.code, limpo(p.message), limpo(p.hint or "")] for p in saude.problems],
-        "database": {"dialect": saude.database.dialect, "reachable": saude.database.reachable,
-                     "target": saude.database.target},
+        "database": {"dialect": "<dialeto>", "reachable": saude.database.reachable, "target": "<dialeto>"},
         "sdk": {"found": saude.sdk.found, "emulator_version": saude.sdk.emulator_version, "accel": limpo(str(saude.sdk.accel))},
         "appium": {"running": saude.appium.running},
         "ai": {"configured": saude.ai.configured, "simulated": saude.ai.simulated,
