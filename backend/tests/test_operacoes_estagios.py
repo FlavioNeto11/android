@@ -154,3 +154,22 @@ def test_a_hora_do_rascunho_que_espera_o_liberar_e_a_do_pedido() -> None:
                      pedido_em="2026-10-07T10:05:00.000Z", comecou_em=None)   # `ready`: não começou
     lt = derivar(_fatos([_etapa("OPEN_PROFILE", "succeeded", h="01"), efeito], status="waiting_user"))
     assert dict(lt.estagios)["acao_preparada"] == dict(lt.estagios)["resposta_gerada"] == "2026-10-07T10:05:00.000Z"
+
+
+def test_depois_do_liberar_cada_estagio_guarda_a_sua_hora() -> None:
+    """Achado (c) do percurso da Portal no 57: na operação liberada, resposta gerada, ação preparada, ação executada e
+    resultado verificado saíam todos com a hora do fim da etapa (a da liberação). O rascunho fica com a hora do pedido;
+    o efeito e a verificação, com a do fim."""
+    from dataclasses import replace
+
+    efeito = replace(_etapa("CREATE_COMMENT", "succeeded", efeito=True, texto=True, verificada=True, pedido="approved",
+                            h="08"), pedido_em="2026-10-07T10:05:00.000Z")
+    lt = derivar(_fatos([_etapa("OPEN_COMMENTS", "succeeded", h="03"), efeito], status="succeeded",
+                        acao_final="executar"))
+    horas = dict(lt.estagios)
+    assert horas["resposta_gerada"] == horas["acao_preparada"] == "2026-10-07T10:05:00.000Z"
+    assert horas["acao_executada"] == horas["resultado_verificado"] == "2026-10-07T10:08:30.000Z"
+    # sem pedido de aprovação, o rascunho é da etapa que rodou: a hora em que ela começou
+    direto = derivar(_fatos([replace(efeito, pedido_de_aprovacao=None, pedido_em=None)], status="succeeded",
+                            acao_final="executar"))
+    assert dict(direto.estagios)["resposta_gerada"] == "2026-10-07T10:08:00.000Z"

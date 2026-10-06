@@ -121,15 +121,18 @@ def derivar(f: FatosDoAlvo) -> Leitura:
             alcancados[estagio] = e.terminou_em
         if not e.side_effect:
             continue
-        hora = e.terminou_em or e.comecou_em or e.pedido_em or f.objetivo_comecou_em or f.criado_em
+        # Cada estágio com a SUA hora (achado do percurso do 57: os quatro saíam com a hora do fim da etapa, que depois
+        # do liberar é a da liberação). O rascunho fecha antes do pedido de aprovação, ou dentro da etapa que roda sem
+        # pedido; o efeito e a verificação, no fim da etapa.
+        rascunho = e.pedido_em or e.comecou_em or e.terminou_em or f.objetivo_comecou_em or f.criado_em
         if e.tem_texto:
-            alcancados["resposta_gerada"] = hora
+            alcancados["resposta_gerada"] = rascunho
         if e.tem_texto and (e.pedido_de_aprovacao is not None or e.status in ("running", "succeeded", "failed")):
-            alcancados["acao_preparada"] = hora
+            alcancados["acao_preparada"] = rascunho
         if e.status == "succeeded":
-            alcancados["acao_executada"] = hora
+            alcancados["acao_executada"] = e.terminou_em or rascunho
             if e.verificada:
-                alcancados["resultado_verificado"] = hora
+                alcancados["resultado_verificado"] = e.terminou_em or rascunho
         elif e.status in ("failed", "skipped", "cancelled") or e.pedido_de_aprovacao == "rejected":
             efeito_bloqueado = e.status if e.pedido_de_aprovacao != "rejected" else "aprovação recusada"
     for estagio, hora in f.marcas.items():

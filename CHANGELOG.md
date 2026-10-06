@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.175, correção: cada estágio do alvo guarda a sua hora (achado do percurso da Portal no deploy 57)
+
+- Na operação liberada, resposta gerada, ação preparada, ação executada e resultado verificado saíam com a mesma hora
+  (o fim da etapa, que vem depois do liberar). Agora o rascunho e a ação preparada ficam com a hora do pedido de
+  aprovação, ou com a do início da etapa que roda sem pedido; a executada e a verificada, com a do fim da etapa
+  (`modules/operacoes/domain/estagios.py::derivar`).
+- Prova `simulated`: `backend/tests/test_operacoes_estagios.py::test_depois_do_liberar_cada_estagio_guarda_a_sua_hora`
+  (falha no código anterior); dirigidos de operação 109 passed, 1 skipped; catracas 89; mypy 257; docs-check 0.
+
 ## 2026-10-06 — 31.175, parte simulada: concorrência de IA por medida (branch feat/31-175-medida-sobre-main, corte 59)
 
 - `backend/tests/test_medida_concorrencia_31175.py` (opt-in, `MEDIR_31175=1`) mede uma operação de 6 alvos no harness
