@@ -157,6 +157,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `dado_da_persona.nas_perguntas` (nova).
 - Prova `simulated`: `backend/tests/test_treino_pergunta_mascarada.py` (6; 5 reprovam sem a mudança). Real: `not_run`.
 
+## 2026-10-06 — Custo no detalhe da execução (29.153)
+
+- `GET /api/runs/{run_id}` passa a trazer `costs: {spent_usd, calls}`, usando o cálculo existente e os preços
+  configurados. Sem chamadas, retorna zeros. A lista `GET /api/runs` não muda; sem migração. Contrato: Adendo v1.74.
+- Prova `simulated`: `backend/tests/test_run_detalhe_custo.py::test_detalhe_soma_custo_e_conta_so_as_chamadas_da_execucao`,
+  `::test_detalhe_sem_chamadas_traz_zeros` e `::test_lista_continua_sem_custos`. Ambiente real: `not_run`.
+
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e

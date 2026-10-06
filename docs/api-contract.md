@@ -6837,3 +6837,18 @@ Uma rota nova e um campo novo na sessão de treino; migração 119 (três coluna
 - **O que o painel precisa mudar (F5):** um botão "Ensinar a corrigir" na etapa que falhou, que pede o controle do aparelho
   e chama `POST /api/training/from-run`; o Foco abre com `origin.context` (a trilha, o esperado e as imagens).
 - **Prova:** `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
+
+## Adendo v1.74 (06/10/2026; número da orquestradora; item 29.153) — custo no detalhe da execução
+
+Mudança aditiva em `GET /api/runs/{run_id}` (`RunDetail`), sem migração. Os números v1.72 e v1.73 permanecem
+reservados pela orquestradora.
+
+- O detalhe sempre traz `costs: {"spent_usd": 0.0407, "calls": 2}`.
+- `spent_usd` é o gasto estimado em US$ da execução, calculado por `planning/costs.py::spent_usd` a partir de
+  `ai_calls` e dos preços de `ai.prices`, filtrado por `run_id`, sem limitar ao dia atual. Mantém as regras do cálculo
+  existente: cache, modelo que realmente respondeu, custo declarado e chamadas simuladas sem cobrança.
+- `calls` é o número de linhas de `ai_calls` dessa execução, inclusive as simuladas.
+- Sem chamadas de IA: `costs: {"spent_usd": 0.0, "calls": 0}`; o campo nunca é omitido nem nulo.
+- **`GET /api/runs` não muda:** os itens da lista continuam sem `costs`. Execução inexistente no detalhe continua
+  respondendo 404 `not_found`.
+- **Prova:** `simulated` (`backend/tests/test_run_detalhe_custo.py`); `real`: `not_run`.
