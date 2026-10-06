@@ -770,11 +770,18 @@ describe('Central de Aparelhos — rotas por objeto e menu', () => {
     return Array.from(nav.querySelectorAll('a[aria-current="page"]')).map((a) => text(a as HTMLElement));
   };
 
-  it('o menu lateral tem as doze seções e marca a atual', async () => {
+  it('o menu lateral tem as treze seções e marca a atual', async () => {
     await goTo('#/painel');
     const nav = document.querySelector('nav[aria-label="Seções"]') as HTMLElement;
-    expect(nav.querySelectorAll('a')).toHaveLength(12);
+    expect(nav.querySelectorAll('a')).toHaveLength(13);
     expect(atual()).toEqual(['Painel']);
+  });
+
+  it('#/host abre o painel do host (31.180) e marca "Host" no menu', async () => {
+    await goTo('#/host');
+    await waitFor(() => expect(document.title).toBe('Host · Central de Aparelhos'));
+    expect(atual()).toEqual(['Host']);
+    await goTo('#/painel');
   });
 
   it('#/canais abre a tela Canais (32.5) com os três cartões', async () => {
