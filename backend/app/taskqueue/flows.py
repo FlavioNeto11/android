@@ -31,6 +31,7 @@ from ..modules.skills.domain.matching import specificity
 from ..models import Plan, PlannerInfo, StepResult
 from ..util import now_iso
 from .parecidos import parecidos as parecidos_do_texto
+from .vizinhos import Vizinho, pares_dos_fluxos
 
 RESERVED = {"instance_id", "run_id", "account_label"}
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
@@ -626,6 +627,13 @@ class FlowStore:
         for f in saida:
             f["em_uso_real_desde"] = selos.get(f["id"])
         return saida
+
+    def vizinhos_conhecidos(self) -> dict[str, dict[str, Vizinho]]:
+        """31.152: `{app_id: {vizinho: Vizinho}}` dos fluxos ensinados, ligados ou não (o saber é do app). Uma consulta;
+        é a interface que uma tabela própria substituiria sem mexer no planejamento."""
+        return pares_dos_fluxos((r["source"], r["app_id"], r["plan"]) for r in self.db.query(
+            "SELECT source, app_id, plan FROM flows WHERE source LIKE ? ORDER BY created_at, id",
+            (PREFIXO_DO_TREINO + "%",)))
 
     def em_uso_real_desde(self, flow_ids: list[str]) -> dict[str, str]:
         """31.150: de cada fluxo, a data do religamento para uso real, se ele ainda for a última linha da trilha."""

@@ -49,6 +49,7 @@ from .projecao import HistoricoDeAcoes, projetar, resumo
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
 from .sombra_intencao import SombraDaIntencao
+from .vizinhos import aplicar as aplicar_vizinhos, linha_da_trilha as linha_vizinhos
 
 log = logging.getLogger("poc.runs")
 
@@ -1142,6 +1143,9 @@ class RunService:
                 # provedor que não preenche (um dublê, um provedor novo). Plano de skill traz os dele do compilador.
                 if not plan.required_apps:
                     plan.required_apps = apps_do_plano(plan, instances)
+                # 31.152: os pacotes vizinhos que o ensino descobriu valem também no plano livre (fluxo e skill casados
+                # já trazem os deles)
+                plan = self._vizinhos_do_ensino(run_id, plan, apps)
         except AIError as exc:
             if exc.kind == "refusal":
                 self._sem_sombra.add(run_id)
@@ -1237,6 +1241,19 @@ class RunService:
                                             "capability": passo.capability, "motivo": motivo}
                     break
         return list(recusadas.values())
+
+    def _vizinhos_do_ensino(self, run_id: str, plan: Plan, apps: list[AppContext]) -> Plan:
+        """31.152: cada etapa sem efeito do plano livre aceita os pacotes vizinhos que o ensino descobriu para o app
+        dela (`taskqueue.vizinhos`). Falha ao ler = o plano como veio: o vizinho é ganho, não condição."""
+        try:
+            conhecidos = self.flows.vizinhos_conhecidos()
+        except Exception as exc:  # noqa: BLE001 - sem o conhecimento, o plano livre segue como antes do 31.152
+            log.info("vizinhos conhecidos não lidos (%s): o plano segue sem eles", exc)
+            return plan
+        novo, mudou = aplicar_vizinhos(plan, conhecidos, [str(a.package) for a in apps if a.package])
+        if mudou:
+            self.repo.decision(linha_vizinhos(mudou), run_id=run_id)
+        return novo
 
     def _teto_observar(self, run_id: str) -> bool:
         """28.23: a execução nasceu com o teto `observar` (o pedido persistente que só observa)."""

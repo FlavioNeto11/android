@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.152: os pacotes vizinhos do ensino valem no plano livre (branch feat/31-152-pacotes-vizinhos)
+
+- Antes, `pacotes_aceitos` (31.123) só existia no plano de fluxo ensinado. A execução livre que abre a busca do
+  Configurações terminava no pacote da busca e a etapa era recusada (r-20261006102728-1157c6: a IA assumiu, US$ 0,039).
+- O par (app, vizinho) é lido dos fluxos ensinados (`FlowStore.vizinhos_conhecidos`, `taskqueue/vizinhos.py`), com a
+  contagem de sessões de ensino distintas e a origem `training:<sessão>`. O fluxo desligado também conta (o saber é do
+  app); o aprendido de execução não. Nunca entram o systemui, o lançador ou um app cadastrado. Sem migração.
+- No `_plan`, só no ramo livre, cada etapa SEM efeito e sem lista própria recebe os vizinhos do app dela, e a trilha
+  ganha a linha "Pacotes vizinhos conhecidos do app (31.152)". O executor não muda: já lê `step.pacotes_aceitos`.
+  `FORA_DOS_ACEITOS` mudou de `training/partida.py` para `taskqueue/vizinhos.py`.
+- Prova `simulated`: `backend/tests/test_vizinhos_no_plano_livre.py` (3 testes). Bateria dirigida (61 arquivos que tocam
+  fluxos, `_plan` e pacotes aceitos, mais arquitetura, rotas e apps fora do núcleo): 1264 passaram. mypy 257 (no teto).
+  `real`: `not_run` (um comando livre que abre a busca do Configurações, cerca de US$ 0,03, com o sim do dono).
+
 ## 2026-10-06 — 31.169: a pesquisa externa roda na criação da operação (branch feat/31-169-pesquisa-na-criacao)
 
 - Antes, a pesquisa rodava na porta de escrita do 1º alvo que chegasse ao texto, no meio da execução dele. Agora
