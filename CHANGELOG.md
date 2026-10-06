@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.147 (Portal, parte simulada): varredura de código cru no Treino (branch feat/31-147-varredura-de-codigo-cru)
+
+- `SemCodigoCru.test.tsx` renderiza uma sessão com todos os tipos de entrada, de pós-condição e de efeito na revisão, na barra (Salvas) e na sessão salva, e barra código cru no texto e nos `aria-label` (kinds, campos do contrato, seletores `desc==`, `resource-id`, marcador `{perfil_*}`, `(panel)`, `undefined`/`null`, chave em snake_case).
+- A varredura achou um defeito real: a etapa mostrava "existe o elemento “desc==Back”"; agora lê "existe o elemento com a descrição “Back”" (`elementoEmPalavras`: `text==`, `desc==` e `id==`).
+- Prova `simulated`: vitest de `src/features/training` 128 testes, tsc limpo, 2 mutações mortas; a parte `real` (prévia de pacotes e resultado numa sessão `proposed` do android-04, só leitura) segue `not_run`.
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
