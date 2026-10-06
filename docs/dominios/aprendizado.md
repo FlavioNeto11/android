@@ -1682,6 +1682,11 @@ nenhuma evidência contra) e paravam em `observar`, porque o parecer pedia `voto
       nada novo a dizer neles.
     - O parecer B feito com a instrução nova se reconhece pelo dossiê gravado em `learning_reviews.dossie`, que tem
       `risco.classe_b_e`. A `template_versao` da revisão é a forma do dossiê (`dossie-v1`), não a versão do texto.
+    - **30.76 (migração 117):** o parecer grava a versão do texto em `learning_reviews.instrucao_versao`. Quem diz é o
+      adaptador que mandou o texto à IA (`CuradorDoHub`, a `VERSAO_DO_TEMPLATE`, hoje `curador-v2`, também quando o
+      provedor atrás do hub é simulado, que a linha marca em `simulated`). Ficam NULL as linhas antigas, as recusas
+      (custo, triagem), o curador simulado da porta e o rótulo de intenção. A coluna não entra no hash nem na
+      elegibilidade.
   - O hash do dossiê B muda, e cada item B fica elegível para UMA revisão nova depois do cooldown, dentro da fatia do
     curador.
 - **Opções fechadas:** `faltas_do_item(classe)` tira `voto_da_pessoa` e `decisao_da_pessoa` das opções de `falta` do
