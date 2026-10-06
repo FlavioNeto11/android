@@ -40,6 +40,7 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, E
                                                NotaComCaraDeSegredo, SkillState)
 from app.modules.learning.domain.diagnostico import (AMOSTRA, ContextoDaTentativa, Diagnostico, EstatisticaDaLicao,
                                                      diagnosticar, proposta_do_diagnostico)
+from app.modules.learning.domain.ensino_da_falha import para_o_ensino
 from app.modules.learning.domain.falhas import Camada
 from app.modules.learning.domain.vocabulario import (CategoriaDoBacklog, EstadoDoBacklog, LivroKind, Posicao)
 from app.modules.skills.domain.document import JsonObject
@@ -92,6 +93,22 @@ class FontesDeContexto(Protocol):
 
     def contextos(self, attempt_ids: Sequence[str]) -> dict[str, ContextoDaTentativa]: ...
     def licoes(self, refs: Sequence[str]) -> dict[str, EstatisticaDaLicao]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ChaveDaTentativa:
+    """31.111 F4: o grupo de UMA tentativa (app, ação, tipo, tela), com os tipos de erro do provedor que ela teve."""
+
+    chave: ChaveDoGrupo
+    erros_de_ia: Mapping[str, int]
+
+
+@runtime_checkable
+class FontesDaTentativa(Protocol):
+    """31.111 F4: a chave de uma tentativa só, para diagnosticar a falha de onde nasce um ensino. Porta à parte, como a
+    do contexto: a fonte que não a implementa deixa o ensino sem diagnóstico (nunca com um palpite)."""
+
+    def chave_da_tentativa(self, attempt_id: str) -> ChaveDaTentativa | None: ...
 
 
 class RepositorioDoBacklog(Protocol):
@@ -239,6 +256,36 @@ class ServicoDeFalhas:
             telas=tuple(telas_que_chamaram(self._fontes.chamadas_de_tela(desde, ate, simulados=simulados),
                                            na_janela)),
             propostas=propostas, outro=parte_de_outro(na_janela), saude=saude, em_andamento=em_andamento)
+
+    def diagnostico_da_tentativa(self, attempt_id: str) -> Diagnostico | None:
+        """31.111 F4: o diagnóstico (30.13) da tentativa que falhou, com o contexto DELA. `None` sem fonte, sem a
+        tentativa ou sem tipo de falha. Determinístico, sem IA; erro de leitura do contexto deixa só o tipo decidir."""
+        if not isinstance(self._fontes, FontesDaTentativa):
+            return None
+        k = self._fontes.chave_da_tentativa(attempt_id)
+        if k is None:
+            return None
+        contextos: dict[str, ContextoDaTentativa] = {}
+        estatisticas: dict[str, EstatisticaDaLicao] = {}
+        if isinstance(self._fontes, FontesDeContexto):
+            try:
+                contextos = self._fontes.contextos([attempt_id])
+                refs = sorted({r for c in contextos.values() for r in c.licoes})
+                estatisticas = self._fontes.licoes(refs) if refs else {}
+            except Exception:                                  # noqa: BLE001 — o ensino não depende do contexto
+                log.exception("aprendizado: o contexto da tentativa não pôde ser lido; o diagnóstico usa só o tipo")
+                contextos, estatisticas = {}, {}
+        return diagnosticar(k.chave, list(contextos.values()), licoes=estatisticas, erros_de_ia=k.erros_de_ia)
+
+    def diagnostico_para_o_ensino(self, attempt_id: str) -> dict[str, object] | None:
+        """O `origin.diagnostico` da sessão de ensino (31.111 F4): o diagnóstico em linguagem de gente, ou `None`. Nunca
+        derruba a leitura da sessão."""
+        try:
+            d = self.diagnostico_da_tentativa(attempt_id)
+        except Exception:                                      # noqa: BLE001 — a sessão abre sem o diagnóstico
+            log.exception("aprendizado: o diagnóstico da tentativa %s falhou", attempt_id)
+            return None
+        return para_o_ensino(d) if d is not None else None
 
     def linha(self, backlog_id: str) -> DetalheDoBacklog:
         """A linha gravada ou, se a curadoria ainda não a gravou, a que o relatório de 30 dias mostra (sem gravar)."""

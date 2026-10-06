@@ -74,6 +74,7 @@ from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, 
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.learning import esquecer_conta
+from .modules.learning.application.falhas import ServicoDeFalhas
 from .modules.learning.infrastructure import ligar_intencao, ligar_validacao, ligar_voz
 from .modules.learning.infrastructure.curador_do_hub import CuradorDoHub
 from .modules.learning.infrastructure.ligar_costuras import costuras_do_livro
@@ -604,6 +605,9 @@ class AppState:
             receitas=self.scheduler.executor.recipes,
             decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus,
             curador_de_ia=CuradorComTriagemEmSombra(self._curador_do_hub, self._triagem_do_curador))
+        # 31.111 F4: o ensino que nasce de uma falha lê a causa provável da tentativa (30.13), sem IA.
+        falhas = self.learning.extensao(ServicoDeFalhas)
+        self.training.diagnostico_da_falha = falhas.diagnostico_para_o_ensino if falhas is not None else None
         # 31.50: o lembrete de vencimento diz a etapa pelo nome do catálogo, não pela chave da capability.
         self.avisos.nome_da_capability = lambda capability: self.learning.nome_da_capability(None, capability)
         # O desfazer das decisões automáticas (28.25): a inversa de cada fila entra aqui, fora do módulo (ver o docstring).
