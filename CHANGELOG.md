@@ -31,6 +31,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   fica (cerca de 100 ocorrências em testes). Não foi mexido; fica para uma rodada própria se o dono quiser.
 - Prova: `simulated` (91 arquivos de backend, 3551 testes; `scripts/tests`, 684; frontend, 486; mypy 257; docs-check 0/0).
 
+## 2026-10-06 — 31.114 F1 e F2: o arraste gravado chega à IA como o gesto do dedo e, confirmado, vira receita (branch feat/31-114-arraste-sem-arvore)
+
+- Achado da prova real do 31.111 (sessão trn-jrE1zcBoKSoHFqX5): a coordenada do arraste FOI gravada (360,5 a 360,768, tela de 720x1280); o
+  texto que ia à IA ("rolou para cima", o movimento do CONTEÚDO) é que a fez ler "deslizar para cima", e a receita não nasceu porque o
+  arraste no fim da etapa caía em "rolagem sem ação-alvo depois dela".
+- F1: `descrever_arraste` (`planning/training.py`) diz o gesto do DEDO, de onde saiu e quanto percorreu ("arrastou o dedo de cima para baixo,
+  saindo da borda superior, por 60 % da altura"). A tela (largura e altura em retrato) é lida do aparelho na hora do `propose`
+  (`DeviceManager.tamanho_da_tela`, 8 s; só se a gravação tem arraste com coordenada). Aparelho mudo, ou coordenada que não cabe na tela
+  lida: "borda de origem desconhecida", sem chute. Borda = até 3 % da largura ou da altura (`automation/gestos.py`).
+- F2: o arraste que TERMINA a etapa vira receita (`scroll` relativo, uma ação por rolagem, nunca pixel) só se (a) a tela do `propose` era
+  conhecida, (b) o dedo não saiu da borda (gesto de sistema como abrir as notificações segue sem receita: o F3, tool de borda, está fora
+  até haver demanda) e (c) a pessoa respondeu "sim" à pergunta FIXA da etapa (`training/arraste.py`; entra em `questions` da proposta; a
+  resposta fica em `answers`, pelo caminho do 31.91). `distill_training(..., arraste_final=True)`; sem o parâmetro nada muda.
+- A proposta guardada ganha a chave `screen: [largura, altura]` só quando a tela foi lida (a destilação a lê dali); sem arraste ou com o
+  aparelho mudo a proposta tem as chaves de sempre. Sem migração.
+- Prova: `simulated` (`backend/tests/test_treino_descricao_do_arraste.py`, `test_treino_arraste_vira_receita.py`; `test_treino_arraste_sem_coordenada.py`
+  ajustado ao texto novo); `real`: `not_run` (a sessão da F6 serve de caso; o arraste dela era de borda e continua sem receita).
+
 ## 2026-10-06 — 31.111 F1 e F2: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
 
 ## 2026-10-06 — 31.111 F1, F2 e F3: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)

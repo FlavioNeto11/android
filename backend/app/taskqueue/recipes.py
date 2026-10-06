@@ -510,13 +510,18 @@ def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dic
 
 
 def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *, side_effect: bool,
-                     app_packages: dict[str, str] | None = None) -> tuple[list[dict[str, Any]] | None, str]:
+                     app_packages: dict[str, str] | None = None,
+                     arraste_final: bool = False) -> tuple[list[dict[str, Any]] | None, str]:
     """Entradas gravadas pela PESSOA (modo treinamento, item 13.2) numa etapa → receita, com as mesmas regras de
     `distill`: alvo com seletor estável e único, texto 100 % coberto por parâmetros, nada de voltar/início (depende
     do estado de quem ensinou), efeito externo nunca só por texto. O que não passa não vira receita — a etapa
     continua no fluxo e a IA a conduz na hora, que é a degradação que o sistema já tem.
 
-    `side_effect`: o último toque da etapa é o commit (o que dispara o efeito)."""
+    `side_effect`: o último toque da etapa é o commit (o que dispara o efeito).
+
+    `arraste_final` (31.114 F2): o arraste que TERMINA a etapa é o objetivo dela, confirmado pela pessoa e sem saída de borda
+    (quem chama confere isso em `training/arraste.py`): cada rolagem da cauda vira um item `scroll` relativo na receita, em
+    vez de "rolagem sem ação-alvo depois dela". Sem o parâmetro, nada muda."""
     secret_values = {v for k, v in variables.items() if v and SENSITIVE_PARAM.search(k)}
     toques = [i for i, e in enumerate(inputs) if e["type"] in ("tap", "long_press")]
     ultimo_toque = toques[-1] if toques else None
@@ -594,7 +599,10 @@ def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *,
         if commit:
             break
     if pending_scrolls:
-        return None, "rolagem sem ação-alvo depois dela"
+        if not arraste_final:
+            return None, "rolagem sem ação-alvo depois dela"
+        out.extend({"tool": "scroll", "commit": False, "why": "ensinado no modo treinamento: o arraste é o objetivo da etapa",
+                    "args": {"direction": d}} for d in pending_scrolls)
     if not out:
         return None, "nenhuma ação a repetir nesta etapa"
     if len(out) > MAX_ACTIONS:
