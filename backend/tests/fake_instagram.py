@@ -149,6 +149,9 @@ class FakeInstagram:
     def guest_pressure(self) -> dict[str, float]:
         return {"load1": 0.5, "mem_total_mb": 2048.0, "mem_available_mb": 900.0, "ncpu": 2.0}
 
+    def guest_culprits(self) -> dict[str, object]:
+        return {"processos": [], "primeiro_plano": None}
+
     def connectivity_probe(self) -> dict[str, bool]:
         return {"route": True, "dns": True, "tcp_443": True, "validated": True}
 

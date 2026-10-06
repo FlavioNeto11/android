@@ -29,6 +29,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Funções tocadas (K-095): `PlanStep`, `StepDTO` (`models.py`), `Repository._insert_steps` e `step_dto`,
   `StepExecutor._tela_fora_do_app`, `partida.pacotes_vizinhos` e `aviso_dos_vizinhos` (novas), `TrainingSkills._preparar`.
 - Prova `simulated`: `backend/tests/test_etapa_pacotes_aceitos.py` (5). Real: `not_run`.
+## 2026-10-06 — 31.118 F2: a tela gravada também guarda o marcador (branch feat/31-121-122-partida-e-pos-condicao)
+
+- Achado da conferência real do reparo (06/10 09:01Z): a tela gravada depois da digitação mostrava o campo preenchido,
+  e `GET /api/training/{id}` devolvia o valor em `screen_lines`. No `save` e no reparo único, todo dado não sigiloso
+  da persona troca pelo marcador, por palavra, em `screen_lines` e `screen_title`. O reparo continua idempotente e
+  ganha `telas_marcadas`. Ensaio no banco central: 1 sessão, 1 tela.
+- Funções tocadas (K-095): `reparo_da_gravacao.marcar_telas` (nova) e `marcar_gravacoes_salvas`, `TrainingSkills.save`,
+  `scripts/gravacao-com-marcador.py`.
+- Prova `simulated`: `backend/tests/test_treino_gravacao_com_marcador.py` (11; 2 novos). Real: o reparo roda de novo
+  depois do deploy 50.
 
 ## 2026-10-06 — 31.121 e 31.122: a etapa ensinada começa onde a reprodução começa e só passa quando agiu (branch feat/31-121-122-partida-e-pos-condicao)
 
@@ -41,6 +51,69 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `dado_da_persona.com_marcador` (nova), `_destilar`, `TrainingSkills._preparar` e `save` (`training/skills.py`).
 - Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
   para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
+## 2026-10-06 — 29.151: a readoção espera o tempo que o aparelho leva (branch feat/29-151-readocao-espera-o-aparelho)
+
+- Depois do reinício do backend, o aparelho readotado esperava 60 s fixos pela primeira resposta do framework e ficava
+  `error` quem levava mais (65 e 75 s no deploy 40, com a escada presa pela pausa de reparo). O teto da espera da
+  readoção (`_wait_boot(adopted=True)`) passa a ser a medida do próprio aparelho (`boot_seconds`), entre 2 e 5 vezes o
+  teto de um boot novo (120 a 300 s); aparelho sem medida usa o piso de 120 s. Boot novo (não readoção) fica com os 60 s.
+  O prazo total de boot (`boot_timeout_s`) continua limitando. Sem migração e sem mudança de API.
+- Funções tocadas (K-095): `devices/manager.teto_da_resposta_s` (nova) e `DeviceManager._wait_boot` (o cálculo do `orcamento`).
+- Prova `simulated`: `backend/tests/test_readocao_espera_o_aparelho.py` (8) e os 204 testes de prontidão, readoção, boot e
+  arquitetura. Real: `not_run` até o deploy seguinte, onde o A10 (readoção dos aparelhos) mede quanto cada um leva.
+
+## 2026-10-06 — 31.119: descartar o treino já concluído, na revisão e em "Para revisar" (branch feat/31-116-formulario-sugerido)
+
+- Achado do percurso 48b: quem concluía a gravação e desistia ficava com a sessão "só gravada" para sempre; o "Descartar" só existia na gravação viva. Agora a
+  **revisão** (rodapé, só em sessão gravada ou com proposta) e cada item da lista **"Para revisar"** (botão só com ícone, nome acessível `Descartar “<intenção>”`)
+  descartam a sessão. O diálogo pede confirmação (nada vira fluxo nem habilidade, com a conta das entradas gravadas: a lista traz `input_count`, a revisão as
+  entradas), chama `POST /api/training/{id}/discard` e, se o controle do aparelho é desta aba, avisa "O controle de <aparelho> volta para a IA." e o devolve
+  depois do descarte (`release`). Recusa do backend avisa, mantém a sessão na lista e NÃO devolve o controle. Descartada, a revisão fecha e a lista se relê.
+  O "Descartar" da gravação viva fica como era (o controle continua com a pessoa). `features/training/descartarSessao.ts` divide a lógica entre os dois lugares.
+- Leitura de UX da lista "Para revisar" (decidida pela orquestradora, mesma branch): **uma linha por sessão** (`<ul>`), com o nome, "sem proposta ainda" (antes "só
+  gravada") ou "proposta pronta", há quanto tempo e quantas entradas ("sem proposta ainda · há 3 h · 0 entradas"; o nome inteiro segue no rótulo do botão);
+  o selo "corrige uma falha" virou **link para a execução de origem** (`#/execucoes/<run_id>`), fora do botão "Revisar", na lista, na origem da barra e na revisão
+  (na revisão ela fecha primeiro, com a confirmação de sempre se há edição); gravação **sem nenhuma entrada** avisa "Nada gravado ainda", deixa "Concluir e
+  revisar" indisponível com o motivo (só se pode descartar) e, numa sessão já concluída sem entradas, "Pedir proposta à IA" também fica indisponível com o motivo.
+- Prova `simulated`: `DescartarSessao.test.tsx` (6) e `ParaRevisar.test.tsx` (5), com quinze mutações (catorze derrubadas; a que tira a guarda "só com o lease desta aba" é equivalente, porque
+  `release` já não faz nada sem lease). Prova `real`: `not_run`, depende do deploy 49.
+
+## 2026-10-06 — 31.116 parte 2 (painel): "Ensinar a corrigir" abre com a intenção que o diagnóstico sugere (branch feat/31-116-formulario-sugerido)
+
+- Contra o adendo v1.80 (Aprendizado, `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}` ou `null`): ao abrir
+  o formulário da etapa, o painel lê a sugestão (só leitura, sem IA, sem tomar o controle) e preenche "O que você vai ensinar?" com a `intent`. A causa
+  provável e o que mostrar entram como dica do campo (ligada por `aria-describedby`). A intenção da pessoa vence: `intent` só vai no
+  `POST /api/training/from-run` quando o texto difere da sugestão (o backend usa a mesma sugestão quando falta). Quem já escreveu antes de a resposta chegar
+  não tem o texto trocado. Sem tentativa (`null`), com a rota recusando (404/409) ou com a rede falhando, fica o texto padrão de antes, sem dica e sem erro
+  na tela; com `pergunta` e `rotulo` nulos (diagnóstico falhou) o campo vem com a intenção e sem dica. Fechar e abrir de novo lê outra vez e volta à sugestão.
+- Ajustes da leitura de UX (decididos pela orquestradora): "O que mostrar" vira uma linha em destaque ACIMA do campo (a dica fica só com a causa); enquanto a
+  resposta não chega a dica diz "Lendo a sugestão…" (e some também quando não há sugestão), sem nunca trocar o que a pessoa já digitou; "Voltar à sugestão"
+  aparece só depois de editar, havendo sugestão; o campo passa a ser uma caixa de duas linhas (Enter envia como antes, Shift+Enter não, quebra de linha colada
+  vira espaço).
+- Adendo v1.82 (Aprendizado, `feat/31-116-ensino-sugerido-causa`): a resposta ganha `causa`, o código do diagnóstico, e a `pergunta` passa a ser a do estado da etapa
+  (em `waiting_user`, a própria dela, mesmo com o diagnóstico em erro). O painel escolhe a linha da causa pelo CÓDIGO, nunca pela frase: `indeterminada` diz
+  "Causa: não deu para saber."; `null` não tem linha de causa (mesmo que um rótulo venha junto); os demais dizem "Causa provável: <rótulo>."; sem o campo (backend
+  anterior ao v1.82) vale o rótulo, como no v1.80. A pergunta aparece como vier, em "O que mostrar". `EnsinoSugerido.causa?` em `types.ts`.
+- `api.ensinoSugerido` e `EnsinoSugerido` em `client.ts` e `types.ts`.
+- Prova `simulated`: `EnsinarACorrigir.test.tsx` (14 novos, fixture de resposta) com catorze mutações que derrubam o teste (sobrescrever o que a pessoa escreveu,
+  comparar com o padrão em vez da sugestão, mandar `intent` sempre, não zerar ao reabrir, tirar o `aria-describedby`, sem o estado de leitura, a pergunta de volta
+  na dica, o "Voltar" sempre visível, Enter que não envia, quebra de linha mantida, o "Voltar" que não devolve a sugestão, a indeterminada decidida pelo rótulo, a causa nula com rótulo, a linha sem causa nem rótulo). Prova `real`: `not_run`; depende
+  da rota no ar (deploy 48) e de uma falha real para ver a sugestão na tela.
+
+## 2026-10-06 — 31.116: a sugestão do ensino diz a causa e pergunta pelo estado da etapa (branch feat/31-116-ensino-sugerido-causa)
+
+- `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` ganha `causa` (o código do diagnóstico, ao lado do rótulo). A
+  `pergunta` passa a depender do estado da etapa: em `waiting_user` a etapa parou esperando a pessoa, sem falhar, e a
+  pergunta é `PERGUNTA_ESPERANDO` (o que ensinar para ela seguir), mesmo com o diagnóstico em erro. Nos outros estados
+  segue a pergunta do diagnóstico. Pedido da leitura de UX da Portal. Adendo v1.82.
+- A sessão aberta pelo `POST /api/training/from-run` diz a mesma coisa: `origin.diagnostico.pergunta` também é a do
+  estado da etapa (`TrainingRecorder.get`), e em `waiting_user` coincide com a do `ensino-sugerido`.
+- Funções tocadas (K-095): `ensino_sugerido` (`modules/learning/presentation/treino.py`), `pergunta_da_etapa` e
+  `PERGUNTA_ESPERANDO` (novas, `modules/learning/domain/ensino_da_falha.py`), `origem_da_falha` e `OrigemDaFalha.status`
+  (`training/origem.py`), `TrainingRecorder.get` (`training/recorder.py`).
+- Prova `simulated`: `backend/tests/test_ensino_sugerido.py` (7: os 4 com `causa` e 3 novos, sobre a parada esperando a
+  pessoa com e sem diagnóstico e a função pura) e `backend/tests/test_treino_diagnostico_da_falha.py` (1 novo: a sessão e
+  a sugestão com a mesma pergunta em `waiting_user`). Real: `not_run`.
 
 ## 2026-10-06 — 31.118: a gravação salva guarda o marcador da persona (branch feat/31-118-gravacao-com-marcador)
 
@@ -51,11 +124,49 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Funções tocadas (K-095): `marcas_das_entradas` e `com_valores` (novas) e `demonstrados`
   (`training/dado_da_persona.py`), `TrainingRecorder.marcar_entradas` (nova, `training/recorder.py`),
   `TrainingSkills.save` e `refazer_receitas` (`training/skills.py`).
+- Prova `simulated`: `backend/tests/test_treino_gravacao_com_marcador.py` (6; o do `save` e o do reparo falham sem a
+  mudança). Real: `not_run`.
+
+## 2026-10-06 — 15.15 F7: o 409 `invalid_transition` deixa um evento (branch feat/15-15-f7-evento-409)
+
+- O handler do 409 em `main.py` grava um evento `log` `warn` (`Pedido recusado por transição inválida (409 invalid_transition): <método> <modelo da rota>`),
+  com `data {code, method, route, detail}`: o modelo da rota, nunca o caminho com o id, e o texto da recusa, que só tem nomes de estados. Fecha a lacuna
+  da leitura real do deploy 47: o backend não tem log de acesso e o 409 não aparecia em lugar nenhum (a recusa de execução, objetivo e tentativa já deixava o
+  evento `(recusada)` em `Repository._conferir`; a da etapa não deixava nenhum). A resposta HTTP não muda. Sem migração e sem adendo.
+- Prova `simulated` (`test_maquinas_de_estado_http.py`); `real`: `not_run` até o deploy.
+
+## 2026-10-06 — 15.15 F4, corte 4 (F4d): as 7 rotas de releases saem de `api.py` (branch feat/15-15-f4d-router-releases)
+
+- `/api/releases*` (listar, importar, ícone, alvos, upload, aprovar assinatura, ciclo de vida) agora moram em
+  `backend/app/modules/applications/presentation/releases.py`, montado em `main.py` no mesmo lugar do `api.router`. `device()` e a recusa da loja como
+  alvo (`recusa_loja_como_alvo`), que `api.py` também usa, foram para `presentation/comum.py` do mesmo módulo (o módulo de rotas não importa `app.api`).
+  Mesmo caminho, método, corpo e resposta; `Any` das rotas virou `object` (teto de `Any` de `app.api` 122 → 113).
+- Prova do OpenAPI contra a `main` (4294b534): 270 método+caminho idênticos; os schemas só diferem no título automático de resposta
+  (`response_model=None`, como nos cortes anteriores). A ordem entre rotas não muda o casamento (`test_ordem_das_rotas.py`, mais um caso com as 7 rotas).
+  O teste de `test_sempre_na_promovida.py` que troca `convergir_o_parque` passou a trocá-lo no módulo novo (a rota o busca ali).
+- Prova `simulated`; `real`: `not_run` até o deploy (as rotas de releases respondem como antes). Sem migração e sem adendo.
+
 - Reparo único das sessões salvas antes do 31.118: `scripts/gravacao-com-marcador.py` sobre
   `training/reparo_da_gravacao.py::marcar_gravacoes_salvas` (nova). Ensaio numa cópia por padrão; `--aplicar --backup`
   confere a migração. Imprime só os ids das sessões e as contagens. A execução real fica para depois do deploy do 31.118.
 - Prova `simulated`: `backend/tests/test_treino_gravacao_com_marcador.py` (9; o do `save` e o do reparo falham sem a
   mudança, e 3 cobrem o reparo único e o script). Real: `not_run`.
+
+## 2026-10-06 — 29.152: o aviso de pressão de CPU diz quem pesa no convidado (branch feat/29-152-processos-no-aviso-de-pressao)
+
+- No PRIMEIRO aviso de cada episódio de pressão (`DeviceManager._conferir_pressao`), o evento `instance.updated` ganha em
+  `data.pressao` os 3 processos de maior CPU (`dumpsys cpuinfo`) e o pacote em primeiro plano (`dumpsys activity`). Só nomes
+  de processo e de pacote (letras, dígitos e `_.:@/-`): título de janela, atividade e conteúdo nunca entram. Uma leitura de
+  adb por episódio, não por aviso; sem a leitura, o aviso sai igual. Sem migração, sem rota nova.
+- Motivo: no android-02 de 06/10, 375 dos 480 avisos do dia vieram de episódios sem nenhuma execução (até 117 min) e nenhum
+  nomeava processo ou app; a causa (Instagram, Outlook, cliente VPN ou prévia do painel) não se prova com o que se grava.
+  Medida do depois: no dia seguinte ao deploy, episódios com `data.pressao` contra episódios de pressão (meta: todos).
+- Funções tocadas (K-095): `devices/adb.ler_culpados` e `Adb.guest_culprits` (novas), `AppiumDriver.guest_culprits` (nova, delega),
+  `DeviceManager._culpados_da_pressao` (nova), `_conferir_pressao` e `publish` (parâmetro `dados_extra`).
+- Prova `simulated`: `backend/tests/test_pressao_nomeia_quem_pesa.py` (5: a leitura sobre a amostra real, só nomes, vazia, só o
+  primeiro aviso do episódio e o episódio seguinte, e o aviso sem o campo quando o adb cala) e 124 testes de saúde, arquitetura
+  e prontidão. mypy 257 = teto. Real: `not_run` até o deploy seguinte.
+
 ## 2026-10-06 — 31.116 (parte 2): a sugestão do ensino antes da sessão (branch feat/31-116-ensino-sugerido)
 
 - `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}`. Usa o mesmo diagnóstico do
@@ -799,11 +910,23 @@ Da leitura do 31.78.
 - `PortaDoPlano.test.tsx` "mostra a validade dos sins do plano…" usava `2026-10-05T21:00Z` como instante futuro; às 21:00Z de hoje o sim passou a "vencido" e o teste falhou (determinístico, também em ramos que passavam antes). A validade agora é relativa ao relógio (6 h à frente; a renovação, 30 h).
 - Prova `simulated`: o arquivo sozinho, 22/22 em duas rodadas, em 05/10 depois das 21:00Z. Outras datas fixas próximas em testes (a conferir, sem mudança aqui): `ValidacaoTab.test.tsx` (`expira_em` em 06/10), `NovoPedido.test.tsx` (prazo em 09/10), `MetricasTab.test.tsx` (17/10).
 
+## 2026-10-06 — A reconciliação do Trello não conta como citado no deploy o item que "fica para o corte N" (28.56, branch canais/reconciliacao-corte-adiado)
+
+- `.claude/trello/reconciliar.py`: o id que a seção do deploy no CHANGELOG diz que "fica" ou "segue" para outro corte (como 31.116 e 31.117 no deploy 47) deixa de valer como citado nele, para a linha de prova dizer o deploy certo
+  quando o item ficar implementado. Prova `simulated`: `.claude/trello/test_reconciliar.py` (31 passed). Regra no C-28.
+
 ## 2026-10-06 — A reconciliação do Trello descobre o deploy do item pelo Git (28.56, branch canais/reconciliacao-deploy-pelo-git)
 
 - `.claude/trello/reconciliar.py`: o item classificado na mesma rodada do registro do deploy deixou de ser dado como "no ar desde o deploy N" pela hora; vale o primeiro commit que
   pôs o cabeçalho dele no CHANGELOG e o menor deploy cujo commit do central o contém (no primeiro deploy conhecido: "o deploy 38 ou um anterior"), e a linha do concluído é refeita quando o deploy muda.
   Regra no C-28. Prova `simulated`: `.claude/trello/test_reconciliar.py` (30 passed). Prova `real` (06/10): ensaio contra os três quadros, 37 linhas de concluído com deploy corrigido.
+
+## 2026-10-06 — Deploy 49 (suíte 49: formulário do ensino sugerido com causa, descartar sessão concluída, gravação com a marca, evento do 409, router de releases, readoção pelo aparelho)
+
+- **Implantado** às 08:56Z: central em `1b86bd6b`, sem migração nova (mais alta 119), 8 pontas sobre `16858086` (mains até `95e9b07d` dentro). Itens: 31.116 fechado (formulário de "Ensinar a corrigir" com a pergunta sugerida, a causa por código e "o que mostrar" em destaque; adendo v1.82: `ensino-sugerido` devolve `causa` e a pergunta própria do `waiting_user`, coerente com `from-run`; Portal `8e8cf588`, Aprendizado `4d2ec6a1`), 31.119 ("Descartar" na revisão da sessão concluída e em "Para revisar", devolvendo o controle; Portal), 31.118 (`training_inputs.text` recebe a marca ao salvar o fluxo; a gravação aberta segue em claro; Aprendizado `25878b0a`), 15.15 F7 (o 409 `invalid_transition` deixa evento warn com o modelo da rota; Jev `61930aa2`) e F4d (7 rotas de `/api/releases*` em `modules/applications/presentation/releases.py`, OpenAPI idêntico; Jev `870fd7bd`), 29.151 (a readoção espera o `boot_seconds` do aparelho, 120 a 300 s; Android `8dc6bfed`), C-28 (o id que a seção do deploy diz "fica para o corte N" não conta como citado nele; Canais `64bfc633`). 29.152 observabilidade (o primeiro aviso de cada episódio de pressão traz os 3 processos mais pesados e o pacote em primeiro plano, só nomes; Android `a6d8cfdf`). UX da lista "Para revisar" (uma linha por sessão, "sem proposta ainda", hora e entradas, "Nada gravado ainda", selo que abre a execução de origem; Portal `8e8cf588`).
+- Prova `real`: deploy `deploy.ps1` (ensaio forçado pela trava de 60 min, backup `20261006-055448`); `GET /api/health` ok, migração 119, `problems` 0, `features` iguais; prova de fora como esperado; agente do notebook em `0.1.0+1b86bd6b`; A10: os 12 aparelhos ligados voltaram a online entre 08:55:34Z e 08:56:11Z e a ready às 08:57:06Z, nenhum `error` (29.151: nenhum passou de 60 s, o teto novo não foi exercitado); hooks ok; eventos warn do 409 e "(recusada)" desde 08:55Z: 0 (15.15 F7); reparo das sessões salvas do 31.118 ainda não rodado (vai com o backup `20261006-055448` e o sim da orquestradora); 29.152: o primeiro aviso de pressão depois do deploy (android-05, 08:56:48Z) já nomeia os 3 processos e o pacote em primeiro plano.
+- Prova `simulated` (suíte 49 sobre `1b86bd6b`): `scripts/tests` 684 passed; backend em SQLite inteiro 12282 passed e 13 skipped (08:04Z a 08:23Z); frontend 1746 passed e build; catracas 88 (backend) e 6 (scripts); docs-check 0; mypy 257; PostgreSQL dirigido em 2 partes, 3429 e 2937 passed (parte 2 com 1 falha e 1 erro de host, "No buffer space available (10055)", repetidos limpos: 26 passed); 0 falhas de código na ponta final.
+- `not_run`: percurso 49 no navegador (Portal, a seguir: formulário com causa e pergunta, Descartar, lista); 31.120 (corte 50).
 
 ## 2026-10-06 — Deploy 48 (suíte 48: ensino sugerido a partir da falha, diagnóstico no treino, observar B gera prova, origem do fluxo no Livro, reconciliação pelo git)
 

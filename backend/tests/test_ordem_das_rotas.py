@@ -61,6 +61,16 @@ def test_o_voto_da_execucao_vem_antes_do_coringa_de_execucao() -> None:
     assert voto < coringa
 
 
+def test_as_sete_rotas_de_releases_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4d: as rotas de `/api/releases*` saíram de `api.py` para `modules/applications/presentation/releases.py`; o
+    conjunto (método e modelo) é o de antes, sem repetição nem rota perdida."""
+    rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/releases")]
+    assert sorted(rotas) == sorted([
+        ("GET", "/api/releases"), ("POST", "/api/releases/import"), ("GET", "/api/releases/{release_id}/icon"),
+        ("GET", "/api/releases/{release_id}/targets"), ("POST", "/api/releases/upload"),
+        ("POST", "/api/releases/{release_id}/approve-signature"), ("POST", "/api/releases/{release_id}/lifecycle")])
+
+
 def test_modulos_de_apresentacao_nao_importam_app_api() -> None:
     """Ciclo: `app.api` importa os módulos; um módulo que importa `app.api` de volta só funciona por acidente de ordem."""
     raiz = Path(__file__).resolve().parent.parent / "app" / "modules"

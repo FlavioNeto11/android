@@ -312,6 +312,9 @@ class AndroidDeviceIO:
     def guest_pressure(self) -> dict[str, float]:
         return self.adb.guest_pressure()
 
+    def guest_culprits(self) -> dict[str, object]:
+        return self.adb.guest_culprits()
+
     def connectivity_probe(self) -> dict[str, bool]:
         return self.adb.connectivity_probe()
 

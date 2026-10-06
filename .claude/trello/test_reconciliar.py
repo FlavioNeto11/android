@@ -306,8 +306,11 @@ def test_item_classificado_junto_do_registro_do_deploy_vale_o_deploy_do_git():
     item = {"status": "implemented", "proof": "real", "quando": "2026-10-05T17:00:00+00:00",
             "evidence": "provado em 06/10 no deploy 43"}
     c = [cartao("c1", "29.7 · algo", "🧭 Próximas")]
-    # a hora diz 39 e não é o último deploy: o git nem é consultado
+    # a hora diz 39, mas o git diz 38 e o git manda; com o commit de suíte, é a suíte que manda
     a = decidir(c, estado(**{"29.7": item}), agora=AGORA, horas=HORAS, suite_de=lambda p: None,
+                listas_do_historico=HIST, deploy_git=lambda p: 38).acoes[0]
+    assert "no ar desde o deploy 38" in a.linha
+    a = decidir(c, estado(**{"29.7": item}), agora=AGORA, horas=HORAS, suite_de=lambda p: 39,
                 listas_do_historico=HIST, deploy_git=lambda p: 38).acoes[0]
     assert "no ar desde o deploy 39" in a.linha
     mesmo_da_ultima = {**item, "quando": "2026-10-06T00:55:00+00:00"}  # depois do 43: ambíguo
@@ -332,3 +335,12 @@ def test_deploy_do_git_no_primeiro_deploy_conhecido_diz_neste_ou_num_anterior():
     a = decidir(c, estado(**{"29.7": item}), agora=AGORA, horas=HORAS, suite_de=lambda p: None,
                 listas_do_historico=HIST, deploy_git=lambda p: -38).acoes[0]
     assert "no ar desde o deploy 38 ou um anterior" in a.linha
+
+
+def test_item_que_fica_para_outro_corte_nao_conta_como_citado_no_deploy():
+    texto = ("## 2026-10-06 — Deploy 47 (suíte 47)\n\n- Itens: 15.15 F7, 31.113 F3, 31.91 T1 na tela, 31.116 e 31.117 ficam para o corte 48.\n"
+             "- Também 29.200, 29.201, segue para o corte 49.\n\n"
+             "## 2026-10-06 — Deploy 46 (suíte 46)\n\n- 31.114 e 31.91.\n")
+    achados = ids_citados_por_deploy(texto)
+    assert "31.116" not in achados and "31.117" not in achados
+    assert achados["15.15"] == 47 and achados["31.113"] == 47 and achados["31.91"] == 46 and achados["31.114"] == 46
