@@ -1,0 +1,256 @@
+// @vitest-environment jsdom
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { ProfileAccount } from '../../api/types';
+import { ConfirmHost } from '../../components/Confirm';
+import { useUiStore } from '../../store/ui';
+import { APPS, makeInstance } from '../../test/fixtures';
+import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { erroDoFormulario, lerTeto, montarCorpo, previaDaCapacidade, resolverAlvo, type FormularioDaOperacao } from './criar';
+import { OperacaoPage } from './OperacaoPage';
+
+/**
+ * 31.176: criar a operação pela tela. Prova `simulated` (servidor falso, formato do adendo v1.94/v1.95): a regra pura de resolução do
+ * alvo, a prévia da capacidade, o corpo enviado (instance_id explícito) e a confirmação com o teto em destaque.
+ */
+
+const conta = (id: string, over: Partial<ProfileAccount> & { instancia?: string | null; sessao?: string } = {}): ProfileAccount => {
+  const { instancia = 'android-02', sessao = 'session_ready', ...resto } = over;
+  return {
+    id, profile_id: 'p', app_id: 'instagram', app_name: 'Instagram', package: null, handle: `@${id}`, status: 'active', session_status: sessao,
+    session_detail: null, session_verified_at: null, session: { status: sessao, instance_id: instancia, observed_username: null, verified_at: null, detail: null, stale: false },
+    automated_login: true, credential_configured: true, ...resto,
+  } as unknown as ProfileAccount;
+};
+const APARELHOS = new Set(['android-02', 'android-03']);
+const VAZIA = { conta: '', aparelho: '' };
+
+describe('resolverAlvo: só o que existe', () => {
+  it('conta ativa com sessão pronta e aparelho conhecido = apto, com o aparelho explícito', () => {
+    const r = resolverAlvo('p1', [conta('a')], 'instagram', VAZIA, APARELHOS);
+    expect(r).toMatchObject({ situacao: 'apto', instanceId: 'android-02', aviso: null });
+    expect(r.conta?.id).toBe('a');
+  });
+  it('sem conta ativa no app (outra conta, conta desligada) = sem_conta', () => {
+    expect(resolverAlvo('p1', [], 'instagram', VAZIA, APARELHOS).situacao).toBe('sem_conta');
+    expect(resolverAlvo('p1', [conta('a', { app_id: 'outlook' })], 'instagram', VAZIA, APARELHOS).situacao).toBe('sem_conta');
+    expect(resolverAlvo('p1', [conta('a', { status: 'disabled' })], 'instagram', VAZIA, APARELHOS).situacao).toBe('sem_conta');
+  });
+  it('conta sem sessão pronta = sem_sessao, mesmo com aparelho escolhido', () => {
+    const r = resolverAlvo('p1', [conta('a', { sessao: 'auth_required' })], 'instagram', { conta: '', aparelho: 'android-03' }, APARELHOS);
+    expect(r.situacao).toBe('sem_sessao');
+    expect(r.instanceId).toBeNull();
+  });
+  it('aparelho que não existe (nem o da sessão) = sem_aparelho', () => {
+    expect(resolverAlvo('p1', [conta('a', { instancia: null })], 'instagram', VAZIA, APARELHOS).situacao).toBe('sem_aparelho');
+    expect(resolverAlvo('p1', [conta('a', { instancia: 'android-99' })], 'instagram', VAZIA, APARELHOS).situacao).toBe('sem_aparelho');
+    expect(resolverAlvo('p1', [conta('a')], 'instagram', { conta: '', aparelho: 'android-77' }, APARELHOS).situacao).toBe('sem_aparelho');
+  });
+  it('com duas contas, a de sessão pronta vem primeiro; a escolhida à mão vale; aparelho diferente da sessão só avisa', () => {
+    const contas = [conta('a', { sessao: 'auth_required' }), conta('b')];
+    expect(resolverAlvo('p1', contas, 'instagram', VAZIA, APARELHOS).conta?.id).toBe('b');
+    expect(resolverAlvo('p1', contas, 'instagram', { conta: 'a', aparelho: '' }, APARELHOS).situacao).toBe('sem_sessao');
+    const r = resolverAlvo('p1', [conta('b')], 'instagram', { conta: '', aparelho: 'android-03' }, APARELHOS);
+    expect(r).toMatchObject({ situacao: 'apto', instanceId: 'android-03' });
+    expect(r.aviso).toContain('android-02');
+  });
+});
+
+describe('prévia, validação e corpo', () => {
+  const ok = resolverAlvo('p1', [conta('a')], 'instagram', VAZIA, APARELHOS);
+  const semConta = resolverAlvo('p2', [], 'instagram', VAZIA, APARELHOS);
+  const semSessao = resolverAlvo('p3', [conta('c', { sessao: 'unknown' })], 'instagram', VAZIA, APARELHOS);
+
+  it('a prévia separa quem vai rodar de quem nasce parado', () => {
+    expect(previaDaCapacidade([ok, semConta, semSessao])).toEqual({ solicitados: 3, comConta: 2, comSessao: 1, aptos: 1, paradosNaCriacao: 2 });
+    expect(previaDaCapacidade([])).toMatchObject({ solicitados: 0, aptos: 0, paradosNaCriacao: 0 });
+  });
+  it('lerTeto aceita vírgula e ponto, até 4 casas; texto e negativo não são número', () => {
+    expect(lerTeto('2,5')).toBe(2.5);
+    expect(lerTeto(' 3.1234 ')).toBe(3.1234);
+    for (const t of ['', 'abc', '-1', '1,2,3', '1e3', '2,55555']) expect(lerTeto(t)).toBeNull();
+  });
+  const base: FormularioDaOperacao = { command: 'comentar', appId: 'instagram', acaoFinal: 'preparar', assunto: '', maxUsd: '2', selecionados: ['p1'] };
+  it('erroDoFormulario: a ordem em que a pessoa preenche, e os limites do contrato', () => {
+    expect(erroDoFormulario(base)).toBeNull();
+    expect(erroDoFormulario({ ...base, command: '  ' })).toMatch(/objetivo/);
+    expect(erroDoFormulario({ ...base, appId: '' })).toMatch(/app/);
+    expect(erroDoFormulario({ ...base, selecionados: [] })).toMatch(/persona/);
+    expect(erroDoFormulario({ ...base, selecionados: Array.from({ length: 65 }, (_, i) => `p${i}`) })).toMatch(/até 64/);
+    expect(erroDoFormulario({ ...base, maxUsd: '' })).toMatch(/teto/);
+    expect(erroDoFormulario({ ...base, maxUsd: '0' })).toMatch(/maior que zero/);
+    expect(erroDoFormulario({ ...base, maxUsd: '100,5' })).toMatch(/até US\$ 100/);
+    expect(erroDoFormulario({ ...base, assunto: 'ab' })).toMatch(/assunto/);
+    expect(erroDoFormulario({ ...base, assunto: 'x'.repeat(501) })).toMatch(/assunto/);
+    expect(erroDoFormulario({ ...base, assunto: 'abc' })).toBeNull();
+  });
+  it('montarCorpo: instance_id e account_id explícitos só onde existem; assunto vazio não vai', () => {
+    expect(montarCorpo({ ...base, command: '  comentar  ', maxUsd: '2,5' }, [ok, semConta])).toEqual({
+      command: 'comentar', app_id: 'instagram', acao_final: 'preparar', max_usd: 2.5,
+      alvos: [{ profile_id: 'p1', account_id: 'a', instance_id: 'android-02' }, { profile_id: 'p2' }],
+    });
+    expect(montarCorpo({ ...base, assunto: ' tema ' }, [ok]).assunto).toBe('tema');
+  });
+});
+
+let root: Root;
+let container: HTMLElement;
+let backend: FakeBackend;
+
+beforeAll(() => installBrowserStubs());
+beforeEach(() => {
+  backend = new FakeBackend();
+  backend.install();
+  backend.on('GET', /^\/api\/apps$/, () => json([{ ...APPS[0]!, id: 'instagram', name: 'Instagram' }, APPS[1]]));
+  backend.on('GET', /^\/api\/instances$/, () => json([makeInstance(2), makeInstance(3)]));
+  backend.on('GET', /^\/api\/instagram\/profiles$/, () => json([
+    { id: 'p1', persona_name: 'Ana', display_name: null }, { id: 'p2', persona_name: 'Bia', display_name: null }, { id: 'p3', persona_name: 'Caio', display_name: null },
+  ]));
+  backend.on('GET', /^\/api\/instagram\/profiles\/p1\/accounts$/, () => json([conta('ana')]));
+  backend.on('GET', /^\/api\/instagram\/profiles\/p2\/accounts$/, () => json([conta('bia', { sessao: 'auth_required' })]));
+  backend.on('GET', /^\/api\/instagram\/profiles\/p3\/accounts$/, () => json([]));
+  useUiStore.setState({ rota: { ...useUiStore.getState().rota, tela: 'operacoes', segmentos: ['nova'], query: {} } });
+  container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+});
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+  useUiStore.setState({ rota: { ...useUiStore.getState().rota, segmentos: [] } });
+});
+
+const abrir = async () => {
+  await act(async () => root.render(<><OperacaoPage /><ConfirmHost /></>));
+  await waitFor(() => expect(container.querySelector('form')).not.toBeNull());
+};
+const campo = <E extends HTMLElement>(rotulo: RegExp): E => {
+  const l = Array.from(container.querySelectorAll('label')).find((x) => rotulo.test(x.textContent ?? ''));
+  if (!l) throw new Error(`sem campo ${String(rotulo)}`);
+  return document.getElementById(l.htmlFor) as E;
+};
+const caixa = (id: string) => container.querySelector(`li[data-persona="${id}"] input[type="checkbox"]`) as HTMLInputElement;
+const preencher = async () => {
+  await setValue(campo<HTMLTextAreaElement>(/^Objetivo/), 'Comentar na última publicação');
+  await setValue(campo<HTMLInputElement>(/^Teto de custo/), '2,5');
+  for (const p of ['p1', 'p2', 'p3']) await click(caixa(p));
+  await waitFor(() => expect(container.querySelectorAll('li[data-persona] [data-situacao]')).toHaveLength(3));
+};
+const botao = () => byRole('button', /^Criar a operação/, container);
+
+describe('a tela "Nova operação"', () => {
+  it('só envia com tudo preenchido; a prévia mostra quem roda e quem nasce parado, com a regra de cada um', async () => {
+    await abrir();
+    expect(text(container)).toContain('Nova operação');
+    expect((campo<HTMLSelectElement>(/^App/)).value).toBe('instagram');
+    expect(botao().getAttribute('aria-disabled')).toBe('true');
+    await preencher();
+    const previa = container.querySelector('[data-previa]')!;
+    expect(text(previa)).toMatch(/3Escolhidas/);
+    expect(text(previa)).toMatch(/2Com conta/);
+    expect(text(previa)).toMatch(/1Com aparelho \(vão rodar\)/);
+    expect(text(previa)).toMatch(/2Nascem paradas/);
+    expect(container.querySelector('li[data-persona="p1"] [data-situacao]')?.getAttribute('data-situacao')).toBe('apto');
+    expect(container.querySelector('li[data-persona="p2"] [data-situacao]')?.getAttribute('data-situacao')).toBe('sem_sessao');
+    expect(container.querySelector('li[data-persona="p3"] [data-situacao]')?.getAttribute('data-situacao')).toBe('sem_conta');
+    expect(text(container.querySelector('li[data-persona="p1"]')!)).toContain('Aparelho: android-02');
+    expect(botao().getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('confirma com o teto em destaque e envia o corpo com instance_id explícito e a chave; depois abre a operação criada', async () => {
+    backend.on('POST', /^\/api\/operacoes$/, () => json({ id: 'op-nova', command: 'x', alvos: [] }, 201));
+    await abrir();
+    await preencher();
+    await click(botao());
+    const d = await waitFor(() => byRole('dialog', /Criar a operação\?/));
+    expect(text(d.querySelector('[data-teto-em-destaque]')!)).toContain('Teto de custo: US$ 2,50');
+    expect(text(d)).toContain('3 personas: 1 vai rodar, 2 nascem parados');
+    expect(text(d)).toContain('Só preparar');
+    expect(backend.callsTo('POST', /operacoes$/)).toHaveLength(0);                          // nada sai antes da confirmação
+    await click(byRole('button', /^Criar a operação$/, d));
+    await waitFor(() => expect(backend.callsTo('POST', /operacoes$/)).toHaveLength(1));
+    const corpo = backend.callsTo('POST', /operacoes$/)[0]!.body as Record<string, unknown>;
+    expect(corpo).toMatchObject({
+      command: 'Comentar na última publicação', app_id: 'instagram', acao_final: 'preparar', max_usd: 2.5,
+      alvos: [{ profile_id: 'p1', account_id: 'ana', instance_id: 'android-02' }, { profile_id: 'p2', account_id: 'bia' }, { profile_id: 'p3' }],
+    });
+    expect(typeof corpo.idempotency_key).toBe('string');
+    await waitFor(() => expect(useUiStore.getState().rota.segmentos).toEqual(['op-nova']));
+  });
+
+  it('"Voltar" na confirmação não cria nada', async () => {
+    await abrir();
+    await preencher();
+    await click(botao());
+    const d = await waitFor(() => byRole('dialog', /Criar a operação\?/));
+    await click(byRole('button', /^Voltar$/, d));
+    expect(backend.callsTo('POST', /operacoes$/)).toHaveLength(0);
+    expect(useUiStore.getState().rota.segmentos).toEqual(['nova']);
+  });
+
+  it('recusa do servidor aparece na tela e a nova tentativa do mesmo corpo reaproveita a chave', async () => {
+    let n = 0;
+    backend.on('POST', /^\/api\/operacoes$/, () => (++n === 1 ? apiError(409, 'credencial_no_comando', 'O objetivo parece conter uma credencial.') : json({ id: 'op-2', alvos: [] }, 201)));
+    await abrir();
+    await preencher();
+    for (let i = 0; i < 2; i++) {
+      await click(botao());
+      const d = await waitFor(() => byRole('dialog', /Criar a operação\?/));
+      await click(byRole('button', /^Criar a operação$/, d));
+      await waitFor(() => expect(backend.callsTo('POST', /operacoes$/)).toHaveLength(i + 1));
+      if (i === 0) await waitFor(() => expect(text(container)).toContain('parece conter uma credencial'));
+    }
+    const [a, b] = backend.callsTo('POST', /operacoes$/).map((c) => (c.body as { idempotency_key: string }).idempotency_key);
+    expect(a).toBe(b);
+  });
+
+  it('escolher o aparelho e a conta à mão vai no corpo; só aparecem os aparelhos que existem', async () => {
+    backend.on('POST', /^\/api\/operacoes$/, () => json({ id: 'op-3', alvos: [] }, 201));
+    await abrir();
+    await setValue(campo<HTMLTextAreaElement>(/^Objetivo/), 'Comentar');
+    await setValue(campo<HTMLInputElement>(/^Teto de custo/), '1');
+    await click(caixa('p1'));
+    const li = await waitFor(() => { const x = container.querySelector('li[data-persona="p1"] select'); if (!x) throw new Error('sem selects'); return container.querySelector('li[data-persona="p1"]')!; });
+    const aparelho = Array.from(li.querySelectorAll('select')).find((s) => s.id && /Aparelho/.test(li.querySelector(`label[for="${s.id}"]`)?.textContent ?? ''))!;
+    expect(Array.from(aparelho.options).map((o) => o.value)).toEqual(['', 'android-02', 'android-03']);
+    await setValue(aparelho, 'android-03');
+    expect(text(li)).toContain('A sessão desta conta está em android-02, não em android-03');
+    await click(botao());
+    const d = await waitFor(() => byRole('dialog', /Criar a operação\?/));
+    await click(byRole('button', /^Criar a operação$/, d));
+    await waitFor(() => expect(backend.callsTo('POST', /operacoes$/)).toHaveLength(1));
+    expect((backend.callsTo('POST', /operacoes$/)[0]!.body as { alvos: unknown[] }).alvos).toEqual([{ profile_id: 'p1', account_id: 'ana', instance_id: 'android-03' }]);
+  });
+
+  it('trocar o app esquece a conta escolhida à mão (a conta de um app não serve a outro)', async () => {
+    await abrir();
+    await click(caixa('p1'));
+    await waitFor(() => expect(container.querySelector('li[data-persona="p1"] [data-situacao="apto"]')).not.toBeNull());
+    await setValue(campo<HTMLSelectElement>(/^App/), 'notes');
+    await waitFor(() => expect(container.querySelector('li[data-persona="p1"] [data-situacao="sem_conta"]')).not.toBeNull());
+  });
+
+  it('personas que não carregam: erro com "tentar de novo", nunca formulário vazio', async () => {
+    backend.on('GET', /^\/api\/instagram\/profiles$/, () => apiError(500, 'falha', 'sem lista'));
+    await act(async () => root.render(<><OperacaoPage /><ConfirmHost /></>));
+    await waitFor(() => expect(text(container)).toContain('Tentar de novo'));
+    expect(container.querySelector('form')).toBeNull();
+  });
+});
+
+describe('a lista leva à criação', () => {
+  it('"Nova operação" abre o formulário; com a rota ausente (exemplo) o botão fica desabilitado com o motivo', async () => {
+    useUiStore.setState({ rota: { ...useUiStore.getState().rota, tela: 'operacoes', segmentos: [] } });
+    backend.on('GET', /^\/api\/operacoes$/, () => json({ items: [] }));
+    await act(async () => root.render(<><OperacaoPage /><ConfirmHost /></>));
+    await click(await waitFor(() => byRole('button', /^Nova operação$/, container)));
+    expect(useUiStore.getState().rota.segmentos).toEqual(['nova']);
+
+    useUiStore.setState({ rota: { ...useUiStore.getState().rota, tela: 'operacoes', segmentos: [] } });
+    backend.on('GET', /^\/api\/operacoes$/, () => apiError(404, 'nao_encontrado', 'não existe'));
+    await act(async () => { root.unmount(); root = createRoot(container); root.render(<><OperacaoPage /><ConfirmHost /></>); });
+    const b = await waitFor(() => byRole('button', /^Nova operação — indisponível: O central ainda não oferece o módulo de operações/, container));
+    expect(b.getAttribute('aria-disabled')).toBe('true');
+  });
+});

@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, FlaskConical, Hourglass, Play, ShieldCheck, ShieldQuestion, Workflow, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CircleX, FlaskConical, Hourglass, Play, Plus, ShieldCheck, ShieldQuestion, Workflow, type LucideIcon } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -17,6 +17,7 @@ import { toast, toastError } from '../../store/toasts';
 import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { apiOperacoes, type ListaDeOperacoes } from './api';
+import { CriarOperacao } from './CriarOperacao';
 import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
@@ -33,6 +34,9 @@ import {
  * déficit aparece, não se esconde. Só leitura, exceto o cancelar (com confirmação). Contrato: rascunho do adendo v1.94; até a
  * rota existir no central, a tela lê um exemplo fixo e diz isso.
  */
+
+/** O segmento da rota que abre o formulário de criação (`#/operacoes/nova`); os ids de operação nunca têm esta forma. */
+const ROTA_NOVA = 'nova';
 
 const TOM_DO_ESTADO: Record<EstadoDoAlvo, Tone> = { pendente: 'muted', em_curso: 'info', concluido: 'success', bloqueado: 'warning', cancelado: 'muted' };
 const ICONE_DO_ESTADO: Record<EstadoDoAlvo, LucideIcon> = { pendente: Hourglass, em_curso: Play, concluido: CircleCheck, bloqueado: ShieldQuestion, cancelado: CircleX };
@@ -360,7 +364,11 @@ function ListaDeOperacoes() {
   if (erro && !dado) return <Page title="Operação"><LoadErrorState what="as operações" error={erro} onRetry={recarregar} /></Page>;
   const itens: ResumoDaOperacao[] = dado?.itens ?? [];
   return (
-    <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim.">
+    <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim."
+          actions={(
+            <Button size="sm" variant="primary" icon={Plus} disabledReason={dado?.exemplo ? 'O central ainda não oferece o módulo de operações.' : null}
+                    onClick={() => useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_NOVA] })}>Nova operação</Button>
+          )}>
       {erro && dado ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {dado?.exemplo ? AVISO_DE_EXEMPLO : null}
       {itens.length === 0 ? (
@@ -385,5 +393,6 @@ function ListaDeOperacoes() {
 export function OperacaoPage() {
   useEffect(() => { document.title = 'Operação · Central de Aparelhos'; }, []);
   const id = useUiStore((s) => s.rota.segmentos[0]);
+  if (id === ROTA_NOVA) return <CriarOperacao />;
   return id ? <DetalheDaOperacao key={id} id={id} /> : <ListaDeOperacoes />;
 }
