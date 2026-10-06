@@ -222,6 +222,7 @@ def test_o_novo_morre_o_is_up_falha_e_o_dono_da_porta_decide(tmp_path: Path,
 def test_a_porta_ser_do_novo_prova_sem_a_frase_do_listener(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Uma versão do Appium que mude a frase não deixa o `start()` girar 60 s e dar falso com o servidor vivo."""
     server = _server(tmp_path)
+    monkeypatch.setattr(server, "_ainda_e_o_provado", lambda _pid: True)    # pid de mentira: a reconferência tem teste próprio (29.126)
     _com_appium_instalado(server, tmp_path, monkeypatch)
     monkeypatch.setattr(server, "_reuse_running", lambda: False)
     criados = _subir_com(monkeypatch, server, roteiro=["Loaded 3 filtering rules\n", "HTTP server ready\n"],

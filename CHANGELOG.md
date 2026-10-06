@@ -124,6 +124,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Limite honesto: o estágio é derivado quando alguém lê a operação (o painel ou o GET), e os eventos `operacao.alvo` saem
     nessa leitura, não no instante da mudança.
 
+## 2026-10-06 — 29.126, correção: a prova do mascaramento de log vale para o processo provado, não para sempre (branch fix/29-126-mascaramento-revalidado)
+
+- Achado da revisão de segredos (leitura, 06/10) sobre o caminho readoção do Appium → mascaramento → digitação de credencial: `AppiumServer.log_masking_active` era marcada na subida ou na
+  readoção e só zerava em `stop()`, no ramo externo da readoção e numa falha de readoção. `ensure_automation` só chama `start()` quando `is_up()` é falso, então, se o nosso Appium provado
+  morresse e um externo assumisse a porta, a marca ficava True e o `SensitiveInputChannel.fill` digitava credencial num servidor sem prova de máscara. Eu tinha dado o item por coberto pelo
+  29.132/29.138; esses cuidam da DECISÃO na subida, não da validade da prova depois.
+- Mudança (`app/automation/appium_server.py`): `log_masking_active` virou propriedade. A prova de um processo (`_provar(pid)`) é reconferida a cada leitura, com o resultado guardado por 2 s: o processo
+  tem de estar vivo, ser nosso e ser dono da porta (todos os donos nossos e o pid entre eles); sem ver os donos vale o processo nosso e vivo (o mesmo critério da readoção). Marcar de fora
+  (`log_masking_active = True`, como o harness e os testes de login) segue valendo sem processo. `start()` zera a marca ao entrar (a prova de uma subida anterior não vale para esta) e ganhou
+  uma trava, para duas subidas não se sobreporem.
+- Não coberto: o TOCTOU de milissegundos DENTRO de `fill` (a marca é lida uma vez antes de tocar o campo); o `appium.pid` ainda vale quando o sistema não mostra os donos da porta
+  (comportamento travado pelo teste do 29.138); que a regra carregada cubra o comando que `type_text` usa não foi verificado.
+- Prova `simulated`: `tests/test_mascaramento_revalidado.py` (11 testes: processo vivo e dono, externo assume a porta, alheio ao lado, pid provado fora dos donos, processo morto, donos invisíveis, validade de 2 s,
+  marca de fora, o canal sensível acompanha, `start` zera, duas subidas não se sobrepõem); 5 testes de prova na subida passaram a fixar `_ainda_e_o_provado` (pids de mentira; a reconferência tem teste próprio).
+  `real`: `not_run` (pede um Appium externo tomando a porta de um backend vivo).
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).

@@ -62,6 +62,7 @@ def test_nao_prova_quando_o_arquivo_de_regras_foi_alterado(tmp_path: Path, monke
 
 def test_readocao_marca_mascaramento_ativo_quando_comprovado(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     server = _server(tmp_path)
+    monkeypatch.setattr(server, "_ainda_e_o_provado", lambda _pid: True)    # pid de mentira: a reconferência tem teste próprio (29.126)
     filtros = _write_rules(server.cfg)
     server._pid_file.parent.mkdir(parents=True, exist_ok=True)
     server._pid_file.write_text("777", encoding="ascii")
