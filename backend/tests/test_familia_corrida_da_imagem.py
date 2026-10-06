@@ -12,7 +12,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from app import state as state_mod
+from app import gates as gates_mod
 from app.social.policy import ContextoDoPedido
 
 from .test_porta_do_plano import _plano, _sem_iniciar
@@ -35,7 +35,7 @@ async def test_duas_personas_do_pedido_com_a_mesma_imagem_uma_segue_e_a_outra_e_
     _plano(state, [POST], aparelho="android-02", run_id="run-b")
     perfis = frozenset(r["profile_id"] for r in state.db.query("SELECT profile_id FROM objectives"))
     assert len(perfis) == 2
-    monkeypatch.setattr(state_mod, "contexto_do_pedido",
+    monkeypatch.setattr(gates_mod, "contexto_do_pedido",
                         lambda _db, _run: ContextoDoPedido(raiz="ped-1", familia=perfis))
     vereditos: dict[str, Any] = {}
 

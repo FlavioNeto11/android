@@ -17,12 +17,11 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from .automation.appium_driver import appium_no_ar
 from .contexto import contexto_do_aparelho
-from .storage import DISK, DiskStorage, Storage, StorageError
+from .storage import DISK, DiskStorage, Storage
 from .commands.states import COMMAND_OPEN, COMMAND_UNSETTLED, InvalidCommandTransition
 from .commands.reconciler import VERIFICAVEL_POR_ESTADO, verificar_comando
 from .commands.store import command_dto
@@ -38,6 +37,9 @@ from .devices.adb import AdbError
 from .devices import conectividade
 from .devices.manager import DeviceRuntime
 from .modules.fleet.presentation.comum import quem
+from .modules.identity.presentation.comum import mime_da_chave as _mime_da_chave
+from .modules.identity.presentation.comum import servir_do_storage as _servir_do_storage
+from .modules.identity.presentation.comum import social_error as _social_error
 from .modules.applications.presentation.comum import device
 from .devices.proxy import ProxyApplyBody, ProxyInput  # modelos da loja de apps fora de models.py (menos conflito)
 from .integrations.app_declarado.prova import prova_do_pacote
@@ -46,17 +48,10 @@ from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ApprovalBatc
                      AppPatch, CapabilityDTO, CommandCancelBody, CommandResolveBody, CommandState, InstanceState,
                      TrainingSaveBody, TrainingStartBody, PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountDTO, ProfileAccountPatch, ProfilePolicyPatch, CredentialClone, CredentialUpdate,
-                     MemoryCreate, PersonaCreate, PersonaDTO, PersonaDeviceBody, PersonaImageDTO, PersonaOnDeviceDTO,
-                     PersonaPatch, PersonaPreviewBody, ProfileCreate, ProfilePatch, SessionStatus, StoreBody,
-                     LoginBody, PanelSessionInfo, ResolveBody, RunCreate, RunTargetsPreview, RunTargetsResolveBody)
+                     MemoryCreate, ProfileCreate, ProfilePatch, SessionStatus, StoreBody, LoginBody, PanelSessionInfo,
+                     ResolveBody, RunCreate, RunTargetsPreview, RunTargetsResolveBody)
 from .metricas import metricas
 from .contracts.skills.resolve import SkillResolveRequest
-from .modules.identity.adapters.pos_processamento import dimensoes
-from .modules.identity.domain.persona import MAIORIDADE
-from .modules.identity.domain.persona_image import OrcamentoEsgotado
-from .modules.identity.infrastructure.persona_images import imagens_dto
-from .modules.identity.presentation.schemas import (FeitaPorIaBody, PersonaBatchBody, PersonaEnrichBody, PersonaGenerateBody,
-                                                     PersonaImagesBody)
 from .modules.learning.domain.vocabulario import LivroKind
 from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.presentation.livro import mudar_status_legado
@@ -80,7 +75,6 @@ from .workers.registry import WorkerError, motivo_do_conflito
 from .version import agent_version, codigo_do_agente
 from .planning.capabilities import load_catalog
 from .planning.catalog import registered
-from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
 from .social.excecoes import ExcecaoEmUso, ExcecaoInvalida
 from .social.service import SocialError
 from .taskqueue import observabilidade
@@ -756,10 +750,6 @@ async def delete_app(request: Request, app_id: str) -> Response:
 
 # ====================================================================== instâncias
 # ====================================================================== perfis do Instagram
-def _social_error(exc: SocialError) -> HTTPException:
-    return err(exc.status, exc.code, exc.message)
-
-
 @router.get("/instagram/profiles")
 async def list_profiles(request: Request) -> Any:
     return st(request).social.list_profiles()
@@ -1070,260 +1060,7 @@ async def _start_session_job(request: Request, profile_id: str, *, force_login: 
 
 
 # ====================================================================== persona, memória e histórico
-@router.get("/personas")
-async def list_personas(request: Request) -> Any:
-    return st(request).social.list_personas()
-
-
-@router.post("/personas", status_code=201)
-async def create_persona(request: Request, body: PersonaCreate) -> Any:
-    """Cria a PESSOA (sem conta em app nenhum). Com `ai.image.on_create`, as primeiras imagens saem em segundo plano
-    pelo gerador configurado (simulado por omissão) e chegam pelo evento `persona.image.updated`."""
-    try:
-        return st(request).criar_persona(body)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-# Declaradas antes de `/personas/{persona_id}`: `generate` é caminho literal, nunca um id de persona.
-@router.post("/personas/generate/batch", status_code=202)
-async def generate_persona_batch(request: Request, body: PersonaBatchBody) -> PersonaBatchAccepted:
-    """Personas em LOTE (v0.34): o mesmo pedido, `count` vezes (1 a 10), em segundo plano com concorrência 2. Cada
-    item é uma chamada PAGA pelo papel social, pelo mesmo caminho de `POST /personas/generate`; `create: true` grava
-    cada rascunho válido (com a foto automática). O progresso chega por `persona.batch.updated`; o estado, por
-    `GET /personas/generate/batch/{id}`. Sem provedor de IA, 503 antes de aceitar."""
-    try:
-        lote = st(request).lotes_de_persona.iniciar(body)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-    return PersonaBatchAccepted(batch_id=lote.batch_id, count=lote.count)
-
-
-@router.get("/personas/generate/batch/{batch_id}")
-async def get_persona_batch(request: Request, batch_id: str) -> PersonaBatchDTO:
-    """O estado do lote. Vive na MEMÓRIA do servidor: um reinício o perde (são rascunhos; o que foi criado está no
-    banco), e aí a resposta é 404."""
-    lote = st(request).lotes_de_persona.obter(batch_id)
-    if lote is None:
-        raise err(404, "not_found", "Lote não encontrado: os lotes vivem na memória do servidor e somem num "
-                                    "reinício. As personas já criadas estão na lista.")
-    return lote
-
-
-@router.get("/personas/{persona_id}")
-async def get_persona(request: Request, persona_id: str) -> Any:
-    try:
-        return st(request).social.get_persona(persona_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.patch("/personas/{persona_id}")
-async def update_persona(request: Request, persona_id: str, body: PersonaPatch) -> Any:
-    try:
-        return st(request).social.update_persona(persona_id, body)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.delete("/personas/{persona_id}", status_code=204)
-async def delete_persona(request: Request, persona_id: str) -> None:
-    try:
-        st(request).social.delete_persona(persona_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.post("/personas/{persona_id}/devices", status_code=201)
-async def bind_persona_device(request: Request, persona_id: str, body: PersonaDeviceBody) -> PersonaDTO:
-    """Vínculo N:N (migração 051): soma um aparelho à persona para um app, sem mover ninguém. Duas contas do mesmo
-    app no mesmo aparelho → 409 `conta_do_app_ja_no_aparelho` (D2-a); a loja e aparelho desconhecido → 400."""
-    try:
-        return st(request).social.bind_device(persona_id, body)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.delete("/personas/{persona_id}/devices/{instance_id}")
-async def unbind_persona_device(request: Request, persona_id: str, instance_id: str,
-                                app_id: str | None = None) -> PersonaDTO:
-    """Desvincula a persona DAQUELE aparelho (com `?app_id=`, só daquele app); o principal que sai é substituído
-    pelo mais antigo que sobrou. Devolve a persona atualizada."""
-    try:
-        return st(request).social.unbind_device(persona_id, instance_id, app_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.put("/personas/{persona_id}/devices/{instance_id}/primary")
-async def set_persona_primary_device(request: Request, persona_id: str, instance_id: str) -> PersonaDTO:
-    """O aparelho principal da persona passa a ser este: alvo padrão de conectar/verificar/sair e do contexto."""
-    try:
-        return st(request).social.set_primary_device(persona_id, instance_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.get("/instances/{instance_id}/personas")
-async def instance_personas(request: Request, instance_id: str) -> list[PersonaOnDeviceDTO]:
-    """Quem está neste aparelho (a outra direção do vínculo N:N), com a sessão de cada uma AQUI."""
-    s = st(request)
-    device(s, instance_id)
-    return s.social.personas_of_instance(instance_id)
-
-
-@router.post("/personas/{persona_id}/preview")
-async def preview_persona(request: Request, persona_id: str, body: PersonaPreviewBody) -> Any:
-    """Testar Persona: mostra como ela responderia. Não toca em aparelho, não grava interação, não publica nada."""
-    try:
-        return await st(request).social.preview_persona(persona_id, body)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.post("/personas/generate")
-async def generate_persona(request: Request, body: PersonaGenerateBody) -> PersonaCreate:
-    """Rascunho de persona por IA (chamada PAGA, papel social, teto do dia). NADA é gravado: a resposta tem o formato
-    de `POST /personas`, para a pessoa revisar e então criar. Rascunho fora das regras (menor, nome que não é nome,
-    voz ou biografia incompletas, texto com cara de segredo) volta como 422 `persona_draft_invalid`."""
-    try:
-        return await st(request).social.generate_persona_draft(body)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-@router.post("/personas/{persona_id}/enrich")
-async def enrich_persona(request: Request, persona_id: str, body: PersonaEnrichBody | None = None) -> PersonaDTO:
-    """Completa SÓ o que está vazio numa persona existente (chamada PAGA). Sem lacuna, devolve a persona sem chamar
-    o modelo; com lacuna, o que já existia nunca é reescrito. `instructions` (opcional) dizem ao modelo o que o dono
-    quer para o que falta — é o "gerar por prompt" aplicado a uma persona que já existe."""
-    try:
-        return await st(request).social.enrich_persona(persona_id, instructions=body.instructions if body else None)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
 # ---------------------------------------------------------------- imagens da persona (048)
-_UPLOAD_DE_IMAGEM = ("image/jpeg", "image/png")
-_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
-
-
-def _pessoa(s: AppState, persona_id: str) -> PersonaDTO:
-    try:
-        return s.social.get_persona(persona_id)
-    except SocialError as exc:
-        raise _social_error(exc) from exc
-
-
-def _mime_da_chave(chave: str) -> str:
-    return "image/png" if chave.lower().endswith(".png") else "image/jpeg"
-
-
-@router.get("/personas/{persona_id}/images")
-async def list_persona_images(request: Request, persona_id: str) -> list[PersonaImageDTO]:
-    s = st(request)
-    return imagens_dto(s.persona_images.listar(_pessoa(s, persona_id).id))
-
-
-@router.post("/personas/{persona_id}/images", status_code=202)
-async def add_persona_images(request: Request, persona_id: str) -> Response:
-    """Duas entradas na mesma rota, distinguidas pelo `Content-Type`:
-
-    - JSON `{count}` (1 a 3): GERA em segundo plano pelo provedor configurado e responde 202; cada imagem chega pelo
-      evento `persona.image.updated`. Teto do dia e chave são conferidos ANTES de aceitar; menor de idade é recusado;
-    - corpo cru `image/jpeg` ou `image/png` (o padrão do envio de APK): UPLOAD de uma foto, 201 com a imagem.
-    """
-    s = st(request)
-    pessoa = _pessoa(s, persona_id)
-    tipo = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
-    corpo = await request.body()
-    if tipo in _UPLOAD_DE_IMAGEM:
-        if len(corpo) > _UPLOAD_MAX_BYTES:
-            raise err(413, "image_too_large", "A imagem passa de 10 MB.")
-        if dimensoes(corpo) is None:
-            raise err(400, "invalid_image", "O corpo não é uma imagem JPEG/PNG legível.")
-        marca = (request.query_params.get("feita_por_ia") or "").strip().lower()
-        if marca not in ("", "true", "false"):
-            raise err(422, "invalid_body", "feita_por_ia é true, false ou ausente (não informado).")
-        registro = await s.persona_images.registrar_upload(pessoa.id, corpo, tipo,
-                                                           feita_por_ia=None if not marca else marca == "true")
-        return JSONResponse(status_code=201, content=imagens_dto([registro])[0].model_dump())
-    try:
-        pedido = PersonaImagesBody.model_validate_json(corpo or b"{}")
-    except ValidationError as exc:
-        raise err(422, "invalid_body", f"Corpo inválido: {exc.errors()[0].get('msg', 'erro de validação')}") from exc
-    gerador = s.persona_images.generator
-    if not gerador.configured:
-        raise err(409, "image_not_configured", f"O provedor de imagem '{gerador.name}' não tem chave configurada "
-                                                "(OPENAI_API_KEY no .env) — ou use ai.image.provider: simulated.")
-    if pessoa.age is not None and pessoa.age < MAIORIDADE:
-        raise err(409, "persona_minor", f"A persona tem {pessoa.age} anos; só se fotografa pessoa adulta.")
-    try:
-        s.persona_images.conferir_orcamento()
-    except OrcamentoEsgotado as exc:
-        raise err(409, "ai_budget", str(exc)) from exc
-    s.agendar_imagens(pessoa.id, pedido.count)
-    return JSONResponse(status_code=202, content={"accepted": True, "persona_id": pessoa.id, "count": pedido.count,
-                                                  "provider": gerador.name, "simulated": gerador.simulated})
-
-
-@router.get("/personas/{persona_id}/images/{image_id}")
-async def get_persona_image(request: Request, persona_id: str, image_id: str) -> Response:
-    """Os bytes da imagem, pelo storage (disco local ou bucket), nunca por caminho vindo da URL."""
-    s = st(request)
-    registro = s.persona_images.obter(_pessoa(s, persona_id).id, image_id)
-    if registro is None:
-        raise err(404, "not_found", "Imagem não encontrada nesta persona.")
-    if registro.status != "ready" or not registro.storage_key:
-        raise err(409, "image_not_ready", f"A imagem está '{registro.status}'." + (f" {registro.error}" if registro.error else ""))
-    return _servir_do_storage(s.avatares, registro.storage_key, _mime_da_chave(registro.storage_key),
-                              ausente=("sem_foto", "O arquivo desta imagem não está no storage."))
-
-
-@router.put("/personas/{persona_id}/images/{image_id}/primary")
-async def set_primary_persona_image(request: Request, persona_id: str, image_id: str) -> PersonaDTO:
-    s = st(request)
-    pessoa = _pessoa(s, persona_id)
-    try:
-        s.persona_images.definir_principal(pessoa.id, image_id)
-    except KeyError:
-        raise err(404, "not_found", "Imagem não encontrada nesta persona.") from None
-    except ValueError as exc:
-        raise err(409, "image_not_ready", str(exc)) from None
-    return s.social.get_persona(pessoa.id)
-
-
-@router.put("/personas/{persona_id}/images/{image_id}/feita-por-ia")
-async def set_persona_image_feita_por_ia(request: Request, persona_id: str, image_id: str,
-                                         body: FeitaPorIaBody) -> PersonaImageDTO:
-    """29.81: o dono diz (ou corrige) se a foto que enviou foi feita por IA. As etapas abertas que publicam a imagem
-    regravam o `rotulo_ia`, e o sim dado antes deixa de cobrir a publicação (a chave muda)."""
-    s = st(request)
-    pid = _pessoa(s, persona_id).id
-    # N2 da revisão: a marca e as etapas abertas mudam juntas; se a regravação falhar no meio, nenhuma das duas fica.
-    with s.db.tx():
-        try:
-            registro, mudou = s.persona_images.marcar_feita_por_ia(pid, image_id, body.feita_por_ia)
-        except KeyError:
-            raise err(404, "not_found", "Imagem não encontrada nesta persona.") from None
-        except ValueError as exc:
-            raise err(409, "nao_e_upload", str(exc)) from None
-        # N3/R1: só a resposta que MUDOU (decidido na escrita, dentro da transação) regrava as etapas abertas.
-        if mudou:
-            s.repo.ressincronizar_rotulo_ia(image_id)
-    return imagens_dto([registro])[0]
-
-
-@router.delete("/personas/{persona_id}/images/{image_id}", status_code=204)
-async def delete_persona_image(request: Request, persona_id: str, image_id: str) -> Response:
-    s = st(request)
-    try:
-        s.persona_images.apagar(_pessoa(s, persona_id).id, image_id)
-    except KeyError:
-        raise err(404, "not_found", "Imagem não encontrada nesta persona.") from None
-    return Response(status_code=204)
-
-
 @router.get("/instagram/profiles/{profile_id}/memory")
 async def list_memory(request: Request, profile_id: str, subject: str | None = None, limit: int = 100,
                       app_id: str | None = None) -> Any:
@@ -1920,28 +1657,6 @@ def _armazem_de(s: AppState, onde: str) -> Storage | None:
     if onde == DISK:
         return DiskStorage(s.cfg.evidence_dir)
     return None
-
-
-def _servir_do_storage(armazem: Storage, chave: str, media_type: str,
-                       *, ausente: tuple[str, str]) -> Any:
-    """Serve um artefato PELA INTERFACE de storage, e não pelo disco deste processo (item 5.7).
-
-    Três caminhos, nesta ordem, porque cada um é o barato do seu back-end:
-
-    1. arquivo local → `FileResponse`, como sempre foi (envio por partes, `Range`, tudo de graça);
-    2. URL pré-assinada → redireciona, e os bytes nem passam pelo backend;
-    3. streaming pela interface — o que sobra quando o cliente do bucket não assina URL.
-    """
-    try:
-        if (local := armazem.local_path(chave)) is not None:
-            return FileResponse(local, media_type=media_type)
-        if (link := armazem.url(chave)) is not None:
-            return RedirectResponse(link, status_code=307)
-        if (corpo := armazem.stream(chave)) is not None:
-            return StreamingResponse(corpo, media_type=media_type)
-    except StorageError as exc:
-        log.warning("chave de storage recusada (%s): %s", chave, exc)
-    raise err(404, ausente[0], ausente[1])
 
 
 @router.get("/evidence/{evidence_id}")
