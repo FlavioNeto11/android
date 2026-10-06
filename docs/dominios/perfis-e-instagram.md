@@ -477,6 +477,12 @@ destilação, o trecho do começo feito no lançador, seguido de entrada já no 
 1ª entrada ganha `open_app` do app (`training/lancador.py`). O 31.121 cobre a gravação que começa dentro do app. A
 gravação não muda.
 
+**A abertura nas receitas antigas (31.138).** As regras do 31.121 e do 31.139 só valem para o que se salva depois
+delas: o único fluxo ensinado ativo e três desligados seguiam com a 1ª receita só com o toque. O passe único
+`scripts/abertura-nas-receitas-ensinadas.py` (`training/reparo_da_abertura.py`) destila de novo cada fluxo ensinado e
+troca a receita viva da etapa que agora abre o app, como a demonstração troca (30.79), na mesma chave e com a trilha
+no livro. Ensaio por padrão; a Android aplica como operadora.
+
 **A origem do fluxo ensinado (31.135, adendo v1.88).** O fluxo só dizia "Demonstrado no treino". Agora a `origin` de
 `GET /api/flows` e a `origem` do conteúdo no Livro trazem, de todo fluxo ensinado, a sessão (`session_id`), o
 aparelho, quem ensinou (`operator`) e quando (`ensinado_em`), no molde do v1.81. Os ids da falha seguem `null` quando

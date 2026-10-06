@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.138: a abertura do app nas receitas ensinadas antes do 31.121 (branch feat/31-130-fluxo-de-prova)
+
+- Achado da leitura dos fluxos ensinados (06/10): a 1ª receita do único fluxo ensinado ativo (194) e de três desligados (200, 201, 205) é só o toque; "alvo ausente ou ambíguo" em 6 de 7 divergências, todas na 1ª ou 2ª etapa.
+- `training/reparo_da_abertura.py` e `scripts/abertura-nas-receitas-ensinadas.py`: destila de novo cada fluxo ensinado com a regra de hoje e troca a receita viva da etapa que agora começa com `open_app` (a troca do treino, 30.79, na mesma chave, com a trilha no livro). Ensaio por padrão, `--aplicar --backup`, idempotente, contagem antes e depois.
+- Prova `simulated`: `tests/test_treino_reparo_da_abertura.py` (2) e `scripts/tests/test_abertura_nas_receitas_ensinadas.py` (1). Real: `not_run` até a Android aplicar no central.
+
 ## 2026-10-06 — 31.139: a abertura pelo lançador vira open_app na receita (branch feat/31-130-fluxo-de-prova)
 
 - Achado da leitura dos fluxos ensinados (06/10): 2 de 9 começam no lançador (gaveta e ícone); a receita 198 guardava o toque no ícone, no layout daquele aparelho, e nunca reproduziu.
