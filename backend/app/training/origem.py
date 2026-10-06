@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..db import Database
+from ..db import Database, loads
+from ..security.redaction import redact
 
 
 
@@ -24,6 +25,8 @@ class OrigemRecusada(Exception):
 #: Etapa que "não deu certo": falhou, ou ficou incerta (incerteza nunca conta como sucesso, e a pessoa pode corrigi-la).
 STATUS_ENSINAVEIS = ("failed", "uncertain")
 MAXIMO_DO_MOTIVO = 400
+MAXIMO_DA_TRILHA = 60
+MAXIMO_DE_EVIDENCIAS = 10
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,13 @@ class OrigemDaFalha:
     motivo: str
 
 
+def _limpo(texto: object, limite: int = MAXIMO_DO_MOTIVO) -> str | None:
+    """Texto do executor ou da etapa que vai para a tela: sem segredo reconhecível e com tamanho limitado."""
+    if texto is None or texto == "":
+        return None
+    return str(redact(str(texto)))[:limite]
+
+
 def origem_da_falha(db: Database, run_id: str, step_id: str) -> OrigemDaFalha:
     etapa = db.one("SELECT id, run_id, key, title, instance_id, status, status_detail FROM steps WHERE id=? AND run_id=?",
                    (step_id, run_id))
@@ -45,10 +55,10 @@ def origem_da_falha(db: Database, run_id: str, step_id: str) -> OrigemDaFalha:
     if etapa["status"] not in STATUS_ENSINAVEIS:
         raise OrigemRecusada("step_not_failed", "Só se ensina a partir de uma etapa que falhou ou ficou incerta.", 409)
     tentativa = db.one("SELECT id, error FROM attempts WHERE step_id=? ORDER BY number DESC LIMIT 1", (step_id,))
-    motivo = str(etapa["status_detail"] or (tentativa["error"] if tentativa else "") or "")
+    motivo = _limpo(etapa["status_detail"] or (tentativa["error"] if tentativa else "")) or ""
     return OrigemDaFalha(run_id=run_id, step_id=step_id, step_key=str(etapa["key"]),
                          attempt_id=str(tentativa["id"]) if tentativa else None, instance_id=str(etapa["instance_id"]),
-                         titulo=str(etapa["title"]), motivo=motivo[:MAXIMO_DO_MOTIVO])
+                         titulo=str(etapa["title"]), motivo=motivo)
 
 
 def origin_da_linha(db: Database, linha: dict[str, object]) -> dict[str, object] | None:
@@ -60,6 +70,35 @@ def origin_da_linha(db: Database, linha: dict[str, object]) -> dict[str, object]
     if not run_id:
         return None
     etapa = db.one("SELECT key, status_detail FROM steps WHERE id=?", (step_id,)) if step_id else None
-    motivo = (str(etapa["status_detail"])[:MAXIMO_DO_MOTIVO] if etapa and etapa["status_detail"] else None)
+    motivo = _limpo(etapa["status_detail"]) if etapa else None
     return {"run_id": run_id, "step_id": step_id, "step_key": str(etapa["key"]) if etapa else None,
             "attempt_id": attempt_id, "motivo": motivo}
+
+
+def contexto_da_falha(db: Database, run_id: str, step_id: str, attempt_id: str | None) -> dict[str, object]:
+    """31.111 F2: o que a pessoa precisa ver para corrigir: a trilha da execução naquele aparelho, o que a etapa esperava
+    (a pós-condição), a tentativa que falhou e as evidências dela. SÓ LEITURA, sem IA, sem copiar nada: o que mudou ou foi
+    apagado depois some daqui (a limpeza de execuções velhas), e `disponivel` fica falso. A tela em si não vai no JSON:
+    cada evidência traz o `id` que `GET /api/evidence/{id}` serve (e recusa quando a imagem foi redigida)."""
+    etapa = db.one("SELECT instance_id, plan_version, postcondition FROM steps WHERE id=? AND run_id=?", (step_id, run_id))
+    if etapa is None:
+        return {"disponivel": False}
+    trilha = [{"step_id": r["id"], "step_key": r["key"], "titulo": _limpo(r["title"], 200), "status": r["status"],
+               "motivo": _limpo(r["status_detail"]) if r["status"] in STATUS_ENSINAVEIS else None,
+               "falhou": r["id"] == step_id}
+              for r in db.query("SELECT id, key, title, status, status_detail FROM steps WHERE run_id=? AND instance_id=?"
+                                " AND plan_version=? ORDER BY seq LIMIT ?",
+                                (run_id, etapa["instance_id"], etapa["plan_version"], MAXIMO_DA_TRILHA))]
+    pos = loads(etapa["postcondition"], {})
+    esperado = {k: _limpo(pos.get(k), 300) for k in ("kind", "value", "description")} if isinstance(pos, dict) else None
+    tentativa = db.one("SELECT number, status, error, failure_kind, failure_screen, strategy FROM attempts WHERE id=?",
+                       (attempt_id,)) if attempt_id else None
+    evidencias = [{"id": r["id"], "kind": r["kind"], "nota": _limpo(r["note"], 200),
+                   "disponivel": bool(r["path"]) and not r["redacted"]}
+                  for r in db.query("SELECT id, kind, note, path, redacted FROM evidence WHERE attempt_id=? ORDER BY id LIMIT ?",
+                                    (attempt_id, MAXIMO_DE_EVIDENCIAS))] if attempt_id else []
+    return {"disponivel": True, "trilha": trilha, "esperado": esperado,
+            "tentativa": ({"number": tentativa["number"], "status": tentativa["status"], "erro": _limpo(tentativa["error"]),
+                           "failure_kind": tentativa["failure_kind"], "failure_screen": _limpo(tentativa["failure_screen"], 200),
+                           "strategy": tentativa["strategy"]} if tentativa else None),
+            "evidencias": evidencias}

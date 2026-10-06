@@ -19,7 +19,7 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-10-06 — 31.111 F1: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
+## 2026-10-06 — 31.111 F1 e F2: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
 
 - `POST /api/training/from-run` `{run_id, step_id, lease_id, intent?, app_id?, profile_id?}` abre uma sessão de ensino ligada à
   etapa que falhou (ou ficou incerta). O aparelho é o da etapa; as travas são as do treino de hoje: só a pessoa com o
@@ -28,7 +28,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - A sessão guarda três ids opacos (migração 119, `origin_run_id`, `origin_step_id`, `origin_attempt_id`, sem chave
   estrangeira) e `GET /api/training/{id}` e a lista passam a trazer `origin: {run_id, step_id, step_key, attempt_id, motivo}`
   (`null` na gravação comum); o motivo é o literal do executor, lido da etapa na hora. As colunas `origin_*` não vazam.
-- Fica para o F2: a trilha, a tela e a pós-condição; para o F4 (Aprendizado): `origin.diagnostico`.
+- F2: `GET /api/training/{id}` traz também `origin.context` (a lista não): a trilha da execução naquele aparelho, a
+  pós-condição esperada, a tentativa que falhou e as evidências dela (o `id` que `GET /api/evidence/{id}` serve; a imagem
+  redigida vem como indisponível). Só leitura, sem IA, e todo texto do executor passa pelo mascaramento de segredo, o
+  `motivo` do F1 também (o teste do F2 pegou o `motivo` saindo sem máscara). Adendo v1.75 do contrato.
+- Fica para o F4 (Aprendizado): `origin.diagnostico`.
 - Prova: `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
 
 ## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)

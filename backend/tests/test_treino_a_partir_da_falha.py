@@ -50,10 +50,12 @@ async def test_abre_a_sessao_ligada_a_etapa_e_a_ultima_tentativa(harness: Harnes
         assert sessao["status"] == "recording" and sessao["instance_id"] == "android-01"
         assert sessao["intent"] == "Corrigir a etapa «Enviar a mensagem»"
         esperado = {"run_id": run, "step_id": step, "step_key": "enviar", "attempt_id": f"{step}:a2", "motivo": MOTIVO}
+        contexto = sessao["origin"].pop("context")                            # o F2 (detalhe) acrescenta o contexto
+        assert contexto["disponivel"] is True
         assert sessao["origin"] == esperado
         assert not any(k.startswith("origin_") for k in sessao)             # as colunas não vazam, só `origin`
         lido = (await c.get(f"/api/training/{sessao['id']}")).json()
-        assert lido["origin"] == esperado
+        assert {k: v for k, v in lido["origin"].items() if k != "context"} == esperado
         lista = (await c.get("/api/training", params={"instance_id": "android-01"})).json()
         assert [x["origin"] for x in lista] == [esperado]
     assert rt.training_session_id == sessao["id"]
@@ -109,3 +111,47 @@ async def test_a_gravacao_comum_nao_tem_origem_e_a_limpeza_da_etapa_nao_derruba_
     origem = st.training.get(sid)["origin"]
     assert origem["run_id"] == run and origem["step_id"] == step and origem["attempt_id"] == f"{step}:a2"
     assert origem["step_key"] is None and origem["motivo"] is None
+
+
+async def test_o_detalhe_traz_a_trilha_o_esperado_a_tentativa_e_as_evidencias_e_a_lista_nao(harness: Harness) -> None:
+    st, _rt, lease = await _com_controle(harness)
+    run, step = _execucao(st, tentativas=2)
+    st.db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+                  " postcondition, timeout_s, max_attempts, status) VALUES (?,?,?,?,1,0,'abrir','Abrir o app','Abrir o app',"
+                  "'{}',60,3,'succeeded')", (f"{run}:android-01:v1:abrir", run, f"{run}:o1", "android-01"))
+    st.db.execute("UPDATE steps SET postcondition=? WHERE id=?",
+                  ('{"kind":"text_visible","value":"Mensagem enviada","description":"A conversa mostra o envio.",'
+                   '"required_delivery_level":null}', step))
+    st.db.execute("UPDATE attempts SET failure_kind='postcondition', failure_screen='Conversa', strategy='recipe'"
+                  " WHERE id=?", (f"{step}:a2",))
+    for i, (kind, caminho, redigida) in enumerate([("screenshot", "ev/a.png", 0), ("screenshot", "ev/b.png", 1),
+                                                    ("hierarchy", None, 0)]):
+        st.db.execute("INSERT INTO evidence(run_id, instance_id, step_id, attempt_id, ts, kind, note, path, redacted)"
+                      " VALUES (?,?,?,?,?,?,?,?,?)", (run, "android-01", step, f"{step}:a2", TS, kind,
+                                                      f"nota {i}", caminho, redigida))
+    async with _cliente(harness) as c:
+        sessao = (await c.post("/api/training/from-run", json={"run_id": run, "step_id": step, "lease_id": lease})).json()
+        ctx = (await c.get(f"/api/training/{sessao['id']}")).json()["origin"]["context"]
+        lista = (await c.get("/api/training")).json()
+    assert [(t["step_key"], t["status"], t["falhou"]) for t in ctx["trilha"]] == [("abrir", "succeeded", False),
+                                                                                 ("enviar", "failed", True)]
+    assert ctx["trilha"][0]["motivo"] is None and ctx["trilha"][1]["motivo"] == MOTIVO     # motivo só de quem não deu certo
+    assert ctx["esperado"] == {"kind": "text_visible", "value": "Mensagem enviada", "description": "A conversa mostra o envio."}
+    assert ctx["tentativa"] == {"number": 2, "status": "failed", "erro": "erro 2", "failure_kind": "postcondition",
+                                "failure_screen": "Conversa", "strategy": "recipe"}
+    assert [(e["kind"], e["disponivel"]) for e in ctx["evidencias"]] == [("screenshot", True), ("screenshot", False),
+                                                                        ("hierarchy", False)]   # redigida e sem arquivo
+    assert all("context" not in (x["origin"] or {}) for x in lista)
+
+
+async def test_o_contexto_nao_leva_segredo_e_some_quando_a_execucao_foi_limpa(harness: Harness) -> None:
+    st, _rt, lease = await _com_controle(harness)
+    run, step = _execucao(st)
+    st.db.execute("UPDATE steps SET status_detail=? WHERE id=?",
+                  ("o executor leu password=hunter2-segredo na tela", step))
+    async with _cliente(harness) as c:
+        sessao = (await c.post("/api/training/from-run", json={"run_id": run, "step_id": step, "lease_id": lease})).json()
+        ctx = (await c.get(f"/api/training/{sessao['id']}")).json()["origin"]
+        assert "hunter2-segredo" not in str(ctx) and "hunter2-segredo" not in str(sessao)
+        st.db.execute("DELETE FROM steps WHERE id=?", (step,))
+        assert (await c.get(f"/api/training/{sessao['id']}")).json()["origin"]["context"] == {"disponivel": False}

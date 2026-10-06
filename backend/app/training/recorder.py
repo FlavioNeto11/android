@@ -21,7 +21,7 @@ from ..db import dumps, loads
 from ..security.redaction import looks_secret, mentions_credential, parece_codigo, parece_linha_com_codigo, parece_senha_ou_codigo
 from ..social.observacao import linhas_de_conteudo
 from ..util import new_token, now_iso
-from .origem import OrigemDaFalha, OrigemRecusada, origem_da_falha, origin_da_linha
+from .origem import OrigemDaFalha, OrigemRecusada, contexto_da_falha, origem_da_falha, origin_da_linha
 
 if TYPE_CHECKING:
     from ..automation.hierarchy import UiTree
@@ -490,6 +490,9 @@ class TrainingRecorder:
     def get(self, session_id: str) -> dict[str, Any]:
         s = dict(self._row(session_id))
         s["origin"] = origin_da_linha(self.db, s)
+        if s["origin"]:                       # 31.111 F2: o contexto só na leitura de UMA sessão (a lista fica leve)
+            s["origin"]["context"] = contexto_da_falha(self.db, s["origin"]["run_id"], s["origin"]["step_id"],
+                                                       s["origin"]["attempt_id"])
         s["proposal"] = loads(s["proposal"])
         s["inputs"] = self.inputs(session_id)
         return s
