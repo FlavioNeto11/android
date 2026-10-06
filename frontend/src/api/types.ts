@@ -386,6 +386,12 @@ interface Settings {
   idle_stop_s: number;          // 0 = só desliga para ceder vaga
   // v0.20 (C2) — prévia sob demanda. Opcional: backend anterior ao adendo não manda (e captura sempre).
   preview_mode?: PreviewMode;
+  // Prova de 07/10 (J1): quantas personas a sugestão de alvos escolhe e quantas candidatas vão ao modelo. Tipados como número
+  // (a lista de campos numéricos depende disso); backend anterior ao J1 não manda, e então o formulário não mostra o grupo.
+  orquestracao_max_escolhidas: number;
+  orquestracao_max_candidatas: number;
+  /** Quantas contas executam a ação final no post nosso numa operação (as demais ficam paradas até serem liberadas). */
+  operacao_max_acoes_executadas: number;
 }
 
 /** v0.20 (C2): `on_demand` só captura prévia de aparelho que alguém olha; `always` é o laço antigo. */

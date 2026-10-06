@@ -1,12 +1,12 @@
 /**
  * Prova 07/10 (FULL INSTAGRAM): a tela "Operação" acompanha ~30 agentes, cada um com persona, conta, aparelho e o estado
- * individual ao longo do pipeline do Instagram. O contrato real é o adendo v1.94 da Jev (`POST/GET /api/operacoes`); até ele
- * existir, a tela lê um JSON fixo (`operacaoDeExemplo.ts`) com o MESMO formato que este leitor aceita, e o leitor é tolerante:
- * campo ausente vira "não informado", nunca erro. Os nomes dos campos são a suposição do Portal (a Jev confirma ou troca num
- * lugar só: este arquivo). Credencial, login e e-mail de entrada NÃO têm campo aqui, de propósito: a conta é só um rótulo.
+ * individual ao longo do pipeline do app. O contrato é o rascunho do adendo v1.94 da Jev (`POST/GET /api/operacoes`, commit
+ * 9da5017d): `OperacaoResumo`, `OperacaoDetalhe`, `AlvoDaOperacao`, `capacidade`. O leitor é tolerante (campo ausente vira
+ * "não informado", nunca erro) e fica isolado aqui: se a Jev mudar um nome, muda neste arquivo. Credencial, login e e-mail de
+ * entrada NÃO têm campo aqui, de propósito: a conta é só o rótulo (`conta`, o @).
  */
 
-/** Os estágios do pipeline, na ordem do dono (16:38Z). O alvo parou no primeiro que não alcançou. */
+/** Os estágios do pipeline, na ordem fixa do dono e do adendo. `acao_executada` e `acao_bloqueada` ocupam a mesma posição. */
 export const ESTAGIOS = [
   { id: 'persona', rotulo: 'Persona' },
   { id: 'conta', rotulo: 'Conta' },
@@ -18,75 +18,96 @@ export const ESTAGIOS = [
   { id: 'conteudo_lido', rotulo: 'Conteúdo lido' },
   { id: 'conhecimento_recuperado', rotulo: 'Conhecimento recuperado' },
   { id: 'resposta_gerada', rotulo: 'Resposta gerada' },
-  { id: 'interface_de_comentario', rotulo: 'Interface de comentário alcançada' },
+  { id: 'interface_de_comentario_alcancada', rotulo: 'Interface de comentário alcançada' },
   { id: 'acao_preparada', rotulo: 'Ação preparada' },
   { id: 'acao_executada', rotulo: 'Ação executada' },
   { id: 'resultado_verificado', rotulo: 'Resultado verificado' },
 ] as const;
 
 export type EstagioId = (typeof ESTAGIOS)[number]['id'];
+/** O estágio que o backend também manda no lugar de `acao_executada` quando a ação foi barrada. */
+const ALIAS_DE_ESTAGIO: Readonly<Record<string, EstagioId>> = { acao_bloqueada: 'acao_executada', app_aberto: 'instagram_aberto' };
 const IDS_DOS_ESTAGIOS: readonly string[] = ESTAGIOS.map((e) => e.id);
+
+/** O estágio do vocabulário do painel para o que veio (`acao_bloqueada` e `app_aberto` têm lugar fixo); `null` se desconhecido. */
+export function lerEstagio(v: unknown): EstagioId | null {
+  if (typeof v !== 'string') return null;
+  if (IDS_DOS_ESTAGIOS.includes(v)) return v as EstagioId;
+  return ALIAS_DE_ESTAGIO[v] ?? null;
+}
 export const isEstagio = (v: unknown): v is EstagioId => typeof v === 'string' && IDS_DOS_ESTAGIOS.includes(v);
 
-export type EstadoDoAlvo = 'na_fila' | 'em_andamento' | 'concluido' | 'bloqueado' | 'falhou' | 'cancelado';
-export const ESTADOS_DO_ALVO: readonly EstadoDoAlvo[] = ['na_fila', 'em_andamento', 'concluido', 'bloqueado', 'falhou', 'cancelado'];
+export type EstadoDoAlvo = 'pendente' | 'em_curso' | 'concluido' | 'bloqueado' | 'cancelado';
+export const ESTADOS_DO_ALVO: readonly EstadoDoAlvo[] = ['pendente', 'em_curso', 'concluido', 'bloqueado', 'cancelado'];
 export const isEstadoDoAlvo = (v: unknown): v is EstadoDoAlvo => typeof v === 'string' && (ESTADOS_DO_ALVO as readonly string[]).includes(v);
 
-export type Verificada = 'sim' | 'nao' | 'nao_conferida';
+export type StatusDaOperacao = 'em_curso' | 'concluida' | 'concluida_com_bloqueios' | 'cancelada';
+const STATUS: readonly string[] = ['em_curso', 'concluida', 'concluida_com_bloqueios', 'cancelada'];
 
-export interface Bloqueio {
-  /** O estágio em que o alvo parou (o primeiro que não alcançou). */
-  estagio: EstagioId | null;
-  /** O motivo em português, como o backend o escreve; nunca um código. */
-  motivo: string;
+export interface AcaoFinal {
+  /** A chave da ação de efeito (ex.: `CREATE_COMMENT`); o painel traduz o que conhece. */
+  tipo: string | null;
+  /** `true` só com a pós-condição comprovada; `false`, tentada e não comprovada; `null`, não informada. */
+  verificada: boolean | null;
+  evidencia_id: number | null;
+}
+
+export interface Resultado {
+  texto: string | null;
+  conhecimento_ids: string[];
+  /** A captura da tela lida para escrever. */
+  evidencia_id: number | null;
+  acao_final: AcaoFinal | null;
 }
 
 export interface Alvo {
-  /** A chave da linha: o id do alvo (ou da execução); nunca o aparelho, que se repete em ondas. */
+  /** A chave da linha: a execução (`run_id`) ou a persona; nunca o aparelho, que se repete em ondas. */
   id: string;
   profile_id: string | null;
   persona: string | null;
+  app_id: string | null;
   account_id: string | null;
-  /** O rótulo da conta (`@handle`); nunca login nem e-mail de entrada. */
+  /** O rótulo da conta (o @); nunca login nem e-mail de entrada. */
   conta: string | null;
-  /** Estado da sessão da conta: `conectada`, `vencida`, `sem_sessao`… como veio; o painel traduz o que conhece. */
-  sessao: string | null;
-  app: string | null;
   instance_id: string | null;
-  servidor: string | null;
-  estado: EstadoDoAlvo | null;
+  run_id: string | null;
   /** O último estágio alcançado; `null` = ainda nenhum (ou o backend não disse). */
   estagio: EstagioId | null;
-  bloqueio: Bloqueio | null;
-  /** "Conhecimento usado": quantos itens; `null` = não informado. */
-  conhecimento_n: number | null;
-  /** A ação final (texto da resposta/comentário), quando existe. */
-  acao: string | null;
-  verificada: Verificada | null;
-  evidencia_id: number | null;
-  run_id: string | null;
+  /** Os estágios alcançados, com a hora; vazio quando o backend não os manda. */
+  estagios: { estagio: EstagioId; em: string | null }[];
+  estado: EstadoDoAlvo | null;
+  /** Frase curta e estável do backend (`sem conta`, `sem sessão`, `aguarda aprovação`…); nunca um código. */
+  motivo: string | null;
+  resultado: Resultado | null;
 }
 
 export interface Capacidade {
   solicitados: number | null;
   contas_existentes: number | null;
   sessoes_validas: number | null;
-  disponiveis: number | null;
+  contas_disponiveis: number | null;
   concluidas: number | null;
   bloqueadas: number | null;
-  /** Os motivos agrupados dos bloqueios (já em português) com quantos alvos cada um. */
+  em_curso: number | null;
+  /** Os motivos agrupados dos bloqueios, com quantos alvos cada um. */
   motivos: { motivo: string; n: number }[];
 }
 
-export interface Operacao {
+export interface ResumoDaOperacao {
   id: string;
-  objetivo: string;
-  app: string | null;
-  estado: string | null;
-  criada_em: string | null;
+  command: string;
+  app_id: string | null;
+  acao_final: string | null;
+  status: StatusDaOperacao | null;
+  created_at: string | null;
+  finished_at: string | null;
   capacidade: Capacidade;
+}
+
+export interface Operacao extends ResumoDaOperacao {
   alvos: Alvo[];
-  /** Os dados vêm do exemplo fixo, não do backend. */
+  custo_usd: number | null;
+  /** Os dados vêm do exemplo fixo (a rota ainda não existe no backend), não do parque. */
   exemplo: boolean;
 }
 
@@ -94,56 +115,85 @@ const texto = (v: unknown): string | null => (typeof v === 'string' && v.trim() 
 const inteiro = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.trunc(v) : null);
 const registro = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
-function lerBloqueio(v: unknown): Bloqueio | null {
+function lerAcaoFinal(v: unknown): AcaoFinal | null {
   const o = registro(v);
-  const motivo = o ? texto(o.motivo) : null;
-  return o && motivo ? { estagio: isEstagio(o.estagio) ? o.estagio : null, motivo } : null;
+  return o ? { tipo: texto(o.tipo), verificada: typeof o.verificada === 'boolean' ? o.verificada : null, evidencia_id: inteiro(o.evidencia_id) } : null;
+}
+
+function lerResultado(v: unknown): Resultado | null {
+  const o = registro(v);
+  if (!o) return null;
+  return {
+    texto: texto(o.texto),
+    conhecimento_ids: (Array.isArray(o.conhecimento_ids) ? o.conhecimento_ids : []).filter((x): x is string => typeof x === 'string' && x.trim() !== ''),
+    evidencia_id: inteiro(o.evidencia_id), acao_final: lerAcaoFinal(o.acao_final),
+  };
 }
 
 export function lerAlvo(v: unknown, posicao: number): Alvo | null {
   const o = registro(v);
   if (!o) return null;
-  const verificada = o.verificada === 'sim' || o.verificada === 'nao' || o.verificada === 'nao_conferida' ? o.verificada : null;
-  return {
-    id: texto(o.id) ?? texto(o.run_id) ?? `alvo-${posicao + 1}`,
-    profile_id: texto(o.profile_id), persona: texto(o.persona), account_id: texto(o.account_id), conta: texto(o.conta), sessao: texto(o.sessao),
-    app: texto(o.app), instance_id: texto(o.instance_id), servidor: texto(o.servidor),
-    estado: isEstadoDoAlvo(o.estado) ? o.estado : null,
-    estagio: isEstagio(o.estagio) ? o.estagio : null,
-    bloqueio: lerBloqueio(o.bloqueio),
-    conhecimento_n: inteiro(o.conhecimento_n), acao: texto(o.acao), verificada,
-    evidencia_id: inteiro(o.evidencia_id), run_id: texto(o.run_id),
-  };
-}
-
-function lerCapacidade(v: unknown): Capacidade {
-  const o = registro(v) ?? {};
-  const motivos = (Array.isArray(o.motivos) ? o.motivos : []).flatMap((m) => {
-    const r = registro(m);
-    const motivo = r ? texto(r.motivo) : null;
-    const n = r ? inteiro(r.n) : null;
-    return motivo && n !== null ? [{ motivo, n }] : [];
+  const estagios = (Array.isArray(o.estagios) ? o.estagios : []).flatMap((e) => {
+    const r = registro(e);
+    const est = r ? lerEstagio(r.estagio) : null;
+    return r && est ? [{ estagio: est, em: texto(r.em) }] : [];
   });
   return {
-    solicitados: inteiro(o.solicitados), contas_existentes: inteiro(o.contas_existentes), sessoes_validas: inteiro(o.sessoes_validas),
-    disponiveis: inteiro(o.disponiveis), concluidas: inteiro(o.concluidas), bloqueadas: inteiro(o.bloqueadas), motivos,
+    id: texto(o.run_id) ?? texto(o.profile_id) ?? `alvo-${posicao + 1}`,
+    profile_id: texto(o.profile_id), persona: texto(o.persona_nome), app_id: texto(o.app_id), account_id: texto(o.account_id),
+    conta: texto(o.conta), instance_id: texto(o.instance_id), run_id: texto(o.run_id),
+    estagio: lerEstagio(o.estagio), estagios, estado: isEstadoDoAlvo(o.estado) ? o.estado : null, motivo: texto(o.motivo),
+    resultado: lerResultado(o.resultado),
   };
 }
 
+export function lerCapacidade(v: unknown): Capacidade {
+  const o = registro(v) ?? {};
+  const bruto = registro(o.motivos) ?? {};
+  const motivos = Object.entries(bruto).flatMap(([motivo, n]) => (motivo.trim() && inteiro(n) !== null ? [{ motivo, n: inteiro(n)! }] : []))
+    .sort((a, b) => b.n - a.n);
+  return {
+    solicitados: inteiro(o.solicitados), contas_existentes: inteiro(o.contas_existentes), sessoes_validas: inteiro(o.sessoes_validas),
+    contas_disponiveis: inteiro(o.contas_disponiveis), concluidas: inteiro(o.concluidas), bloqueadas: inteiro(o.bloqueadas),
+    em_curso: inteiro(o.em_curso), motivos,
+  };
+}
+
+/** O motivo do alvo que parou no teto de ações executadas: é o que o botão "Liberar" destrava. */
+export const MOTIVO_DO_LIMITE = 'limite de ações executadas';
+
+/** Quantos alvos esperam a liberação do teto de ações executadas. */
+export const alvosNoLimite = (alvos: readonly Pick<Alvo, 'motivo' | 'estado'>[]): number =>
+  alvos.filter((a) => a.estado === 'bloqueado' && a.motivo === MOTIVO_DO_LIMITE).length;
+
 /** `null` quando o corpo não é uma operação (sem id): a tela diz que não leu, não inventa. */
-export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
+export function lerResumo(v: unknown): ResumoDaOperacao | null {
   const o = registro(v);
   const id = o ? texto(o.id) : null;
   if (!o || !id) return null;
-  const alvos = (Array.isArray(o.alvos) ? o.alvos : []).map(lerAlvo).filter((a): a is Alvo => a !== null);
   return {
-    id, objetivo: texto(o.objetivo) ?? '', app: texto(o.app), estado: texto(o.estado), criada_em: texto(o.criada_em),
-    capacidade: lerCapacidade(o.capacidade), alvos, exemplo,
+    id, command: texto(o.command) ?? '', app_id: texto(o.app_id), acao_final: texto(o.acao_final),
+    status: typeof o.status === 'string' && STATUS.includes(o.status) ? (o.status as StatusDaOperacao) : null,
+    created_at: texto(o.created_at), finished_at: texto(o.finished_at), capacidade: lerCapacidade(o.capacidade),
   };
 }
 
-/** Quantos estágios o alvo alcançou (0 a 14); sem estágio, 0. */
-export function estagiosAlcancados(a: Pick<Alvo, 'estagio'>): number {
+export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
+  const resumo = lerResumo(v);
+  const o = registro(v);
+  if (!resumo || !o) return null;
+  const alvos = (Array.isArray(o.alvos) ? o.alvos : []).map(lerAlvo).filter((a): a is Alvo => a !== null);
+  return { ...resumo, alvos, custo_usd: typeof o.custo_usd === 'number' && Number.isFinite(o.custo_usd) ? o.custo_usd : null, exemplo };
+}
+
+export function lerLista(v: unknown): ResumoDaOperacao[] {
+  const itens = registro(v)?.items;
+  return (Array.isArray(itens) ? itens : []).map(lerResumo).filter((r): r is ResumoDaOperacao => r !== null);
+}
+
+/** Quantos estágios o alvo alcançou (0 a 14): a lista `estagios` quando vem, senão a posição do último. */
+export function estagiosAlcancados(a: Pick<Alvo, 'estagio' | 'estagios'>): number {
+  if (a.estagios.length) return new Set(a.estagios.map((e) => e.estagio)).size;
   return a.estagio ? IDS_DOS_ESTAGIOS.indexOf(a.estagio) + 1 : 0;
 }
 
@@ -151,47 +201,54 @@ export function rotuloDoEstagio(id: EstagioId | null): string {
   return ESTAGIOS.find((e) => e.id === id)?.rotulo ?? '—';
 }
 
-/** O estágio onde o alvo está parado: o que o bloqueio diz, ou o seguinte ao último alcançado. */
-export function estagioDeParada(a: Pick<Alvo, 'estagio' | 'bloqueio'>): EstagioId | null {
-  if (a.bloqueio?.estagio) return a.bloqueio.estagio;
+/** O estágio onde o alvo está parado: o seguinte ao último alcançado; `null` quando já chegou ao fim. */
+export function estagioDeParada(a: Pick<Alvo, 'estagio' | 'estagios'>): EstagioId | null {
   const prox = estagiosAlcancados(a);
   return prox < ESTAGIOS.length ? ESTAGIOS[prox]!.id : null;
 }
 
 export const ROTULO_DO_ESTADO: Record<EstadoDoAlvo, string> = {
-  na_fila: 'Na fila', em_andamento: 'Em andamento', concluido: 'Concluído', bloqueado: 'Bloqueado', falhou: 'Falhou', cancelado: 'Cancelado',
+  pendente: 'Na fila', em_curso: 'Em andamento', concluido: 'Concluído', bloqueado: 'Bloqueado', cancelado: 'Cancelado',
 };
 
-const ROTULO_DA_SESSAO: Record<string, string> = {
-  conectada: 'Conectada', vencida: 'Vencida', sem_sessao: 'Sem sessão', sem_conta: 'Sem conta', entrando: 'Entrando', saindo: 'Saindo',
+export const ROTULO_DO_STATUS: Record<StatusDaOperacao, string> = {
+  em_curso: 'Em andamento', concluida: 'Concluída', concluida_com_bloqueios: 'Concluída com bloqueios', cancelada: 'Cancelada',
 };
-/** O estado da sessão em palavras; o que o painel não conhece fica como veio. */
-export const rotuloDaSessao = (s: string | null): string => (s ? ROTULO_DA_SESSAO[s] ?? s : 'Não informada');
 
-export const ROTULO_DA_VERIFICACAO: Record<Verificada, string> = { sim: 'Verificada', nao: 'Não verificada', nao_conferida: 'Não conferida' };
+const ROTULO_DA_ACAO: Record<string, string> = { CREATE_COMMENT: 'Comentário', SEND_MESSAGE: 'Mensagem', preparar: 'Só preparar', executar: 'Preparar e executar' };
+/** A ação em palavras; a chave que o painel não conhece fica como veio. */
+export const rotuloDaAcao = (tipo: string | null): string => (tipo ? ROTULO_DA_ACAO[tipo] ?? tipo : 'não informada');
 
-/** A contagem por estado, para o resumo e o filtro. O que o backend não classificou conta como `null`. */
+export type Verificacao = 'verificada' | 'nao_verificada' | 'sem_acao';
+/** "Verificada" só com a pós-condição comprovada; ação tentada sem prova é "não verificada"; sem ação final, nada a verificar. */
+export function verificacaoDoAlvo(a: Pick<Alvo, 'resultado'>): Verificacao {
+  const f = a.resultado?.acao_final;
+  if (!f) return 'sem_acao';
+  return f.verificada === true ? 'verificada' : 'nao_verificada';
+}
+export const ROTULO_DA_VERIFICACAO: Record<Verificacao, string> = { verificada: 'Verificada', nao_verificada: 'Não verificada', sem_acao: '—' };
+
+/** A contagem por estado, para o filtro. O que o backend não classificou conta como `nao_informado`. */
 export function contarPorEstado(alvos: readonly Pick<Alvo, 'estado'>[]): Record<EstadoDoAlvo | 'nao_informado', number> {
-  const c: Record<EstadoDoAlvo | 'nao_informado', number> = { na_fila: 0, em_andamento: 0, concluido: 0, bloqueado: 0, falhou: 0, cancelado: 0, nao_informado: 0 };
+  const c: Record<EstadoDoAlvo | 'nao_informado', number> = { pendente: 0, em_curso: 0, concluido: 0, bloqueado: 0, cancelado: 0, nao_informado: 0 };
   for (const a of alvos) c[a.estado ?? 'nao_informado'] += 1;
   return c;
 }
 
 /**
- * O agregado por app (Instagram, hoje o único): alvos, concluídos, verificados, bloqueados e falhos. "Concluído" e "verificado"
- * são contagens separadas: concluído sem verificação nunca conta como verificado.
+ * O agregado por app: alvos, concluídos, verificados e bloqueados. "Concluído" e "verificado" são contagens separadas:
+ * concluído sem verificação nunca conta como verificado.
  */
-export interface AgregadoDoApp { app: string; alvos: number; concluidos: number; verificados: number; bloqueados: number; falhos: number }
-export function agregadoPorApp(alvos: readonly Alvo[]): AgregadoDoApp[] {
+export interface AgregadoDoApp { app: string; alvos: number; concluidos: number; verificados: number; bloqueados: number }
+export function agregadoPorApp(alvos: readonly Alvo[], appDaOperacao: string | null): AgregadoDoApp[] {
   const m = new Map<string, AgregadoDoApp>();
   for (const a of alvos) {
-    const app = a.app ?? 'não informado';
-    const g = m.get(app) ?? { app, alvos: 0, concluidos: 0, verificados: 0, bloqueados: 0, falhos: 0 };
+    const app = a.app_id ?? appDaOperacao ?? 'não informado';
+    const g = m.get(app) ?? { app, alvos: 0, concluidos: 0, verificados: 0, bloqueados: 0 };
     g.alvos += 1;
     if (a.estado === 'concluido') g.concluidos += 1;
-    if (a.verificada === 'sim') g.verificados += 1;
+    if (verificacaoDoAlvo(a) === 'verificada') g.verificados += 1;
     if (a.estado === 'bloqueado') g.bloqueados += 1;
-    if (a.estado === 'falhou') g.falhos += 1;
     m.set(app, g);
   }
   return Array.from(m.values());

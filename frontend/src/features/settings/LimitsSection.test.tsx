@@ -83,3 +83,38 @@ it('Enter num campo envia e o foco vai para o Salvar, que segue focável enquant
   await act(async () => { soltar!(); });
   await waitFor(() => !previa.matches(':disabled'));
 });
+
+// Prova de 07/10 (J1): os dois limites da sugestão de alvos. O grupo só existe se o servidor os manda.
+const campo = (rotulo: string) => byRole('textbox', new RegExp(`^${rotulo}`)) as HTMLInputElement;
+
+it('J1: o grupo "Orquestração de operações" mostra os dois limites e salva só o que mudou', async () => {
+  backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...useAppStore.getState().settings!, ...(c.body as Partial<Settings>) }));
+  await act(async () => { root.render(<LimitsSection />); });
+  expect(container.textContent).toContain('Orquestração de operações');
+  expect(campo('Personas escolhidas por operação').value).toBe('30');
+  expect(campo('Candidatas avaliadas pela IA').value).toBe('60');
+  expect(campo('Contas que executam a ação final').value).toBe('3');
+  await setValue(campo('Personas escolhidas por operação'), '40');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ orquestracao_max_escolhidas: 40 });
+});
+
+it('J1: candidatas menores que as escolhidas não salvam, e o erro cai no campo das candidatas', async () => {
+  await act(async () => { root.render(<LimitsSection />); });
+  await setValue(campo('Candidatas avaliadas pela IA'), '10');
+  await click(byRole('button', /^Salvar limites/));
+  await waitFor(() => expect(container.textContent).toContain('Deve ser maior ou igual às personas escolhidas.'));
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(0);
+});
+
+it('J1: backend anterior (sem os campos) não mostra o grupo nem campo vazio', async () => {
+  const sem = { ...useAppStore.getState().settings! } as Partial<Settings>;
+  delete sem.orquestracao_max_escolhidas;
+  delete sem.orquestracao_max_candidatas;
+  delete sem.operacao_max_acoes_executadas;
+  useAppStore.setState({ settings: sem as Settings });
+  await act(async () => { root.render(<LimitsSection />); });
+  expect(container.textContent).not.toContain('Orquestração de operações');
+  expect(container.textContent).toContain('Limites por objetivo');
+});

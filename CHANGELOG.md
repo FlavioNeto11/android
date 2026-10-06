@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.159 (Portal): tela Operação (prova de 07/10) e os limites da orquestração em Configurações (branch feat/prova30-tela-operacao)
+
+- Nova tela `#/operacoes` (menu "Operação"): lista de operações e, por operação, a faixa de capacidade (solicitados, contas existentes, sessões válidas, disponíveis, em curso, concluídas, bloqueadas e os motivos), o agregado por app e uma linha por alvo (persona, conta só como rótulo, aparelho, pipeline de 14 estágios, estado, ação final ou motivo, "Verificada / Não verificada") com detalhe (resposta, conhecimento, evidências, estágios). "Liberar" (alvos parados em "limite de ações executadas") e "Cancelar a operação", ambos com confirmação.
+- Lê o contrato do rascunho do adendo v1.94 (Jev, 9da5017d) com leitor tolerante; sem a rota no central (404), cai num exemplo fixo e AVISA. Nenhum campo de login, e-mail de entrada ou credencial existe na tela.
+- Configurações → Limites: grupo "Orquestração de operações" com `orquestracao_max_escolhidas`, `orquestracao_max_candidatas` e `operacao_max_acoes_executadas`; só aparece se o servidor mandar os campos; candidatas nunca menores que as escolhidas.
+- Prova `simulated`: `OperacaoPage.test.tsx` (20 casos), `LimitsSection.test.tsx` e `validation.test.ts`; vitest inteiro e tsc limpos, mutações mortas; `real` `not_run` (a rota `/api/operacoes` ainda não existe).
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
