@@ -1165,7 +1165,7 @@ do canal, e o harness na porta 5640 com o `FakeEmulatorBackend`):
 ([contrato, adendo v0.24](../api-contract.md#adendo-v024-27092026--plan_report-em-modeplan-e-corpos-fora-de-modelspy)).
 Com `mode=execute`, a resposta não muda.
 
-- **Quem monta:** `api.py::create_run` chama `taskqueue/service.py::RunService.relatorio_de_recursos(run_id)` depois de
+- **Quem monta:** `modules/execution/presentation/router.py::create_run` chama `taskqueue/service.py::RunService.relatorio_de_recursos(run_id)` depois de
   `RunService.create`.
 - **Resolve de novo.** A resposta sai antes de `_plan` terminar (ele roda em segundo plano), então a skill é resolvida
   outra vez (`self.skills.for_command`). A RESOLVE e a COMPILE são puras, e a leitura dos recursos é `SELECT` e
@@ -1392,7 +1392,7 @@ banco (ADR-020), a 046 verde em PostgreSQL (`workflow_dispatch`) e autorização
 | `PlanReport` determinístico, sem gravar | implementado | `simulated` (`backend/tests/test_plan_report.py::test_relatorio_da_skill_abrir_conversa_sobre_o_parque`, `::test_mesma_entrada_em_outra_ordem_da_o_mesmo_relatorio`, `::test_par_nao_lido_e_desconhecido_sem_acao_e_listado_como_risco`) | `plan_report.py` |
 | `apply`/`verify`/`reconcile` de recurso pelo canal de comandos: uma vez por chave, `uncertain` não se repete, `on_missing` decide quem dispara, reconcile só no hospedeiro e com prova posterior | implementado, **não ligado** ao `_tick` | `simulated` (`backend/tests/test_aplicacao_de_recursos.py`, 20 testes, inclusive `::test_apply_de_device_state_pelo_despacho_e_idempotente` e `::test_reconcile_pelo_despacho_so_no_hospedeiro_e_com_prova` sobre o harness) | `shared/commands.py`, `shared/convergence.py`, `command_bus.py`, os quatro providers |
 | `apply`/`reconcile` chamados pelo `_tick`; com aparelho real | não feito | `not_run` | decisão do dono |
-| `mode=plan` com `plan_report`; `source: error` sem 500; `objectives.resource_plan` no `materialize` | implementado | `simulated` (`backend/tests/test_plan_report_na_execucao.py`, 4 testes) | `api.py::create_run`, `RunService.relatorio_de_recursos`, `_fotografar_recursos` |
+| `mode=plan` com `plan_report`; `source: error` sem 500; `objectives.resource_plan` no `materialize` | implementado | `simulated` (`backend/tests/test_plan_report_na_execucao.py`, 4 testes) | `modules/execution/presentation/router.py::create_run`, `RunService.relatorio_de_recursos`, `_fotografar_recursos` |
 | Refoto de `resource_plan` no despacho | não feito | `not_run` | design §11 |
 | Máquinas de estado de execução, objetivo e tentativa: conferir e registrar, sem bloquear | implementado | `simulated` (`backend/tests/test_maquinas_de_estado.py`, 15 testes; fixture `tests/conftest.py::_transicoes_dentro_da_tabela` na suíte inteira) | `modules/execution/domain/states.py`, `Repository._conferir` |
 | Máquinas de estado impostas; contagem em `/api/health` | não feito | `not_run` | próximo passo (ADR-038) |

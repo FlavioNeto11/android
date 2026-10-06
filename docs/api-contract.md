@@ -1594,7 +1594,7 @@ type ClientMessage = { type: 'ping' } | { type: 'focus'; instance_id: string | n
 Fase G da evolução arquitetural: a execução resolve o comando por skill publicada antes do fluxo
 ([execution](dominios/execution.md), [skills](dominios/skills.md)). Nada implantado; prova `simulated`.
 
-**`POST /api/flows/match`** com corpo `{"command"}` (era `GET …?command=` até o v0.58; ver o adendo v0.65) (`api.py::flows_match`):
+**`POST /api/flows/match`** com corpo `{"command"}` (era `GET …?command=` até o v0.58; ver o adendo v0.65) (`modules/learning/presentation/fluxos.py::flows_match`):
 
 - Resolve pela mesma porta da execução (`AppState.skill_planner.for_command(command, None)`): skill publicada atrás de
   `skills.enabled`, depois fluxo ativo atrás de `ai.flows`.
@@ -1611,7 +1611,7 @@ Fase G da evolução arquitetural: a execução resolve o comando por skill publ
   também com `FlowStore.match(command)`.
 - O painel (`frontend/src/api/client.ts`) tipa a resposta como `FlowCoverage | null` e ignora `skill_ref`.
 
-**`PUT /api/flows/{id}`** (`api.py::update_flow`):
+**`PUT /api/flows/{id}`** (`modules/learning/presentation/fluxos.py::update_flow`):
 
 - `{status: "active"}` num fluxo adotado por uma skill que tem versão publicada responde **409**
   `{"detail": {"code": "flow_adopted", "message": …}}`, e o fluxo continua `disabled`.
@@ -1621,7 +1621,7 @@ Fase G da evolução arquitetural: a execução resolve o comando por skill publ
   - A conferência é `SqlSkillRepository.published_adopter(flow_id)`.
 - `{status: "disabled"}` continua aceito (200).
 - Ordem das recusas: 404 `not_found`, 400 `invalid`, 409 `flow_adopted`.
-- **`DELETE /api/flows/{id}`** (`api.py::delete_flow`): fluxo adotado por uma skill, em qualquer estado dela, responde
+- **`DELETE /api/flows/{id}`** (`modules/learning/presentation/fluxos.py::delete_flow`): fluxo adotado por uma skill, em qualquer estado dela, responde
   **409** `flow_adopted` e não é apagado, porque ele é o caminho de volta da adoção (`release_flow` o religa). A
   conferência é `SqlSkillRepository.adopter_id(flow_id)`. Fluxo não adotado: 204, como antes.
 
@@ -1846,7 +1846,7 @@ Fases H (parte 2) e K2 da evolução arquitetural
 ([execution](dominios/execution.md#modeplan-o-planreport-servido-fase-h-parte-2)). Tudo aditivo. Nada implantado;
 prova `simulated`.
 
-**`POST /api/runs` com `mode: "plan"`** (`api.py::create_run`):
+**`POST /api/runs` com `mode: "plan"`** (`modules/execution/presentation/router.py::create_run`):
 
 - Corpo: o mesmo `RunCreate`.
 - Resposta: o `RunSummary` de sempre, campo a campo, **mais** `plan_report`, o relatório dos recursos que a skill
@@ -2611,7 +2611,7 @@ Provas: `simulated` (`backend/tests/test_learning_backlog.py`, `test_learning_ro
 
 ## Adendo v0.39 (29/09/2026) — o código em aberto do aprendizado: interruptor antigo pelo livro, bloco da execução, três sinais e nota triada (ADR-054)
 
-**`PUT /api/flows/{id}` e `PUT /api/recipes/{id}` passam pelo livro** (`api.py::update_flow`/`update_recipe` →
+**`PUT /api/flows/{id}` e `PUT /api/recipes/{id}` passam pelo livro** (`modules/learning/presentation/fluxos.py::update_flow`/`update_recipe` →
 `livro.py::mudar_status_legado` → `LearningService.mudar_status_nativo`, o mesmo serviço de
 `POST /api/aprendizado/{kind}/{ref}/status`).
 
@@ -3852,7 +3852,7 @@ rascunho do comando, às vezes com e-mail, ia na query string e ficava na linha 
 habilidade, ou `null` sem casamento) e o painel (`api.flowsMatch`) já chama o POST; quem usava o GET por fora precisa migrar.
 
 Conferido (nada mudado fora do escopo): `POST /api/skills/resolve` e `POST /api/runs/targets/suggest` já recebem o comando no corpo. **Pendente, fora
-deste item:** `GET /api/runs/distribution?command=` (prévia da distribuição, `api.py::preview_distribution`) ainda leva o texto do comando na query
+deste item:** `GET /api/runs/distribution?command=` (prévia da distribuição, `modules/execution/presentation/router.py::preview_distribution`) ainda leva o texto do comando na query
 e portanto no log de acesso; é o mesmo vazamento e pede o mesmo tratamento (POST com corpo).
 
 Adição (compatível): `members[]` de `PolicyGroup` (`GET/POST/PATCH /api/instagram/policy-groups`) ganha `name` (nome da pessoa: exibição, nome e
