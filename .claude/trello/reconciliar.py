@@ -303,8 +303,8 @@ def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[i
         elif st == "implemented":
             n = deploy_do_item(it.get("quando"), suite_de(pid) or (citados or {}).get(pid), horas)
             sem_fonte_forte = not suite_de(pid) and pid not in (citados or {})
-            if deploy_git and sem_fonte_forte and (n is None or n == max(horas, default=0)):
-                n = deploy_git(pid) or n          # a hora do registro engana quando o item entra na mesma rodada dele
+            if deploy_git and sem_fonte_forte:
+                n = deploy_git(pid) or n          # a hora de classificação engana (rodada do registro, resultado segurado)
             if n is None and it.get("proof") == "real":
                 n = deploy_pela_evidencia(it, por_commit or {}, max(horas, default=0))
             if n is None:
@@ -400,7 +400,9 @@ def ids_citados_por_deploy(texto: str) -> dict[str, int]:
     (entrou no deploy junto de outro e foi classificado depois do registro dele)."""
     achados: dict[str, int] = {}
     for m in re.finditer(r"^## \d{4}-\d{2}-\d{2} — Deploy (\d+)\b.*?(?=^## |\Z)", texto, flags=re.M | re.S):
-        for pid in set(re.findall(r"\b(\d{1,2}\.\d{1,3})\b", m.group(0))):
+        adiados = {pid for g in re.findall(r"((?:\d{1,2}\.\d{1,3}[\s,]*(?:e\s+)?)+)\s+(?:ficam?|segue|seguem)\s+para\s+o\s+corte\s+\d+",
+                                           m.group(0)) for pid in re.findall(r"\d{1,2}\.\d{1,3}", g)}
+        for pid in set(re.findall(r"\b(\d{1,2}\.\d{1,3})\b", m.group(0))) - adiados:
             achados[pid] = min(achados.get(pid, 10**6), int(m.group(1)))
     return achados
 

@@ -48,6 +48,21 @@ PERGUNTA: dict[CausaProvavel, str] = {
 }
 
 
+#: 31.116 (adendo v1.82): a etapa em `waiting_user` não falhou, PAROU esperando a pessoa (a IA concluiu que não dá e o
+#: executor não aceitou). A pergunta diz o que ensinar para ela seguir, em vez da pergunta da causa de uma falha.
+PERGUNTA_ESPERANDO = ("A etapa não falhou: parou esperando você. Mostre, a partir desta tela, o que fazer para ela "
+                      "seguir.")
+
+
+def pergunta_da_etapa(status: str, diagnostico: dict[str, object] | None) -> str | None:
+    """A pergunta da sugestão do ensino pelo ESTADO da etapa: `waiting_user` tem a própria; nos outros (falhou ou ficou
+    incerta), a do diagnóstico, ou nenhuma quando ele não veio."""
+    if status == "waiting_user":
+        return PERGUNTA_ESPERANDO
+    pergunta = diagnostico.get("pergunta") if diagnostico else None
+    return pergunta if isinstance(pergunta, str) else None
+
+
 def para_o_ensino(d: Diagnostico) -> dict[str, object]:
     """`origin.diagnostico` da sessão: a causa, os fatos que a sustentam, a proposta do 30.13 (se houver), o rótulo
     curto e a pergunta. `amostra` é 1 (a própria tentativa) ou 0 (só o tipo decidiu)."""
@@ -66,4 +81,4 @@ def intencao_sugerida(titulo: str, diagnostico: dict[str, object] | None) -> str
     return (f"{base}: {rotulo}" if conhecida and isinstance(rotulo, str) and rotulo else base)[:400]
 
 
-__all__ = ["PERGUNTA", "ROTULO", "intencao_sugerida", "para_o_ensino"]
+__all__ = ["PERGUNTA", "PERGUNTA_ESPERANDO", "ROTULO", "intencao_sugerida", "para_o_ensino", "pergunta_da_etapa"]

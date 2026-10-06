@@ -17,6 +17,8 @@ import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from app.modules.learning.domain.ensino_da_falha import pergunta_da_etapa
+
 from ..db import dumps, loads
 from ..security.redaction import looks_secret, mentions_credential, parece_codigo, parece_linha_com_codigo, parece_senha_ou_codigo
 from ..social.observacao import linhas_de_conteudo
@@ -483,6 +485,17 @@ class TrainingRecorder:
             raise TrainingError("not_found", "Treinamento não encontrado.", 404)
         return s
 
+    def marcar_entradas(self, session_id: str, marcas: list[tuple[int, str]]) -> int:
+        """31.118: troca o texto gravado dessas entradas pelo marcador da persona (`dado_da_persona.marcas_das_entradas`).
+        Só o `save` chama, com a sessão salva: a gravação aberta segue em claro, porque a proposta precisa do valor.
+        `has_text` e `text_len` ficam como foram gravados."""
+        feitas = 0
+        for seq, marca in marcas:
+            cur = self.db.execute("UPDATE training_inputs SET text=? WHERE session_id=? AND seq=? AND type='text'",
+                                  (marca, session_id, seq))
+            feitas += int(getattr(cur, "rowcount", 1) or 0)
+        return feitas
+
     def inputs(self, session_id: str) -> list[dict[str, Any]]:
         saida = []
         for r in self.db.query("SELECT * FROM training_inputs WHERE session_id=? ORDER BY seq", (session_id,)):
@@ -502,8 +515,14 @@ class TrainingRecorder:
                                                        s["origin"]["attempt_id"])
             # 31.111 F4: a causa provável (30.13) da tentativa que falhou, com a pergunta do que mostrar. Sem IA.
             aid = s["origin"]["attempt_id"]
-            s["origin"]["diagnostico"] = (self.diagnostico_da_falha(str(aid))
-                                          if aid and self.diagnostico_da_falha is not None else None)
+            diagnostico = (self.diagnostico_da_falha(str(aid))
+                           if aid and self.diagnostico_da_falha is not None else None)
+            if diagnostico is not None:
+                # 31.116 (v1.82): a pergunta é a do ESTADO da etapa, a mesma do `ensino-sugerido` (waiting_user tem a dela)
+                etapa = self.db.one("SELECT status FROM steps WHERE id=?", (s["origin"]["step_id"],))
+                diagnostico = {**diagnostico,
+                               "pergunta": pergunta_da_etapa(str(etapa["status"]) if etapa else "", diagnostico)}
+            s["origin"]["diagnostico"] = diagnostico
         s["inputs"] = self.inputs(session_id)
         s["proposal"] = self._proposta_mascarada(loads(s["proposal"]), s.get("profile_id"), s["inputs"])
         return s
