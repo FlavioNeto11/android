@@ -242,8 +242,8 @@ async def test_a_volta_do_laco_vence_os_dois_com_o_relogio_de_verdade(harness: H
 
 
 async def test_o_objetivo_vencido_deixa_de_contar_como_aberto(harness: Harness) -> None:
-    """A fila da pessoa (`api._OBJETIVO_ABERTO`: pending, running, waiting_user) não segura mais o item vencido."""
-    from app.api import _OBJETIVO_ABERTO
+    """A fila da pessoa (`instancias._OBJETIVO_ABERTO`: pending, running, waiting_user) não segura mais o item vencido."""
+    from app.modules.fleet.presentation.instancias import _OBJETIVO_ABERTO
     st = harness.state
     assert st is not None
     run_id, oid = await _parado(harness, espera_h=30, fim_h=30)
