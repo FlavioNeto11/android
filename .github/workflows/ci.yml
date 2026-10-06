@@ -22,6 +22,8 @@ name: CI
 # (tests/test_backup.py, via pwsh) se pula sozinho fora do venv Windows do projeto — confira o skipif ali.
 
 on:
+  # 29.176: este arquivo SÓ dispara pelo cron e pelo disparo manual (travado por `scripts/tests/test_ci_gatilhos.py`): push de
+  # branch e PR nunca acionam o runner central. O check de PR é o `pr-leve.yml`, hospedado.
   # Push só na main (28/09): com um runner próprio só, o push de cada branch com PR rodava duas vezes (push e
   # pull_request) e enchia a fila.
   # PUSH DESLIGADO em 30/09/2026 (decisão do dono: o ambiente ainda não é produção e esperar o CI atrasava todo o
@@ -333,4 +335,4 @@ jobs:
           python scripts/docs-check.py | Tee-Object -FilePath $saida
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (Select-String -Path $saida -Pattern 'NAO conferido' -Quiet) { Write-Host 'docs-check deixou algo NAO conferido: instale as dependencias do formato'; exit 1 }
-      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py scripts/tests/test_github_rotulos.py scripts/tests/test_github_rotina.py scripts/tests/test_workflows_pins.py scripts/tests/test_secret_scan_resumo.py scripts/tests/test_limpar_branches_revisao.py scripts/tests/test_coletar_achados_revisao.py scripts/tests/test_rotulo_do_pr.py
+      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py scripts/tests/test_github_rotulos.py scripts/tests/test_github_rotina.py scripts/tests/test_workflows_pins.py scripts/tests/test_secret_scan_resumo.py scripts/tests/test_limpar_branches_revisao.py scripts/tests/test_coletar_achados_revisao.py scripts/tests/test_rotulo_do_pr.py scripts/tests/test_ci_gatilhos.py
