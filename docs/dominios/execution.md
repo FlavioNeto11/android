@@ -256,7 +256,7 @@ nenhum. Eles caíram no Instagram, e o planejador, com o catálogo dele, pediu a
 
 ### A porta de política pelo app da etapa (item 24.2, ADR-058)
 
-`state.py::_policy_gate` julga cada etapa pelo **app dela**, resolvido pelo mesmo `Scheduler._app_context` da
+`gates.py::Portoes._policy_gate` (o `AppState._policy_gate` delega) julga cada etapa pelo **app dela**, resolvido pelo mesmo `Scheduler._app_context` da
 execução: o `app_id` da etapa, senão o do plano, senão o do aparelho. Num comando entre apps, a etapa do Outlook e a
 do Instagram passam cada uma pela pergunta do seu app. A regra não muda (T19); nenhum efeito novo é liberado.
 

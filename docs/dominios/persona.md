@@ -193,7 +193,7 @@ outro. Sem migração: em `instagram_profiles.automation_policy.capabilities` e 
 nível de fora continua sendo o do app âncora (é o formato de todo dado gravado até aqui), e os demais apps ficam
 em `por_app.<pacote>` (`{"LIKE_POST": …, "por_app": {"<pacote>": {"SEND_MESSAGE": …}}}`). Quem lê ou grava passa
 por `social/policy.py::politicas_do_app` / `com_politicas_do_app`; `policy_for`, `origin_for` e `check` recebem o
-`package` da ação, e o despacho (`state.py::_policy_gate`) passa o pacote da etapa. Nas rotas, `?package=` escolhe
+`package` da ação, e o despacho (`gates.py::Portoes._policy_gate`; `AppState` delega) passa o pacote da etapa. Nas rotas, `?package=` escolhe
 o recorte que se lê E o que se grava: `capabilities`, `own`, `group`, `origin` e `loosened` do DTO são só daquele
 app; `limits` valem para o perfil inteiro. No diálogo de grupo, cada app é um rascunho à parte: o do app que a
 listagem não trouxe vem de `GET …/policy-groups/{id}?package=`, e salvar faz um pedido por app editado, cada um com
