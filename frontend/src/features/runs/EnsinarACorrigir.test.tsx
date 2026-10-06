@@ -76,12 +76,23 @@ describe('31.111 F5: Ensinar a corrigir', () => {
     root = createRoot(container);
     await montar('uncertain');
     expect(allByRole('button', /^Ensinar a corrigir$/)).toHaveLength(1);
-    for (const s of ['succeeded', 'running', 'pending', 'waiting_user'] as StepStatus[]) {
+    for (const s of ['succeeded', 'running', 'pending', 'cancelled', 'skipped'] as StepStatus[]) {
       await act(async () => root.unmount());
       root = createRoot(container);
       await montar(s);
       expect(allByRole('button', /^Ensinar a corrigir$/)).toHaveLength(0);
     }
+  });
+
+  it('31.111 A: a etapa que parou esperando uma pessoa (waiting_user) também oferece o botão e abre o treino a partir dela', async () => {
+    comControleNaAba();
+    await montar('waiting_user');
+    expect(allByRole('button', /^Ensinar a corrigir$/)).toHaveLength(1);
+    await abrirFormulario();
+    await click(await botaoPronto(/^Assumir o controle e abrir o treino$/));
+    await waitFor(() => expect(backend.callsTo('POST', /\/training\/from-run$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /\/from-run$/)[0]!.body).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1' });
+    await waitFor(() => expect(useUiStore.getState().focusInstanceId).toBe('android-01'));
   });
 
   it('com o controle desta aba: o formulário nomeia o aparelho, manda run_id, step_id e lease_id (sem intent se o texto é o padrão) e abre o Foco', async () => {

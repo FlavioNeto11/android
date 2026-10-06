@@ -64,6 +64,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-06 — A1: a prévia da porta pelo Telegram mascara o dado da persona (decisão da orquestradora, 04:22Z)
 
 - **A1 da leitura do 31.113 F3 (06/10):** a prévia da porta pelo Telegram (`_mostrar_porta`) passa a filtrar o título e o texto da etapa com os nomes E os dados da biografia (o `Alvo:` segue só redigido, ADR-071 (d)) (`PortasReais.nomes_e_dados_de_persona`), que saem como `<dado da persona>`; o item cujo texto traz um dado vai ao painel. A resposta da ANA e o eco do Trello seguem só com nomes. Sem migração. Prova `simulated`: `test_telegram_entrada.py` (2) e `test_perfil_variaveis_da_persona.py` (1). Real: `not_run`.
+
+## 2026-10-06 — 31.91 T1 (painel): o ensino por habilidade (v2) sai da tela; "Ensinar a corrigir" é o único caminho (branch feat/31-91-t1-painel-sem-ensino-v2)
+
+- Decisão do 31.91 (ADR-078): o caminho único de ensino é o Modo treinamento. Saem do painel `TeachingPanel` (a leitura do ensino v2 na revisão do treino),
+  `CorrigirEtapa` e a marca "corrigível" da etapa (o "Corrigir esta etapa" do ensino de habilidade, plano 22.7), a flag `features.ensino_v2`
+  (`skills.ensino_v2_na_tela`, 31.91 F1), os métodos do cliente das rotas `/teaching-sessions` e `/skill-candidates`, os testes deles e o CSS que só eles usavam.
+  O "Gerar habilidade deste fluxo" (`features.skills`, fase J) e a lista de habilidades ficam. A revisão do treino já não consulta `/teaching-sessions`.
+- **31.111 A:** `ETAPA_CORRIGIVEL` (agora em `EnsinarACorrigir.tsx`) ganha `waiting_user`: o botão "Ensinar a corrigir" aparece também na etapa que parou esperando
+  uma pessoa, como o backend aceita desde a6d52001 (`training/origem.py::STATUS_ENSINAVEIS`). Achado no 31.79: a versão 2 da execução parou em `waiting_user` e o botão não aparecia.
+- Prova `simulated`: `EnsinarACorrigir.test.tsx` (teste novo de `waiting_user`, e `running`, `pending`, `cancelled`, `skipped` sem botão) e `TrainingReview.test.tsx` (a revisão não
+  mostra nem consulta o ensino v2). `not_run`: o percurso real depois do deploy.
+
 ## 2026-10-05 — 31.111 F5: "Ensinar a corrigir" na etapa que falhou e selo de origem no treino (branch feat/31-111-f5-ensinar-a-corrigir)
 
 - Contra o adendo v1.75 (Jev, `feat/31-111-f1-ensinar-a-partir-da-falha`): na etapa `failed` ou `uncertain` de uma execução (aba Aparelhos), o botão

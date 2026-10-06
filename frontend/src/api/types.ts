@@ -499,12 +499,9 @@ interface Health {
   // v0.2
   features: { hibernation: boolean; recipes: string; flows: boolean; image_policy: string;
               system_image: string;
-              // fase F — `skills.enabled`: o ensino v2 e a lista de habilidades só aparecem com isto ligado.
-              // Ausente = backend anterior à fase F = desligado.
-              skills?: boolean;
-              // 31.91 F1 — `skills.ensino_v2_na_tela`: a TELA do ensino v2 (revisão só para leitura e "Corrigir etapa").
-              // Só vale com `skills` também ligado. Ausente = desligado.
-              ensino_v2?: boolean };
+              // fase F — `skills.enabled`: a lista de habilidades e o "Gerar habilidade deste fluxo" só aparecem com isto
+              // ligado. Ausente = backend anterior à fase F = desligado.
+              skills?: boolean };
 }
 
 interface Metrics {
