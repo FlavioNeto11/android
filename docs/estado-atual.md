@@ -1,10 +1,17 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `f831945447a6bd` (migração 127, deploy 56); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `42cba3cd879f36` (migração 127, deploy 57); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 57 no ar (06/10/2026, 23:08Z, central `42cba3cd879f36`, sem migração; correções das revisões do corte 56 e painel do grupo de política).** 5 pontas: Jev 31.154
+  (revisões 479/483/487: alvo recusado por nome fixo em conflito, reserva na seção crítica, reabertura recalcula os alvos, `fontes_da_pesquisa`); Aprendizado 31.163
+  (revisões 480/482: id cru da lição, `conflict` conta contra, `scope_profile_id`, `avisos`, lição de várias personas); Portal 28.61 (seletor do grupo), 31.164, 31.166 e 31.167. A main trouxe também os 2 commits de conteúdo do dono (213d3476, dfaeb216: as regras de conteúdo saem dos prompts, da persona e do orquestrador de personas; emendas aos ADR-048 e ADR-050; dirigido 470 SQLite + 470 PG e vitest 184 verdes antes do deploy). Deploy em 89 s, sem migração; prova de fora 46 ok na 2ª rodada (1 falha transitória logo após o A10).
+  - `real` (central WIN-7S2UASNLFOP): deploy com backup `20261006-200644`; saúde ok, migração 127; prova de fora; agente `0.1.0+42cba3c`; A10 ok.
+  - `simulated` (suíte 57): números do CHANGELOG.
+  - `not_run`: percursos reais do Portal e as correções de concorrência sob a rodada de 07/10.
+  - Próxima ação: 07/10 ~10:00Z onda 2 (3 alvos) e 13:00Z rodada (~30 alvos), cenário em `.claude/handoffs/prova30/cenario.md`; corte 58 (31.165, 31.150, 31.149, 31.169, 31.168) depois da prova.
 - **Deploy 56 no ar (06/10/2026, 21:15Z, central `f831945447a6bd`, migrações 126 e 127; corte da noite da prova).** 8 pontas: Jev 31.155 (ADR-080),
   31.154 v1.95, ADR-081 (regra da frota configurável) e 28.61 (grupo "Liberado"); ensino 31.148, 31.163 e correções do 31.157/31.160; Portal
   31.162 e campos do ADR-081; DevOps 29.167 b; GitHub C17. Jev: teste do leque ajustado à regra nova (ca908e7e). Aviso: o android-03 caiu às 20:19Z sob a pausa de reparo e voltou 21:16Z; reverificar a sessão antes da onda 2.

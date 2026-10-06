@@ -31,6 +31,7 @@ import {
   type VizinhaDaReceita, ORIGEM_LABEL, acoesDoItem, nomearCapabilityNoTexto, porQueOSistemaNaoPublica, rotuloDoEstado,
   rotuloDoKind, motivoDaInvalida, nomeDaEtapa, textoDaEvidencia,
 } from './model';
+import { motivoEmPalavras } from './aprovacaoAutomatica';
 import { formatUsd } from './metricas';
 import styles from './Aprendizado.module.css';
 import { useCarga } from './useCarga';
@@ -541,14 +542,14 @@ function Historico({ trilha }: { trilha: DetalheDoLivro['trilha'] }) {
           {trilha.map((t) => (
             <li key={t.id} data-tipo={t.tipo ?? undefined}>
               {formatQuando(t.decided_at)} · {passoDaTransicao(t)} por <strong>{t.decided_by}</strong>
-              {t.tipo === 'confirmacao' ? (t.motivo_da_pessoa ? `: ${t.motivo_da_pessoa}` : ' (sem motivo)') : ': '}
+              {t.tipo === 'confirmacao' ? (t.motivo_da_pessoa ? `: ${motivoEmPalavras(t.motivo_da_pessoa)}` : ' (sem motivo)') : ': '}
               {t.tipo === 'confirmacao' ? null : t.tipo === 'evidencia_invalida' && t.run_invalidada ? (
                 <>
                   <Badge tone="danger" size="sm">evidência inválida</Badge>{' '}
                   a execução <a className={styles.linkAlvo} href={hrefDaExecucao(t.run_invalidada)}>{t.run_invalidada}</a>{' '}
                   terminou como sucesso sem comprovar o que fez
                 </>
-              ) : t.reason}
+              ) : (t.reason ? motivoEmPalavras(t.reason) : t.reason)}
             </li>
           ))}
         </ol>

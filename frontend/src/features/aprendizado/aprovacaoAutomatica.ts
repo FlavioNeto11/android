@@ -92,12 +92,15 @@ export function lerRelatorioDaAprovacao(raw: unknown): RelatorioDaAprovacao {
 /** Os fatos do motivo, sem o prefixo da regra (`auto:<regra> v1 — `) nem o da confirmação: é o que a pessoa lê. */
 export function fatosDoMotivo(motivo: string): string {
   const i = motivo.indexOf(' — ');
-  const fatos = i >= 0 ? motivo.slice(i + 3) : motivo;
+  return fatosEmPalavras(i >= 0 ? motivo.slice(i + 3) : motivo);
+}
+
+function fatosEmPalavras(fatos: string): string {
   // 30.63: os rótulos que a própria tela usa, não a palavra crua da régua ("saúde pouca_amostra", "parecer observar (lr-…)").
   // 30.66: o parecer com o rótulo das outras telas ("pedir mais evidência"), não a chave sem acento.
   return fatos
     .replace(/saúde ([a-z_]+)/g, (_m, r: string) => `saúde: ${metaDeSaude(r)?.label ?? r}`)
-    .replace(/parecer ([a-z_]+) \(lr-[0-9a-f]+\)/g, (_m, d: string) => `parecer do curador: ${textoDaDecisao(d).toLowerCase()}`);
+    .replace(/parecer ([a-z_]+)(?: \(lr-[0-9a-f]+\))?/g, (_m, d: string) => `parecer do curador: ${textoDaDecisao(d).toLowerCase()}`);
 }
 
 /** 30.66: a regra da régua em português, como em Pendências > Decidido sozinho; o id cru fica no `title`. */
@@ -112,6 +115,18 @@ export function rotuloDaRegra(regra: string): string {
 
 /** A chave interna com a versão ("send_message_i1 (v1)"): sem o nome da capability, não diz nada ao dono. */
 const RE_CHAVE_COM_VERSAO = /^([a-z][a-z0-9]*(?:_[a-z0-9]+)*) \(v(\d+)\)$/;
+
+/**
+ * 31.164: o motivo gravado pela régua em qualquer lugar onde a tela o repete (a nota "Confirmado que fica" do item e a
+ * trilha do Livro), não só no "Decidido sozinho". Só o texto que a régua escreveu (`auto:<regra> vN — fatos`, com ou
+ * sem o prefixo da confirmação) ganha o nome da regra e os rótulos dos fatos; o motivo que uma pessoa digitou fica
+ * como está, mesmo que cite a palavra "saúde".
+ */
+export function motivoEmPalavras(motivo: string): string {
+  const m = /^(?:confirmado que fica: )?auto:([a-z_]+) v\d+ — ([\s\S]*)$/.exec(motivo);
+  if (!m) return motivo;
+  return `${rotuloDaRegra(m[1] ?? '')} — ${fatosEmPalavras(m[2] ?? '')}`;
+}
 
 /**
  * 30.66: o título de uma decisão para a pessoa. O item decidido já saiu das filas, então o nome bonito do livro

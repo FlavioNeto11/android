@@ -43,7 +43,8 @@ def _nao_renomeia(nome: str) -> bool:
 
 
 def normal(valor: str) -> str:
-    return valor.strip().lstrip("@").strip().casefold()
+    """O valor comparável: sem espaço NENHUM (não só nas pontas: achado do Copilot no PR 487), sem `@` e sem caixa."""
+    return re.sub(r"\s+", "", valor).lstrip("@").casefold()
 
 
 def _trocar_nome(texto: str | None, antigo: str, novo: str) -> str | None:

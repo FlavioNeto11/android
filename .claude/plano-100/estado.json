@@ -10863,16 +10863,15 @@
   },
   "31.131": {
    "id": "31.131",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "2026-10-06, central 2193a8b5: tela Aprendizado > Aprendido (selo e filtro Prova); GET /api/aprendizado?nascido_de_prova=true&kind=fluxo (5), GET /api/flows?nascido_de_prova=true (5), GET /api/training?nascido_de_prova=true (6 sessoes, 5 salvas, todas android-04).",
-   "nota": "Livro: real. Salvas: marca confirmada no API, selo na tela ainda nao visto (not_run).",
+   "evidence": "2026-10-06, central f8319454, android-04 (Salvas, 10 sessoes, 5 selos) e Livro (5 fluxos de prova, 5 selos); GET /api/training?nascido_de_prova=true = 5 saved + 1 discarded",
    "grupo": "Portal",
    "modelo": "claude-sonnet-5-5",
    "esforco": "alto",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T19:14:10+00:00"
+   "quando": "2026-10-06T23:11:08+00:00"
   },
   "31.132": {
    "id": "31.132",
@@ -11092,16 +11091,16 @@
   },
   "29.161": {
    "id": "29.161",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Parte 1 em 06/10 14:03Z (sessão Frente Hardware, só leitura, central 360d133a): central Core Ultra 9 185H (22 threads), 64 GB nos 2 slots, NVMe 1 TB com 140 GB livres, RTX 2000 Ada, emuladores em WHPX com -gpu host; notebook da LAN 12 threads, 64 GB, 3,7 TB, 9 emuladores x 2 vCPU (teto prático ~5); load dos convidados nos avisos mediana 12,2, p90 18,2; avisos 06/10: 3 central x 650 notebook (.claude/handoffs/hardware-analise.md).",
-   "blocker": "Falta: coleta no notebook (P-019, SIM do dono 14:01Z, script hardware-coleta-notebook.ps1), preços, porte de SO e degraus 0-3.",
-   "grupo": "hardware",
-   "modelo": "misto",
-   "esforco": "misto",
+   "evidence": "Análise entregue em 06/10/2026 (leituras de 13:53Z a 16:30Z), máquina: central (Dell Precision 3591) lido no próprio host e notebook da LAN (ThinkPad P53) lido pelo central e pela saída do script de coleta que o dono rodou às 14:35Z; commit do repositório 360d133a. Conteúdo: hardware, consumo, pressão por dia e por aparelho dos dois hosts; degrau 0 (R$ 0) aplicado pelo dono, central às 14:34Z e notebook às 14:31Z, com antes e depois; degrau 1 (SSD 2 TB no segundo slot M.2 do central, R$ 2.349,99, e refrigeração do notebook, R$ 0 a ~190); degrau 2 (troca de SO: central não recomendado, notebook para Linux só depois da prova na máquina nova, plano em fases de 3 a 5 dias); degrau 3 (terceira máquina AM4 de 16 núcleos com 64 GB DDR4 ≈ R$ 10.844, ou AM5 ≈ R$ 15.457, +14 emuladores); correção do plano de energia do notebook (Ultimate) e do script; arquivo de paginação, térmica a 95,1 °C, SMT (12 threads = 6 núcleos) e Defender sem peso no notebook; capacidade para a prova de 07/10 (6 a 7 aparelhos, 4 a 5 ondas). Preços lidos em 06/10 em varejista nacional e na loja da Microsoft, estimativa do dia, nada comprado. Ressalvas: o ganho do Linux/KVM é not_run (nunca rodou numa máquina do parque, ADR-028); a regra de 1 vCPU por thread vem de um único ponto de quebra; a releitura da CPU do Defender (base 0,21 núcleo no central; 0,52 desde o degrau 0, com o host ocupado pelo funil) e a comparação de 07/10 dos avisos por aparelho dependem de 24 h de dados; o retorno do notebook ao plano Ultimate não está confirmado; a temperatura a 95,1 °C é uma amostra de 1 min.",
+   "blocker": "Comparações pendentes de 24 h (Defender, avisos por aparelho com 6 emuladores) e decisões do dono sobre compras; nada bloqueia a entrega da análise.",
+   "grupo": "hardware-29-161",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T15:12:25+00:00"
+   "quando": "2026-10-06T23:11:08+00:00"
   },
   "29.108": {
    "id": "29.108",
@@ -11273,27 +11272,32 @@
   "31.154": {
    "id": "31.154",
    "status": "implemented",
-   "proof": "real",
-   "evidence": "Onda 1, em 06/10/2026, no central (deploy 55, commit 086236e9). Operação op-20261006194323-0a1540, execução r-20261006194323-240d40, com alvo único, instance_id explícito, acao_final=preparar e max_usd 0,75. A exceção de uso único do 30.65 (exc-drzlj8cc7vZ6vLUJ) foi criada após o sim do dono à P-030. Os estágios saíram na ordem do dono, e o rascunho saiu 95 s depois do POST. O dono aprovou pelo Telegram: comment_1 começou às 19:47:01.552Z e terminou às 19:48:05.915Z com verified=true (evidências 2941 e 2943). A execução terminou completed, com custo de US$ 0,2894 (pesquisa US$ 0,0526). A medida está em .claude/handoffs/prova30/medida-onda-1.md. O código que chega no corte 56 (ponta 441abaac) corrige as divergências medidas, com prova simulated: a aprovação por fora do liberar reabre a operação como executar, o finished_at fica na hora do último estágio, a hora do rascunho é a do pedido, a reserva do teto vale do POST do Jev até a linha de custo e o nome fixo com colisão não é sobrescrito. Testes: test_operacoes, test_operacoes_estagios, test_plano_da_operacao e test_decisao_fechada_jev. Pendente para o corte 57 (feat/corte57-jev): GET com fontes_da_pesquisa, alvo bloqueado por parâmetro em conflito, reserva conferida e incrementada na mesma seção crítica e alvos recalculados depois de reabrir (achado P1 do PR 483).",
+   "proof": "simulated",
+   "evidence": "Corte 57, branch feat/corte57-jev: c2bf12ef = 441abaac + merge da 0d8b973d (cb36b9b4) + achados das revisões dos PRs 479 e 483; a330e29f = os 5 achados do Copilot no PR 487. (a) fontes_da_pesquisa no GET (pedido_observacoes tipo url, migração 125): backend/tests/test_operacoes.py::test_o_get_traz_as_fontes_que_a_pesquisa_achou. (b) Nome fixo da operação já usado no plano com outro valor: a execução do alvo termina recusada no planejamento (plan.refused, motivo parametro_em_conflito, só os nomes), e a operação lê o alvo em acao_bloqueada com 'parâmetro em conflito: …'; alvo recusado no planejamento deixa de ficar pendente para sempre: backend/tests/test_plano_da_operacao.py::test_nome_fixo_em_conflito_recusa_o_alvo_e_a_operacao_le_acao_bloqueada. (c) Teto da operação: conferência e reserva na mesma seção crítica (_budget(reservar=True)); barrada por outra régua, a reserva sai: backend/tests/test_operacoes.py::test_a_conferencia_e_a_reserva_do_teto_sao_uma_secao_critica_so. (d) Aprovação por fora do liberar: reabre ANTES da leitura dos alvos (achado P1 do Codex no PR 483): backend/tests/test_operacoes.py::test_a_reabertura_le_os_alvos_ja_como_executar_e_o_mesmo_get_nao_fecha_de_novo. (e) Copilot PR 487: só a coluna ausente vira sem operação (app.db.coluna_ausente): test_operacoes.py::test_so_a_coluna_ausente_vira_execucao_sem_operacao; recusa de parâmetro sem nome nem valor: test_plano_da_operacao.py::test_a_recusa_nao_devolve_o_nome_do_parametro; reabertura condicional, não ressuscita a cancelada: test_operacoes.py::test_a_reabertura_nao_ressuscita_a_operacao_cancelada_entre_a_leitura_e_o_update; reserva até o custo gravado (Usage.soltar_reserva, add_usage solta; 120 s de prazo de segurança): test_operacoes.py::test_a_reserva_da_chamada_que_respondeu_vale_ate_o_custo_gravado; valor comparável sem espaço nenhum: test_plano_da_operacao.py::test_o_valor_comparavel_nao_tem_espaco_nenhum. Todos os testes novos reprovam no código anterior (cb36b9b4 e c2bf12ef). Dirigidos na a330e29f: 95 arquivos + catracas, 3822 passed, 1 skipped; mypy 257 (no teto); docs-check 0. Sem chamada paga, sem aparelho (real: not_run neste corte; o real do 31.154 é o da onda 1, no corte 56).",
    "grupo": "jev",
    "modelo": "opus-5.5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T21:18:22+00:00"
+   "quando": "2026-10-06T23:11:08+00:00"
   },
   "31.157": {
    "id": "31.157",
-   "status": "partial",
-   "proof": "real",
-   "evidence": "06/10 19:43Z-19:46Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8, migrações 124 e 125, ai.pesquisa.enabled ligada). Onda 1, tentativa 3: operação op-20261006194323-0a1540, execução r-20261006194323-240d40 (1 alvo, android-01), lida só em leitura às 19:46Z. Observação única: uma leitura_do_alvo da operação em pedido_observacoes (situacao observado, 19:44:33Z) e o fato alvo.conteudo (origem leitura, confirmado, 1 evidência, frescor 6 h). fatos_da_operacao no texto: o draft_meta da etapa comment_1 tem fatos_da_operacao {quantos: 15, leitura: primeira}. Estágios conteudo_lido 19:44:33Z e conhecimento_recuperado 19:44:42Z em operacao_alvos.marcas; alvo concluido em resultado_verificado. Defeito achado no real: resultado.conhecimento_ids vazio (só os estágios eram gravados). Corrigido no corte 56 (e60a983eb50a66: a porta de escrita grava as refs em operacao_alvos.marcas.conhecimento_ids; simulated em backend/tests/test_conhecimento_da_operacao.py::test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem). Também no corte 56 (4b2bc92c463628, decisão da orquestradora): o assunto da operação vai ao escritor junto da intenção, simulated em ::test_o_assunto_vai_junto_da_intencao_e_so_relaciona_quando_couber.",
-   "blocker": "Falta: conhecimento_ids preenchido e o assunto no texto numa execução real depois do deploy 56; a conferência de uma 2ª execução da mesma operação (a onda 1 teve 1 alvo).",
-   "grupo": "aprendizado-corte56-estado-apos-onda-1",
-   "modelo": "claude-opus-5-5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Achados do Codex e da revisão do PR 480/482 (Aprendizado ea31d391 e 87774a52): evidência pelo id cru, contagem efetiva, voz da persona dona, aviso de conhecimento e a lição de duas personas guarda o conjunto. Simulado: backend/tests/test_aprendizado_da_operacao.py::*, backend/tests/test_conhecimento_da_operacao.py::*. Corte 57 (integ/suite-57, ponta 581c62f9ddb2d9 = main do deploy 56 + 5 pontas, sem migração; Windows, central WIN-7S2UASNLFOP, 06/10/2026 21:17Z-22:58Z, Idle): scripts/tests 790 passed; backend SQLite inteiro 12538 passed, 13 skipped, 0 failed (na ponta c2bf12ef, anterior ao commit a330e29f da Jev); SQLite dirigido dos arquivos tocados por a330e29f (operações, routing, planning, usage, estágios; 17 arquivos) 165 passed; frontend typecheck ok, 1982 testes em 151 arquivos passed, build ok (na c2bf12ef); catracas backend 89 + scripts 7 passed; docs-check 0/0; mypy 257 = teto (na 581c62f9); PostgreSQL dirigido na 581c62f9, 435 arquivos em 2 partes: parte 1 com 5127 passed, 8 skipped; parte 2 com 4104 passed, 6 skipped, 2 failed e 1 error (test_loja_de_apps::test_proxy_que_o_aparelho_nao_confirma_vira_falha_e_nao_se_repete, test_rotation_worker::test_tarefa_para_remoto_desligado_liga_pelo_worker_e_conclui e test_learning_rota_publicacao::test_a_rota_diz_vetado_antes_do_modo), com o host a 90-100 % de CPU por outro ensaio em paralelo; os 3 arquivos rerodados sozinhos: 33 passed no SQLite e 33 passed no PostgreSQL (22:57Z). Uma primeira rodada do PG na c2bf12ef (1317 passed na parte 1) foi interrompida por mim para subir o android-03 e reiniciada na 581c62f9.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_aprendizado_da_operacao.py",
+    "backend/tests/test_conhecimento_da_operacao.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-57",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T21:18:22+00:00"
+   "quando": "2026-10-06T23:11:08+00:00"
   },
   "31.158": {
    "id": "31.158",
@@ -11389,15 +11393,15 @@
   "31.147": {
    "id": "31.147",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "frontend/src/features/training/SemCodigoCru.test.tsx (varredura contra codigo cru na barra, na revisao e no resultado do salvar) e training/TrainingReview.tsx (seletor em palavras).",
-   "nota": "Real: not_run ate o deploy 54 e o sinal da Aprendizado para ler a sessao em proposed no android-04.",
+   "proof": "real",
+   "evidence": "2026-10-06, central f8319454, android-09 trn-wZQnQtmKXyrZbLQO (previa 200, escreve nada) e android-04 trn-njNB (sessao salva em leitura)",
+   "nota": "Real: previa por etapa, avisos 'Ao salvar', escopo 'Vale para', leitura da sessao salva com estado do fluxo e link ao Livro; pacotes_aceitos vazio. not_run: salvar controlado e previa com pacotes nao vazio.",
    "grupo": "Portal",
    "modelo": "claude-sonnet-5-5",
    "esforco": "alto",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T19:14:10+00:00"
+   "quando": "2026-10-06T23:11:08+00:00"
   },
   "29.166": {
    "id": "29.166",
@@ -11514,14 +11518,50 @@
    "id": "31.163",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "GET /api/operacoes/{id}/aprendizado (as 10 perguntas, adendo v1.96 de docs/api-contract.md), na branch do corte 56, ponta 4b2bc92c463628. Validação: backend/tests/test_aprendizado_da_operacao.py (5 testes) e PG 694 passaram antes. Lido do worktree contra o banco real (só leitura) na onda 1. A revisão do PR 480 achou 4 defeitos (evidência da lição pelo id cru, contagem efetiva, voz da persona dona, aviso de conhecimento_ids não gravados), corrigidos no corte 57: feat/corte57-aprendizado, ea31d3914302d6, ::test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona e test_conhecimento_da_operacao.py::test_falha_ao_gravar_conhecimento_ids_nao_derruba_e_fica_visivel.",
-   "blocker": "Falta: o GET real numa operação depois do deploy 56 e as correções do corte 57 no deploy.",
-   "grupo": "aprendizado-corte56-estado-apos-onda-1",
+   "evidence": "feat/corte57-aprendizado, ponta 87774a5239c434 (sobre 4b2bc92c). Revisão dos PRs 480 e 482 sobre GET /api/operacoes/{id}/aprendizado, 5 defeitos corrigidos: (1) a evidência da lição era buscada por licao:li-…, e o Livro grava li-…: agora pelo id cru, e a lição reforçada pela operação aparece mesmo sem provenance que a cite; (2) a contagem ignorava conflict e a neutralização: agora usa promocao.efetivas/contrarias, e a reprodução da receita conta como uso na operação; (3) voz e preferência com scope_profile_id vão para persona_aprendeu na persona dona; (4) a falha ao gravar conhecimento_ids fica em draft_meta.fatos_da_operacao.conhecimento_ids=nao_gravados e no campo avisos do GET, sem derrubar o texto; (5) (Codex, PR 482) a lição de duas personas guarda o conjunto em personas e não vira 'da operação inteira'. Validação: backend/tests/test_aprendizado_da_operacao.py::test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona (reprova no código anterior), ::test_licao_de_duas_personas_guarda_o_conjunto_e_nao_vira_da_operacao (reprova no código anterior), backend/tests/test_conhecimento_da_operacao.py::test_falha_ao_gravar_conhecimento_ids_nao_derruba_e_fica_visivel. 120 passaram (operação, conhecimento, pesquisa, arquitetura, rascunho, frota, DM) e depois 31. mypy 257, docs-check 0. Adendo v1.96 atualizado.",
+   "blocker": "Falta: o GET real numa operação depois do deploy 57.",
+   "grupo": "aprendizado-corte57-revisao-do-31163",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T21:18:22+00:00"
+   "quando": "2026-10-06T23:11:08+00:00"
+  },
+  "31.164": {
+   "id": "31.164",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/aprendizado/DecididoPelaPlataforma.test.tsx, AprendizadoPage.test.tsx, DetalheRico.test.tsx (testes '31.164')",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "alto",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T23:11:08+00:00"
+  },
+  "31.166": {
+   "id": "31.166",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/operacao/AbaAprendizado.test.tsx (9 testes)",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "alto",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T23:11:08+00:00"
+  },
+  "31.167": {
+   "id": "31.167",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/operacao/Aprendizado.test.tsx (describe 31.167, 4 testes)",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "alto",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T23:11:08+00:00"
   }
  },
  "rodadas": [
@@ -15092,6 +15132,27 @@
     "aprendizado-corte56-estado-apos-onda-1",
     "devops-29.167",
     "github-c17",
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T23:11:08+00:00",
+   "itens": [
+    "31.157",
+    "31.154",
+    "31.163",
+    "31.164",
+    "31.166",
+    "31.167",
+    "29.161",
+    "31.131",
+    "31.147"
+   ],
+   "grupos": [
+    "Portal",
+    "android-suite-57",
+    "aprendizado-corte57-revisao-do-31163",
+    "hardware-29-161",
     "jev"
    ]
   }
