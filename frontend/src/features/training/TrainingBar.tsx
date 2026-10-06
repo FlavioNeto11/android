@@ -11,6 +11,7 @@ import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
 import { Disclosure } from '../../components/Disclosure';
+import { SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { Field, Select, TextInput } from '../../components/Field';
 import { isRecord, plural } from '../../lib/format';
 import { tempoRelativo, useNow } from '../../lib/time';
@@ -345,6 +346,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             {salvas.map((s) => (
               <li key={s.id}>
                 <span>{s.intent}</span>
+                <SeloNascidoDeProva nascido={s.nascido_de_prova} />
                 {s.origin ? <SeloDeOrigem origin={s.origin} /> : null}
                 <Button size="sm" variant="ghost" onClick={() => setVendo(s.id)} label={`Ver o treinamento salvo “${s.intent}”`}>Ver</Button>
                 <RefazerReceitas sessionId={s.id} intent={s.intent} />

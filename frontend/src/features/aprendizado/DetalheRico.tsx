@@ -3,6 +3,7 @@ import { createContext, useContext, useId, useState, type ReactNode } from 'reac
 import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { SeloEmProva } from '../../components/SeloEmProva';
+import { SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { textoDosApps } from '../../lib/appsDoFluxo';
@@ -101,6 +102,7 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
         <Fato rotulo="Estado">
           {rotuloDoEstado(item.state)}
           {item.kind === 'fluxo' && item.ensinado_em_prova ? <> <SeloEmProva ensinado={item.ensinado_em_prova} /></> : null}
+          {item.kind === 'fluxo' && item.nascido_de_prova ? <> <SeloNascidoDeProva nascido={item.nascido_de_prova} /></> : null}
         </Fato>
         <Fato rotulo="Origem">{ORIGEM_LABEL[item.origin] ?? item.origin}</Fato>
       </dl>

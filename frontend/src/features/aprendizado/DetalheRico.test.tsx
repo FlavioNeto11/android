@@ -706,6 +706,18 @@ describe('detalhe rico: o selo em prova do fluxo ensinado (30.85)', () => {
     expect(t).toContain('Publicado');
   });
 
+  it('31.131 (v1.87): o Estado do fluxo nascido de uma prova leva o selo "Nascido de uma prova"; sem a marca, ou com `false`, não leva', async () => {
+    const selos = () => Array.from(container.querySelectorAll('span')).filter((x) => !x.children.length && x.textContent === 'Nascido de uma prova').length;
+    await mostrar(FLUXO({ state: 'disabled', nascido_de_prova: true }));
+    const estado = Array.from(container.querySelectorAll('dt')).find((d) => d.textContent === 'Estado')!.nextElementSibling as HTMLElement;
+    expect(text(estado)).toContain('Desligado');
+    expect(Array.from(estado.querySelectorAll('span')).some((x) => x.textContent === 'Nascido de uma prova')).toBe(true);
+    await mostrar(FLUXO({ state: 'disabled', nascido_de_prova: false }));
+    expect(selos()).toBe(0);
+    await mostrar(FLUXO({ state: 'disabled' }));
+    expect(selos()).toBe(0);
+  });
+
   it('31.120 (v1.81): o fluxo ensinado a partir de uma falha mostra etapa, tentativa e sessão de origem, só ids; com os campos nulos ou ausentes nada disso aparece', async () => {
     const fluxo = (origem: object) => detalhe({ conteudo: { tipo: 'fluxo', nome: 'Abrir', comando_modelo: 'abra', origem: origem as never, apps: [], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } });
     let t = await mostrar(fluxo({ tipo: 'treino', fonte: 'training:trn-4lukXbyHNxGubAK0', source_run_id: 'r-20261006053318-c04149', session_id: 'trn-4lukXbyHNxGubAK0',

@@ -187,6 +187,23 @@ it('sessão salva aparece em "Salvas" com "Refazer receitas", que só chama /rec
   expect(backend.callsTo('POST', /\/training\/trn-7\/recipes$/)).toHaveLength(1);
 });
 
+// 31.131 (adendo v1.87): a sessão salva que nasceu de uma prova leva o selo na linha de "Salvas"; a comum, e a de backend anterior, não.
+it('"Salvas": só a sessão com `nascido_de_prova` leva o selo "Nascido de uma prova"', async () => {
+  const salva = (id: string, intent: string, extra: object = {}) => ({ ...GRAVANDO, id, intent, status: 'saved', flow_id: `f-${id}`, ...extra });
+  backend.on('GET', /\/training$/, () => json([
+    salva('trn-a', 'Pesquisar nas configurações', { nascido_de_prova: true }),
+    salva('trn-b', 'Abrir o perfil'),
+    salva('trn-c', 'Abrir o Wi-Fi', { nascido_de_prova: false }),
+  ]));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Salvas (3)'));
+  const linha = (intent: string) => byRole('button', new RegExp(`^Ver o treinamento salvo “${intent}”$`)).closest('li') as HTMLElement;
+  const selos = (li: HTMLElement) => Array.from(li.querySelectorAll('span')).filter((x) => !x.children.length && x.textContent === 'Nascido de uma prova').length;
+  expect(selos(linha('Pesquisar nas configurações'))).toBe(1);
+  expect(selos(linha('Abrir o perfil'))).toBe(0);
+  expect(selos(linha('Abrir o Wi-Fi'))).toBe(0);
+});
+
 // 31.92 (v1.64): o controle mudou de mãos e o lease desta aba ficou velho; o backend recusa com 409 control_required
 // e não muda nada. A barra diz que a gravação continua (com a mensagem do backend) e se relê.
 it('Concluir recusado por control_required: a gravação continua na barra, com o motivo, e a lista se relê', async () => {

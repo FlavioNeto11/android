@@ -34,6 +34,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **31.127** (adendo v1.85): cada etapa ensinada espera a anterior (`depends_on`), salvo `independente: true` na proposta; tipo errado dá 400 `etapa_invalida`.
 - Revisão de segredos (agente, só leitura): nem uma palavra do dado da persona vira sugestão; a entrada marcada (teclado de PIN, padrão) não guarda os elementos.
 - Prova `simulated`: `tests/test_treino_partida_f2_e_sequencia.py` (13) e os ajustes de `tests/test_etapa_pacotes_aceitos.py` (a 1ª etapa agora também aceita o vizinho) e de `tests/test_treino_previa_e_refazer_receitas.py` (a chave nova da prévia). Dirigidos: 124 arquivos um por vez, com 1944 aprovados e as 3 falhas corrigidas e rodadas de novo; `scripts/tests`: 683. Real: `not_run` até o corte 51.
+## 2026-10-06 — 31.131: o selo "Nascido de uma prova" no Livro e em Salvas, e o filtro que separa prova de uso real (branch feat/31-131-nascido-de-prova)
+
+- Achado da leitura dos três fluxos desligados que nasceram de provas: no Livro eles pareciam fluxos reais desligados por uma pessoa, e em Salvas as sessões eram linhas comuns; nada dizia "veio de prova".
+- Adendo v1.87 (item 31.130, backend): a sessão de treino e o fluxo ganham `nascido_de_prova` (boolean). O painel tipa o campo como **opcional** (`EntradaDoLivro` e `TrainingSession`), então backend anterior segue como antes: sem o campo, nenhum selo.
+- **Selo "Nascido de uma prova"** (componente `SeloNascidoDeProva`, com a explicação no `title`) no cartão do fluxo no Livro, no Estado do detalhe do fluxo e na linha da sessão em **Salvas**; só com `nascido_de_prova === true` (`false` é desligado por falha ou uso real e não leva o selo), e só no fluxo (na lista do Livro).
+- **Filtro "Prova"** no Livro (Todos / Só os nascidos de uma prova / Sem os de prova (uso real)): manda `nascido_de_prova=true|false` na listagem e também separa no painel pela marca de cada linha, para valer com backend que ainda ignora o parâmetro.
+- **O motivo do desligamento** já saía como o backend o escreve (a frase do `por_que_nao_publica`); o painel não reescreve nada, e quando o 31.130 gravar o motivo que diz "de prova", ele aparece no cartão.
+- Só frontend e CHANGELOG; nada de reativar, aposentar ou mexer nos três fluxos. Prova `simulated`: `NascidoDeProva.test.tsx` (3), um caso em `DetalheRico.test.tsx` e um em `TrainingBar.test.tsx`; nove mutações mortas; sementes 1 a 8 e 88 do fetch atrasado; typecheck e suíte do frontend (1773) verdes. Real: `not_run` até o deploy com as duas pontas (percurso 52).
 
 ## 2026-10-06 — 31.124, 31.125 e 31.126: ensinar sem repetir sem saber, atalho na falha e o Livro sem código cru (branch feat/31-124-ensino-avisos)
 
