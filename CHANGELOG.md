@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.137: a abertura do app de prova reabre na tela inicial e a espera do foco aceita os pacotes vizinhos da etapa (branch feat/31-137-open-app-tela-inicial)
+
+- Defeito (leitura da Aprendizado no banco central): com a busca do Configurações (`com.google.android.settings.intelligence`) no topo da tarefa do app, a abertura
+  sem IA do executor (LT-6) esperava o foco do Configurações por `ESPERA_DO_FOCO_S` (60 s; medido 60,3 s em d92795 e 60,8 s em 1157c6, contra 2,0 a 6,9 s nos outros
+  cinco) porque o `am start` comum só traz a tarefa de volta, no ponto onde parou; na 1157c6 a receita divergiu e a IA assumiu.
+- Mudança: (1) `Adb.start_app(..., tarefa_limpa=True)` usa `--activity-clear-task --activity-new-task`, que apaga a tarefa (inclusive as telas de outro pacote empilhadas
+  nela) e abre a tela inicial; o driver ganhou a extensão `open_app_tarefa_limpa` (fora do `DeviceIO`: dublê sem ela cai no `open_app` comum); o executor e
+  `DeviceManager.open_app` a usam só para os pacotes de `ABERTURA_COM_TAREFA_LIMPA` (`com.android.settings`). **Decisão e porquê:** só o app de prova, e não um flag
+  para todos, porque apagar a tarefa de um app com conta real descartaria o ponto em que a pessoa ou a execução estava (rascunho, conversa); o resto segue
+  retomando como sempre. Force-stop seguido de start foi descartado: parar o Configurações não tira da tarefa a tela da busca, que é de outro processo.
+  (2) `esperar_foco` (executor) e `wait_for_focus` (manager e instalador) aceitam `aceitos`, os `pacotes_aceitos` da etapa (31.123); a partida da prova junta os das etapas do
+  objetivo. O diário da abertura diz "(tarefa limpa, na tela inicial)" quando foi o caso.
+- Prova `simulated` (`test_open_app_tarefa_limpa.py` 9 testes, mais o caso do LT-6 em `test_caminho_rapido_2.py`; 1230 passed nos 52 arquivos que citam abertura e espera de foco,
+  com `test_arquitetura` e as catracas; mypy 257 no teto). `real`: `not_run` — a latência de `open_app` antes e depois, na mesma situação (busca do Configurações no topo),
+  pede um aparelho de prova livre; depois do funil da Android. Sem migração e sem adendo.
+
 ## 2026-10-06 — 31.124, 31.125 e 31.126: ensinar sem repetir sem saber, atalho na falha e o Livro sem código cru (branch feat/31-124-ensino-avisos)
 
 - Achados do percurso 49 (deploy 49, só leitura, sem IA paga): o formulário "Ensinar a corrigir" abriu sem aviso numa etapa que já tinha sessão salva (e deixou abrir mais duas); o botão só existe depois de execução > "Por aparelho" > aparelho > etapa (4 cliques) embora a falha já esteja escrita no cabeçalho do aparelho; e o detalhe de um fluxo do Livro mostrava "App: nao_resolvido" (o código do balde) como se fosse nome de aplicativo.
