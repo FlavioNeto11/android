@@ -245,7 +245,7 @@ function Formulario({ listas, voltar, rascunho }: { listas: Listas; voltar: Reac
                       ) : null}
                       {r ? (
                         <span className={styles.mudo} data-situacao={r.situacao}>
-                          {r.motivo}{r.instanceId ? ` Aparelho: ${r.instanceId}.` : ''}{r.aviso ? ` ${r.aviso}` : ''}
+                          {r.motivo}{r.aviso ? ` ${r.aviso}` : ''}
                         </span>
                       ) : null}
                     </li>

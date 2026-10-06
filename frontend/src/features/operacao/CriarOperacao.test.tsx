@@ -188,7 +188,7 @@ describe('a tela "Nova operação"', () => {
     expect(container.querySelector('li[data-persona="p1"] [data-situacao]')?.getAttribute('data-situacao')).toBe('apto');
     expect(container.querySelector('li[data-persona="p2"] [data-situacao]')?.getAttribute('data-situacao')).toBe('sem_sessao');
     expect(container.querySelector('li[data-persona="p3"] [data-situacao]')?.getAttribute('data-situacao')).toBe('sem_conta');
-    expect(text(container.querySelector('li[data-persona="p1"]')!)).toContain('Aparelho: android-02');
+    expect(text(container.querySelector('li[data-persona="p1"]')!)).toContain('Vai rodar em android-02');
     expect(botao().getAttribute('aria-disabled')).not.toBe('true');
   });
 
@@ -318,7 +318,7 @@ describe('fontes, parâmetros fixos e "Repetir como nova"', () => {
     expect(tudo).toContain('1 persona não existe mais e ficou de fora');
     expect(tudo).toContain('não foram copiados: extra');
     // conta e aparelho são resolvidos de novo: o aparelho do alvo antigo (android-03) não foi copiado
-    await waitFor(() => expect(text(container.querySelector('li[data-persona="p1"]')!)).toContain('Aparelho: android-02'));
+    await waitFor(() => expect(text(container.querySelector('li[data-persona="p1"]')!)).toContain('Vai rodar em android-02'));
     expect(lerRascunho()).toBeNull();                                                       // vale para uma abertura só
   });
 });

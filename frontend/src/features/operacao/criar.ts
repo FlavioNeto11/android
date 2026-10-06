@@ -62,7 +62,7 @@ export function resolverAlvo(
   }
   const aviso = escolha.aparelho && daSessao && escolha.aparelho !== daSessao
     ? `A sessão desta conta está em ${daSessao}, não em ${escolha.aparelho}: confira antes de enviar.` : null;
-  return { profileId, conta, instanceId, situacao: 'apto', motivo: 'Tem conta, sessão pronta e aparelho.', aviso };
+  return { profileId, conta, instanceId, situacao: 'apto', motivo: `Vai rodar em ${instanceId}: a conta tem sessão pronta.`, aviso };
 }
 
 export interface PreviaDaCapacidade {
