@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.166 (a), guarda: o job `docs` não fica verde com formato NAO conferido (branch ci/29-166a-guarda-nao-conferido)
+
+- `.github/workflows/ci.yml`, job `docs`: o passo do `docs-check` guarda a saída e falha se ela trouxer "NAO conferido" (o aviso que o `docs-check` dá, com código 0, quando faltam pyyaml ou pydantic), a pedido da Frente DevOps. Vale junto da instalação das três dependências (631ce8c4). Prova `simulated`: o trecho de pwsh testado localmente com saída com e sem o aviso (falha com 1 e passa com 0) e yaml do workflow. Prova `real`: `not_run`; o aviso só passa a existir no `docs-check` com o 29.160 da Frente DevOps, e o job roda no central.
+
 ## 2026-10-06 — 29.155 (C18): limpeza diária das branches de revisão já mescladas (branch ci/29-155-c18-limpeza)
 
 - `.github/workflows/limpa-branches-revisao.yml` (`ubuntu-latest`, diário 08:11Z, disparo manual em ensaio) e `scripts/limpar_branches_revisao.py`: apaga só `revisao/*` que já estão na main (comparação do GitHub), que já tiveram PR, sem PR aberto (como origem ou base) e com a ponta de mais de 6 h; relê a ref antes de apagar (ponta mudou: fica), no máximo 20 por execução; erro de API deixa a branch. O run agendado só apaga com a variável do repositório `LIMPEZA_APLICAR=true` (ensaio sem ela), a ligar depois de um disparo manual com `aplicar=true` conferido (revisão do `revisor-segredos`). Motivo: hoje as frentes abriram mais de dez branches `revisao/*` só para a revisão automática. Prova `simulated`: `scripts/tests/test_limpar_branches_revisao.py` (18 testes). Prova `real` em parte: ensaio contra o repositório real em 06/10 (somente leitura): 10 branches `revisao/*`, 0 a apagar (6 recentes demais, 4 ainda não na main), 0 erros. Apagar de verdade: `not_run` até o primeiro run agendado depois da mescla.
