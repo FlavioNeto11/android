@@ -160,6 +160,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   Abaixo do limite de 5 ms da orquestradora: fica sem cache do valor. No PostgreSQL: `not_run`.
 - Contrato: adendo v1.79 de `docs/api-contract.md`.
 
+## 2026-10-06 — 31.116 (só o painel): o diagnóstico da falha na origem do treino (branch feat/31-116-diagnostico-no-treino)
+
+- Contra o F4 do 31.111 (`origin.diagnostico`: `causa`, `rotulo`, `pergunta`, `fatos[{codigo, valor}]`): a origem do treino, na barra (gravando) e na revisão,
+  mostra **Causa provável: <rótulo>** e **O que mostrar: <pergunta>**, e os fatos num recolhível "Por que a plataforma acha isso" (o código sem o sublinhado e o valor
+  como veio). Causa `indeterminada` diz "Causa: não deu para saber", sem o "provável". Sem `diagnostico` (backend anterior ou `null`) nada aparece, e sem fatos não há
+  recolhível. Só leitura: a intenção da sessão não muda. `TrainingOrigin.diagnostico?` e `TrainingDiagnostico` em `types.ts`.
+- Falta a parte 2 (o item segue `partial`): o campo de intenção do formulário "Ensinar a corrigir" pré-preenchido pela sugestão, que depende da leitura
+  `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` do backend (a pergunta antes de existir a sessão).
+- Prova `simulated`: `TrainingBar.test.tsx` (2) e `TrainingReview.test.tsx` (1), fetch falso, com três mutações que derrubam o teste (não renderizar, tratar a
+  indeterminada como conhecida, recolhível sem fatos). Prova `real`: `not_run` (a sessão com diagnóstico precisa de uma falha real depois do deploy).
+
 ## 2026-10-05 — 31.111 F5: "Ensinar a corrigir" na etapa que falhou e selo de origem no treino (branch feat/31-111-f5-ensinar-a-corrigir)
 
 - Contra o adendo v1.75 (Jev, `feat/31-111-f1-ensinar-a-partir-da-falha`): na etapa `failed` ou `uncertain` de uma execução (aba Aparelhos), o botão
