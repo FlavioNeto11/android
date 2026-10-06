@@ -203,6 +203,14 @@ def test_o_dado_ausente_de_todo_motivo_e_alvo_ausente() -> None:
     assert classificar_texto("A IA insistiu em 'dado ausente' numa etapa que não é de leitura.") is F.IA_CHAMADA_INVALIDA
 
 
+def test_o_dado_que_sumiu_da_persona_e_falta_de_informacao() -> None:
+    """31.113 F2: o executor para antes do ator quando a persona perdeu o dado depois da materialização; quem resolve é a
+    pessoa (preenche o perfil e retoma), não a leitura da tela."""
+    texto = (f"{PREFIXO_DADO_AUSENTE} a persona deste aparelho não tem nome de exibição, sobrenome; "
+             "nada foi digitado.")
+    assert classificar_texto(texto) is F.FALTA_INFORMACAO
+
+
 def test_todo_motivo_literal_do_executor_cai_fora_de_outro() -> None:
     motivos = _motivos_do_executor()
     assert len(motivos) >= 20, f"a varredura achou só {len(motivos)} motivos: o AST do executor mudou de forma"
