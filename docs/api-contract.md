@@ -6807,7 +6807,8 @@ Uma rota nova e um campo novo na sessão de treino; migração 119 (três coluna
 - **`POST /api/training/from-run`**, corpo `{run_id, step_id, lease_id, intent?, app_id?, profile_id?}` (`extra=forbid`;
   `run_id`, `step_id` e `lease_id` obrigatórios, senão **422**). O aparelho é o da etapa. Responde **201** com a sessão
   (igual a `POST /api/instances/{id}/training`) mais `origin`.
-  - A etapa precisa ter `failed` ou `uncertain`: outra coisa é **409** `step_not_failed`; etapa que não é daquela execução,
+  - A etapa precisa ter `failed`, `uncertain` ou `waiting_user` (o bloqueio que espera uma pessoa): outra coisa é **409**
+    `step_not_failed`; etapa que não é daquela execução,
     ou que não existe, é **404** `step_not_found`. Etapa de aparelho que já não existe: **404** `not_found`.
   - Vale para qualquer aparelho, com as MESMAS travas do treino de hoje: só quem está com o controle (`lease_id`) abre
     (**409** `control_required`), a loja não é aparelho de treino, e persona de outro aparelho é **400**

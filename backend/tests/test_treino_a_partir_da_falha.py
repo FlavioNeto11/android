@@ -197,3 +197,23 @@ async def test_f3_a_correcao_salva_nasce_candidata_com_escopo_e_prova_e_ligada_a
         fluxos = {f["id"]: f for f in (await c.get("/api/flows")).json()}
     assert fluxos[flow_id]["origin"] == {"session_id": sid, "run_id": run, "step_id": step, "attempt_id": f"{step}:a2"}
     assert [fid for fid, f in fluxos.items() if f["origin"]] == [flow_id]           # os outros fluxos não têm origem
+
+
+async def test_o_bloqueio_que_espera_uma_pessoa_tambem_ensina_e_so_o_resto_recusa(harness: Harness) -> None:
+    """31.111 A: a etapa em `waiting_user` (a IA concluiu que não dá, o executor rejeitou) abre a sessão, com o texto do
+    bloqueio no motivo. Cancelada, pendente e bem-sucedida seguem recusadas."""
+    st, _rt, lease = await _com_controle(harness)
+    run, step = _execucao(st, "waiting_user", tentativas=1)
+    boa = {"run_id": run, "step_id": step, "lease_id": lease}
+    async with _cliente(harness) as c:
+        for ruim in ("cancelled", "pending", "succeeded"):
+            st.db.execute("UPDATE steps SET status=? WHERE id=?", (ruim, step))
+            r = await c.post("/api/training/from-run", json=boa)
+            assert r.status_code == 409 and "step_not_failed" in r.text, (ruim, r.text)
+        st.db.execute("UPDATE steps SET status='waiting_user' WHERE id=?", (step,))
+        r = await c.post("/api/training/from-run", json=boa)
+        assert r.status_code == 201, r.text
+        origem = r.json()["origin"]
+        assert origem["motivo"] == MOTIVO and origem["step_key"] == "enviar"
+        ctx = (await c.get(f"/api/training/{r.json()['id']}")).json()["origin"]["context"]
+        assert [(t["status"], t["falhou"], t["motivo"]) for t in ctx["trilha"]] == [("waiting_user", True, MOTIVO)]
