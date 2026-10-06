@@ -345,6 +345,35 @@ describe('com a rota no central', () => {
     expect(container.querySelector('dialog[open]')).toBeNull();
   });
 
+  it('liberar numa operação que o "preparar" já fechou a REABRE: a tela e o relatório seguem o estado de agora (idempotente, sem eventos)', async () => {
+    const fechada = { ...OPERACAO, status: 'concluida', finished_at: '2026-10-06T17:30:00Z', alvos: [OPERACAO.alvos[0], PREPARADO('p2', 'Bia', 'Texto da Bia.')] };
+    const reaberta = { ...fechada, status: 'em_curso', finished_at: null, acao_final: 'executar' };
+    let liberou = false;
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json(liberou ? reaberta : fechada));
+    backend.on('POST', /^\/api\/operacoes\/op-1\/liberar$/, () => { liberou = true; return json({ liberados: ['p2'], recusados: [], operacao: reaberta }); });
+    backend.on('GET', /^\/api\/operacoes\/op-1\/aprendizado$/, () => apiError(404, 'not_found', 'sem rota'));
+    await ir(['op-1']);
+    await waitFor(() => expect(linhas()).toHaveLength(2));
+    // fechada: o Liberar segue ligado (há texto esperando) e o Cancelar fica desligado
+    expect(text(container)).toContain('Concluída');
+    expect(byRole('button', /^Cancelar a operação — indisponível: A operação já terminou/, container).getAttribute('aria-disabled')).toBe('true');
+    await click(byRole('button', /^Liberar$/, container));
+    const d = await waitFor(() => byRole('dialog', /Liberar as ações paradas\?/));
+    await click(allByRole('checkbox', /./, d)[0]!);
+    await click(byRole('button', /^Liberar 1$/, d));
+    // reaberta: o cabeçalho passa a "Em andamento", o Cancelar liga, e há UM selo de estado (nada duplicado)
+    await waitFor(() => expect(byRole('button', /^Cancelar a operação$/, container).getAttribute('aria-disabled')).not.toBe('true'));
+    expect(text(container)).toContain('Em andamento');
+    expect(text(container)).not.toContain('Concluída');
+    expect(text(container).split('Ação final: Preparar e executar')).toHaveLength(2);
+    expect(backend.callsTo('POST', /liberar$/)).toHaveLength(1);
+    // o relatório da operação reaberta: "em aberto", sem encerramento
+    const { montarRelatorio, relatorioEmMarkdown } = await import('./relatorio');
+    const r = montarRelatorio(lerOperacao(reaberta)!);
+    expect(r.operacao.encerrada_em).toBeNull();
+    expect(relatorioEmMarkdown(r)).toContain('**Encerrada em:** em aberto');
+  });
+
   it('"Liberar" sem ninguém esperando fica desligado, com o motivo', async () => {
     backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json(OPERACAO));
     await ir(['op-1']);
