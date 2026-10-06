@@ -318,7 +318,9 @@ instala na máquina dele.
 **O que cada subida deixa.** Uma subida de verdade (a que parou o backend) acrescenta UMA linha a `data\deploys.jsonl`
 (fora do Git, como o resto de `data\`): `ts_utc`, `resultado` (`ok` ou `falhou`), `commit_antes`/`migracao_antes` (o que
 estava no ar), `commit_depois`/`migracao_depois`, `backup` (a pasta em `data\backups` que vale para voltar),
-`backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s` e `opcoes`. Ensaio, recusa
+`backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s`, `opcoes` e `etapas_s` (29.156: segundos de cada etapa na ordem do deploy, `backup`, `site`, `docs_check`,
+`painel`, `parada`, `dependencias`, `subida`, `conferencia`, `tag`; numa falha, `interrompida` é o tempo da etapa que quebrou;
+linhas anteriores ao campo não têm; a mesma lista sai na tela como "tempo por etapa"). Ensaio, recusa
 do portão do `-PularBackup` e falha do build do painel (antes de parar) não entram: não mudaram nada no ar. Ler:
 `Get-Content data\deploys.jsonl | ConvertFrom-Json | Select-Object ts_utc, resultado, commit_antes, commit_depois, backup, tag`.
 
@@ -352,6 +354,13 @@ novo não é um estado testado (o `deploy.ps1` confere código e banco e recusa 
    monte uma árvore na tag (`git worktree add C:\temp\arvore-rollback <tag>`) e rode, com ela acessível à máquina do worker,
    `pwsh -File scripts\worker-install.ps1 -Origem <a árvore>`; confira na Infraestrutura que o worker voltou a `online` e sem
    `agent_outdated`. Remova a árvore temporária depois (`git worktree remove`).
+**Ensaio do caminho 2 sem desfazer nada** (29.156, fatia 3): `pwsh -File scripts\rollback-ensaio.ps1` pega a linha `ok` mais nova
+de `data\deploys.jsonl`, extrai só `backend\` do `commit_antes` (`git archive`, sem tocar o checkout nem o `.git`), restaura o
+backup da linha numa pasta de trabalho (`restore.ps1` sem `-Confirmar`) e abre a cópia com o código antigo. Aprova se a
+integridade está ok, a migração da cópia é a `migracao_antes` da linha e o código antigo NÃO quer aplicar migração nenhuma. Veredito em
+`data\rollback-ensaio\ultimo.json`; saída 0 ok, 1 falhou, 2 pulado (backup podado ou commit ausente: aviso, não aprovação). Rode depois de
+um deploy que trouxe migração, antes de precisar do rollback.
+
 4. **Depois de qualquer rollback:** `GET /api/health` (commit e migração), a 8010 escutando, a prova de fora, e uma linha
    nova em `data\deploys.jsonl` (o rollback também é uma subida e fica no histórico).
 
@@ -456,6 +465,13 @@ Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06
   e ler a conta logada, sem tocar. `account_label`, `/personas` e os vínculos não bastam: o android-04 tinha
   `qa-user-04` e nenhuma persona, com a conta do felipe logada (K-053). Experimento vai num aparelho novo e sem conta
   (provisionar e aposentar são permitidos no ambiente central).
+- **Amostrador permanente do host** (29.156, fatia 1) — `scripts/amostrador-host.ps1`, tarefa `farm-amostrador-host` (ao ligar o
+  host e todo dia 00:05; uma instância; prioridade ociosa; só leitura; `-Instalar` registra sem iniciar). Uma linha por minuto em
+  `data/observabilidade/host/AAAAMMDD.csv` (UTC), retenção de 7 dias só nessa pasta: `ts_utc, cpu_host_pct,
+  vm_convidado_nucleos, vmmem_ws_mb, qemu_host_pct, ram_livre_mb, disco_livre_gb, processos_top` (até 3 NOMES de processo com mais
+  CPU no minuto, em % do host, sem linha de comando) e `avisos_pressao` (`android-05:3;android-01:1`, lidos do banco em
+  `mode=ro`; vazio = nenhum ou não medido). É a entrada do 29.165 e da janela da prova. Na primeira leitura de teste, o topo
+  da CPU do host foi `python` (provavelmente os testes do funil) e o antivírus, não a VM do WSL nem os emuladores.
 
 ## 11. Segurança
 
@@ -766,6 +782,8 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `pg-rapido.py` | P | PG dirigido da suíte no contêiner descartável `farm-pg-rapido` (29.99): recria o contêiner com WAL mínimo, roda a lista em `--partes`, amostra o disco a cada 30 s e aborta a parte com uma linha em 85 % do tmpfs; `--simular` só lista as partes, `--amostrar` lê o contêiner de pé. Só com a vez da orquestradora |
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
+| `amostrador-host.ps1` | S | Amostrador permanente do host (CPU, RAM, disco, VM do WSL, processos que mais usam CPU, avisos de pressão por aparelho), 1 linha/min em `data\observabilidade\host`, retenção 7 dias; `-Instalar` [P] registra a tarefa `farm-amostrador-host` |
+| `rollback-ensaio.ps1` | S | Ensaio do rollback com migração: backup da última linha de `deploys.jsonl` aberto pelo código do `commit_antes`, em pasta própria (Idle, sem tocar o checkout nem `data\poc.sqlite3`) |
 | `restore-ensaio.ps1` | S | Ensaio semanal sobre a cópia mais nova (pasta própria, Idle, não toca `data\poc.sqlite3`); `-Instalar` [P] registra a tarefa `farm-restore-ensaio` |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central`; grava `data\deploys.jsonl` e, conferida a subida, cria a tag `deploy-AAAAMMDD-HHMM` e o release (29.159; `-SemTag` pula a tag) |
 | `eval-run.ps1` (sem `-Yes`) | S | Só imprime o plano da bateria; nenhuma conexão, nenhum adb (26/09: antes, mesmo "simulado" fazia POST no backend vivo e rodava adb) |
