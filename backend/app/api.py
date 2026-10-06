@@ -842,6 +842,18 @@ async def flows_match(request: Request, body: FlowMatchBody) -> Any:
     return {**cobertura_do_fluxo(s, modelo), "skill_ref": str(casado.ref)}
 
 
+@router.post("/flows/similar")
+async def flows_similar(request: Request, body: FlowMatchBody) -> dict[str, object]:
+    """31.89 F5: "este comando parece com o fluxo tal". Só pergunta: devolve até 3 fluxos ativos cujo texto fixo o
+    comando contém (sem acento, caixa, artigo, com pequenas variações), com a referência pública, o molde e a nota. Se
+    um fluxo já casa o comando por inteiro, a lista vem vazia e `matches` é verdadeiro. Não cria execução e não usa IA;
+    o `/flows/match` (cobertura e custo) segue como era."""
+    s = st(request)
+    comando = s.runs.sem_destinos(body.command)
+    return {"matches": s.scheduler.flows.match(comando) is not None,
+            "suggestions": s.scheduler.flows.parecidos(comando)}
+
+
 @router.post("/skills/resolve", response_model=None)
 async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObject:
     """Fase I: a RESOLVE sozinha — que habilidade a frase pede, com que valores tipados, ou que pergunta falta.

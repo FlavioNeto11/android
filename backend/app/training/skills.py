@@ -427,6 +427,7 @@ class TrainingSkills:
                     side_effect=bool(st.get("side_effect")), app_id=outro_app, max_attempts=1 if st.get("side_effect") else 3,
                     postcondition=Postcondition(kind=post.get("kind") or "model_judged", value=post.get("value") or "",
                                                 description=post.get("description") or st.get("goal") or "")))
+        avisos = [*avisos, *self.s.scheduler.flows.colisoes(comando, exemplos)]            # 31.89 F4: só avisa
         plano = Plan(summary=(p.get("summary") or sess["intent"])[:200], app_id=app_id, app_package=pacote,
                      parameters={n: "{" + n + "}" for n in exemplos}, steps=passos,
                      planner=PlannerInfo(provider="treinamento", model=f"treinamento:{session_id}", simulated=False))
