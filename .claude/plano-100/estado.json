@@ -6208,16 +6208,21 @@
   },
   "30.34": {
    "id": "30.34",
-   "status": "partial",
-   "proof": "real",
-   "evidence": "Fatia A no ar desde o deploy 11 (sombra); o código da fatia B existe. Medida do 30.72, real e só leitura: banco do central em mode=ro + query_only, 05/10 ~08:40Z, código da main d025b671 (deploy 35); nenhuma chamada de IA. Zero casos `autopublicaria` na sombra. 27 revisões reais do curador em fluxos B, sobre 22 fluxos: 17 pedir_evidencia, 9 observar, 1 rebaixar, 0 aprovar. Nenhum dos 22 tem hoje caminho para `aprovar`: 9 param em `efeito_real` (app real, proteção por desenho, fora da calibragem); 2 desligados por pessoa; 1 com evidência real contra; 5 do app de prova na 2ª reprodução (teto de custo, efeito repetido, aparelho novo); 5 do app de prova já com >= 2 execuções reais em >= 2 aparelhos param no PARECER (`observar`) porque o curador pede voto e decisão da pessoa e a versão viva do app. Detalhe em .claude/handoffs/aprendizado-medida-30-72.md. Saídas: 30.73 (o curador na classe B) e 30.74 (app_version na evidência do fluxo), em ramo, e a calibragem aprovada (teto 0,15 -> 0,25, extra_usd renovado) para depois do deploy 36.",
-   "blocker": "Falta dado: >= 30 casos fechados e >= 90 % sem regressão em 7 dias na sombra antes do `on` da fatia B. Depende do 30.73, do 30.74 e da calibragem para haver casos.",
-   "grupo": "resultado-orquestradora-suite36",
-   "modelo": "claude-fable-5-1",
-   "esforco": "sessao orquestradora",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "O observar da classe B gera pedido de prova só no app de prova (Aprendizado bb37e590); contador features.validacao_pelo_observar_b em app/saude.py, golden regravado só nesse campo. Simulado: backend/tests/test_validacao_pelo_observar_b.py::*, backend/tests/test_saude_caracterizacao.py::*. Suíte 48 sobre a integração 16858086 (main 397f548f dentro; Portal 31.116 painel d6b25630, Aprendizado 31.116 parte 2 278d44b6 e 30.34 bb37e590, Canais b6020ebe, Jev 31.117 3d3a9072; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); SQLite -n 6 dos 110 arquivos afetados desde a main 61a9722b 1705 passed, 0 falhas; frontend typecheck limpo, 1721 passed (131 arquivos), build ok (sobre 4120cc2d, sem mudança de frontend depois); catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 110 arquivos em 2 partes sobre c19d0ebc: 897 passed, 5 skipped e 803 passed, 0 falhas (fim 07:21:51Z); a ponta final só soma a main de estado do plano. No ar desde o deploy 48 (16858086, 06/10 07:24Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_validacao_pelo_observar_b.py",
+    "backend/tests/test_saude_caracterizacao.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-48",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T09:50:24+00:00"
+   "quando": "2026-10-06T07:30:39+00:00"
   },
   "30.35": {
    "id": "30.35",
@@ -10400,18 +10405,18 @@
    "id": "28.56",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "Reconciliação dos quadros do Trello da Canais (7b341347, b0ff8cda, acdd0744: parciais, deploy citado conta como implantado; mapa.json fora do Git). 27 testes. Simulado: .claude/trello/test_reconciliar.py::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z).",
+   "evidence": "Reconciliação dos quadros do Trello da Canais, C-28: o deploy pelo Git (Canais b6020ebe, 30 testes). Simulado: .claude/trello/test_reconciliar.py::*. Suíte 48 sobre a integração 16858086 (main 397f548f dentro; Portal 31.116 painel d6b25630, Aprendizado 31.116 parte 2 278d44b6 e 30.34 bb37e590, Canais b6020ebe, Jev 31.117 3d3a9072; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); SQLite -n 6 dos 110 arquivos afetados desde a main 61a9722b 1705 passed, 0 falhas; frontend typecheck limpo, 1721 passed (131 arquivos), build ok (sobre 4120cc2d, sem mudança de frontend depois); catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 110 arquivos em 2 partes sobre c19d0ebc: 897 passed, 5 skipped e 803 passed, 0 falhas (fim 07:21:51Z); a ponta final só soma a main de estado do plano. No ar desde o deploy 48 (16858086, 06/10 07:24Z).",
    "blocker": null,
    "arquivos": [
     ".claude/trello/test_reconciliar.py"
    ],
    "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-46",
+   "grupo": "android-suite-48",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T05:23:28+00:00"
+   "quando": "2026-10-06T07:30:39+00:00"
   },
   "29.105": {
    "id": "29.105",
@@ -10594,6 +10599,45 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T07:02:59+00:00"
+  },
+  "31.116": {
+   "id": "31.116",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Painel do diagnóstico no treino (Portal d6b25630) e a parte 2, GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido no router de treino (Aprendizado 278d44b6, adendo v1.80). Simulado: backend/tests/test_ensino_sugerido.py::*, backend/tests/test_treino_a_partir_da_falha.py::*, frontend/src/features/training/TrainingBar.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 48 sobre a integração 16858086 (main 397f548f dentro; Portal 31.116 painel d6b25630, Aprendizado 31.116 parte 2 278d44b6 e 30.34 bb37e590, Canais b6020ebe, Jev 31.117 3d3a9072; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); SQLite -n 6 dos 110 arquivos afetados desde a main 61a9722b 1705 passed, 0 falhas; frontend typecheck limpo, 1721 passed (131 arquivos), build ok (sobre 4120cc2d, sem mudança de frontend depois); catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 110 arquivos em 2 partes sobre c19d0ebc: 897 passed, 5 skipped e 803 passed, 0 falhas (fim 07:21:51Z); a ponta final só soma a main de estado do plano. No ar desde o deploy 48 (16858086, 06/10 07:24Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_ensino_sugerido.py",
+    "backend/tests/test_treino_a_partir_da_falha.py",
+    "frontend/src/features/training/TrainingBar.test.tsx",
+    "frontend/src/features/training/TrainingReview.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-48",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T07:30:39+00:00"
+  },
+  "31.117": {
+   "id": "31.117",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 07:25Z, central WIN-7S2UASNLFOP em 16858086 (deploy 48), leitura pela Android: os 3 fluxos lidos em GET /api/aprendizado/fluxo/{ref} e em GET /api/flows batem: f-455f91437856 (r-20261006053318-c04149) e f-6d07590e1db6 (r-20261006012340-d92795) com session_id, run_id, step_id e attempt_id iguais em conteudo.origem e flows[].origin, e source_run_id do Livro caindo para o run_id; f-9b4d6754b59a (treino sem falha) com os 4 campos null nos dois e conteudo.origem.tipo 'treino'. Simulado na suíte 48: Origem do ensino no Livro (Jev 3d3a9072, adendo v1.81), com o ajuste de test_ref_do_fluxo_fora_do_log que ignora os _err(409) do router de fluxos. Simulado: backend/tests/test_learning_conteudo.py::*, backend/tests/test_ref_do_fluxo_fora_do_log.py::*, backend/tests/test_treino_a_partir_da_falha.py::*. Suíte 48 sobre a integração 16858086 (main 397f548f dentro; Portal 31.116 painel d6b25630, Aprendizado 31.116 parte 2 278d44b6 e 30.34 bb37e590, Canais b6020ebe, Jev 31.117 3d3a9072; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); SQLite -n 6 dos 110 arquivos afetados desde a main 61a9722b 1705 passed, 0 falhas; frontend typecheck limpo, 1721 passed (131 arquivos), build ok (sobre 4120cc2d, sem mudança de frontend depois); catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 110 arquivos em 2 partes sobre c19d0ebc: 897 passed, 5 skipped e 803 passed, 0 falhas (fim 07:21:51Z); a ponta final só soma a main de estado do plano.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_learning_conteudo.py",
+    "backend/tests/test_ref_do_fluxo_fora_do_log.py",
+    "backend/tests/test_treino_a_partir_da_falha.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-48",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T07:30:39+00:00"
   }
  },
  "rodadas": [
@@ -13791,6 +13835,18 @@
    ],
    "grupos": [
     "aprendizado-prova-real-31-87-31-113"
+   ]
+  },
+  {
+   "quando": "2026-10-06T07:30:39+00:00",
+   "itens": [
+    "31.116",
+    "30.34",
+    "31.117",
+    "28.56"
+   ],
+   "grupos": [
+    "android-suite-48"
    ]
   }
  ]
