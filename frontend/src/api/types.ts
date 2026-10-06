@@ -2061,6 +2061,40 @@ export interface TrainingSession {
   updated_at: string;
   inputs?: TrainingInput[];
   input_count?: number;
+  /** 31.111 (adendo v1.75): `null` na gravação comum; na sessão aberta a partir de uma etapa que falhou, de onde ela veio. */
+  origin?: TrainingOrigin | null;
+}
+
+/** A etapa que falhou e deu origem ao treino (adendo v1.75). `context` só vem no `GET /training/{id}`. */
+export interface TrainingOrigin {
+  run_id: string;
+  step_id: string;
+  step_key: string;
+  /** A última tentativa da etapa; `null` se ela nunca rodou. */
+  attempt_id: string | null;
+  /** O motivo literal do executor lido AGORA; `null` se a limpeza de execuções velhas apagou a etapa. */
+  motivo: string | null;
+  context?: TrainingOriginContext;
+}
+
+export interface TrainingOriginContext {
+  /** `false` (e nada mais) se a etapa foi apagada. */
+  disponivel: boolean;
+  trilha?: { step_id: string; step_key: string; titulo: string; status: StepStatus; motivo?: string | null; falhou: boolean }[];
+  esperado?: { kind: string; value: string | null; description: string | null } | null;
+  tentativa?: { number: number; status: string; erro: string | null; failure_kind: string | null; failure_screen: string | null;
+                strategy: string | null } | null;
+  evidencias?: { id: number; kind: string; nota: string | null; disponivel: boolean }[];
+}
+
+/** Corpo de `POST /api/training/from-run` (adendo v1.75): o aparelho é o da etapa; o controle é o da pessoa. */
+export interface TrainingFromRunBody {
+  run_id: string;
+  step_id: string;
+  lease_id: string;
+  intent?: string;
+  app_id?: string | null;
+  profile_id?: string | null;
 }
 
 /** Uma etapa no relatório do salvar, da prévia e do refazer: `recipe` diz se roda (ou rodaria) sem IA, e `reason` por quê. */

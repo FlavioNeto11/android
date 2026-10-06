@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.111 F5: "Ensinar a corrigir" na etapa que falhou e selo de origem no treino (branch feat/31-111-f5-ensinar-a-corrigir)
+
+- Contra o adendo v1.75 (Jev, `feat/31-111-f1-ensinar-a-partir-da-falha`): na etapa `failed` ou `uncertain` de uma execução (aba Aparelhos), o botão
+  **Ensinar a corrigir** abre um formulário curto que diz qual aparelho vai ser assumido (a IA fica em espera nele), traz o texto «Corrigir a etapa «…»» e,
+  se o aparelho tem mais de uma persona, exige a escolha de quem ensina. Só ao confirmar o painel toma o controle (ou reaproveita o lease desta aba),
+  chama `POST /api/training/from-run` (`run_id`, `step_id`, `lease_id`; `intent` só se o texto foi reescrito; `profile_id` só quando a escolha foi pedida) e leva
+  ao Foco do aparelho. Controle só pedido (a IA termina a ação) não abre nada e diz para clicar de novo; recusa do backend (`step_not_failed`, `control_required`…)
+  aparece no formulário e não muda nada.
+- Selo "corrige uma falha" e a origem (`origin`): na barra do treino (gravando), em "Para revisar" (também no nome acessível do botão), na revisão (com o motivo, a
+  trilha da execução marcando a etapa que falhou, o esperado, a tentativa e as imagens da falha pela rota de evidências; imagem redigida vira texto) e no resultado
+  do salvar ("Este fluxo nasceu da correção da etapa … da execução …"). Etapa já apagada ou contexto indisponível dizem isso. A origem da sessão não se perde
+  quando a resposta da proposta vem sem ela.
+- Prova `simulated`: `EnsinarACorrigir.test.tsx` (9), `TrainingBar.test.tsx` e `TrainingReview.test.tsx` (fetch falso), com mutações que derrubam o teste (guarda de status, `intent`
+  sempre enviado, origem perdida na proposta, lease velho) e sementes de atraso do fetch. `not_run`: percurso real (depende do backend `POST /api/training/from-run`
+  no deploy e do controle de um aparelho de teste).
+
 ## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)
 
 - Une o painel do 31.89 já sobre a junção do corte 43 (`feat/31-89-painel-corte-44`, 5cb96676) e a tela do 30.85 (`feat/30-85-selo-no-livro`, b083e683, sobre a

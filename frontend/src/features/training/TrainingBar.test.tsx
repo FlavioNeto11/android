@@ -310,3 +310,40 @@ it('31.90-C: personasDoEnsino conta uma por pessoa e respeita o app escolhido, c
   expect(personasDoEnsino(lista, 'com.x').map((p) => p.profile_id)).toEqual(['p-a', 'p-c']);      // o vínculo sem app serve a qualquer um
   expect(personasDoEnsino(lista, 'com.z').map((p) => p.profile_id)).toEqual(['p-c']);
 });
+
+// ---------------------------------------------------------------- 31.111 F5 (adendo v1.75)
+const ORIGEM = { run_id: 'run-0001', step_id: 'run-0001:android-01:v1:open_app', step_key: 'open_app', attempt_id: null, motivo: 'A tela esperada não apareceu.' };
+
+it('31.111: a gravação aberta a partir de uma falha mostra a origem na barra; a comum, não', async () => {
+  const el = makeInstance(1, { state: 'online', control: 'user' });
+  await act(async () => root.render(<TrainingBar instance={el} leaseId="lease-1" mine />));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  expect(document.querySelector('section[aria-label="Origem do treino"]')).toBeNull();
+  expect(text()).not.toContain('corrige uma falha');
+  await act(async () => root.unmount());
+  root = createRoot(container);
+
+  const comOrigem = { ...GRAVANDO, origin: { ...ORIGEM, context: { disponivel: false } } };
+  backend.on('GET', /\/training$/, () => json([comOrigem]));
+  backend.on('GET', /\/training\/trn-9$/, () => json(comOrigem));
+  await act(async () => root.render(<TrainingBar instance={el} leaseId="lease-1" mine />));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  await waitFor(() => expect(document.querySelector('section[aria-label="Origem do treino"]')).not.toBeNull());
+  const origem = document.querySelector<HTMLElement>('section[aria-label="Origem do treino"]')!;
+  expect(origem.textContent).toContain('corrige uma falha');
+  expect(origem.textContent).toContain('Motivo: A tela esperada não apareceu.');
+});
+
+it('31.111: "Para revisar" leva o selo na sessão que nasceu de uma falha e só nela', async () => {
+  backend.on('GET', /\/training$/, () => json([
+    { ...GRAVANDO, id: 'trn-a', intent: 'Corrigir a etapa', status: 'recorded', origin: ORIGEM },
+    { ...GRAVANDO, id: 'trn-b', intent: 'Outro ensino', status: 'recorded' },
+  ]));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Para revisar:'));
+  const botoes = allByRole('button', /Revisar “/);
+  expect(botoes).toHaveLength(2);
+  const marcados = botoes.filter((b) => (b.getAttribute('aria-label') ?? '').endsWith(', corrige uma falha') && b.textContent!.includes('corrige uma falha'));
+  expect(marcados).toHaveLength(1);
+  expect(marcados[0]!.textContent).toContain('Corrigir a etapa');
+});
