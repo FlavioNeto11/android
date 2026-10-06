@@ -49,6 +49,7 @@ from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.prova import etapa_citada
 from app.modules.learning.domain.saude import Saude
+from app.modules.learning.domain.uso_real import motivo_do_religamento
 from app.modules.learning.domain.vocabulario import LivroKind, Origem, Rotulo
 from app.modules.learning.presentation.nomes import nomear_apps
 from app.modules.skills.domain.document import JsonObject, JsonValue
@@ -381,13 +382,29 @@ async def mudar_status(request: Request, kind: LivroKind, ref: str, corpo: Corpo
     servico = _servico(request)
     ref = servico.ref_interna(kind, ref)                 # 30.83: aceita o id e a referência pública
     quem = _quem(request)
+    motivo = _motivo_do_religamento(servico, kind, ref, corpo)
     pareceres = _pareceres(servico)
     if pareceres is not None:
-        entrada = _chamar(lambda: pareceres.mudar_estado(kind, ref, corpo.to, by=quem, reason=corpo.reason,
+        entrada = _chamar(lambda: pareceres.mudar_estado(kind, ref, corpo.to, by=quem, reason=motivo,
                                                          review_id=corpo.review_id))
     else:
-        entrada = _chamar(lambda: servico.mudar_estado(kind, ref, corpo.to, by=quem, reason=corpo.reason))
+        entrada = _chamar(lambda: servico.mudar_estado(kind, ref, corpo.to, by=quem, reason=motivo))
     return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)
+
+
+def _motivo_do_religamento(servico: LearningService, kind: LivroKind, ref: str, corpo: CorpoDeStatus) -> str:
+    """31.150 (achado da Portal): o "Ligar" do Livro num fluxo de prova desligado segue a regra do `PUT /api/flows/{id}`:
+    motivo de verdade (400 `motivo_obrigatorio` só com espaços) e a mesma linha de trilha, "religado para uso real:
+    <motivo>", que acende o `em_uso_real_desde`. Os outros casos passam o motivo como veio."""
+    if kind is not LivroKind.FLUXO or corpo.to is not SkillState.PUBLISHED:
+        return corpo.reason
+    atual = _chamar(lambda: servico.entrada(kind, ref))
+    if not atual.nascido_de_prova or atual.state is SkillState.PUBLISHED:
+        return corpo.reason
+    if not corpo.reason.strip():
+        raise HTTPException(400, detail={"code": "motivo_obrigatorio", "message": "Fluxo nascido de prova: diga por que "
+                                                                                  "ele volta ao uso real (motivo)."})
+    return motivo_do_religamento(corpo.reason)
 
 
 @router.post("/{kind}/{ref}/evidencia-invalida", response_model=None)

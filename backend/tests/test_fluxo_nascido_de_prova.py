@@ -134,6 +134,25 @@ async def test_religar_fluxo_de_prova_exige_motivo_troca_o_escopo_e_sela_o_uso_r
         assert r.status_code == 400 and r.json()["detail"]["code"] == "invalid", r.text
 
 
+async def test_o_ligar_do_livro_segue_a_mesma_regra_do_religamento(harness: Harness) -> None:
+    """Achado da Portal: o "Ligar" genérico do Livro (`POST /api/aprendizado/fluxo/{id}/status`) num fluxo de prova não
+    passava pela regra: nem motivo de verdade, nem a linha "religado para uso real", nem o selo."""
+    st = harness.state
+    assert st is not None
+    async with _cliente(harness) as c:
+        _, fid = await _ensinar(harness, c, prova=True, comando="abra a conversa de prova no app")
+        assert (await c.put(f"/api/flows/{fid}", json={"status": "disabled", "motivo": "fim da prova"})).status_code == 200
+        r = await c.post(f"/api/aprendizado/fluxo/{fid}/status", json={"to": "published", "reason": "   "})
+        assert r.status_code == 400 and r.json()["detail"]["code"] == "motivo_obrigatorio", r.text
+        r = await c.post(f"/api/aprendizado/fluxo/{fid}/status", json={"to": "published", "reason": "a prova passou"})
+        assert r.status_code == 200, r.text
+        ultima = st.db.one("SELECT reason, decided_at FROM learning_transitions WHERE item_ref=? ORDER BY id DESC LIMIT 1",
+                           (f"fluxo:{fid}",))
+        assert ultima is not None and ultima["reason"] == "religado para uso real: a prova passou"
+        lista = {f["id"]: f for f in (await c.get("/api/flows")).json()}
+        assert lista[fid]["status"] == "active" and lista[fid]["em_uso_real_desde"] == ultima["decided_at"]
+
+
 # ------------------------------------------------------------------ 31.135 (adendo v1.88): a origem de todo fluxo ensinado
 async def test_todo_fluxo_ensinado_traz_a_sessao_o_aparelho_quem_ensinou_e_quando(harness: Harness) -> None:
     async with _cliente(harness) as c:
