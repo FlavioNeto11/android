@@ -7376,5 +7376,10 @@ perguntas do aprendizado do dono, respondidas pelas execuções da operação (`
   - a memória da persona aprendida de observação de tela, que não guarda execução. Só a aprendida de uma interação
     se liga à operação.
 
+**`resultado.conhecimento_ids` do alvo da operação (contrato da 124), preenchido a partir daqui.** A porta de escrita grava
+em `operacao_alvos.marcas.conhecimento_ids` as refs no mesmo formato desta rota (`fato:<chave>`, `fonte:<chave>`,
+`registro:<chave>`). São o que o texto do agente RECEBEU da operação: as linhas do `<fatos_da_operacao>` e a leitura da
+operação (`fato:alvo.conteudo`), quando ela é igual à tela do agente. Quais delas o modelo usou de fato ele não diz.
+
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.

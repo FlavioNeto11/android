@@ -261,6 +261,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Reutilizável e "revisar" são regras de código.
   - Texto redigido e cortado em 200 caracteres. O simulado fica fora por padrão. O que a rota não cobre vem em
     `nao_coberto`.
+- **`resultado.conhecimento_ids` do alvo (achado da tentativa 3 da onda 1, 06/10):** o contrato da 124 diz que a lista vem
+  da frente de Aprendizado, e nada a gravava; ela vinha sempre vazia. Agora a porta de escrita grava em
+  `operacao_alvos.marcas` as refs dos fatos que o texto recebeu (o bloco e a leitura igual à tela). Prova `simulated`:
+  `backend/tests/test_conhecimento_da_operacao.py::test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem`.
 - O roteador mora no módulo de pedidos, com `prefix=/api/operacoes` e um caminho de dois segmentos que não colide com
   as rotas da Jev, e não mexe no `state.py`.
 - Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
