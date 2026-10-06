@@ -792,3 +792,31 @@ adendo v0.20 de [`api-contract.md`](api-contract.md) (C6 e C7). ADR-027.
   - a cerca do central é calculada dentro da transação, serializada por aparelho.
 - **NATS** (bandeira, não exercitado contra broker): o comando vai para a réplica que segura o link do worker
   (`hosted_by`), com `ack_wait` de 660 s e `in_progress` enquanto o verbo roda.
+
+## Comando remoto (29.154, ADR-079)
+
+**Estado:** fatia 1 no código, provada `simulated`; **desligado** em todos os lados. `real`: `not_run`. Decisão e riscos aceitos no
+[ADR-079](decisoes.md#adr-079--comando-remoto-nos-notebooks-da-rede-um-módulo-de-controle-desligado-de-fábrica).
+
+O agente executa UMA linha de comando (ou um `argv`) na máquina dele, a pedido do central, e devolve saída, erro e
+código de saída. É por máquina, não por aparelho: tem mensagens próprias (`exec`, `exec_ack`, `exec_result`, `exec_cancel`,
+`exec_result_ack`) da feature negociada `remote_exec`, e não passa pelo `Dispatch`.
+
+**Ligar (só com o sim explícito do dono, por cartão), na ordem:**
+
+1. Deploy do central com a migração 123 e atualização do agente do notebook (`scripts/worker-install.ps1`; o pacote já
+   leva `worker/comando.py` e a redação).
+2. No notebook, `comando_remoto: true` no `C:\farm\worker.yaml` e reinício do agente (tarefa `farm-agente`).
+3. No central, `comando_remoto.ativo: true` no `config/config.yaml` e reinício da tarefa `farm-central`.
+4. No painel, com sessão nomeada: `PUT /api/workers/{id}/comando-remoto` `{"ligado": true}`. O agente reconecta em segundos
+   e renegocia; `GET /api/workers/{id}/comando-remoto` deve dizer `negociado: true`.
+5. Primeiro comando de leitura (`Get-Date`), conferido no histórico (`GET /api/workers/{id}/comandos`) e no evento
+   `worker.comando`.
+
+Desligar é qualquer um dos três interruptores; o painel é o mais rápido (vale ao vivo).
+
+**Regras que valem sempre:** só sessão nomeada (o token compartilhado e o loopback sem sessão recebem 401); 404 no host
+público do portal; linha com cara de credencial é recusada (422 `linha_com_credencial`) e o texto não é guardado; saída
+redigida inteira antes do corte de 64 KiB por fluxo; um comando por vez por máquina, fila de 4; prazo de 60 s (até 600 s);
+estouro ou cancelamento matam a árvore de processos; queda no meio = `uncertain`, nunca repetido. O comando roda na conta
+do agente: não use para operar aparelho com conta real.

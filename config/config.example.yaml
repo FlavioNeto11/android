@@ -732,6 +732,13 @@ pedidos:                          # pedidos persistentes (28.4): o objetivo que 
     max_filhos: 5                 #   filhos diretos de um mesmo pai (1 a 20)
     espera_dependencia_s: 3600    #   F2: quanto a ocorrência do filho espera o `de` ser comprovado antes de virar `pulada` (60 a 604800)
 
+comando_remoto:                   # comando remoto nos notebooks da rede (29.154, ADR-079)
+  ativo: false                    # DESLIGADO de fábrica. Vale só junto do interruptor por worker (painel) e do
+                                  #   `comando_remoto: true` do agente; ligar é decisão do dono. Muda só na subida
+  fila_max: 4                     # comandos esperando por worker, além do que está rodando (0 a 20)
+  por_minuto_por_operador: 30     # 1 a 600
+  retencao_dias: 30               # a saída guardada some depois disso (1 a 365)
+  max_por_worker: 200             # registros guardados por worker (10 a 5000)
 portal:                           # site institucional na raiz do nome público e formulário de contato (29.77, ADR-075)
   site_ligado: false              # DESLIGADO de fábrica: `/` segue no 307 para `/central/`. Ligado, `/` serve a pasta `site/`
   contato_ligado: false           # DESLIGADO de fábrica: `POST /api/portal/contato` responde 404. Ligado, o contato vai ao

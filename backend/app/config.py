@@ -1669,6 +1669,20 @@ class PortalContatoLimitesCfg(BaseModel):
     buscas_total_hora: int = Field(60, ge=1, le=10_000)
 
 
+class ComandoRemotoCfg(BaseModel):
+    """Comando remoto nos notebooks da rede (29.154, ADR-079). `ativo` nasce DESLIGADO aqui e no exemplo: o merge e o
+    deploy não abrem nada. Vale só junto do interruptor POR WORKER (painel) e do `comando_remoto: true` do agente, e
+    ligar é decisão do dono, por cartão. O `config.yaml` só vale na subida: mudar `ativo` exige reiniciar o central."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ativo: bool = False
+    fila_max: int = Field(4, ge=0, le=20)                         # comandos esperando, além do que está rodando
+    por_minuto_por_operador: int = Field(30, ge=1, le=600)
+    retencao_dias: int = Field(30, ge=1, le=365)                  # a saída guardada some depois disso
+    max_por_worker: int = Field(200, ge=10, le=5000)
+
+
 class PortalCfg(BaseModel):
     """O site institucional na raiz do nome público e o formulário de contato (29.77, ADR-075).
 
@@ -1717,6 +1731,7 @@ class AppConfigFile(BaseModel):
     avisos: AvisosCfg = AvisosCfg()
     trello: TrelloCfg = TrelloCfg()
     pedidos: PedidosCfg = PedidosCfg()
+    comando_remoto: ComandoRemotoCfg = ComandoRemotoCfg()   # 29.154, ADR-079; desligado de fábrica
     portal: PortalCfg = PortalCfg()          # site institucional e contato (29.77, ADR-075); desligado de fábrica
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []

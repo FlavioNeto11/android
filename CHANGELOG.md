@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.154 fatia 1: comando remoto nos notebooks da rede, desligado de fábrica (branch feat/29-154-comando-remoto-f1)
+
+- Pedido do dono (cartão, 06/10 11:45Z): executar comandos de forma remota nos notebooks controlados pela central. Decisão e
+  riscos aceitos no ADR-079; desenho em `.claude/handoffs/android/desenho-29-154.md`, revisado pelo `revisor-segredos`.
+- **Agente** (`worker/comando.py`): a feature `remote_exec`, anunciada só com `comando_remoto: true` no `worker.yaml`; um
+  comando por vez, prazo de 60 s (até 600 s), árvore de processos morta no estouro e no cancelamento, ambiente do filho
+  por lista de permissão, linha com cara de credencial recusada antes de rodar, saída redigida inteira e só então cortada
+  (64 KiB por fluxo), diário próprio com marcador `uncertain` gravado antes de o processo existir.
+- **Central** (`workers/comando_remoto.py`, adendo v1.90): seis rotas em `/api/workers/{id}` com sessão nomeada
+  obrigatória e 404 no host público; registro em `worker_comandos` (migração 123) com a linha redigida, fila de 4, 30 por
+  minuto por operador, auditoria `worker.comando` como pré-condição, queda do canal ou reinício do central = `uncertain`;
+  interruptor por worker ao vivo (o agente renegocia) e `comando_remoto.ativo` no config, os dois desligados.
+- **Contrato:** cinco mensagens novas no fio do worker (nenhuma existente mudou); o hash congelado mudou de propósito, com
+  o checklist no teste. Agente antigo ignora tipo desconhecido e nunca recebe a mensagem (a feature não é aceita).
+- Redação: chave privada em PEM (inteira ou cortada) passa a ser mascarada; `linha_de_comando_suspeita` e `cortar_saida`
+  em `security/redaction.py`.
+- **Prova:** `simulated` (`backend/tests/test_comando_remoto_agente.py`, `backend/tests/test_comando_remoto_central.py`,
+  `backend/tests/test_contratos_do_worker.py`); `real`: `not_run` (falta o deploy, o procedimento e o sim do dono para ligar).
+
 ## 2026-10-06 — 31.128 e 31.129: a conferência que já vale vira aviso na etapa, e os pacotes que a etapa aceita aparecem (branch feat/31-128-pos-condicao-na-etapa)
 
 - Achados da conferência do painel contra os adendos v1.83 e v1.84 (deploy 50): as linhas novas de `warnings` e a recusa 400 `pos_condicao_ja_vale` chegavam como frase solta (lista de avisos da prévia, dica do "Salvar", toast), sem dizer onde mexer, e o campo `pacotes_aceitos` não aparecia em tela nenhuma.

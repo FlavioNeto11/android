@@ -342,6 +342,14 @@ class AppState:
         # As vagas deste servidor são a configuração viva: o rodízio obedece no mesmo tick, e o painel lê o mesmo
         # número (29.82).
         self.workers.vagas_do_host = lambda: int(self.settings.get().max_online_devices or 1)
+        # Comando remoto (29.154): os números vêm do config (valem na subida) e a auditoria é o barramento de eventos.
+        cr = cfg.file.comando_remoto
+        self.workers.comandos.cfg.ativo = bool(cr.ativo)
+        self.workers.comandos.cfg.fila_max = cr.fila_max
+        self.workers.comandos.cfg.por_minuto_por_operador = cr.por_minuto_por_operador
+        self.workers.comandos.cfg.retencao_dias = cr.retencao_dias
+        self.workers.comandos.cfg.max_por_worker = cr.max_por_worker
+        self.workers.comandos.emitir = self.bus.emit
         # Release de APK como artefato: importar/inspecionar/validar/catalogar, e instalar com estado observado.
         # `owner_id`: a operação de app aberta AQUI fica marcada como nossa. Sem isso, com dois
         # backends no mesmo banco, o que sobe marcava como interrompidas as instalações vivas do outro.
@@ -2217,6 +2225,7 @@ class AppState:
             await self.scheduler.start()
             self.runs.resume_planning_after_restart()
             self.releases.reconcile_after_restart()      # instalação interrompida nunca é repetida às cegas
+            self.workers.comandos.reconciliar_na_subida()   # 29.154: comando em voo vira `uncertain`, nunca repetido
             self.training.reconcile_after_restart()      # 31.80: gravação do treinamento sem gravador vira "recorded"
             # …e agora ela tem quem a releia: sem isto, `verifying` dizia "o estado será relido do aparelho" e o
             # aparelho ficava bloqueado para tarefas daquele app até alguém chamar a rota de verificação à mão.

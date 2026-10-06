@@ -45,12 +45,25 @@ import app.workers.protocol as protocolo_antigo
 #: aditivo, padrão `None`; agente antigo não manda e o central cai na comparação de versão; (2) nenhuma restrição
 #: afrouxada; (3) `EnvioDeMidia` intocado; (4) sem subir versão nem feature: central antigo ignora (`extra="ignore"`);
 #: (5) não é mudança de forma do pydantic. Eram `f93b70d6c866d979` (total) e `e83b5bba0247b782` (hello).
-ESQUEMA_CONGELADO = "d840bd78f67ef1a8"
+#:
+#: 29.154 (06/10/2026): ganharam cinco mensagens NOVAS, todas da feature negociada `remote_exec` (comando remoto, ADR-079):
+#: `exec`, `exec_cancel`, `exec_result_ack` (central → agente) e `exec_ack`, `exec_result` (agente → central). Checklist: (1)
+#: aditivo, nenhuma mensagem existente mudou de esquema (os hashes dos outros tipos são os de antes); (2) nenhuma
+#: restrição afrouxada; (3) `EnvioDeMidia` intocado; (4) SIM, é feature negociada (`FEATURE_COMANDO_REMOTO`), sem subir
+#: `PROTOCOL_VERSION`: o agente só a anuncia com `comando_remoto: true` e o central só a aceita com o interruptor dele e o
+#: do worker ligados; agente antigo ignora o tipo desconhecido e central antigo não a aceita; (5) não é mudança de forma
+#: do pydantic. Era `d840bd78f67ef1a8` (total).
+ESQUEMA_CONGELADO = "cfb85c95fbc75962"
 HASH_POR_TIPO = {
     "EnvioDeMidia": "fdb1207c5b4f42e4",
     "ack": "33e561638726df19",
     "cancel": "4b3f1e8c98e90ec3",
     "dispatch": "51d36366c2fd424c",
+    "exec": "f07cc64397e98fd4",
+    "exec_ack": "06ff00bef2f5eaf4",
+    "exec_cancel": "95eb91a731facffa",
+    "exec_result": "9c8c86f03c0c4e20",
+    "exec_result_ack": "d498155dfa903a3a",
     "heartbeat": "eb41cf4a6d0337ca",
     "hello": "4fe30e1ea9192cc9",
     "limits": "6d4b495c5750b4bc",
@@ -70,6 +83,9 @@ CONSTANTES_CONGELADAS: dict[str, object] = {
     "PROTOCOL_MIN": 1,
     "FEATURE_RESERVA_DE_BOOT": "boot_reservations",
     "FEATURE_OBSERVACAO_LOCAL": "observe_local",
+    "FEATURE_COMANDO_REMOTO": "remote_exec",
+    "EXEC_TIMEOUT_MAX_S": 600.0,
+    "EXEC_SAIDA_MAX_BYTES": 64 * 1024,
     "MARCA_DE_FILA": "na fila de boot",
     "RECUSA_CERCA_NAO_MAIOR": "fence_not_newer",
     "MIDIA_MAX_BYTES": 8 * 1024 * 1024,
@@ -112,9 +128,10 @@ def test_o_esquema_do_fio_e_o_congelado() -> None:
 
 def test_as_tabelas_de_despacho_nao_trocam_tipo_de_mao() -> None:
     """Uma mensagem que migra de `UPSTREAM` para `DOWNSTREAM` (ou some) muda quem a valida, sem mudar esquema."""
-    assert sorted(protocolo.UPSTREAM) == ["ack", "heartbeat", "hello", "observe_result", "progress", "result"]
-    assert sorted(protocolo.DOWNSTREAM) == ["cancel", "dispatch", "limits", "observe_image", "refused",
-                                            "result_ack", "welcome"]
+    assert sorted(protocolo.UPSTREAM) == ["ack", "exec_ack", "exec_result", "heartbeat", "hello", "observe_result",
+                                          "progress", "result"]
+    assert sorted(protocolo.DOWNSTREAM) == ["cancel", "dispatch", "exec", "exec_cancel", "exec_result_ack", "limits",
+                                            "observe_image", "refused", "result_ack", "welcome"]
     for nome, modelo in {**protocolo.UPSTREAM, **protocolo.DOWNSTREAM}.items():
         assert modelo.model_fields["type"].default == nome, nome
 
