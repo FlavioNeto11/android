@@ -7118,8 +7118,7 @@ saída), `worker.comando.interruptor` e `worker.comando.cancelamento`.
 
 ## Adendo v1.94 (06/10/2026; número da orquestradora; item 31.154, migração 124) — a operação com N agentes
 
-**Rascunho para a Portal desenhar a tela "Operação"**: os nomes abaixo valem, e o que mudar até a ponta volta para cá com
-aviso. Uma **operação** é um objetivo único entregue a N **alvos**. Cada alvo é persona + conta (dela, no app da operação) +
+Uma **operação** é um objetivo único entregue a N **alvos**. Cada alvo é persona + conta (dela, no app da operação) +
 aparelho e roda numa **execução própria**: `objectives` tem um objetivo por aparelho em cada execução, e 30 contas não cabem
 em 9 aparelhos de uma vez. A fila por aparelho já serializa as execuções do mesmo aparelho. A operação agrega as execuções:
 estado de cada alvo, resultado, capacidade e cancelamento. Nada troca de app: o alvo que não pode avançar PARA no estágio,
