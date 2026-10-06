@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-680 de 747 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+686 de 772 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -317,6 +317,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.59 | pendente | — | — | — |  |  |
 | 28.60 | pendente | — | — | — |  |  |
 | 28.61 | implemented | real | opus-5.5 | — | Real, como dado: em 06/10/2026, às 19:57:15Z, no central (deploy 55, 086236e9), o POST /api/instagram/policy-groups criou o grupo 'Liberado' (grp-AX6yCTUvW7eZFmn2), em resposta ao pedido do dono no Telegram às 19:46:43Z… |  |
+| 28.62 | pendente | — | — | — |  |  |
+| 28.63 | pendente | — | — | — |  |  |
+| 28.64 | pendente | — | — | — |  |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -472,7 +475,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.158 | implemented | real | misto | — | REAL em 06/10/2026, ubuntu-latest, main cdee6620+: run 37485579333 do secret-scan.yml (workflow_dispatch na main), 15:13:12Z a 15:14:20Z = 68 s, success; checkout completo (4044 commits no histórico varrido, não raso);… | Nenhum bloqueio do item. Daqui em diante, achado novo abre issue nova e só entra na allowlist com conferência da coordenação; falso positivo por caminho ou reg… |
 | 29.159 | implemented | real | claude-sonnet-5-5 | — | Deploy 54 em 06/10/2026 17:07Z no central, ponta 2193a8b50ea34e: primeira tag deploy-20261006-1707 e release na origem, linha ok em data/deploys.jsonl (commit_antes 6e7b87cf, 102,7 s); backup 20261006-140601. deploy.ps1… | None |
 | 29.160 | pendente | — | — | — |  |  |
-| 29.161 | partial | real | misto | — | Parte 1 em 06/10 14:03Z (sessão Frente Hardware, só leitura, central 360d133a): central Core Ultra 9 185H (22 threads), 64 GB nos 2 slots, NVMe 1 TB com 140 GB livres, RTX 2000 Ada, emuladores em WHPX com -gpu host; not… | Falta: coleta no notebook (P-019, SIM do dono 14:01Z, script hardware-coleta-notebook.ps1), preços, porte de SO e degraus 0-3. |
+| 29.161 | implemented | real | claude-opus-5-5 | — | Análise entregue em 06/10/2026 (leituras de 13:53Z a 16:30Z), máquina: central (Dell Precision 3591) lido no próprio host e notebook da LAN (ThinkPad P53) lido pelo central e pela saída do script de coleta que o dono ro… | Comparações pendentes de 24 h (Defender, avisos por aparelho com 6 emuladores) e decisões do dono sobre compras; nada bloqueia a entrega da análise. |
 | 29.162 | pendente | — | — | — |  |  |
 | 29.163 | implemented | simulated | claude-sonnet-5-5 | — | A conferência periódica da rede não publica 'IA assumiu/liberou' (e00fc72c), mais a medida de abertura sem run em K-106 (4ea95585). Simulado: backend/tests/test_conferencia_da_rede_silenciosa.py::*. Corte 53 (integ/suit… | None |
 | 29.164 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/infra/TerminalDoWorker.test.tsx (describe 29.164: estados do canal, estados finais, recusas do central) + percurso real do achado em 06/10 no central 2193a8b5. |  |
@@ -480,6 +483,17 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.166 | partial | real | claude-sonnet-5-5 | — | Branch ci/29-166a-docs-check, ponta 631ce8c4, [skip ci]: o job docs do ci.yml passa a rodar pip install -c backend/requirements.txt pytest pyyaml pydantic pydantic-settings (versões travadas do backend). REAL em 06/10/2… | NOT_RUN: (1) 'sem o aviso formato NÃO conferido' e (2) 'exemplo ruim derruba o job numa branch descartável' dependem do 29.160 (esquema do config.example.yaml… |
 | 29.167 | implemented | real | claude-sonnet-5-5 | — | real 06/10/2026 18:50:43Z-18:50:45Z, central, commit 47edd991 (branch devops/29-167b-contagem-de-tabelas, entra no corte 56; em cima do 30084b47 do corte 55), ensaio id 2026-10-06T18:50:43Z (ts_utc de ultimo.json) a mao… | Falta so o -Instalar (tarefa semanal farm-restore-ensaio, domingo 04:30, Idle): rodo apos o '56 no ar', do checkout central C:\git\android\scripts, e informo o… |
 | 29.168 | pendente | — | — | — |  |  |
+| 29.169 | pendente | — | — | — |  |  |
+| 29.170 | pendente | — | — | — |  |  |
+| 29.171 | pendente | — | — | — |  |  |
+| 29.172 | pendente | — | — | — |  |  |
+| 29.173 | pendente | — | — | — |  |  |
+| 29.174 | pendente | — | — | — |  |  |
+| 29.175 | pendente | — | — | — |  |  |
+| 29.176 | pendente | — | — | — |  |  |
+| 29.177 | pendente | — | — | — |  |  |
+| 29.178 | pendente | — | — | — |  |  |
+| 29.179 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -698,7 +712,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.128 | implemented | simulated | misto | — | A conferência que já vale vira aviso na etapa (Portal a7d95626). Simulado: frontend/src/features/training/PosCondicaoQueJaVale.test.tsx::*. Suíte 51 sobre a integração 58330182 (base main 67e81e60; Portal a7d95626, Cana… |  |
 | 31.129 | implemented | real | claude-sonnet-5-5 | — | Os pacotes que a etapa aceita aparecem na revisão e na execução (Portal a7d95626); mapeamento a teste aproximado. Simulado: frontend/src/features/runs/PacotesAceitos.test.tsx::*, frontend/src/features/training/TrainingR… | proposta do treino e leitura da sessão salva sem dado (as sessões não trazem pacotes_aceitos); a parte do 31.129 que depende do campo na sessão fica not_run |
 | 31.130 | implemented | real | misto | — | 06/10 15:12-15:18Z, central cdee6620 (deploy 52, migração 123), android-04 com controle none conferido por /api/instances às 15:12Z, persona de teste, só no Configurações, texto wifi. Sessão trn-njNBypJ7vD5u9y6Q (aberta… |  |
-| 31.131 | partial | real | claude-sonnet-5-5 | — | 2026-10-06, central 2193a8b5: tela Aprendizado > Aprendido (selo e filtro Prova); GET /api/aprendizado?nascido_de_prova=true&kind=fluxo (5), GET /api/flows?nascido_de_prova=true (5), GET /api/training?nascido_de_prova=t… |  |
+| 31.131 | implemented | real | claude-sonnet-5-5 | — | 2026-10-06, central f8319454, android-04 (Salvas, 10 sessoes, 5 selos) e Livro (5 fluxos de prova, 5 selos); GET /api/training?nascido_de_prova=true = 5 saved + 1 discarded |  |
 | 31.132 | implemented | real | misto | — | Central cdee6620: sessao salva trn-njNBypJ7vD5u9y6Q no Foco do android-04 mostra 'No Livro agora: Desligado' e o proximo passo, com link 'Abrir no Livro'. No ar desde o deploy 52 (cdee6620, 15:08Z). |  |
 | 31.133 | implemented | real | misto | — | Central cdee6620: Salvas 'as 5 mais novas de 10' com data relativa e id curto em cada linha, 'Ver todas as 10', aviso de etapa sem receita 0 vezes e dica no botao Refazer. No ar desde o deploy 52 (cdee6620, 15:08Z). |  |
 | 31.134 | implemented | real | misto | — | Varredura de texto do Livro no central: 0 ocorrencias de codigo cru (text_visible, element_present, side_effect, desc==, text==, {perfil_nome}, resource-id). No ar desde o deploy 52 (cdee6620, 15:08Z). |  |
@@ -714,29 +728,40 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.144 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/aprendizado/FiltrosNoEndereco.test.tsx (6 casos: leitor e escritor da query, escolha escreve tipo/estado/origem/prova/visao e a consulta leva os parametros, query na entrada marca os seletores, val… |  |
 | 31.145 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/aprendizado/model.test.ts (nomeDaChave, textoDaDecisao, porQuemDecidiu, vetado), AprendizadoPage.test.tsx (confirmacao 'pelo painel' e receita 'Abrir busca (v1)' com a chave no title) e DecididoPel… |  |
 | 31.146 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/aprendizado/NascidoDeProva.test.tsx (describe 31.146: contagem, clique aplica e tira o filtro, some sem marca/sem rota, numero vem do servidor) |  |
-| 31.147 | partial | simulated | claude-sonnet-5-5 | — | frontend/src/features/training/SemCodigoCru.test.tsx (varredura contra codigo cru na barra, na revisao e no resultado do salvar) e training/TrainingReview.tsx (seletor em palavras). |  |
+| 31.147 | partial | real | claude-sonnet-5-5 | — | 2026-10-06, central f8319454, android-09 trn-wZQnQtmKXyrZbLQO (previa 200, escreve nada) e android-04 trn-njNB (sessao salva em leitura) |  |
 | 31.148 | implemented | simulated | claude-sonnet-5-5 | — | O propose recebe a tela inteira e o que apareceu depois, e a proposta já avisa a pós-condição da partida (Aprendizado). Simulado: backend/tests/test_treino_pos_condicao_na_proposta.py::*. Corte 56 (integ/suite-56, ponta… | None |
 | 31.149 | pendente | — | — | — |  |  |
 | 31.150 | pendente | — | — | — |  |  |
 | 31.151 | pendente | — | — | — |  |  |
 | 31.152 | pendente | — | — | — |  |  |
 | 31.153 | pendente | — | — | — |  |  |
-| 31.154 | implemented | real | opus-5.5 | — | Onda 1, em 06/10/2026, no central (deploy 55, commit 086236e9). Operação op-20261006194323-0a1540, execução r-20261006194323-240d40, com alvo único, instance_id explícito, acao_final=preparar e max_usd 0,75. A exceção d… |  |
+| 31.154 | implemented | simulated | opus-5.5 | — | Corte 57, branch feat/corte57-jev: c2bf12ef = 441abaac + merge da 0d8b973d (cb36b9b4) + achados das revisões dos PRs 479 e 483; a330e29f = os 5 achados do Copilot no PR 487. (a) fontes_da_pesquisa no GET (pedido_observa… |  |
 | 31.155 | implemented | simulated | opus-5.5 | — | Branch feat/31-155-troca-de-conta @ d0b94a5e (PR 473). Toque de saída incerto: tocou=True antes do tap, e _invalidar_o_app no except. _sem_volta exige credencial ativa. Testes: backend/tests::test_toque_de_saida_com_err… |  |
 | 31.156 | implemented | simulated | opus-5.5 | — | a9e73add (branch feat/prova30-j1-j2-candidata, de 8d948c0b). LimitsCfg.orquestracao_max_escolhidas=30 e orquestracao_max_candidatas=60, lidos a cada POST /api/runs/targets/suggest; max_personas do corpo até 64. Simulate… | None |
-| 31.157 | partial | real | claude-opus-5-5 | — | 06/10 19:43Z-19:46Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8, migrações 124 e 125, ai.pesquisa.enabled ligada). Onda 1, tentativa 3: operação op-20261006194323-0a1540, execução r-20261006194323-240d40 (1 al… | Falta: conhecimento_ids preenchido e o assunto no texto numa execução real depois do deploy 56; a conferência de uma 2ª execução da mesma operação (a onda 1 te… |
+| 31.157 | implemented | simulated | claude-sonnet-5-5 | — | Achados do Codex e da revisão do PR 480/482 (Aprendizado ea31d391 e 87774a52): evidência pelo id cru, contagem efetiva, voz da persona dona, aviso de conhecimento e a lição de duas personas guarda o conjunto. Simulado:… | None |
 | 31.158 | implemented | real | claude-opus-5-5 | — | 06/10 19:43Z-19:46Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8, migrações 124 e 125, ai.pesquisa.enabled ligada). Operação op-20261006194323-0a1540 (com assunto e fontes vazias): UMA pesquisa, no run r-202610… |  |
 | 31.159 | implemented | real | claude-sonnet-5-5 | — | 2026-10-06, central 086236e9, operacao op-20261006194323-0a1540: tela #/operacoes/<id> (gaveta com 14 estagios com hora, acao final verificada sim, evidencias 2941 e 2943, custo, assunto) e GET /api/operacoes/<id> (cust… |  |
 | 31.160 | partial | real | claude-opus-5-5 | — | Ensino: 06/10 19:20Z-19:31Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8), android-01 (conta real, sem adb, só navegação). Sessão trn-M60OrpiMBqLWHyJ7 salva; fluxo f-63f2d6289cd7 e receita 221 (open_profile_1 p… | Falta: a receita ensinada conduzir open_profile_1 numa execução real (depende do 31.165) e a prova do fluxo f-63f2d6289cd7. |
 | 31.161 | pendente | — | — | — |  |  |
 | 31.162 | partial | real | claude-sonnet-5-5 | — | 2026-10-06, central 086236e9, operacao op-20261006193306-7e8b5f: dialogo do Relatorio aberto na tela e relatorio gerado do GET real (reports/operacao-op-20261006193306-7e8b5f.md/.json). |  |
-| 31.163 | implemented | simulated | claude-opus-5-5 | — | GET /api/operacoes/{id}/aprendizado (as 10 perguntas, adendo v1.96 de docs/api-contract.md), na branch do corte 56, ponta 4b2bc92c463628. Validação: backend/tests/test_aprendizado_da_operacao.py (5 testes) e PG 694 pass… | Falta: o GET real numa operação depois do deploy 56 e as correções do corte 57 no deploy. |
-| 31.164 | pendente | — | — | — |  |  |
+| 31.163 | implemented | simulated | claude-opus-5-5 | — | feat/corte57-aprendizado, ponta 87774a5239c434 (sobre 4b2bc92c). Revisão dos PRs 480 e 482 sobre GET /api/operacoes/{id}/aprendizado, 5 defeitos corrigidos: (1) a evidência da lição era buscada por licao:li-…, e o Livro… | Falta: o GET real numa operação depois do deploy 57. |
+| 31.164 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/aprendizado/DecididoPelaPlataforma.test.tsx, AprendizadoPage.test.tsx, DetalheRico.test.tsx (testes '31.164') |  |
 | 31.165 | pendente | — | — | — |  |  |
-| 31.166 | pendente | — | — | — |  |  |
-| 31.167 | pendente | — | — | — |  |  |
+| 31.166 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/operacao/AbaAprendizado.test.tsx (9 testes) |  |
+| 31.167 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/operacao/Aprendizado.test.tsx (describe 31.167, 4 testes) |  |
 | 31.168 | pendente | — | — | — |  |  |
 | 31.169 | pendente | — | — | — |  |  |
+| 31.170 | pendente | — | — | — |  |  |
+| 31.171 | pendente | — | — | — |  |  |
+| 31.172 | pendente | — | — | — |  |  |
+| 31.173 | pendente | — | — | — |  |  |
+| 31.174 | pendente | — | — | — |  |  |
+| 31.175 | pendente | — | — | — |  |  |
+| 31.176 | pendente | — | — | — |  |  |
+| 31.177 | pendente | — | — | — |  |  |
+| 31.178 | pendente | — | — | — |  |  |
+| 31.179 | pendente | — | — | — |  |  |
+| 31.180 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -754,7 +779,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (67): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.58, 28.59, 28.60, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.154, 29.155, 29.156, 29.160, 29.161, 29.162, 29.165, 29.166, 29.168, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 31.147, 31.149, 31.150, 31.151, 31.152, 31.153, 31.157, 31.160, 31.161, 31.162, 31.164, 31.165, 31.166, 31.167, 31.168, 31.169, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (86): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.58, 28.59, 28.60, 28.62, 28.63, 28.64, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.154, 29.155, 29.156, 29.160, 29.162, 29.165, 29.166, 29.168, 29.169, 29.170, 29.171, 29.172, 29.173, 29.174, 29.175, 29.176, 29.177, 29.178, 29.179, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.149, 31.150, 31.151, 31.152, 31.153, 31.160, 31.161, 31.162, 31.165, 31.168, 31.169, 31.170, 31.171, 31.172, 31.173, 31.174, 31.175, 31.176, 31.177, 31.178, 31.179, 31.180, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

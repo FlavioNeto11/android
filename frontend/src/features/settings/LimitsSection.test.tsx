@@ -192,3 +192,59 @@ it('ADR-081: a recusa do backend ao salvar o teto aparece sem perder o valor dig
   await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'Não foi possível salvar os limites' && String(t.message).includes('frota_max_contas_por_alvo'))).toBe(true));
   expect(campo(TETO).value).toBe('20');
 });
+
+// 28.61: grupo de política dispensado da aprovação (grupo_sem_aprovacao): o dono escolhe pelo nome, o servidor guarda o id.
+const GRUPO = 'Grupo dispensado da aprovação de política';
+const grupos = [
+  { id: 'g-b', name: 'Operação própria', description: '', capabilities: {}, limits: {}, loosened: [] },
+  { id: 'g-a', name: 'Análise', description: '', capabilities: {}, limits: {}, loosened: [] },
+];
+const caixaDoGrupo = () => byRole('combobox', GRUPO) as HTMLSelectElement;
+
+it('28.61: lista os grupos de política pelo nome, "Nenhum" vem marcado e salvar manda o id escolhido', async () => {
+  backend.on('GET', /^\/api\/instagram\/policy-groups/, () => json(grupos));
+  backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...useAppStore.getState().settings!, ...(c.body as Partial<Settings>) }));
+  await act(async () => { root.render(<LimitsSection />); });
+  await waitFor(() => expect(caixaDoGrupo().disabled).toBe(false));
+  expect(caixaDoGrupo().value).toBe('');
+  expect(Array.from(caixaDoGrupo().options).map((o) => o.textContent)).toEqual(['Nenhum (desligado)', 'Análise', 'Operação própria']);   // nome, em ordem alfabética
+  expect(container.textContent).toContain('recusas, conduta, proteção de conta e tetos continuam');
+  await setValue(caixaDoGrupo(), 'g-b');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ grupo_sem_aprovacao: 'g-b' });
+});
+
+it('28.61: voltar para "Nenhum" desliga (manda texto vazio) e um id salvo que não está mais na lista não vira "Nenhum" calado', async () => {
+  useAppStore.setState({ settings: { ...useAppStore.getState().settings!, grupo_sem_aprovacao: 'g-sumiu' } });
+  backend.on('GET', /^\/api\/instagram\/policy-groups/, () => json(grupos));
+  backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...useAppStore.getState().settings!, ...(c.body as Partial<Settings>) }));
+  await act(async () => { root.render(<LimitsSection />); });
+  await waitFor(() => expect(caixaDoGrupo().disabled).toBe(false));
+  expect(caixaDoGrupo().value).toBe('g-sumiu');
+  expect(Array.from(caixaDoGrupo().options).map((o) => o.textContent)).toContain('g-sumiu — grupo não encontrado');
+  await setValue(caixaDoGrupo(), '');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ grupo_sem_aprovacao: '' });
+});
+
+it('28.61: se a lista de grupos não carrega, o id continua editável como texto e a ajuda diz o porquê', async () => {
+  backend.on('GET', /^\/api\/instagram\/policy-groups/, () => apiError(500, 'erro_interno', 'falhou'));
+  backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...useAppStore.getState().settings!, ...(c.body as Partial<Settings>) }));
+  await act(async () => { root.render(<LimitsSection />); });
+  await waitFor(() => expect(container.textContent).toContain('Não consegui listar os grupos agora'));
+  await setValue(byRole('textbox', GRUPO) as HTMLInputElement, 'g-a');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ grupo_sem_aprovacao: 'g-a' });
+});
+
+it('28.61: backend anterior ao corte 57 (sem o campo) não mostra o grupo de aprovação', async () => {
+  const sem = { ...useAppStore.getState().settings! } as Partial<Settings>;
+  delete sem.grupo_sem_aprovacao;
+  useAppStore.setState({ settings: sem as Settings });
+  await act(async () => { root.render(<LimitsSection />); });
+  expect(container.textContent).not.toContain('Aprovação de política');
+  expect(backend.callsTo('GET', /policy-groups/)).toHaveLength(0);
+});

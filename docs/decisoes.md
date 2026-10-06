@@ -2242,6 +2242,10 @@ da saída estruturada: este esquema é pequeno e sem união).
 
 ## ADR-048 — Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2)
 
+**Emenda (06/10/2026, decisão do dono):** a regra de conduta das crenças (`CONDUTA_DAS_CRENCAS`) e a regra de geração
+"sem partido, candidato nem figura pública pelo nome" saem; fica `USO_DAS_CRENCAS` (coerência de valores e de tom). A
+regra de conteúdo vai para o serviço externo de autorização.
+
 **Data:** 28/09/2026 · **Estado:** vigente na `main` · **Decisão do dono** (28/09): "sobre a religião e política eles
 devem ir para o modelo sim e de forma rica, não apenas uma flag simples, tanto a política quanto a religião, e mostrar
 isso visualmente de forma rica também, e isso deve inferir no contexto também". Substitui em parte o ADR-041. Código:
@@ -2384,6 +2388,10 @@ barato, o plano no Opus vira o maior custo (63% do braço).
 decisão 7 do plano-100 (base × configuração antes de adotar alavanca de custo).
 
 ## ADR-050 — Modo Automático: a IA escolhe quem faz, o código escolhe onde; crença é coerência, não alvo de persuasão
+
+**Emenda (06/10/2026, decisão do dono):** a regra de conduta do orquestrador (recusa por conteúdo do pedido com
+`alerta_conduta`) foi um acréscimo da IA, não requisito; sai do prompt e do simulado. A validação de conteúdo vai para o
+serviço externo de autorização; `alerta_conduta` fica no contrato como ponto de recusa.
 
 **Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`b0f2c07`) · **Decisão técnica** pedida pelo dono ("essa decisão sobre
 quais aparelhos, personas e em qual servidor vai ser orquestrado depende do pedido do usuário, da disponibilidade das

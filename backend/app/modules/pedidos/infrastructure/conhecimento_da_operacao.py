@@ -27,6 +27,8 @@ log = logging.getLogger(__name__)
 #: Quanto tempo a leitura do alvo vale para as outras execuções da mesma operação. Uma operação de 30 agentes em ondas
 #: dura menos que isso; depois, a próxima execução relê (o post pode ter mudado) e a leitura nova vira a da operação.
 FRESCOR_DA_LEITURA_S = 6 * 3600
+#: O aviso no `draft_meta.fatos_da_operacao.conhecimento_ids` da etapa quando a lista não foi gravada (revisão do PR 480).
+NAO_GRAVADOS = "nao_gravados"
 DIVERGENTE = "a leitura deste agente difere da leitura da operação (o alvo mudou ou é outro); a execução seguiu com a própria tela"
 
 
@@ -36,6 +38,7 @@ class Fatos:
     quantos: int                                  # o que o texto recebeu da operação: o bloco e a leitura igual na tela
     refs: tuple[str, ...] = ()                    # o mesmo, como referência (`fato:<chave>`, 31.163): conhecimento_ids
     assunto: str = ""                             # `operacoes.assunto` (124): vai ao escritor junto da intenção
+    ids_gravados: bool = True                     # False: `conhecimento_ids` não foi gravado (aviso no `draft_meta`)
 
 
 class ConhecimentoDaOperacao:

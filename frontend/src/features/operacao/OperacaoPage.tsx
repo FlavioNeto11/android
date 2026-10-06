@@ -7,6 +7,7 @@ import { confirm } from '../../components/Confirm';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select } from '../../components/Field';
 import { Page } from '../../components/Page';
+import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { cx, formatInt, formatUsd4 } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
@@ -17,6 +18,7 @@ import { toast, toastError } from '../../store/toasts';
 import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { apiOperacoes, type ListaDeOperacoes } from './api';
+import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
 import { CriarOperacao } from './CriarOperacao';
 import { guardarRascunho, rascunhoDaOperacao } from './criar';
 import { LiberarAcoes } from './LiberarAcoes';
@@ -45,6 +47,9 @@ const TOM_DO_STATUS: Record<StatusDaOperacao, Tone> = { em_curso: 'info', conclu
 const VERIFICACAO: Record<Verificacao, { icone: LucideIcon; tom: Tone }> = {
   verificada: { icone: ShieldCheck, tom: 'success' }, nao_verificada: { icone: ShieldQuestion, tom: 'warning' }, sem_acao: { icone: ShieldQuestion, tom: 'muted' },
 };
+
+type AbaDaOperacao = 'agentes' | 'aprendizado';
+const ABAS: readonly TabDef<AbaDaOperacao>[] = [{ id: 'agentes', label: 'Agentes' }, { id: 'aprendizado', label: 'Aprendizado' }];
 
 const numero = (n: number | null): string => (n === null ? 'não informado' : formatInt(n));
 
@@ -253,6 +258,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const [cancelando, setCancelando] = useState(false);
   const [abrirLiberar, setAbrirLiberar] = useState(false);
   const [abrirRelatorio, setAbrirRelatorio] = useState(false);
+  const [aba, setAba] = useState<AbaDaOperacao>('agentes');
   const limiteDeAcoes = useAppStore((s) => s.settings?.operacao_max_acoes_executadas);
   const contagem = useMemo(() => contarPorEstado(op?.alvos ?? []), [op]);
 
@@ -315,6 +321,9 @@ function DetalheDaOperacao({ id }: { id: string }) {
       <CustoEAssunto op={op} />
       <FaixaDeCapacidade op={op} />
       <PorApp op={op} />
+      <Tabs tabs={ABAS} active={aba} onChange={setAba} idBase="operacao" label="Detalhe da operação" />
+      <TabPanel idBase="operacao" id={aba}>
+      {aba === 'aprendizado' ? <AprendizadoDaOperacaoTab op={op} /> : (
       <section aria-labelledby="operacao-agentes">
         <h2 id="operacao-agentes" className={styles.subtitulo}>Agentes ({formatInt(alvos.length)} de {formatInt(op.alvos.length)})</h2>
         <div className={styles.filtros}>
@@ -357,6 +366,8 @@ function DetalheDaOperacao({ id }: { id: string }) {
           </div>
         )}
       </section>
+      )}
+      </TabPanel>
     </Page>
   );
 }
