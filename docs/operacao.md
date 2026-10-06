@@ -471,7 +471,12 @@ Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06
   `data/observabilidade/host/AAAAMMDD.csv` (UTC), retenção de 7 dias só nessa pasta: `ts_utc, cpu_host_pct,
   vm_convidado_nucleos, vmmem_ws_mb, qemu_host_pct, ram_livre_mb, disco_livre_gb, processos_top` (até 3 NOMES de processo com mais
   CPU no minuto, em % do host, sem linha de comando) e `avisos_pressao` (`android-05:3;android-01:1`, lidos do banco em
-  `mode=ro`; vazio = nenhum ou não medido). É a entrada do 29.165 e da janela da prova. Na primeira leitura de teste, o topo
+  `mode=ro`; vazio = nenhum ou não medido). Desde o 29.185 há três colunas no fim: `cpu_media_pct` (CPU do host como média do
+  minuto; `cpu_host_pct` é só o instantâneo de uma janela curta e oscila de 8 % a 91 % entre minutos vizinhos), `demais_processos_pct`
+  (processos fora do topo e do qemu) e `nao_atribuido_pct` (média − todos os processos: o que nasce e morre dentro do minuto,
+  núcleo/interrupções, VM; é onde se enxerga a carga que o topo não mostra). Um arquivo do dia começado por versão antiga ganha a nova
+  linha de cabeçalho uma vez; quem lê deve ignorar linhas cujo primeiro campo não seja data. O mutex tem o nome `Global\farm-amostrador-host`
+  por padrão; `-NomeDoMutex` existe só para os testes não disputarem com o amostrador real. É a entrada do 29.165 e da janela da prova. Na primeira leitura de teste, o topo
   da CPU do host foi `python` (provavelmente os testes do funil) e o antivírus, não a VM do WSL nem os emuladores.
 - **Teto de CPU para o funil** (29.174) — `scripts/com-teto-de-cpu.ps1 -Teto 40 [-NucleosE] -Linha "<comando>"` (ou
   `-ComandoJson '["exe","arg"]'` para argumentos exatos). Cria um Job Object com teto rígido de CPU (percentual do total de

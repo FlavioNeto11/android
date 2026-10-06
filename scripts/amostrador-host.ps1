@@ -23,6 +23,12 @@
                       `python:12.3;pwsh:4.1`. Processos de mesmo nome somam; `qemu-system-x86_64` e este amostrador ficam fora
     avisos_pressao    avisos "Convidado sob pressão de CPU" do minuto por aparelho: `android-05:3;android-01:1`; vazio = nenhum
                       OU não medido (banco indisponível)
+    cpu_media_pct     CPU total do host como MÉDIA do minuto (variação dos tempos do sistema; `cpu_host_pct` é só o instantâneo de uma
+                      janela curta e oscila de 8 % a 91 % entre minutos vizinhos). Vazio na 1ª linha de cada execução
+    demais_processos_pct  CPU dos processos vivos nas duas pontas do minuto que NÃO estão em `processos_top` nem no qemu
+    nao_atribuido_pct  `cpu_media_pct` − todos os processos: processos que nasceram e morreram dentro do minuto, núcleo/interrupções
+                      e tempo da VM. Pode dar uns décimos negativos por arredondamento
+  Colunas só crescem no fim. Um arquivo do dia começado por versão antiga ganha a nova linha de cabeçalho uma vez, antes das linhas novas.
   Linha de falha: `ts_utc,erro,<tipo da exceção>` e o laço segue.
 
   Prioridade ociosa, uma instância só (mutex), sem rede, sem escrever fora de `data\observabilidade\host`. Não lê `.env`, o
@@ -90,7 +96,13 @@ New-Item -ItemType Directory -Force $Saida | Out-Null
 if ((Get-Item -LiteralPath $Saida -Force).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
   Write-Host 'amostrador-host: -Saida e uma juncao/link; recusado.'; $mutex.ReleaseMutex(); exit 4
 }
-$cabecalho = 'ts_utc,cpu_host_pct,vm_convidado_nucleos,vmmem_ws_mb,qemu_host_pct,ram_livre_mb,disco_livre_gb,processos_top,avisos_pressao'
+$cabecalho = 'ts_utc,cpu_host_pct,vm_convidado_nucleos,vmmem_ws_mb,qemu_host_pct,ram_livre_mb,disco_livre_gb,processos_top,avisos_pressao,cpu_media_pct,demais_processos_pct,nao_atribuido_pct'
+# Tempos do sistema desde o boot (unidades de 100 ns): a média do minuto é a variação de (núcleo + usuário − ocioso) sobre (núcleo + usuário).
+try { Add-Type -Namespace Farm -Name Tempos -MemberDefinition '[DllImport("kernel32.dll")] public static extern bool GetSystemTimes(out long ocioso, out long nucleo, out long usuario);' } catch { }
+function Get-TemposDoSistema {
+  try { $oc = 0L; $nu = 0L; $us = 0L; if ([Farm.Tempos]::GetSystemTimes([ref]$oc, [ref]$nu, [ref]$us)) { return @($oc, ($nu + $us)) } } catch { }
+  return $null
+}
 $nCpus = (Get-CimInstance Win32_Processor | Measure-Object NumberOfLogicalProcessors -Sum).Sum
 $disco = (Get-Item -LiteralPath $root).PSDrive
 $meuPid = $PID
@@ -118,6 +130,8 @@ function Get-CpuPorProcesso {
 Remove-ArquivosVelhos
 $diaDaLimpeza = [datetime]::UtcNow.Date
 $antes = Get-CpuPorProcesso
+$tempoAntes = Get-TemposDoSistema
+$cabecalhoConferido = ''
 $relogio = [Diagnostics.Stopwatch]::StartNew()
 $primeira = $true
 $i = 0
@@ -127,6 +141,12 @@ try {
     $arquivo = Join-Path $Saida ($inicio.ToString('yyyyMMdd') + '.csv')
     try {
       if (-not (Test-Path -LiteralPath $arquivo)) { Set-Content -LiteralPath $arquivo -Value $cabecalho -Encoding utf8 }
+      elseif ($cabecalhoConferido -ne $arquivo) {
+        # Arquivo do dia começado por uma versão antiga do amostrador: o novo cabeçalho entra uma vez, antes das linhas novas (as
+        # colunas só crescem no fim, então a leitura por posição segue valendo).
+        if ((Get-Content -LiteralPath $arquivo -TotalCount 1) -ne $cabecalho) { Add-Content -LiteralPath $arquivo -Value $cabecalho -Encoding utf8 }
+      }
+      $cabecalhoConferido = $arquivo
       $cpu = $null; $vm = $null
       # Os dois contadores numa chamada só (uma janela de $JanelaS s); sem o do Hyper-V (outro host), só a CPU.
       try {
@@ -142,28 +162,45 @@ try {
       $livre = (Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1KB
       $discoLivre = (Get-PSDrive -Name $disco.Name).Free / 1GB
       $agora = Get-CpuPorProcesso
+      $tempoAgora = Get-TemposDoSistema
       $dt = [math]::Max(1.0, $relogio.Elapsed.TotalSeconds); $relogio.Restart()
-      $porNome = @{}; $qemu = 0.0
+      $porNome = @{}; $qemu = 0.0; $todos = 0.0
       foreach ($k in $agora.Keys) {
         if (-not $antes.ContainsKey($k)) { continue }
         $delta = $agora[$k][1] - $antes[$k][1]
         if ($delta -le 0) { continue }
+        $todos += $delta
         $nome = $agora[$k][0]
         if ($nome -like 'qemu-system*') { $qemu += $delta; continue }
         $porNome[$nome] = [double]$porNome[$nome] + $delta
       }
       $antes = $agora
-      $top = ($porNome.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 |
-              ForEach-Object { [pscustomobject]@{ N = $_.Key; P = $_.Value / $dt / $nCpus * 100 } } |
-              Where-Object { $_.P -ge 1 } | ForEach-Object { '{0}:{1}' -f $_.N, $_.P.ToString('F1', $inv) }) -join ';'
+      $maiores = @($porNome.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 |
+                   ForEach-Object { [pscustomobject]@{ N = $_.Key; P = $_.Value / $dt / $nCpus * 100 } } | Where-Object { $_.P -ge 1 })
+      $top = ($maiores | ForEach-Object { '{0}:{1}' -f $_.N, $_.P.ToString('F1', $inv) }) -join ';'
+      # Média do minuto do sistema inteiro (mesma janela dos processos) e o resto que `processos_top` não mostra:
+      # demais = processos vivos nas duas pontas, fora o topo e o qemu; não atribuído = média − todos os processos (processos que nasceram
+      # e morreram dentro do minuto, núcleo/interrupções e o tempo da VM). Pode dar uns décimos negativos por arredondamento.
+      $cpuMedia = ''; $demais = ''; $naoAtrib = ''
+      if ($tempoAntes -and $tempoAgora -and ($tempoAgora[1] - $tempoAntes[1]) -gt 0) {
+        $mediaN = 100.0 * (($tempoAgora[1] - $tempoAntes[1]) - ($tempoAgora[0] - $tempoAntes[0])) / ($tempoAgora[1] - $tempoAntes[1])
+        $todosPct = $todos / $dt / $nCpus * 100
+        $somaTop = [double](($maiores | Measure-Object P -Sum).Sum)
+        $cpuMedia = $mediaN.ToString('F1', $inv)
+        $demais = [math]::Max(0.0, $todosPct - ($qemu / $dt / $nCpus * 100) - $somaTop).ToString('F1', $inv)
+        $naoAtrib = ($mediaN - $todosPct).ToString('F1', $inv)
+      }
+      $tempoAntes = $tempoAgora
       $avisos = ''
       if ((Test-Path -LiteralPath $python) -and (Test-Path -LiteralPath $Banco)) {
         $desde = $inicio.AddSeconds(-$IntervaloS).ToString('yyyy-MM-ddTHH:mm:ss')
         $avisos = [string]((& $python $ajudante $Banco $desde 2>$null) -join '')
       }
       $qpct = if ($primeira) { '' } else { ($qemu / $dt / $nCpus * 100).ToString('F1', $inv) }
-      $linha = [string]::Format($inv, '{0},{1:F1},{2},{3:F0},{4},{5:F0},{6:F1},{7},{8}', $inicio.ToString('yyyy-MM-ddTHH:mm:ssZ'),
-                 $cpu, $(if ($null -eq $vm) { '' } else { $vm.ToString('F2', $inv) }), $ws, $qpct, $livre, $discoLivre, $top, $avisos)
+      if ($primeira) { $cpuMedia = ''; $demais = ''; $naoAtrib = '' }   # sem referência anterior, como o qemu
+      $linha = [string]::Format($inv, '{0},{1:F1},{2},{3:F0},{4},{5:F0},{6:F1},{7},{8},{9},{10},{11}', $inicio.ToString('yyyy-MM-ddTHH:mm:ssZ'),
+                 $cpu, $(if ($null -eq $vm) { '' } else { $vm.ToString('F2', $inv) }), $ws, $qpct, $livre, $discoLivre, $top, $avisos,
+                 $cpuMedia, $demais, $naoAtrib)
       Add-Content -LiteralPath $arquivo -Value $linha -Encoding utf8
       $primeira = $false
     } catch {
