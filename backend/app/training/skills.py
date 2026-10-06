@@ -16,7 +16,7 @@ que declaram a ação.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple, get_args
 
@@ -29,7 +29,9 @@ from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_ha
 from ..util import now_iso
 from . import dado_da_persona
 from .recorder import TrainingError
-from .respostas import acumular, guardadas, sem_as_respondidas, validar_respostas
+from .arraste import arrastes_finais, confirmou, pode_ser_receita
+from .arraste import pergunta as pergunta_do_arraste
+from .respostas import Resposta, acumular, chave_da_pergunta, guardadas, sem_as_respondidas, validar_respostas
 
 
 # ---------------------------------------------------------------------------- validação da proposta (item 31.83)
@@ -338,9 +340,10 @@ class TrainingSkills:
         apps = self._apps()
         app_id = self._app_da_sessao(sess, apps)
         pacote = apps[app_id]["package"] if app_id in apps else None
+        tela = await self._tela_do_treino(sess)
         req = TrainingRequest(intent=sess["intent"], app_id=app_id, apps=list(apps.values()),
                               inputs=[e for e in sess["inputs"]], catalog=self._catalogo(pacote), session_id=session_id,
-                              answers=respostas)
+                              answers=respostas, tela=tela)
         proposta, usage = await self.s.provider.generalize(req)
         try:
             self.s.repo.add_usage(None, None, usage)
@@ -355,6 +358,13 @@ class TrainingSkills:
             proposta["questions"] = sem_as_respondidas([q for q in proposta.get("questions") or [] if isinstance(q, str)],
                                                        respostas)
             proposta["answers"] = respostas
+        # 31.114 F2: a tela fica na proposta guardada (a destilação a lê de lá) e o arraste que termina uma etapa, sem sair da
+        # borda, leva uma pergunta FIXA: só a resposta "sim" da pessoa o faz virar receita.
+        if tela:                                    # sem tela lida a proposta fica com as chaves de sempre
+            proposta["screen"] = list(tela)
+        extras = _perguntas_do_arraste(proposta, {int(e["seq"]): e for e in sess["inputs"]}, respostas, tela)
+        if extras:
+            proposta["questions"] = [*[q for q in proposta.get("questions") or [] if isinstance(q, str)], *extras]
         # N3: dois `propose` da mesma sessão: o último UPDATE ganharia e as respostas do primeiro sumiriam calado
         cur = self.s.db.execute("UPDATE training_sessions SET proposal=?, status='proposed', updated_at=? "
                                 "WHERE id=? AND updated_at=?", (dumps(proposta), now_iso(), session_id, sess["updated_at"]))
@@ -464,6 +474,16 @@ class TrainingSkills:
         return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio,
                 "warnings": [*prep.avisos, *_aviso_sem_persona(sess)], "scope": _escopo_da_resposta(prep, scope_on_proof),
                 **self._em_prova(flow_id)}
+
+    async def _tela_do_treino(self, sess: Sessao) -> tuple[int, int] | None:
+        """31.114 F1: o tamanho da tela, lido SÓ se há arraste com coordenada na gravação (é o único uso). O aparelho fora do
+        ar, ou desconhecido, dá `None` e o texto do arraste diz "borda de origem desconhecida"."""
+        if not any(e["type"] == "swipe" and e.get("y") is not None and e.get("y2") is not None for e in sess["inputs"]):
+            return None
+        try:
+            return await self.s.devices.tamanho_da_tela(self.s.devices.get(sess["instance_id"]))
+        except KeyError:
+            return None
 
     async def preview(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],
                       group_ids: list[str], scope_on_proof: str = ESCOPO_TODOS) -> dict[str, object]:
@@ -628,6 +648,32 @@ def _linha_da_receita(efeito: str, viva: Row | None, *, gravada: int | None) -> 
     return {"recipe": True, "reason": ("receita será gravada ao salvar" if gravada is None else "receita gravada") + troca}
 
 
+def _tela_guardada(proposta: object) -> tuple[int, int] | None:
+    """A tela lida no `propose` (chave `screen` da proposta guardada), ou `None` se o aparelho não respondeu."""
+    tela = proposta.get("screen") if isinstance(proposta, dict) else None
+    if isinstance(tela, list) and len(tela) == 2 and all(isinstance(v, int) and not isinstance(v, bool) for v in tela):
+        return (tela[0], tela[1])
+    return None
+
+
+def _perguntas_do_arraste(proposta: Proposta, por_seq: Mapping[int, Mapping[str, object]], respostas: list[Resposta],
+                          tela: tuple[int, int] | None) -> list[str]:
+    """31.114 F2: uma pergunta fixa por etapa que termina num arraste que PODE virar receita e que a pessoa ainda não
+    respondeu. Sem tela conhecida ou com saída de borda, não pergunta (nada a confirmar: não vira receita de qualquer jeito)."""
+    descartadas = set(_inteiros([d.get("seq") for d in proposta.get("discarded") or [] if isinstance(d, dict)]))
+    respondidas = {chave_da_pergunta(r["question"]) for r in respostas}
+    abertas = {chave_da_pergunta(q) for q in proposta.get("questions") or [] if isinstance(q, str)}
+    saida: list[str] = []
+    for st in proposta.get("steps") or []:
+        if not isinstance(st, dict) or not st.get("key"):
+            continue
+        do_passo = [por_seq[i] for i in _inteiros(st.get("inputs")) if i in por_seq and i not in descartadas]
+        texto = pergunta_do_arraste(str(st["key"]))
+        if pode_ser_receita(arrastes_finais(do_passo), tela) and chave_da_pergunta(texto) not in respondidas | abertas:
+            saida.append(texto)
+    return saida
+
+
 def _destilar(sess: Sessao, p: Proposta, passos: list[PlanStep], exemplos: dict[str, str],
               apps: dict[str, dict[str, str]]) -> list[_Destilada]:
     """Uma destilação por etapa, das entradas da pessoa (só lê; o aparelho não entra aqui)."""
@@ -635,8 +681,14 @@ def _destilar(sess: Sessao, p: Proposta, passos: list[PlanStep], exemplos: dict[
     descartadas = set(_inteiros([d.get("seq") for d in p.get("discarded") or [] if isinstance(d, dict)]))
     pacotes = {a["id"]: a["package"] for a in apps.values()}
     saida: list[_Destilada] = []
+    guardada = sess.get("proposal") if isinstance(sess.get("proposal"), dict) else {}
+    respostas = guardadas(guardada)
+    tela = _tela_guardada(guardada)
     for st, passo in zip(p["steps"], passos):
         entradas = [por_seq[i] for i in _inteiros(st.get("inputs")) if i in por_seq and i not in descartadas]
-        acoes, motivo = distill_training(entradas, exemplos, side_effect=passo.side_effect, app_packages=pacotes)
+        # 31.114 F2: o arraste que termina a etapa só vira receita confirmado pela pessoa, com a tela conhecida e sem borda.
+        final = confirmou(respostas, str(st.get("key"))) and pode_ser_receita(arrastes_finais(entradas), tela)
+        acoes, motivo = distill_training(entradas, exemplos, side_effect=passo.side_effect, app_packages=pacotes,
+                                         arraste_final=final)
         saida.append(_Destilada(passo, acoes, motivo))
     return saida

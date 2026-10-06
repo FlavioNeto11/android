@@ -6852,3 +6852,32 @@ reservados pela orquestradora.
 - **`GET /api/runs` não muda:** os itens da lista continuam sem `costs`. Execução inexistente no detalhe continua
   respondendo 404 `not_found`.
 - **Prova:** `simulated` (`backend/tests/test_run_detalhe_custo.py`); `real`: `not_run`.
+
+## Adendo v1.76 (06/10/2026; número da orquestradora; item 31.114 F1 e F2) — o arraste gravado: o gesto do dedo para a IA e, confirmado, a receita
+
+Sem rota nova, sem migração e sem corpo novo. Muda o que o `propose` lê, o que ele guarda e uma pergunta; o `save` e o `preview`
+seguem como eram.
+- **O texto do arraste que a IA lê** (`planning/training.py::descrever_arraste`): o gesto do DEDO, de onde saiu e quanto percorreu,
+  e não mais "rolou para cima/baixo" (que era o movimento do conteúdo e levava a ler o contrário). Exemplo (caso real da prova do
+  31.111): "arrastou o dedo de cima para baixo, saindo da borda superior, por 60 % da altura". Sem a tela do aparelho, ou com
+  coordenada que não cabe nela: "arrastou o dedo de cima para baixo (borda de origem desconhecida)". Borda = até 3 % da largura
+  ou da altura. Arraste sem coordenada (31.97: teclado, padrão de bloqueio, tela sensível) segue "não gravado".
+- **`screen`** na proposta guardada (`GET /api/training/{id}` → `proposal.screen`): `[largura, altura]` do aparelho em retrato, lida
+  na hora do `POST /api/training/{id}/propose` e só quando a gravação tem arraste com coordenada. Ausente (a proposta tem as chaves
+  de sempre) se não há arraste ou se o aparelho não respondeu a tempo (8 s). É a tela que a destilação usa depois; o `proposal`
+  que o cliente manda no `save` não a carrega nem precisa: vale a da sessão.
+- **A pergunta fixa do arraste final**: para cada etapa que TERMINA num arraste com coordenada, sem sair da borda e com a tela
+  conhecida, a proposta ganha em `questions`: "A etapa «<chave>» termina num arraste. O arraste é o objetivo dela, para a receita
+  repetir a rolagem? Responda sim ou não." O texto é fixo por chave de etapa. Responde-se pelo caminho do 31.91 (`propose` com
+  `{"answers": [{"question", "answer"}]}`; a resposta fica em `answers`, e a pergunta respondida não volta). Arraste de borda ou
+  sem tela conhecida não gera pergunta.
+- **A receita**: só com "sim" (sem acento e sem ponto, qualquer caixa) à pergunta da etapa, e com a tela conhecida e o dedo fora da
+  borda, a etapa ganha a receita de rolagem: um item `scroll` por arraste da cauda, na direção do conteúdo (dedo sobe = `down`),
+  relativo à área rolável, nunca com pixel. Qualquer outra resposta, ou a falta dela, deixa o motivo de sempre: "rolagem sem
+  ação-alvo depois dela" no relatório por etapa do `preview`/`save` (`steps[].reason`). Arraste no MEIO da etapa segue como dica
+  "rolar até o alvo aparecer" da ação seguinte. Gesto de borda (a gaveta de notificações) segue sem receita: o F3 (tool de borda)
+  está fora até haver demanda. `drag` continua em `UNSAFE_TO_REPLAY`.
+- **O que o painel precisa mudar:** mostrar a pergunta como as outras `questions` (campo de resposta e envio pelo `propose`); nada
+  além disso. O relatório por etapa já traz o motivo.
+- **Prova:** `simulated` (`backend/tests/test_treino_descricao_do_arraste.py`, `test_treino_arraste_vira_receita.py`); `real`:
+  `not_run`.
