@@ -61,7 +61,7 @@ _ARROBA = re.compile(r"(?<![\w.])@[A-Za-z0-9._]{1,60}")
 def _motivo(texto: object) -> str | None:
     """O motivo REDIGIDO, numa linha e SEM @ de conta. O do objetivo pode trazer texto lido da tela, da pergunta à pessoa
     ou o @ do alvo (a porta de frota o cita), e vai para o banco, o evento `operacao.alvo`, a API e o relatório."""
-    return motivo_curto(_ARROBA.sub("o perfil alvo", redact(str(texto))) if texto else None)
+    return motivo_curto(_ARROBA.sub("o perfil alvo", redact(str(texto)) or "") if texto else None)
 
 
 class OperacaoError(Exception):
