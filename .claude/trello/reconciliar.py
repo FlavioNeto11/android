@@ -123,11 +123,12 @@ def deploys_por_commit(texto: str) -> dict[str, int]:
     return achados
 
 
-def deploy_pela_evidencia(item: dict, por_commit: dict[str, int]) -> int | None:
-    """O item foi classificado depois do registro do deploy, mas a evidência real diz em que commit do central foi
-    provado ("central 7154d7cf"): esse é o deploy dele (o menor, se citar mais de um)."""
+def deploy_pela_evidencia(item: dict, por_commit: dict[str, int], ultimo: int = 0) -> int | None:
+    """O item foi classificado depois do registro do deploy, mas a evidência real diz onde foi provado: o commit do
+    central ("central 7154d7cf") ou o número ("deploy 32", só se já houve deploy até esse número). Vale o menor."""
     ev = str(item.get("evidence") or "")
     ns = [n for sha, n in por_commit.items() if sha in ev]
+    ns += [int(n) for n in re.findall(r"\bdeploy (\d+)\b", ev) if int(n) <= ultimo]
     return min(ns) if ns else None
 
 
@@ -272,7 +273,7 @@ def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[i
         elif st == "implemented":
             n = deploy_do_item(it.get("quando"), suite_de(pid) or (citados or {}).get(pid), horas)
             if n is None and it.get("proof") == "real":
-                n = deploy_pela_evidencia(it, por_commit or {})
+                n = deploy_pela_evidencia(it, por_commit or {}, max(horas, default=0))
             if n is None:
                 if atual != "em_validacao":
                     rel.acoes.append(Acao(c["id"], nome, "mover", atual, "em_validacao",
