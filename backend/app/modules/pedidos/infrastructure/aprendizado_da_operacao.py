@@ -7,8 +7,12 @@ Como cada fonte se liga às execuções `R` da operação:
   `flows.source_run_id`;
 - pelo prefixo: `recipes.learned_from_step` começa por `<run_id>:`;
 - pelo texto do JSON: `learning_items.provenance` cita a execução (`"execucoes": [...]` ou `"execucao": "..."`);
-- `memory_items` pela interação (`interaction_id` → `social_interactions.run_id`);
+- `memory_items` pela interação (`interaction_id` → `social_interactions.run_id`): só a memória aprendida de uma
+  interação (`learn_from`) tem o vínculo; a de observação de tela não guarda execução e fica em `nao_coberto`;
 - `learning_backlog` não guarda a execução: casa por (app, ação, tipo de falha) dos sinais e sai `inferida`.
+
+O `estado` de um item do Livro é o de AGORA (a linha), não o que a execução decidiu: a transição feita por uma
+execução da operação aparece à parte, como falha `queda:`.
 
 Texto livre (memória, motivo, comando) sai redigido (`security/redaction.py`) e cortado em `RESUMO_MAX`, como o
 relatório de falhas. O simulado fica de fora por padrão. Não lê `operacoes` nem `operacao_alvos` (da Jev): a persona de
@@ -72,9 +76,9 @@ class LeitorDoAprendizadoDaOperacao:
         if runs:
             evid = self._evidencias(list(runs), simulados)
             quedas = self._quedas(list(runs))
-            itens += self._receitas(runs, evid, quedas)
-            itens += self._fluxos(runs, evid, quedas)
-            itens += self._licoes(runs, evid, quedas)
+            itens += self._receitas(runs, evid)
+            itens += self._fluxos(runs, evid)
+            itens += self._licoes(runs, evid)
             itens += self._persona(runs)
             itens += self._falhas(runs, quedas, simulados)
         return itens
@@ -124,8 +128,7 @@ class LeitorDoAprendizadoDaOperacao:
         a, c, ult, runs = evid.get(ref, (0, 0, "", ()))
         return a, c, ult or None, runs
 
-    def _receitas(self, runs: dict[str, str | None], evid: dict[str, Evid],
-                  quedas: dict[str, Row]) -> list[Item]:
+    def _receitas(self, runs: dict[str, str | None], evid: dict[str, Evid]) -> list[Item]:
         ids = [r[len("receita:"):] for r in evid if r.startswith("receita:")]
         conds = " OR ".join(["learned_from_step LIKE ?"] * len(runs))
         args: list[object] = [f"{r}:%" for r in runs]
@@ -139,7 +142,7 @@ class LeitorDoAprendizadoDaOperacao:
             origem_run = str(r["learned_from_step"] or "").split(":", 1)[0]
             nasceu_aqui = origem_run in runs
             a, c, ult, ev = self._favor(ref, evid)
-            estado = str(quedas[ref]["to_state"]) if ref in quedas else str(r["status"])
+            estado = str(r["status"])
             itens.append(Item(ref=ref, tipo="receita", escopo="app",
                               resumo=_resumo(f"{r['step_key']} em {r['app_package']} (v{r['version']}, "
                                              f"{r['replay_ok']} ok / {r['replay_fail']} falhas)"),
@@ -149,8 +152,7 @@ class LeitorDoAprendizadoDaOperacao:
                               observado_em=ult or r["created_at"], a_favor=a, contra=c))
         return itens
 
-    def _fluxos(self, runs: dict[str, str | None], evid: dict[str, Evid],
-                quedas: dict[str, Row]) -> list[Item]:
+    def _fluxos(self, runs: dict[str, str | None], evid: dict[str, Evid]) -> list[Item]:
         ids = [r[len("fluxo:"):] for r in evid if r.startswith("fluxo:")]
         sql = f"SELECT * FROM flows WHERE source_run_id IN ({_marcas(len(runs))})"
         args: list[object] = list(runs)
@@ -162,7 +164,7 @@ class LeitorDoAprendizadoDaOperacao:
             ref = f"fluxo:{f['id']}"
             nasceu_aqui = f["source_run_id"] in runs
             a, c, ult, ev = self._favor(ref, evid)
-            estado = str(quedas[ref]["to_state"]) if ref in quedas else str(f["status"])
+            estado = str(f["status"])
             itens.append(Item(ref=ref, tipo="fluxo", escopo="processo", resumo=_resumo(f["command_template"]),
                               origem="execucao" if nasceu_aqui else "reforco", confianca=confianca_do_livro(estado),
                               estado=estado, evidencia=(str(f["source_run_id"]),) if nasceu_aqui and not ev else ev,
@@ -170,15 +172,14 @@ class LeitorDoAprendizadoDaOperacao:
                               observado_em=ult or f["created_at"], a_favor=a, contra=c))
         return itens
 
-    def _licoes(self, runs: dict[str, str | None], evid: dict[str, Evid],
-                quedas: dict[str, Row]) -> list[Item]:
+    def _licoes(self, runs: dict[str, str | None], evid: dict[str, Evid]) -> list[Item]:
         conds = " OR ".join(["provenance LIKE ?"] * len(runs))
         itens = []
         for li in self.db.query(f"SELECT * FROM learning_items WHERE {conds}", tuple(f'%"{r}"%' for r in runs)):
             ref = f"{li['kind']}:{li['id']}"
             a, c, ult, ev = self._favor(ref, evid)
             citadas = tuple(r for r in runs if f'"{r}"' in str(li["provenance"] or ""))
-            estado = str(quedas[ref]["to_state"]) if ref in quedas else str(li["state"])
+            estado = str(li["state"])
             personas = {runs[r] for r in citadas}
             itens.append(Item(ref=ref, tipo=str(li["kind"]),
                               escopo="processo" if li["scope_capability"] or li["scope_step_hash"] else "app",

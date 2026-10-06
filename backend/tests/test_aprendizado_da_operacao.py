@@ -59,7 +59,7 @@ def _mundo(db: Database) -> None:
                    version=1, actions="[]", created_at=T0)
     _ins(db, "recipes", **receita, step_hash="h1", step_key="open_profile_1", status="active",
          learned_from_step="r-a:android-01:v1:open_profile_1")                      # nasceu na operação
-    _ins(db, "recipes", **receita, step_hash="h2", step_key="open_comments_1", status="active",
+    _ins(db, "recipes", **receita, step_hash="h2", step_key="open_comments_1", status="quarantined",
          learned_from_step="r-velha:android-06:v2:open_comments_1")                 # reforçada pela operação
     _ins(db, "recipes", **receita, step_hash="h3", step_key="open_post_1", status="active",
          learned_from_step="r-fora:android-01:v1:open_post_1")                      # de fora: não entra
@@ -83,12 +83,14 @@ def _mundo(db: Database) -> None:
          occurred_at=T0, type="comment_replied", direction="outgoing", counterparty="loja", status="confirmed",
          created_at=T0, updated_at=T0)
     _ins(db, "memory_items", id="mem-1", profile_id="p1", subject="loja", content=f"comentei na loja; chave {SEGREDO}",
-         source="observation", interaction_id="si-1", confidence=0.9, fingerprint="fp1", created_at=T0, updated_at=T0)
+         source="interaction", interaction_id="si-1", confidence=0.9, fingerprint="fp1", created_at=T0, updated_at=T0)
     _ins(db, "memory_items", id="mem-2", profile_id="p1", subject="loja", content="talvez goste de outono",
-         source="observation", interaction_id="si-1", confidence=0.4, fingerprint="fp2", created_at=T0, updated_at=T0)
+         source="interaction", interaction_id="si-1", confidence=0.4, fingerprint="fp2", created_at=T0, updated_at=T0)
     _ins(db, "learning_signals", kind="feedback", polarity="negative", source_ref="s1", created_by="sistema",
          run_id="r-b", profile_id="p2", app_package="com.instagram.android", capability="OPEN_COMMENTS",
          failure_kind="wrong_screen", simulated=0, created_at=T0, updated_at=T0)
+    _ins(db, "memory_items", id="mem-obs", profile_id="p1", subject="tela", content="sem execução",
+         source="observation", confidence=0.9, fingerprint="fp3", created_at=T0, updated_at=T0)   # sem vínculo
     _ins(db, "learning_backlog", id="bk-1", category="defeito", cluster_key="ck", app_package="com.instagram.android",
          capability="OPEN_COMMENTS", failure_kind="wrong_screen", title="Folha de comentários do post errado",
          state="open", first_seen=T0, last_seen=T0)
@@ -131,7 +133,7 @@ def test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas(banco: Databa
             "licao:li-1"} == plataforma                                  # a receita de fora (r-fora) não entra
     assert _refs(resp, "do_app") == {f"receita:{ids['open_profile_1']}", f"receita:{ids['open_comments_1']}"}
     assert _refs(resp, "do_processo") == {"fluxo:f-op", "licao:li-1"}     # a lição é de uma ação
-    assert _refs(resp, "persona_aprendeu") == {"interacao:si-1", "memoria:mem-1", "memoria:mem-2"}
+    assert _refs(resp, "persona_aprendeu") == {"interacao:si-1", "memoria:mem-1", "memoria:mem-2"}  # mem-obs fora
     assert _refs(resp, "conhecimento_geral") == {"fato:alvo.conteudo"}    # hipótese, vencido e registro fora
     assert _refs(resp, "fontes_externas") == {"fonte:fonte.1"}
     sust = {s["ref"]: s for s in resp["perguntas"][6]["itens"]}           # type: ignore[index]
@@ -198,7 +200,7 @@ def test_a_rota_responde_e_diz_404_sem_a_124(banco: Database, tmp_path: Path) ->
     assert r.status_code == 200
     corpo = r.json()
     assert corpo["operacao_id"] == "op-1" and corpo["persona"] == "p1" and len(corpo["perguntas"]) == 10
-    assert {n["chave"] for n in corpo["nao_coberto"]} >= {"conhecimento_geral", "pedido_relatorios"}
+    assert {n["chave"] for n in corpo["nao_coberto"]} >= {"conhecimento_geral", "pedido_relatorios", "persona_aprendeu"}
     assert cliente.get("/api/operacoes/op-x/aprendizado").json()["detail"]["code"] == "operacao_desconhecida"
 
 

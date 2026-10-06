@@ -46,6 +46,8 @@ NAO_COBERTO: tuple[tuple[str, str], ...] = (
     ("conhecimento_geral", "A promoção de um fato da operação a conhecimento geral do Livro (curadoria) não existe: "
                            "aqui aparecem os fatos confirmados da operação, que são candidatos."),
     ("pedido_relatorios", "A operação não é um pedido: o relatório periódico do pedido não se aplica a ela."),
+    ("persona_aprendeu", "Só a memória que a persona aprendeu de uma interação liga-se à execução; a memória de "
+                         "observação de tela não guarda a execução e não aparece aqui."),
     ("falhas_que_geraram_aprendizado", "O backlog de falhas não guarda a execução: a ligação com a operação é "
                                        "inferida por app, ação e tipo de falha, e vem marcada `inferida`."),
 )

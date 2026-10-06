@@ -7151,10 +7151,14 @@ perguntas do aprendizado do dono, respondidas pelas execuções da operação (`
 - **`simulados=true`:** inclui `learning_evidence` e `learning_signals` simulados.
 - **O backlog de falhas** não guarda a execução: casa por app, ação e tipo de falha dos sinais, e sai com
   `inferida: true`.
+- **`estado`** de um item do Livro é o de agora. A transição que uma execução da operação fez aparece à parte, como a
+  falha `queda:<item_ref>`.
 - **`nao_coberto`** diz o que a rota não responde:
   - a promoção a conhecimento geral pela curadoria;
   - o relatório do pedido, porque a operação não é um pedido;
-  - o vínculo direto do backlog.
+  - o vínculo direto do backlog;
+  - a memória da persona aprendida de observação de tela, que não guarda execução. Só a aprendida de uma interação
+    se liga à operação.
 
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.
