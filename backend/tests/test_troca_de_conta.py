@@ -119,7 +119,7 @@ def parque(tmp_path: Path) -> Any:
     bus = EventBus(db)
     secrets = SecretStore(db, MemoryKeyProvider())
     repo = SocialRepository(db)
-    social = SocialService(repo, secrets, bus, known_instances=lambda: ["android-01", IID, "android-03"])
+    social = SocialService(repo, secrets, bus, known_instances=lambda: ["android-01", IID, "android-03", "android-04"])
     pastas = iter(range(100))
 
     def montar(app: CorreioComSaida, *, troca: dict[str, Any] | None = TROCA) -> Parque:
@@ -165,6 +165,8 @@ async def test_a_conta_aberta_sai_pelos_toques_declarados_e_a_esperada_entra_pel
     logs = [r["message"] for r in p.db.query("SELECT message FROM events WHERE kind='log'")]
     assert any("troca de conta" in m for m in logs)
     assert not any(SENHA_B in m or SENHA_A in m for m in logs)          # a senha nunca vai a evento
+    sessoes = [dict(r) for r in p.db.query("SELECT * FROM account_sessions")]
+    assert SENHA_A not in repr(sessoes) and SENHA_B not in repr(sessoes)     # nem a sessão
 
 
 async def test_sem_a_secao_troca_conta_errada_continua_caso_de_pessoa(parque: Any) -> None:
@@ -286,3 +288,46 @@ def test_a_descoberta_marca_quem_declara_a_troca_e_o_d2a_relaxa_so_nele(parque: 
             assert p.repo.quem_ja_serve(p.b[0], IID, "correio") == esperado
         finally:
             registry.unregister(CORREIO)
+
+
+async def test_tela_de_verificacao_no_meio_da_saida_e_desafio_e_nada_e_digitado(parque: Any) -> None:
+    """A saída leva a uma verificação: é o desafio de sempre (ADR-055), não "conta errada", e nada é tocado nela."""
+    app = _novo_app(confirmar=False, sair_abre="desafio")
+    p = parque(app)
+    r = await p.motor.ensure_session(FakeRt(app, IID), p.b[0], account_id=p.b[1], automatic=True)
+    assert r.outcome is Outcome.AUTH_CHALLENGE
+    assert app.typed == [] and "enviar" not in app.calls
+    assert _status(p, p.b) == SessionStatus.auth_challenge.value
+    assert _status(p, p.a) == SessionStatus.unknown.value
+
+
+async def test_conta_aberta_que_nao_e_nossa_nao_e_deslogada(parque: Any) -> None:
+    """Quem está logado não é conta nossa com senha guardada (alguém entrou à mão): a automação não a traria de volta."""
+    app = _novo_app()
+    app.conta = "alguem.de.fora"
+    p = parque(app)
+    r = await p.motor.ensure_session(FakeRt(app, IID), p.b[0], account_id=p.b[1], automatic=True)
+    assert r.outcome is Outcome.WRONG_ACCOUNT and "não é deslogada" in r.detail
+    assert app.conta == "alguem.de.fora" and "sair" not in app.calls and app.typed == []
+
+
+async def test_aparelho_em_quarentena_nao_troca(parque: Any) -> None:
+    app = _novo_app()
+    p = parque(app)
+    p.repo.marcar_conta_travada(IID, "outra.travada", None, "observado")
+    r = await p.motor.ensure_session(FakeRt(app, IID), p.b[0], account_id=p.b[1], automatic=True)
+    assert r.outcome is Outcome.WRONG_ACCOUNT and "quarentena" in r.detail
+    assert app.conta == CONTA_A and "sair" not in app.calls and app.typed == []
+    assert _status(p, p.a) == SessionStatus.session_ready.value
+
+
+async def test_a_invalidacao_poupa_desafio_e_conta_errada_de_outra_persona(parque: Any) -> None:
+    app = _novo_app()
+    p = parque(app)
+    terceira = cadastrar(p.social, username="ancora.3", senha="ancora-Senha#9", instance_id="android-04")
+    conta3 = p.social.add_account(terceira, ProfileAccountCreate(app_id="correio", handle="davi.correio",
+                                                                 password=SecretStr("troca-C#3"), consent=True)).id
+    p.repo.set_account_session(terceira, conta3, IID, status=SessionStatus.auth_challenge, detail="desafio visto")
+    r = await p.motor.ensure_session(FakeRt(app, IID), p.b[0], account_id=p.b[1], automatic=True)
+    assert r.outcome is Outcome.SESSION_READY, r.detail
+    assert p.repo.account_session_row(terceira, conta3, IID)["status"] == SessionStatus.auth_challenge.value

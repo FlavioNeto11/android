@@ -1217,6 +1217,8 @@ class SessaoDeclarada:
         assert k.troca is not None                  # quem chama confere
         if (recusa := self._antes_de_sair(rt, conta, automatic=automatic)) is not None:
             return recusa
+        if (sem_volta := self._sem_volta(rt, conta, observado)) is not None:
+            return await self._wrong_account(rt, conta, observado, locale, troca=sem_volta)
         tocou, falha = False, None
         for i, passo in enumerate(k.troca.sair, start=1):
             tree, package = await self._observe(rt)
@@ -1230,8 +1232,11 @@ class SessaoDeclarada:
                 tree, package = await self._observe(rt)
                 estado = self._reconhecer(k, tree, package, locale)
             if estado.trava is not None or estado.tipo in TIPOS_DE_DESAFIO:
-                falha = f"uma tela de verificação apareceu no passo {i} da saída, e nada foi tocado nela"
-                break
+                # Como no `_garantir`: nada é tocado, e o desafio segue a regra de sempre (ADR-055: quarentena do
+                # aparelho, conta travada sai). Atribuído à conta esperada, como no caminho do `ler_conta`.
+                if tocou:
+                    self._invalidar_o_app(rt, conta)
+                return self._challenge(conta, rt.id, estado.razao, estado.trava)
             if estado.tela != passo.tela:
                 falha = f"o passo {i} da saída esperava a tela '{passo.tela}', e a tela é {_nome_da_tela(estado)}"
                 break
@@ -1243,14 +1248,20 @@ class SessaoDeclarada:
             tocou = True
             await asyncio.sleep(float(self.ajustes.settle_s))
         if tocou:
-            # Depois de um toque de saída, nenhuma sessão deste app neste aparelho vale mais o que dizia — não só a da
-            # conta que estava aberta: o app pode ter levado junto as outras contas lembradas.
-            self.repo.invalidate_sessions_of_instance(
-                rt.id, package=self.package,
-                reason=f"a conta saiu do {self.conhecimento.rotulo} neste aparelho pela troca de conta (ADR-080)")
+            self._invalidar_o_app(rt, conta)
         if falha is None:
-            tree, package = await self._observe(rt)
-            estado = self._reconhecer(k, tree, package, locale)
+            # A saída leva o tempo do app (rede, animação): espera a tela de login até o prazo da verificação, em vez de
+            # concluir pela primeira leitura e mandar a pessoa a um aparelho que só estava saindo.
+            prazo = time.monotonic() + float(self.ajustes.verify_timeout_s)
+            while True:
+                tree, package = await self._observe(rt)
+                estado = self._reconhecer(k, tree, package, locale)
+                if (estado.tipo == "login" or estado.trava is not None or estado.tipo in TIPOS_DE_DESAFIO
+                        or time.monotonic() >= prazo):
+                    break
+                await asyncio.sleep(float(self.ajustes.settle_s))
+            if estado.trava is not None or estado.tipo in TIPOS_DE_DESAFIO:
+                return self._challenge(conta, rt.id, estado.razao, estado.trava)
             if estado.tipo == "login":
                 self.bus.emit("log", f"{rt.id}: troca de conta no {self.conhecimento.rotulo}: "
                                      f"{_como_conta(observado)} saiu para entrar {_como_conta(conta.handle)}",
@@ -1258,6 +1269,40 @@ class SessaoDeclarada:
                 return await self._login(rt, k, conta, estado, tree, locale, automatic=automatic)
             falha = f"depois da saída a tela não é a de login ({_nome_da_tela(estado)})"
         return await self._wrong_account(rt, conta, observado, locale, troca=falha)
+
+    def _invalidar_o_app(self, rt: DeviceRuntime, conta: ContaDaSessao) -> None:
+        """Depois de um toque de saída, nenhuma sessão deste app neste aparelho vale mais o que dizia — não só a da conta
+        que estava aberta: o app pode ter levado junto as outras contas lembradas. Desafio e conta errada ficam como
+        estão: são o que a pessoa precisa ver (o mesmo cuidado do começo do `_garantir`)."""
+        motivo = f"a conta saiu do {self.conhecimento.rotulo} neste aparelho pela troca de conta (ADR-080)"
+        linhas = self.repo.db.query(
+            "SELECT s.account_id, a.profile_id FROM account_sessions s JOIN profile_accounts a ON a.id = s.account_id"
+            " WHERE s.instance_id=? AND a.app_id IN (?, ?) AND s.status IN (?, ?)",
+            (rt.id, conta.app_id, self.package, SessionStatus.session_ready.value, SessionStatus.auth_required.value))
+        for linha in linhas:
+            self.repo.set_account_session(str(linha["profile_id"]), str(linha["account_id"]), rt.id,
+                                          status=SessionStatus.unknown, detail=motivo)
+
+    def _sem_volta(self, rt: DeviceRuntime, conta: ContaDaSessao, observado: str) -> str | None:
+        """Por que a conta aberta NÃO pode sair (31.155); `None` = pode. Sem tocar no aparelho.
+
+        - Aparelho em quarentena (ADR-055): com conta travada ali, nada entra nem sai pela automação.
+        - A conta aberta tem de ser uma conta nossa deste app, ativa, com senha guardada e consentimento: só ela a
+          automação consegue trazer de volta. Uma conta que alguém abriu à mão (fora do cofre, ou que passou por
+          verificação) não é deslogada — derrubá-la seria sem volta."""
+        if self.repo.conta_travada_no_aparelho(rt.id) is not None:
+            return "o aparelho está em quarentena por conta travada (ADR-055); a troca não começa"
+        alvo = observado.strip().lstrip("@").lower()
+        linhas = self.repo.db.query(
+            "SELECT a.handle, c.login_identifier, c.consent_at, a.status FROM profile_accounts a"
+            " JOIN account_credentials c ON c.account_id = a.id WHERE a.app_id IN (?, ?)", (conta.app_id, self.package))
+        for linha in linhas:
+            nomes = {str(linha["handle"] or "").strip().lstrip("@").lower(),
+                     str(linha["login_identifier"] or "").strip().lstrip("@").lower()}
+            if alvo in nomes and linha["consent_at"] is not None and (linha["status"] or "active") == "active":
+                return None
+        return ("a conta aberta não é uma conta nossa deste app com senha guardada e consentimento; ela não é "
+                "deslogada, porque a automação não a traria de volta")
 
     def _antes_de_sair(self, rt: DeviceRuntime, conta: ContaDaSessao, *, automatic: bool) -> AuthResult | None:
         """O que barraria o login da conta esperada, conferido sem tocar no aparelho (31.155). `None` = pode trocar.
@@ -1288,7 +1333,11 @@ class SessaoDeclarada:
         # humana; nenhum caminho digita senha nem troca de conta sozinho aqui. No app que declara (31.155, ADR-080),
         # chega-se aqui só quando a troca não terminou (`troca` = o motivo): a sessão fica `wrong_account`, que a
         # porta de sessão e `_needs_person` tratam como caso de pessoa — a troca que falhou não se repete a cada tick.
-        if troca is None:
+        if troca is None and self.conhecimento.troca is not None:
+            # Só o "Verificar conta" (que nunca troca) chega aqui num app que declara a troca.
+            detail = (f"a conta aberta é {_como_conta(observado)}, e a esperada é {_como_conta(conta.handle)}. Este "
+                      "app declara a troca de conta: use Conectar para trocar (a verificação só lê a tela).")
+        elif troca is None:
             detail = (f"a conta aberta é {_como_conta(observado)}, e a esperada é {_como_conta(conta.handle)}. A "
                       "troca de conta é sempre manual — assuma o controle do aparelho e faça login na conta certa (ou "
                       "'Sair da conta', que apaga os dados do app).")
