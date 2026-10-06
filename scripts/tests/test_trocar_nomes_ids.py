@@ -78,3 +78,22 @@ def test_amplo_ignora_o_handle_de_exemplo_com_o_ponto_escapado(tmp_path: Path, m
     monkeypatch.setattr("sys.argv", ["x", "--tabela", str(tabela), "--raiz", str(raiz), "--amplo"])
     assert troca.main() == 0
     assert "arquivos: 1" in capsys.readouterr().out
+
+
+def test_valor_anterior_ja_aplicado_nao_aborta_o_amplo(tmp_path: Path, monkeypatch, capsys) -> None:
+    """Depois de trocar na tabela um valor de exemplo que colidia, a forma antiga (já aplicada nos testes) entra em
+    `anteriores`: sem isso, o outro pedaço dela, que segue na tabela, seria achado "já existente" e o ensaio abortaria."""
+    raiz, privado = tmp_path / "repo", tmp_path / "privado"
+    privado.mkdir()
+    tabela = {"handles": {"quimera.zarolha4821": "amostral.ostra7310"}, "pedacos": {"quimera": "amostral", "zarolha": "ostra"},
+              "fora": [], "simulados": [], "anteriores": ["amostral.girafa7310"]}
+    _repo(raiz, 'JA_APLICADO = "amostral.girafa7310"\nNOME = "Quimera"\n')
+    arquivo = privado / "tabela.json"
+    arquivo.write_text(json.dumps(tabela), encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["x", "--tabela", str(arquivo), "--raiz", str(raiz), "--amplo"])
+    assert troca.main() == 0
+    assert "arquivos: 1" in capsys.readouterr().out
+    tabela.pop("anteriores")                                  # sem a chave, o pedaço restante aparece nos testes: aborta
+    arquivo.write_text(json.dumps(tabela), encoding="utf-8")
+    with pytest.raises(SystemExit, match="já existe nos testes"):
+        troca.main()

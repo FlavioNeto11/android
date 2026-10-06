@@ -456,4 +456,44 @@ describe('página Aprendizado', () => {
     expect(allByRole('button', /^Confirmar que fica$/, item('fluxo:f-31'))).toHaveLength(0);
     expect(text(item('fluxo:f-31'))).not.toContain('Ensinado, ainda em prova');
   });
+
+  // 30.85 (adendo v1.73): o fluxo ensinado em prova segue "Publicado", e a lista mostra o selo do 30.81 ao lado do estado.
+  // O selo é o elemento de texto exato "em prova" (a nota também diz "sem prova", que contém a mesma sequência).
+  const selo = (el: HTMLElement) => Array.from(el.querySelectorAll('span')).find((x) => x.textContent === 'em prova') ?? null;
+  const EM_PROVA = (ref: string, over: object = {}) => entrada({
+    kind: 'fluxo', ref, state: 'published', native_status: 'active', side_effect: false, requires_owner: false,
+    title: 'Voltar para a lista', acoes: [ACAO('disabled', 'desligar')], ...over });
+
+  it('30.85: o fluxo ensinado em prova mostra o selo "em prova" ao lado de "Publicado", com a nota de quem pode usar', async () => {
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [
+      EM_PROVA('f-40', { ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' } }),
+      EM_PROVA('f-41', { ensinado_em_prova: { persona: null, sessao: 'trn-2' } }),
+      EM_PROVA('f-42'),
+    ], total: 3, contagem: {} }));
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    await waitFor(() => expect(item('fluxo:f-40')).toBeTruthy());
+    const comPersona = item('fluxo:f-40');
+    expect(selo(comPersona)).not.toBeNull();
+    expect(text(comPersona)).toContain('Publicado');                                    // o estado não muda: o selo é a prova que falta
+    expect(text(comPersona)).toContain('só vale para a persona que ensinou');
+    expect(allByRole('button', /^Confirmar que fica$/, comPersona)).toHaveLength(0);    // sem `espera_a_pessoa`, nada de botão novo
+    expect(selo(item('fluxo:f-41'))).not.toBeNull();
+    expect(text(item('fluxo:f-41'))).toContain('a gravação não tinha persona: não vale em aparelho nenhum');
+    expect(selo(item('fluxo:f-42'))).toBeNull();                         // campo ausente: provado, confirmado, desligado ou sem treino
+  });
+
+  it('30.85: com `espera_a_pessoa` o selo aparece e a nota é uma só (a do "Confirmar que fica")', async () => {
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [
+      EM_PROVA('f-43', { espera_a_pessoa: 'classe_c', ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' } }),
+    ], total: 1, contagem: {} }));
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    await waitFor(() => expect(item('fluxo:f-43')).toBeTruthy());
+    const t = text(item('fluxo:f-43'));
+    expect(selo(item('fluxo:f-43'))).not.toBeNull();
+    expect(t).toContain('Ensinado, ainda em prova: o uso fica restrito até ela passar');
+    expect(t).not.toContain('Ensinado e ainda sem prova');                              // a explicação curta não repete a nota
+    expect(allByRole('button', /^Confirmar que fica$/, item('fluxo:f-43'))).toHaveLength(1);
+  });
 });

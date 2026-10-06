@@ -34,11 +34,13 @@ JEV_ALLOWED_CLASSES: frozenset[str] = frozenset({"C0", "C1", "C2", "C3"})
 C3_ORIGENS: Final[frozenset[str]] = frozenset({"intencao", "apps"})
 C3_MODOS: Final[frozenset[str]] = frozenset({"shadow"})
 
-#: A sombra da R5 (apps do comando, 31.13) pode ligar em runtime? Falso até o GO do 31.10 (ADR-069 item 21: o filtro
-#: provado com 10 comandos reais). Constante de código, como a de cima: virar é commit, com suíte e deploy; o YAML
-#: (`consumidores.apps`) sozinho não liga nada. O lote offline do 31.11 não depende dela (o item 21 o limita aos comandos
-#: que a sombra da intenção já mandou).
-R5_LIBERADA: bool = False
+#: A sombra da R5 (apps do comando, 31.13) pode ligar em runtime? Verdadeiro desde 05/10/2026, por decisão do dono: o sim ao
+#: P-013 (Trello, entrada 2368 às 23:32Z), sob a recomendação "só sombra". Era falso até o GO do 31.10 (ADR-069 item 21:
+#: o filtro provado com 10 comandos reais). Constante de código, como a de cima: virar é commit, com suíte e deploy.
+#: Liberar não liga nada: o YAML (`consumidores.apps: shadow`, com `enabled: true`) segue sendo o que liga, a R5 não tem
+#: `on` e não age nem pergunta (grava candidatos e probabilidades na tabela da sombra). Voltar a False fecha de novo. O lote
+#: offline do 31.11 não depende dela (o item 21 o limita aos comandos que a sombra da intenção já mandou).
+R5_LIBERADA: bool = True
 
 #: Campos nomeados que cada origem pode mandar em `estado` (jaggedness: só o que importa). Vazio de propósito: cada consumidor
 #: (31.5 em diante) registra os seus no próprio item, num diff que o revisor veja. Campo fora da lista recusa o pedido.

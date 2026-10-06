@@ -92,6 +92,14 @@ class AvisadorDoEnsinado:
             return None
         return self._leitor.motivo_da_espera(e.kind, e.ref)
 
+    def em_prova(self, e: EntradaDoLivro) -> dict[str, str | None] | None:
+        """30.85: o selo "em prova" do Livro. Só lê no fluxo ensinado ativo, como o motivo da espera: o resto da lista não
+        paga consulta."""
+        if (self._leitor is None or e.kind is not LivroKind.FLUXO or e.origin is not Origem.TREINO
+                or e.native_status != "active"):
+            return None
+        return self._leitor.em_prova(e.kind, e.ref)
+
     def decidiu_sem_falhar(self, e: EntradaDoLivro, desde: str, decisao: str) -> None:
         """Publica `learning.ensinado_decidido` depois da linha da pessoa na trilha; a decisão não cai pelo aviso."""
         if self._porta is None or self._leitor is None:

@@ -710,7 +710,10 @@ class Adb:
     def package_info(self, package: str) -> dict[str, object] | None:
         """Estado REALMENTE instalado, lido do aparelho. `None` quando o pacote não está lá."""
         _check_package(package)
-        out = self._run(["shell", f"dumpsys package {package}"], timeout=30).stdout or ""
+        # 30.77: o fuso do aparelho no MESMO shell do `dumpsys`, porque o `lastUpdateTime` vem no fuso dele, sem fuso
+        # escrito. Roda no central também para os aparelhos do notebook (o adb vai pelo túnel): o agente não muda.
+        out = self._run(["shell", f"dumpsys package {package}; echo FUSO_DO_APARELHO=$(date +%z)"],
+                        timeout=30).stdout or ""
         version_name = re.search(r"versionName=(\S+)", out)
         version_code = re.search(r"versionCode=(\d+)", out)
         if not (version_name or version_code):
@@ -718,12 +721,14 @@ class Adb:
         splits = re.search(r"splits=\[([^\]]*)\]", out)
         first = re.search(r"firstInstallTime=(.+)", out)
         last = re.search(r"lastUpdateTime=(.+)", out)
+        fuso = re.search(r"FUSO_DO_APARELHO=([+-]\d{4})\s*$", out, re.MULTILINE)
         return {
             "version_name": version_name.group(1) if version_name else None,
             "version_code": int(version_code.group(1)) if version_code else None,
             "splits": [s.strip() for s in splits.group(1).split(",") if s.strip()] if splits else [],
             "first_install_time": first.group(1).strip() if first else None,
             "last_update_time": last.group(1).strip() if last else None,
+            "last_update_offset": fuso.group(1) if fuso else None,
             "paths": self.pm_path(package),
         }
 

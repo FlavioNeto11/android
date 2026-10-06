@@ -427,6 +427,7 @@ class TrainingSkills:
                     side_effect=bool(st.get("side_effect")), app_id=outro_app, max_attempts=1 if st.get("side_effect") else 3,
                     postcondition=Postcondition(kind=post.get("kind") or "model_judged", value=post.get("value") or "",
                                                 description=post.get("description") or st.get("goal") or "")))
+        avisos = [*avisos, *self.s.scheduler.flows.colisoes(comando, exemplos)]            # 31.89 F4: só avisa
         plano = Plan(summary=(p.get("summary") or sess["intent"])[:200], app_id=app_id, app_package=pacote,
                      parameters={n: "{" + n + "}" for n in exemplos}, steps=passos,
                      planner=PlannerInfo(provider="treinamento", model=f"treinamento:{session_id}", simulated=False))
@@ -528,7 +529,10 @@ class TrainingSkills:
             try:
                 return await self.s.devices.app_version(rt, pacote), await self.s.devices.variant_of(rt), assinatura
             except Exception as exc:  # noqa: BLE001
-                return f"não foi possível ler a versão do app no aparelho: {exc}"
+                # 31.110: "online" pode ser um aparelho ligando ou sem ADB; a leitura estoura e o motivo diz isso, em vez
+                # de parecer que a etapa não tem receita.
+                return (f"o aparelho do treinamento não respondeu ao ler a versão do app ({exc}): ele está ligando, "
+                        "parado ou sem ADB. Refaça as receitas quando ele estiver no ar")
         _, versao, _, variante = self.s.scheduler._chave_de_compatibilidade(rt, pacote)  # noqa: SLF001 - só lê
         if not versao or not variante:
             faltam = " e ".join(nome for nome, valor in (("a versão do app", versao), ("o idioma e a densidade da tela", variante))
@@ -544,6 +548,7 @@ class TrainingSkills:
         de qualquer status, porque o `recipes.save` do treino substituiria a quarentena por uma ativa nova."""
         pacotes = {a["id"]: a["package"] for a in prep.apps.values()}
         relatorio: list[dict[str, object]] = []
+        identidades: dict[str, tuple[str, str, str] | str] = {}      # 31.110: uma leitura por app, não uma por etapa
         for d in destiladas:
             passo = d.passo
             linha: dict[str, object] = {"key": passo.key, "title": passo.title, "recipe": False, "reason": d.motivo}
@@ -551,9 +556,17 @@ class TrainingSkills:
             if not d.acoes:
                 continue
             pkg = pacotes.get(passo.app_id or prep.app_id or "") or ""
-            identidade = await self._identidade(sess, pkg)
+            if pkg not in identidades:
+                identidades[pkg] = await self._identidade(sess, pkg)
+            identidade = identidades[pkg]
             if isinstance(identidade, str):
                 linha["reason"] = identidade
+                if so_chave_virgem and self.s.scheduler.executor.recipes.tem_ativa_em_qualquer_versao(
+                        pkg, step_template_hash(passo)):
+                    # A etapa já tem receita (o salvar a gravou): sem a versão do app não dá para conferir a chave, mas
+                    # dizer "sem receita" seria falso.
+                    linha["reason"] = (f"{JA_HAVIA_RECEITA}; o aparelho não respondeu agora à leitura da versão do app, "
+                                       "então a chave não foi conferida de novo")
                 continue
             versao, variante, assinatura = identidade
             hash_da_etapa = step_template_hash(passo)
