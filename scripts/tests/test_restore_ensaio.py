@@ -38,6 +38,13 @@ def _banco_migrado(destino: Path) -> Path:
 
     destino.parent.mkdir(parents=True, exist_ok=True)
     Database(str(destino)).migrate()
+    # O banco está em WAL: sem o checkpoint, as últimas migrações ficam só no `-wal` e a cópia do arquivo principal (shutil.copy)
+    # nasce uma ou duas migrações atrás do código.
+    con = sqlite3.connect(destino)
+    try:
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        con.close()
     return destino
 
 

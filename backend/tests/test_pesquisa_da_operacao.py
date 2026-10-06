@@ -48,7 +48,13 @@ def _operacoes(db: Database, *, assunto: str | None = "coleção de outono da lo
     """O que a 124 da Jev põe no banco e esta parte lê: `operacoes.assunto` e `operacoes.fontes`."""
     if "operacoes" not in db.tables():
         db.execute("CREATE TABLE operacoes (id TEXT PRIMARY KEY, assunto TEXT, fontes TEXT NOT NULL DEFAULT '[]')")
-    db.execute("INSERT INTO operacoes(id, assunto, fontes) VALUES ('op-1', ?, ?)", (assunto, fontes))
+        db.execute("INSERT INTO operacoes(id, assunto, fontes) VALUES ('op-1', ?, ?)", (assunto, fontes))
+        return
+    # Com a 124 da Jev no banco (corte 55) a tabela é a de verdade, com as colunas NOT NULL dela.
+    db.execute(
+        "INSERT INTO operacoes(id, command, app_id, acao_final, max_usd, assunto, fontes, status, idempotency_key, corpo_sha256,"
+        " created_at, updated_at) VALUES ('op-1', 'comando de teste', 'instagram', 'preparar', 1.0, ?, ?, 'em_curso', 'k-op-1', 'x',"
+        " '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z')", (assunto, fontes))
 
 
 def _bruta(*fatos: tuple[str, list[str]], buscas: int = 2) -> PesquisaBruta:
