@@ -23,23 +23,28 @@ from . import dado_da_persona
 
 
 def marcar_telas(db: Database, session_id: str, persona: Mapping[str, str], *, escrever: bool = True) -> int:
-    """31.118 F2: as entradas da sessão cuja tela gravada (`screen_lines`, `screen_title`) cita um dado da persona
-    passam a citar o marcador (`dado_da_persona.com_marcador`, por palavra). Devolve quantas entradas mudam."""
+    """31.118 F2: as entradas da sessão cuja tela gravada (`screen_lines`, `screen_title` e, desde o 31.122 F2,
+    `screen_elements`: texto e descrição) cita um dado da persona passam a citar o marcador
+    (`dado_da_persona.com_marcador`, por palavra). Devolve quantas entradas mudam."""
     if not persona:
         return 0
     mudadas = 0
-    for r in db.query("SELECT seq, screen_lines, screen_title FROM training_inputs WHERE session_id=? ORDER BY seq",
-                      (session_id,)):
+    for r in db.query("SELECT seq, screen_lines, screen_title, screen_elements FROM training_inputs WHERE session_id=?"
+                      " ORDER BY seq", (session_id,)):
         linhas = loads(r["screen_lines"], []) or []
         novas = [dado_da_persona.com_marcador(x, persona) if isinstance(x, str) else x for x in linhas]
         titulo = r["screen_title"]
         novo_titulo = dado_da_persona.com_marcador(titulo, persona) if isinstance(titulo, str) else titulo
-        if novas == linhas and novo_titulo == titulo:
+        elementos = loads(r["screen_elements"], []) or []
+        novos = [{k: (dado_da_persona.com_marcador(v, persona) if k in ("t", "d") and isinstance(v, str) else v)
+                  for k, v in x.items()} if isinstance(x, dict) else x for x in elementos]
+        if novas == linhas and novo_titulo == titulo and novos == elementos:
             continue
         mudadas += 1
         if escrever:
-            db.execute("UPDATE training_inputs SET screen_lines=?, screen_title=? WHERE session_id=? AND seq=?",
-                       (dumps(novas) if r["screen_lines"] is not None else None, novo_titulo, session_id, r["seq"]))
+            db.execute("UPDATE training_inputs SET screen_lines=?, screen_title=?, screen_elements=? WHERE session_id=?"
+                       " AND seq=?", (dumps(novas) if r["screen_lines"] is not None else None, novo_titulo,
+                                      dumps(novos) if r["screen_elements"] is not None else None, session_id, r["seq"]))
     return mudadas
 
 

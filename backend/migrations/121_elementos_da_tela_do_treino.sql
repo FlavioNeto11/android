@@ -1,0 +1,13 @@
+-- Elementos da tela em que cada entrada do ensino foi feita (item 31.122 F2, Fase 31). Número 121 reservado pela
+-- orquestradora em 06/10.
+--
+-- Por quê: a recusa da pós-condição que já vale na partida (31.122) comparava só com `screen_lines`, que são o
+-- CONTEÚDO filtrado (sem ids de interface como `search_action_bar_title`) e cortado em 8 linhas. O verificador lê a
+-- árvore inteira. Na prova conjunta (r-20261006102728-1157c6, android-04) a sugestão "Search settings" já valia na tela
+-- inicial do Configurações, e a etapa "passou" lá depois de um press_back.
+--
+-- - `training_inputs.screen_elements`: lista JSON compacta dos elementos (texto, descrição, id, limites), para a mesma
+--   regra do verificador (`contains_text` e `find_selector`). Sem senha, sem campo de tela sensível e sem texto com
+--   cara de segredo. Uso interno: fica FORA do GET /training/{id}. O save e o reparo do 31.118 marcam nela o dado da
+--   persona. NULO = sessão anterior a esta migração (cai em `screen_lines` + `screen_title`).
+ALTER TABLE training_inputs ADD COLUMN screen_elements TEXT;

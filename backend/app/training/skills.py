@@ -129,6 +129,8 @@ def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
                                           f"{', '.join(sorted(_KINDS_DE_POSCONDICAO))}.")
         if not (st.get("side_effect") is None or isinstance(st["side_effect"], bool)):
             raise _erro("etapa_invalida", f"{rotulo} tem `side_effect` que não é verdadeiro/falso (o texto “false” contaria como verdadeiro).")
+        if not (st.get("independente") is None or isinstance(st["independente"], bool)):
+            raise _erro("etapa_invalida", f"{rotulo} tem `independente` que não é verdadeiro/falso.")
         brutas = st.get("inputs")
         if brutas is None:
             brutas = []
@@ -434,8 +436,12 @@ class TrainingSkills:
         for st in p["steps"]:
             app_da_etapa = st.get("app_id") or app_id
             pkg = apps[app_da_etapa]["package"] if app_da_etapa in apps else pacote
-            aceitos = partida.pacotes_vizinhos([por_seq[i] for i in _inteiros(st.get("inputs")) if i in por_seq
-                                                and i not in fora], pkg, cadastrados)
+            da_etapa = [i for i in _inteiros(st.get("inputs")) if i in por_seq and i not in fora]
+            # 31.123 F2: a tela em que a etapa TERMINA (a da entrada seguinte) também conta: o toque no app que abre
+            # a busca de outro pacote termina lá (prova conjunta, r-20261006102728-1157c6)
+            final = partida.entrada_seguinte(sess["inputs"], da_etapa, fora)
+            aceitos = partida.pacotes_vizinhos([*(por_seq[i] for i in da_etapa), *([final] if final else [])], pkg,
+                                               cadastrados)
             vizinhos.append((str(st.get("title") or st["key"]), aceitos))
             cat = load_catalog(pkg) if pkg else None
             cap = st.get("capability")
@@ -458,11 +464,14 @@ class TrainingSkills:
                     pacotes_aceitos=aceitos,
                     postcondition=Postcondition(kind=post.get("kind") or "model_judged", value=post.get("value") or "",
                                                 description=post.get("description") or st.get("goal") or "")))
+        passos = em_sequencia(passos, [st.get("independente") is True for st in p["steps"]])
         avisos = [*avisos, *self.s.scheduler.flows.colisoes(comando, exemplos)]            # 31.89 F4: só avisa
         # 31.122: a pós-condição que já vale na tela em que a etapa começa deixaria a etapa passar sem agir
         # Nenhum dado da persona (nem o que não foi digitado) entra nas sugestões nem no texto (marca, como no 31.87 F2)
         dados = self.s.repo.variaveis_da_persona(sess.get("profile_id"))
-        ja_valem = partida.ja_valem(p["steps"], sess["inputs"],
+        elementos = self.s.training.elementos_da_tela(session_id)        # 31.122 F2: a tela inteira de cada entrada
+        ja_valem = partida.ja_valem(p["steps"], [{**e, "screen_elements": elementos.get(int(e["seq"]))}
+                                                 for e in sess["inputs"]],
                                     _inteiros([d.get("seq") for d in p.get("discarded") or [] if isinstance(d, dict)]),
                                     evitar=dados.values())
         plano = Plan(summary=(p.get("summary") or sess["intent"])[:200], app_id=app_id, app_package=pacote,
@@ -480,7 +489,8 @@ class TrainingSkills:
         sess = self.s.training.get(session_id)
         prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids, scope_on_proof)
         if prep.ja_valem:                     # 31.122: pede outra pós-condição ANTES da primeira escrita
-            raise TrainingError("pos_condicao_ja_vale", " ".join(partida.aviso(prep.ja_valem, prep.persona)), 400)
+            raise TrainingError("pos_condicao_ja_vale", " ".join(partida.aviso(prep.ja_valem, prep.persona)), 400,
+                                extra={"pos_condicoes_ja_valem": partida.estruturados(prep.ja_valem, prep.persona)})
         try:
             flow_id = self.s.scheduler.flows.learn_from_plan(prep.plano, prep.comando, source=f"training:{session_id}")
         except ValueError as exc:
@@ -533,6 +543,8 @@ class TrainingSkills:
         relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
                                           prep, session_id, gravar=False)
         return {"steps": relatorio, "warnings": [*prep.avisos, *_aviso_sem_persona(sess)],
+                # adendo v1.86: as linhas de `warnings` do 31.122, estruturadas (o alerta dentro da etapa, 31.128)
+                "pos_condicoes_ja_valem": partida.estruturados(prep.ja_valem, prep.persona),
                 "scope": _escopo_da_resposta(prep, scope_on_proof)}
 
     async def refazer_receitas(self, session_id: str) -> dict[str, object]:
@@ -663,6 +675,20 @@ class TrainingSkills:
                             variant=variante, so_em_chave_virgem=so_chave_virgem)
             linha.update(_linha_da_receita(efeito, viva, gravada=rid if rid else 0))
         return relatorio
+
+
+def em_sequencia(passos: list[PlanStep], independentes: list[bool]) -> list[PlanStep]:
+    """31.127: a etapa ensinada espera a ANTERIOR ser comprovada (`depends_on = [anterior]`), como a demonstração foi
+    feita. Sem isso, com a 1ª em `retry_wait`, a 2ª ficava pronta e corria fora de ordem: na prova conjunta
+    (r-20261006102728-1157c6) "digitar o termo" rodou antes de "abrir a busca" ser comprovada, e o objetivo fechou
+    `completed` na tela inicial. A etapa com `independente: true` na proposta (a marca da pessoa) fica sem a
+    dependência. A 1ª etapa, e a que já traz dependência (a ação do catálogo), ficam como estão."""
+    saida: list[PlanStep] = []
+    for n, passo in enumerate(passos):
+        if n and not passo.depends_on and not (n < len(independentes) and independentes[n]):
+            passo = passo.model_copy(update={"depends_on": [passos[n - 1].key]})
+        saida.append(passo)
+    return saida
 
 
 def _inteiros(valores: object) -> list[int]:

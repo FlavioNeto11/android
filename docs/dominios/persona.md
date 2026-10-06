@@ -336,7 +336,8 @@ os ids das sessões e as contagens.
 mostra o campo preenchido, e o GET devolvia o valor em `inputs[].screen_lines`. No `save` e no reparo, todo dado não
 sigiloso da persona (não só o digitado) troca pelo marcador, por palavra, em `screen_lines` e `screen_title`
 (`reparo_da_gravacao.marcar_telas`, com `dado_da_persona.com_marcador`). O relatório do reparo ganha `telas_marcadas`.
-O alvo do toque (`target`) não muda: a destilação monta o seletor a partir dele.
+O alvo do toque (`target`) não muda: a destilação monta o seletor a partir dele. Desde o 31.122 F2 (migração 121), o
+mesmo vale para o texto e a descrição de `screen_elements`, a tela inteira guardada para uso interno (fora do GET).
 
 **O registro da execução guarda o marcador, não o valor (31.113, F1; achado da prova real do 31.87).** A tela segue
 com o valor: o executor digita e confere com o que tem em memória. O que FICA troca valor → marcador na fronteira de

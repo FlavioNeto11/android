@@ -463,6 +463,22 @@ dela, em que a tela comprova a conclusão. O ensino a preenche com os pacotes da
 uma etapa). A prévia e o `save` avisam. Pacote desconhecido continua não comprovando. A lista vazia é omitida do
 plano, e o hash das etapas não muda.
 
+**F2 da partida, do pacote vizinho e a ordem das etapas (31.122 F2, 31.123 F2, 31.127; migração 121, adendos v1.85 e
+v1.86; achados da prova conjunta r-20261006102728-1157c6).**
+- 31.122 F2: o recorder guarda os elementos compactos de cada tela (`training_inputs.screen_elements`, uso interno), e
+  `partida.ja_valem` confere a pós-condição contra a tela INTEIRA da partida pela regra do verificador
+  (`contains_text`; `find_selector` para `element_present`, que agora também é conferida). Antes, só as
+  `screen_lines` (conteúdo filtrado, 8 linhas): o id `search_action_bar_title` cai no filtro de interface, e
+  "Search settings" passou, até como sugestão. A recusa e a prévia trazem `pos_condicoes_ja_valem` estruturado
+  (`{etapa, valor, sugestoes, message}`) para o alerta dentro da etapa (31.128). Sessão antiga: `screen_lines` +
+  `screen_title`.
+- 31.123 F2: a tela em que a etapa TERMINA (a da entrada seguinte, `partida.entrada_seguinte`) também entra em
+  `pacotes_vizinhos`. O toque no app que abre a busca de outro pacote termina lá; antes, essa etapa era recusada e a IA
+  assumia (US$ 0,039 na prova).
+- 31.127: cada etapa do fluxo ensinado nasce com `depends_on = [anterior]` (`skills.em_sequencia`), salvo
+  `independente: true` na etapa da proposta. O executor já esperava a dependência; antes, a 2ª etapa rodava com a 1ª em
+  `retry_wait`, e o objetivo fechou `completed` na tela inicial.
+
 **O fluxo nascido de uma prova (31.130, migração 122, adendo v1.87).** Os fluxos ensinados em provas de sessão
 ficavam, no Livro e em Salvas, iguais a um fluxo real desligado por uma pessoa. A sessão aberta com
 `nascido_de_prova: true` leva a marca (`training_sessions.nascido_de_prova`), e o `save` a passa ao fluxo
