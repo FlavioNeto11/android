@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.163: a conferência periódica da rede não publica "IA assumiu/liberou o aparelho" (branch feat/29-163-conferencia-da-rede)
+
+- Achado (Jev, 06/10, só leitura): o android-02, 03, 05 e 06 mostravam "IA assumiu/liberou o aparelho" a cada ~16 min (14:35:30, 14:51:31 ...), de 3 a 20 s, sem passo nem execução. Desde 13:00Z os
+  quatro tinham exatamente 9 `control.changed` "assumiu" cada, e são os quatro com política de rede `exigida_com_bloqueio`; a cadência bate com `rede.deriva_s` (900 s) mais a varredura de 60 s
+  (`vitrine.convergir_ligados`). **Limite honesto: a ligação foi inferida por contagem, cadência e código; não há linha em `network_measurements` nem evento que a prove por si.**
+- Mudança: `DeviceManager.ai_begin(rt, silencioso=True)` e `Scheduler.run_device_job(..., silencioso=True)` seguram o aparelho como qualquer trabalho mas não publicam o par "assumiu/liberou"
+  (o silêncio não vaza para o trabalho seguinte e a troca para o controle manual limpa a marca). `RedeConvergencia.so_confere` diz quando o passo da varredura só LÊ a rede (`conferir`, `verificar`;
+  nunca aplicar, conectar nem desfazer). `vitrine.convergir_ligados` roda esse caso, quando não há entrega nem proxy, com o rótulo "conferência da rede", silencioso e com um log info de uma linha
+  com a duração ("<aparelho>: conferência da rede em X s"). Entrega, proxy e qualquer passo que mude a rede seguem anunciados como antes. `rede.deriva_s` fica em 900 s (config por instalação).
+- Prova `simulated`: `tests/test_conferencia_da_rede_silenciosa.py` (6 testes: sem evento, sem vazamento, rótulo, log da duração, o caso comum inalterado). `real`: `not_run`; o antes/depois é a contagem
+  de `control.changed` por aparelho em 1 h no banco em modo somente leitura, depois do deploy. Sem migração e sem adendo.
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).

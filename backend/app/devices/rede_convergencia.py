@@ -316,6 +316,11 @@ class ConvergenciaDeRede:
 
         return trabalho
 
+    def so_confere(self, rt: DeviceRuntime, motivo: Motivo) -> bool:
+        """29.163: o passo que a linha pede agora é só LER a rede (`conferir`, `verificar`), sem aplicar, conectar nem desfazer nada."""
+        row = self._linha(rt.id)
+        return row is not None and self._acao(row, motivo) in ("conferir", "verificar")
+
     def _trabalho_sem_rede(self, rt: DeviceRuntime) -> Callable[[], Awaitable[None]] | None:
         """A sonda de IP do aparelho SEM rede pedida (item 29.20): só os IPs v4/v6 de saída, como o uid 2000, com o
         aparelho ligado e livre, a cada `rede.sonda.reverificar_s` (a falha espera menos: 5 min). NÃO é convergência: não
