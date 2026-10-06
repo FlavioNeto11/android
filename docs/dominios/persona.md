@@ -313,6 +313,13 @@ materialização, e o pré-voo do F1 recusa o aparelho sem o dado. O `save` e a 
 perfil. O consumo é genérico por chave (`profile_variables`, da identidade): as chaves novas entram sem mudar o
 ensino. Valor com menos de 3 caracteres, ou só dentro de outro texto, não é trocado. Sem persona no treino, nada muda.
 
+**A pergunta da IA também leva o marcador (31.112; achado da prova real do 31.87).** `questions[]` e
+`answers[].question` (31.91) trocam o dado por palavra, como o título (`dado_da_persona.nas_perguntas`). A troca vale
+ao guardar: no `propose`, para a pergunta nova da IA e para a pergunta que o corpo devolve, e no `save` e na prévia.
+Vale também ao mostrar: `TrainingRecorder.get` e `list` mascaram a proposta gravada antes do 31.112, pela mesma regra do
+dado digitado inteiro. A resposta da pessoa (`answer`) fica como ela escreveu. A pergunta devolvida com o valor (cliente
+aberto antes) casa com a guardada, e a IA passa a receber o marcador na pergunta respondida.
+
 **Rotas por conta** (`api.py`; as antigas por perfil são apelidos da conta âncora):
 
 | Rota | Faz |

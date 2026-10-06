@@ -136,7 +136,7 @@ def test_nao_apaga_linha_nem_muda_hash_nem_ids(db: Database) -> None:
 
 
 def test_fronteira_de_palavra_nao_estraga_banana(db: Database) -> None:
-    textos = ["banana e bananas", "ana.silva e ana_silva2 e mariana", "foo@ana.com", "x.ana", "ana2"]
+    textos = ["banana e bananas", "ana.silva e ana_silva2 e luciana", "foo@ana.com", "x.ana", "ana2"]
     for i, t in enumerate(textos):
         _item(db, f"li-{i}", content="{}", summary=t, content_hash=f"h-{i}")
     _item(db, "li-alvo", content="{}", summary="falei com ana. Depois (@ana), ana! e @Ana?", content_hash="h-alvo")

@@ -49,7 +49,7 @@ def test_fluxo_com_account_label_casa(db: Database) -> None:
     assert plano.parameters["perfil"] == "@spacex"
     # O molde do reservado segue intacto — quem o resolve é a materialização, por aparelho; nada foi inventado aqui.
     assert plano.parameters["account_label"] == "{account_label}"
-    assert resolve_templates(plano.parameters["account_label"], {"account_label": "@lucas.real"}) == "@lucas.real"
+    assert resolve_templates(plano.parameters["account_label"], {"account_label": "@tadeu.real"}) == "@tadeu.real"
 
 
 def test_fluxo_com_account_label_casa_o_comando_repetido(db: Database) -> None:
@@ -91,11 +91,11 @@ def test_fluxo_com_account_label_compila_pela_habilidade_como_pelo_flowstore(db:
 def test_o_aprendizado_do_fluxo_nunca_templatiza_os_reservados(db: Database) -> None:
     # O valor de `account_label` está no comando, mas o reservado não vira `{nome}` no modelo nem na chave; o
     # parâmetro de verdade (`perfil`) vira. Espelho do `_NAO_TEMPLATIZA` das receitas.
-    plano = _plano({"perfil": "@nasa", "account_label": "lucas.qa"})
+    plano = _plano({"perfil": "@nasa", "account_label": "tadeu.qa"})
     run = {"id": "r-x", "plan": json.dumps(plano), "flow_id": None, "skill_id": None,
-           "command": "curtir o post de @nasa como lucas.qa"}
+           "command": "curtir o post de @nasa como tadeu.qa"}
     flow_id = FlowStore(db).learn_from_run(run)
     assert flow_id is not None
     linha = db.one("SELECT command_template, plan FROM flows WHERE id=?", (flow_id,))
-    assert linha is not None and linha["command_template"] == "curtir o post de {perfil} como lucas.qa"
-    assert json.loads(linha["plan"])["parameters"] == {"perfil": "{perfil}", "account_label": "lucas.qa"}
+    assert linha is not None and linha["command_template"] == "curtir o post de {perfil} como tadeu.qa"
+    assert json.loads(linha["plan"])["parameters"] == {"perfil": "{perfil}", "account_label": "tadeu.qa"}

@@ -513,7 +513,7 @@ async def test_interrupcao_do_boot_com_carga_alta_nao_conta_como_ocioso(tmp_path
 async def test_reinicio_de_saude_nao_e_degrau_da_escada_e_nunca_leva_ao_reset(tmp_path: Path) -> None:
     """Rodada de 29/09: o reinício por interrupção abria o comando como `system`, a MESMA marca que a escada de reparo
     conta. Um reinício de saúde seguido de dois defeitos comuns viraria `restart`, `reset` — e o reset apaga a conta
-    real logada no aparelho (android-06, andre). Agora o de saúde é `saude` e a escada não o vê."""
+    real logada no aparelho (android-06, ottilie). Agora o de saúde é `saude` e a escada não o vê."""
     from app.commands.despacho import REQUESTED_BY_SAUDE, remediar
 
     h = Harness(tmp_path, 1)
@@ -549,7 +549,7 @@ async def test_reinicio_de_saude_nao_e_degrau_da_escada_e_nunca_leva_ao_reset(tm
 
 @pytest.mark.asyncio
 async def test_hospedeiro_sobrecarregado_adia_o_reparo_em_vez_de_subir_de_degrau(tmp_path: Path) -> None:
-    """29/09 02:05–02:15Z: com a máquina saturada (testes e o boot de outro aparelho), o android-01 do lucas levou
+    """29/09 02:05–02:15Z: com a máquina saturada (testes e o boot de outro aparelho), o android-01 do tadeu levou
     restart e depois reset automáticos. Com a CPU do hospedeiro alta, o reparo espera e não abre comando."""
     from app.commands.despacho import remediar
     from app.models import Metrics

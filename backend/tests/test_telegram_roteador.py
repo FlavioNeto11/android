@@ -40,8 +40,8 @@ def test_formato_incompleto_explica_o_formato(texto):
 def test_para_explicito_e_para_livre():
     i = rotear("/para android-09 abrir o QA Messenger")
     assert (i.tipo, i.alvo, i.texto) == ("para", "android-09", "abrir o QA Messenger")
-    j = rotear("para o @lucas.almeida: curtir a última foto")
-    assert (j.tipo, j.alvo, j.texto) == ("para", "@lucas.almeida", "curtir a última foto")
+    j = rotear("para o @tadeu.quintela: curtir a última foto")
+    assert (j.tipo, j.alvo, j.texto) == ("para", "@tadeu.quintela", "curtir a última foto")
     k = rotear("Para a Ana: abrir o Outlook")
     assert (k.tipo, k.alvo, k.texto) == ("para", "Ana", "abrir o Outlook")
 
@@ -49,8 +49,8 @@ def test_para_explicito_e_para_livre():
 def test_texto_livre_e_pedido_sem_destino_explicito():
     i = rotear("abra o Chrome no android-03")
     assert (i.tipo, i.texto) == ("livre", "abra o Chrome no android-03")
-    # "mande mensagem para o André" não tem dois-pontos: o destinatário não vira destino.
-    assert rotear("mande mensagem para o André dizendo oi").tipo == "livre"
+    # "mande mensagem para o Ravenna" não tem dois-pontos: o destinatário não vira destino.
+    assert rotear("mande mensagem para o Ravenna dizendo oi").tipo == "livre"
 
 
 def test_orquestradora_pelo_prefixo():
@@ -97,7 +97,7 @@ def test_com_fato_o_id_e_o_do_fato_e_o_resto_e_a_nota_ou_a_resposta():
 
 def test_texto_para_o_extrator_usa_as_frases_do_painel():
     assert texto_para_o_extrator("android-09", "abrir o QA") == "abrir o QA no android-09"
-    assert texto_para_o_extrator("@lucas", "curtir") == "curtir como @lucas"
+    assert texto_para_o_extrator("@tadeu", "curtir") == "curtir como @tadeu"
     assert texto_para_o_extrator("Ana", "abrir o Outlook") == "abrir o Outlook com a persona Ana"
 
 

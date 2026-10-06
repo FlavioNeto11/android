@@ -409,7 +409,7 @@ async def test_avatar_legado_e_importado_na_partida_e_servido_sem_imagem_gerada(
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
         async with app.router.lifespan_context(app):
             estado = app.state.poc
-            pid = (await c.post("/api/personas", json={"name": "Bruno Ferreira"})).json()["id"]
+            pid = (await c.post("/api/personas", json={"name": "Quillon Teixeira"})).json()["id"]
             assert (await c.get(f"/api/instagram/profiles/{pid}/avatar")).status_code == 404
             # 29.26: sem foto, o DTO diz `has_avatar: false` e o painel nem faz a requisição que daria 404.
             assert (await c.get(f"/api/personas/{pid}")).json()["has_avatar"] is False
@@ -422,7 +422,7 @@ async def test_avatar_legado_e_importado_na_partida_e_servido_sem_imagem_gerada(
             assert len(lista) == 1 and lista[0]["source"] == "imported_legacy" and lista[0]["is_primary"]
             assert (await c.get(lista[0]["url"])).content == _png(360, 360)
             assert (await c.get(f"/api/personas/{pid}")).json()["has_avatar"] is True
-            assert identidade_para_foto((await c.get(f"/api/personas/{pid}")).json() and estado.social.get_persona(pid)).initials == "BF"
+            assert identidade_para_foto((await c.get(f"/api/personas/{pid}")).json() and estado.social.get_persona(pid)).initials == "QT"
 
 
 async def test_gerador_real_so_ancora_rosto_em_imagem_real(tmp_path: Path) -> None:

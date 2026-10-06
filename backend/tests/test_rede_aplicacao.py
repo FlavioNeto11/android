@@ -1293,7 +1293,7 @@ async def test_loja_quarentena_e_ocupado_ficam_fora(parque: Harness, monkeypatch
     st = parque.state
     assert st is not None
     _preparar(parque, monkeypatch, iid="android-02")
-    st.social_repo.marcar_conta_travada("android-02", "felipe.teste", "tela de desafio", "declarado", visto_por="dono")
+    st.social_repo.marcar_conta_travada("android-02", "gilberto.teste", "tela de desafio", "declarado", visto_por="dono")
     assert st.rede_convergencia.trabalho(st.devices.devices["android-02"], motivo="pedido") is None
     assert st.rede_convergencia.motivo_de_espera("android-02") is None           # a quarentena tem a porta dela
     with pytest.raises(rede.RedeError) as exc:

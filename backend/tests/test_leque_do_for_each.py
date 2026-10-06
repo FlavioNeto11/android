@@ -19,15 +19,15 @@ from app.util import now, to_iso
 
 from .test_capabilities import IG, SENHA
 
-LUCAS = "tadeu.quintela4821"
+TADEU = "tadeu.quintela4821"
 
 
 def _execucao(state: Any, alvos: list[str], *, limites: str = '"comments_per_hour": 3') -> str:
-    """Uma execução no android-01 (conta do lucas) com uma etapa REPLY_COMMENT por alvo, como a expansão as deixa."""
+    """Uma execução no android-01 (conta do tadeu) com uma etapa REPLY_COMMENT por alvo, como a expansão as deixa."""
     db = state.db
     db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
     db.execute("UPDATE instances SET app_id='ig' WHERE id='android-01'")
-    pid = state.social.create_profile(ProfileCreate(username=LUCAS, password=SENHA, instance_id="android-01")).id
+    pid = state.social.create_profile(ProfileCreate(username=TADEU, password=SENHA, instance_id="android-01")).id
     state.social_repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0, '
                                                                 '"cooldown_between_external_actions_s": 0, '
                                                                 f'{limites}}}}}'})
@@ -72,11 +72,11 @@ async def test_lista_mista_proprio_perfil_conta_nossa_na_janela_e_terceiro(harne
     """O próprio perfil sai na expansão (sem etapa); a conta nossa que outra conta nossa já tocou na janela é recusada
     na porta (ADR-055, sem pedido); só o terceiro vira pedido ao dono."""
     state = harness.state
-    lucas = _execucao(state, [])
-    andre = state.social.create_profile(ProfileCreate(username="rene.sampaio381524", password=SENHA,
+    tadeu = _execucao(state, [])
+    ottilie = state.social.create_profile(ProfileCreate(username="rene.sampaio381524", password=SENHA,
                                                       instance_id="android-02")).id
     state.social.create_profile(ProfileCreate(username="valdir.teixeira6352", password=SENHA, instance_id="android-03"))
-    state.social_repo.record_interaction(andre, type=InteractionType.comment_replied.value, direction="outbound",
+    state.social_repo.record_interaction(ottilie, type=InteractionType.comment_replied.value, direction="outbound",
                                          status=InteractionStatus.confirmed.value, counterparty="@valdir.teixeira6352",
                                          app_id="ig", occurred_at=to_iso(now() - timedelta(days=2)))
     db = state.db
@@ -89,7 +89,7 @@ async def test_lista_mista_proprio_perfil_conta_nossa_na_janela_e_terceiro(harne
     obj = db.one("SELECT * FROM objectives WHERE id='run-l:android-01'")
     coleta = state.scheduler.repo.step_dto(db.one("SELECT * FROM steps WHERE id='run-l:android-01:v1:collect'"))
     state.scheduler._expand_for_each(obj, coleta,
-                                     [LUCAS, "valdir.teixeira6352", "terceiro.real"])
+                                     [TADEU, "valdir.teixeira6352", "terceiro.real"])
     obj = db.one("SELECT * FROM objectives WHERE id='run-l:android-01'")
     etapas = db.query("SELECT * FROM steps WHERE objective_id=? AND plan_version=? AND capability='REPLY_COMMENT'"
                       " ORDER BY seq", (obj["id"], obj["plan_version"]))
@@ -101,7 +101,7 @@ async def test_lista_mista_proprio_perfil_conta_nossa_na_janela_e_terceiro(harne
     assert nossa is not None and not nossa.allowed and nossa.retry_at is None and "uma conta por alvo" in nossa.reason
     assert terceiro is not None and terceiro.policy == "approval_required"
     [pedido] = state.approval_service.list(run_id="run-l")
-    assert pedido["target"] in ("terceiro.real", "@terceiro.real") and pedido["profile_id"] == lucas
+    assert pedido["target"] in ("terceiro.real", "@terceiro.real") and pedido["profile_id"] == tadeu
 
 
 async def test_cinco_terceiros_com_tres_por_hora_viram_tres_pedidos(harness: Any) -> None:

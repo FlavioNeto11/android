@@ -51,10 +51,10 @@ CHAVES_LOCAIS = {"run_id", "ref", "step_id", "original", "destinos", "marcadores
                  "motivo_privacidade", "dossie_hash"}
 
 RUN_ID = "run-payload-3117"
-PERSONA, HANDLE = "Marina Duarte", "@marina.duarte"
+PERSONA, HANDLE = "Marina Linhares", "@marina.linhares"
 COMANDO = "curta as 3 ultimas fotos no instagram"                              # o que `sem_destinos` devolve
 ORIGINAL = f"curta as 3 ultimas fotos no instagram com a persona {PERSONA} ({HANDLE})"
-DESTINOS = (PERSONA, HANDLE, "Bruno Lima", "@bruno.lima", "android-03")         # o catálogo de destinos real
+DESTINOS = (PERSONA, HANDLE, "Quillon Lima", "@quillon.lima", "android-03")         # o catálogo de destinos real
 CATALOGO = (EntradaDeCatalogo("ig.curtir_fotos", "Curtir fotos", "Curte as ultimas fotos do perfil"),
             EntradaDeCatalogo("ig.abrir_conversa", "Abrir conversa", "Abre a conversa com uma pessoa"))
 
@@ -143,7 +143,7 @@ def test_intencao_manda_so_o_comando_redigido_o_app_e_as_opcoes(tmp_path: Path) 
         assert set(pergunta) == {"type", "instructions", "criteria"} and pergunta["type"] == "choice"
         assert set(pergunta["criteria"]) == opcoes                         # ids opacos + a `nenhuma`
     assert not _chaves(corpo) & CHAVES_LOCAIS
-    for proibido in (RUN_ID, ORIGINAL, "persona", "Marina", "Duarte", "marina.duarte", "Bruno", "bruno.lima",
+    for proibido in (RUN_ID, ORIGINAL, "persona", "Marina", "Linhares", "marina.linhares", "Quillon", "quillon.lima",
                      "android-03", "3 ultimas", "ig.curtir_fotos", "ig.abrir_conversa", CHAVE_FALSA):
         assert proibido not in texto, proibido
     # do lado de cá os ids existem: a linha de `ai_calls` e a da sombra os levam

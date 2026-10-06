@@ -54,7 +54,7 @@ def _persona(h: Harness, nome: str, instance: str, *, outlook: bool = False) -> 
 
 
 async def test_leitura_no_app_de_qa_vai_para_aparelho_sem_conta(harness: Harness) -> None:
-    _persona(harness, "Lucas", "android-01")
+    _persona(harness, "Tadeu", "android-01")
     s = await _orq(harness).sugerir(RunTargetsSuggestBody(command=LITERAL))
     assert s.modo == "distribuir" and s.app_ids == ["qa-messenger"]
     assert s.targets and all(t.profile_id is None and t.origem == "balanceamento" for t in s.targets)
@@ -64,7 +64,7 @@ async def test_leitura_no_app_de_qa_vai_para_aparelho_sem_conta(harness: Harness
 
 
 async def test_sem_aparelho_sem_conta_apto_o_de_conta_real_entra_e_a_previa_diz(harness: Harness) -> None:
-    for nome, iid in (("Lucas", "android-01"), ("Bruno", "android-02"), ("Andre", "android-03")):
+    for nome, iid in (("Tadeu", "android-01"), ("Quillon", "android-02"), ("Ottilie", "android-03")):
         _persona(harness, nome, iid)
     s = await _orq(harness).sugerir(RunTargetsSuggestBody(command=LITERAL))
     assert s.modo == "distribuir" and len(s.targets) == 1
@@ -73,15 +73,15 @@ async def test_sem_aparelho_sem_conta_apto_o_de_conta_real_entra_e_a_previa_diz(
 
 
 async def test_contraprova_app_de_conta_segue_para_a_persona(harness: Harness) -> None:
-    beatriz = _persona(harness, "Beatriz", "android-02", outlook=True)
+    sueli = _persona(harness, "Sueli", "android-02", outlook=True)
     s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="leia o último e-mail no Outlook"))
-    assert s.modo == "ia" and [e.profile_id for e in s.escolhidas] == [beatriz]
-    assert [(t.instance_id, t.profile_id) for t in s.targets] == [("android-02", beatriz)]
+    assert s.modo == "ia" and [e.profile_id for e in s.escolhidas] == [sueli]
+    assert [(t.instance_id, t.profile_id) for t in s.targets] == [("android-02", sueli)]
     # App de conta E app sem conta no mesmo pedido: o conjunto inteiro, por persona, como antes.
     s = await _orq(harness).sugerir(RunTargetsSuggestBody(
         command="leia o código no último e-mail do Outlook e mande no QA Messenger para QA-001"))
     assert s.modo == "ia" and set(s.app_ids) == {"outlook", "qa-messenger"}
-    assert [e.profile_id for e in s.escolhidas] == [beatriz]
+    assert [e.profile_id for e in s.escolhidas] == [sueli]
 
 
 async def test_app_de_qa_instalado_mas_nao_principal_conta_pelo_estado_do_app(harness: Harness) -> None:
@@ -90,7 +90,7 @@ async def test_app_de_qa_instalado_mas_nao_principal_conta_pelo_estado_do_app(ha
     assert harness.state is not None
     db = harness.state.db
     db.execute("UPDATE instances SET app_id='instagram'")
-    _persona(harness, "Lucas", "android-01")
+    _persona(harness, "Tadeu", "android-01")
     for iid, estado in (("android-01", "ready"), ("android-02", "missing"), ("android-03", "ready")):
         db.execute("INSERT INTO device_app_state(instance_id, package_name, state) VALUES (?,?,?)",
                    (iid, "com.pocqa.messenger", estado))

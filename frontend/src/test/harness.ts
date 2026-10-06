@@ -27,6 +27,12 @@ export function apiError(status: number, code: string, message: string): Respons
  * teste que falhar diz a semente, e a rodada se repete com ela.
  */
 const ATRASO_MAXIMO_MS = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
+
+// O teste consulta o mesmo teto do fetch falso, sem ler a variável de ambiente por conta própria.
+export function atrasoMaximoDoFetchMs(): number {
+  return ATRASO_MAXIMO_MS;
+}
+
 // Cada `install()` abre uma geração. Com o atraso, a resposta de uma geração já substituída nunca chega: o teste que
 // acabou com pedido em voo não escreve na store global do teste seguinte, como uma página fechada (29.104).
 let geracaoDoBackend = 0;

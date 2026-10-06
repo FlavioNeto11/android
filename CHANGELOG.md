@@ -52,6 +52,46 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (nova), `LeitorDoEnsinadoSql.em_prova` (nova), `LeitorDoEnsinado` (método novo na porta).
 - Prova `simulated`: `backend/tests/test_livro_selo_em_prova.py` (7). Real: `not_run`.
 
+## 2026-10-06 — Reconciliação total dos quadros do Trello e a dinâmica dos cartões (branch canais/reconciliacao-trello)
+
+- Pedido do dono (06/10, ~01:22Z): "98 cartões em validação, nada sai de lá" e "rever o status de todos os cards nos 3 quadros e a
+  dinâmica de mudança". Novo `.claude/trello/reconciliar.py`: confere todos os cartões de Execução com o estado do plano e o deploy
+  de cada item (commit "merge: ID na suíte N", ou o id citado na seção do deploy no CHANGELOG, ou a hora da classificação), move para a
+  lista certa com a linha de prova no topo e só relata Histórico e Programa. Sem `--aplicar` só relata; a segunda rodada sai sem ação.
+- Regra nova C-28 em `docs/dominios/canais.md`: a saída de Em validação (só o `partial` fica, `implemented` implantado vai para
+  Concluído com a linha de prova, `blocked` vai para Bloqueado) e a máquina de estados por tipo de cartão (quem move, o que dispara).
+  A skill `trello` e o fim do `claude-plan-100.py aplicar` lembram de rodar a reconciliação.
+- Prova `simulated`: `.claude/trello/test_reconciliar.py` (17 passed, dados fictícios, sem rede). Prova `real` (06/10, central, API da
+  Central): Execução de 364 para 171 cartões e de 201 divergências para 10 (só listadas: sem estado no plano e "Espera você"),
+  Histórico de 265 para 446, Programa de 72 para 100 (marcos 33, 34 e 36, 16 decisões P-001 a P-015 e a de 05/10 15:13Z); segunda rodada
+  do script sem nenhuma ação de mover ou marcar. `not_run`: a reconciliação dentro da Central (hoje é script da sessão Canais).
+
+## 2026-10-06 — 31.90-D (painel): "Desfazer a última" na barra de gravação (branch feat/31-90-d-painel-desfazer)
+
+- Só frontend, contra o adendo v1.70 (`POST /api/training/{id}/undo`, já no deploy 43): a barra do Modo treinamento ganha o
+  botão "Desfazer a última", só no ramo da gravação de quem tem o controle (quem só olha e a gravação órfã não o veem).
+  Manda o `lease_id` e o `seq` da última entrada que a tela mostra; a resposta já é a sessão sem ela, e o número desfeito
+  é reaproveitado pela próxima entrada (nada se guarda por `seq`). O aparelho não volta, só a gravação, e o aviso diz isso.
+- Recusas (`entrada_mudou`, `control_required`, `nao_esta_gravando`, `sem_entrada`): o aviso mostra a mensagem do backend e a barra
+  relê a gravação, então a última passa a ser a de verdade; nada se apaga. Sem entrada ou sem lease o botão diz o motivo;
+  enquanto o desfazer corre, Concluir e Descartar explicam que esperam.
+- Prova `simulated`: `TrainingBar.test.tsx` (6 testes novos, fetch falso; 3 mutações pegas: `seq` fixo, sem reler na recusa,
+  sem o motivo no Concluir); frontend inteiro, typecheck e build com os números do commit. `real`: `not_run` (o percurso do deploy 43
+  provou a revisão, mas o desfazer da gravação viva ainda não foi exercitado no aparelho; depende de deploy com este painel).
+
+## 2026-10-06 — 31.112: a pergunta da IA guardada na proposta leva o marcador da persona (branch fix/31-112-pergunta-mascarada)
+
+- Achado da prova real do 31.87: `training_sessions.proposal` tinha o nome da persona em claro em `answers[].question`,
+  porque a troca do F2 não cobria `questions[]` nem `answers[].question` (31.91).
+- `dado_da_persona.nas_perguntas` (nova) troca o dado por palavra na pergunta e deixa a resposta da pessoa como está.
+  Roda ao guardar (`TrainingSkills.propose`, no corpo e na proposta nova, e `_preparar` do `save` e da prévia) e ao
+  mostrar (`TrainingRecorder.get` e `list`, por `variaveis_da_persona`, ligada em `state.py`). A forma das respostas
+  da API não muda.
+- Funções tocadas (K-095): `TrainingSkills.propose`, `TrainingSkills._preparar`, `TrainingRecorder.__init__`,
+  `TrainingRecorder.get`, `TrainingRecorder.list`, `TrainingRecorder._proposta_mascarada` (nova),
+  `dado_da_persona.nas_perguntas` (nova).
+- Prova `simulated`: `backend/tests/test_treino_pergunta_mascarada.py` (6; 5 reprovam sem a mudança). Real: `not_run`.
+
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e
@@ -360,6 +400,14 @@ Da leitura do 31.78.
 
 - `PortaDoPlano.test.tsx` "mostra a validade dos sins do plano…" usava `2026-10-05T21:00Z` como instante futuro; às 21:00Z de hoje o sim passou a "vencido" e o teste falhou (determinístico, também em ramos que passavam antes). A validade agora é relativa ao relógio (6 h à frente; a renovação, 30 h).
 - Prova `simulated`: o arquivo sozinho, 22/22 em duas rodadas, em 05/10 depois das 21:00Z. Outras datas fixas próximas em testes (a conferir, sem mudança aqui): `ValidacaoTab.test.tsx` (`expira_em` em 06/10), `NovoPedido.test.tsx` (prazo em 09/10), `MetricasTab.test.tsx` (17/10).
+
+## 2026-10-06 — Deploy 44 (suíte 44: parecer versionado, fuso na inspeção, sombra da R5 e casamento do comando)
+
+- **Implantado** às 02:15Z: central em `33c7d5ab`, migrações `117_versao_do_texto_do_parecer` e `118_fuso_da_ultima_atualizacao` (novas), 8 pontas sobre `b8c37ef7`. Itens: 30.76 (versão do texto no parecer, `learning_reviews.instrucao_versao`), 30.77 (fuso na inspeção, `device_app_state.last_update_offset`), 30.78 (sobras da leitura que não gira: fato neutro ao juiz), 31.89 (prévia "parece com o fluxo tal" em `POST /api/flows/similar` e aviso de colisão ao salvar, adendo v1.72, com o painel), 31.13 (sombra de apps candidatos liberada pela P-013, `R5_LIBERADA`; config central em `apps: shadow`), 31.110 (refazer receitas diz quando o aparelho não respondeu), 30.85 (selo de fluxo em prova no Livro, adendo v1.73, backend e tela) e o script de troca de nomes com a chave de nomes anteriores.
+- Prova `real`: ensaio `deploy.ps1 -Ensaio` com a cópia `dataackups61005-231126` restaurada (integridade ok, aplicou 117 e 118, integridade ok depois); `GET /api/health` ok, problemas `[]`, migração mais alta 118; prova de fora como esperado (46 verificações; `/api/instances` 401 de fora e 403 com Host forjado); agente do notebook em `0.1.0+33c7d5a`; aparelhos 01, 03, 06 e 13 online com automação pronta depois da readoção, sem reinício a frio; config carregada sem aviso com `consumidores.apps: shadow` (a sombra da R5 só terá linha própria quando a primeira execução registrar candidato); hooks do Claude sem erro na primeira sessão após o deploy.
+- Prova `simulated` (suíte 44 sobre `33c7d5ab`): `scripts/tests` 684 passed (117 e 118 com sha256); backend em SQLite 12084 passed e 13 skipped na ponta parcial, mais 5855 e 1261 passed nos afetados; frontend 1732 passed, typecheck e build; catracas 88 e 6; mypy 257 igual ao teto; PostgreSQL dirigido nos 365 arquivos afetados, em duas partes, 5157 e 3191 passed (10 skipped) e 0 falhas.
+- `not_run`: percurso no navegador (frente Portal, a seguir); relatório da sombra da R5 em alguns dias (GO/NO-GO do 31.10 refeito com amostra).
+- Também pelo mecanismo: os sete itens implantados que estavam sem estado no plano (28.42 a 28.46, 29.134, 30.79; achado da auditoria do Trello) e a prova real do 31.87 (execução `r-20261006012340-d92795` no android-04 com persona de teste: o dado vai à tela; o registro da execução ainda fica em claro, item 31.113; custo US$ 0,331).
 
 ## 2026-10-06 — Deploy 43 (suíte 43: ensino com dados da persona, escopo ao provar e revisão do ensino)
 

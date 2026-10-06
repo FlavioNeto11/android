@@ -236,11 +236,11 @@ describe('achados da validação do deploy 2 (prévia e formulário)', () => {
   }
 
   it('I2: "Quem faz e onde" mostra o nome da persona (com o @) e o do app, nunca o id interno', async () => {
-    backend.on('GET', /^\/api\/personas$/, () => json([makePersona('p1', 'Bruno Ferreira', { username: 'bruno' })]));
+    backend.on('GET', /^\/api\/personas$/, () => json([makePersona('p1', 'Quillon Teixeira', { username: 'quillon' })]));
     useAppStore.setState({ apps: [{ id: 'com.x', name: 'Outlook' } as never] });
     await montarDireto();
     await verPrevia();
-    await waitFor(() => expect(text(secao())).toContain('android-01 · Bruno Ferreira (@bruno) · Outlook'));
+    await waitFor(() => expect(text(secao())).toContain('android-01 · Quillon Teixeira (@quillon) · Outlook'));
     expect(text(secao())).not.toContain('persona p1');
     useAppStore.setState({ apps: [] });
   });

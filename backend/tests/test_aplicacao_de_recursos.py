@@ -215,14 +215,14 @@ def test_ler_vale_mesmo_com_wait_e_ask(banco: Database) -> None:
     ref = p.apply(ler, spec=instalacao("wait"))
     assert ref.requested and bus.pedidos[0]["params"] == {"package": "com.instagram.android"}
 
-    _perfil(banco, "p-lucas", "lucas")
-    _vincular(banco, "p-lucas", "android-01")
-    _credencial(banco, "p-lucas")
+    _perfil(banco, "p-tadeu", "tadeu")
+    _vincular(banco, "p-tadeu", "android-01")
+    _credencial(banco, "p-tadeu")
     s = _sessoes_com(banco, bus)
     ler_sessao = _uma_acao(s, sessao("ask"))                        # nunca verificada: não se sabe
     assert (ler_sessao.purpose, ler_sessao.verb) == (ActionPurpose.observe, "session.verify")
     assert s.apply(ler_sessao, spec=sessao("ask")).requested
-    assert bus.pedidos[-1]["params"] == {"profile_id": "p-lucas", "app_id": "instagram"}
+    assert bus.pedidos[-1]["params"] == {"profile_id": "p-tadeu", "app_id": "instagram"}
 
 
 def _sessoes_com(db: Database, bus: BusFalso) -> AppSessionProvider:
@@ -232,14 +232,14 @@ def _sessoes_com(db: Database, bus: BusFalso) -> AppSessionProvider:
 
 def test_sessao_deslogada_conecta_so_com_apply_e_com_credencial(banco: Database) -> None:
     _app_no_parque(banco, estado=None)
-    _perfil(banco, "p-lucas", "lucas")
-    _vincular(banco, "p-lucas", "android-01")
-    _sessao(banco, "p-lucas", "auth_required")
+    _perfil(banco, "p-tadeu", "tadeu")
+    _vincular(banco, "p-tadeu", "android-01")
+    _sessao(banco, "p-tadeu", "auth_required")
     bus = BusFalso()
     s = _sessoes_com(banco, bus)
     # sem credencial no cofre: é de pessoa (ADR-025), e não há comando
     assert s.diff(sessao(), s.read_current_state(sessao().ref, ALVO)).status is DriftStatus.blocked
-    _credencial(banco, "p-lucas")
+    _credencial(banco, "p-tadeu")
     conectar = _uma_acao(s, sessao())
     assert (conectar.purpose, conectar.verb) == (ActionPurpose.converge, "session.connect")
     assert s.apply(conectar, spec=sessao()).requested
@@ -347,10 +347,10 @@ def test_reconcile_so_no_hospedeiro(banco: Database) -> None:
 
 def test_sessao_incerta_fecha_com_a_sessao_verificada_depois(banco: Database) -> None:
     _app_no_parque(banco, estado=None)
-    _perfil(banco, "p-lucas", "lucas")
-    _vincular(banco, "p-lucas", "android-01")
-    _credencial(banco, "p-lucas")
-    _sessao(banco, "p-lucas", "session_ready", verificada=AGORA.replace(hour=13))
+    _perfil(banco, "p-tadeu", "tadeu")
+    _vincular(banco, "p-tadeu", "android-01")
+    _credencial(banco, "p-tadeu")
+    _sessao(banco, "p-tadeu", "session_ready", verificada=AGORA.replace(hour=13))
     bus = BusFalso()
     s = _sessoes_com(banco, bus)
     cid = _incerto(bus, "session.connect", key_prefix("android-01", "app.session", "instagram", "session.connect"))

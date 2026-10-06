@@ -229,7 +229,7 @@ class Gate(unittest.TestCase):
         self._bloqueia(Falso05(boot=False), "boot_completo")
         a = Falso05(); a.state = "hibernated"; self._bloqueia(a, "instancia_online")
         a = Falso05(); a.serial = "emulator-5554"; self._bloqueia(a, "serial_confere")
-        a = Falso05(); a.label = "lucas.almeida"; self._bloqueia(a, "qa_sem_conta_real")
+        a = Falso05(); a.label = "tadeu.quintela"; self._bloqueia(a, "qa_sem_conta_real")
         a = Falso05(); a.locked = "x"; self._bloqueia(a, "qa_sem_conta_real")
         a = Falso05(); a.worker["maintenance"] = True; self._bloqueia(a, "worker_local_saudavel")
         a = Falso05(); a.worker["connected"] = False; self._bloqueia(a, "worker_local_saudavel")

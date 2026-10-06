@@ -3,7 +3,7 @@
  * toque, texto, deslize, tecla e "abrir app" é gravado com o elemento tocado. Ao concluir, a revisão (IA propõe,
  * pessoa ajusta) transforma a gravação em habilidade para os perfis escolhidos.
  */
-import { CircleDot, GraduationCap, Square, Trash2 } from 'lucide-react';
+import { CircleDot, GraduationCap, Square, Trash2, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api, toApiError } from '../../api/client';
 import type { Instance, PersonaOnDevice, TrainingSession } from '../../api/types';
@@ -69,7 +69,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   const [leitura, setLeitura] = useState<'lendo' | 'pronta' | 'falhou'>('lendo');
   const [quemEnsina, setQuemEnsina] = useState('');
   // Uma ação em voo por vez; cada botão gira só pela sua e o outro explica por que espera.
-  const [ocupado, setOcupado] = useState<'iniciar' | 'concluir' | 'descartar' | null>(null);
+  const [ocupado, setOcupado] = useState<'iniciar' | 'concluir' | 'descartar' | 'desfazer' | null>(null);
   const [revisando, setRevisando] = useState<string | null>(null);
   const recusadas = useTrainingStore((s) => s.recusadas[instance.id] ?? 0);
   const definirGravando = useTrainingStore((s) => s.definirGravando);
@@ -171,12 +171,33 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
     }
   }
 
+  // 31.90-D (v1.70): desfaz só a última entrada da gravação viva; o aparelho não volta, só a gravação. Leva o `seq` que a
+  // tela mostra como último: se outra entrada chegou antes do pedido, o backend recusa (409 `entrada_mudou`) e nada se apaga.
+  async function desfazerAUltima() {
+    const ultima = (ativa?.inputs ?? []).at(-1);
+    if (!ativa || !leaseId || !ultima || ocupado) return;
+    setOcupado('desfazer');
+    try {
+      // A resposta já é a sessão sem a entrada: o número desfeito é reaproveitado pela próxima, então nada se guarda por seq.
+      setAtiva(await api.undoTraining(ativa.id, leaseId, ultima.seq));
+      toast({ tone: 'info', title: 'Entrada desfeita', message: `A entrada #${ultima.seq} saiu da gravação; o aparelho não voltou, só a gravação.` });
+    } catch (e) {
+      // A recusa não muda nada: a barra se relê para mostrar a última entrada de verdade (e quem está com o controle).
+      toastError('A gravação continua como estava', e);
+      await carregar();
+    } finally {
+      setOcupado(null);
+    }
+  }
+
   const botoesDaGravacao = () => (
     <div className={styles.actions}>
       <Button size="sm" variant="primary" icon={Square} loading={ocupado === 'concluir'}
-              disabledReason={ocupado === 'descartar' ? 'Descartando a gravação…' : null} onClick={() => void concluir(false)}>Concluir e revisar</Button>
+              disabledReason={ocupado === 'descartar' ? 'Descartando a gravação…' : ocupado === 'desfazer' ? 'Desfazendo a última entrada…' : null}
+              onClick={() => void concluir(false)}>Concluir e revisar</Button>
       <Button size="sm" variant="dangerGhost" icon={Trash2} loading={ocupado === 'descartar'}
-              disabledReason={ocupado === 'concluir' ? 'Concluindo a gravação…' : null} onClick={() => void concluir(true)}>Descartar</Button>
+              disabledReason={ocupado === 'concluir' ? 'Concluindo a gravação…' : ocupado === 'desfazer' ? 'Desfazendo a última entrada…' : null}
+              onClick={() => void concluir(true)}>Descartar</Button>
     </div>
   );
 
@@ -222,6 +243,11 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
           {/* A região viva nasce vazia com a gravação: o texto que entra depois é anunciado, o que já nasce com ele não. */}
           <p className={styles.hint} role="status" aria-live="polite">{recusadas ? `${plural(recusadas, 'entrada recusada', 'entradas recusadas')}: refaça` : ''}</p>
           <p className={styles.hint}>Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.</p>
+          {/* Só a gravação de quem tem o controle (este ramo): quem só olha, ou a gravação órfã, não desfaz a de ninguém. */}
+          <Button size="sm" variant="ghost" icon={Undo2} loading={ocupado === 'desfazer'}
+                  disabledReason={!leaseId ? 'Retome o controle para desfazer.' : !(ativa.inputs ?? []).length ? 'Ainda não há entrada para desfazer.'
+                    : ocupado && ocupado !== 'desfazer' ? 'Espere a ação em andamento.' : null}
+                  onClick={() => void desfazerAUltima()}>Desfazer a última</Button>
           {botoesDaGravacao()}
         </div>
       ) : somenteRevisao ? (

@@ -74,9 +74,9 @@ def test_classificador_ignora_o_valor_da_vez_e_o_que_nao_identifica_o_alvo() -> 
 
 def test_o_literal_so_no_titulo_resolvido_deixa_a_receita_especifica() -> None:
     """Revisão da Android no #145: o planejador escreveu o alvo só no título, sem parâmetro e fora da pós-condição."""
-    lucas = [_toque({"kind": "text", "text": "Lucas"})]
-    assert eh_generica(lucas, "conversa aberta", {})
-    assert not eh_generica(lucas, "conversa aberta", {}, titulo="Abrir a conversa com Lucas")
+    tadeu = [_toque({"kind": "text", "text": "Tadeu"})]
+    assert eh_generica(tadeu, "conversa aberta", {})
+    assert not eh_generica(tadeu, "conversa aberta", {}, titulo="Abrir a conversa com Tadeu")
     assert eh_generica(MESSAGE_40, "conversa aberta", {}, titulo="Abrir a conversa com @perfil_dois")
 
 

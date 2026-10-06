@@ -198,24 +198,24 @@ def test_aparelho_desconhecido_e_recusado(tmp_path: Path) -> None:
 
 # ---------------------------------------------------------------- vínculo
 def test_mover_para_o_aparelho_de_outra_conta_do_mesmo_app_e_recusado(tmp_path: Path) -> None:
-    """Aposenta de propósito "mover Mariana desvincula Lucas" (o 1:1 da 008): desde a 051 o vínculo é N:N, e o que
+    """Aposenta de propósito "mover Luciana desvincula Tadeu" (o 1:1 da 008): desde a 051 o vínculo é N:N, e o que
     continua proibido é DUAS contas do MESMO app no MESMO aparelho (D2-a) — então a troca é recusada, com 409, e o
-    Lucas continua onde estava. Ninguém toma o aparelho de ninguém."""
+    Tadeu continua onde estava. Ninguém toma o aparelho de ninguém."""
     svc, repo, secrets, db = build(tmp_path)
     try:
-        lucas = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
-        mariana = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02"))
+        tadeu = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
+        luciana = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02"))
         with pytest.raises(SocialError) as exc:
-            svc.update_profile(mariana.id, ProfilePatch(instance_id="android-01"))
+            svc.update_profile(luciana.id, ProfilePatch(instance_id="android-01"))
         assert exc.value.code == "conta_do_app_ja_no_aparelho" and exc.value.status == 409
-        assert svc.get_profile(mariana.id).instance_id == "android-02"
-        assert svc.get_profile(lucas.id).instance_id == "android-01"
-        assert repo.profile_id_for_instance("android-01") == lucas.id
-        # Com o aparelho livre (Lucas desvinculado), mover continua sendo "trocar": sai do antigo, entra no novo
+        assert svc.get_profile(luciana.id).instance_id == "android-02"
+        assert svc.get_profile(tadeu.id).instance_id == "android-01"
+        assert repo.profile_id_for_instance("android-01") == tadeu.id
+        # Com o aparelho livre (Tadeu desvinculado), mover continua sendo "trocar": sai do antigo, entra no novo
         # como principal — e o vínculo leva o app da conta do Instagram.
-        svc.update_profile(lucas.id, ProfilePatch(instance_id=None))
-        svc.update_profile(mariana.id, ProfilePatch(instance_id="android-01"))
-        atual = svc.get_profile(mariana.id)
+        svc.update_profile(tadeu.id, ProfilePatch(instance_id=None))
+        svc.update_profile(luciana.id, ProfilePatch(instance_id="android-01"))
+        atual = svc.get_profile(luciana.id)
         assert atual.instance_id == "android-01"
         assert [(d.instance_id, d.is_primary) for d in atual.devices] == [("android-01", True)]
         assert atual.devices[0].app_id is not None
@@ -268,7 +268,7 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                "create_policy_group", "policy_group_row", "policy_group_by_name", "list_policy_groups",
                "update_policy_group", "delete_policy_group", "policy_group_members", "set_policy_group_members",
                # O marcador de conta travada (migração 054, ADR-055) é do APARELHO, como `localidade_da_instancia`:
-               # sobrevive ao desvínculo e à remoção do perfil — o android-04 tinha o felipe logado e NENHUM vínculo.
+               # sobrevive ao desvínculo e à remoção do perfil — o android-04 tinha o gilberto logado e NENHUM vínculo.
                # `sincronizar_rotulos` escreve `instances.account_label` (inventário do parque) a partir dele.
                "conta_travada_no_aparelho", "contas_travadas_abertas", "marcar_conta_travada",
                "resolver_conta_travada", "sincronizar_rotulos",
@@ -301,24 +301,24 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
 def test_consulta_com_o_perfil_errado_nao_devolve_dado_do_outro(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        lucas = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
-        mariana = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02"))
-        repo.set_session(lucas.id, status=SessionStatus.session_ready, instance_id="android-01",
+        tadeu = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
+        luciana = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02"))
+        repo.set_session(tadeu.id, status=SessionStatus.session_ready, instance_id="android-01",
                          observed_username="tadeu.quintela4821")
 
         # credencial, vínculo e sessão são estritamente por perfil
-        assert repo.credential_row(lucas.id)["secret_ref"] != repo.credential_row(mariana.id)["secret_ref"]
-        assert secrets.get_secret(repo.credential_row(lucas.id)["secret_ref"]) == SENHA_LUCAS
-        assert secrets.get_secret(repo.credential_row(mariana.id)["secret_ref"]) == SENHA_MARIANA
-        assert repo.binding_row(mariana.id)["instance_id"] == "android-02"
-        assert repo.session_row(mariana.id)["status"] == SessionStatus.unknown.value
-        assert repo.session_row(lucas.id)["status"] == SessionStatus.session_ready.value
+        assert repo.credential_row(tadeu.id)["secret_ref"] != repo.credential_row(luciana.id)["secret_ref"]
+        assert secrets.get_secret(repo.credential_row(tadeu.id)["secret_ref"]) == SENHA_LUCAS
+        assert secrets.get_secret(repo.credential_row(luciana.id)["secret_ref"]) == SENHA_MARIANA
+        assert repo.binding_row(luciana.id)["instance_id"] == "android-02"
+        assert repo.session_row(luciana.id)["status"] == SessionStatus.unknown.value
+        assert repo.session_row(tadeu.id)["status"] == SessionStatus.session_ready.value
 
         # apagar um não toca no outro
-        svc.delete_profile(lucas.id)
-        assert repo.profile_row(mariana.id) is not None
-        assert secrets.get_secret(repo.credential_row(mariana.id)["secret_ref"]) == SENHA_MARIANA
-        assert repo.session_row(mariana.id) is not None
+        svc.delete_profile(tadeu.id)
+        assert repo.profile_row(luciana.id) is not None
+        assert secrets.get_secret(repo.credential_row(luciana.id)["secret_ref"]) == SENHA_MARIANA
+        assert repo.session_row(luciana.id) is not None
     finally:
         db.close()
 
@@ -326,14 +326,14 @@ def test_consulta_com_o_perfil_errado_nao_devolve_dado_do_outro(tmp_path: Path) 
 def test_tentativa_de_autenticacao_e_por_perfil(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        lucas = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
-        mariana = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02"))
-        attempt = repo.start_auth_attempt(lucas.id, "android-01")
-        repo.finish_auth_attempt(mariana.id, attempt, outcome="session_ready")   # perfil errado: não escreve
-        assert repo.auth_attempts(lucas.id)[0]["outcome"] is None
-        repo.finish_auth_attempt(lucas.id, attempt, outcome="session_ready")
-        assert repo.auth_attempts(lucas.id)[0]["outcome"] == "session_ready"
-        assert repo.auth_attempts(mariana.id) == []
+        tadeu = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
+        luciana = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02"))
+        attempt = repo.start_auth_attempt(tadeu.id, "android-01")
+        repo.finish_auth_attempt(luciana.id, attempt, outcome="session_ready")   # perfil errado: não escreve
+        assert repo.auth_attempts(tadeu.id)[0]["outcome"] is None
+        repo.finish_auth_attempt(tadeu.id, attempt, outcome="session_ready")
+        assert repo.auth_attempts(tadeu.id)[0]["outcome"] == "session_ready"
+        assert repo.auth_attempts(luciana.id) == []
     finally:
         db.close()
 
@@ -346,7 +346,7 @@ async def test_api_nunca_devolve_a_senha_e_o_422_nao_ecoa_o_valor(harness: Harne
     app.state.poc = state
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
         criado = await c.post("/api/instagram/profiles", json={
-            "username": "luciana.bastos73519", "first_name": "Mariana", "last_name": "Costa",
+            "username": "luciana.bastos73519", "first_name": "Luciana", "last_name": "Bastos",
             "instance_id": "android-02", "password": SENHA_MARIANA})
         assert criado.status_code == 201, criado.text
         assert SENHA_MARIANA not in criado.text

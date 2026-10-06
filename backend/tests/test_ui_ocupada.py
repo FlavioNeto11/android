@@ -212,7 +212,7 @@ def _no(cls: str, x1: int, y1: int, x2: int, y2: int, *, package: str = "com.ins
 
 def _grade(linhas: int, *, rolavel: bool = True, extra: str = "") -> UiTree:
     """Perfil com a grade de miniaturas: o RecyclerView rolável (alto) e as linhas de ~200 px dentro dele."""
-    nos = [_no("android.widget.TextView", 0, 60, 720, 120, text="mariana.costa", resource_id="app:id/title")]
+    nos = [_no("android.widget.TextView", 0, 60, 720, 120, text="luciana.bastos", resource_id="app:id/title")]
     if rolavel:
         nos.append(_no("androidx.recyclerview.widget.RecyclerView", 0, 300, 720, 1200, scrollable="true",
                        resource_id="app:id/grid"))

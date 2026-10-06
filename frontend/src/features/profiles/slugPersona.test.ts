@@ -9,8 +9,8 @@ function pessoa(id: string, name: string, over: Record<string, unknown> = {}): P
 
 describe('slugify', () => {
   it('tira acentos, junta palavras com traço e põe em minúsculas', () => {
-    expect(slugify('Lucas Almeida')).toBe('lucas-almeida');
-    expect(slugify('Ana Beatriz Ñandú-Ávila')).toBe('ana-beatriz-nandu-avila');
+    expect(slugify('Tadeu Quintela')).toBe('tadeu-quintela');
+    expect(slugify('Ana Sueli Ñandú-Ávila')).toBe('ana-sueli-nandu-avila');
     expect(slugify('João da Conceição')).toBe('joao-da-conceicao');
     expect(slugify('Søren Æble Łukasz')).toBe('soren-aeble-lukasz');
   });
@@ -45,23 +45,23 @@ describe('slugBase', () => {
 });
 
 describe('slugsDasPersonas', () => {
-  const lucas1 = pessoa('ig-R7UM9mwweF0rFqG8', 'Lucas Almeida');
-  const lucas2 = pessoa('ig-ieeUGPgFRyyw7kCB', 'Lucas Almeida');
-  const ana = pessoa('ig-EydRwNVvFHQ6yTlu', 'Ana Beatriz Ñandú-Ávila');
+  const lucas1 = pessoa('ig-R7UM9mwweF0rFqG8', 'Tadeu Quintela');
+  const lucas2 = pessoa('ig-ieeUGPgFRyyw7kCB', 'Tadeu Quintela');
+  const ana = pessoa('ig-EydRwNVvFHQ6yTlu', 'Ana Sueli Ñandú-Ávila');
 
   it('quem está sozinho com o nome fica com o slug limpo', () => {
     const slugs = slugsDasPersonas([lucas1, ana]);
-    expect(slugs.get(lucas1.id)).toBe('lucas-almeida');
-    expect(slugs.get(ana.id)).toBe('ana-beatriz-nandu-avila');
+    expect(slugs.get(lucas1.id)).toBe('tadeu-quintela');
+    expect(slugs.get(ana.id)).toBe('ana-sueli-nandu-avila');
   });
 
   it('homônimos recebem sufixo curto tirado do próprio id, e ninguém fica com o slug limpo', () => {
     const slugs = slugsDasPersonas([lucas1, lucas2, ana]);
-    expect(slugs.get(lucas1.id)).toBe('lucas-almeida-fqg8');
-    expect(slugs.get(lucas2.id)).toBe('lucas-almeida-7kcb');
+    expect(slugs.get(lucas1.id)).toBe('tadeu-quintela-fqg8');
+    expect(slugs.get(lucas2.id)).toBe('tadeu-quintela-7kcb');
     expect(slugs.get(lucas1.id)).not.toBe(slugs.get(lucas2.id));
-    expect(slugs.get(lucas1.id)).toMatch(/^lucas-almeida-[a-z0-9]{4}$/);
-    expect(slugs.get(ana.id)).toBe('ana-beatriz-nandu-avila');
+    expect(slugs.get(lucas1.id)).toMatch(/^tadeu-quintela-[a-z0-9]{4}$/);
+    expect(slugs.get(ana.id)).toBe('ana-sueli-nandu-avila');
   });
 
   it('é determinístico: a ordem da lista e um terceiro homônimo não mudam o slug dos outros', () => {
@@ -69,7 +69,7 @@ describe('slugsDasPersonas', () => {
     const b = slugsDasPersonas([lucas2, ana, lucas1]);
     expect(b.get(lucas1.id)).toBe(a.get(lucas1.id));
     expect(b.get(lucas2.id)).toBe(a.get(lucas2.id));
-    const lucas3 = pessoa('ig-QwErTyUiOp12345', 'lucas ALMEIDA');
+    const lucas3 = pessoa('ig-QwErTyUiOp12345', 'tadeu QUINTELA');
     const c = slugsDasPersonas([lucas1, lucas2, lucas3]);
     expect(c.get(lucas1.id)).toBe(a.get(lucas1.id));
     expect(c.get(lucas2.id)).toBe(a.get(lucas2.id));
@@ -77,12 +77,12 @@ describe('slugsDasPersonas', () => {
   });
 
   it('ids que terminam igual aumentam o sufixo até distinguir', () => {
-    const x = pessoa('ig-AAAA1111zzzz', 'Rui Costa');
-    const y = pessoa('ig-BBBB2222zzzz', 'Rui Costa');
+    const x = pessoa('ig-AAAA1111zzzz', 'Rui Bastos');
+    const y = pessoa('ig-BBBB2222zzzz', 'Rui Bastos');
     const slugs = slugsDasPersonas([x, y]);
     expect(slugs.get(x.id)).not.toBe(slugs.get(y.id));
-    expect(slugs.get(x.id)).toBe('rui-costa-1zzzz');
-    expect(slugs.get(y.id)).toBe('rui-costa-2zzzz');
+    expect(slugs.get(x.id)).toBe('rui-bastos-1zzzz');
+    expect(slugs.get(y.id)).toBe('rui-bastos-2zzzz');
   });
 
   it('um slug que coincide com o id de outra pessoa cede: a pessoa usa o próprio id', () => {
@@ -100,8 +100,8 @@ describe('slugsDasPersonas', () => {
 });
 
 describe('resolverPersona', () => {
-  const lucas1 = pessoa('ig-R7UM9mwweF0rFqG8', 'Lucas Almeida');
-  const lucas2 = pessoa('ig-ieeUGPgFRyyw7kCB', 'Lucas Almeida');
+  const lucas1 = pessoa('ig-R7UM9mwweF0rFqG8', 'Tadeu Quintela');
+  const lucas2 = pessoa('ig-ieeUGPgFRyyw7kCB', 'Tadeu Quintela');
   const ana = pessoa('ig-EydRwNVvFHQ6yTlu', 'Ana Souza');
 
   it('o id antigo continua abrindo a persona', () => {
@@ -119,12 +119,12 @@ describe('resolverPersona', () => {
     const slugs = slugsDasPersonas(lista);
     expect(resolverPersona(slugs.get(lucas1.id), lista)).toBe(lucas1);
     expect(resolverPersona(slugs.get(lucas2.id), lista)).toBe(lucas2);
-    expect(resolverPersona('lucas-almeida', lista)).toBeNull();
+    expect(resolverPersona('tadeu-quintela', lista)).toBeNull();
   });
 
   it('link com sufixo continua valendo depois que o homônimo some', () => {
     const slugAntigo = slugsDasPersonas([lucas1, lucas2]).get(lucas1.id);
-    expect(slugAntigo).toMatch(/^lucas-almeida-/);
+    expect(slugAntigo).toMatch(/^tadeu-quintela-/);
     expect(resolverPersona(slugAntigo, [lucas1, ana])).toBe(lucas1);
   });
 
@@ -141,12 +141,12 @@ describe('resolverPersona', () => {
 });
 
 describe('homonimosDoSegmento', () => {
-  const a = pessoa('ig-AAAA0001', 'Lucas Almeida');
-  const b = pessoa('ig-BBBB0002', 'Lucas Almeida');
+  const a = pessoa('ig-AAAA0001', 'Tadeu Quintela');
+  const b = pessoa('ig-BBBB0002', 'Tadeu Quintela');
   const c = pessoa('ig-CCCC0003', 'Ana Souza');
 
   it('o nome puro de dois homônimos nomeia os dois; um nome único nomeia só um', () => {
-    expect(homonimosDoSegmento('lucas-almeida', [a, b, c])).toEqual([a, b]);
+    expect(homonimosDoSegmento('tadeu-quintela', [a, b, c])).toEqual([a, b]);
     expect(homonimosDoSegmento('ana-souza', [a, b, c])).toEqual([c]);
     expect(homonimosDoSegmento('ninguem', [a, b, c])).toEqual([]);
     expect(homonimosDoSegmento(null, [a])).toEqual([]);

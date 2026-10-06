@@ -138,8 +138,8 @@ def test_links_desarmados_em_todos_os_campos() -> None:
 
 def test_sem_redacao_o_nome_e_o_telefone_chegam_inteiros() -> None:
     """ADR-075: o contato serve para o dono responder; nada de `[persona]`, `[conta]` ou `[telefone]` aqui."""
-    corpo = p.corpo_do_contato(_contato(nome="Lucas Andre", mensagem="me chame no @meuperfil"))
-    assert "Nome: Lucas Andre" in corpo and "＠meuperfil" in corpo and "98765-4321" in corpo
+    corpo = p.corpo_do_contato(_contato(nome="Tadeu Ottilie", mensagem="me chame no @meuperfil"))
+    assert "Nome: Tadeu Ottilie" in corpo and "＠meuperfil" in corpo and "98765-4321" in corpo
 
 
 @pytest.mark.parametrize("campos", [

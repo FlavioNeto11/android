@@ -384,6 +384,45 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Execução: Calendar, Card Aging e List Limits;
   - Programa: Dashcards.
 
+**C-28 · Dinâmica dos cartões: onde cada tipo nasce, quem o move e o que dispara a mudança (06/10).**
+- **Origem:** dono, 06/10 ~01:22Z e ~01:25Z: "temos 98 cartões em validação, porque nada está saindo de lá? está represando
+  muito" e "reveja então o status de todos os cards no trello e a dinâmica de mudança pois não está refletindo muito a
+  realidade, isso nos 3 QUADROS". A orquestradora confirmou a regra de saída e a reconciliação às 01:34Z.
+- **Regra, a fonte de verdade:** o estado do plano (`.claude/plano-100/estado.json`, `implemented`, `partial` ou `blocked`,
+  com a prova) e o registro de deploy do CHANGELOG mandam; o cartão espelha. Divergência corrige o cartão, nunca o contrário.
+- **Regra, a saída de "Em validação" (vale sempre):**
+  - o item `implemented` no plano e implantado vai para **Concluído**, com a linha de prova no topo da descrição:
+    `prova real (data, ids)` ou `prova simulada (arquivo::teste), no ar desde o deploy N`;
+  - só o `partial` fica em Em validação, com uma frase do que falta;
+  - o `blocked` vai para **Bloqueado**, com o motivo;
+  - o `implemented` ainda não implantado fica em Em validação até o deploy;
+  - item sem id ou sem estado no plano, e todo cartão de "Espera você", só são **listados**: nunca se movem sozinhos.
+- **Regra, a máquina de estados por tipo de cartão:**
+
+| Tipo | Nasce | Quem move | O que dispara cada passo |
+|---|---|---|---|
+| Item do plano (id `N.N`) | Em **Próximas**, quando o id entra no plano (bloco em `plano-100.json`) | Canais, pela reconciliação; a orquestradora muda o estado pelo `aplicar` | Próximas → Em execução: a sessão assume o item (evento no `eventos.md`). Em execução → Em validação: ramo integrado, item `partial` ou ainda sem deploy. Em validação → Concluído: `implemented` e implantado (regra acima). Qualquer lista → Bloqueado: `blocked`. Concluído → Histórico: virada da semana (segunda 00:00 em Brasília), para a lista da fase |
+| Item que espera o dono | **Espera você** | Canais, depois da resposta dele | A resposta do dono chega ao banco e é conferida; só então o cartão sai |
+| Pergunta `P-NNN` | **Perguntas para você**, criada só pela API da Central | Canais | A resposta conferida no banco vai para a linha de topo e o cartão vai a Respondidas; a decisão ganha cartão em Programa › Decisões do dono, com a resposta literal |
+| Marco de deploy | **Programa › Marcos e deploys**, no espelho do deploy | Canais | O registro do deploy no CHANGELOG (hora, commit, migração); sai um aviso agrupado ao dono, nunca um por cartão |
+| Métrica, custo, risco | Programa | Canais e orquestradora | A cada deploy refaz o que tem fonte automática (aparelhos e testes); o resto, na rodada semanal. A primeira linha é `Leitura de DD/MM HH:MMZ`, e a leitura com mais de 3 dias é listada |
+| Registro de rotina, estudo ou análise | Execução, Concluído nesta semana | Canais | Na virada da semana vai para a lista "Rotina, estudos e registros" do Histórico |
+
+- **Regra, a reconciliação total:** a cada espelho de deploy e a cada `claude-plan-100.py aplicar`, a Canais roda
+  `.claude/trello/reconciliar.py` (primeiro sem `--aplicar`, que só relata, depois com ele). O script confere **todos** os
+  cartões do quadro Execução com o estado do plano e o deploy de cada item (commit "merge: ID na suíte N"; sem ele, o id
+  citado na seção do deploy no CHANGELOG; sem ele, a hora da classificação contra a hora do registro), e só **relata** o
+  Histórico (item que o plano não dá como feito) e o Programa (métrica, custo e risco sem leitura datada). É idempotente:
+  a segunda rodada não acha nada para mudar, e a linha nova troca a antiga em vez de empilhar. A linha escrita passa por
+  `redacao.redigir` e só carrega o que o estado do plano diz.
+- **Hoje:** `.claude/trello/reconciliar.py` (testes em `.claude/trello/test_reconciliar.py`), a rotina da skill `trello` e o
+  aviso no fim do `aplicar` do plano. As exceções acima (sem estado, "Espera você") ficam num relato para o dono ver.
+- **No produto:** nada ainda. A Central só tem o espelho dos avisos; levar a reconciliação para dentro dela é decisão a
+  tomar com a orquestradora (item novo).
+- **Prova:** `simulated` (`.claude/trello/test_reconciliar.py`, 17 testes com dados fictícios). `real`: ensaio e aplicação
+  nos três quadros em 06/10/2026 contra o Trello do dono, pela API da Central. A segunda rodada saiu sem ação e a auditoria
+  de antes e depois está em `.claude/handoffs/canais/auditoria-trello-06-10.md` (fora do Git).
+
 ## 6. O Telegram
 
 **C-19 · Resumo e urgência.**

@@ -6374,18 +6374,20 @@
   },
   "31.13": {
    "id": "31.13",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "04/10/2026. Histórico real (só leitura, sem custo): 427 execuções reais, 173 com sucesso comprovado, 99 com required_apps = 102 pares execução×app; em 102 o app é citado no comando: 0 paráfrases que a regex perde. Bateria sintética autorizada (teto US$ 0,05): 24 casos (16 rótulo SIM com controle NAO confirmado por apps_citados, 8 negativos, 2 deles citando o app sem exigi-lo), 48 chamadas ao Jev (jev-1.13.0) pelo caminho do braço offline (rodar/montar_r5/decisor_real por importlib, filtro de privacidade do runtime), 48 ok, US$ 0,002384. Limiar 0,85: paráfrases pegas 4 de 16 em en e 4 de 16 em pt (8 de 16 com p_sim >= 0,5); precisão do sim 4 de 4; falsos SIM 0 de 8 (maior p_sim 0,18); en x pt 24 de 24 iguais. Pegas: apelido, sinônimo de configurações, nome sem hífen. Perdidas: navegador/browser para o Chrome (p 0,09-0,14), e-mail da Microsoft para o Outlook, rede de fotos para o Instagram, mensageiro de teste para o QA (0,71-0,84), VPN para o WireGuard; o nome entre aspas é mascarado pelo filtro de privacidade. Arquivo: .claude/handoffs/jev-scratch-2026-10-03/r5-sintetica-3113.json.",
-   "blocker": "Sem caso real em 427 execuções; a sintética mede 4 de 16 paráfrases pegas (en e pt) no limiar 0,85. R5_LIBERADA segue False.",
-   "arquivos": [],
-   "testes": [],
-   "grupo": "jev-31-13-sintetica",
-   "modelo": "claude-opus-5-5",
+   "evidence": "Ponta ed0059e8. Simulado: backend/tests/test_decisao_fechada_apps.py::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_decisao_fechada_apps.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-44",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T17:22:11+00:00"
+   "quando": "2026-10-06T02:15:59+00:00"
   },
   "31.22": {
    "id": "31.22",
@@ -9291,21 +9293,21 @@
   },
   "31.89": {
    "id": "31.89",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "#434, ponta 20d4d645, só F1 e F6. Simulado: backend/tests/test_fluxo_casamento_especifico.py::*, backend/tests/test_intencao_resolucao.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "evidence": "Backend c5af41b1 (Jev) e painel 94404535 (Portal). Simulado: backend/tests/test_fluxos_parecidos_e_colisao.py::*, frontend/src/features/aprendizado/AprendizadoPage.test.tsx::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
    "blocker": null,
    "arquivos": [
-    "backend/tests/test_fluxo_casamento_especifico.py",
-    "backend/tests/test_intencao_resolucao.py"
+    "backend/tests/test_fluxos_parecidos_e_colisao.py",
+    "frontend/src/features/aprendizado/AprendizadoPage.test.tsx"
    ],
-   "nota": "o PR cobre só uma parte do item; status e prova ficam para a frente dizer se fecha",
-   "grupo": "android-suite-38",
-   "modelo": "claude-opus-5-5",
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-44",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T16:25:16+00:00"
+   "quando": "2026-10-06T02:15:59+00:00"
   },
   "29.132": {
    "id": "29.132",
@@ -9381,14 +9383,14 @@
    "id": "31.87",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real, só leitura e sem IA (06/10 01:21Z, máquina central, backend no ar no commit f15ef2e1, migração 116; leitura do SQLite central em mode=ro pelo script .claude/handoffs/aprendizado/prova3187_mascara.py, que nunca imprime valor da persona, só o nome da coluna e contagens). Sessão de treino trn-1nuBzRHaAkM09f6K (android-04, persona de teste, status saved, 06/10 01:03Z) e fluxo f-fe11676e54e3 (source training:trn-1nuBzRHaAkM09f6K, criado 01:09Z). Valores da persona procurados: display_name, first_name, last_name e birth_date (os que têm 3 ou mais caracteres). PROVADO: (a) eventos sem o dado em claro em nenhuma das três buscas: os 18 eventos que citam a sessão, os 34 eventos do android-04 desde o início do treino e o evento que cita o fluxo (log de 01:09:14Z). Nenhum deles traz o marcador '<dado da persona>' nem '{perfil_', ou seja, nenhum evento carregou o dado; (b) fluxo salvo (name, command_template, match_key, plan) sem o dado em claro. A persona aparece só como {perfil_nome_exibicao}, em steps[1].postcondition.value e .description (etapa pesquisar_persona, post text_visible). O comando não tem parâmetro, e plan.parameters está vazio: o marcador não virou parâmetro; (c) as 4 receitas do treino (201 a 204) são só tap, sem texto. NÃO PROVADO: a reprodução. Nenhuma execução tem flow_id ou prova_fluxo_id deste fluxo, e nenhuma execução no android-04 depois da criação. A Portal desligou o fluxo no percurso do deploy 43 (trilha: published por training:trn-1nuBzRHaAkM09f6K, depois disabled por 'Portal (sessão Claude)'). ACHADOS: (1) a proposta guardada em training_sessions.proposal tem o nome da persona em claro em um único lugar, answers[1].question, o texto da pergunta da IA a quem ensinou (31.91). Não é evento nem reprodução, mas fica no banco; o na_proposta do F2 não troca questions nem answers; (2) a entrada digitada (seq 2, texto de 15 caracteres, guardada em training_inputs por desenho, 31.82) não virou binding nem receita na etapa pesquisar_persona. O dado entrou só na pós-condição, então a reprodução dessa etapa depende da IA ler a etapa sem o valor a digitar. Vale conferir na próxima prova real com reprodução.",
-   "blocker": "A reprodução não rodou: o fluxo f-fe11676e54e3 foi desligado pela Portal antes de qualquer execução. Fechar o 31.87 pede uma execução real do fluxo ensinado (ou de outro ensinado com dado da persona) no aparelho da persona, e conferir nos eventos e nas ações da reprodução que só sai o marcador. Isso é execução real com IA paga: pede o sim da orquestradora.",
+   "evidence": "Real, só leitura e sem IA (06/10 01:21Z, máquina central, backend no ar no commit f15ef2e1, migração 116; leitura do SQLite central em mode=ro pelo script .claude/handoffs/aprendizado/prova3187_mascara.py, que nunca imprime valor da persona, só o nome da coluna e contagens). Sessão de treino trn-1nuBzRHaAkM09f6K (android-04, persona de teste, status saved, 06/10 01:03Z) e fluxo f-fe11676e54e3 (source training:trn-1nuBzRHaAkM09f6K, criado 01:09Z). Valores da persona procurados: display_name, first_name, last_name e birth_date (os que têm 3 ou mais caracteres). PROVADO: (a) eventos sem o dado em claro em nenhuma das três buscas: os 18 eventos que citam a sessão, os 34 eventos do android-04 desde o início do treino e o evento que cita o fluxo (log de 01:09:14Z). Nenhum deles traz o marcador '<dado da persona>' nem '{perfil_', ou seja, nenhum evento carregou o dado; (b) fluxo salvo (name, command_template, match_key, plan) sem o dado em claro. A persona aparece só como {perfil_nome_exibicao}, em steps[1].postcondition.value e .description (etapa pesquisar_persona, post text_visible). O comando não tem parâmetro, e plan.parameters está vazio: o marcador não virou parâmetro; (c) as 4 receitas do treino (201 a 204) são só tap, sem texto. NÃO PROVADO: a reprodução. Nenhuma execução tem flow_id ou prova_fluxo_id deste fluxo, e nenhuma execução no android-04 depois da criação. A Portal desligou o fluxo no percurso do deploy 43 (trilha: published por training:trn-1nuBzRHaAkM09f6K, depois disabled por 'Portal (sessão Claude)'). ACHADOS: (1) a proposta guardada em training_sessions.proposal tem o nome da persona em claro em um único lugar, answers[1].question, o texto da pergunta da IA a quem ensinou (31.91). Não é evento nem reprodução, mas fica no banco; o na_proposta do F2 não troca questions nem answers; (2) a entrada digitada (seq 2, texto de 15 caracteres, guardada em training_inputs por desenho, 31.82) não virou binding nem receita na etapa pesquisar_persona. O dado entrou só na pós-condição, então a reprodução dessa etapa depende da IA ler a etapa sem o valor a digitar. Vale conferir na próxima prova real com reprodução. || REPRODUÇÃO REAL (06/10 01:23:40–01:27:18Z, máquina central, backend no ar em f15ef2e1; sim da orquestradora 01:21Z): fluxo f-fe11676e54e3 religado, execução r-20261006012340-d92795 no android-04 com a persona de teste (sem conta real; chave lote:aprendizado:31.87-rep; runs.flow_id = o fluxo), e o fluxo desligado de novo (PUT 200, flows.status=disabled conferido no banco às 01:35Z). Varredura só leitura: .claude/handoffs/aprendizado/prova3187_rep.py e prova3187_onde.py, que só imprimem nomes de coluna e contagens. PROVADO: o dado vai à tela pela reprodução. runs.plan leva só o marcador {perfil_ (2), e o executor o resolveu: 4 ações type_text com o nome de exibição da persona no campo de busca do Configurações, e a tela mostrou o resultado para o termo. NÃO PROVADO, e o registro REFUTA: o dado NÃO fica só mascarado. Aparece em claro em steps.postcondition (2 linhas: as duas tentativas de pesquisar_persona), em actions.args (type_text 4, step_done 3, step_blocked 1), em actions.rationale (2) e em actions.target (1), em attempts.error (1), e em 36 textos de eventos (action.logged 20, step.updated 9, evidence.added 4, decision 2, attempt.updated 1). Nenhum marcador '<dado da persona>' no registro. O F2 mascara o ENSINO (proposta, fluxo salvo, eventos do treino), não o registro da EXECUÇÃO. A etapa pesquisar_persona falhou em ia_orcamento (10 chamadas): a busca do Configurações roda em com.google.android.settings.intelligence, e a pós-condição exige com.android.settings (step_blocked app_incompatible), defeito do fluxo ensinado e não da máscara. CUSTO: US$ 0,331 (tokens × ai.prices: sonnet-5 31 chamadas 0,266; opus-5-5 1 chamada 0,065; jev 0,00007), ACIMA do teto de US$ 0,10. O corte do script não disparou porque GET /api/runs/{id} não traz planning.costs (o campo veio nulo). Falha minha no corte, registrada.",
+   "blocker": "Duas decisões para a orquestradora. (1) Escopo: o 31.87 pede o mascaramento também no registro da execução (etapas, ações e eventos)? Hoje o executor grava o valor resolvido. Mascarar ali é item novo de executor e de eventos, fora do F2, e precisa decidir se a pós-condição e a evidência da tela guardam o marcador. (2) O fluxo ensinado f-fe11676e54e3 não se reproduz (pacote da busca do Configurações), então a prova completa pede outro ensino ou o ajuste da pós-condição. Nova execução real pede novo sim; o teto exige corte por ai_calls, não pela API do run.",
    "grupo": "31-87-aprendizado-prova-da-mascara",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T01:21:54+00:00"
+   "quando": "2026-10-06T02:15:59+00:00"
   },
   "31.100": {
    "id": "31.100",
@@ -10197,6 +10199,178 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T01:13:11+00:00"
+  },
+  "31.110": {
+   "id": "31.110",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 10935d97. Simulado: backend/tests/test_treino_refazer_aparelho_sem_resposta.py::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_refazer_aparelho_sem_resposta.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-44",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "30.85": {
+   "id": "30.85",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Backend 05f60824 (Aprendizado) e a tela 94404535 (Portal). Simulado: backend/tests/test_livro_selo_em_prova.py::*, frontend/src/features/aprendizado/AprendizadoPage.test.tsx::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_livro_selo_em_prova.py",
+    "frontend/src/features/aprendizado/AprendizadoPage.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-44",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "30.76": {
+   "id": "30.76",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Junção da Aprendizado dc44836a, com o conserto 1d8ce28a. Simulado: backend/tests/test_leitura_que_nao_gira_sobras.py::*, backend/tests/test_curador_classe_b.py::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_leitura_que_nao_gira_sobras.py",
+    "backend/tests/test_curador_classe_b.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-44",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "30.77": {
+   "id": "30.77",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Junção da Aprendizado dc44836a (migração 117_versao_do_texto_do_parecer). Simulado: backend/tests/test_parecer_versao_do_texto.py::*, backend/tests/test_migracao_069_revisoes.py::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_parecer_versao_do_texto.py",
+    "backend/tests/test_migracao_069_revisoes.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; a migração entra no ensaio do deploy",
+   "grupo": "android-suite-44",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "30.78": {
+   "id": "30.78",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Junção da Aprendizado dc44836a (migração 118_fuso_da_ultima_atualizacao). Simulado: backend/tests/test_fuso_na_inspecao.py::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_fuso_na_inspecao.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; a migração entra no ensaio do deploy",
+   "grupo": "android-suite-44",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "28.42": {
+   "id": "28.42",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "2026-10-05 — 28.42: o fim real da execução chega à conversa que a criou (branch canais/28-42-desfecho-rearmado) | - Prova: `simulated` (`backend/tests/test_telegram_entrada.py`: o fim depois do parou, a parada que segue parada, a",
+   "grupo": "estado-atrasado-06-10",
+   "modelo": "n/a",
+   "esforco": "n/a",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "28.43": {
+   "id": "28.43",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "2026-10-05 — 28.43: recado curto demais não vira \"erro aqui dentro\" (branch canais/28-43-recado-curto) | - Prova: `simulated` (`backend/tests/test_telegram_entrada.py` e `test_telegram_portas.py`, com 1 e 2 caracteres).",
+   "grupo": "estado-atrasado-06-10",
+   "modelo": "n/a",
+   "esforco": "n/a",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "28.44": {
+   "id": "28.44",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "2026-10-05 — 28.44: a resposta solta casa com a pergunta de escolha aberta (branch canais/28-44-escolha-solta) | - Prova: `simulated` (`backend/tests/test_telegram_entrada.py`, 9 testes do 28.44, e",
+   "grupo": "estado-atrasado-06-10",
+   "modelo": "n/a",
+   "esforco": "n/a",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "28.46": {
+   "id": "28.46",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "2026-10-05 — 28.46: a foto da etapa conferida contra a prévia da própria Central (branch canais/28-46-foto-pela-central) | - Prova:",
+   "grupo": "estado-atrasado-06-10",
+   "modelo": "n/a",
+   "esforco": "n/a",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "29.134": {
+   "id": "29.134",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "2026-10-05 — 29.134: GitHub Copilot no repositório (revisão de PR sob pedido e ambiente do agente de nuvem) | - Prova `real` para a revisão: três PRs em 05/10, 566,87 créditos (US$ 5,67), 10 achados e 9 confirmados pelas frentes. Prova `not_run` para o agente de nuvem.",
+   "grupo": "estado-atrasado-06-10",
+   "modelo": "n/a",
+   "esforco": "n/a",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "30.79": {
+   "id": "30.79",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita) | - Prova `simulated`: `backend/tests/test_treino_substitui_receita.py` (6), verificado por mutação com 5 regras.",
+   "grupo": "estado-atrasado-06-10",
+   "modelo": "n/a",
+   "esforco": "n/a",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
+  },
+  "28.45": {
+   "id": "28.45",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "28.45: a foto da etapa ao dono só com o sha256 da prévia conferido; ponta 565e0de2 (canais/28-45-foto-da-etapa), na main pelo merge 1f8a246c (28.45 no 28.44) via PR 412 e merge 74dc6b34 na suíte 37; no ar desde o deploy 37. Prova simulated: .claude/canais/test_telegram_status.py (sobre .claude/canais/telegram_status.py); real not_run (conferência por mensagem real não registrada).",
+   "grupo": "estado-atrasado-06-10",
+   "modelo": "n/a",
+   "esforco": "n/a",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T02:15:59+00:00"
   }
  },
  "rodadas": [
@@ -13095,6 +13269,45 @@
   },
   {
    "quando": "2026-10-06T01:21:54+00:00",
+   "itens": [
+    "31.87"
+   ],
+   "grupos": [
+    "31-87-aprendizado-prova-da-mascara"
+   ]
+  },
+  {
+   "quando": "2026-10-06T02:15:59+00:00",
+   "itens": [
+    "31.89",
+    "31.13",
+    "31.110",
+    "30.85",
+    "30.76",
+    "30.77",
+    "30.78"
+   ],
+   "grupos": [
+    "android-suite-44"
+   ]
+  },
+  {
+   "quando": "2026-10-06T02:15:59+00:00",
+   "itens": [
+    "28.42",
+    "28.43",
+    "28.44",
+    "28.46",
+    "29.134",
+    "30.79",
+    "28.45"
+   ],
+   "grupos": [
+    "estado-atrasado-06-10"
+   ]
+  },
+  {
+   "quando": "2026-10-06T02:15:59+00:00",
    "itens": [
     "31.87"
    ],

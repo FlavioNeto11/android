@@ -1,10 +1,22 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `f15ef2e1` (migração 116, deploy 43); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `33c7d5ab` (migração 118, deploy 44); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 44 no ar (06/10/2026, 02:15Z, central `33c7d5ab`, migrações 117 e 118, novas).** Oito pontas sobre `b8c37ef7`:
+  aprendizado 30.76, 30.77, 30.78 e 30.85; ensino 31.89 (+ painel) e 31.110; sombra da R5 31.13 (decisão P-013 do dono);
+  script de troca de nomes. Detalhe no [CHANGELOG](../CHANGELOG.md) e no [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): ensaio com a cópia `dataackups61005-231126` (117 e 118 numa cópia restaurada);
+    deploy com `-PularBackup`; saúde ok, migração mais alta 118; prova de fora como esperado; agente `0.1.0+33c7d5a`;
+    aparelhos 01, 03, 06 e 13 online; config com `consumidores.apps: shadow` carregada sem aviso; hooks sem erro.
+  - `simulated` (suíte 44): números do CHANGELOG.
+  - `not_run`: percurso no navegador (Portal, a seguir); relatório da sombra da R5.
+  - Plano-100: resultado da suíte 44, os sete itens sem estado (auditoria do Trello) e a prova do 31.87 aplicados; IDs
+    novos 28.55, 29.153 e 31.113 (670 itens). Trello reconciliado nos três quadros pela Canais (regra C-28, código no corte
+    45). Corte 45 em montagem: PRs do Copilot 462, 463 e 465, 31.90-D painel, 31.112, reconciliação do Trello, troca ampla
+    de nomes (só testes) e 31.111 F1+F2 (migração 119).
 - **Deploy 43 no ar (06/10/2026, 00:50Z, central `f15ef2e1`, sem migração nova; segue a 116).** Sete pontas sobre
   `2e41f18b`, todas do ensino: 31.87 F2 (identidade e ensino com dados da persona), 31.88 F2 (escopo ao provar), 31.90-C/D/E/F
   (revisão do ensino: perguntas da IA, correção do gravado, undo), 31.91 F1, 31.108 e 29.104; mais o teste do 28.54.

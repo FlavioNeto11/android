@@ -94,7 +94,7 @@ def _vincular(db: Database, pid: str, iid: str, *, worker_id: str | None = None,
                (pid, iid, to_iso(AGORA), worker_id, physical_id, to_iso(AGORA) if locality else None))
 
 
-def _sessao(db: Database, pid: str, status: str, *, iid: str = "android-01", username: str | None = "lucas",
+def _sessao(db: Database, pid: str, status: str, *, iid: str = "android-01", username: str | None = "tadeu",
             verificada: datetime | None = AGORA, streak: int = 0, conta: str | None = None) -> None:
     db.execute("INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at,"
                " updated_at, unknown_streak) VALUES (?,?,?,?,?,?,?)",
@@ -254,33 +254,33 @@ def _identidades(db: Database) -> None:
     AppRepository(db).criar(app_id="outlook", name="Outlook", package="com.microsoft.office.outlook")
     for i, iid in enumerate(("android-01", "android-02", "android-03", "android-04", "android-05"), 1):
         _instancia(db, iid, i, worker_id="notebook" if iid == "android-04" else None, physical_id=f"fp-{i}")
-    _perfil(db, "p-lucas", "lucas")
-    _perfil(db, "p-bruno", "bruno", status="blocked")
-    _perfil(db, "p-andre", "andre")
+    _perfil(db, "p-tadeu", "tadeu")
+    _perfil(db, "p-quillon", "quillon", status="blocked")
+    _perfil(db, "p-ottilie", "ottilie")
     _perfil(db, "p-ana", "ana", policy="reauth_elsewhere")
-    _vincular(db, "p-lucas", "android-01", physical_id="fp-1")
-    _vincular(db, "p-bruno", "android-02", physical_id="fp-2")
-    _vincular(db, "p-andre", "android-03", physical_id="fp-3")
+    _vincular(db, "p-tadeu", "android-01", physical_id="fp-1")
+    _vincular(db, "p-quillon", "android-02", physical_id="fp-2")
+    _vincular(db, "p-ottilie", "android-03", physical_id="fp-3")
     _vincular(db, "p-ana", "android-04", worker_id=None, physical_id="fp-4")    # a 04 foi para o notebook
-    _sessao(db, "p-lucas", "session_ready")
-    _sessao(db, "p-andre", "unknown", iid="android-03", username=None, verificada=None, streak=3)
-    _credencial(db, "p-lucas")
+    _sessao(db, "p-tadeu", "session_ready")
+    _sessao(db, "p-ottilie", "unknown", iid="android-03", username=None, verificada=None, streak=3)
+    _credencial(db, "p-tadeu")
     _credencial(db, "p-ana", status="invalid")
     db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
                " VALUES (?,?,?,?,?,?,?)",
-               ("c-1", "p-lucas", "outlook", "lucas@exemplo.test", "active", to_iso(AGORA), to_iso(AGORA)))
+               ("c-1", "p-tadeu", "outlook", "tadeu@exemplo.test", "active", to_iso(AGORA), to_iso(AGORA)))
     # A marcação da pessoa ("saí") é a sessão da conta no aparelho, no vocabulário único (049).
-    _sessao(db, "p-lucas", "auth_required", username=None, verificada=None, conta="c-1")
+    _sessao(db, "p-tadeu", "auth_required", username=None, verificada=None, conta="c-1")
 
 
 def test_account_binding_le_o_vinculo_ativo(banco: Database) -> None:
     _identidades(banco)
     p = AccountBindingProvider(banco)
     antes = _foto(banco)
-    lucas = p.read_current_state(VINCULO.ref, Target("android-01"))
-    assert (lucas.profile_id, lucas.username) == ("p-lucas", "lucas")
-    assert p.diff(VINCULO, lucas).code == BindingCode.bound
-    pedido_outro = p.read_current_state(VINCULO.ref, Target("android-01", "p-andre"))
+    tadeu = p.read_current_state(VINCULO.ref, Target("android-01"))
+    assert (tadeu.profile_id, tadeu.username) == ("p-tadeu", "tadeu")
+    assert p.diff(VINCULO, tadeu).code == BindingCode.bound
+    pedido_outro = p.read_current_state(VINCULO.ref, Target("android-01", "p-ottilie"))
     assert p.diff(VINCULO, pedido_outro).code == BindingCode.bound_to_other
     livre = p.read_current_state(VINCULO.ref, Target("android-05"))
     assert livre.profile_id is None and [a.purpose.value for a in p.plan(p.diff(VINCULO, livre))] == ["ask"]
@@ -295,19 +295,19 @@ def test_app_session_le_provedor_conta_localidade_validade_e_teto(banco: Databas
     def ler(spec: ResourceSpec, iid: str) -> Any:
         return p.read_current_state(spec.ref, Target(iid))
 
-    lucas = ler(SESSAO, "android-01")
-    assert lucas.provider is not None and lucas.account is None and lucas.profile_status is ProfileStatus.active
-    assert (lucas.provider.status, lucas.provider.credential, lucas.provider.stale) == (
+    tadeu = ler(SESSAO, "android-01")
+    assert tadeu.provider is not None and tadeu.account is None and tadeu.profile_status is ProfileStatus.active
+    assert (tadeu.provider.status, tadeu.provider.credential, tadeu.provider.stale) == (
         SessionStatus.session_ready, CredentialState.usable, False)
-    assert p.diff(SESSAO, lucas).status is DriftStatus.in_sync
+    assert p.diff(SESSAO, tadeu).status is DriftStatus.in_sync
 
-    bruno = ler(SESSAO, "android-02")
-    assert bruno.profile_status is ProfileStatus.blocked and p.diff(SESSAO, bruno).code == SessionCode.profile_inactive
-    assert bruno.provider is not None and bruno.provider.status is None             # sem linha de sessão
+    quillon = ler(SESSAO, "android-02")
+    assert quillon.profile_status is ProfileStatus.blocked and p.diff(SESSAO, quillon).code == SessionCode.profile_inactive
+    assert quillon.provider is not None and quillon.provider.status is None             # sem linha de sessão
 
-    andre = ler(SESSAO, "android-03")
-    assert andre.provider is not None and andre.provider.unknown_capped             # vinculado: teto 1 (29.92)
-    assert p.diff(SESSAO, andre).code == SessionCode.unrecognized_screen
+    ottilie = ler(SESSAO, "android-03")
+    assert ottilie.provider is not None and ottilie.provider.unknown_capped             # vinculado: teto 1 (29.92)
+    assert p.diff(SESSAO, ottilie).code == SessionCode.unrecognized_screen
 
     ana = ler(SESSAO, "android-04")
     assert ana.locality_moved and ana.reauth_elsewhere
@@ -334,7 +334,7 @@ def test_app_session_validade_e_teto_vem_de_quem_compoe(banco: Database) -> None
     assert obs.provider is not None and obs.provider.stale
     assert [(a.purpose.value, a.verb) for a in depois.plan(depois.diff(SESSAO, obs))] == [
         ("observe", "session.verify")]
-    # Validade 0 desliga o vencimento, como em `sessao_vencida`. O teto maior NÃO tira o andre do bloqueio: o
+    # Validade 0 desliga o vencimento, como em `sessao_vencida`. O teto maior NÃO tira o ottilie do bloqueio: o
     # android-03 tem vínculo ativo (conta real), e aí o teto é 1, o mesmo da porta (29.92).
     frouxo = _sessoes(banco, validade_s=0, teto=10)
     assert frouxo.read_current_state(SESSAO.ref, Target("android-03")).provider.unknown_capped is True  # type: ignore[union-attr]
@@ -342,11 +342,11 @@ def test_app_session_validade_e_teto_vem_de_quem_compoe(banco: Database) -> None
 
 def test_app_session_sem_vinculo_no_aparelho_da_sessao_usa_o_teto_de_quem_compoe(banco: Database) -> None:
     """T1 da leitura do #371: o teto global (o de quem compõe) ainda vale onde a SESSÃO lida está num aparelho sem
-    vínculo — o caminho do "a sessão é de outro aparelho": o andre está vinculado ao android-03, mas a única linha de
+    vínculo — o caminho do "a sessão é de outro aparelho": o ottilie está vinculado ao android-03, mas a única linha de
     sessão dele é do android-05, que não tem vínculo. Lá o teto é o global, não 1."""
     _identidades(banco)
-    banco.execute("DELETE FROM account_sessions WHERE account_id='acc-p-andre'")
-    _sessao(banco, "p-andre", "unknown", iid="android-05", username=None, verificada=None, streak=2)
+    banco.execute("DELETE FROM account_sessions WHERE account_id='acc-p-ottilie'")
+    _sessao(banco, "p-ottilie", "unknown", iid="android-05", username=None, verificada=None, streak=2)
 
     def capped(teto: int) -> bool | None:
         obs = _sessoes(banco, teto=teto).read_current_state(SESSAO.ref, Target("android-03"))
@@ -363,16 +363,16 @@ def test_app_session_com_vinculo_para_no_primeiro_unknown_como_a_porta(banco: Da
     (`SocialRepository.teto_de_unknown`). A prévia diz "assuma o controle" e nenhum `session.verify` é planejado —
     antes, com o teto global 3, ela dizia "não verificada" e planejava a releitura enquanto a porta pedia a pessoa."""
     _identidades(banco)
-    banco.execute("UPDATE account_sessions SET unknown_streak=1 WHERE account_id='acc-p-andre'")
+    banco.execute("UPDATE account_sessions SET unknown_streak=1 WHERE account_id='acc-p-ottilie'")
     p = _sessoes(banco, teto=3)
-    andre = p.read_current_state(SESSAO.ref, Target("android-03"))
-    assert andre.provider is not None and andre.provider.unknown_capped
-    drift = p.diff(SESSAO, andre)
+    ottilie = p.read_current_state(SESSAO.ref, Target("android-03"))
+    assert ottilie.provider is not None and ottilie.provider.unknown_capped
+    drift = p.diff(SESSAO, ottilie)
     assert (drift.status, drift.code) == (DriftStatus.blocked, SessionCode.unrecognized_screen)
     assert all(a.verb != "session.verify" for a in p.plan(drift))
 
     # Ainda sem nenhuma leitura de tela (contador 0), a sessão segue "não verificada" e pede a releitura.
-    banco.execute("UPDATE account_sessions SET unknown_streak=0 WHERE account_id='acc-p-andre'")
+    banco.execute("UPDATE account_sessions SET unknown_streak=0 WHERE account_id='acc-p-ottilie'")
     zero = p.read_current_state(SESSAO.ref, Target("android-03"))
     assert zero.provider is not None and zero.provider.unknown_capped is False
     assert [(a.purpose.value, a.verb) for a in p.plan(p.diff(SESSAO, zero))] == [("observe", "session.verify")]
@@ -383,8 +383,8 @@ def test_app_session_teto_velho_nao_e_teto(banco: Database) -> None:
     o teto gravado ANTES de o emulador subir, ou mais velho que a validade, não trava — pede releitura
     (`session.verify`), como o `unknown` de antes do teto. O android-01 ficou preso ~47 h por um teto de 26/09."""
     _identidades(banco)
-    andre = _sessoes(banco).read_current_state(SESSAO.ref, Target("android-03"))
-    assert andre.provider is not None and andre.provider.unknown_capped             # gravado agora: trava
+    ottilie = _sessoes(banco).read_current_state(SESSAO.ref, Target("android-03"))
+    assert ottilie.provider is not None and ottilie.provider.unknown_capped             # gravado agora: trava
 
     # O emulador subiu DEPOIS da gravação: o que se viu era do boot anterior.
     banco.execute("UPDATE instances SET emulator_started_at=? WHERE id='android-03'",
@@ -405,6 +405,6 @@ def test_app_session_teto_velho_nao_e_teto(banco: Database) -> None:
 def test_localidade_sem_registro_nunca_acusa_troca(banco: Database) -> None:
     AppRepository(banco).criar(app_id="instagram", name="Instagram", package=IG)
     _instancia(banco, "android-01", 1, worker_id="notebook")
-    _perfil(banco, "p-lucas", "lucas")
-    _vincular(banco, "p-lucas", "android-01", locality=False)
+    _perfil(banco, "p-tadeu", "tadeu")
+    _vincular(banco, "p-tadeu", "android-01", locality=False)
     assert not _sessoes(banco).read_current_state(SESSAO.ref, Target("android-01")).locality_moved
