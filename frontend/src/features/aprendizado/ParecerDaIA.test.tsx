@@ -240,6 +240,7 @@ describe('parecer da IA no detalhe', () => {
     await montar(<DetalheRico detalhe={detalhe([], ON)} onMudou={mudou} />);
     const sec = secao();
     expect(text(sec)).toContain('O curador ainda não revisou este item.');
+    expect(byRole('button', /Pedir revisão ao curador/, sec).getAttribute('title')).toBe('Pede ao curador (IA) que reveja este item na próxima volta; não muda o estado dele.');   // 31.134
     await click(byRole('button', /Pedir revisão ao curador/, sec));
     await waitFor(() => expect(text(sec)).toContain('Pedido registrado'));
     expect(chamadas(/\/revisao$/)[0]?.path).toBe('/api/aprendizado/licao/li-b/revisao');

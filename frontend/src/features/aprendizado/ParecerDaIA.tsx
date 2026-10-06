@@ -144,7 +144,7 @@ function PedirRevisao({ item, onMudou }: { item: EntradaDoLivro; onMudou?: () =>
   };
   return (
     <div className={styles.pedirRevisao}>
-      <Button size="sm" variant="ghost" icon={RefreshCw} loading={enviando} onClick={() => void pedir()}>Pedir revisão ao curador</Button>
+      <Button size="sm" variant="ghost" icon={RefreshCw} loading={enviando} title="Pede ao curador (IA) que reveja este item na próxima volta; não muda o estado dele." onClick={() => void pedir()}>Pedir revisão ao curador</Button>
       {aviso ? <p role="status" className={aviso.erro ? styles.erroInline : styles.secaoLead}>{aviso.texto}</p> : null}
     </div>
   );

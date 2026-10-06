@@ -144,3 +144,27 @@ it('31.129: sem o campo (etapa antiga) ou com a lista vazia, nenhuma linha', asy
   await waitFor(() => expect(d.textContent).toContain('Rolar a lista para ver o item'));
   expect(d.textContent).not.toContain('Também aceita concluir em');
 });
+
+// 31.132: o diálogo da sessão salva diz o estado de hoje do fluxo (o Livro manda) e leva ao item.
+it('31.132: o fluxo da sessão salva mostra o estado no Livro (Desligado) e o link para o item', async () => {
+  backend.on('GET', /\/aprendizado\/fluxo\/f-455f91437856$/, () => json({
+    item: { kind: 'fluxo', ref: 'f-455f91437856', state: 'disabled', title: 'Confirmar item', nascido_de_prova: true },
+    evidencias: [], trilha: [], exposicoes: [],
+  }));
+  const d = await abrirSalva();
+  const estado = await waitFor(() => { const e = d.querySelector('[aria-label="Estado do fluxo no Livro"]'); expect(e).toBeTruthy(); return e as HTMLElement; });
+  expect(estado.textContent).toContain('No Livro agora: Desligado');
+  expect(estado.textContent).toContain('só uma pessoa o reativa');
+  expect(byRole('link', /Abrir no Livro/, d).getAttribute('href')).toBe('#/aprendizado?aba=aprendido&item=fluxo%3Af-455f91437856');
+  await flush(ATRASO_MAXIMO + 30);
+});
+
+// 31.134: o "confere" da proposta salva também fala em palavras, sem o marcador cru do dado da persona.
+it('31.134: o confere da etapa na sessão salva troca o marcador da persona por palavras', async () => {
+  const marcada = { ...SALVA, proposal: { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, postcondition: { kind: 'text_visible', value: 'x', description: 'O campo mostra o texto {perfil_nome}' } }] } };
+  backend.on('GET', /\/training\/trn-s$/, () => json(marcada));
+  const d = await abrirSalva();
+  await waitFor(() => expect(d.textContent).toContain('confere: O campo mostra o texto [nome da persona]'));
+  expect(d.textContent).not.toContain('{perfil_nome}');
+  await flush(ATRASO_MAXIMO + 30);
+});

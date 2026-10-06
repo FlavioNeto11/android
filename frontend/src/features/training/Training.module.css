@@ -83,6 +83,9 @@
 .bannerList { margin: 4px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
 .bannerList li + li { margin-top: 2px; }
 
+/* 31.132: o estado do fluxo no Livro, o próximo passo e o link para o item. */
+.noLivro { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); margin: 0; font-size: var(--fs-sm); }
+.linkDoLivro { color: var(--accent-text, var(--accent)); text-decoration: underline; text-underline-offset: 2px; }
 /* 31.128: o aviso de que a conferência já vale na tela de partida, dentro da etapa, com as sugestões como botões. */
 .posJaVale {
   display: flex;

@@ -26,7 +26,15 @@ export interface FiltroDoLivro {
   app?: string;
   origem?: Origem;
   rotulo?: Rotulo;
+  /** 31.131: `so_prova` só os fluxos nascidos de uma prova; `sem_prova` o que sobra (uso real). Sem o campo, tudo. */
+  prova?: 'so_prova' | 'sem_prova';
 }
+
+export const PROVAS_DO_LIVRO: readonly NonNullable<FiltroDoLivro['prova']>[] = ['so_prova', 'sem_prova'];
+export const PROVA_LABEL: Record<NonNullable<FiltroDoLivro['prova']>, string> = {
+  so_prova: 'Só os nascidos de uma prova',
+  sem_prova: 'Sem os de prova (uso real)',
+};
 
 /**
  * A fila "Para aprovar" é lida por três lugares que costumam pedir juntos (o selo do topo, a caixa de Pendências e a
@@ -60,7 +68,8 @@ function decisao<T>(p: Promise<T>): Promise<T> {
 
 export const apiAprendizado = {
   livro: (f: FiltroDoLivro = {}, signal?: AbortSignal) =>
-    apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem, rotulo: f.rotulo }, signal }),
+    apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem, rotulo: f.rotulo,
+                                           nascido_de_prova: f.prova === 'so_prova' ? 'true' : f.prova === 'sem_prova' ? 'false' : undefined }, signal }),
   /** A visão por aplicativo (Global): um resumo por app, o balde `nao_resolvido` e o que não tem eixo de app. */
   apps: async (signal?: AbortSignal): Promise<VisaoDeApps> =>
     lerVisaoDeApps(await apiRequest<unknown>('GET', '/aprendizado/apps', { signal })),

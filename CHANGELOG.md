@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
+
+- Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
+- **Livro:** cada etapa do fluxo (`conteudo.etapas[].pacotes_aceitos`, opcional) ganha a linha "Também aceita concluir em: <pacote>". **Revisão do treino:** a etapa da proposta mostra a lista da prévia (`TrainingStepReport.pacotes_aceitos`, opcional) quando a IA não pôs uma na etapa; a lista da etapa vale antes, e a linha aparece uma vez só.
+- Adendo v1.89: cada linha de `steps[]` da prévia, do save e do /recipes e `conteudo.etapas[]` do Livro trazem `pacotes_aceitos: string[]` (vazio = só o app da etapa); o painel tipa como **opcional**, mostra a linha só quando não vazio e a repete no resultado do salvar, por etapa; backend anterior fica como está.
+- Só frontend e CHANGELOG. Prova `simulated`: casos novos em `TrainingReview.test.tsx` (prévia, lista vazia, a da proposta antes da prévia, resultado do salvar) e um em `DetalheRico.test.tsx`; seis mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy com o 31.140.
+
 ## 2026-10-06 — 31.128 e 31.129: a conferência que já vale vira aviso na etapa, e os pacotes que a etapa aceita aparecem (branch feat/31-128-pos-condicao-na-etapa)
 
 - Achados da conferência do painel contra os adendos v1.83 e v1.84 (deploy 50): as linhas novas de `warnings` e a recusa 400 `pos_condicao_ja_vale` chegavam como frase solta (lista de avisos da prévia, dica do "Salvar", toast), sem dizer onde mexer, e o campo `pacotes_aceitos` não aparecia em tela nenhuma.
@@ -34,6 +41,48 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **31.127** (adendo v1.85): cada etapa ensinada espera a anterior (`depends_on`), salvo `independente: true` na proposta; tipo errado dá 400 `etapa_invalida`.
 - Revisão de segredos (agente, só leitura): nem uma palavra do dado da persona vira sugestão; a entrada marcada (teclado de PIN, padrão) não guarda os elementos.
 - Prova `simulated`: `tests/test_treino_partida_f2_e_sequencia.py` (13) e os ajustes de `tests/test_etapa_pacotes_aceitos.py` (a 1ª etapa agora também aceita o vizinho) e de `tests/test_treino_previa_e_refazer_receitas.py` (a chave nova da prévia). Dirigidos: 124 arquivos um por vez, com 1944 aprovados e as 3 falhas corrigidas e rodadas de novo; `scripts/tests`: 683. Real: `not_run` até o corte 51.
+## 2026-10-06 — 31.136: o Livro leva à sessão de treino e ao aparelho de origem do fluxo (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (candidato 11): o item do fluxo "Demonstrado no treino" não dizia sessão, aparelho, quem ensinou nem quando, e não levava à sessão salva.
+- Adendo v1.88 (item 31.135, backend): em `conteudo.origem` do fluxo, `session_id` passa a vir em todo fluxo cuja fonte é sessão de treino, e entram `instance_id` (aparelho), `operator` (quem ensinou) e `ensinado_em` (data ISO do salvar), todos opcionais, `null` fora do treino. O painel tipa os campos como **opcionais** (`ConteudoDoFluxo.origem`) e a leitura fica isolada em `origemDoTreino.ts`: backend anterior (só `session_id` quando veio de falha, v1.81) segue como antes, sem a linha nova.
+- **Detalhe do fluxo no Livro:** a linha **Ensinado** ("no aparelho android-04 · há 3 h · por <pessoa>", com a data completa no `title`) e o link **Ver o treinamento salvo**, que abre o Foco do aparelho com a sessão salva em leitura (`?aba=aprendido&foco=<aparelho>&treino=<sessão>`). Sem aparelho não há link; sem nenhum dos três campos a linha não aparece; fluxo de execução não ganha a linha.
+- **Foco (`TrainingBar`):** o parâmetro `treino` abre a sessão salva em leitura uma vez e é limpo da rota; se a sessão não é deste aparelho, avisa "Treinamento não encontrado" em vez de ficar mudo.
+- Só frontend e CHANGELOG. Prova `simulated`: `origemDoTreino.test.ts` (2), dois casos em `DetalheRico.test.tsx`, três em `TrainingBar.test.tsx`; doze mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy do corte 52, com o 31.135.
+
+## 2026-10-06 — 31.134: varredura de texto do caminho de ensino e o efeito de cada botão do Livro (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (candidatos 5, 7, 8, 9 e 10; o 6 foi conferido e não é defeito, ver abaixo).
+- **Barra do Modo treinamento:** "ele vira habilidade para os perfis que você escolher" passa a "ele vira um fluxo (na revisão você escolhe para quais perfis ele vale)", que é o que o salvar cria.
+- **"Limpar o campo antes":** a dica (no formulário de iniciar e na gravação ao vivo) diz onde a opção fica ("em Controle manual, ao lado do campo de texto"); no formulário vem como "Na gravação, para trocar…".
+- **"Depois"** na revisão ganha a dica "Fecha a revisão sem salvar: a gravação continua na lista “Para revisar”." (sem edição ele fechava mudo).
+- **Código cru em texto de pessoa:** o marcador do dado da persona (`{perfil_nome}` etc., a lista fechada de `available_data.py`) vira "[nome da persona]" nas entradas gravadas (com "(preenchido na hora com o dado da persona)"), no "Confere" da revisão, da sessão salva e do detalhe do fluxo no Livro; "reconhecido por id e texto, id button2" passa a "reconhecido por identificador e texto: button2"; a chave da etapa no Livro (`abrir_rede_internet`) vira "Abrir rede internet" com a chave crua no `title`. Marcador que o painel não conhece fica como veio.
+- **O efeito de cada botão do Livro** (validar, aprovar, rejeitar, aposentar, desligar, reativar, devolver à prova, confirmar que fica): uma frase no `title` do botão e acima do campo de motivo quando a decisão abre; "Reativar" diz que publica de novo, já valendo, sem nova prova; "Pedir revisão ao curador" diz que o curador revisa na próxima volta e não muda o estado.
+- **Conferido e sem mudança (candidato 6):** o cartão de controle do Foco já mapeia `none` para "Livre — Ninguém está controlando" (`FocusPanel.tsx`); o "Controle: IA" visto na leitura era o estado do momento, e uma releitura do mesmo aparelho com `none` mostrou "Livre". Não é texto errado; se a tela mostrar "IA" com `none` na API, é estado velho da aba (não reproduzido).
+- **Do backend, só anotado (nada mexido):** "desligado por uma pessoa (panel)" no motivo do desligamento e o formato da chave de etapa no conteúdo do fluxo.
+- Só frontend e CHANGELOG. Prova `simulated`: casos em `TrainingBar.test.tsx`, `TrainingReview.test.tsx`, `SessaoSalva.test.tsx`, `DetalheRico.test.tsx`, `ParecerDaIA.test.tsx`, `NascidoDeProva.test.tsx` e `lib/marcadores.test.ts`; 16 mutações mortas; sementes 1 a 8 e 88 do fetch atrasado; typecheck e suíte do frontend (1796) verdes. Real: `not_run` até o deploy do corte 52.
+
+## 2026-10-06 — 31.133: "Salvas" legível, com data, id curto, "Ver todas" e sem o aviso repetido em toda linha (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (candidatos 3 e 4): "Salvas (as 5 mais novas de 8)" deixava as 3 mais antigas sem acesso na tela, duas linhas com o mesmo texto não se distinguiam e a frase "Etapa sem receita porque o aparelho estava fora do ar? Com ele de volta, refaça." aparecia em todas as linhas, com o aparelho online.
+- Cada linha ganha **há quanto tempo foi salva** e o **começo do id da sessão** (o id inteiro e o fluxo vão no `title`); **"Ver todas as N"** abre o resto e **"Ver só as 5 mais novas"** volta; sem mais de 5 salvas, o botão não existe.
+- O aviso fixo some da lista e vira **dica do botão "Refazer receitas"** (a lista não traz se a sessão ficou com etapa sem receita; quando o backend trouxer, o aviso pode voltar só para quem precisa). Depois de clicar, o resultado do refazer continua dizendo o que houve; no resultado do salvar o aviso segue visível, porque ali ele vale.
+- Só frontend e CHANGELOG. Prova `simulated`: `SalvasLegiveis.test.tsx` (4); oito mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy do corte 52.
+
+## 2026-10-06 — 31.132: depois de salvar, a pessoa chega ao fluxo e vê o estado dele (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (`.claude/handoffs/portal-leitura-ensino.md`, candidatos 1, 2 e 12): o resultado do salvar e o diálogo "Treinamento salvo" mostravam "Fluxo f-… salvo" com o id cru, sem link, sem o estado do fluxo e sem o próximo passo; a sessão aparecia como "salvo" enquanto o Livro mostrava o mesmo fluxo como Desligado.
+- Novo `FluxoNoLivro` no resultado do salvar e no diálogo da sessão salva: lê o estado atual do fluxo no Livro (`GET /api/aprendizado/fluxo/{id}`, só leitura) e mostra "No Livro agora: <Estado>" com os selos "em prova" e "Nascido de uma prova", o **próximo passo** pelo estado (em prova: acompanhar no Livro; espera a pessoa: o motivo em português e "Confirmar que fica"; desligado: só uma pessoa o reativa; candidato ou validado: Para aprovar; aposentado; publicado: já vale) e o link **Abrir no Livro** (`?aba=aprendido&item=fluxo:<id>`).
+- Fluxo que já não existe (404): diz isso e não oferece link morto; outra falha de leitura: avisa que não deu para ler e mantém o link.
+- Só frontend e CHANGELOG. Prova `simulated`: `FluxoNoLivro.test.tsx` (6), um caso em `SessaoSalva.test.tsx` e um em `TrainingReview.test.tsx`; oito mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy do corte 52 (percurso 52).
+
+## 2026-10-06 — 31.131: o selo "Nascido de uma prova" no Livro e em Salvas, e o filtro que separa prova de uso real (branch feat/31-131-nascido-de-prova)
+
+- Achado da leitura dos três fluxos desligados que nasceram de provas: no Livro eles pareciam fluxos reais desligados por uma pessoa, e em Salvas as sessões eram linhas comuns; nada dizia "veio de prova".
+- Adendo v1.87 (item 31.130, backend): a sessão de treino e o fluxo ganham `nascido_de_prova` (boolean). O painel tipa o campo como **opcional** (`EntradaDoLivro` e `TrainingSession`), então backend anterior segue como antes: sem o campo, nenhum selo.
+- **Selo "Nascido de uma prova"** (componente `SeloNascidoDeProva`, com a explicação no `title`) no cartão do fluxo no Livro, no Estado do detalhe do fluxo e na linha da sessão em **Salvas**; só com `nascido_de_prova === true` (`false` é desligado por falha ou uso real e não leva o selo), e só no fluxo (na lista do Livro).
+- **Filtro "Prova"** no Livro (Todos / Só os nascidos de uma prova / Sem os de prova (uso real)): manda `nascido_de_prova=true|false` na listagem e também separa no painel pela marca de cada linha, para valer com backend que ainda ignora o parâmetro.
+- **O motivo do desligamento** já saía como o backend o escreve (a frase do `por_que_nao_publica`); o painel não reescreve nada, e quando o 31.130 gravar o motivo que diz "de prova", ele aparece no cartão.
+- Só frontend e CHANGELOG; nada de reativar, aposentar ou mexer nos três fluxos. Prova `simulated`: `NascidoDeProva.test.tsx` (3), um caso em `DetalheRico.test.tsx` e um em `TrainingBar.test.tsx`; nove mutações mortas; sementes 1 a 8 e 88 do fetch atrasado; typecheck e suíte do frontend (1773) verdes. Real: `not_run` até o deploy com as duas pontas (percurso 52).
 
 ## 2026-10-06 — 29.155 (C11): a gravidade do formulário de achado começa em "nota" (branch ci/29-155-c11-gravidade)
 

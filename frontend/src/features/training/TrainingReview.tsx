@@ -27,6 +27,8 @@ import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { AvisoDaPosCondicao, lerPosCondicoes, motivoDaPosCondicao } from './PosCondicaoQueJaVale';
 import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
 import { descartarSessaoConcluida } from './descartarSessao';
+import { temMarcadorDaPersona, textoComMarcadores } from '../../lib/marcadores';
+import { FluxoNoLivro } from './FluxoNoLivro';
 import { OrigemDoTreino, SeloDeOrigem } from './OrigemDoTreino';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { useAppStore } from '../../store/app';
@@ -100,7 +102,7 @@ export function toqueSemAlvo(e: TrainingInput): string | null {
 }
 
 /** Como o seletor `unique` da gravação se lê (`recorder._CAMPOS_DO_SELETOR`): o que a receita compara no aparelho. */
-const SELETOR: Record<string, string> = { 'rid+text': 'id e texto', 'rid+desc': 'id e descrição', rid: 'id', desc: 'descrição', text: 'texto' };
+const SELETOR: Record<string, string> = { 'rid+text': 'identificador e texto', 'rid+desc': 'identificador e descrição', rid: 'identificador', desc: 'descrição', text: 'texto' };
 
 /**
  * 31.90-F: como a gravação RECONHECE o elemento tocado, para a pessoa conferir antes de salvar (a receita só vale se o
@@ -118,22 +120,22 @@ export function alvoReconhecido(e: TrainingInput): string | null {
     const filhos = t.filhos.slice(0, 3).map((f) => {
       const rotulo = f.text || f.desc;
       const fid = f.resource_id ? f.resource_id.split('/').pop() : '';
-      return [rotulo ? `“${rotulo}”` : '', fid ? `id ${fid}` : ''].filter(Boolean).join(', ');
+      return [rotulo ? `“${rotulo}”` : '', fid ? `identificador ${fid}` : ''].filter(Boolean).join(', ');
     }).filter(Boolean);
     return `reconhecido pelo que o elemento contém${filhos.length ? `: ${filhos.join('; ')}` : ''}`;
   }
-  return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `, id ${id}` : ''}`;
+  return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `: ${id}` : ''}`;
 }
 
 /** O que a etapa confere, em palavras da pessoa; o tipo cru só aparece se o backend mandar um que a tela não conhece. */
 export function textoDoConfere(pc: TrainingStep['postcondition']): string {
-  const valor = pc.value ? `“${pc.value}”` : '';
+  const valor = pc.value ? `“${textoComMarcadores(pc.value)}”` : '';
   const frase = pc.kind === 'text_visible' ? `aparece o texto ${valor || 'esperado'}`
     : pc.kind === 'element_present' ? `existe o elemento ${valor || 'esperado'}`
       : pc.kind === 'app_foreground' ? `o app ${valor || 'certo'} está na frente`
         : pc.kind === 'model_judged' ? 'a IA julga pela tela'
           : `${pc.kind} ${valor}`.trim();
-  return pc.description ? `${frase} (${pc.description})` : frase;
+  return pc.description ? `${frase} (${textoComMarcadores(pc.description)})` : frase;
 }
 
 /**
@@ -162,7 +164,9 @@ export function DescricaoEntrada({ e }: { e: TrainingInput }) {
       {e.target?.text || e.target?.desc ? <> em <strong>{e.target.text || e.target.desc}</strong></> : null}
       {semAlvo ? <span className={styles.muted}> {semAlvo}</span> : null}
       {alvo ? <span className={styles.muted}> ({alvo})</span> : null}
-      {e.type === 'text' ? (e.text !== null && !e.sensitive ? <> “{e.text}”</> : <span className={styles.muted}> (texto não gravado)</span>) : null}
+      {e.type === 'text' ? (e.text !== null && !e.sensitive
+        ? <> “{textoComMarcadores(e.text)}”{temMarcadorDaPersona(e.text) ? <span className={styles.muted}> (preenchido na hora com o dado da persona)</span> : null}</>
+        : <span className={styles.muted}> (texto não gravado)</span>) : null}
       {e.type === 'open_app' ? <> {e.app_id}</> : null}
       {e.type === 'key' ? <> {e.key_name}</> : null}
     </>
@@ -195,10 +199,14 @@ interface Escopo {
  * "Refazer receitas" (v1.58): a etapa que ficou sem receita porque o aparelho estava fora do ar ganha a receita quando
  * ele volta. Quem decide a hora é a pessoa; a chamada só grava em etapa sem receita e é idempotente (`created: 0`).
  */
-export function RefazerReceitas({ sessionId, intent, onFeito }: {
+const DICA_DE_REFAZER_RECEITAS = 'Grava a receita das etapas que ficaram sem ela porque o aparelho estava fora do ar. Se nenhuma ficou sem receita, nada muda.';
+
+export function RefazerReceitas({ sessionId, intent, dica = false, onFeito }: {
   sessionId: string;
   /** Na lista de sessões salvas, o nome no rótulo distingue um botão do outro. */
   intent?: string;
+  /** 31.133: na lista o aviso fixo ("Etapa sem receita porque…") vira dica do botão, porque a lista não sabe se a sessão ficou com etapa sem receita. */
+  dica?: boolean;
   onFeito?: (r: TrainingRecipesResult) => void;
 }) {
   const [refazendo, setRefazendo] = useState(false);
@@ -221,9 +229,10 @@ export function RefazerReceitas({ sessionId, intent, onFeito }: {
   return (
     <span className={styles.actions}>
       <Button size="sm" variant="outline" icon={RefreshCw} loading={refazendo}
-              label={intent ? `Refazer receitas de “${intent}”` : undefined} onClick={() => void refazer()}>Refazer receitas</Button>
+              label={intent ? `Refazer receitas de “${intent}”` : undefined} title={dica ? DICA_DE_REFAZER_RECEITAS : undefined}
+              onClick={() => void refazer()}>Refazer receitas</Button>
       <span className={styles.muted} role="status">
-        {!feito ? 'Etapa sem receita porque o aparelho estava fora do ar? Com ele de volta, refaça.'
+        {!feito ? (dica ? '' : 'Etapa sem receita porque o aparelho estava fora do ar? Com ele de volta, refaça.')
           : `${feito.created ? `${plural(feito.created, 'receita gravada', 'receitas gravadas')} agora.` : 'Nenhuma receita nova.'}`
             + (semReceita.length ? ` Sem receita: ${semReceita.map((x) => `${x.title} (${x.reason})`).join('; ')}.` : '')
             // 30.81: a receita da gravação espera junto do fluxo; só a persona que ensinou a usa até a prova.
@@ -611,7 +620,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                   <Button variant="dangerGhost" icon={Trash2} loading={descartando}
                           disabledReason={salvando ? 'Salvando o fluxo…' : null} onClick={() => void descartarSessao()}>Descartar</Button>
                 ) : null}
-                <Button variant="ghost" onClick={() => void fechar()}>Depois</Button>
+                <Button variant="ghost" title="Fecha a revisão sem salvar: a gravação continua na lista “Para revisar”." onClick={() => void fechar()}>Depois</Button>
                 <Button variant={proposta ? 'primary' : 'secondary'} icon={Sparkles} loading={salvando}
                         disabledReason={motivoNaoSalvar()} onClick={() => void salvar()}>
                   Salvar como fluxo
@@ -639,6 +648,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           {resultado.ensinado_em_prova ? (
             <p className={styles.muted} role="status">{explicacaoEmProva(resultado.ensinado_em_prova)}</p>
           ) : null}
+          {/* 31.132: o estado do fluxo no Livro agora, o próximo passo e o link para o item. */}
+          <FluxoNoLivro flowId={resultado.flow_id} />
           {/* 31.111 F5: o fluxo candidato que nasceu da correção de uma etapa que falhou diz de onde veio. */}
           {sessao.origin ? (
             <p className={styles.muted}>
@@ -655,6 +666,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
               <li key={s.key}>
                 <Badge size="sm" tone={s.recipe ? 'success' : 'neutral'}>{s.recipe ? 'sem IA' : 'com IA'}</Badge> {s.title}
                 <span className={styles.muted}> — {s.reason}</span>
+                <PacotesAceitos pacotes={s.pacotes_aceitos} />
               </li>
             ))}
           </ul>
@@ -785,7 +797,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       ) : null}
                       <p className={styles.muted}>Confere: {textoDoConfere(s.postcondition)}
                         {s.inputs.map((n) => porSeq.get(n)).filter(Boolean).length ? '' : ' · sem entradas: a IA conduz esta etapa'}</p>
-                      <PacotesAceitos pacotes={s.pacotes_aceitos} />
+                      {/* 31.141: o que a IA propôs vale; sem isso, o que a prévia calcula para a etapa. */}
+                      <PacotesAceitos pacotes={s.pacotes_aceitos?.length ? s.pacotes_aceitos : previaPorEtapa.get(s.key)?.pacotes_aceitos} />
                       {jaValem.filter((j) => j.etapa === s.key).map((j) => (
                         <AvisoDaPosCondicao key={j.valor} item={j}
                                             onUsar={(texto) => mudarEtapa(i, { postcondition: { ...s.postcondition, kind: 'text_visible', value: texto } })} />

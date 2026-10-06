@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
@@ -10,6 +10,7 @@ import { useToastStore } from '../../store/toasts';
 import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import type { PersonaOnDevice } from '../../api/types';
 import { TrainingBar, personasDoEnsino } from './TrainingBar';
+import { useUiStore } from '../../store/ui';
 import { useTrainingStore } from './trainingStore';
 
 // Fase L (P2.6): descartar a gravação em andamento é irreversível e passa a pedir confirmação, como toda ação
@@ -185,6 +186,23 @@ it('sessão salva aparece em "Salvas" com "Refazer receitas", que só chama /rec
   await waitFor(() => expect(text()).toContain('Nenhuma receita nova.'));
   expect(text()).toContain('Abrir (já havia receita ativa para esta etapa)');
   expect(backend.callsTo('POST', /\/training\/trn-7\/recipes$/)).toHaveLength(1);
+});
+
+// 31.131 (adendo v1.87): a sessão salva que nasceu de uma prova leva o selo na linha de "Salvas"; a comum, e a de backend anterior, não.
+it('"Salvas": só a sessão com `nascido_de_prova` leva o selo "Nascido de uma prova"', async () => {
+  const salva = (id: string, intent: string, extra: object = {}) => ({ ...GRAVANDO, id, intent, status: 'saved', flow_id: `f-${id}`, ...extra });
+  backend.on('GET', /\/training$/, () => json([
+    salva('trn-a', 'Pesquisar nas configurações', { nascido_de_prova: true }),
+    salva('trn-b', 'Abrir o perfil'),
+    salva('trn-c', 'Abrir o Wi-Fi', { nascido_de_prova: false }),
+  ]));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Salvas (3)'));
+  const linha = (intent: string) => byRole('button', new RegExp(`^Ver o treinamento salvo “${intent}”$`)).closest('li') as HTMLElement;
+  const selos = (li: HTMLElement) => Array.from(li.querySelectorAll('span')).filter((x) => !x.children.length && x.textContent === 'Nascido de uma prova').length;
+  expect(selos(linha('Pesquisar nas configurações'))).toBe(1);
+  expect(selos(linha('Abrir o perfil'))).toBe(0);
+  expect(selos(linha('Abrir o Wi-Fi'))).toBe(0);
 });
 
 // 31.92 (v1.64): o controle mudou de mãos e o lease desta aba ficou velho; o backend recusa com 409 control_required
@@ -520,4 +538,57 @@ it('31.90-D: enquanto o desfazer corre, Concluir e Descartar explicam por que es
   expect(byRole('button', /^Descartar/).textContent).toContain('Desfazendo a última entrada…');
   await act(async () => soltar(json({ ...GRAVANDO, inputs: [], undone: { seq: 1, type: 'tap' } })));
   await waitFor(() => expect(text()).not.toContain('Desfazendo a última entrada…'));
+});
+
+// 31.134: o texto de entrada diz o que a gravação vira (um fluxo) e onde fica a opção que a dica cita.
+it('31.134: sem o controle, a barra diz que o ensino vira um fluxo (e não "habilidade")', async () => {
+  backend.on('GET', /\/training$/, () => json([]));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Assuma o controle para ensinar uma tarefa'));
+  expect(text()).toContain('ele vira um fluxo (na revisão você escolhe para quais perfis ele vale)');
+  expect(text()).not.toContain('habilidade');
+});
+
+it('31.134: com o controle, o formulário diz ONDE fica o "Limpar o campo antes"', async () => {
+  backend.on('GET', /\/training$/, () => json([]));
+  backend.on('GET', /\/instances\/android-01\/personas$/, () => json([]));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
+  await waitFor(() => expect(text()).toContain('O que você vai ensinar?'));
+  expect(text()).toContain('Na gravação, para trocar um texto já digitado, marque “Limpar o campo antes” (em Controle manual, ao lado do campo de texto) em vez de apertar Apagar.');
+});
+
+// 31.136: o Livro leva à sessão salva por `?foco=<aparelho>&treino=<sessão>`: o Foco a abre em leitura uma vez e limpa o parâmetro.
+describe('31.136: link do Livro para a sessão salva', () => {
+  const SALVA = { ...GRAVANDO, id: 'trn-S1', intent: 'Pesquisar por wifi', status: 'saved', flow_id: 'f-1', inputs: [] };
+  const comTreino = (id: string | undefined) => useUiStore.setState({ rota: { ...useUiStore.getState().rota, query: id ? { treino: id } : {} } });
+  const montar = () => act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  beforeEach(() => {
+    backend.on('GET', /\/training$/, () => json([SALVA]));
+    backend.on('GET', /\/training\/trn-S1$/, () => json(SALVA));
+    backend.on('GET', /\/instances\/android-01\/personas$/, () => json([]));
+  });
+  afterEach(() => comTreino(undefined));
+
+  it('abre a sessão salva do link em leitura e tira o parâmetro da rota', async () => {
+    comTreino('trn-S1');
+    await montar();
+    await waitFor(() => expect(byRole('dialog', /Treinamento salvo/)).toBeTruthy());
+    expect(useUiStore.getState().rota.query.treino).toBeUndefined();
+  });
+
+  it('sem o parâmetro nada abre sozinho', async () => {
+    comTreino(undefined);
+    await montar();
+    await waitFor(() => expect(text()).toContain('Salvas (1)'));
+    expect(document.querySelector('dialog[open]')).toBeNull();
+  });
+
+  it('a sessão que não é deste aparelho avisa em vez de ficar muda, e o parâmetro sai da rota', async () => {
+    useToastStore.setState({ toasts: [] });
+    comTreino('trn-outra');
+    await montar();
+    await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'Treinamento não encontrado')).toBe(true));
+    expect(useUiStore.getState().rota.query.treino).toBeUndefined();
+    expect(document.querySelector('dialog[open]')).toBeNull();
+  });
 });
