@@ -1595,7 +1595,7 @@ type ClientMessage = { type: 'ping' } | { type: 'focus'; instance_id: string | n
 Fase G da evolução arquitetural: a execução resolve o comando por skill publicada antes do fluxo
 ([execution](dominios/execution.md), [skills](dominios/skills.md)). Nada implantado; prova `simulated`.
 
-**`POST /api/flows/match`** com corpo `{"command"}` (era `GET …?command=` até o v0.58; ver o adendo v0.65) (`api.py::flows_match`):
+**`POST /api/flows/match`** com corpo `{"command"}` (era `GET …?command=` até o v0.58; ver o adendo v0.65) (`modules/learning/presentation/fluxos.py::flows_match`):
 
 - Resolve pela mesma porta da execução (`AppState.skill_planner.for_command(command, None)`): skill publicada atrás de
   `skills.enabled`, depois fluxo ativo atrás de `ai.flows`.
@@ -1612,7 +1612,7 @@ Fase G da evolução arquitetural: a execução resolve o comando por skill publ
   também com `FlowStore.match(command)`.
 - O painel (`frontend/src/api/client.ts`) tipa a resposta como `FlowCoverage | null` e ignora `skill_ref`.
 
-**`PUT /api/flows/{id}`** (`api.py::update_flow`):
+**`PUT /api/flows/{id}`** (`modules/learning/presentation/fluxos.py::update_flow`):
 
 - `{status: "active"}` num fluxo adotado por uma skill que tem versão publicada responde **409**
   `{"detail": {"code": "flow_adopted", "message": …}}`, e o fluxo continua `disabled`.
@@ -1622,7 +1622,7 @@ Fase G da evolução arquitetural: a execução resolve o comando por skill publ
   - A conferência é `SqlSkillRepository.published_adopter(flow_id)`.
 - `{status: "disabled"}` continua aceito (200).
 - Ordem das recusas: 404 `not_found`, 400 `invalid`, 409 `flow_adopted`.
-- **`DELETE /api/flows/{id}`** (`api.py::delete_flow`): fluxo adotado por uma skill, em qualquer estado dela, responde
+- **`DELETE /api/flows/{id}`** (`modules/learning/presentation/fluxos.py::delete_flow`): fluxo adotado por uma skill, em qualquer estado dela, responde
   **409** `flow_adopted` e não é apagado, porque ele é o caminho de volta da adoção (`release_flow` o religa). A
   conferência é `SqlSkillRepository.adopter_id(flow_id)`. Fluxo não adotado: 204, como antes.
 
@@ -1847,7 +1847,7 @@ Fases H (parte 2) e K2 da evolução arquitetural
 ([execution](dominios/execution.md#modeplan-o-planreport-servido-fase-h-parte-2)). Tudo aditivo. Nada implantado;
 prova `simulated`.
 
-**`POST /api/runs` com `mode: "plan"`** (`api.py::create_run`):
+**`POST /api/runs` com `mode: "plan"`** (`modules/execution/presentation/router.py::create_run`):
 
 - Corpo: o mesmo `RunCreate`.
 - Resposta: o `RunSummary` de sempre, campo a campo, **mais** `plan_report`, o relatório dos recursos que a skill
@@ -2612,7 +2612,7 @@ Provas: `simulated` (`backend/tests/test_learning_backlog.py`, `test_learning_ro
 
 ## Adendo v0.39 (29/09/2026) — o código em aberto do aprendizado: interruptor antigo pelo livro, bloco da execução, três sinais e nota triada (ADR-054)
 
-**`PUT /api/flows/{id}` e `PUT /api/recipes/{id}` passam pelo livro** (`api.py::update_flow`/`update_recipe` →
+**`PUT /api/flows/{id}` e `PUT /api/recipes/{id}` passam pelo livro** (`modules/learning/presentation/fluxos.py::update_flow`/`update_recipe` →
 `livro.py::mudar_status_legado` → `LearningService.mudar_status_nativo`, o mesmo serviço de
 `POST /api/aprendizado/{kind}/{ref}/status`).
 
@@ -3853,7 +3853,7 @@ rascunho do comando, às vezes com e-mail, ia na query string e ficava na linha 
 habilidade, ou `null` sem casamento) e o painel (`api.flowsMatch`) já chama o POST; quem usava o GET por fora precisa migrar.
 
 Conferido (nada mudado fora do escopo): `POST /api/skills/resolve` e `POST /api/runs/targets/suggest` já recebem o comando no corpo. **Pendente, fora
-deste item:** `GET /api/runs/distribution?command=` (prévia da distribuição, `api.py::preview_distribution`) ainda leva o texto do comando na query
+deste item:** `GET /api/runs/distribution?command=` (prévia da distribuição, `modules/execution/presentation/router.py::preview_distribution`) ainda leva o texto do comando na query
 e portanto no log de acesso; é o mesmo vazamento e pede o mesmo tratamento (POST com corpo).
 
 Adição (compatível): `members[]` de `PolicyGroup` (`GET/POST/PATCH /api/instagram/policy-groups`) ganha `name` (nome da pessoa: exibição, nome e
@@ -6907,6 +6907,35 @@ Aditivo, sem migração e sem IA. Preenche o campo que o v1.75 reservou ao F4.
   intenção escrita pela pessoa vence** sempre.
 - **O que o painel precisa mudar (F5):** mostrar `rotulo` e `pergunta` ao abrir o Foco do ensino que veio da falha.
 - **Prova:** `simulated` (`backend/tests/test_treino_diagnostico_da_falha.py`); `real`: `not_run`.
+## Adendo v1.78 (06/10/2026; número da orquestradora; item 15.15 F7) — a tabela de estados imposta: 409 `invalid_transition`
+
+- **O que muda:** as tabelas de estado de execução, objetivo e tentativa passam a ser impostas pelo repositório (a etapa já era).
+  Uma escrita que cairia fora da tabela não grava nada. Nenhum campo, rota ou corpo muda; só nasce um código de erro.
+- **Quando ocorre:** o gesto chega depois de o estado ter mudado. Exemplo: o painel manda cancelar ou retomar uma execução
+  que acabou de fechar pela rotina, na janela entre a leitura do estado e a escrita. A recusa pelo estado lido ANTES (cancelar
+  execução que já terminou, iniciar a que não está planejada) segue sendo `invalid_state`.
+- **Corpo do erro:** `409 {"detail": {"code": "invalid_transition", "message": "transição inválida de <run|objective|attempt|etapa>: <de> → <para>"}}`.
+  Os estados são os valores do banco; a mensagem não leva id nem texto da pessoa.
+- **Diferença para `invalid_state`:** `invalid_state` é a recusa da regra de negócio, lida antes (o estado já não servia); `invalid_transition`
+  é a rede de baixo, a tabela de estados recusando uma escrita que a regra deixou passar por causa da corrida. Para quem chama
+  é a mesma conduta: reler a execução e decidir de novo; não repetir às cegas.
+- **Tabela:** a única aresta que a produção usou fora dela, `completed_with_issues → cancelled` (o vencimento do 31.50 fechando a
+  execução com cancelamento pedido), foi declarada.
+- **Prova:** `simulated` (`backend/tests/test_maquinas_de_estado.py`, `backend/tests/test_maquinas_de_estado_http.py`); `real`: `not_run`.
+
+## Adendo v1.79 (06/10/2026; número da orquestradora; item 31.113 F3) — o pedido de aprovação guarda o marcador da persona
+
+O formato das rotas não muda; muda o que o pedido GUARDA e o que a tela recebe. Sem migração.
+- **`pending_approvals`** (`target`, `generated_content`, `approved_content`, `summary`) guarda o marcador da persona
+  (`{perfil_nome}`…) no lugar do valor. Alvo e texto só levam o marcador quando a volta dá o texto EXATO (mesma caixa);
+  senão, ficam literais. O mesmo vale para os `bindings` da etapa (rascunho e edição incluídos).
+- **`GET /api/approvals`, `POST /api/approvals/decide` e `POST /api/approvals/{id}/decide`** devolvem esses campos
+  (e `content`) com o valor da persona resolvido AO VIVO, sem gravar. `GET /api/runs/{id}/porta` (a prévia) devolve
+  `texto` e `alvo` com o valor de agora, e a `chave` é calculada sobre ele.
+- **O evento `approval.pending` e o canal (Telegram) levam o marcador**: a prévia que o canal mostra passa por
+  `porta_do_plano.previa_para_o_canal` (também o `objeto_alvo`).
+- A persona trocada depois do sim muda a `chave`, e a porta pergunta de novo na execução.
+- **Prova:** `simulated` (`backend/tests/test_bindings_com_marcador_da_persona.py`); `real`: `not_run`.
 
 ## Adendo v1.80 (06/10/2026; número da orquestradora; item 31.116, parte 2) — a sugestão do ensino antes da sessão
 

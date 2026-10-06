@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from .db import Row, loads
 from .models import RUN_TERMINAL, InteractionType, RunStatus, StepStatus
 from .planning.capabilities import contraparte, objeto_da_acao, texto_a_gerar
+from .security import mascara_da_persona as mascara
 from .social.approvals import apply_edit
 from .social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_MOTIVO_DO_ROTULO, ARGUMENTO_DO_ROTULO_IA,
                                         VERSAO_DA_CHAVE, chave_da_aprovacao, imagem_de_outra_persona, midia_da_etapa, tem_variavel,
@@ -274,6 +275,44 @@ def previa_da_porta(state: AppState, run_id: str) -> dict[str, object]:
     }
 
 
+#: 31.113 F3: os campos do item que o canal (Telegram) mostra; saem com o marcador da persona, não com o valor.
+_CAMPOS_DO_CANAL = ("titulo", "alvo", "texto", "motivo", "dica")
+
+
+def previa_para_o_canal(state: AppState, previa: Mapping[str, object]) -> dict[str, object]:
+    """31.113 F3: a prévia da porta (a do painel tem o valor de agora) com o marcador no lugar do dado da persona, pelo
+    mapa do objetivo de cada item (a máscara do registro, F1). O que o gesto devolve (`step_id`, `chave`) não muda."""
+    itens = []
+    for item in _itens(previa):
+        trocas = state.repo.mascara_do_registro(None, str(item.get("objective_id") or "") or None)
+        if not trocas:
+            itens.append(item)
+            continue
+        canal: dict[str, object] = {k: (mascara.no_alvo if k == "alvo" else mascara.no_texto)(item[k], trocas)
+                                     for k in _CAMPOS_DO_CANAL if isinstance(item.get(k), str)}
+        objeto = item.get("objeto_alvo")
+        if isinstance(objeto, Mapping):
+            canal["objeto_alvo"] = {k: mascara.no_alvo(v, trocas) if isinstance(v, str) else v for k, v in objeto.items()}
+        itens.append({**item, **canal})
+    return {**previa, "itens": itens}
+
+
+def aprovar_pelo_canal(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por: str) -> dict[str, object]:
+    """O gesto do canal: o mesmo `aprovar_plano`; a prévia nova e os motivos de `plano_mudou` voltam com o marcador."""
+    try:
+        return aprovar_plano(state, run_id, corpo, por=por)
+    except PortaIndisponivel as exc:
+        previa = exc.extra.get("previa")
+        if isinstance(previa, Mapping):
+            exc.extra["previa"] = previa_para_o_canal(state, previa)
+        mudaram = exc.extra.get("mudaram")
+        if isinstance(mudaram, list):
+            trocas = state.repo.mascara_do_registro(run_id)
+            exc.extra["mudaram"] = [{**m, "motivo": mascara.no_texto(str(m.get("motivo") or ""), trocas)}
+                                    if isinstance(m, Mapping) else m for m in mudaram]
+        raise
+
+
 def _item(state: AppState, run: Row, obj: Row, e: Row, dependentes: list[str], rotulos: Mapping[str, str],
           vistos: set[tuple[str, str, str]]) -> dict[str, object] | None:
     """Uma etapa com efeito (ou com ação do catálogo) na prévia; `None` para a etapa que a porta nem olha."""
@@ -295,7 +334,8 @@ def _item(state: AppState, run: Row, obj: Row, e: Row, dependentes: list[str], r
                 "retry_at": None}
     if cap is None and porta.veredito is None and not e["side_effect"]:
         return None                                     # sem ação do catálogo e sem efeito: a porta não tem o que dizer
-    bindings = loads(e["bindings"], {}) or {}
+    # 31.113 F3: a linha guarda o marcador; alvo, repetição, objeto, texto, mídia e chave usam o valor de AGORA.
+    bindings = state.repo.bindings_da_etapa(e, str(porta.profile_id) if porta.profile_id else None)
     alvo = contraparte(cap, bindings) if cap is not None else None
     alvo_por_resolver = cap is not None and bool(cap.counterparty) and alvo is None
     repetida = ""
@@ -458,7 +498,7 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
         if vista is None or sid in ja_mudaram or e is None:
             continue
         linha = _com_texto(e, editados[sid]) if sid in editados else e
-        motivo = _repetida_desde(state, _run, objetivos[str(e["objective_id"])], e, loads(linha["bindings"], {}) or {},
+        motivo = _repetida_desde(state, _run, objetivos[str(e["objective_id"])], e, state.repo.bindings_da_etapa(linha),
                                  vista)
         if motivo:
             mudaram.append({"step_id": sid, "selo": itens[sid]["selo"] if sid in itens else None,
@@ -493,7 +533,8 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
             obj = objetivos[str(e["objective_id"])]
             novo = editados.get(sid)
             if novo is not None:
-                apply_edit(state.db, sid, novo)
+                # 31.113 F3: o nome da persona no texto do dono vira marcador só se a volta for exata.
+                apply_edit(state.db, sid, state.repo.texto_reversivel(novo, str(obj["id"])) or novo)
                 # Rede de segurança (B1): a etapa RELIDA depois da edição tem de dar a MESMA chave que o dono viu na
                 # prévia do texto (30.68). Se não der, nada se grava (o raise dentro da transação desfaz a edição).
                 # `set()` de propósito: o duplicado no plano não depende do texto e já foi conferido acima (A1); aqui
@@ -510,8 +551,10 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
                 item = {**item, "texto": novo}
             gravadas.append(state.approvals.aprovar_no_plano(
                 profile_id=str(item["profile_id"]), capability=str(item["acao"]),
-                summary=f"{e['title']} — aprovado na prévia da porta", target=_texto(item.get("alvo")),
-                content=_texto(item.get("texto")), run_id=run_id, objective_id=str(obj["id"]), step_id=sid,
+                summary=f"{e['title']} — aprovado na prévia da porta",
+                # 31.113 F3: o pedido guarda o marcador (a prévia mostrou o valor de agora).
+                target=state.repo.texto_reversivel(_texto(item.get("alvo")), str(obj["id"])),
+                content=state.repo.texto_reversivel(_texto(item.get("texto")), str(obj["id"])), run_id=run_id, objective_id=str(obj["id"]), step_id=sid,
                 chave_sha256=chave, chave_v=VERSAO_DA_CHAVE, plan_version=int(obj["plan_version"]), expires_at=validade,
                 midia_sha256=_texto(item.get("imagem_sha256")), decided_by=por).id)
         for sid in tirados:

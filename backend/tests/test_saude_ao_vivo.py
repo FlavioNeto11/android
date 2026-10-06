@@ -22,20 +22,20 @@ async def test_check_health_emite_apenas_quando_o_resultado_muda(harness: Harnes
     # Também estável: `capacity_local` traz a RAM livre do host (de 100 em 100 MB) na mensagem, e com a suíte em
     # paralelo ela anda entre as duas checagens — o teste via uma "mudança" que não era do backend (falhou assim em
     # 03/10 e na rodada do 29.78). O próprio `capacity_local` tem os testes dele mais abaixo neste arquivo.
-    state._problema_de_capacidade_local = lambda: None  # type: ignore[method-assign]
+    state.saude._problema_de_capacidade_local = lambda: None  # type: ignore[method-assign]
 
-    state._check_health()
+    state.saude.checar()
     assert len(vistos) == 1
     assert vistos[0]["health"]["status"] in ("ok", "degraded", "error")
 
     # Nada mudou: a segunda checagem não deve emitir de novo.
-    state._check_health()
+    state.saude.checar()
     assert len(vistos) == 1
 
     # Mudança real (Appium fica indisponível): agora sim, novo evento.
     state.appium.is_up = lambda timeout=1.0: False  # type: ignore[assignment]
     state.appium.detail = "simulado: fora do ar para o teste"
-    state._check_health()
+    state.saude.checar()
     assert len(vistos) == 2
     assert vistos[1]["health"]["status"] != "ok"
 
@@ -126,7 +126,7 @@ def test_ram_livre_de_sobra_nao_gera_aviso_de_capacidade(harness: Harness, monke
     state.settings.update({"max_online_devices": 4})
     # Config padrão: est=2700 MB/instância (perfil medido de google_apis), folga 1500 MB. Com 20 GB livres cabem ~6 — acima do
     # alvo de 4 — e o aviso não deve aparecer.
-    monkeypatch.setattr("app.state.psutil.virtual_memory", lambda: _MemoriaFalsa(20_000))
+    monkeypatch.setattr("psutil.virtual_memory", lambda: _MemoriaFalsa(20_000))
     assert not any(p.code == "capacity_local" for p in state.health().problems)
 
 
@@ -138,7 +138,7 @@ def test_ram_livre_insuficiente_para_o_alvo_gera_aviso_de_capacidade(harness: Ha
     assert state is not None
     state.settings.update({"max_online_devices": 4})
     # 4 GB livres: (4000 - 1500) // 2700 = 0 cabe a mais, 0 online agora -> estimado 0 < alvo 4.
-    monkeypatch.setattr("app.state.psutil.virtual_memory", lambda: _MemoriaFalsa(4_000))
+    monkeypatch.setattr("psutil.virtual_memory", lambda: _MemoriaFalsa(4_000))
     _host_pronto(state)
     saude = state.health()
     problema = next(p for p in saude.problems if p.code == "capacity_local")
@@ -154,7 +154,7 @@ def test_aviso_de_capacidade_compara_com_as_vagas_pela_regra_unica(harness: Harn
     state = harness.state
     assert state is not None
     state.settings.update({"max_online_devices": 1})
-    monkeypatch.setattr("app.state.psutil.virtual_memory", lambda: _MemoriaFalsa(4_000))
+    monkeypatch.setattr("psutil.virtual_memory", lambda: _MemoriaFalsa(4_000))
     _host_pronto(state)
     state.workers.vagas_do_host = lambda: 40
     problema = next((p for p in state.health().problems if p.code == "capacity_local"), None)

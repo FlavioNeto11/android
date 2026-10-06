@@ -2,13 +2,13 @@
  * 31.111 F5 (adendo v1.75): "Ensinar a corrigir" na etapa que falhou ou ficou sem prova. A pessoa ensina a tarefa no
  * aparelho da etapa e o treino nasce LIGADO a ela (`POST /api/training/from-run`), com o contexto da execução na
  * revisão. Nada é automático: o botão pede o controle do aparelho (a IA fica em espera nele) só depois da escolha da
- * pessoa, e o treino abre no Foco. Convive com `CorrigirEtapa` (o ensino de habilidade), que só aparece quando a etapa
- * veio de uma.
+ * pessoa, e o treino abre no Foco. É o ÚNICO caminho de ensino na etapa (31.91 T1, ADR-078): o ensino por habilidade (v2)
+ * saiu da tela.
  */
 import { Wrench } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { api, toApiError } from '../../api/client';
-import type { PersonaOnDevice, RunDetail, Step } from '../../api/types';
+import type { PersonaOnDevice, RunDetail, Step, StepStatus } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Field, Select, TextInput } from '../../components/Field';
 import { useAppStore } from '../../store/app';
@@ -16,8 +16,13 @@ import { useControlStore } from '../../store/control';
 import { toast } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { personasDoEnsino } from '../training/TrainingBar';
-import { ETAPA_CORRIGIVEL } from './CorrigirEtapa';
-import styles from './CorrigirEtapa.module.css';
+import styles from './EnsinarACorrigir.module.css';
+
+/**
+ * As etapas de onde se ensina: a que falhou, a que ficou sem prova e a que parou esperando uma pessoa (o backend aceita
+ * as três: `training/origem.py::STATUS_ENSINAVEIS`, 31.111 A).
+ */
+export const ETAPA_CORRIGIVEL: ReadonlySet<StepStatus> = new Set<StepStatus>(['failed', 'uncertain', 'waiting_user']);
 
 /** O texto de abertura que o backend usaria sozinho (adendo v1.75): só se manda quando a pessoa o reescreve. */
 export function intencaoDaCorrecao(titulo: string): string {

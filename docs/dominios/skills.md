@@ -445,7 +445,7 @@ de escrita que ainda o permitiam foram fechados:
 
 - `taskqueue/flows.py::FlowStore.learn_from_plan` (salvar o treino) recusa comando que uma habilidade publicada já
   tem; a rota do treino devolve o 409 `duplicate_command` de sempre;
-- `api.py::update_flow` (`PUT /api/flows/{id}` religando) confere **qualquer** habilidade publicada com o comando
+- `modules/learning/presentation/fluxos.py::update_flow` (`PUT /api/flows/{id}` religando) confere **qualquer** habilidade publicada com o comando
   (409 `command_published`, além do `flow_adopted` da fase G), com a conferência e a escrita numa transação;
 - publicar, rollback, desfazer e aprender por execução já recusavam;
 - a prova é por caminho de escrita, com a consulta de conflitos vazia depois de cada um
@@ -486,7 +486,7 @@ de escrita que ainda o permitiam foram fechados:
 - **Fluxos do QA Messenger não convertem:** o plano confere `{account_label}` na tela, e a v1alpha1 não tem forma para
   variável do runtime (`::test_variavel_do_runtime_no_texto_e_erro_explicito`). Continuam como fluxo.
 - **Depois de desfazer, `DELETE /api/flows/{id}` continua 409 `flow_adopted`:** a definição fica com
-  `legacy_flow_id`, e `api.py::delete_flow` pergunta por `adopter_id`.
+  `legacy_flow_id`, e `modules/learning/presentation/fluxos.py::delete_flow` pergunta por `adopter_id`.
 - **Reconverter reusa o número do rascunho apagado:** `SqlSkillRepository._next_version` é `MAX(version) + 1`.
 - **Concorrência no PostgreSQL:** em READ COMMITTED, duas escritas concorrentes (publicar e religar) ainda podem
   passar as duas conferências de comando único. No SQLite, o `BEGIN IMMEDIATE` as serializa. Não medido.
@@ -608,7 +608,7 @@ e `features.skills` ([acima](#ensino-v2-fase-f)). `GET /api/skills` lista só o 
 adaptador legado não aparecem.
 
 `DELETE /api/flows/{id}` ganhou guarda depois da G (`f8021ae`): fluxo adotado, em qualquer estado da skill, responde
-409 `flow_adopted` e não é apagado (`api.py::delete_flow`, conferência por `SqlSkillRepository.adopter_id`;
+409 `flow_adopted` e não é apagado (`modules/learning/presentation/fluxos.py::delete_flow`, conferência por `SqlSkillRepository.adopter_id`;
 [contrato](../api-contract.md#adendo-v021-27092026--habilidades-no-caminho-dos-fluxos)).
 
 ## Capacidades — implementação e validação
@@ -630,7 +630,7 @@ adaptador legado não aparecem.
 | Migrações 041 → 046 | implementado | `simulated` em SQLite (`test_habilidades_migracoes.py::test_atualizacao_de_041_para_046_nao_toca_o_legado`, `::test_banco_novo_e_banco_atualizado_tem_o_mesmo_esquema`, `::test_a_copia_entre_bancos_acha_ordem_por_fk_com_as_tabelas_novas`); `simulated` em PostgreSQL (CI run `36324634678` em `793fe00`) | 042–046 |
 | Validador de produção e trava de composição | implementado | `simulated` (`test_habilidades_na_execucao.py::test_rascunho_com_erro_se_salva_mas_nao_submete`, `::test_composta_so_submete_com_a_filha_congelada`) | `document_validator.py` |
 | Registro no `_plan` e trilha da 045 | implementado | `simulated` (`test_fatia_abrir_conversa.py::test_abrir_conversa_pela_skill_publicada_sem_planejador_e_com_a_trilha`, `::test_fluxo_legado_grava_a_trilha_de_sempre_e_o_hash`) | `run_planning.py`, `RunService._plan` |
-| Guardas de adoção e de `PUT /api/flows/{id}` | implementado | `simulated` (`test_habilidades_na_execucao.py::test_adotar_fluxo_com_as_habilidades_desligadas_e_recusado`; `test_fatia_abrir_conversa.py::test_rotas_de_fluxo_respeitam_a_skill`) | `SkillsDisabled`, `published_adopter`, `api.py::update_flow` |
+| Guardas de adoção e de `PUT /api/flows/{id}` | implementado | `simulated` (`test_habilidades_na_execucao.py::test_adotar_fluxo_com_as_habilidades_desligadas_e_recusado`; `test_fatia_abrir_conversa.py::test_rotas_de_fluxo_respeitam_a_skill`) | `SkillsDisabled`, `published_adopter`, `modules/learning/presentation/fluxos.py::update_flow` |
 | Fiação da fase G em PostgreSQL | implementado | `not_run` | CI `workflow_dispatch` |
 | Normalização por tipo e link de perfil | implementado | `simulated` (`backend/tests/test_intencao_dominio.py::test_golden_da_normalizacao_por_tipo`, `::test_link_de_perfil_so_vira_usuario_no_app_que_tem_a_regra`, `::test_buraco_vazio_sempre_pergunta_mesmo_com_padrao`, `::test_conteudo_legado_passa_como_veio`) | `domain/intent.py`, `profile_links.py` |
 | Cadeia modelos → tipos → semântica → LLM | implementado | `simulated` (`test_intencao_dominio.py::test_um_candidato_valido_resolve_pelo_modelo_com_o_valor_normalizado`, `::test_empate_vira_pergunta_e_as_etapas_por_ia_ficam_not_run`, `::test_entre_empatados_os_tipos_desempatam_quando_so_um_serve`, `::test_etapas_sao_plugaveis_so_modelos_sem_tipos`) | `intent_resolver.py` |
@@ -643,7 +643,7 @@ adaptador legado não aparecem.
 | Fase F em PostgreSQL e com IA real | implementado | `not_run` | CI `workflow_dispatch`; generalização paga sem autorização |
 | Descompilador `Plan → DSL` com ida e volta pelo compilador real | implementado | `simulated` (`backend/tests/test_descompilador.py::test_o_documento_descompilado_compila_de_volta_no_mesmo_plano` em seis fluxos de formato de produção, `::test_variavel_do_runtime_no_texto_e_erro_explicito`, `::test_argumento_literal_com_texto_em_modelo_e_recusado_com_a_causa`, `::test_deriva_do_catalogo_no_texto_e_aviso_e_na_identidade_e_erro`, `::test_coleta_livre_efeito_sem_capability_e_parametro_fora_do_comando`) | `decompiler.py` |
 | Converter e desfazer numa transação; v1 → v2 | implementado | `simulated` (`backend/tests/test_conversao_de_fluxo.py::test_converter_adota_e_cria_o_rascunho_descompilado_numa_transacao`, `::test_conversao_recusada_pela_ida_e_volta_nao_deixa_nada`, `::test_desfazer_devolve_o_fluxo_exatamente_como_era`, `::test_desfazer_mantem_o_rascunho_que_ja_saiu_de_draft`, `::test_v1_para_v2_de_quem_adotou_antes_do_descompilador`, `::test_rotas_de_conversao_atras_do_interruptor_e_com_o_tratamento_de_erro`) | `flow_conversion.py`, `SqlSkillRepository.convert_flow`, `undo_conversion` |
-| Um comando, um dono (fluxo ativo × habilidade publicada) | implementado | `simulated` (as cinco recusas por caminho de escrita em `test_conversao_de_fluxo.py`); concorrência no PostgreSQL `not_run` | `FlowStore.learn_from_plan`, `api.py::update_flow` |
+| Um comando, um dono (fluxo ativo × habilidade publicada) | implementado | `simulated` (as cinco recusas por caminho de escrita em `test_conversao_de_fluxo.py`); concorrência no PostgreSQL `not_run` | `FlowStore.learn_from_plan`, `modules/learning/presentation/fluxos.py::update_flow` |
 | Bateria legado × novo e trilha da v1 adotada | implementado | `simulated` (`backend/tests/test_equivalencia_fluxo_skill.py::test_mesmo_plano_mesmas_receitas_e_mesma_conta_de_ia[legado\|novo]`, `::test_receitas_aprendidas_pelo_fluxo_servem_a_habilidade_convertida`, `::test_a_v1_adotada_grava_a_skill_e_o_fluxo_e_as_capacidades_enxergam`) | `RunPlan.flow_id`, `RunService._registrar_resolucao`, `capacidades_do_perfil` |
 | Processo cross-app (Instagram + QA) num aparelho | implementado | `simulated` (`backend/tests/test_app_novo_pelo_manifesto.py::test_processo_cross_app_instagram_e_qa_num_aparelho_so`) | fase K1; [runtime](../skill-runtime.md#processo-cross-app-fase-k1) |
 | Fase J em PostgreSQL e com fluxos reais de produção | implementado | `not_run` | CI `workflow_dispatch`; conversão real exige autorização |

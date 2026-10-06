@@ -1,0 +1,1312 @@
+{
+ "aparelho_degradado": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "devices_degraded",
+    "1 aparelho(s) respondem ao ADB mas não estão utilizáveis: android-01.",
+    "Veja o motivo no cartão de cada um (Infraestrutura). Reinicie o aparelho — de preferência a frio — e confira se a sessão de automação abre."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "appium_fora": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": false
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "appium_down",
+    "simulado: fora do ar",
+    "Verifique tools/appium (npm ci) e data/logs/appium.log; o controle manual segue funcionando."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "appium_sem_mascara": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "appium_log_masking_off",
+    "Mascaramento de log do Appium não comprovado nesta sessão.",
+    "Reinicie pelo scripts/stop.ps1 + start.ps1 para o backend subir o Appium com as regras de mascaramento. Preenchimento de credencial fica bloqueado até lá."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "banco_fora": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": false,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "database_down",
+    "O banco (<dialeto>) não respondeu.",
+    "Confira se o serviço do banco está no ar e alcançável desta máquina. A conexão é reaberta sozinha na próxima consulta que der certo — não é preciso reiniciar o backend."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "error"
+ },
+ "base": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "ok"
+ },
+ "canal_do_worker_compartilhado": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "worker_channel_shared",
+    "1 worker(s) remoto(s) inscrito(s) e o listener dedicado do canal do worker está desligado (server.worker_port: 0).",
+    "Ligue server.worker_port (ex.: 8010) em config/config.yaml e reinicie; aponte o -R do túnel para ela. Com o canal na porta principal, o túnel deixa a API REST ao alcance do worker."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "cofre_chave_estranha": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "secret_store_foreign_key",
+    "Há credenciais no banco cifradas com outra chave mestra: chave_estranha (a deste backend é chave-do-teste).",
+    "Outro backend gravou credencial neste banco com a chave mestra dele — este aqui não abre essas senhas, e recadastrá-las por aqui faria o outro parar de abrir. Use a MESMA CREDENTIALS_MASTER_KEY nos dois backends, ou rode `python -m app.security.rekey` para recifrar o cofre inteiro para uma chave só."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "cofre_indisponivel": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "secret_store_unavailable",
+    "Sem chave mestra para proteger credenciais.",
+    "Defina CREDENTIALS_MASTER_KEY no .env (o nome antigo, INSTAGRAM_CREDENTIALS_MASTER_KEY, continua valendo). Gerenciamento e controle manual seguem funcionando."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "cofre_travado": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "secret_store_locked",
+    "O cofre de credenciais está travado nesta máquina/usuário.",
+    "As credenciais cifradas foram preservadas. Recadastre a senha de cada perfil pelo portal para voltar a usar autenticação automática."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "com_aceleracao": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [],
+  "sdk": {
+   "accel": "WHPX (simulado)",
+   "emulator_version": "35.0.0",
+   "found": true
+  },
+  "status": "ok"
+ },
+ "conta_travada_no_ar": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "locked_account_on_device",
+    "1 aparelho(s) ligado(s) com conta travada logada: android-01 (conta.de.teste).",
+    "O aparelho está em quarentena: nada o toca além de parar ou hibernar. O desafio é com a pessoa (ADR-009); decida o destino do aparelho — reset ou religar só com a confirmação explícita (confirm_locked_account)."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "disjuntor_cobranca": {
+  "ai": {
+   "account_blocked": true,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "ai_billing",
+    "conta recusada (execução r-teste, 2026-10-06T00:00:00Z).",
+    "Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "disjuntor_credencial": {
+  "ai": {
+   "account_blocked": true,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "ai_auth_failed",
+    "conta recusada (execução r-teste, 2026-10-06T00:00:00Z).",
+    "Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "disjuntor_saldo": {
+  "ai": {
+   "account_blocked": true,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "ai_balance_blocked",
+    "conta recusada (execução r-teste, 2026-10-06T00:00:00Z).",
+    "Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "exposicao_publica_incompleta": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "exposicao_publica_incompleta",
+    "Há host público declarado (server.public_hosts: central.exemplo.test) e falta: API_TOKEN no .env; server.tls_behind_proxy: true; server.allowed_origins com https://central.exemplo.test.",
+    "Complete em config/config.yaml e .env e reinicie o central; sem isso o login pelo endereço público não entra. Para recuar, tire o nome de server.public_hosts (tudo de fora volta a 403). Procedimento em docs/operacao.md, \"Portal público pelo túnel da Cloudflare\"."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "ia_em_fallback": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "ai_fallback_em_uso",
+    "IA em fallback: 3 chamada(s) de 'decide' nos últimos 30 min não foram atendidas por modelo-a e caíram em modelo-b.",
+    "O provedor principal dessa função não respondeu (modelo local fora do ar, por exemplo: o Ollama sobe no login do usuário, não no boot). A execução segue pelo fallback declarado, com o custo e a qualidade dele. Suba o provedor principal ou declare o fallback como principal em ai.roles."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "ia_sem_chave": {
+  "ai": {
+   "account_blocked": false,
+   "configured": false,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "ai_not_configured",
+    "Provedor de IA sem chave.",
+    "Defina ANTHROPIC_API_KEY no .env e reinicie o backend. Gerenciamento e controle manual continuam disponíveis."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "ia_simulada": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": true
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "ai_simulated",
+    "MODO SIMULADO ativo: nenhuma IA é consultada.",
+    "Use AI_PROVIDER=anthropic no .env para o provedor real."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "imagem_ausente": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "system_image_missing",
+    "A imagem de sistema de android-01 não está instalada: system-images;android-0;x;x86_64.",
+    "Instale com: sdkmanager \"system-images;android-0;x;x86_64\" (ou scripts/install-prereqs.ps1 -ImageTags …). Os demais aparelhos seguem funcionando."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "migracao_editada": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "migration_changed",
+    "Migração já aplicada foi alterada no arquivo: 001_inicial, 008_exemplo.",
+    "O esquema DESTE banco é o que a versão antiga do arquivo gerava, e um banco novo nasceria diferente. Migração aplicada não se edita: crie a próxima migração com a diferença. Se a mudança foi só de comentário, o alarme some quando o arquivo voltar ao que era."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "portal": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "portal_x",
+    "mensagem do portal",
+    "dica do portal"
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "pouca_ram": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "capacity_local",
+    "RAM livre agora só sustenta ≈3 aparelho(s) local(is) simultâneo(s), abaixo do alvo configurado (40, vagas do central pela regra única): ≈1000 MB livres, ≈2700 MB por instância, 1500 MB de folga exigida.",
+    "Outro processo está usando a RAM do host (confira o WSL — `.wslconfig` — e outros contêineres/VMs) ou o alvo local está otimista para esta máquina. O rodízio vai recusar boot antes de estourar; isto só antecipa o aviso."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "relogio_longe": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "clock_skew",
+    "O relógio desta máquina está 99.0s longe do relógio do banco.",
+    "A posse de etapa entre backends depende deste relógio: um backend adiantado adota etapa em plena execução de outro. Sincronize por NTP. Com outro backend hospedando aparelhos neste banco, este processo teria recusado subir."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "saldos_de_ia": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "ai_balance_blocked",
+    "Conta A: saldo blocked",
+    "Usada por: decide. Recarregue no console (console.exemplo.test) e registre a recarga em Configuração › IA (ou POST /api/ai/balances/<conta>/recharge)."
+   ],
+   [
+    "ai_balance_low",
+    "Conta B: saldo low",
+    "Usada por: decide. Recarregue antes de chegar ao limite de bloqueio."
+   ],
+   [
+    "ai_balance_unknown",
+    "Conta C: sem leitura de saldo registrada.",
+    "Usada por: decide. Registre o saldo do console em Configuração › IA."
+   ],
+   [
+    "ai_balance_stale",
+    "Conta D: saldo ok",
+    "O relatório oficial de uso do provedor não respondeu nos últimos 30 min: o gasto de fora da plataforma não está entrando. Confira a chave de administrador no .env."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "sdk_ausente": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "sdk_missing",
+    "Android SDK não encontrado em <sdk>.",
+    "Rode scripts/install-prereqs.ps1 ou ajuste android.sdk_root / ANDROID_SDK_ROOT."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": false
+  },
+  "status": "error"
+ },
+ "sem_aceleracao": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "no_acceleration",
+    "Aceleração de virtualização indisponível.",
+    "No Windows, habilite 'Windows Hypervisor Platform' (WHPX) e reinicie."
+   ]
+  ],
+  "sdk": {
+   "accel": "sem aceleração (simulado)",
+   "emulator_version": "35.0.0",
+   "found": true
+  },
+  "status": "error"
+ },
+ "servicos_de_canal": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "avisos_a",
+    "mensagem de avisos_a",
+    "dica de avisos_a"
+   ],
+   [
+    "frota_a",
+    "mensagem de frota_a",
+    "dica de frota_a"
+   ],
+   [
+    "telegram_a",
+    "mensagem de telegram_a",
+    "dica de telegram_a"
+   ],
+   [
+    "trello_recusa",
+    "mensagem de trello_recusa",
+    "dica de trello_recusa"
+   ],
+   [
+    "trello_leitor_b",
+    "mensagem de trello_leitor_b",
+    "dica de trello_leitor_b"
+   ],
+   [
+    "trello_webhook_a",
+    "mensagem de trello_webhook_a",
+    "dica de trello_webhook_a"
+   ],
+   [
+    "trello_cadastro_a",
+    "mensagem de trello_cadastro_a",
+    "dica de trello_cadastro_a"
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "teto_do_dia_80_por_cento": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "ai_budget_day_warning",
+    "Gasto de IA do dia em US$ 8.50 de US$ 10.00 (85% do teto).",
+    "Em 100 % as chamadas de IA passam a ser recusadas até o dia virar (UTC) ou o teto subir."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "teto_do_dia_atingido": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "ai_budget_day",
+    "Teto de gasto de IA do dia atingido: US$ 11.00 de US$ 10.00.",
+    "Nenhuma chamada nova de IA será feita hoje. Aumente ai_max_usd_per_day em Configuração › Limites para liberar."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ },
+ "tudo_de_uma_vez": {
+  "ai": {
+   "account_blocked": true,
+   "configured": false,
+   "simulated": true
+  },
+  "appium": {
+   "running": false
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "sdk_missing",
+    "Android SDK não encontrado em <sdk>.",
+    "Rode scripts/install-prereqs.ps1 ou ajuste android.sdk_root / ANDROID_SDK_ROOT."
+   ],
+   [
+    "devices_degraded",
+    "1 aparelho(s) respondem ao ADB mas não estão utilizáveis: android-01.",
+    "Veja o motivo no cartão de cada um (Infraestrutura). Reinicie o aparelho — de preferência a frio — e confira se a sessão de automação abre."
+   ],
+   [
+    "capacity_local",
+    "RAM livre agora só sustenta ≈2 aparelho(s) local(is) simultâneo(s), abaixo do alvo configurado (40, vagas do central pela regra única): ≈1000 MB livres, ≈2700 MB por instância, 1500 MB de folga exigida.",
+    "Outro processo está usando a RAM do host (confira o WSL — `.wslconfig` — e outros contêineres/VMs) ou o alvo local está otimista para esta máquina. O rodízio vai recusar boot antes de estourar; isto só antecipa o aviso."
+   ],
+   [
+    "locked_account_on_device",
+    "1 aparelho(s) ligado(s) com conta travada logada: android-01 (conta.de.teste).",
+    "O aparelho está em quarentena: nada o toca além de parar ou hibernar. O desafio é com a pessoa (ADR-009); decida o destino do aparelho — reset ou religar só com a confirmação explícita (confirm_locked_account)."
+   ],
+   [
+    "tunnel_down",
+    "1 túnel(is) fora: worker-a.",
+    "A porta LOCAL do túnel está recusando conexão — o worker remoto pode estar de pé; é o transporte que caiu. Veja data/logs/tunel-*.log; a tarefa agendada farm-tunel-<worker> (scripts/worker-tunnel.ps1) reconecta sozinha."
+   ],
+   [
+    "exposicao_publica_incompleta",
+    "Há host público declarado (server.public_hosts: central.exemplo.test) e falta: API_TOKEN no .env; server.tls_behind_proxy: true; server.allowed_origins com https://central.exemplo.test.",
+    "Complete em config/config.yaml e .env e reinicie o central; sem isso o login pelo endereço público não entra. Para recuar, tire o nome de server.public_hosts (tudo de fora volta a 403). Procedimento em docs/operacao.md, \"Portal público pelo túnel da Cloudflare\"."
+   ],
+   [
+    "portal_x",
+    "mensagem do portal",
+    "dica do portal"
+   ],
+   [
+    "appium_down",
+    "simulado: fora do ar",
+    "Verifique tools/appium (npm ci) e data/logs/appium.log; o controle manual segue funcionando."
+   ],
+   [
+    "clock_skew",
+    "O relógio desta máquina está 99.0s longe do relógio do banco.",
+    "A posse de etapa entre backends depende deste relógio: um backend adiantado adota etapa em plena execução de outro. Sincronize por NTP. Com outro backend hospedando aparelhos neste banco, este processo teria recusado subir."
+   ],
+   [
+    "ai_not_configured",
+    "Provedor de IA sem chave.",
+    "Defina ANTHROPIC_API_KEY no .env e reinicie o backend. Gerenciamento e controle manual continuam disponíveis."
+   ],
+   [
+    "ai_budget_day",
+    "Teto de gasto de IA do dia atingido: US$ 11.00 de US$ 10.00.",
+    "Nenhuma chamada nova de IA será feita hoje. Aumente ai_max_usd_per_day em Configuração › Limites para liberar."
+   ],
+   [
+    "ai_billing",
+    "conta recusada (execução r-teste, 2026-10-06T00:00:00Z).",
+    "Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."
+   ],
+   [
+    "ai_balance_blocked",
+    "Conta A: saldo blocked",
+    "Usada por: decide. Recarregue no console (console.exemplo.test) e registre a recarga em Configuração › IA (ou POST /api/ai/balances/<conta>/recharge)."
+   ],
+   [
+    "ai_balance_low",
+    "Conta B: saldo low",
+    "Usada por: decide. Recarregue antes de chegar ao limite de bloqueio."
+   ],
+   [
+    "ai_balance_unknown",
+    "Conta C: sem leitura de saldo registrada.",
+    "Usada por: decide. Registre o saldo do console em Configuração › IA."
+   ],
+   [
+    "ai_balance_stale",
+    "Conta D: saldo ok",
+    "O relatório oficial de uso do provedor não respondeu nos últimos 30 min: o gasto de fora da plataforma não está entrando. Confira a chave de administrador no .env."
+   ],
+   [
+    "avisos_a",
+    "mensagem de avisos_a",
+    "dica de avisos_a"
+   ],
+   [
+    "frota_a",
+    "mensagem de frota_a",
+    "dica de frota_a"
+   ],
+   [
+    "telegram_a",
+    "mensagem de telegram_a",
+    "dica de telegram_a"
+   ],
+   [
+    "trello_recusa",
+    "mensagem de trello_recusa",
+    "dica de trello_recusa"
+   ],
+   [
+    "trello_leitor_b",
+    "mensagem de trello_leitor_b",
+    "dica de trello_leitor_b"
+   ],
+   [
+    "trello_webhook_a",
+    "mensagem de trello_webhook_a",
+    "dica de trello_webhook_a"
+   ],
+   [
+    "trello_cadastro_a",
+    "mensagem de trello_cadastro_a",
+    "dica de trello_cadastro_a"
+   ],
+   [
+    "ai_fallback_em_uso",
+    "IA em fallback: 3 chamada(s) de 'decide' nos últimos 30 min não foram atendidas por modelo-a e caíram em modelo-b.",
+    "O provedor principal dessa função não respondeu (modelo local fora do ar, por exemplo: o Ollama sobe no login do usuário, não no boot). A execução segue pelo fallback declarado, com o custo e a qualidade dele. Suba o provedor principal ou declare o fallback como principal em ai.roles."
+   ],
+   [
+    "secret_store_locked",
+    "O cofre de credenciais está travado nesta máquina/usuário.",
+    "As credenciais cifradas foram preservadas. Recadastre a senha de cada perfil pelo portal para voltar a usar autenticação automática."
+   ],
+   [
+    "ai_simulated",
+    "MODO SIMULADO ativo: nenhuma IA é consultada.",
+    "Use AI_PROVIDER=anthropic no .env para o provedor real."
+   ],
+   [
+    "no_acceleration",
+    "Aceleração de virtualização indisponível.",
+    "No Windows, habilite 'Windows Hypervisor Platform' (WHPX) e reinicie."
+   ]
+  ],
+  "sdk": {
+   "accel": "sem aceleração (simulado)",
+   "emulator_version": "35.0.0",
+   "found": false
+  },
+  "status": "error"
+ },
+ "tunel_fora": {
+  "ai": {
+   "account_blocked": false,
+   "configured": true,
+   "simulated": false
+  },
+  "appium": {
+   "running": true
+  },
+  "database": {
+   "dialect": "<dialeto>",
+   "reachable": true,
+   "target": "<dialeto>"
+  },
+  "features": {
+   "ensino_v2": false,
+   "flows": false,
+   "hibernation": false,
+   "image_policy": "always",
+   "recipes": "off",
+   "repair_pause": {},
+   "skills": false
+  },
+  "problems": [
+   [
+    "tunnel_down",
+    "1 túnel(is) fora: worker-a.",
+    "A porta LOCAL do túnel está recusando conexão — o worker remoto pode estar de pé; é o transporte que caiu. Veja data/logs/tunel-*.log; a tarefa agendada farm-tunel-<worker> (scripts/worker-tunnel.ps1) reconecta sozinha."
+   ]
+  ],
+  "sdk": {
+   "accel": "None",
+   "emulator_version": null,
+   "found": true
+  },
+  "status": "degraded"
+ }
+}

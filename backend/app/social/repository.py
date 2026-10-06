@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, Sequence
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import date
 
 from pydantic import ValidationError
@@ -23,6 +23,7 @@ from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_vi
 from ..planning.catalog import pacote_ancora
 from ..metricas import metricas
 from ..shared.vinculos import teto_de_unknown
+from ..taskqueue.dado_da_persona import resolver_argumentos, resolver_texto
 from ..util import new_token, now, now_iso, to_iso
 from .contas_nossas import hash_do_handle, citacao_da_conta, foi_retirada, registrar_lapide, rotulo_da_conta, MARCADOR
 from .limpeza_de_conta import AparelhoDaLimpeza
@@ -137,6 +138,9 @@ class SocialRepository:
         #: Bloqueio CONFIRMADO numa conta (29.23, ADR-068): `(profile_id, app_id, handle, instance_id, evidencia)`. É
         #: o que o `SocialService` liga à retirada da conta; o marcador já foi gravado quando isto dispara.
         self.on_conta_bloqueada: Callable[[str, str | None, str, str, str | None, str], None] | None = None
+        #: 31.113 F3: o dado da persona LIDO NA HORA (o `Repository` liga), para o histórico da repetição comparar valor
+        #: com valor: a etapa e o pedido guardam o marcador, e a porta compara com o valor de agora. Sem ele, como antes.
+        self.variaveis_da_persona: Callable[[str], Mapping[str, str]] | None = None
         # Validade do "Conectado", em segundos. Injetada pelo AppState a partir da configuração; 0 desliga. Fica
         # aqui porque é o repositório que monta o DTO do perfil, e é no cartão que a idade precisa aparecer.
         self.session_max_age_s: int = 0
@@ -1653,11 +1657,17 @@ class SocialRepository:
             (profile_id, since, *types, *statuses, *((app_id,) if app_id else ()),
              *((exclude_step_id,) if exclude_step_id else ()), capability))
         saida = []
+        persona = self._persona_de_agora(profile_id)
         for r in linhas:
             argumentos = loads(r["bindings"], None) if r["acao"] is not None else None
             saida.append((str(r["id"]), str(r["occurred_at"]), r["counterparty"],
-                          argumentos if isinstance(argumentos, dict) else None, r["outgoing_content"]))
+                          resolver_argumentos(argumentos, persona) if isinstance(argumentos, dict) else None,
+                          r["outgoing_content"]))
         return saida
+
+    def _persona_de_agora(self, profile_id: str) -> Mapping[str, str]:
+        """31.113 F3: uma leitura por consulta; todas as linhas são do mesmo perfil (a consulta filtra `profile_id`)."""
+        return self.variaveis_da_persona(profile_id) if self.variaveis_da_persona is not None else {}
 
     def etapas_em_curso_da_acao(self, profile_id: str, capability: str, *, app_id: str | None = None,
                                 exclude_step_id: str | None = None) -> list[tuple[str, dict[str, object] | None]]:
@@ -1696,9 +1706,11 @@ class SocialRepository:
             (profile_id, capability, *((str(minha), str(minha), exclude_step_id) if minha else ()),
              *((app_id,) if app_id else ()), *((exclude_step_id,) if exclude_step_id else ())))
         saida: list[tuple[str, dict[str, object] | None]] = []
+        persona = self._persona_de_agora(profile_id)
         for r in linhas:
             argumentos = loads(r["bindings"], None)
-            saida.append((str(r["id"]), argumentos if isinstance(argumentos, dict) else None))
+            saida.append((str(r["id"]), resolver_argumentos(argumentos, persona) if isinstance(argumentos, dict)
+                          else None))
         return saida
 
     def marcar_passou_a_porta(self, step_id: str) -> None:
@@ -1731,11 +1743,14 @@ class SocialRepository:
             (profile_id, capability, since, *((decidido_desde,) if decidido_desde else ()), *((app_id,) if app_id else ()),
              *((exclude_step_id, exclude_step_id) if exclude_step_id else ())))
         saida = []
+        persona = self._persona_de_agora(profile_id)
         for r in linhas:
             argumentos = loads(r["bindings"], None)
             texto = r["approved_content"] if r["status"] == "edited" and r["approved_content"] else r["generated_content"]
-            saida.append((str(r["id"]), str(r["created_at"]), r["target"],
-                          argumentos if isinstance(argumentos, dict) else None, str(r["status"]), texto))
+            # 31.113 F3: o pedido e a etapa guardam o marcador; quem compara recebe o valor de agora.
+            saida.append((str(r["id"]), str(r["created_at"]), resolver_texto(r["target"], persona),
+                          resolver_argumentos(argumentos, persona) if isinstance(argumentos, dict) else None,
+                          str(r["status"]), resolver_texto(texto, persona)))
         return saida
 
     def pedidos_em_aberto_desde(self, profile_id: str, since: str, *,
