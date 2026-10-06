@@ -173,3 +173,39 @@ def test_depois_do_liberar_cada_estagio_guarda_a_sua_hora() -> None:
     direto = derivar(_fatos([replace(efeito, pedido_de_aprovacao=None, pedido_em=None)], status="succeeded",
                             acao_final="executar"))
     assert dict(direto.estagios)["resposta_gerada"] == "2026-10-07T10:08:00.000Z"
+
+
+def test_a_latencia_de_cada_estagio_e_desde_o_evento_anterior_no_tempo_e_o_liberar_sai_a_parte() -> None:
+    """Latência por estágio (métrica de primeira classe do dono): a etapa é o tempo desde o evento ANTERIOR no tempo, não
+    na ordem do dono (a interface abre antes do rascunho), e a espera pelo liberar não entra na ação executada."""
+    from dataclasses import replace
+
+    from app.modules.operacoes.domain.latencia import do_alvo, por_estagio
+
+    efeito = replace(_etapa("CREATE_COMMENT", "succeeded", efeito=True, texto=True, verificada=True, pedido="approved",
+                            h="08"), pedido_em="2026-10-07T10:05:00.000Z")
+    lt = derivar(_fatos([_etapa("OPEN_COMMENTS", "succeeded", h="03"), efeito], status="succeeded",
+                        acao_final="executar"))
+    assert lt.liberado_em == "2026-10-07T10:08:00.000Z"      # a etapa com efeito começou no liberar
+    lat = do_alvo(lt.estagios, T0, lt.liberado_em, "instagram_aberto")
+    etapa = dict(zip([e for e, _ in lt.estagios], lat.etapas_ms, strict=True))
+    assert etapa["persona"] == etapa["conta"] == 0
+    assert etapa["aparelho"] == 30_000                       # 10:00:30 desde a criação (10:00:00)
+    assert etapa["instagram_aberto"] == 150_000              # 10:03:00 (a 1ª etapa começou) desde 10:00:30
+    assert etapa["interface_de_comentario_alcancada"] == 30_000    # 10:03:30 desde 10:03:00
+    assert etapa["resposta_gerada"] == 90_000                # 10:05:00 desde 10:03:30, não negativo pela ordem do dono
+    assert etapa["acao_preparada"] == 0                      # a mesma hora do rascunho
+    assert etapa["acao_executada"] == 30_000                 # 10:08:30 desde o liberar (10:08:00), sem a espera
+    assert etapa["resultado_verificado"] == 0
+    assert (lat.duracao_ms, lat.espera_do_liberar_ms) == (510_000, 180_000)
+    # sem liberar: a ação executada conta desde a preparada, e não há espera
+    sem = do_alvo(lt.estagios, T0, None, "instagram_aberto")
+    assert dict(zip([e for e, _ in lt.estagios], sem.etapas_ms, strict=True))["acao_executada"] == 210_000
+    assert sem.espera_do_liberar_ms is None
+    # hora ilegível não entra e não derruba as outras
+    torta = do_alvo((("persona", T0), ("aparelho", "ontem"), ("instagram_aberto", "2026-10-07T10:01:00.000Z")), T0)
+    assert torta.etapas_ms == (0, None, 60_000) and torta.duracao_ms == 60_000
+    # entre os alvos: n, p50, p95 e máximo por estágio, só com etapa medida
+    alvos = [{"estagios": [{"estagio": "aparelho", "etapa_ms": ms}, {"estagio": "conta", "etapa_ms": None}]}
+             for ms in (1000, 2000, 3000, 10_000)]
+    assert por_estagio(alvos) == {"aparelho": {"n": 4, "p50_ms": 3000, "p95_ms": 10_000, "max_ms": 10_000}}

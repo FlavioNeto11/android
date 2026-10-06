@@ -693,3 +693,30 @@ async def test_conta_com_sessao_em_dois_aparelhos_executa_so_no_vinculo_principa
     assert a["instance_id"] == "android-02" and a["run_id"]
     assert (b["estado"], b["motivo"], b["parou_em"], b["run_id"]) == (
         "bloqueado", "sessão fora do aparelho principal", "sessao", None)
+
+
+async def test_o_get_traz_a_latencia_por_estagio_por_alvo_e_da_operacao(harness: Harness) -> None:
+    """Latência por estágio e por alvo no GET (métrica de primeira classe do dono, ao lado de custo e sucesso): cada estágio
+    com `etapa_ms`, o alvo com a duração e a espera pelo liberar à parte, e a operação com n/p50/p95/máx por estágio."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Lia", "android-01")
+    _conta(harness, pid, "qa-user-71", sessao_em="android-01")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-latencia"))
+    st.db.execute("UPDATE operacoes SET created_at=? WHERE id=?", ("2026-10-07T10:00:00.000Z", op["id"]))
+    lida_do_alvo = Leitura("resultado_verificado", "concluido", None,
+                           (("persona", "2026-10-07T10:00:00.000Z"), ("aparelho", "2026-10-07T10:00:30.000Z"),
+                            ("acao_preparada", "2026-10-07T10:02:00.000Z"),
+                            ("acao_executada", "2026-10-07T10:09:00.000Z"),
+                            ("resultado_verificado", "2026-10-07T10:09:00.000Z")),
+                           liberado_em="2026-10-07T10:08:00.000Z")
+    s._ler_alvo = lambda op_, a, d: (lida_do_alvo, None)  # type: ignore[method-assign]
+    lida = s.ler(op["id"])
+    alvo = lida["alvos"][0]  # type: ignore[index]
+    assert [(e["estagio"], e["etapa_ms"]) for e in alvo["estagios"]] == [
+        ("persona", 0), ("aparelho", 30_000), ("acao_preparada", 90_000), ("acao_executada", 60_000),
+        ("resultado_verificado", 0)]
+    assert alvo["latencia"] == {"duracao_ms": 540_000, "espera_do_liberar_ms": 360_000}
+    assert lida["latencia_por_estagio"]["acao_executada"] == {"n": 1, "p50_ms": 60_000, "p95_ms": 60_000,  # type: ignore[index]
+                                                              "max_ms": 60_000}

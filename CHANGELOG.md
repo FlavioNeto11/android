@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.187: latência por estágio e por alvo no GET da operação, adendo v1.108 (branch feat/operacao-latencia-por-estagio, corte 60)
+
+- `GET /api/operacoes/{id}` traz `estagios[].etapa_ms` (desde o evento anterior no tempo), `alvos[].latencia`
+  `{duracao_ms, espera_do_liberar_ms}` e `latencia_por_estagio` `{n, p50_ms, p95_ms, max_ms}`. A espera pelo liberar
+  sai à parte e não entra na ação executada. Tudo é derivado das horas dos estágios, sem migração.
+- `scripts/reverificar-sessoes.py` (parte do 29.168): a reverificação das contas reais como comando único, só leitura
+  pela API (`session/verify`, sem adb), com no máximo 2 tentativas por aparelho e o @ redigido.
+- Prova `simulated`: `backend/tests/test_operacoes_estagios.py`, `backend/tests/test_operacoes.py` (o teste da
+  latência no GET) e `scripts/tests/test_reverificar_sessoes.py`. Real: not_run.
+
 ## 2026-10-06 — 31.175, correção: cada estágio do alvo guarda a sua hora (achado do percurso da Portal no deploy 57)
 
 - Na operação liberada, resposta gerada, ação preparada, ação executada e resultado verificado saíam com a mesma hora

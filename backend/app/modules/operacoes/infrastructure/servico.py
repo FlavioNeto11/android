@@ -26,6 +26,7 @@ from app.contracts.origem import PREFIXO_OPERACAO
 from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
+from app.modules.operacoes.domain import latencia
 from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs
@@ -298,13 +299,18 @@ class ServicoDeOperacoes:
             custo = round(costs.spent_usd(self.db, self.precos, run_id=str(a["run_id"])), 4) if a["run_id"] else None
             if resultado is not None:
                 resultado = {**resultado, "custo_usd": custo}
+            # A latência do alvo (métrica de primeira classe do dono): a etapa de cada estágio e a espera pelo liberar à
+            # parte, para a espera pela pessoa não entrar como latência da ação (`domain/latencia.py`).
+            lat = latencia.do_alvo(lt.estagios, str(op["created_at"]), lt.liberado_em, definicao[0])
             saida.append({"profile_id": a["profile_id"], "persona_nome": self._nome(str(a["profile_id"])),
                           "app_id": op["app_id"], "account_id": a["account_id"], "conta": self._handle(a),
                           "instance_id": a["instance_id"], "run_id": a["run_id"], "estagio": lt.estagio,
                           "estado": estado, "motivo": motivo,
                           "parou_em": parou if estado in ("bloqueado", "cancelado") else None,
-                          "estagios": [{"estagio": e, "em": em} for e, em in lt.estagios], "resultado": resultado,
-                          "custo_usd": custo})
+                          "estagios": [{"estagio": e, "em": em, "etapa_ms": ms}
+                                       for (e, em), ms in zip(lt.estagios, lat.etapas_ms, strict=True)],
+                          "latencia": {"duracao_ms": lat.duracao_ms, "espera_do_liberar_ms": lat.espera_do_liberar_ms},
+                          "resultado": resultado, "custo_usd": custo})
         capacidade = self._capacidade(saida)
         status = self._status(op, saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
@@ -312,7 +318,8 @@ class ServicoDeOperacoes:
                 "parametros": loads(op["parametros"], None), "fontes_da_pesquisa": self._fontes_da_pesquisa(op_id),
                 "status": status, "created_at": op["created_at"],
                 "finished_at": self._fechar(op, status, capacidade, fim=self._fim_real(saida)),
-                "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id)}
+                "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id),
+                "latencia_por_estagio": latencia.por_estagio(saida)}
 
     def _fontes_da_pesquisa(self, op_id: str) -> list[str]:
         """As URLs que a pesquisa externa da operação ACHOU (frente de aprendizado, migração 125: `pedido_observacoes` com

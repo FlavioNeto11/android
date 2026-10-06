@@ -7434,3 +7434,28 @@ depois de `<intencao>`, com o pedido de relacionar o texto ao assunto só quando
 
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.
+
+## Adendo v1.108 (06/10/2026; número da orquestradora; item 31.187) — a latência por estágio e por alvo no GET da operação
+
+`GET /api/operacoes/{id}` ganha três campos, todos aditivos e derivados das horas dos estágios (nada novo é gravado). A
+latência é métrica de primeira classe do dono, ao lado de custo e sucesso. A tela é da Portal (31.185).
+
+- `alvos[].estagios[].etapa_ms` (int ou `null`): os milissegundos desde o evento ANTERIOR no tempo. Os eventos são a
+  criação da operação, as horas dos outros estágios do alvo e o liberar. A conta segue o tempo, não a ordem fixa do dono:
+  o rascunho sai depois de a interface de comentário abrir, e a lista os mostra na ordem do dono. Um estágio com a mesma
+  hora do anterior dá `0`; uma hora ilegível dá `null`, sem derrubar os outros.
+- `alvos[].latencia`: `{duracao_ms, espera_do_liberar_ms}`.
+  - `duracao_ms` vai da criação da operação ao último estágio alcançado.
+  - `espera_do_liberar_ms` vai da ação preparada (o pedido de aprovação) ao liberar, isto é, ao início da etapa com
+    efeito. Fica `null` sem liberar. Essa espera pela pessoa NÃO entra no `etapa_ms` da ação executada, que conta desde
+    o liberar.
+- `latencia_por_estagio`: `{<estagio>: {n, p50_ms, p95_ms, max_ms}}` entre os alvos, só com etapa medida. O percentil é
+  pelo posto mais próximo, o mesmo de `scripts/latencia-por-etapa.py`.
+
+As horas vêm da correção do 31.175 (9a4e8e29). Resposta gerada e ação preparada ficam com a hora do pedido de aprovação,
+ou com a do início da etapa que roda sem pedido; ação executada e resultado verificado, com a do fim da etapa. Antes, as
+quatro saíam com a hora do liberar.
+
+Código: `backend/app/modules/operacoes/domain/latencia.py`, `Leitura.liberado_em` em `domain/estagios.py` e
+`ServicoDeOperacoes.ler`. Testes: `backend/tests/test_operacoes_estagios.py::test_a_latencia_de_cada_estagio_e_desde_o_evento_anterior_no_tempo_e_o_liberar_sai_a_parte`
+e `backend/tests/test_operacoes.py::test_o_get_traz_a_latencia_por_estagio_por_alvo_e_da_operacao`.
