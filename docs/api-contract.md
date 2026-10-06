@@ -7297,6 +7297,10 @@ nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal`
   com o motivo da recusa. Inclui o nome fixo em conflito: o plano usa um nome de `parametros` com outro valor, o
   `plan.refused` sai com `{"motivo": "parametro_em_conflito", "parametros": [<nomes>]}`, e o motivo do alvo começa por
   "parâmetro em conflito:". Os valores não entram.
+- 31.174: `GET /api/operacoes/elegiveis?app_id=<app>` (só leitura) devolve o pool elegível:
+  - o corpo é `{app_id, itens: [{profile_id, persona_nome, account_id, instance_id, elegivel, parou_em, motivo,
+    sessao_verificada_em, sessao_vencida}], contagem: {personas, elegiveis, com_sessao_vencida, motivos}}`;
+  - um app inexistente dá 404 `app_inexistente`, e um pedido sem `app_id` dá 422.
 - 31.173: cada alvo traz `sessao_verificada_em` (string ou nulo): a última verificação, na tela, da sessão da conta
   naquele aparelho. O alvo `pendente` leva no `motivo` o porquê da espera (por exemplo, a releitura da sessão vencida).
   Três releituras seguidas falhas param o objetivo com o motivo.

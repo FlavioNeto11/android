@@ -745,3 +745,60 @@ async def test_a_releitura_da_sessao_que_falha_sempre_para_no_teto_com_o_motivo(
     provedor.falhar = False
     await reler()
     assert st._releituras_falhas == {}  # noqa: SLF001
+
+
+async def test_o_pool_elegivel_e_a_conferencia_da_criacao_sem_criar_nada(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """31.174: quem pode ser alvo agora: a conferência da criação (persona, conta, sessão, aparelho) mais o aparelho
+    apto. A sessão vencida continua elegível (a porta relê a tela) e vem marcada. Só leitura: nada é criado."""
+    from app.models import SessionStatus as Sessao
+    from app.modules.operacoes.infrastructure.servico import APARELHO_INAPTO, SEM_CONTA, SEM_SESSAO
+
+    st = harness.state
+    assert st is not None
+    monkeypatch.setattr(st.social_repo, "session_max_age_s", 43_200)
+    pronta = _persona(harness, "Nara", "android-02")
+    _conta(harness, pronta, "qa-user-67", sessao_em="android-02")
+    sem_conta = _persona(harness, "Odete")
+    sem_sessao = _persona(harness, "Pia")
+    _conta(harness, sem_sessao, "qa-user-68")
+    velha = _persona(harness, "Rute", "android-01")
+    conta_velha = _conta(harness, velha, "qa-user-69")
+    st.social_repo.set_account_session(velha, conta_velha, "android-01", status=Sessao.session_ready,
+                                       verified_at="2026-01-01T00:00:00.000Z")
+    inapta = _persona(harness, "Sara", "android-03")
+    _conta(harness, inapta, "qa-user-70", sessao_em="android-03")
+    s = _servico(harness)
+    monkeypatch.setattr(s, "_aparelho_apto", lambda iid: iid in ("android-01", "android-02"))
+    antes = (st.db.scalar("SELECT COUNT(*) FROM operacoes"), st.db.scalar("SELECT COUNT(*) FROM runs"))
+    pool = s.elegiveis(APP)
+    por = {i["profile_id"]: i for i in pool["itens"]}  # type: ignore[union-attr,index]
+    assert (por[pronta]["elegivel"], por[pronta]["instance_id"], por[pronta]["sessao_vencida"]) == (True, "android-02",
+                                                                                                     False)
+    assert por[pronta]["sessao_verificada_em"]
+    assert (por[sem_conta]["elegivel"], por[sem_conta]["parou_em"], por[sem_conta]["motivo"]) == (False, "conta",
+                                                                                                   SEM_CONTA)
+    assert (por[sem_sessao]["parou_em"], por[sem_sessao]["motivo"]) == ("sessao", SEM_SESSAO)
+    assert (por[velha]["elegivel"], por[velha]["sessao_vencida"]) == (True, True)
+    assert (por[inapta]["elegivel"], por[inapta]["parou_em"], por[inapta]["motivo"]) == (False, "aparelho",
+                                                                                         APARELHO_INAPTO)
+    contagem = pool["contagem"]
+    assert contagem["elegiveis"] == sum(1 for i in por.values() if i["elegivel"])  # type: ignore[index]
+    assert contagem["com_sessao_vencida"] >= 1 and contagem["motivos"][SEM_CONTA] >= 1  # type: ignore[index]
+    assert (st.db.scalar("SELECT COUNT(*) FROM operacoes"), st.db.scalar("SELECT COUNT(*) FROM runs")) == antes
+    with pytest.raises(OperacaoError) as exc:
+        s.elegiveis("app-que-nao-existe")
+    assert (exc.value.code, exc.value.status) == ("app_inexistente", 404)
+
+
+async def test_rota_do_pool_elegivel_vem_antes_do_id_da_operacao(harness: Harness) -> None:
+    """31.174: `GET /api/operacoes/elegiveis?app_id=` não pode ser engolida por `/operacoes/{operacao_id}`."""
+    st = harness.state
+    assert st is not None
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/operacoes/elegiveis", params={"app_id": APP})
+        assert r.status_code == 200 and r.json()["app_id"] == APP and "contagem" in r.json()
+        assert (await c.get("/api/operacoes/elegiveis", params={"app_id": "nao-existe"})).status_code == 404
+        assert (await c.get("/api/operacoes/elegiveis")).status_code == 422

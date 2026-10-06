@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.174: pool elegível para operação (branch feat/31-174-pool-elegivel, corte 58, sobre o 31.173)
+
+- `GET /api/operacoes/elegiveis?app_id=` mostra quem pode ser alvo agora. É só leitura: nada é criado nem despachado.
+- Os critérios são a mesma conferência da criação (persona → conta → sessão → aparelho, na ordem do dono) mais o
+  aparelho apto: online, fora da loja e sem conta travada.
+- Cada item traz `elegivel`, `parou_em`, `motivo`, `sessao_verificada_em` e `sessao_vencida`. A sessão vencida continua
+  elegível, porque a porta relê a tela antes da tarefa, e vem marcada para a reverificação antes da onda.
+- A contagem traz personas, elegíveis, elegíveis com sessão vencida e motivos.
+- A rota vem antes de `/operacoes/{operacao_id}`.
+- Prova `simulated`:
+  - `backend/tests/test_operacoes.py::test_o_pool_elegivel_e_a_conferencia_da_criacao_sem_criar_nada`;
+  - `backend/tests/test_operacoes.py::test_rota_do_pool_elegivel_vem_antes_do_id_da_operacao`.
+
 ## 2026-10-06 — 31.173: a sessão na operação (branch feat/31-173-sessao-na-operacao, corte 58, sobre o F5c B)
 
 - O alvo que espera antes do aparelho (a porta de sessão relendo a tela, a vaga) leva o MOTIVO da espera, e não só
