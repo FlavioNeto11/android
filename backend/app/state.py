@@ -171,6 +171,8 @@ OUTBOX_RETRY_S = 15.0
 #: da porta `DecisaoFechada`. Estourou, o `stop()` segue e fecha o banco (a escrita tardia falha e é logada, nunca trava o
 #: encerramento); `AppState.stop` o lê na hora, para o teste encolhê-lo.
 ESPERA_DE_SOMBRAS_S = 6.0
+#: 31.173: releituras SEGUIDAS da sessão vencida que falham (exceção do provedor) antes de o objetivo parar com motivo.
+TETO_DE_RELEITURAS_DA_SESSAO = 3
 
 
 class RelogioDivergente(RuntimeError):
@@ -221,6 +223,7 @@ class AppState:
     secrets: SecretStore
     social_repo: SocialRepository
     _releituras_do_teto: dict[tuple[str, str, str], str]
+    _releituras_falhas: dict[tuple[str, str], int]
     persona_images: PersonaImageService
     social: SocialService
     lotes_de_persona: LotesDePersona
@@ -833,6 +836,30 @@ class AppState:
             return None
         return str(obj["profile_id"]) if obj["profile_id"] else None
 
+    def _releitura_da_sessao(self, rt: DeviceRuntime, profile_id: str, conta_id: str | None,
+                             provedor: SessionProvider) -> tuple[str, Callable[[], Awaitable[None]] | None]:
+        """31.173: a releitura da sessão vencida, com TETO de falhas seguidas por conta e aparelho. Sem teto, a releitura
+        que falha sempre (o UiAutomator sem a árvore da janela: android-03, 06/10 21:22Z e 21:32Z) voltava a cada
+        volta do despacho, e o alvo ficava `pendente` para sempre. No teto, o objetivo para com o motivo e a contagem
+        zera: retomar tenta de novo."""
+        chave = (rt.id, conta_id or "")
+        falhas = self._releituras_falhas.get(chave, 0)
+        if falhas >= TETO_DE_RELEITURAS_DA_SESSAO:
+            self._releituras_falhas.pop(chave, None)
+            return (f"a sessão não pôde ser relida em {falhas} tentativas seguidas em {rt.id}; confira o aparelho e "
+                    "retome o item", None)
+
+        async def reler() -> None:
+            try:
+                await provedor.ensure_session(rt, profile_id, account_id=conta_id, observe_only=True)
+            except Exception:
+                self._releituras_falhas[chave] = self._releituras_falhas.get(chave, 0) + 1
+                raise
+            self._releituras_falhas.pop(chave, None)
+        sufixo = f" (tentativa {falhas + 1} de {TETO_DE_RELEITURAS_DA_SESSAO})" if falhas else ""
+        return ("a verificação desta sessão passou da validade; o aparelho vai ser relido antes da tarefa" + sufixo,
+                reler)
+
     def sessao_vencida(self, session: Any) -> bool:
         """A sessão `session_ready` passou da validade? Verificação sem data conta como vencida.
 
@@ -995,8 +1022,7 @@ class AppState:
                 return None
             # Vencida: NÃO é "deslogado". Antes da tarefa, relê a tela — `observe_only` nunca tenta autenticar, e
             # num aparelho ainda logado a conferência devolve `session_ready` com data nova e a tarefa segue.
-            return ("a verificação desta sessão passou da validade; o aparelho vai ser relido antes da tarefa",
-                    lambda: provedor.ensure_session(rt, profile_id, account_id=conta_id, observe_only=True))
+            return self._releitura_da_sessao(rt, profile_id, conta_id, provedor)
         motivo = (session["detail"] if session and session["detail"]
                   else "a sessão deste perfil ainda não foi verificada")
         if session and session["status"] in self._SESSAO_PRECISA_DE_PESSOA:

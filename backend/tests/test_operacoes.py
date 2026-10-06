@@ -693,3 +693,55 @@ async def test_conta_com_sessao_em_dois_aparelhos_executa_so_no_vinculo_principa
     assert a["instance_id"] == "android-02" and a["run_id"]
     assert (b["estado"], b["motivo"], b["parou_em"], b["run_id"]) == (
         "bloqueado", "sessão fora do aparelho principal", "sessao", None)
+
+
+async def test_o_get_traz_a_hora_da_ultima_verificacao_da_sessao_do_alvo(harness: Harness) -> None:
+    """31.173: o que a pessoa olha antes da onda: quando a sessão da conta do alvo naquele aparelho foi vista na tela."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Lia", "android-02")
+    _conta(harness, pid, "qa-user-65", sessao_em="android-02")
+    sem_sessao = _persona(harness, "Mel", "android-03")
+    _conta(harness, sem_sessao, "qa-user-66")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid), AlvoPedido(sem_sessao)], chave="teste-op-sessao-verificada"))
+    lida = s.ler(op["id"])
+    assert _alvo(lida, pid)["sessao_verificada_em"]
+    assert _alvo(lida, sem_sessao)["sessao_verificada_em"] is None
+
+
+async def test_a_releitura_da_sessao_que_falha_sempre_para_no_teto_com_o_motivo(harness: Harness) -> None:
+    """31.173: a releitura da sessão vencida que falha sempre (o UiAutomator sem a árvore: android-03, 06/10) voltava a
+    cada volta do despacho. No teto, o objetivo para com o motivo, e a contagem zera para a retomada; sucesso zera."""
+    import types
+
+    from app.state import TETO_DE_RELEITURAS_DA_SESSAO
+
+    st = harness.state
+    assert st is not None
+    chamadas: list[bool] = []
+
+    class _Provedor:
+        falhar = True
+
+        async def ensure_session(self, rt: Any, profile_id: str, *, account_id: str | None = None,
+                                 observe_only: bool = False) -> None:
+            chamadas.append(observe_only)
+            if self.falhar:
+                raise RuntimeError("Timed out waiting for the root AccessibilityNodeInfo")
+
+    rt, provedor = types.SimpleNamespace(id="android-09"), _Provedor()
+    for i in range(TETO_DE_RELEITURAS_DA_SESSAO):
+        motivo, reler = st._releitura_da_sessao(rt, "p-1", "acc-1", provedor)  # type: ignore[arg-type]  # noqa: SLF001
+        assert reler is not None and ("tentativa" in motivo) == (i > 0)
+        with pytest.raises(RuntimeError):
+            await reler()
+    motivo, reler = st._releitura_da_sessao(rt, "p-1", "acc-1", provedor)  # type: ignore[arg-type]  # noqa: SLF001
+    assert reler is None and f"{TETO_DE_RELEITURAS_DA_SESSAO} tentativas seguidas" in motivo and "android-09" in motivo
+    assert all(chamadas) and len(chamadas) == TETO_DE_RELEITURAS_DA_SESSAO     # só observação, nunca login
+    # retomar: a contagem zerou no bloqueio; e a releitura boa zera também
+    motivo, reler = st._releitura_da_sessao(rt, "p-1", "acc-1", provedor)  # type: ignore[arg-type]  # noqa: SLF001
+    assert reler is not None and "tentativa" not in motivo
+    provedor.falhar = False
+    await reler()
+    assert st._releituras_falhas == {}  # noqa: SLF001

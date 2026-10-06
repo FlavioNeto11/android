@@ -304,7 +304,7 @@ class ServicoDeOperacoes:
                           "estado": estado, "motivo": motivo,
                           "parou_em": parou if estado in ("bloqueado", "cancelado") else None,
                           "estagios": [{"estagio": e, "em": em} for e, em in lt.estagios], "resultado": resultado,
-                          "custo_usd": custo})
+                          "custo_usd": custo, "sessao_verificada_em": self._sessao_verificada_em(a)})
         capacidade = self._capacidade(saida)
         status = self._status(op, saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
@@ -313,6 +313,15 @@ class ServicoDeOperacoes:
                 "status": status, "created_at": op["created_at"],
                 "finished_at": self._fechar(op, status, capacidade, fim=self._fim_real(saida)),
                 "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id)}
+
+    def _sessao_verificada_em(self, a: Row) -> str | None:
+        """31.173: quando a sessão da conta do alvo NESTE aparelho foi vista na tela pela última vez (`account_sessions`).
+        A porta do despacho relê a vencida antes da tarefa; aqui é o que a pessoa olha antes de começar."""
+        if not a["account_id"] or not a["instance_id"]:
+            return None
+        linha = self.db.one("SELECT verified_at FROM account_sessions WHERE account_id=? AND instance_id=?",
+                            (a["account_id"], a["instance_id"]))
+        return str(linha["verified_at"]) if linha is not None and linha["verified_at"] else None
 
     def _fontes_da_pesquisa(self, op_id: str) -> list[str]:
         """As URLs que a pesquisa externa da operação ACHOU (frente de aprendizado, migração 125: `pedido_observacoes` com

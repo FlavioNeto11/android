@@ -334,6 +334,7 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
     #: de `unknown_streak`. É a trava de UMA releitura por janela (entrada no ar do aparelho, validade): a releitura
     #: que quebra não grava nada, e sem a trava o tick seguinte a reagendaria para sempre (achado #104).
     self._releituras_do_teto = {}
+    self._releituras_falhas = {}
     # O pacote da conta vem do REGISTRO de apps (o app âncora do perfil, ADR-052 fatia 4), como no logout: é por
     # ele que o perfil diz se o app está no aparelho antes de oferecer Conectar.
     ancora = pacote_ancora()

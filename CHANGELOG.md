@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.173: a sessão na operação (branch feat/31-173-sessao-na-operacao, corte 58, sobre o F5c B)
+
+- O alvo que espera antes do aparelho (a porta de sessão relendo a tela, a vaga) leva o MOTIVO da espera, e não só
+  `pendente`.
+- O GET traz `sessao_verificada_em` por alvo: a última vez que a sessão da conta naquele aparelho foi vista na tela.
+- A porta de sessão ganha um teto de releituras falhas seguidas da sessão vencida, por conta e aparelho
+  (`TETO_DE_RELEITURAS_DA_SESSAO` = 3).
+  - No teto, o objetivo para com o motivo, e a contagem zera para a retomada. Uma releitura boa também zera.
+  - Antes, a releitura que falhava sempre voltava a cada volta do despacho. Foi o caso do android-03 em 06/10, às 21:22Z
+    e às 21:32Z: o UiAutomator ficou sem a árvore da janela.
+- Prova `simulated`:
+  - `backend/tests/test_operacoes_estagios.py::test_o_alvo_que_espera_a_porta_de_sessao_diz_por_que`;
+  - `backend/tests/test_operacoes.py::test_o_get_traz_a_hora_da_ultima_verificacao_da_sessao_do_alvo`;
+  - `backend/tests/test_operacoes.py::test_a_releitura_da_sessao_que_falha_sempre_para_no_teto_com_o_motivo`.
+
 ## 2026-10-06 — 15.15 F5c B: o resto do `AppState.__init__` vai para `bootstrap.montar` (branch feat/15-15-f5c-b, corte 58)
 
 - O corpo do `AppState.__init__` passa a ser `app/bootstrap.py::montar(self, cfg, …)`, e os atributos ficam declarados

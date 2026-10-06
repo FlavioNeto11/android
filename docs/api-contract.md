@@ -7297,6 +7297,9 @@ nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal`
   com o motivo da recusa. Inclui o nome fixo em conflito: o plano usa um nome de `parametros` com outro valor, o
   `plan.refused` sai com `{"motivo": "parametro_em_conflito", "parametros": [<nomes>]}`, e o motivo do alvo começa por
   "parâmetro em conflito:". Os valores não entram.
+- 31.173: cada alvo traz `sessao_verificada_em` (string ou nulo): a última verificação, na tela, da sessão da conta
+  naquele aparelho. O alvo `pendente` leva no `motivo` o porquê da espera (por exemplo, a releitura da sessão vencida).
+  Três releituras seguidas falhas param o objetivo com o motivo.
 - `OperacaoDetalhe.fontes_da_pesquisa: string[]`: as URLs que a pesquisa externa achou (`pedido_observacoes`,
   `tipo='url'`, sem repetição, na ordem da captura). `fontes` continua sendo só a entrada do pedido.
 
