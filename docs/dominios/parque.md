@@ -437,7 +437,10 @@ Cada sonda de saúde que acha o framework vivo (`DeviceManager.conferir_saude` �
 a linha `cpu` de `/proc/stat` do convidado (`adb.guest_pressure`). **Pressão** vira aviso no cartão, sem degradar: load
 acima de 4× as vCPUs ou menos de 8% de RAM livre em duas sondas seguidas, e o texto diz o recurso que disparou
 ("Convidado sob pressão de CPU", "de RAM" ou "de CPU e RAM") com o remédio de cada um; antes era sempre "mais RAM", o
-remédio errado para o android-06 de 28/09, que tinha RAM sobrando. **Interrupção acumulada** (`_conferir_interrupcoes`):
+remédio errado para o android-06 de 28/09, que tinha RAM sobrando. O PRIMEIRO aviso de cada episódio (29.152) leva no
+`data` do evento o campo `pressao`: os 3 processos de maior CPU (`dumpsys cpuinfo`) e o pacote em primeiro plano, só
+nomes (`adb.ler_culpados`, `_culpados_da_pressao`), uma leitura por episódio; os avisos seguintes só trocam os números.
+Medido em 06/10: no android-02, 375 de 480 avisos do dia e nenhum nomeava processo ou app. **Interrupção acumulada** (`_conferir_interrupcoes`):
 a fração de CPU em irq+softirq entre duas sondas; com o aparelho ocioso (ninguém no controle, nem a IA nem uma pessoa)
 acima de 15% em 3 sondas seguidas (`IRQ_OCIOSO_MAX`, `IRQ_SONDAS`), a plataforma abre um `restart` rastreável
 (`on_health_restart` → `AppState._reiniciar_por_saude`, `requested_by='system'`), no máximo 1 a cada 6 h por aparelho;
