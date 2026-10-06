@@ -11099,6 +11099,58 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T15:12:25+00:00"
+  },
+  "29.108": {
+   "id": "29.108",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch fix/29-108-assentamento-perdedor, ancestral da main c0d2fd5f (CHANGELOG 2026-10-05 — 29.108): o worker que perde a marca runs.assentada_em chama on_run_parada e solta a trava de rascunho; Database.depois_do_commit respeita savepoint desfeito. Simulated: backend/tests/test_aguardando_pessoa.py e backend/tests/test_db.py (suítes 45 a 52 verdes com o código dentro). Real: not_run (não houve caso de dois processos disputando a marca observado em produção).",
+   "blocker": "",
+   "grupo": "jev",
+   "modelo": "sonnet-5.5",
+   "esforco": "medium",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T16:03:24+00:00"
+  },
+  "29.102": {
+   "id": "29.102",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch fix/29-102-ci-rede, ancestral da main c0d2fd5f (CHANGELOG 2026-10-05 — 29.102): ci.yml sem pull_request (corrida diária e disparo manual), job porta pula os jobs do central com pytest vivo, scripts/mypy-catraca.py com teto em backend/mypy-teto.txt (257). Simulated: catracas e docs-check nas suítes 45 a 52. Real: a corrida diária e o job porta ficam com a Frente GitHub (rotina 06:03Z de 07/10).",
+   "blocker": "",
+   "grupo": "jev",
+   "modelo": "sonnet-5.5",
+   "esforco": "medium",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T16:03:24+00:00"
+  },
+  "29.126": {
+   "id": "29.126",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Readoção do Appium coberta por 29.132/29.138 (dono da porta antes do PID gravado, órfão nosso sem máscara trocado, externo se um dono alheio escuta). ACHADO do revisor-segredos em 06/10 (Jev): `log_masking_active` só é zerado em stop(), no ramo externo de _reuse_running e numa linha de _subir; start()/_subir não zeram ao entrar nem ao falhar, e ensure_automation só chama start() quando is_up() é falso: se o Appium provado morrer e um externo assumir a porta, a flag fica True e SensitiveInputChannel.fill digita num Appium sem prova de máscara (médio, não bloqueante hoje: exige a troca na porta; tema do ADR-040). Correção em curso: fix/29-126-mascaramento-revalidado (flag revalidada a cada leitura, zerada ao entrar em start()/_subir, trava em start(), testes).",
+   "blocker": "Ponta da correção com revisor-segredos; prova real da readoção sob carga pede reinício com carga (Android).",
+   "grupo": "jev",
+   "modelo": "sonnet-5.5",
+   "esforco": "medium",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T16:08:07+00:00"
+  },
+  "29.122": {
+   "id": "29.122",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Mitigações já na main e no ar: 29.121 (o vigia guarda a pilha do backend antes do kill), 29.123 e 29.127 (readoção do Appium sem o log antigo), 29.124 (o supervisor espera a partida lenta e pausa depois de reinícios seguidos), 29.125 (só mata o backend). Real: desde esses deploys não houve novo kill do supervisor (central 6e7b87cf, 06/10). A CAUSA do 1º travamento de 05/10 continua sem prova e não há mais log a ler; só a próxima ocorrência, com a pilha gravada pelo 29.121, a mostra.",
+   "blocker": "Fica partial até a próxima ocorrência trazer a pilha (29.121) ou até 7 dias sem kill (13/10), quando se fecha como mitigado.",
+   "grupo": "jev",
+   "modelo": "sonnet-5.5",
+   "esforco": "medium",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T16:05:07+00:00"
   }
  },
  "rodadas": [
@@ -14557,6 +14609,43 @@
    "quando": "2026-10-06T15:53:38+00:00",
    "itens": [
     "31.137"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T16:03:24+00:00",
+   "itens": [
+    "29.108",
+    "29.102"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T16:05:07+00:00",
+   "itens": [
+    "29.126"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T16:05:07+00:00",
+   "itens": [
+    "29.122"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T16:08:07+00:00",
+   "itens": [
+    "29.126"
    ],
    "grupos": [
     "jev"

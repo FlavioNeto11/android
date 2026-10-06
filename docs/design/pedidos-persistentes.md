@@ -617,7 +617,7 @@ e a regra 2 (`approval_required` quando o alvo é pessoa real sem conversa prév
 | Gatilho | recorrência diária (ex.: 08:00 `America/Sao_Paulo`) de observação + relatório semanal |
 | Autonomia | `observar` por construção; nenhuma curtida, comentário ou seguir. Perto do pleito, o TSE (Res. 23.755/2026) endurece o uso de conteúdo sintético — o pedido não produz nenhum |
 | Fontes | publicações e comentários públicos no app; cada observação com perfil, instante, `sha256` da captura e trecho curto; o relatório cita a fonte (IFCN: reproduzível) |
-| Amostra × população | a amostra é "o que esses perfis publicaram e quem comentou neles"; o relatório nunca generaliza para eleitores ou público (Pew: usuários de rede diferem do público e poucos produzem a maior parte; AAPOR: amostra não probabilística exige premissas explícitas) |
+| Amostra × população | a amostra é "o que esses perfis publicaram e quem comentou neles"; o relatório nunca generaliza para o público em geral (Pew: usuários de rede diferem do público e poucos produzem a maior parte; AAPOR: amostra não probabilística exige premissas explícitas) |
 | Observação × conclusão | observado: contagens, temas declarados, horários; conclusão: só com o alcance ("na amostra coletada, …") e o não coberto (stories, perfis privados, remoções) |
 | Dados de terceiros | minimização (LGPD art. 6º; AoIR): comentaristas entram agregados, sem nome no relatório, salvo pessoa pública |
 | Autorizações | nenhuma de efeito; chamada de IA paga no relatório opcional |
@@ -645,7 +645,7 @@ e a regra 2 (`approval_required` quando o alvo é pessoa real sem conversa prév
 | Verificação | só da alegação factual, com fontes primárias e rótulo no vocabulário das agências (verdadeiro, falso, falta contexto, exagerado, insustentável…); sem fonte primária, "não verificado" |
 | Evidência | captura, `sha256`, instante e autor da menção guardados em `pedido_observacoes` (a evidência crua é purgada em 14 dias) |
 | Resposta | `preparar` por padrão: rascunho com aprovação; `agir` só com aprovação por resposta; uma conta por alvo; transparente (a conta fala em nome de quem é) |
-| Proibido | responder com várias personas, simular apoio de "clientes" ou "eleitores" independentes, denunciar em massa, atribuir fala a terceiros (ADR-055, Meta, ADR-050) |
+| Proibido | responder com várias personas, simular apoio de "clientes" ou "apoiadores" independentes, denunciar em massa, atribuir fala a terceiros (ADR-055, Meta, ADR-050) |
 | Autorizações | cada resposta publicada é efeito fora da máquina numa conta real: autorização do dono (CLAUDE.md) |
 
 ## 13. Plano incremental: Fase 28 proposta (26.8)
