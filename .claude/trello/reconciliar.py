@@ -400,7 +400,9 @@ def ids_citados_por_deploy(texto: str) -> dict[str, int]:
     (entrou no deploy junto de outro e foi classificado depois do registro dele)."""
     achados: dict[str, int] = {}
     for m in re.finditer(r"^## \d{4}-\d{2}-\d{2} — Deploy (\d+)\b.*?(?=^## |\Z)", texto, flags=re.M | re.S):
-        for pid in set(re.findall(r"\b(\d{1,2}\.\d{1,3})\b", m.group(0))):
+        adiados = {pid for g in re.findall(r"((?:\d{1,2}\.\d{1,3}[\s,]*(?:e\s+)?)+)\s+(?:ficam?|segue|seguem)\s+para\s+o\s+corte\s+\d+",
+                                           m.group(0)) for pid in re.findall(r"\d{1,2}\.\d{1,3}", g)}
+        for pid in set(re.findall(r"\b(\d{1,2}\.\d{1,3})\b", m.group(0))) - adiados:
             achados[pid] = min(achados.get(pid, 10**6), int(m.group(1)))
     return achados
 
