@@ -1,10 +1,20 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `33c7d5ab` (migração 118, deploy 44); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `7154d7cf` (migração 119, deploy 45); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 45 no ar (06/10/2026, 03:13Z, central `7154d7cf`, migração 119, nova).** 7 pontas sobre `6c03214f`: ensino 31.111 F1+F2+F3
+  (escolha do dono na P-014), 31.112 (pergunta da IA com marcador), 31.90-D painel; canais 28.56/C-28 (Trello reconciliado nos
+  três quadros); piloto do Copilot 29.137 e 30.82; 31.101 (troca ampla de nomes nos testes).
+  - `real` (central WIN-7S2UASNLFOP): ensaio com a cópia `dataackups61006-001227` (119 numa cópia restaurada); deploy com
+    `-PularBackup`; saúde ok, migração 119, `problems []`; prova de fora como esperado; agente `0.1.0+7154d7c`; aparelhos 01, 03 e 06
+    online com automação `ready`.
+  - `simulated` (suíte 45): números do CHANGELOG.
+  - `not_run`: percurso no navegador; prova real do 31.111 (F6).
+  - Plano-100: resultado da suíte 45 aplicado (671 itens). Corte 46: 31.111 F4 (Aprendizado) e F5 (Portal, d52a9ee8); 31.113 F1
+    (80b22dbc) e F2; 29.153 (PR 465); mapa.json fora do Git (Canais, 28.56).
 - **Deploy 44 no ar (06/10/2026, 02:15Z, central `33c7d5ab`, migrações 117 e 118, novas).** Oito pontas sobre `b8c37ef7`:
   aprendizado 30.76, 30.77, 30.78 e 30.85; ensino 31.89 (+ painel) e 31.110; sombra da R5 31.13 (decisão P-013 do dono);
   script de troca de nomes. Detalhe no [CHANGELOG](../CHANGELOG.md) e no [livro do plano](execucao-plano-100-runner.md).
