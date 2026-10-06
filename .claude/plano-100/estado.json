@@ -7704,16 +7704,16 @@
   },
   "31.45": {
    "id": "31.45",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "04/10/2026, central WIN-7S2UASNLFOP, deploy 32 no ar (2c47b9fa, migração 106_pedidos_autor): r-20261004232524-2e0775 no android-01 (só leitura), chave lote:jev:31.45-02, 23:25:24Z. completed, 1 tentativa. A pós-condição de OPEN_MAIL_INBOX fechou pela árvore local SEM IA (selector:id=conversation_list & text==Inbox|dentro=toolbar), com o título da pasta conferido. Etapa em 50 s (104 s na 7d3527). Plano reaproveitado do fluxo (0 chamadas ao planejador). US$ 0,111971.",
-   "blocker": "O 'sem ator' não: a etapa declara saidas [remetente, assunto], e só o ator chama read_value (8 decide, 2 leitura, 2 verify; 2 step_done rejeitados antes das saídas). Vira o 31.61 (suíte 34).",
-   "grupo": "orquestrador-resultado-suite32-b",
-   "modelo": "claude-fable-5-1",
-   "esforco": "sessao orquestradora",
+   "evidence": "O que o item pede está provado em real: abrir a caixa de entrada do Outlook com a pós-condição determinística. 04/10/2026, deploy 32 (2c47b9fa, migração 106), r-20261004232524-2e0775 no android-01, só leitura, chave lote:jev:31.45-02: completed, 1 tentativa; OPEN_MAIL_INBOX fechou pela árvore local SEM IA (selector id=conversation_list, text Inbox dentro da toolbar), título da pasta conferido; etapa em 50 s (era 104 s na 7d3527); plano reaproveitado do fluxo (0 chamadas ao planejador); US$ 0,111971. O que ficou de fora ('sem ator': a etapa declara as saídas remetente e assunto e só o ator chama read_value) já tem item próprio, o 31.61, no plano; não é pendência do 31.45.",
+   "blocker": null,
+   "grupo": "jev",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:55:48+00:00"
+   "quando": "2026-10-06T03:41:14+00:00"
   },
   "31.46": {
    "id": "31.46",
@@ -9025,23 +9025,16 @@
   },
   "30.80": {
    "id": "30.80",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR 439 (ba75b9c9) e 30.80 B (f61aa2b9). Simulado: backend/tests/test_learning_ensinado_rebaixado.py::*, backend/tests/test_d1_receitas.py::*, backend/tests/test_treino_substitui_receita.py::*, backend/tests/test_treino_previa_e_refazer_receitas.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "evidence": "As duas partes do item estão na main e no ar (deploy 41, depois 45): A, a divergência por tela de partida diferente não conta como falha da receita (PR 439 ba75b9c9; migração 115 `recipes.nao_aplicavel_seguidas`; `RecipeStore.nao_aplicavel`, `NAO_APLICAVEL_CONTA_APOS=3`; `test_receita_nao_aplicavel.py`, 4 testes, verificado por mutação) e B, o aviso a quem ensinou quando o sistema rebaixa o ensinado (f61aa2b9; `test_learning_ensinado_rebaixado.py`, 7 testes, verificado por mutação com 7 regras; eventos `learning.ensinado_rebaixado` e `learning.ensinado_sem_receita` com payload fechado). Suíte 41 verde (backend 11990 passed, 0 falhas; PG dirigido sem falhas). O estado 'partial' vinha de a ponta cobrir só uma parte quando foi registrada; com A e B na main, o que ficou foi o de sempre dos itens de comportamento: real: not_run. A prova real exige uma divergência real por tela de partida diferente (A) e uma quarentena real de receita ensinada (B), ambas em execução em que a IA conduz a etapa depois (chamada paga) e que não se provoca sem criar a falha de propósito; fica para a próxima ocorrência natural no parque, sem gasto novo.",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_learning_ensinado_rebaixado.py",
-    "backend/tests/test_d1_receitas.py",
-    "backend/tests/test_treino_substitui_receita.py",
-    "backend/tests/test_treino_previa_e_refazer_receitas.py"
-   ],
-   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha",
-   "grupo": "android-suite-41",
+   "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T22:07:09+00:00"
+   "quando": "2026-10-06T03:41:14+00:00"
   },
   "29.118": {
    "id": "29.118",
@@ -13445,6 +13438,16 @@
    ],
    "grupos": [
     "portal-29105-e-2983"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:41:14+00:00",
+   "itens": [
+    "30.80",
+    "31.45"
+   ],
+   "grupos": [
+    "jev"
    ]
   }
  ]
