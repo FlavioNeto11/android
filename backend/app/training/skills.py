@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from typing import Any, NamedTuple, get_args
 
 from ..db import Row, dumps, loads
+from ..modules.learning.domain.ciclo import ConflitoDeEstado, NotaComCaraDeSegredo, Vetado
+from ..modules.learning.domain.licoes import CorrecaoSemReceita, Recusa, licao_da_correcao
 from ..models import Plan, PlannerInfo, PlanStep, Postcondition
 from ..planning.capabilities import CapabilityCatalog, CapabilityNode, load_catalog
 from ..planning.training import TrainingRequest
@@ -503,6 +505,8 @@ class TrainingSkills:
         relatorio = await self._relatorio(sess, destiladas, prep, session_id, gravar=True)
         # 31.149: a sessão de correção também grava a demonstração na chave da etapa que FALHOU
         ligacao = await self._ligar_a_falha(sess, destiladas, prep, session_id) if sess.get("origin") else None
+        if ligacao is not None and not ligacao["ligada"]:       # o caminho alternativo: a lição do planejador
+            ligacao["licao"] = self._licao_da_correcao(sess, destiladas, prep, session_id)
         self.s.db.execute("UPDATE training_sessions SET status='saved', flow_id=?, proposal=?, updated_at=? WHERE id=?",
                           (flow_id, dumps(prep.p), now_iso(), session_id))
         # 31.118: o dado da persona que a habilidade usa sai da gravação salva; fica o marcador (quem precisa do valor
@@ -518,8 +522,8 @@ class TrainingSkills:
                                f"{' (correção de uma execução que falhou)' if origem else ''}",
                         data={"training_session_id": session_id, "flow_id": flow_id,
                               **({"origin": origem} if origem else {}),        # 31.111 F3: a trilha do ensino liga à execução
-                              **({"correcao_ligada": bool(ligacao["ligada"]), "recipe_id": ligacao.get("recipe_id")}
-                                 if ligacao is not None else {})})
+                              **({"correcao_ligada": bool(ligacao["ligada"]), "recipe_id": ligacao.get("recipe_id"),
+                                  "licao_id": _id_da_licao(ligacao)} if ligacao is not None else {})})
         return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio,
                 "warnings": [*prep.avisos, *_aviso_sem_persona(sess)], "scope": _escopo_da_resposta(prep, scope_on_proof),
                 **({"correcao": ligacao} if ligacao is not None else {}), **self._em_prova(flow_id)}
@@ -576,6 +580,38 @@ class TrainingSkills:
         return {"ligada": bool(linha["recipe"]) or linha["reason"] == JA_HAVIA_RECEITA, "step_key": chave,
                 "recipe_id": rid or (int(viva["id"]) if viva is not None else None), "reason": linha["reason"],
                 "comando": molde, "texto": f"esta correção vale para o comando “{molde}”"}
+
+    def _licao_da_correcao(self, sess: Sessao, destiladas: list[_Destilada], prep: _Preparo,
+                           session_id: str) -> dict[str, object]:
+        """31.149, caminho alternativo: a correção que não ligou à etapa que falhou vira lição do PLANEJADOR do app
+        (`licao_da_correcao`): "quando a etapa X falhar, o caminho que uma pessoa ensinou foi A → B". Nasce candidata
+        de origem humana: só o dono a publica no Livro, e só publicada ela vai ao prompt. Não depende do 31.151."""
+        origem = sess.get("origin") or {}
+        etapa = self.s.db.one("SELECT s.key, s.side_effect, s.app_id, s.run_id, o.parameters, o.profile_id,"
+                              " r.simulated FROM steps s JOIN objectives o ON o.id = s.objective_id"
+                              " JOIN runs r ON r.id = s.run_id WHERE s.id=?", (origem.get("step_id"),))
+        if etapa is None:
+            return {"id": None, "motivo": "a etapa que falhou não existe mais"}
+        chave = str(etapa["key"])
+        indices = correcao.escolhidas([d.passo.key for d in destiladas], chave)
+        pacote = (self.s.db.scalar("SELECT package FROM apps WHERE id=?", (etapa["app_id"],)) if etapa["app_id"]
+                  else None) or (prep.apps[prep.app_id]["package"] if prep.app_id in prep.apps else "")
+        do_objetivo = loads(etapa["parameters"], {}) or {}
+        da_persona = self.s.repo.variaveis_da_persona(etapa["profile_id"])
+        valores = [str(v) for fonte in (do_objetivo, prep.exemplos, da_persona) for v in fonte.values()
+                   if isinstance(v, str)]
+        proposta = licao_da_correcao(CorrecaoSemReceita(
+            app=str(pacote or ""), chave=chave, caminho=tuple(destiladas[i].passo.key for i in indices),
+            sessao=session_id, run_id=str(etapa["run_id"]), step_id=str(origem.get("step_id")),
+            side_effect=bool(etapa["side_effect"]) or any(destiladas[i].passo.side_effect for i in indices),
+            valores=tuple(valores), simulated=bool(etapa["simulated"])))
+        if isinstance(proposta, Recusa):
+            return {"id": None, "motivo": f"a lição foi recusada ({proposta.motivo.value})"}
+        try:
+            item = self.s.learning.propor(proposta)
+        except (Vetado, NotaComCaraDeSegredo, ConflitoDeEstado) as exc:
+            return {"id": None, "motivo": f"a lição não entrou no livro ({type(exc).__name__})"}
+        return {"id": item.id, "estado": item.state.value, "texto": item.summary}
 
     async def _tela_do_treino(self, sess: Sessao) -> tuple[int, int] | None:
         """31.114 F1: o tamanho da tela, lido SÓ se há arraste com coordenada na gravação (é o único uso). O aparelho fora do
@@ -827,3 +863,9 @@ def _destilar(sess: Sessao, p: Proposta, passos: list[PlanStep], exemplos: dict[
                                          arraste_final=final)
         saida.append(_Destilada(passo, acoes, motivo))
     return saida
+
+
+def _id_da_licao(ligacao: Mapping[str, object]) -> object:
+    """31.149: o id da lição do planejador que a correção não ligada gerou (o evento leva só o id)."""
+    licao = ligacao.get("licao")
+    return licao.get("id") if isinstance(licao, dict) else None

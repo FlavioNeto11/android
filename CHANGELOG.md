@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.149, caminho alternativo: a correção não ligada vira lição do planejador (branch feat/31-149-licao-do-planejador)
+
+- Quando a correção ensinada não liga à etapa que falhou (nome que a execução não tem, efeito, app diferente), o `save`
+  propõe ao Livro uma lição do PLANEJADOR do app: "Em <pacote>: quando a etapa X falhar, o caminho que uma pessoa
+  ensinou foi A → B" (`licao_da_correcao`, `SourceKind.CORRECAO_ENSINADA` = `teaching_correction`).
+- Só chaves de etapa entram, pela régua da chave livre: nem título, nem comando, nem valor do objetivo, do exemplo ou
+  da persona. Chave com valor, etapa de sessão e execução simulada são recusadas, com o motivo.
+- Nasce candidata e de origem humana: só o dono a publica, e só publicada vai ao prompt do planejador (ADR-054). Não
+  depende do 31.151. A resposta do `save` ganha `correcao.licao` ({id, estado, texto} ou {id: null, motivo}) e o
+  evento ganha `licao_id`. O número do adendo do contrato vem da orquestradora.
+- Prova `simulated`: `backend/tests/test_correcao_vira_licao_do_planejador.py` (3 testes; a publicada cabe no bloco do
+  planejador do app). Aprendizado, treino, correção, costuras e arquitetura: 3458 passaram. mypy 257 (no teto).
+  `real`: `not_run` (correção de uma falha real no QA Messenger, como a do 31.149).
+
 ## 2026-10-06 — 31.152: os pacotes vizinhos do ensino valem no plano livre (branch feat/31-152-pacotes-vizinhos)
 
 - Antes, `pacotes_aceitos` (31.123) só existia no plano de fluxo ensinado. A execução livre que abre a busca do

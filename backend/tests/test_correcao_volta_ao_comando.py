@@ -97,7 +97,7 @@ async def test_nome_que_a_execucao_nao_tem_ou_efeito_nao_ligam_e_dizem_por_que(h
     falha = _falha(st, chave="abrir_conversa", parametros="{}")
     salvo = await _corrigir(harness, falha=falha, chaves=("tocar_busca", "digitar_nome"),
                             parametros=[{"name": "nome", "example": "QA-001", "description": ""}])
-    assert salvo["correcao"] == {"ligada": False, "step_key": "abrir_conversa",
+    assert {k: v for k, v in salvo["correcao"].items() if k != "licao"} == {"ligada": False, "step_key": "abrir_conversa",
                                  "motivo": "a receita usaria {nome}, que a execução que falhou não tem"}
     assert st.db.scalar("SELECT COUNT(*) FROM recipes WHERE step_hash=?", (HASH_DA_FALHA,)) == 0
     st.db.execute("UPDATE steps SET side_effect=1, status='failed' WHERE id=?", (falha[1],))

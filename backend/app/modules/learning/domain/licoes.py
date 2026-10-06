@@ -231,6 +231,11 @@ MODELO_DO_SELETOR = ("Em {app}: na pós-condição {tipo} de {acao}, não junte 
 #: Os tipos de falha que o minerador do planejador lê: o defeito do plano genérico e o do seletor composto (31.32).
 DEFEITOS_DO_PLANO = frozenset({FailureKind.DEFEITO_DO_PLANO, FailureKind.SELETOR_EM_ELEMENTOS_DIFERENTES})
 MODELO_DA_NOTA = "{prefixo} nota de quem acompanhou: {nota}"
+#: 31.149, caminho alternativo: a correção ensinada que não ligou à etapa que falhou (efeito, nome que a execução não
+#: tem, app diferente) ensina o PLANEJADOR. Só chaves de etapa, nunca título, valor ou comando.
+MODELO_DA_CORRECAO = "Em {app}: quando a etapa {chave} falhar, o caminho que uma pessoa ensinou foi {caminho}."
+#: Quantas etapas ensinadas a lição cita, no máximo (o resto fica de fora; o texto tem teto).
+CAMINHO_MAX = 6
 
 
 def lacunas_do_modelo(modelo: str) -> frozenset[str]:
@@ -400,6 +405,51 @@ def licao_do_planejador(c: ContrasteDoPlano) -> NovoItem | Recusa:
                     tokens=estimar_tokens(texto))
 
 
+# ------------------------------------------------------------------ correção ensinada (31.149)
+@dataclass(frozen=True, slots=True)
+class CorrecaoSemReceita:
+    """A correção ensinada a partir de uma execução que falhou, que NÃO virou receita na etapa que falhou."""
+
+    app: str                                   # o pacote da etapa que falhou
+    chave: str                                 # a chave da etapa que falhou
+    caminho: tuple[str, ...]                   # as chaves das etapas ensinadas, na ordem
+    sessao: str
+    run_id: str
+    step_id: str
+    side_effect: bool
+    valores: tuple[str, ...] = ()              # os valores do objetivo e da proposta: nenhum pode estar numa chave
+    simulated: bool = False
+
+
+def licao_da_correcao(c: CorrecaoSemReceita) -> NovoItem | Recusa:
+    """A correção vira candidata do PLANEJADOR de origem humana: o sistema nunca a valida nem a publica (D1).
+
+    Só entram chaves de etapa que passam pela régua da chave livre, sem etapa de sessão e sem valor de parâmetro
+    dentro; o título, o comando e os valores nunca entram (a lição vai ao prompt de todo plano do app)."""
+    if c.simulated:
+        return Recusa(MotivoDeRecusa.SIMULADA)
+    if not _PACOTE.match(c.app):
+        return Recusa(MotivoDeRecusa.APP_INVALIDO)
+    chaves = (c.chave, *c.caminho[:CAMINHO_MAX])
+    if not c.caminho or any(not _CHAVE_LIVRE.match(k) for k in chaves):
+        return Recusa(MotivoDeRecusa.ACAO_INVALIDA)
+    if any(ACAO_DE_SESSAO.search(k) for k in chaves):
+        return Recusa(MotivoDeRecusa.ACAO_DE_SESSAO)
+    valores = [v for v in (_normal((v or "").lstrip("@")) for v in c.valores) if len(v) >= 3]
+    if any(v in _normal(k.replace("_", " ")) for k in chaves for v in valores):
+        return Recusa(MotivoDeRecusa.VALOR_DE_PARAMETRO)
+    caminho = list(c.caminho[:CAMINHO_MAX])
+    texto = MODELO_DA_CORRECAO.format(app=c.app, chave=c.chave, caminho=" → ".join(caminho))
+    if len(texto) > LICAO_MAX_CARACTERES:
+        return Recusa(MotivoDeRecusa.LONGA)
+    return NovoItem(kind=LivroKind.LICAO, escopo=Escopo(app=c.app, role=Papel.PLANNER.value),
+                    content={"modelo": "correcao", "acao": c.chave, "caminho": list[JsonValue](caminho)},
+                    summary=texto, source_kind=SourceKind.CORRECAO_ENSINADA, side_effect=c.side_effect,
+                    provenance={"regra": "correcao_ensinada", "minerador": VERSAO_DO_MINERADOR,
+                                "sessao": f"training:{c.sessao}", "execucao": c.run_id, "etapa": c.step_id},
+                    tokens=estimar_tokens(texto))
+
+
 # ------------------------------------------------------------------ nota de pessoa (D2)
 @dataclass(frozen=True, slots=True)
 class NotaDeFeedback:
@@ -547,11 +597,12 @@ def bloco_de_licoes(textos: Sequence[str]) -> str:
     return "\n".join((ABRE, AVISO, *linhas, FECHA))
 
 
-__all__ = ["ABRE", "ACAO_DE_SESSAO", "AVISO", "CONTAGEM_MAX", "DEFEITOS_DO_PLANO", "FECHA", "LACUNAS",
-           "LICAO_MAX_CARACTERES", "LIMIARES_DA_LICAO", "MODELOS_DO_ATOR", "MODELO_DA_NOTA", "MODELO_DO_PLANEJADOR",
+__all__ = ["ABRE", "ACAO_DE_SESSAO", "AVISO", "CAMINHO_MAX", "CONTAGEM_MAX", "DEFEITOS_DO_PLANO", "FECHA", "LACUNAS",
+           "LICAO_MAX_CARACTERES", "LIMIARES_DA_LICAO", "MODELOS_DO_ATOR", "MODELO_DA_CORRECAO", "MODELO_DA_NOTA",
+           "MODELO_DO_PLANEJADOR",
            "MODELO_DO_SELETOR", "NOTA_NA_LICAO_MAX",
            "ROTULO_EXECUCOES_MIN", "ROTULO_MAX", "TELAS_EXCLUIDAS", "VERSAO_DO_MINERADOR", "Alvo", "AlvoObservado",
-           "Contraste", "ContrasteDoPlano", "DefeitoDoPlano", "Escolha", "Escolhida", "MotivoDeRecusa", "Nivel",
+           "Contraste", "ContrasteDoPlano", "CorrecaoSemReceita", "DefeitoDoPlano", "Escolha", "Escolhida", "MotivoDeRecusa", "Nivel",
            "NotaDeFeedback", "Pedido", "Recusa", "TipoDeAlvo", "alvo_seguro", "bloco_de_licoes",
-           "escolher", "lacunas_do_modelo", "licao_de_contraste", "licao_de_nota", "licao_do_planejador", "nivel",
+           "escolher", "lacunas_do_modelo", "licao_da_correcao", "licao_de_contraste", "licao_de_nota", "licao_do_planejador", "nivel",
            "ordenar", "rotulo_permitido", "sufixo_de_id"]
