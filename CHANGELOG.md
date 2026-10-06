@@ -35,6 +35,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Revisão de segredos (agente, só leitura): nem uma palavra do dado da persona vira sugestão; a entrada marcada (teclado de PIN, padrão) não guarda os elementos.
 - Prova `simulated`: `tests/test_treino_partida_f2_e_sequencia.py` (13) e os ajustes de `tests/test_etapa_pacotes_aceitos.py` (a 1ª etapa agora também aceita o vizinho) e de `tests/test_treino_previa_e_refazer_receitas.py` (a chave nova da prévia). Dirigidos: 124 arquivos um por vez, com 1944 aprovados e as 3 falhas corrigidas e rodadas de novo; `scripts/tests`: 683. Real: `not_run` até o corte 51.
 
+## 2026-10-06 — 29.155 (C11): a gravidade do formulário de achado começa em "nota" (branch ci/29-155-c11-gravidade)
+
+- `.github/ISSUE_TEMPLATE/achado.yml`: a lista de gravidade passa a abrir em `nota`, e `a corrigir` e `bloqueante` ficam depois. Antes o primeiro item era `bloqueante`, então um achado preenchido com pressa nascia como o mais grave. A escolha continua obrigatória. Prova `real`: a issue 467 (formulário de teste de 06/10) abriu em `bloqueante`; a nova ordem só vale depois da mescla. Prova `simulated`: `yaml.safe_load` do modelo e `docs-check` limpo.
+
 ## 2026-10-06 — 29.155 (C10): leitura diária do GitHub (branch ci/29-155-c10-rotina)
 
 - `scripts/github_rotina.py`: uma linha com cron da noite, runner `central`, runs ruins, issues `ci`/`agente`, PRs do agente e créditos do Copilot estimados. Só lê: nenhuma escrita no GitHub, nada no runner. Prova `real`: 06/10/2026 12:46Z, máquina central, base 8baec2a8, execução de leitura contra o repositório (a estimativa deu ~708 créditos e a página marcava 709, mas não é prova independente: os fatores 146 e 31 foram calibrados nessa mesma página). Prova `simulated`: `scripts/tests/test_github_rotina.py` (13 testes, `gh` falso e relógio fixo), incluído na linha do job `docs`.

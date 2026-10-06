@@ -37,9 +37,9 @@ body:
       label: Gravidade
       description: Bloqueante quebra o funil ou perde dado; a corrigir tem caminho em que falha vira sucesso ou teste que passa errado; nota é o resto.
       options:
-        - bloqueante
-        - a corrigir
         - nota
+        - a corrigir
+        - bloqueante
     validations:
       required: true
   - type: textarea
