@@ -190,6 +190,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_parecer_versao_do_texto.py`. PostgreSQL: pela fábrica, quando
   `TEST_DATABASE_URL` existe. Real: `not_run` (a migração entra no próximo deploy).
 
+## 2026-10-05 — 30.77: a reprodução na versão viva não nasce sem versão (branch feat/30-77-fuso-na-inspecao)
+
+- Medido antes de escolher (SQLite central só leitura e `getprop` pelo adb): os 12 emuladores estão em
+  America/Sao_Paulo (−0300). A folga de 12 h do 30.74 perdia à toa a versão da prova que começa de 3 a 12 h depois
+  de uma atualização do app.
+- Escolha (desenho aprovado pela orquestradora): gravar o fuso na inspeção. `Adb.package_info` lê `date +%z` no mesmo
+  shell do `dumpsys`; migração 118, `device_app_state.last_update_offset`; os três caminhos de `ReleaseService` que
+  gravam a observação levam o fuso. `versao_estavel_na_execucao` usa o deslocamento exato com 1 h de margem e, sem
+  fuso legível, a folga de 12 h.
+- Agente do notebook: NÃO precisa de versão nova. O adb dos aparelhos dele roda no central, pelo túnel (o
+  `getprop` respondeu daqui para os seriais `127.0.0.1:155xx`). O A10 do próximo deploy não muda por isto; a leitura
+  sem a linha do fuso continua coberta e cai na folga.
+- Funções tocadas (K-095): `Adb.package_info`, `AppInstaller.inspect` e `InstalledApp`, os três `upsert_app_state` de
+  `ReleaseService`, `versao_estavel_na_execucao` e `LeituraSql.versao_do_fluxo_no_aparelho`.
+- Prova `simulated`: `backend/tests/test_fuso_na_inspecao.py`. Real: `not_run` (a migração entra no próximo deploy;
+  a próxima inspeção de app grava o fuso).
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
