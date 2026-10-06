@@ -143,6 +143,30 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   casam `aria-controls` e painel, a aba nova abre o painel certo e o botão de exemplo preenche a mensagem do formulário.
   Não implantado.
 
+## 2026-10-06 — 28.61: grupo de política sem aprovação e o fim real da operação (branch feat/28-61-grupo-liberado)
+
+- Pedido do dono (06/10 19:46Z): "crie um grupo com tudo liberado para todas as personas e atribua todas elas nesse grupo
+  para que nao seja necessario permissoes por enquanto".
+- `LimitsCfg.grupo_sem_aprovacao` (texto, vazio = desligado, lido ao vivo) recebe o id de um grupo de política. As
+  personas desse grupo não passam pela aprovação de política (`PolicyEngine._sem_aprovacao_pelo_grupo`). Isso vale para
+  a escolha do perfil ou do grupo, a DM fria, a publicação no feed, a pessoa real num pedido, a citação da família e a
+  repetição já conhecida no `check`.
+- Continuam valendo:
+  - as recusas: frota (ADR-081), tetos, repetido e conta retirada;
+  - a exceção do 30.65;
+  - o teto `preparar` da execução: a operação segue pelo liberar e por `operacao_max_acoes_executadas`;
+  - as confirmações do despacho depois do rascunho;
+  - a conduta e a proteção de conta.
+- Para desfazer: `PUT /api/settings {"grupo_sem_aprovacao": ""}`.
+- Operação: a ação aprovada por fora do liberar (Pendências, Telegram) leva a operação a `executar` e a reabre. O
+  `finished_at` passa a ser a hora do último estágio, não a da leitura. Na onda 1 de 06/10, ele ficou em 19:44:58, antes
+  da ação verificada às 19:48:05.
+- Prova `simulated`:
+  - `backend/tests/test_interacao_entre_contas_nossas.py::test_2861_persona_do_grupo_sem_aprovacao_nao_passa_pela_aprovacao_de_politica`;
+  - `backend/tests/test_operacoes.py::test_acao_aprovada_por_fora_do_liberar_reabre_e_fecha_na_hora_do_ultimo_estagio`.
+- `not_run`: o central. O grupo "Liberado" (`grp-AX6yCTUvW7eZFmn2`, 11 personas) já existe como dado desde as 19:57Z.
+  O ajuste novo só vale depois do deploy 56.
+
 ## 2026-10-06 — 31.154: custo por alvo, vínculo principal e parâmetros fixos da operação (adendo v1.95, migração 127; branch feat/31-154-custo-por-alvo)
 
 - `GET /api/operacoes/{id}`: cada alvo ganha `custo_usd` (o `spent_usd` da execução dele; `null` sem execução), repetido em
