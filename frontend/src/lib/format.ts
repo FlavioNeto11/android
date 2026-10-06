@@ -1,6 +1,13 @@
 const nf0 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
 const nf1 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
+const nf4 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+
+/** US$ sempre com 4 casas: uma execução custa frações de centavo e "0,04" esconderia 0,0407 (29.153). */
+export function formatUsd4(n: number): string {
+  return `US$ ${nf4.format(n)}`;
+}
+
 export function formatInt(n: number | null | undefined): string {
   return typeof n === 'number' && Number.isFinite(n) ? nf0.format(n) : '—';
 }

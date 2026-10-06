@@ -35,6 +35,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   sempre enviado, origem perdida na proposta, lease velho) e sementes de atraso do fetch. `not_run`: percurso real (depende do backend `POST /api/training/from-run`
   no deploy e do controle de um aparelho de teste).
 
+## 2026-10-06 — 29.153 (painel): o custo da execução no detalhe e na lista (branch feat/29-153-custo-da-execucao)
+
+- Contra o adendo v1.74 (PR 465, rascunho do Copilot): o resumo no topo do detalhe ganha a linha **Custo** com `costs.spent_usd` em US$ com 4 casas e o número
+  de chamadas de IA (`US$ 0,0407 · 2 chamadas de IA`; uma chamada no singular; sem chamadas, `US$ 0,0000 · nenhuma chamada de IA`). `costs` ausente, nulo ou
+  não numérico (backend de antes do PR 465) mostra "custo não lido", sem erro e sem NaN.
+- A lista de Execuções não recebe `costs` do backend (v1.74: a lista não muda). Por isso a linha da lista mostra o ÚLTIMO custo lido no detalhe daquela execução
+  (`summaryOf` o leva e `upsertRun`/`mergeRuns` o guardam quando o resumo de um evento ou da lista chega sem ele); execução nunca aberta fica sem valor na lista.
+- Tolera o campo ausente: entra antes ou junto do PR 465, sem mudar o que o painel faz hoje além da linha "custo não lido".
+- Prova `simulated`: `CustoDaExecucao.test.tsx` (6 testes, fetch falso, com e sem o campo), 5 mutações derrubam teste (custo perdido no evento e na lista, `costs` fora do
+  resumo, 2 casas no lugar de 4, ausente sem texto, valor não finito) e as sementes de atraso 7, 88, 1, 2, 3 e 4 verdes. `not_run`: o detalhe real com `costs` (o
+  backend do PR 465 não está no deploy).
+
 ## 2026-10-06 — 31.101, o `--amplo` real: pedaços de nome de conta trocados por valores de exemplo nos testes (branch chore/trocar-nomes-amplo)
 
 - `scripts/trocar-nomes-nos-testes.py --amplo --aplicar` sobre a ponta da suíte 44: 119 arquivos e 1438 linhas, todos de teste
