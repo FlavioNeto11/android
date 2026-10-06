@@ -7434,3 +7434,26 @@ depois de `<intencao>`, com o pedido de relacionar o texto ao assunto só quando
 
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.
+
+## Adendo v1.107 (07/10/2026; número da orquestradora; item 31.181) — quem pode usar o quê num app, por persona
+
+`GET /api/aprendizado/alcance?app=<app_id>`: só leitura, sem IA. Diz, por persona vinculada ao app (vínculo ativo em
+`device_profile_bindings`), cada receita ativa do pacote do app e cada fluxo ligado ou candidato do app, com `pode` e o
+motivo do não.
+
+- `200 {app_id, pacote, gerado_em, personas: [{profile_id, aparelhos}], resumo: {profile_id: {receita: n, fluxo: n}},
+  itens: [...]}`.
+- O item é `{tipo, id, chave, origem, estado, ..., por_persona: {profile_id: {pode, motivo}}}`:
+  - `tipo` é `receita` ou `fluxo`;
+  - `chave` é a etapa da receita, ou o `ref_publico` do fluxo;
+  - `origem` é `ensino` ou `execucao`;
+  - na receita, também `reproducoes_ok` e `reproducoes_falha`;
+  - no fluxo, também `usos` e `nascido_de_prova`.
+- O `motivo` (nulo quando `pode`) vem de um vocabulário fechado:
+  - `presa_a_quem_ensinou`: a receita do ensino sem "Confirmar que fica" nem prova real do fluxo (30.81);
+  - `fora_do_escopo`: o escopo do fluxo (personas ou grupos) não inclui a persona;
+  - `fluxo_nao_ligado`: o fluxo é candidato.
+- As regras são as do executor (`RecipeStore._restrita_ao_ensino` e `FlowStore._no_escopo`), não uma cópia.
+- `404 app_desconhecido`: o app não está cadastrado. `422`: `app` ausente.
+- **Prova:** `simulated` (`backend/tests/test_alcance_por_persona.py`). `real`: `not_run`, pede o deploy.
+
