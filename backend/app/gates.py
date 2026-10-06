@@ -18,13 +18,13 @@ import asyncio
 import importlib
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from .db import Database, Row, loads
 from .devices.manager import DeviceRuntime
 from .modules.pedidos.domain import conhecimento_da_operacao as conhecimento_dominio
-from .modules.pedidos.infrastructure.conhecimento_da_operacao import ConhecimentoDaOperacao, Fatos
+from .modules.pedidos.infrastructure.conhecimento_da_operacao import NAO_GRAVADOS, ConhecimentoDaOperacao, Fatos
 from .modules.pedidos.infrastructure.contexto import contexto_do_pedido
 from .modules.pedidos.infrastructure.pesquisa_da_operacao import PesquisaDaOperacao
 from .planning.capabilities import (
@@ -522,7 +522,9 @@ class Portoes:
                     # Auditoria do conhecimento comum: quantos fatos entraram e como a leitura deste agente bateu com a
                     # da operação. Só contagem e palavra fixa: o texto dos fatos mora na memória da operação.
                     **({"fatos_da_operacao": {"quantos": fatos.quantos, "leitura": leitura,
-                                              **({"assunto": True} if fatos.assunto else {})}}
+                                              **({"assunto": True} if fatos.assunto else {}),
+                                              **({"conhecimento_ids": NAO_GRAVADOS} if not fatos.ids_gravados
+                                                 else {})}}
                        if fatos is not None else {}),
                 })
         # 31.63: o evento diz SÓ que o texto foi escrito e o tamanho. O texto mora na etapa e no pedido de aprovação, onde
@@ -578,7 +580,10 @@ class Portoes:
             try:                     # `resultado.conhecimento_ids` do alvo (contrato da 124); nunca derruba a etapa
                 self._conhecimento.marcar_conhecimento_usado(run_id, fatos.refs)
             except Exception:  # noqa: BLE001 - ver acima
+                # Revisão do PR 480: o texto segue (a lista é auditoria, não o texto), mas a falha não fica só no log:
+                # vai ao `draft_meta` da etapa, e o GET do aprendizado da operação a mostra em `avisos`.
                 log.exception("operação %s: conhecimento_ids não gravados na execução %s", operacao_id, run_id)
+                fatos = replace(fatos, ids_gravados=False)
         return fatos, leitura
 
     async def _pesquisar_se_preciso(self, operacao_id: str, obj: Row, srow: Row, contexto: str) -> None:

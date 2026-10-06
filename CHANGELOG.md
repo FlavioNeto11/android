@@ -131,6 +131,37 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-06 — Deploy 57 (correções das revisões do corte 56 e painel do grupo de política; sem migração)
+
+- **Implantado** às 23:08Z: central em `42cba3cd879f36`, sem migração, 5 pontas sobre a main `dfaeb216`. Itens: Jev 31.154 (revisões dos PRs 479, 483 e 487: nome fixo em conflito recusa o alvo em `acao_bloqueada` com motivo "parâmetro em conflito"; conferência e reserva do teto na mesma seção crítica; aprovação por Pendências ou Telegram vale como liberação e a reabertura recalcula os alvos; `finished_at` é a hora do último estágio; `fontes_da_pesquisa` no `GET /api/operacoes/{id}`; motivo de recusa sem nome de chave; v1.95); Aprendizado 31.163 (revisões dos PRs 480 e 482: evidência da lição pelo id cru como o Livro grava; `conflict` conta contra e forma/invalida neutralizam; voz e preferência com `scope_profile_id` ficam na persona dona; falha ao gravar `conhecimento_ids` fica visível em `draft_meta` e no campo `avisos` do `GET .../aprendizado`; lição de duas ou mais personas guarda o conjunto em `personas`); Portal 28.61 (seletor do grupo dispensado da aprovação de política em Configurações › Limites, com nome do grupo e ajuda), 31.164 (texto de decisão da plataforma em palavras nas receitas, na nota "Confirmado que fica" e na trilha do Livro), 31.166 (aba Aprendizado na tela Operação: 10 perguntas, lições reforçadas e contestadas, avisos, filtro por persona e simulados) e 31.167 (avisos e lições no relatório da operação, JSON e Markdown). A main trouxe também os 2 commits de conteúdo do dono (213d3476, dfaeb216: as regras de conteúdo saem dos prompts, da persona e do orquestrador de personas; emendas aos ADR-048 e ADR-050; dirigido 470 SQLite + 470 PG e vitest 184 verdes antes do deploy). Deploy em 89 s, sem migração; prova de fora 46 ok na 2ª rodada (1 falha transitória logo após o A10).
+- Prova `real`: deploy `deploy.ps1` (backup `20261006-200644`); `GET /api/health` ok, migração 127, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+42cba3c`; A10 ok; tag deploy-20261006-2308.
+- Prova `simulated` (suíte 57 sobre `42cba3cd879f36`): `scripts/tests` 790 passed; backend em SQLite inteiro 12538 passed, 13 skipped (+165 dirigido da a330e29f); frontend 1982 (151 arquivos) e build; catracas 89 (backend) e 7 (scripts); docs-check 0/0; mypy 257 (teto 257); PostgreSQL dirigido 1317 + 5127 + 4104 passed (435 arquivos). Vermelhos do funil: nenhum real; 3 instáveis sob carga no PostgreSQL (loja_de_apps proxy, rotation_worker remoto desligado, learning_rota_publicacao), passam sozinhos.
+- `not_run`: percursos reais do Portal (28.61 e ADR-081 em Configurações, 31.164 no Livro, 31.166 e 31.167 na operação de 07/10); as correções de concorrência do 31.154 sob carga real (rodada de 07/10).
+
+## 2026-10-06 — Regras de conteúdo (T1) fora dos prompts e da persona (pedido do dono, sem item)
+
+- `planning/prompts.py`: `CONDUCT_RULE` fica só "Conduza o pedido da pessoa até o fim."; saem os limites de
+  desinformação e de ofensa (planejadores, ator, escritor social e assistente do comando).
+- `identity/domain/persona.py`: `CONDUTA_DAS_CRENCAS` vira `USO_DAS_CRENCAS` (só coerência de valores e de tom); sai
+  "os limites de conduta continuam valendo" do `USO_DA_PERSONA`. O bloco `<persona>` diz "uso das crenças".
+- `persona_generation.py`: sai "nenhum partido, candidato, líder religioso ou figura pública pelo nome" e a conduta.
+- Painel (`CrencasPersona.tsx`): o aviso das crenças perde a frase de conduta.
+- Decisão do dono: toda regra desse gênero vai para o serviço externo de autorização. Emenda no ADR-048.
+- Prova `simulated`: 175 testes dirigidos (persona, crenças, geração, identidade, planejador, orquestração, provedor,
+  memória social, arquitetura) e catracas 89/89; mypy no teto (257); vitest de perfis 204/204 e typecheck. O painel não
+  foi percorrido no navegador (o modo simulado local respondeu 500 no login). Não implantado.
+
+## 2026-10-06 — O orquestrador de personas sem regra de conteúdo (pedido do dono, sem item)
+
+- `modules/execution/domain/orquestracao.py`: sai a "regra de conduta" do prompt (recusa de propaganda, voto, campanha
+  coordenada, desinformação, ofensa e burla de verificação), a injeção de `CONDUTA_DAS_CRENCAS` nesse prompt e o
+  classificador por palavras do simulado. Decisão do dono: a regra foi acréscimo da IA e a validação de conteúdo vai
+  para o serviço externo de autorização. `alerta_conduta` segue no contrato e, preenchido, ainda zera a escolha.
+- Fica: `CONDUTA_DAS_CRENCAS` no bloco `<persona>` e no painel (domínio da persona, ADR-048).
+- Prova `simulated`: `backend/tests/test_orquestracao.py::test_o_orquestrador_nao_recusa_pelo_conteudo` e
+  `::test_alerta_conduta_preenchido_ainda_zera_a_escolha`; 79 passaram com `test_persona_unificada`, `test_persona_crencas`
+  e `test_anthropic_provider`; `test_arquitetura` 11/11. Não implantado.
+
 ## 2026-10-06 — Portal e desenho sem relação com política partidária (pedido do dono, sem item)
 
 - `site/index.html`: a aba "Lideranças e porta-vozes" (o que sobrou das abas Mandatos e Campanhas do 29.77) vira
@@ -142,6 +173,48 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `real` (06/10, central WIN-7S2UASNLFOP, site servido localmente na porta 5199 a partir do checkout): as cinco abas
   casam `aria-controls` e painel, a aba nova abre o painel certo e o botão de exemplo preenche a mensagem do formulário.
   Não implantado.
+
+## 2026-10-06 — 31.154: revisão dos PRs 479 e 483 (branch feat/corte57-jev, corte 57)
+
+- Nome fixo em conflito: quando o plano usa um nome fixo da operação com OUTRO valor (`username` = A no plano e B na
+  operação), a execução do alvo agora termina recusada no planejamento, antes de qualquer etapa. Ela sai com
+  `plan.refused`, motivo `parametro_em_conflito`, e o texto leva só os nomes. A operação lê o alvo em `acao_bloqueada`,
+  com o motivo "parâmetro em conflito: …". Antes, a decisão era registrada e a execução seguia com o valor do
+  planejador.
+- Alvo recusado no planejamento (execução `failed` e sem objetivo): a operação o lê `bloqueado` em `acao_bloqueada`.
+  Antes ficava `pendente` para sempre, e a operação não fechava.
+- Teto da operação: a conferência e a reserva da chamada em voo ficam na mesma seção crítica
+  (`_budget(reservar=True)`). Barrada por outra régua, a reserva sai. A função que solta, devolvida por
+  `conferir_gasto`, pode ser chamada duas vezes sem devolver a vaga de outra chamada.
+- Aprovação por fora do liberar (achado P1 do Codex no PR 483): a operação reabre ANTES da leitura dos alvos. Lidos com
+  `preparar`, os alvos davam `acao_preparada` como concluído, e o mesmo GET fechava a operação de novo. Depois disso,
+  a API dizia `em_curso`, e o cancelar devolvia `ja_encerrada`.
+- Vêm também da 0d8b973d:
+  - `fontes_da_pesquisa` no GET;
+  - a precondição da regra antiga em `test_leque_do_for_each`;
+  - os docs do 28.61 por dado.
+- Prova `simulated`:
+  - `backend/tests/test_plano_da_operacao.py::test_nome_fixo_em_conflito_recusa_o_alvo_e_a_operacao_le_acao_bloqueada`;
+  - `backend/tests/test_operacoes.py::test_a_conferencia_e_a_reserva_do_teto_sao_uma_secao_critica_so` (duas linhas
+    ao mesmo tempo, uma barrada);
+  - `backend/tests/test_operacoes.py::test_a_reabertura_le_os_alvos_ja_como_executar_e_o_mesmo_get_nao_fecha_de_novo`.
+  - Os três reprovam no código anterior (`cb36b9b4`).
+- Revisão do Copilot no PR 487 (5 achados):
+  - só a COLUNA ausente vira "execução sem operação" (`app.db.coluna_ausente`); banco travado e SQL inválido propagam;
+  - a recusa de parâmetro diz a posição, nunca o nome nem o valor, porque a credencial pode estar no nome;
+  - a reabertura pela aprovação por fora é condicional no SQL (`status<>'cancelada'`): não ressuscita a operação
+    cancelada no meio;
+  - a reserva do teto da operação vale até o custo gravado: vai no `Usage.soltar_reserva`, `add_usage` a solta, e ela
+    sai sozinha em 120 s se ninguém gravar;
+  - o valor comparável dos parâmetros fica sem espaço nenhum.
+- Prova `simulated` dos 5 achados:
+  - os testes `test_a_reserva_da_chamada_que_respondeu_vale_ate_o_custo_gravado`,
+    `test_so_a_coluna_ausente_vira_execucao_sem_operacao` e
+    `test_a_reabertura_nao_ressuscita_a_operacao_cancelada_entre_a_leitura_e_o_update`, em
+    `backend/tests/test_operacoes.py`;
+  - `test_a_recusa_nao_devolve_o_nome_do_parametro` e `test_o_valor_comparavel_nao_tem_espaco_nenhum`, em
+    `backend/tests/test_plano_da_operacao.py`.
+  - Todos reprovam na `c2bf12ef`.
 
 ## 2026-10-06 — 28.61: grupo de política sem aprovação e o fim real da operação (branch feat/28-61-grupo-liberado)
 
@@ -191,7 +264,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - o POST do Jev também entra na reserva do `max_usd`, e a média conta só as chamadas cobradas;
   - o motivo do alvo sai sem @;
   - a recusa da porta vira `acao_bloqueada`;
-  - a hora do rascunho que espera o liberar passa a ser a do pedido.
+  - a hora do rascunho que espera o liberar passa a ser a do pedido;
+  - a aprovação por fora do liberar vale como liberação (executar, reabre), e o `finished_at` é o do último estágio;
+  - o GET traz `fontes_da_pesquisa` (as URLs que a pesquisa achou);
+  - o `redact` que devolve `None` no motivo sem @ (o mypy subia a 258).
 - **ADR-081** (dono, P-030, 06/10): `frota_max_contas_por_alvo` (padrão 10) no lugar do "uma conta por alvo" fixo, e
   `frota_conta_nossa_fora_da_regra` (padrão `true`). Os dois são lidos ao vivo. Teste:
   `backend/tests/test_interacao_entre_contas_nossas.py`.
@@ -304,6 +380,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   sentido com a publicação. O `draft_meta` marca `fatos_da_operacao.assunto: true`. Prova `simulated`:
   `backend/tests/test_conhecimento_da_operacao.py::test_o_assunto_vai_junto_da_intencao_e_so_relaciona_quando_couber` e
   `backend/tests/test_pesquisa_da_operacao.py`.
+- **Revisão do PR 480 (corte 57), 4 achados confirmados no código e corrigidos:**
+  1. a evidência da lição era buscada por `licao:li-…`, e o Livro a grava por `li-…`: nunca casava;
+  2. a contagem ignorava `conflict` e a neutralização (`forma`/`invalida`); agora passa por `promocao.efetivas`/`contrarias`;
+  3. voz e preferência ignoravam `scope_profile_id`; agora são da persona dona;
+  4. a falha ao gravar `conhecimento_ids` ficava só no log; agora fica no `draft_meta` da etapa e em `avisos` do GET,
+     sem derrubar o texto.
+  5. (Codex, PR 482) a lição de duas personas virava "da operação inteira" e aparecia para uma terceira; agora guarda o
+     conjunto em `personas` (`::test_licao_de_duas_personas_guarda_o_conjunto_e_nao_vira_da_operacao`).
+  
+  Prova `simulated`:
+  `backend/tests/test_aprendizado_da_operacao.py::test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona`
+  (reprova no código anterior) e
+  `backend/tests/test_conhecimento_da_operacao.py::test_falha_ao_gravar_conhecimento_ids_nao_derruba_e_fica_visivel`.
 - O roteador mora no módulo de pedidos, com `prefix=/api/operacoes` e um caminho de dois segmentos que não colide com
   as rotas da Jev, e não mexe no `state.py`.
 - Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,

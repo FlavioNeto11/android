@@ -243,7 +243,7 @@ def test_bloco_da_persona_traz_biografia_escapada_e_o_handle_do_app(tmp_path: Pa
         # ADR-048 inverteu o ADR-041 aqui: crenças VÃO ao modelo. As frases v1 ("x", "y") viram o resumo de cada
         # crença na leitura e entram como seção, com a linha de conduta; as chaves em inglês nunca aparecem.
         assert "religião:\n  afiliação: x\n" in texto and "política:\n  resumo: y\n" in texto
-        assert "conduta sobre crenças: " in texto and "não faz propaganda política nem religiosa" in texto
+        assert "uso das crenças: " in texto and "propaganda" not in texto
         assert "politics" not in texto and "religion" not in texto
         # `SocialContextDTO.persona` é só voz e biografia: nada de credencial, sessão ou aparelho.
         assert not {"credential", "session", "instance_id", "username"} & set(ctx.persona.model_dump())

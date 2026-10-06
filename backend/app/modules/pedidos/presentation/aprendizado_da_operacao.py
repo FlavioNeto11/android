@@ -28,9 +28,10 @@ def aprendizado_da_operacao(request: Request, operacao_id: str, persona: str | N
     """As 10 respostas com origem, evidência, confiança e frescor por item. `persona` (um `profile_id`) deixa o que é
     dela e o que é da operação inteira; `simulados` inclui a evidência e os sinais simulados (fora por padrão)."""
     db = _db(request)
-    itens = LeitorDoAprendizadoDaOperacao(db).ler(operacao_id, simulados=simulados)
+    leitor = LeitorDoAprendizadoDaOperacao(db)
+    itens = leitor.ler(operacao_id, simulados=simulados)
     if itens is None:
         raise HTTPException(404, detail={"code": "operacao_desconhecida",
                                          "message": "Operação sem execução nem memória (ou a 124 ainda não está no banco)."})
     return {"operacao_id": operacao_id, "gerado_em": db.agora_iso(), "simulados": simulados,
-            **responder(itens, agora=db.agora_iso(), persona=persona)}
+            **responder(itens, agora=db.agora_iso(), persona=persona), "avisos": leitor.avisos(operacao_id)}
