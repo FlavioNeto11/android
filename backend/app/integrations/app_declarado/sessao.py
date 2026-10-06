@@ -1244,8 +1244,15 @@ class SessaoDeclarada:
             if botao is None:
                 falha = f"o botão do passo {i} da saída não foi achado com um candidato só"
                 break
-            await self._tap(rt, *botao.center)
+            # `tocou` vale ANTES do toque: um erro do driver depois de o toque chegar (prazo estourado com o "Sair" já
+            # aceito) deixaria a conta deslogada com a sessão ainda pronta e tarefas despachadas para ela. O desfecho
+            # é incerto: as sessões do app neste aparelho caem para `unknown` e o erro sobe como sempre.
             tocou = True
+            try:
+                await self._tap(rt, *botao.center)
+            except BaseException:
+                self._invalidar_o_app(rt, conta)
+                raise
             await asyncio.sleep(float(self.ajustes.settle_s))
         if tocou:
             self._invalidar_o_app(rt, conta)
@@ -1287,19 +1294,22 @@ class SessaoDeclarada:
         """Por que a conta aberta NÃO pode sair (31.155); `None` = pode. Sem tocar no aparelho.
 
         - Aparelho em quarentena (ADR-055): com conta travada ali, nada entra nem sai pela automação.
-        - A conta aberta tem de ser uma conta nossa deste app, ativa, com senha guardada e consentimento: só ela a
+        - A conta aberta tem de ser uma conta nossa deste app, ativa, com senha guardada, ativa e com consentimento: só ela a
           automação consegue trazer de volta. Uma conta que alguém abriu à mão (fora do cofre, ou que passou por
           verificação) não é deslogada — derrubá-la seria sem volta."""
         if self.repo.conta_travada_no_aparelho(rt.id) is not None:
             return "o aparelho está em quarentena por conta travada (ADR-055); a troca não começa"
         alvo = observado.strip().lstrip("@").lower()
         linhas = self.repo.db.query(
-            "SELECT a.handle, c.login_identifier, c.consent_at, a.status FROM profile_accounts a"
+            "SELECT a.handle, c.login_identifier, c.consent_at, a.status, c.status AS credencial FROM profile_accounts a"
             " JOIN account_credentials c ON c.account_id = a.id WHERE a.app_id IN (?, ?)", (conta.app_id, self.package))
         for linha in linhas:
             nomes = {str(linha["handle"] or "").strip().lstrip("@").lower(),
                      str(linha["login_identifier"] or "").strip().lstrip("@").lower()}
-            if alvo in nomes and linha["consent_at"] is not None and (linha["status"] or "active") == "active":
+            # A credencial também tem de estar ativa: a senha recusada (`invalid`) ou em revisão depois de um desafio
+            # não traz a conta de volta, e deslogá-la tiraria uma sessão que hoje funciona.
+            if (alvo in nomes and linha["consent_at"] is not None and (linha["status"] or "active") == "active"
+                    and (linha["credencial"] or "active") == "active"):
                 return None
         return ("a conta aberta não é uma conta nossa deste app com senha guardada e consentimento; ela não é "
                 "deslogada, porque a automação não a traria de volta")
