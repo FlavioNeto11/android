@@ -105,7 +105,7 @@ export function lerAprendizado(v: unknown): AprendizadoDaOperacao | null {
   return { gerado_em: texto(o.gerado_em), avisos, perguntas, nao_coberto };
 }
 
-export interface LicoesDaOperacao { reforcadas: ItemAprendido[]; contestadas: ItemAprendido[] }
+export interface LicoesDaOperacao<I extends Pick<ItemAprendido, 'ref' | 'a_favor' | 'contra'> = ItemAprendido> { reforcadas: I[]; contestadas: I[] }
 
 const maior = (a: number | null, b: number | null): number | null => (a === null ? b : b === null ? a : Math.max(a, b));
 
@@ -114,8 +114,8 @@ const maior = (a: number | null, b: number | null): number | null => (a === null
  * contra; reforçada = ao menos uma a favor e nenhuma contra. A lição sem contagem nenhuma não entra em nenhuma das duas
  * (a contagem que o backend não disse não vira zero): ela continua na pergunta onde apareceu.
  */
-export function licoesDaOperacao(perguntas: readonly PerguntaDoDono[]): LicoesDaOperacao {
-  const porRef = new Map<string, ItemAprendido>();
+export function licoesDaOperacao<I extends Pick<ItemAprendido, 'ref' | 'a_favor' | 'contra'>>(perguntas: readonly { itens: readonly I[] }[]): LicoesDaOperacao<I> {
+  const porRef = new Map<string, I>();
   for (const i of perguntas.flatMap((p) => p.itens)) {
     if (!i.ref.startsWith('licao:')) continue;
     const antes = porRef.get(i.ref);
