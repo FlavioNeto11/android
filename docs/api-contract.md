@@ -1097,8 +1097,8 @@ campo.
 | `GET /api/training/{session_id}` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
-| `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[], scope_on_proof?}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo); 400 `pos_condicao_ja_vale` quando a `text_visible` de uma etapa já vale na tela em que ela começa (31.122, adendo v1.83) |
-| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
+| `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[], scope_on_proof?}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo); 400 `pos_condicao_ja_vale` quando a `text_visible` ou a `element_present` de uma etapa já vale na tela em que ela começa (31.122, adendos v1.83 e v1.86, com `pos_condicoes_ja_valem`); etapa da proposta aceita `independente: bool` (31.127, adendo v1.85) |
+| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings, pos_condicoes_ja_valem}`, sem gravar nada (v1.58, v1.86) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
 | `POST /api/training/from-run` | `TrainingDeFalhaBody {run_id, step_id, lease_id, intent?, app_id?, profile_id?}` | `TrainingSession` (201) com `origin {run_id, step_id, step_key, attempt_id, motivo}`: abre o ensino a partir de uma etapa que falhou (31.111 F1 e F2, adendo v1.75); 404 `step_not_found`, 409 `step_not_failed` e as recusas de `POST /instances/{id}/training` |
@@ -7000,3 +7000,48 @@ fluxo ensinado a partir de uma falha (adendo v1.75), que `GET /api/flows[].origi
   pacote vizinho. A forma da resposta não muda.
 - Compatível: as etapas e os fluxos anteriores não têm o campo, e o hash da receita e da etapa não muda.
   **Prova:** `simulated` (`backend/tests/test_etapa_pacotes_aceitos.py`); `real`: `not_run`.
+
+## Adendo v1.85 (06/10/2026; número da orquestradora; item 31.127) — a etapa ensinada espera a anterior
+
+- **Corpo de `POST /api/training/{session_id}/save` e `/preview`** (`proposal.steps[]`): campo opcional
+  `independente: boolean`. Sem ele, ou com `false`, a etapa do fluxo ensinado nasce com `depends_on = [<key da etapa
+  anterior>]` e só fica pronta depois de a anterior ser comprovada. Com `true`, a etapa fica sem a dependência (a marca
+  da pessoa). A 1ª etapa, e a etapa que já traz dependência (a ação do catálogo), não mudam. Tipo errado (texto, número)
+  dá 400 `etapa_invalida`, antes de qualquer escrita.
+- Por quê: na reprodução r-20261006102728-1157c6 a 2ª etapa rodou com a 1ª em `retry_wait`, e o objetivo fechou
+  `completed` na tela inicial; 7 de 9 fluxos ensinados não tinham `depends_on`. O executor já esperava a dependência
+  (`Repository.promote`); faltava o ensino declará-la.
+- A resposta não muda. O hash da etapa e da receita não leva `depends_on`, então as receitas existentes seguem valendo.
+  Fluxos salvos antes seguem como estão.
+- **Prova:** `simulated` (`backend/tests/test_treino_partida_f2_e_sequencia.py`); `real`: `not_run`.
+
+## Adendo v1.86 (06/10/2026; número da orquestradora; itens 31.122 F2 e 31.128, migração 121) — a pós-condição que já vale, estruturada
+
+- **`POST /api/training/{session_id}/save`**, recusa 400 `pos_condicao_ja_vale` (formato do v1.57, dentro de `detail`):
+  além de `code` e `message`, a lista `pos_condicoes_ja_valem`, com uma entrada por etapa:
+
+  ```json
+  {"detail": {"code": "pos_condicao_ja_vale",
+              "message": "Etapa “Abrir a busca”: o texto “Search settings” já aparece na tela em que ela começa, ...",
+              "pos_condicoes_ja_valem": [{"etapa": "abrir_busca", "valor": "Search settings",
+                                          "sugestoes": ["Back", "No results"],
+                                          "message": "Etapa “Abrir a busca”: o texto “Search settings” já aparece ..."}]}}
+  ```
+
+- **`POST /api/training/{session_id}/preview`**: a mesma lista, ao lado de `warnings` (que continua `string[]`, com a
+  mesma frase em `message`). Sem ocorrência, a lista vem vazia:
+
+  ```json
+  {"steps": [...], "warnings": ["Etapa “Abrir a busca”: o texto ..."], "scope": {...},
+   "pos_condicoes_ja_valem": [{"etapa": "abrir_busca", "valor": "Search settings", "sugestoes": ["Back"], "message": "..."}]}
+  ```
+
+- `etapa` é a `key`; `valor`, a pós-condição que já vale (o texto, ou o seletor da `element_present`); `sugestoes`, até
+  três textos da tela seguinte que não valem na de partida. O dado da persona sai com o marcador no valor, nas
+  sugestões e na frase. É o que a tela usa para o alerta dentro da etapa, com um botão por sugestão (31.128).
+- **31.122 F2 (migração 121):** a conferência usa a TELA INTEIRA da 1ª entrada da etapa, pela regra do verificador
+  (`UiTree.contains_text` para `text_visible`; `find_selector` para `element_present`, que passa a ser conferida). Os
+  elementos vêm de `training_inputs.screen_elements` (uso interno, fora do GET da sessão). A sessão gravada antes cai em
+  `screen_lines` + `screen_title`. Antes, o id de interface (`search_action_bar_title`) e o corte de 8 linhas
+  escondiam o texto, e a etapa "comprovava" na tela inicial (r-20261006102728-1157c6).
+- **Prova:** `simulated` (`backend/tests/test_treino_partida_f2_e_sequencia.py`); `real`: `not_run`.

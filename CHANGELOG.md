@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.122 F2, 31.123 F2 e 31.127: a tela inteira da partida, a tela final da etapa e a ordem das etapas ensinadas (branch feat/31-122-123-f2-127)
+
+- Achados da prova conjunta real (06/10, deploy 50, r-20261006102728-1157c6, android-04, Configurações): a sugestão "Search settings" do 31.122 já valia na tela inicial (o id `search_action_bar_title` cai no filtro de interface das `screen_lines`, que ainda cortam em 8 linhas), e a etapa 1 "comprovou" lá depois de um press_back; a etapa 1 termina na busca (pacote vizinho), que o 31.123 não declarava; e a etapa 2 rodou com a 1ª em `retry_wait` (7 de 9 fluxos ensinados sem `depends_on`).
+- **31.122 F2** (migração 121, adendo v1.86): `training_inputs.screen_elements` guarda a tela compacta (sem senha, sem texto do campo editável, sem segredo, sem tela sensível; fora do GET); `partida.ja_valem` usa a regra do verificador (`contains_text`, `find_selector`) e passa a conferir `element_present`; a recusa 400 e a prévia trazem `pos_condicoes_ja_valem` (`{etapa, valor, sugestoes, message}`), para o 31.128. O `save` e o reparo do 31.118 marcam o dado da persona também nos elementos.
+- **31.123 F2**: o pacote da tela em que a etapa termina (a entrada seguinte) entra em `pacotes_aceitos`.
+- **31.127** (adendo v1.85): cada etapa ensinada espera a anterior (`depends_on`), salvo `independente: true` na proposta; tipo errado dá 400 `etapa_invalida`.
+- Revisão de segredos (agente, só leitura): nem uma palavra do dado da persona vira sugestão; a entrada marcada (teclado de PIN, padrão) não guarda os elementos.
+- Prova `simulated`: `tests/test_treino_partida_f2_e_sequencia.py` (13) e os ajustes de `tests/test_etapa_pacotes_aceitos.py` (a 1ª etapa agora também aceita o vizinho) e de `tests/test_treino_previa_e_refazer_receitas.py` (a chave nova da prévia). Dirigidos: 124 arquivos um por vez, com 1944 aprovados e as 3 falhas corrigidas e rodadas de novo; `scripts/tests`: 683. Real: `not_run` até o corte 51.
+
 ## 2026-10-06 — 31.124, 31.125 e 31.126: ensinar sem repetir sem saber, atalho na falha e o Livro sem código cru (branch feat/31-124-ensino-avisos)
 
 - Achados do percurso 49 (deploy 49, só leitura, sem IA paga): o formulário "Ensinar a corrigir" abriu sem aviso numa etapa que já tinha sessão salva (e deixou abrir mais duas); o botão só existe depois de execução > "Por aparelho" > aparelho > etapa (4 cliques) embora a falha já esteja escrita no cabeçalho do aparelho; e o detalhe de um fluxo do Livro mostrava "App: nao_resolvido" (o código do balde) como se fosse nome de aplicativo.

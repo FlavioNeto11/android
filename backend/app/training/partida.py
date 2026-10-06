@@ -15,8 +15,9 @@ Só funções puras sobre a proposta e as entradas gravadas; nenhuma IA, nenhum 
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
+from ..automation.hierarchy import UiElement, UiTree
 from ..util import norm_text
 from . import dado_da_persona
 
@@ -24,6 +25,11 @@ from . import dado_da_persona
 SUGESTOES = 3
 #: Abaixo disto o texto casaria com pedaço de qualquer linha (o mesmo piso do dado da persona).
 MINIMO = 3
+#: 31.122 F2: teto de elementos guardados por tela (uma lista rolada pode ter centenas) e de caracteres por texto.
+ELEMENTOS = 400
+CARACTERES = 200
+#: As pós-condições que a regra do verificador decide pela tela de partida: texto visível e elemento presente.
+CONFERIDAS = ("text_visible", "element_present")
 
 
 def com_abertura(entradas: Sequence[Mapping[str, object]], primeira: Mapping[str, object] | None, app_id: str | None,
@@ -39,50 +45,108 @@ def com_abertura(entradas: Sequence[Mapping[str, object]], primeira: Mapping[str
     return [{"seq": 0, "type": "open_app", "app_id": app_id, "package": pacote}, *copia]
 
 
+def elementos_compactos(elementos: Iterable[UiElement], segredo: Callable[[str | None], bool]) -> list[dict[str, object]]:
+    """31.122 F2: os elementos da tela para a MESMA regra do verificador (`UiTree.contains_text` e `find_selector`), em
+    forma compacta: `{t, d, r, b}` (texto, descrição, id, limites), sem as chaves vazias. O campo de senha sai inteiro;
+    o campo editável perde o texto (o que a pessoa digitou não fica aqui); o texto ou a descrição com cara de segredo
+    (`segredo`) sai. Elemento sem nada que se confira não entra. Até `ELEMENTOS`."""
+    saida: list[dict[str, object]] = []
+    for e in elementos:
+        if e.password:
+            continue
+        texto = "" if e.editable else (e.text or "")
+        desc = e.desc or ""
+        item: dict[str, object] = {}
+        if texto and not segredo(texto):
+            item["t"] = texto[:CARACTERES]
+        if desc and not segredo(desc):
+            item["d"] = desc[:CARACTERES]
+        if e.resource_id:
+            item["r"] = e.resource_id
+        if not item:
+            continue
+        item["b"] = list(e.bounds)
+        saida.append(item)
+        if len(saida) >= ELEMENTOS:
+            break
+    return saida
+
+
+def _elemento(n: int, texto: str = "", desc: str = "", rid: str = "", limites: object = None) -> UiElement:
+    b = limites if isinstance(limites, list) and len(limites) == 4 and all(isinstance(x, int) for x in limites) else [0] * 4
+    return UiElement(id=f"p{n}", text=texto, desc=desc, resource_id=rid, class_name="", package="",
+                     bounds=(b[0], b[1], b[2], b[3]), clickable=False, enabled=True, focused=False, scrollable=False,
+                     editable=False, checked=False, password=False)
+
+
+def tela_de_partida(e: Mapping[str, object] | None) -> UiTree | None:
+    """A tela em que a entrada foi feita, como árvore: dos `screen_elements` (31.122 F2) ou, na sessão anterior a eles,
+    das `screen_lines` e do `screen_title` como textos soltos (o que se sabe; id e descrição não). Sem nada, `None`."""
+    if not e:
+        return None
+    elementos = e.get("screen_elements")
+    if isinstance(elementos, list) and elementos:
+        return UiTree(elements=[_elemento(n, str(x.get("t") or ""), str(x.get("d") or ""), str(x.get("r") or ""),
+                                          x.get("b")) for n, x in enumerate(elementos) if isinstance(x, dict)],
+                      packages=[], sensitive=False)
+    textos = [*_linhas(e), *([str(e["screen_title"])] if isinstance(e.get("screen_title"), str) else [])]
+    return (UiTree(elements=[_elemento(n, t) for n, t in enumerate(textos)], packages=[], sensitive=False)
+            if textos else None)
+
+
+def _vale(tela: UiTree, kind: str, valor: str) -> bool:
+    """A regra do verificador para a pós-condição na tela dada."""
+    return tela.contains_text(valor) if kind == "text_visible" else bool(tela.find_selector(valor))
+
+
+def _textos(tela: UiTree | None, e: Mapping[str, object] | None) -> list[str]:
+    """Os textos candidatos a sugestão de uma tela: as linhas de conteúdo primeiro (as mais significativas), depois o
+    resto dos textos e descrições."""
+    return [*_linhas(e), *(tela.texts() if tela is not None else [])]
+
+
 def _linhas(e: Mapping[str, object] | None) -> list[str]:
     linhas = e.get("screen_lines") if e else None
     return [str(x) for x in linhas if isinstance(x, str)] if isinstance(linhas, list) else []
 
 
-def _contem(linhas: Iterable[str], texto: str) -> bool:
-    n = norm_text(texto)
-    return bool(n) and any(n in norm_text(t) for t in linhas)
-
-
 def ja_valem(passos: Sequence[Mapping[str, object]], entradas: Sequence[Mapping[str, object]],
              descartadas: Iterable[int] = (), evitar: Iterable[str] = ()) -> list[dict[str, object]]:
-    """As etapas cuja pós-condição `text_visible` (literal, sem marcador) já vale na tela em que a etapa começa: `{key,
-    titulo, valor, sugestoes}`. A tela de partida são os `screen_lines` da 1ª entrada da etapa; a sugestão, até
-    `SUGESTOES` linhas da tela seguinte (a 1ª entrada depois da última da etapa) que não estão na de partida. `evitar`:
+    """As etapas cuja pós-condição `text_visible` ou `element_present` (literal, sem marcador) já vale na tela em que a
+    etapa começa: `{key, titulo, kind, valor, sugestoes}`. A tela de partida é a da 1ª entrada da etapa
+    (`tela_de_partida`: os elementos inteiros desde o 31.122 F2, pela regra do verificador); a sugestão, até
+    `SUGESTOES` textos da tela seguinte (a 1ª entrada depois da última da etapa) que não valem na de partida. `evitar`:
     textos que nunca são sugeridos (o dado da persona). Sem tela gravada, a etapa não entra (não dá para saber)."""
     fora = set(descartadas)
     por_seq = {int(str(e["seq"])): e for e in entradas if str(e.get("seq", "")).lstrip("-").isdigit()}
     ordem = sorted(s for s in por_seq if s not in fora)
-    proibidos = [norm_text(v) for v in evitar if v and len(v.strip()) >= MINIMO]
+    # O valor inteiro e cada palavra dele (o primeiro nome de "Ana Souza" sozinho também não é sugerido): na dúvida, sai
+    proibidos = [n for v in evitar if v for n in {norm_text(v), *(norm_text(w) for w in v.split())} if len(n) >= MINIMO]
     saida: list[dict[str, object]] = []
     for st in passos:
         post = st.get("postcondition")
-        valor = post.get("value") if isinstance(post, Mapping) and post.get("kind") == "text_visible" else None
+        kind = post.get("kind") if isinstance(post, Mapping) else None
+        valor = post.get("value") if isinstance(post, Mapping) and kind in CONFERIDAS else None
         if not isinstance(valor, str) or "{" in valor or len(norm_text(valor)) < MINIMO:
             continue
         seqs = sorted(int(i) for i in st.get("inputs") or [] if isinstance(i, int) and i in por_seq and i not in fora)  # type: ignore[union-attr]
         if not seqs:
             continue
-        partida = _linhas(por_seq[seqs[0]])
-        if not partida or not _contem(partida, valor):
+        partida = tela_de_partida(por_seq[seqs[0]])
+        if partida is None or not _vale(partida, str(kind), valor):
             continue
         depois = next((s for s in ordem if s > seqs[-1]), None)
-        seguinte = _linhas(por_seq[depois]) if depois is not None else []
+        e_seguinte = por_seq[depois] if depois is not None else None
         sugestoes: list[str] = []
-        for linha in seguinte:
+        for linha in _textos(tela_de_partida(e_seguinte), e_seguinte):
             n = norm_text(linha)
-            if len(n) < MINIMO or "{" in linha or _contem(partida, linha) or any(p in n for p in proibidos):
+            if len(n) < MINIMO or "{" in linha or partida.contains_text(linha) or any(p in n for p in proibidos):
                 continue
             if linha not in sugestoes:
                 sugestoes.append(linha)
             if len(sugestoes) == SUGESTOES:
                 break
-        saida.append({"key": st.get("key"), "titulo": st.get("title") or st.get("key"), "valor": valor,
+        saida.append({"key": st.get("key"), "titulo": st.get("title") or st.get("key"), "kind": kind, "valor": valor,
                       "sugestoes": sugestoes})
     return saida
 
@@ -108,10 +172,36 @@ def pacotes_vizinhos(entradas: Sequence[Mapping[str, object]], pacote_da_etapa: 
     return saida
 
 
+def entrada_seguinte(entradas: Sequence[Mapping[str, object]], seqs_da_etapa: Iterable[int],
+                     descartadas: Iterable[int] = ()) -> Mapping[str, object] | None:
+    """31.123 F2: a 1ª entrada gravada depois da última da etapa (fora as descartadas). O pacote dela é o da tela em que
+    a etapa TERMINOU: a entrada guarda o pacote da tela em que foi feita. Sem entrada depois, `None`."""
+    seqs = list(seqs_da_etapa)
+    if not seqs:
+        return None
+    fora, ultima = set(descartadas), max(seqs)
+    depois = sorted((e for e in entradas if str(e.get("seq", "")).lstrip("-").isdigit()
+                     and int(str(e["seq"])) > ultima and int(str(e["seq"])) not in fora), key=lambda e: int(str(e["seq"])))
+    return depois[0] if depois else None
+
+
 def aviso_dos_vizinhos(passos: Sequence[tuple[str, Sequence[str]]]) -> list[str]:
     """A linha da prévia e do `save` para cada etapa que passou a aceitar um pacote vizinho."""
     return [f"Etapa “{titulo}”: a demonstração terminou fora do app, em {', '.join(pacotes)}; a etapa passa a aceitar "
             "a conclusão nessa tela." for titulo, pacotes in passos if pacotes]
+
+
+def estruturados(achados: Sequence[Mapping[str, object]], persona: Mapping[str, str] | None = None
+                 ) -> list[dict[str, object]]:
+    """31.122, adendo v1.86 (`pos_condicoes_ja_valem`): cada achado como objeto, para a tela pôr o alerta dentro da
+    etapa com um botão por sugestão (31.128): `{etapa, valor, sugestoes, message}`. `etapa` é a key; `valor`, a
+    pós-condição que já vale; `sugestoes`, até `SUGESTOES`; `message`, a mesma linha de `aviso`. Com `persona`, o dado
+    dela vira o marcador no valor e nas sugestões."""
+    def marca(texto: str) -> str:
+        return dado_da_persona.com_marcador(texto, persona) if persona else texto
+    return [{"etapa": a.get("key"), "valor": marca(str(a.get("valor") or "")),
+             "sugestoes": [marca(str(s)) for s in a.get("sugestoes") or []],  # type: ignore[attr-defined]
+             "message": linha} for a, linha in zip(achados, aviso(achados, persona), strict=True)]
 
 
 def aviso(achados: Sequence[Mapping[str, object]], persona: Mapping[str, str] | None = None) -> list[str]:
@@ -121,10 +211,12 @@ def aviso(achados: Sequence[Mapping[str, object]], persona: Mapping[str, str] | 
     for a in achados:
         sug = a.get("sugestoes") or []
         exemplo = f" Por exemplo, um texto da tela seguinte: {', '.join(f'“{s}”' for s in sug)}." if sug else ""  # type: ignore[union-attr]
-        linhas.append(f"Etapa “{a['titulo']}”: o texto “{a['valor']}” já aparece na tela em que ela começa, então ela "
+        o_que = (f"o elemento “{a['valor']}” já está" if a.get("kind") == "element_present"
+                 else f"o texto “{a['valor']}” já aparece")
+        linhas.append(f"Etapa “{a['titulo']}”: {o_que} na tela em que ela começa, então ela "
                       f"passaria sem agir. Troque a pós-condição por um texto que só aparece depois da etapa.{exemplo}")
     return [dado_da_persona.com_marcador(linha, persona) for linha in linhas] if persona else linhas
 
 
-__all__ = ["FORA_DOS_ACEITOS", "MINIMO", "SUGESTOES", "aviso", "aviso_dos_vizinhos", "com_abertura", "ja_valem",
-           "pacotes_vizinhos"]
+__all__ = ["CARACTERES", "CONFERIDAS", "ELEMENTOS", "FORA_DOS_ACEITOS", "MINIMO", "SUGESTOES", "aviso", "aviso_dos_vizinhos", "com_abertura", "elementos_compactos", "entrada_seguinte", "estruturados", "ja_valem",
+           "pacotes_vizinhos", "tela_de_partida"]

@@ -35,7 +35,7 @@ def _err(status: int, code: str, message: str, **extra: object) -> HTTPException
 
 
 def _training_error(exc: TrainingError) -> HTTPException:
-    return _err(exc.status, exc.code, exc.message)
+    return _err(exc.status, exc.code, exc.message, **exc.extra)
 
 
 @router.post("/instances/{instance_id}/training", status_code=201)
