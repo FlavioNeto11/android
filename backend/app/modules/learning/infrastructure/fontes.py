@@ -278,12 +278,26 @@ class FontesSql:
                 capabilities.append(linhas.texto(s, "capability"))
         return capabilities
 
+    def _correcao_do_fluxo(self, fonte: str | None) -> dict[str, str | None] | None:
+        """31.117: a execução que falhou e originou a correção ensinada deste fluxo (a sessão de treino em `flows.source`);
+        a mesma regra e forma do `origin` de `GET /api/flows` (`taskqueue/flows.py`). `None` se não veio de uma falha."""
+        if not fonte or not fonte.startswith(PREFIXO_DE_TREINO):
+            return None
+        sessao = self._db.one("SELECT id, origin_run_id, origin_step_id, origin_attempt_id FROM training_sessions"
+                              " WHERE id=? AND origin_run_id IS NOT NULL", (fonte[len(PREFIXO_DE_TREINO):],))
+        if sessao is None:
+            return None
+        return {"session_id": linhas.texto(sessao, "id"), "run_id": linhas.texto(sessao, "origin_run_id"),
+                "step_id": linhas.texto_ou_nulo(sessao, "origin_step_id"),
+                "attempt_id": linhas.texto_ou_nulo(sessao, "origin_attempt_id")}
+
     def _conteudo_do_fluxo(self, ref: str) -> JsonObject | None:
         row = self._db.one("SELECT * FROM flows WHERE id=?", (ref,))
         if row is None:
             return None
         exigidos = self._exigidos("SELECT flow_id, app_id FROM flow_required_apps", "flow_id", ref)
         return fluxo_legivel(linhas.json_legado(linhas.texto(row, "plan")), nome=linhas.texto(row, "name"),
+                             correcao=self._correcao_do_fluxo(linhas.texto_ou_nulo(row, "source")),
                              comando_modelo=linhas.texto(row, "command_template"),
                              fonte=linhas.texto_ou_nulo(row, "source"),
                              source_run_id=linhas.texto_ou_nulo(row, "source_run_id"), apps=exigidos.get(ref, []))

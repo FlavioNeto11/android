@@ -34,6 +34,7 @@ from app.contracts.origem import PREFIXO_VALIDACAO
 from app.modules.learning.domain.ciclo import ConflitoDeEstado, ExigeODono, SkillState, TransicaoProibida
 from app.modules.learning.domain.curador import Decisao, Falta, Parecer
 from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item, quem_no_log, ref_no_log
+from app.modules.learning.domain.parecer import mais_restritiva
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, Classificacao, Razao
 from app.modules.learning.domain.ensinado import EsperaDoEnsinado
 from app.modules.learning.domain.validacao import (PREFIXO_DO_ENSINO, VALIDADE_DO_PEDIDO_H, Ambiente, AparelhoCandidato,
@@ -273,7 +274,8 @@ class ServicoDeValidacao:
                  *, triagem: Callable[[str], bool], ajustes: Callable[[], AjustesDaValidacao],
                  relogio: Callable[[], datetime],
                  risco_do_item: Callable[[EntradaDoLivro], Classificacao | None] | None = None,
-                 ensino: EnsinoDaValidacao | None = None) -> None:
+                 ensino: EnsinoDaValidacao | None = None,
+                 contar_pelo_observar: Callable[[str], None] | None = None) -> None:
         self._registro = registro
         self._fontes = fontes
         self._despacho = despacho
@@ -284,6 +286,8 @@ class ServicoDeValidacao:
         self._risco_do_item = risco_do_item
         # 30.81: a prova do fluxo ensinado (`None`: o ensinado não é provado, o modo de antes)
         self._ensino = ensino
+        # 30.34: conta (pelo estado do pedido) o que nasceu do `observar` da classe B; a saúde o mostra
+        self._contar_pelo_observar = contar_pelo_observar
 
     # ------------------------------------------------------------------ 1. o parecer vira pedido
     def ao_parecer(self, e: EntradaDoLivro, review_id: str, parecer: Parecer, risco: Classificacao) -> str | None:
@@ -294,27 +298,35 @@ class ServicoDeValidacao:
             return None
         origem = self._fontes.origem(e.nasceu_de) if e.nasceu_de else None
         comando = origem.comando if origem is not None else None
-        pedido = pedido_do_parecer(self._fatos(e, parecer.decisao, tuple(parecer.falta), risco, comando))
+        pedido = pedido_do_parecer(self._fatos(e, parecer.decisao, tuple(parecer.falta), risco, comando,
+                                               classe=mais_restritiva(risco.classe, parecer.faixa)))
         if pedido is None:
             return None
         agora = self._relogio()
-        return self._registro.criar(NovoPedido(
+        pid = self._registro.criar(NovoPedido(
             review_id=review_id, item_ref=e.trail_ref, item_kind=e.kind.value, scope_app=e.app or "",
             grupo=pedido.grupo.value, falta=tuple(f.value for f in pedido.falta), run_origem=e.nasceu_de,
             comando=comando or "", aparelho_excluido=origem.aparelho if origem is not None else None,
             estado=pedido.estado.value, motivo=pedido.motivo.value if pedido.motivo else None,
             expira_em=to_iso(agora + timedelta(hours=VALIDADE_DO_PEDIDO_H)),
             teto_usd=aj.teto_por_pedido_usd), agora)
+        if pid is not None and pedido.pelo_observar:
+            como = pedido.motivo.value if pedido.motivo else pedido.estado.value
+            log.info("aprendizado: o `observar` da classe B de %s gerou o pedido de prova %s (%s, 30.34)",
+                     ref_no_log(e.trail_ref), pid, como)
+            if self._contar_pelo_observar is not None:
+                self._contar_pelo_observar(como)
+        return pid
 
     def _fatos(self, e: EntradaDoLivro, decisao: Decisao, falta: tuple[Falta, ...], risco: Classificacao,
-               comando: str | None) -> FatosDoParecer:
+               comando: str | None, *, classe: ClasseDeRisco | None = None) -> FatosDoParecer:
         return FatosDoParecer(
             decisao=decisao, falta=falta, kind=e.kind, estado=e.state,
             vetado=self._fontes.vetado(e), toca_sessao=Razao.SESSAO_OU_AUTENTICACAO in risco.razoes,
             efeito=e.side_effect, app_qa=self._todos_de_qa(e), comando=comando,
             comando_com_credencial=bool(comando) and self._triagem(comando or ""),
             fluxo_ativo=bool(comando) and e.kind is LivroKind.RECEITA and self._fontes.fluxo_ativo_para(comando or ""),
-            caminho=self._caminho(e.kind.value, e.trail_ref, comando))
+            caminho=self._caminho(e.kind.value, e.trail_ref, comando), classe=classe)
 
     # ------------------------------------------------------------------ 1c. a pessoa recusa (30.52)
     def recusar_pela_pessoa(self, pedido_id: str, *, by: str) -> bool:

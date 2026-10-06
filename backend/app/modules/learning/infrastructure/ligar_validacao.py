@@ -20,6 +20,7 @@ from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.validacao import Ambiente, AparelhoCandidato
 from app.modules.learning.domain.vocabulario import Modo
 from app.modules.learning.infrastructure import linhas
+from app.modules.learning.infrastructure.contador_pelo_observar import ContadorPeloObservar
 from app.modules.learning.infrastructure.dossies import DossiesSql
 from app.modules.learning.infrastructure.ensinado_sql import EnsinoDaValidacaoSql
 from app.modules.learning.infrastructure.eventos import RiscoDoRegistro
@@ -184,7 +185,8 @@ def ligar(servico: LearningService, db: Database, *, fila: Fila, parque: Parque,
                                    triagem=triagem.recusa, ajustes=lambda: ajustes_da_validacao(config()),
                                    relogio=relogio,
                                    risco_do_item=lambda e: d.risco if (d := dossies.dossie(e)) is not None else None,
-                                   ensino=EnsinoDaValidacaoSql(db, servico))               # 30.81
+                                   ensino=EnsinoDaValidacaoSql(db, servico),               # 30.81
+                                   contar_pelo_observar=ContadorPeloObservar(db).registrar)  # 30.34
     servico.anexar(validacao)
     # Depois da sombra dos fluxos (`fluxos_d1`, ligada antes): o digest roda os mineradores em ordem, e o pedido fecha
     # pela evidência que a sombra acabou de gravar. Trocar a ordem fecharia toda validação de fluxo `sem_evidencia`.
