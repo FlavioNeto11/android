@@ -294,6 +294,7 @@ def test_tres_amostras_sem_df_avisam_uma_vez(tmp_path):
     assert rc == 0 and len(avisos) == 1
 
 
+@pytest.mark.skipif(not WINDOWS, reason="usa _k32 (kernel32), que só existe no Windows (29.175: aparece no CI hospedado em Linux)")
 def test_arvore_que_ja_saiu_nao_vira_kill_falho():
     """O pytest que saiu entre a amostra e o aborto: nada de `taskkill`, nada de ATENÇÃO."""
     chamadas: list[list[str]] = []
