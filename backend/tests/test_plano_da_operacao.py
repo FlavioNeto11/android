@@ -197,6 +197,27 @@ async def test_credencial_em_parametro_e_recusada_pelo_nome_ou_pelo_formato(harn
     assert st.db.scalar("SELECT COUNT(*) FROM operacoes WHERE idempotency_key='teste-op-param-cred'") == 0
 
 
+@pytest.mark.parametrize("parametros", [
+    {"senha_Xk9mP2q": "loja.exemplo"}, {"Hunter2xyQ": "loja.exemplo"}, {"username": "loja.exemplo", "tok3n_A": "{x}"},
+])
+async def test_a_recusa_nao_devolve_o_nome_do_parametro(harness: Harness, parametros: dict[str, str]) -> None:
+    """Achado do Copilot no PR 487: a credencial pode estar no NOME da chave, e a recusa devolvia o nome no corpo do
+    erro (que volta ao cliente e vai ao log). A recusa diz a posição, nunca o nome nem o valor."""
+    with pytest.raises(OperacaoError) as exc:
+        _servico(harness).criar(_pedido([AlvoPedido("p-x")], chave="teste-op-param-nome", parametros=parametros))
+    for nome in parametros:
+        assert nome not in exc.value.message and nome.lower() not in exc.value.message.lower()
+    assert "parâmetro" in exc.value.message
+
+
+def test_o_valor_comparavel_nao_tem_espaco_nenhum() -> None:
+    """Achado do Copilot no PR 487: o contrato diz "sem espaços"; `strip` só tirava as pontas."""
+    assert pdo.normal(" @ Loja .Exemplo ") == pdo.normal("loja.exemplo") == "loja.exemplo"
+    plano = Plan(summary="x", planner=PLANEJADOR, parameters={"perfil_alvo": "@ loja . exemplo"},
+                 steps=[_etapa("ab", "OPEN_PROFILE", "perfil de {perfil_alvo}")])
+    assert pdo.fixar_parametros(plano, {"username": LOJA}).parameters == {"username": LOJA}
+
+
 def test_dado_da_persona_e_nome_sensivel_do_plano_nao_sao_renomeados() -> None:
     plano = Plan(summary="x", planner=PLANEJADOR, parameters={"perfil_email": LOJA, "codigo": "Coleção de primavera"},
                  steps=[_etapa("ab", None, "perfil {perfil_email} e {codigo}")])

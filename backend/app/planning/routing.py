@@ -51,6 +51,8 @@ log = logging.getLogger("poc.ai")
 
 #: Fração do teto em que sai o aviso. Acima disto a execução continua; em 100 % ela é barrada.
 AVISO = 0.8
+#: 31.154: a reserva entregue a quem nunca grava o custo sai sozinha depois disto (o teto não fica preso).
+_PRAZO_DA_RESERVA_S = 120.0
 
 #: Destino documentado do fallback de recusa da Anthropic (roteado por categoria — cyber vai para este).
 REFUSAL_FALLBACK_TARGET = "definido pelo provedor (documentado: claude-opus-4-8)"
@@ -348,13 +350,7 @@ class RoutingProvider:
                           kind="balance")
         if reservada is None:
             return lambda: None
-        soltou = threading.Event()
-
-        def solta() -> None:                          # soltar duas vezes não devolve a vaga de outra chamada
-            if not soltou.is_set():
-                soltou.set()
-                self._soltar(reservada)
-        return solta
+        return self._soltador(reservada)
 
     def _fatia_da_origem(self, origem: str | None, teto_dia: float, prices: dict[str, list[float]]
                          ) -> tuple[tuple[str, float, Callable[[], float], str, str], ...]:
@@ -440,9 +436,9 @@ class RoutingProvider:
             # Modo simulado não gasta dinheiro nenhum: conferir teto ali seria uma consulta por chamada para
             # sempre dar zero — e, com teto apertado, dava para BLOQUEAR uma execução que não custa nada.
             operacao = self._budget(run_id, origem, reservar=True)
-        # A chamada sai de `_budget` reservada no teto da operação e fica assim até voltar; quem a pediu grava o custo
-        # logo depois, sem `await` no meio (`Executor`), então a reserva sai e o gasto gravado entra na mesma volta.
-        with self._reservada(operacao):
+        # A chamada sai de `_budget` reservada no teto da operação. Se falhar, a reserva sai na volta; se responder, ela
+        # vai com o `Usage` e sai quando `add_usage` grava o custo (ver `_reservada`).
+        with self._reservada(operacao) as entrega:
             try:
                 self._saldo(r)
                 try:
@@ -456,7 +452,7 @@ class RoutingProvider:
                     self._anota(run_id, f"Recusa de {usage.requested_model} em {papel}; respondeu {usage.model} "
                                         f"(cobrado na tarifa de {usage.model}).")
                 usage.origem, usage.ref = origem, ref
-                return resultado, usage
+                return entrega(resultado, usage)
             except AIError as exc:
                 alvo = r.fallback_provider
                 if not alvo or exc.kind in ("budget", "refusal"):
@@ -477,15 +473,39 @@ class RoutingProvider:
                 self._anota(run_id, f"Provedor “{r.provider}” falhou em {papel} ({exc}); respondeu "
                                     f"“{alvo}” com {usage.model} (cobrado na tarifa de {usage.model}).")
                 usage.origem, usage.ref = origem, ref
-                return resultado, usage
+                return entrega(resultado, usage)
 
     @contextlib.contextmanager
-    def _reservada(self, operacao: str | None) -> Iterator[None]:
-        """Solta, na volta (também quando falha), a chamada que `_budget(reservar=True)` reservou (31.154)."""
+    def _reservada(self, operacao: str | None) -> Iterator[Callable[[object, Usage], tuple[object, Usage]]]:
+        """A chamada que `_budget(reservar=True)` reservou (31.154). Falhou: a reserva sai na hora. Respondeu: `entrega`
+        passa a reserva ao `Usage` (`soltar_reserva`), e ela sai quando o custo é gravado (`add_usage`; achado do
+        Copilot no PR 487: soltar na volta deixava outra chamada passar pelo teto antes do gasto estar no banco). Quem
+        não grava não prende o teto: a reserva sai sozinha em `_PRAZO_DA_RESERVA_S`."""
+        entregue = False
+
+        def entrega(resultado: object, usage: Usage) -> tuple[object, Usage]:
+            nonlocal entregue
+            if operacao is not None:
+                solta = self._soltador(operacao)
+                usage.soltar_reserva = solta
+                asyncio.get_running_loop().call_later(_PRAZO_DA_RESERVA_S, solta)
+                entregue = True
+            return resultado, usage
         try:
-            yield
+            yield entrega
         finally:
-            self._soltar(operacao)
+            if not entregue:
+                self._soltar(operacao)
+
+    def _soltador(self, operacao: str) -> Callable[[], None]:
+        """Quem solta UMA reserva: chamar de novo não devolve a vaga de outra chamada."""
+        soltou = threading.Event()
+
+        def solta() -> None:
+            if not soltou.is_set():
+                soltou.set()
+                self._soltar(operacao)
+        return solta
 
     def _soltar(self, operacao: str | None) -> None:
         if operacao is None:

@@ -168,6 +168,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     ao mesmo tempo, uma barrada);
   - `backend/tests/test_operacoes.py::test_a_reabertura_le_os_alvos_ja_como_executar_e_o_mesmo_get_nao_fecha_de_novo`.
   - Os três reprovam no código anterior (`cb36b9b4`).
+- Revisão do Copilot no PR 487 (5 achados):
+  - só a COLUNA ausente vira "execução sem operação" (`app.db.coluna_ausente`); banco travado e SQL inválido propagam;
+  - a recusa de parâmetro diz a posição, nunca o nome nem o valor, porque a credencial pode estar no nome;
+  - a reabertura pela aprovação por fora é condicional no SQL (`status<>'cancelada'`): não ressuscita a operação
+    cancelada no meio;
+  - a reserva do teto da operação vale até o custo gravado: vai no `Usage.soltar_reserva`, `add_usage` a solta, e ela
+    sai sozinha em 120 s se ninguém gravar;
+  - o valor comparável dos parâmetros fica sem espaço nenhum.
+- Prova `simulated` dos 5 achados:
+  - os testes `test_a_reserva_da_chamada_que_respondeu_vale_ate_o_custo_gravado`,
+    `test_so_a_coluna_ausente_vira_execucao_sem_operacao` e
+    `test_a_reabertura_nao_ressuscita_a_operacao_cancelada_entre_a_leitura_e_o_update`, em
+    `backend/tests/test_operacoes.py`;
+  - `test_a_recusa_nao_devolve_o_nome_do_parametro` e `test_o_valor_comparavel_nao_tem_espaco_nenhum`, em
+    `backend/tests/test_plano_da_operacao.py`.
+  - Todos reprovam na `c2bf12ef`.
 
 ## 2026-10-06 — 28.61: grupo de política sem aprovação e o fim real da operação (branch feat/28-61-grupo-liberado)
 

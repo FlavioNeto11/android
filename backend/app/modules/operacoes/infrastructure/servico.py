@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from app.contracts.origem import PREFIXO_OPERACAO
-from app.db import OPERATIONAL_ERRORS, Database, Row, dumps, loads
+from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
@@ -100,18 +100,22 @@ _NOME_DE_PARAMETRO = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
     """Nome e valor de cada parâmetro fixo. Credencial nunca: a execução não carrega credencial (ADR-040), e um parâmetro
     vai ao plano, ao objetivo, ao prompt e ao texto digitado pelo canal comum. A recusa olha o NOME (`senha`, `codigo`,
-    `token`), o par `nome=valor` e o FORMATO do valor sozinho (senha ou código sem rótulo)."""
-    for nome, valor in (parametros or {}).items():
+    `token`), o par `nome=valor` e o FORMATO do valor sozinho (senha ou código sem rótulo).
+
+    A recusa diz a POSIÇÃO do parâmetro, nunca o nome nem o valor (achado do Copilot no PR 487): a credencial pode
+    estar no próprio nome, e o corpo do erro volta ao cliente e vai ao log."""
+    for posicao, (nome, valor) in enumerate((parametros or {}).items(), start=1):
         texto = str(valor)
         if (chave_sensivel(nome) or SENSITIVE_PARAM.search(nome) or redact(f"{nome}={texto}") != f"{nome}={texto}"
                 or looks_secret(texto) or parece_senha_ou_codigo(texto)):
-            raise OperacaoError("credencial_no_comando", f"O parâmetro {nome!r} parece credencial; a operação não "
+            raise OperacaoError("credencial_no_comando", f"O {posicao}º parâmetro parece credencial; a operação não "
                                 "leva credencial (a senha só sai do cofre, pelo canal sensível).", 409)
         if (not _NOME_DE_PARAMETRO.match(nome) or nome in NOMES_RESERVADOS
                 or nome.startswith(("perfil_", "conta_"))):
-            raise OperacaoError("pedido_invalido", f"Nome de parâmetro não aceito: {nome!r}.", 422)
+            raise OperacaoError("pedido_invalido", f"Nome do {posicao}º parâmetro não aceito (minúsculas, dígitos e _,"
+                                " até 40; sem os nomes reservados nem perfil_ e conta_).", 422)
         if not isinstance(valor, str) or not 1 <= len(valor) <= 300 or "{" in valor or "}" in valor:
-            raise OperacaoError("pedido_invalido", f"Valor do parâmetro {nome!r}: de 1 a 300 caracteres, sem chaves.",
+            raise OperacaoError("pedido_invalido", f"Valor do {posicao}º parâmetro: de 1 a 300 caracteres, sem chaves.",
                                 422)
     if len(parametros or {}) > 10:
         raise OperacaoError("pedido_invalido", "No máximo 10 parâmetros.", 422)
@@ -271,8 +275,10 @@ class ServicoDeOperacoes:
             # `executar` e reabre, como no liberar; sem isto, ficava `concluida` com o `finished_at` da preparação e a
             # ação executada e verificada depois dele. A reabertura vem ANTES da leitura dos alvos (achado do Codex no
             # PR 483): lidos com `preparar`, `acao_preparada` era concluído, e o mesmo GET fechava a operação de novo.
+            # Transição condicional no SQL, como no liberar (achado do Copilot no PR 487): o cancelar que gravou
+            # `cancelada` depois da leitura acima não pode ser sobrescrito por `em_curso`.
             self.db.execute("UPDATE operacoes SET acao_final='executar', status='em_curso', finished_at=NULL, updated_at=?"
-                            " WHERE id=? AND acao_final='preparar'", (now_iso(), op_id))
+                            " WHERE id=? AND acao_final='preparar' AND status<>'cancelada'", (now_iso(), op_id))
             op = self.db.one("SELECT * FROM operacoes WHERE id=?", (op_id,)) or op
         alvos = []
         for a in self.db.query("SELECT * FROM operacao_alvos WHERE operacao_id=? ORDER BY seq, profile_id", (op_id,)):
@@ -315,7 +321,9 @@ class ServicoDeOperacoes:
         try:
             linhas = self.db.query("SELECT valor FROM pedido_observacoes WHERE operacao_id=? AND tipo='url' AND valor IS"
                                    " NOT NULL ORDER BY capturado_em, id", (op_id,))
-        except OPERATIONAL_ERRORS:          # banco sem a migração 125 (a coluna `operacao_id`): a pesquisa não gravou nada
+        except OPERATIONAL_ERRORS as exc:   # banco sem a migração 125 (a coluna `operacao_id`): a pesquisa não gravou nada
+            if not coluna_ausente(exc):
+                raise
             return vistas
         for r in linhas:
             if str(r["valor"]) not in vistas:
