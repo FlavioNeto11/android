@@ -268,6 +268,7 @@ describe('com a rota no central', () => {
     await click(byRole('button', /^Cancelar a operação$/, d));
     await waitFor(() => expect(text(container)).toContain('Mostrando a última leitura'));
     expect(linhas()).toHaveLength(2);                                  // a leitura anterior segue na tela, avisada como velha
+    expect(text(container).split('Mostrando a última leitura')).toHaveLength(2);   // um aviso só, não dois
     falhar = false;
     await click(byRole('button', /Tentar de novo/, container));
     await waitFor(() => expect(text(container)).not.toContain('Mostrando a última leitura'));
