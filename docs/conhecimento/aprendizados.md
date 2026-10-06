@@ -2774,4 +2774,6 @@ sessão (o painel não precisa do valor). E avisar na prévia quando um parâmet
 dado da própria persona: quem ensina pode querer o alvo genérico.
 
 **Aplicabilidade.** Vigente até a correção. Para ensinar navegação até um perfil, use um alvo que não seja a persona que
-ensina.
+ensina. A identidade da etapa foi alinhada pelo 31.165 (`para_hash` prefere o marcador da persona no empate): com ele,
+a receita ensinada para o próprio perfil casa com a execução que mira o próprio perfil. O mascaramento da gravação crua
+segue pendente.

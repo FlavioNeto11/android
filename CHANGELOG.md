@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.165: no empate de valor, a identidade da etapa fica com o marcador da persona (branch feat/31-165-empate-para-hash)
+
+- Achado da onda 1: a receita ensinada 221 ficava em "perfil de {conta_instagram_usuario} aberto", porque o alvo do
+  ensino era a própria persona (31.87). A etapa planejada para o mesmo alvo calculava "perfil de {perfil} aberto": o
+  parâmetro "@x" é mais longo que a conta "x" e ganhava a troca em `para_hash`. A receita nunca era consultada.
+- `recipes.para_hash(..., persona=)`: quando um parâmetro do objetivo tem o mesmo valor de um dado da persona (sem o @
+  da frente e sem caixa, a régua do 31.87), `{param}` vira o marcador da persona, no literal trocado e no marcador já
+  escrito. Só `repository._insert_steps` passa a persona (o `molde`); os outros chamadores seguem iguais.
+- Medida `real`, só leitura, 06/10 até 20:21Z, banco do central no deploy 55 (086236e9df30a8): a etapa open_profile_1 da
+  execução r-20261006194323-240d40 passa de a25a2299… para 8a9a214a…, que é a chave da receita 221. Das 155 receitas
+  vivas, 2 foram aprendidas numa execução com empate, e só a 166 teria a identidade mudada. A 166 mora na chave
+  genérica, que não usa a pós-condição, então não há backfill (sem migração e sem script).
+- Prova `simulated`: `backend/tests/test_empate_para_hash.py` (3 testes; reprova no código anterior), incluindo um
+  `plan` simulado em que a etapa ganha o hash do ensino e a loja de receitas acha a receita gravada nele.
+
 ## 2026-10-06 — prova30 A3 (extensão do 31.157): o aprendizado de uma operação nas 10 perguntas do dono (branch feat/prova30-a3-aprendizado-da-operacao)
 
 - Pedido da orquestradora (o dono pediu para adiantar): para uma operação, responder às 10 perguntas do aprendizado do
