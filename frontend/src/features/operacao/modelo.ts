@@ -108,7 +108,8 @@ export interface ResumoDaOperacao {
   capacidade: Capacidade;
 }
 
-export interface CustoDaOperacao { pesquisa_usd: number; alvos_usd: number; total_usd: number }
+/** Cada parte que o backend não mandou fica `null` ("não informado"), nunca zero. */
+export interface CustoDaOperacao { pesquisa_usd: number | null; alvos_usd: number | null; total_usd: number | null }
 
 export interface Operacao extends ResumoDaOperacao {
   alvos: Alvo[];
@@ -227,8 +228,8 @@ export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
   const alvos = (Array.isArray(o.alvos) ? o.alvos : []).map(lerAlvo).filter((a): a is Alvo => a !== null);
   const c = registro(o.custo);
   const usd = usdOuNulo;
-  const total = c ? usd(c.total_usd) : null;
-  const custo = c && total !== null ? { pesquisa_usd: usd(c.pesquisa_usd) ?? 0, alvos_usd: usd(c.alvos_usd) ?? 0, total_usd: total } : null;
+  const partes = c ? { pesquisa_usd: usd(c.pesquisa_usd), alvos_usd: usd(c.alvos_usd), total_usd: usd(c.total_usd) } : null;
+  const custo = partes && Object.values(partes).some((x) => x !== null) ? partes : null;
   return {
     ...resumo, alvos, custo, max_usd: usd(o.max_usd), assunto: texto(o.assunto),
     fontes: (Array.isArray(o.fontes) ? o.fontes : []).filter((f): f is string => typeof f === 'string' && f.trim() !== ''), exemplo,

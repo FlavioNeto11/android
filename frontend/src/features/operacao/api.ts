@@ -22,7 +22,10 @@ export interface ListaDeOperacoes { itens: ResumoDaOperacao[]; exemplo: boolean 
 export const apiOperacoes = {
   async lista(signal?: AbortSignal): Promise<ListaDeOperacoes> {
     try {
-      return { itens: lerLista(await apiRequest<unknown>('GET', '/operacoes', { query: { limite: '50' }, signal })), exemplo: false };
+      const bruto = await apiRequest<unknown>('GET', '/operacoes', { query: { limite: '50' }, signal });
+      // Resposta sem `items` não é "nenhuma operação": é resposta inválida (erro visível, não lista vazia).
+      if (!Array.isArray((bruto as { items?: unknown } | null)?.items)) throw new ApiError(502, 'resposta_invalida', 'A lista de operações veio em formato inesperado.');
+      return { itens: lerLista(bruto), exemplo: false };
     } catch (e) {
       if (rotaAusente(e)) return { itens: [EXEMPLO()], exemplo: true };
       throw e;
@@ -30,8 +33,10 @@ export const apiOperacoes = {
   },
   async detalhe(id: string, signal?: AbortSignal): Promise<Operacao> {
     try {
-      const op = lerOperacao(await apiRequest<unknown>('GET', `/operacoes/${enc(id)}`, { signal }));
-      if (!op) throw new ApiError(502, 'resposta_invalida', 'A resposta não é uma operação.');
+      const bruto = await apiRequest<unknown>('GET', `/operacoes/${enc(id)}`, { signal });
+      const op = lerOperacao(bruto);
+      // Sem a lista de alvos a operação não tem o que mostrar nem relatar: "0 agentes" seria falso.
+      if (!op || !Array.isArray((bruto as { alvos?: unknown }).alvos)) throw new ApiError(502, 'resposta_invalida', 'A resposta não é uma operação completa.');
       return op;
     } catch (e) {
       if (rotaAusente(e) && id === OPERACAO_DE_EXEMPLO.id) return EXEMPLO();
