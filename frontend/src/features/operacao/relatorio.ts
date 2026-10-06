@@ -11,6 +11,13 @@ import {
   type Alvo, type EstagioId, type Operacao,
 } from './modelo';
 
+/**
+ * Os motivos e resumos que o BACKEND escreve podem citar o @ de uma conta ("conta(s) da frota já mexeram com @fulano"): no relatório
+ * o @ sai (visto no central real, onda 1 de 06/10). O texto gerado pela persona não é metadado e não passa por aqui.
+ */
+export const semArroba = (s: string): string => s.replace(/@[A-Za-z0-9._]+/g, '@[omitido]');
+const semArrobaOuNulo = (s: string | null): string | null => (s === null ? null : semArroba(s));
+
 export type Conferencia = 'sim' | 'nao' | 'nao_conferida' | 'sem_acao';
 
 /** `true` é sim; `false` é não; a ação que existe mas não trouxe o resultado da conferência é "não conferida". */
@@ -89,7 +96,7 @@ function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
     aparelho: a.instance_id,
     estado: a.estado ? ROTULO_DO_ESTADO[a.estado] : 'não informado',
     parou_em: parou ? rotuloDoEstagio(parou) : null,
-    motivo: a.motivo,
+    motivo: semArrobaOuNulo(a.motivo),
     estagios: ESTAGIOS.map((e, i) => ({
       estagio: e.id, rotulo: e.rotulo, em: alcancados.get(e.id) ?? null, alcancado: alcancados.has(e.id) || i <= ate,
     })),
@@ -104,15 +111,18 @@ function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
 const SEM_LEITURA: LeituraDoAprendizado = { situacao: 'indisponivel', motivo: 'O aprendizado da operação não foi lido para este relatório.' };
 
 function aprendizadoDoRelatorio(op: Operacao, leitura: LeituraDoAprendizado): AprendizadoNoRelatorio {
-  if (leitura.situacao === 'indisponivel') return { disponivel: false, motivo: leitura.motivo, gerado_em: null, perguntas: [], nao_coberto: [] };
+  if (leitura.situacao === 'indisponivel') return { disponivel: false, motivo: semArroba(leitura.motivo), gerado_em: null, perguntas: [], nao_coberto: [] };
   const rotulos = new Map(op.alvos.flatMap((a) => (a.profile_id && a.persona ? [[a.profile_id, a.persona] as const] : [])));
   const a = leitura.aprendizado;
   return {
-    disponivel: true, motivo: null, gerado_em: a.gerado_em, nao_coberto: a.nao_coberto,
+    disponivel: true, motivo: null, gerado_em: a.gerado_em, nao_coberto: a.nao_coberto.map((n) => ({ ...n, motivo: semArroba(n.motivo) })),
     perguntas: a.perguntas.map((p) => ({
       chave: p.chave, titulo: p.titulo, veio: p.veio,
       // Persona sem rótulo conhecido na operação vira "uma persona", nunca o id.
-      itens: p.itens.map((i) => ({ ...i, persona: i.persona === null ? null : rotulos.get(i.persona) ?? 'uma persona' })),
+      itens: p.itens.map((i) => ({
+        ...i, persona: i.persona === null ? null : rotulos.get(i.persona) ?? 'uma persona',
+        resumo: semArrobaOuNulo(i.resumo), motivo: semArrobaOuNulo(i.motivo), fontes: i.fontes.map((f) => ({ ...f, resumo: semArrobaOuNulo(f.resumo) })),
+      })),
     })),
   };
 }
@@ -122,7 +132,7 @@ export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendiz
   const falhas = new Map<string, FalhaPorMotivo>();
   for (const a of agentes) {
     if (a.estado !== ROTULO_DO_ESTADO.bloqueado && a.estado !== ROTULO_DO_ESTADO.cancelado) continue;
-    const motivo = a.motivo ?? 'sem motivo informado';
+    const motivo = a.motivo ?? 'sem motivo informado';        // já sem @ (agenteDe)
     const chave = `${motivo}|${a.parou_em ?? ''}`;
     const atual = falhas.get(chave);
     if (atual) atual.agentes += 1;
@@ -142,7 +152,7 @@ export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendiz
       id: op.id, comando: op.command, app_id: op.app_id, acao_final: op.acao_final, status: op.status ? ROTULO_DO_STATUS[op.status] : null,
       criada_em: op.created_at, encerrada_em: op.finished_at, assunto: op.assunto, fontes: op.fontes,
     },
-    capacidade: { ...c },
+    capacidade: { ...c, motivos: c.motivos.map((m) => ({ ...m, motivo: semArroba(m.motivo) })) },
     custo: {
       pesquisa_usd: op.custo?.pesquisa_usd ?? null, alvos_usd: op.custo?.alvos_usd ?? null, total_usd: op.custo?.total_usd ?? null, teto_usd: op.max_usd,
     },

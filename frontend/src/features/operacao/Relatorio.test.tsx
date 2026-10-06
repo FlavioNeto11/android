@@ -80,6 +80,18 @@ describe('montarRelatorio', () => {
     expect(tudo).toContain('Persona 01');
   });
 
+  it('o @ que o backend escreve nos motivos (frota já mexeu com @fulano) sai do relatório, no JSON e no Markdown; o texto gerado não é tocado', () => {
+    const bruta = { ...BRUTA, capacidade: { ...BRUTA.capacidade, motivos: { 'a frota já mexeu com @loja.exemplo nos últimos 30 dias': 2 } },
+      alvos: [{ ...semConta(4), motivo: 'a frota já mexeu com @loja.exemplo nos últimos 30 dias' }, { ...concluido(1, 'Oi @amigo, que legal!', true, 14) }] };
+    const rel = montarRelatorio(lerOperacao(bruta)!);
+    const tudo = `${JSON.stringify(rel)}\n${relatorioEmMarkdown(rel)}`;
+    expect(tudo).not.toContain('@loja.exemplo');
+    expect(tudo).toContain('a frota já mexeu com @[omitido] nos últimos 30 dias');
+    expect(rel.falhas_por_motivo[0]!.motivo).toBe('a frota já mexeu com @[omitido] nos últimos 30 dias');
+    expect(rel.capacidade.motivos[0]!.motivo).toContain('@[omitido]');
+    expect(tudo).toContain('Oi @amigo, que legal!');                 // o texto da persona segue como foi gerado
+  });
+
   it('o custo por agente vem do próprio alvo, do resultado só como reserva, e é nulo (não zero) sem execução', () => {
     expect(r.agentes.map((a) => a.custo_usd)).toEqual([0.1, 0.2, 0.05, null, null]);
     expect(r.limites.join(' ')).toContain('Custo por agente "não informado"');
