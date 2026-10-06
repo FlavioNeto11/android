@@ -352,6 +352,12 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   encontrei (<motivo>)", sem texto da página. O objetivo ganha UM plano revisado (motivo "Recuperação automática (dado
   ausente)"), e o ator dele recebe essa frase no histórico; a segunda vez fecha o objetivo como falha final. Em etapa
   de efeito o teto não vale e `dado_ausente` é recusado. Achado real: ba5ebc (`read_parties`, 21 decisões, verba).
+- **Leitura que muda de valor (item 30.78, sobras do 31.78, sem migração):** quando o ator relê uma saída e o valor
+  muda, o executor põe no histórico, que também vai ao juiz da verificação, o fato neutro "o valor lido de '<saída>'
+  mudou nesta tentativa; vale a última leitura.", sem os valores e sem instrução. Com tudo lido e uma saída cuja última
+  leitura diverge da anterior, o ator recebe, só na cópia dele, o pedido de reler essa saída para confirmar antes do
+  `step_done`. Sem o aviso, ele relia a saída estável sem saber por que a etapa não andava, até o teto falhar como
+  divergente (C1 do 31.78). A releitura que repete o valor encerra a divergência e o aviso some.
 - **Etapa de limpeza opcional (item 31.36, `ai.limpeza_opcional`, migração 098):** o planejador marca `opcional` a
   etapa que só limpa a tela (aviso, banner, cookies, dica); o parsing só aceita a marca sem efeito, sem `saidas`, sem
   for_each e sem commit_guard. Ela roda com no máximo 3 decisões do ator, sem juiz (`so_prova_local`) e sem escalar.

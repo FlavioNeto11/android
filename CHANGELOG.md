@@ -254,6 +254,48 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `CommandPanel.test.tsx::31.89` (4 testes; sem o corte quando o match não é nulo, o teste falha) e `TrainingReview.test.tsx::31.89`.
   Frontend inteiro 1691/1691 e typecheck limpos (4 workers, Idle). `not_run`: o percurso real (depende do backend).
 
+## 2026-10-05 — 30.76: o parecer do curador grava a versão do texto que a IA leu (branch feat/30-76-versao-do-texto-no-parecer)
+
+- Migração 117: `learning_reviews.instrucao_versao` (nula). O adaptador do hub diz a `VERSAO_DO_TEMPLATE` na resposta
+  (`RespostaDeRevisao.instrucao_versao`), e o curador a grava. A `template_versao` segue sendo a forma do dossiê:
+  hash e elegibilidade não mudam. Sem texto mandado a uma IA, a coluna fica NULL.
+- Nenhuma rota nem campo de resposta muda.
+- Funções tocadas (K-095): `CuradorDoHub.revisar`, `CuradorPorIA._gravar` e a volta que o chama,
+  `RegistroDeRevisoesSql.gravar`, `RespostaDeRevisao` e `NovaRevisao` (campo novo com padrão nulo).
+- Prova `simulated`: `backend/tests/test_parecer_versao_do_texto.py`. PostgreSQL: pela fábrica, quando
+  `TEST_DATABASE_URL` existe. Real: `not_run` (a migração entra no próximo deploy).
+
+## 2026-10-05 — 30.77: a reprodução na versão viva não nasce sem versão (branch feat/30-77-fuso-na-inspecao)
+
+- Medido antes de escolher (SQLite central só leitura e `getprop` pelo adb): os 12 emuladores estão em
+  America/Sao_Paulo (−0300). A folga de 12 h do 30.74 perdia à toa a versão da prova que começa de 3 a 12 h depois
+  de uma atualização do app.
+- Escolha (desenho aprovado pela orquestradora): gravar o fuso na inspeção. `Adb.package_info` lê `date +%z` no mesmo
+  shell do `dumpsys`; migração 118, `device_app_state.last_update_offset`; os três caminhos de `ReleaseService` que
+  gravam a observação levam o fuso. `versao_estavel_na_execucao` usa o deslocamento exato com 1 h de margem e, sem
+  fuso legível, a folga de 12 h.
+- Agente do notebook: NÃO precisa de versão nova. O adb dos aparelhos dele roda no central, pelo túnel (o
+  `getprop` respondeu daqui para os seriais `127.0.0.1:155xx`). O A10 do próximo deploy não muda por isto; a leitura
+  sem a linha do fuso continua coberta e cai na folga.
+- Funções tocadas (K-095): `Adb.package_info`, `AppInstaller.inspect` e `InstalledApp`, os três `upsert_app_state` de
+  `ReleaseService`, `versao_estavel_na_execucao` e `LeituraSql.versao_do_fluxo_no_aparelho`.
+- Prova `simulated`: `backend/tests/test_fuso_na_inspecao.py`. Real: `not_run` (a migração entra no próximo deploy;
+  a próxima inspeção de app grava o fuso).
+
+## 2026-10-05 — 30.78: sobras da leitura que não gira (branch feat/30-78-sobras-da-leitura-que-nao-gira)
+
+Da leitura do 31.78.
+- Fato neutro ao juiz: a releitura que muda o valor de uma saída põe no `history` "o valor lido de '<saída>' mudou nesta
+  tentativa; vale a última leitura.", sem os valores e sem instrução.
+- Aviso ao ator: com tudo lido e uma saída divergente, a cópia do ator pede para reler essa saída antes do `step_done`.
+  Não vai ao juiz.
+- Teste com duas saídas, uma estável e uma divergente que se estabiliza: a etapa anda, o juiz recebe o fato e a entrega
+  é a última leitura. O caso em que ela segue divergente até o teto já estava coberto pelo 31.78.
+- Funções tocadas (K-095): o laço do ator em `taskqueue/executor.py` (a leitura do `read_value` e a montagem do
+  histórico do ator).
+- Prova `simulated`: `backend/tests/test_leitura_que_nao_gira_sobras.py` (3). Sem a mudança no executor, os 3
+  reprovam. Real: `not_run`.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a

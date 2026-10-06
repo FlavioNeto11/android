@@ -320,6 +320,9 @@ class RespostaDeRevisao:
     # Quem respondeu ESTA revisão, pelo mesmo motivo do `simulado`: o `provedor` do adaptador é estado compartilhado entre
     # revisões concorrentes. `None` = o adaptador não diz, e vale o `provedor` dele.
     provedor: str | None = None
+    # 30.76: a versão do texto da instrução que ESTE adaptador mandou à IA (`curador-v2`). `None` = não mandou texto a
+    # uma IA (o curador simulado). Vai a `learning_reviews.instrucao_versao`; não entra no hash.
+    instrucao_versao: str | None = None
 
 
 class RecusaDoProvedor(Exception):
@@ -380,6 +383,8 @@ class NovaRevisao:
     politica: str | None
     ai_call_id: int | None = None
     usd: float = 0.0
+    #: 30.76 (migração 117): a versão do texto que a IA leu; `template_versao` segue sendo a forma do dossiê.
+    instrucao_versao: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

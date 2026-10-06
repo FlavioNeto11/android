@@ -15,7 +15,8 @@ from dataclasses import dataclass
 
 from ..modules.skills.domain.document import JsonObject
 
-#: Versão do template. Muda quando o texto ou o esquema mudam; o aprendizado a grava ao lado da forma do dossiê.
+#: Versão do template. Muda quando o texto ou o esquema mudam. O adaptador do hub a manda na resposta, e o aprendizado
+#: a grava em `learning_reviews.instrucao_versao` (30.76), ao lado da forma do dossiê (`template_versao`).
 VERSAO_DO_TEMPLATE = "curador-v2"     # 30.73: a frase da classe B no `CURADOR_SYSTEM`
 MODELO_SIMULADO = "simulado-curador-hub-v1"
 LIMITE_DA_CONCLUSAO = 300

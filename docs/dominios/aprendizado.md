@@ -1682,6 +1682,11 @@ nenhuma evidência contra) e paravam em `observar`, porque o parecer pedia `voto
       nada novo a dizer neles.
     - O parecer B feito com a instrução nova se reconhece pelo dossiê gravado em `learning_reviews.dossie`, que tem
       `risco.classe_b_e`. A `template_versao` da revisão é a forma do dossiê (`dossie-v1`), não a versão do texto.
+    - **30.76 (migração 117):** o parecer grava a versão do texto em `learning_reviews.instrucao_versao`. Quem diz é o
+      adaptador que mandou o texto à IA (`CuradorDoHub`, a `VERSAO_DO_TEMPLATE`, hoje `curador-v2`, também quando o
+      provedor atrás do hub é simulado, que a linha marca em `simulated`). Ficam NULL as linhas antigas, as recusas
+      (custo, triagem), o curador simulado da porta e o rótulo de intenção. A coluna não entra no hash nem na
+      elegibilidade.
   - O hash do dossiê B muda, e cada item B fica elegível para UMA revisão nova depois do cooldown, dentro da fatia do
     curador.
 - **Opções fechadas:** `faltas_do_item(classe)` tira `voto_da_pessoa` e `decisao_da_pessoa` das opções de `falta` do
@@ -1718,9 +1723,18 @@ a versão (`recipes.app_version`). Por isso o parecer do curador dizia "sem vers
   evidência velha levaria a versão nova, uma prova falsa de "versão viva". Por isso a versão só vale quando a última
   atualização do app no aparelho (`device_app_state.last_update_time`) é COM CERTEZA anterior ao início da execução
   (`runs.started_at`); senão, nula.
-  - O `last_update_time` vem do `dumpsys` no fuso DO APARELHO, sem fuso escrito, e o fuso de cada emulador não está no
-    banco. A conta usa o pior caso (a hora lida + 12 h, `versao_estavel_na_execucao`).
-  - O preço: a execução que começa até ~12 h depois de uma atualização do app fica sem versão.
+  - O `last_update_time` vem do `dumpsys` no fuso DO APARELHO, sem fuso escrito. Sem o fuso, a conta usa o pior caso
+    (a hora lida + 12 h, `versao_estavel_na_execucao`), e a execução que começa até ~12 h depois de uma atualização do
+    app fica sem versão.
+  - **30.77 (migração 118): o fuso vai na inspeção.** O `package_info` lê `date +%z` no mesmo shell do `dumpsys` e o
+    guarda em `device_app_state.last_update_offset` (`-0300`). Com ele, a hora em UTC é a lida menos o deslocamento, com
+    1 h de margem para horário de verão e relógio do aparelho. Sem ele (linha antiga, leitura sem a linha do fuso, ou
+    fuso ilegível ou fora de −12..+14 h), segue a folga de 12 h.
+    - Medida que decidiu (05/10, SQLite central só leitura e `getprop` pelo adb): os 12 emuladores estão em
+      America/Sao_Paulo (−0300). Das 40 evidências de fluxo do dia, as 36 sem versão eram de antes do deploy do 30.74
+      (6 sem leitura do aparelho), e as 4 depois dele tinham versão. A folga perdia à toa a prova de 3 a 12 h depois de
+      cada atualização, que no parque são poucas por semana.
+    - O adb dos aparelhos do notebook roda no central, pelo túnel: o agente do notebook não precisa de versão nova.
   - Sem `last_update_time`, sem `started_at`, ou com uma hora ilegível: nula.
 - **As reclassificações ficam sem versão (N2 da leitura, decidido):** as linhas `forma` (30.36), `invalida` por efeito
   repetido (30.42) e `revalidada` (30.53) são gravadas por cima de uma evidência de execução e não levam `app_version`.

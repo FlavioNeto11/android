@@ -476,7 +476,8 @@ class ReleaseService:
         common = {
             "observed_version_name": observed.version_name, "observed_version_code": observed.version_code,
             "observed_splits": observed.splits, "first_install_time": observed.first_install_time,
-            "last_update_time": observed.last_update_time, "pending_op": None, "pending_op_at": None,
+            "last_update_time": observed.last_update_time, "last_update_offset": observed.last_update_offset,
+            "pending_op": None, "pending_op_at": None,
         }
         if state is not InstalledAppState.installed:
             self.repo.upsert_app_state(rt.id, package, state=state.value, drift_kind=drift, detail=detail, **common)
@@ -687,7 +688,8 @@ class ReleaseService:
             rt.id, package, state=state.value, drift_kind=drift, detail=detail,
             observed_version_name=observed.version_name, observed_version_code=observed.version_code,
             observed_splits=observed.splits, first_install_time=observed.first_install_time,
-            last_update_time=observed.last_update_time, pending_op=None, pending_op_at=None,
+            last_update_time=observed.last_update_time, last_update_offset=observed.last_update_offset,
+            pending_op=None, pending_op_at=None,
             # A leitura do aparelho ACONTECEU, qualquer que seja o resultado: "ausente" observado agora é tão
             # verificado quanto "pronto". Com `None` aqui, o android-06 recém-resetado aparecia "verificado nunca"
             # logo depois de "Verificar app no aparelho" — indistinguível de nunca inspecionado (25/09/2026).
@@ -717,7 +719,8 @@ class ReleaseService:
             state=(InstalledAppState.installed if observed.present else InstalledAppState.missing).value,
             observed_version_name=observed.version_name, observed_version_code=observed.version_code,
             observed_splits=observed.splits, first_install_time=observed.first_install_time,
-            last_update_time=observed.last_update_time, pending_op=None, pending_op_at=None, drift_kind=None,
+            last_update_time=observed.last_update_time, last_update_offset=observed.last_update_offset,
+            pending_op=None, pending_op_at=None, drift_kind=None,
             detail="instalado pela Play Store" if observed.present else "ainda não instalado pela Play Store")
         if not observed.present or not observed.paths:
             raise ReleaseValidationError(
