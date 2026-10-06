@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from .db import Row, loads
 from .devices.manager import DeviceRuntime
+from .modules.pedidos.domain import conhecimento_da_operacao as conhecimento_dominio
 from .modules.pedidos.infrastructure.conhecimento_da_operacao import ConhecimentoDaOperacao, Fatos
 from .modules.pedidos.infrastructure.contexto import contexto_do_pedido
 from .modules.pedidos.infrastructure.pesquisa_da_operacao import PesquisaDaOperacao
@@ -66,7 +67,7 @@ def _registrar_estagio(db: Any, run_id: str, estagio: str) -> None:
     operações, e até ela chegar ao banco (ou fora de operação) não faz nada. Nunca derruba a escrita."""
     try:
         estagios = importlib.import_module("app.modules.operacoes.infrastructure.estagios")
-    except ImportError:
+    except ModuleNotFoundError:
         return
     try:
         estagios.registrar_estagio(db, run_id, estagio)
@@ -440,7 +441,8 @@ class Portoes:
             alvo = alvo_da_acao(cap, bindings)
             arvore = await self._ler_tela(rt, pacote)
             tela = leitor.visible_content(arvore) if leitor is not None and arvore is not None else ""
-            fatos, leitura = await self._conhecimento_da_operacao(operacao_id, obj, srow, cap, arvore, tela, pacote)
+            fatos, leitura = await self._conhecimento_da_operacao(operacao_id, obj, srow, cap, arvore, tela, pacote,
+                                                                  bindings)
             # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta
             # tanto a resposta quanto o que o perfil passa a saber sobre a pessoa. Só deste bloco sai memória.
             recebido = (leitor.comment_of(arvore, alvo or "")
@@ -532,7 +534,8 @@ class Portoes:
             return None
 
     async def _conhecimento_da_operacao(self, operacao_id: str | None, obj: Any, srow: Any, cap: Any, arvore: Any,
-                                        tela: str, pacote: str | None) -> tuple[Fatos | None, str | None]:
+                                        tela: str, pacote: str | None,
+                                        bindings: Mapping[str, Any]) -> tuple[Fatos | None, str | None]:
         """A leitura do alvo entra na memória da operação (uma vez; as outras conferem), a pesquisa externa preenche a
         lacuna do assunto (uma vez por operação, prova30 A2) e os fatos voltam para o texto.
 
@@ -544,15 +547,22 @@ class Portoes:
             return None, None
         run_id = str(obj["run_id"])
         leitura = None
+        # O alvo é identificado pelo que a etapa procura (o autor e o trecho da legenda, herdados do OPEN_POST), não
+        # pela tela inteira: a lista de comentários aberta muda a cada agente que comenta. E o que se guarda é o
+        # recorte da publicação, nunca os comentários de terceiros.
+        autor = str(bindings.get("post_author") or "") or None
+        legenda = str(bindings.get("caption_contains") or "") or None
+        legivel = bool(tela) and arvore is not None and not getattr(arvore, "sensitive", False)
+        recorte = conhecimento_dominio.recorte_do_alvo(tela, autor=autor, legenda=legenda) if legivel else ""
         try:
-            if tela and arvore is not None and not getattr(arvore, "sensitive", False):
+            if recorte:
                 leitura = self._conhecimento.registrar_leitura(
                     operacao_id, run_id=run_id, step_id=str(srow["id"]), agente=str(obj["id"]),
-                    fonte=f"{pacote or 'app'} · {cap.key}", texto=tela)
+                    fonte=f"{pacote or 'app'} · {cap.key}", texto=recorte,
+                    identidade=conhecimento_dominio.identidade_do_alvo(autor, legenda))
                 if leitura is not None:
                     _registrar_estagio(self._st.db, run_id, "conteudo_lido")
-            await self._pesquisar_se_preciso(operacao_id, obj, srow,
-                                             tela if arvore is not None and not getattr(arvore, "sensitive", False) else "")
+            await self._pesquisar_se_preciso(operacao_id, obj, srow, recorte)
             fatos = self._conhecimento.fatos(operacao_id, leitura=leitura)
         except Exception:  # noqa: BLE001 - ver acima
             log.exception("operação %s: o conhecimento comum não entrou no texto da execução %s", operacao_id, run_id)

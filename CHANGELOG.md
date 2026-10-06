@@ -40,6 +40,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `tests/test_conhecimento_da_operacao.py` (7): migração, domínio, leitura única com conferência, fora de operação e segredo, irmãos da operação, prompt, porta de escrita com duas execuções.
   - `tests/test_pesquisa_da_operacao.py` (6): consolidação por código, serviço, desligada/sem assunto/teto/falha, linha de custo das buscas, provedor Anthropic com resposta falsa, porta de escrita com UMA pesquisa para duas execuções.
 - Real: `not_run` até o deploy com a 124; a 1ª operação pequena com pesquisa é chamada paga, dentro do gasto autorizado, com teto.
+- Identidade do alvo: a porta do comentário roda com a lista de comentários aberta, e o texto visível muda a cada agente que comenta.
+  - A conferência entre agentes usa o autor e o trecho da legenda da etapa (`post_author`, `caption_contains`), não a tela inteira.
+  - O que se guarda e o que vai à pesquisa é só a linha da publicação; os comentários de terceiros, nunca.
+  - Os irmãos da operação contam só o texto já escrito (`draft_meta`).
+- Lacunas conhecidas:
+  - `stop_reason="pause_turn"` da busca não é retomado. Sai como zero fatos e a marca de espera de 1 h.
+  - A pesquisa é paga pela execução do 1º agente: o teto por execução (`ai_max_usd_per_run`) precisa caber nela mais o rascunho.
 
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 

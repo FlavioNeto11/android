@@ -47,13 +47,36 @@ class Leitura:
     cortado: bool
 
 
-def preparar_leitura(texto: str | None) -> Leitura | None:
-    """`None` quando não há o que gravar (tela vazia). O sha256 é do texto normalizado em espaços: a mesma legenda lida
-    com quebras de linha diferentes é a mesma leitura."""
+def preparar_leitura(texto: str | None, *, identidade: str | None = None) -> Leitura | None:
+    """`None` quando não há o que gravar (tela vazia). O sha256 é da `identidade` do alvo quando ela existe (o autor e o
+    trecho da legenda que a etapa procura), senão do texto normalizado em espaços.
+
+    Por que a identidade: a porta de escrita do comentário roda com a lista de comentários ABERTA, e o texto visível
+    inclui os comentários. Depois do 1º agente comentar, a tela do 2º já é outra, mas o post é o mesmo: comparar o
+    texto inteiro acusaria 29 "posts diferentes". "Diferente" tem de querer dizer outro alvo."""
     normal = " ".join((texto or "").split())
     if not normal:
         return None
-    return Leitura(normal[:LEITURA_MAX], sha256_do_valor(normal), len(normal) > LEITURA_MAX)
+    chave = " ".join((identidade or "").casefold().split()) or normal
+    return Leitura(normal[:LEITURA_MAX], sha256_do_valor(chave), len(normal) > LEITURA_MAX)
+
+
+def identidade_do_alvo(autor: str | None, legenda: str | None) -> str | None:
+    """`autor|legenda` dos argumentos da etapa (`post_author`, `caption_contains`, herdados do OPEN_POST), ou `None`."""
+    partes = [" ".join(str(x or "").casefold().lstrip("@").split()) for x in (autor, legenda)]
+    return "|".join(partes) if any(partes) else None
+
+
+def recorte_do_alvo(tela: str, *, autor: str | None, legenda: str | None) -> str:
+    """O que se guarda do alvo: as linhas da tela que contêm o trecho da legenda (a publicação, nossa), nunca a lista de
+    comentários de terceiros. Sem a legenda na tela, só o que a etapa já sabia (autor e trecho); sem nada disso, a tela."""
+    if not legenda:
+        return tela
+    alvo = legenda.casefold()
+    linhas = [ln for ln in (tela or "").splitlines() if alvo in ln.casefold()]
+    if linhas:
+        return "\n".join(linhas)
+    return f"publicação de @{(autor or '').lstrip('@')} cuja legenda contém: {legenda}" if autor else f"legenda contém: {legenda}"
 
 
 def conferir(da_operacao: str | None, do_agente: str) -> str:

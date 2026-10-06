@@ -54,11 +54,12 @@ class ConhecimentoDaOperacao:
 
     # ------------------------------------------------------------------ leitura do alvo
     def registrar_leitura(self, operacao_id: str, *, run_id: str, step_id: str | None, agente: str, fonte: str,
-                          texto: str | None) -> str | None:
+                          texto: str | None, identidade: str | None = None) -> str | None:
         """`primeira`, `igual` ou `diferente`; `None` quando não há leitura a gravar (tela vazia ou com formato de
         segredo, que é recusada inteira: ADR-009). `agente` identifica a execução na observação divergente (o id do
-        objetivo), nunca a persona."""
-        leitura = dominio.preparar_leitura(texto)
+        objetivo), nunca a persona. `identidade` (o autor e o trecho da legenda do alvo) é o que se compara entre os
+        agentes, quando existe; sem ela, o texto lido."""
+        leitura = dominio.preparar_leitura(texto, identidade=identidade)
         if leitura is None or parece_segredo(leitura.texto):
             return None
         agora = self.db.agora_iso()

@@ -150,8 +150,8 @@ def test_os_irmaos_da_operacao_sao_os_das_outras_execucoes(banco: Database) -> N
                       " VALUES (?,?,'android-01','running',1,'{}')", (f"{run}:o", run))
         banco.execute(
             "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
-            " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, bindings)"
-            " VALUES (?,?,?,'android-01',1,1,'c','C','c','[]',1,'[]','{}',180,1,'done',?)",
+            " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, bindings, draft_meta)"
+            " VALUES (?,?,?,'android-01',1,1,'c','C','c','[]',1,'[]','{}',180,1,'done',?,'{}')",
             (f"{run}:s", run, f"{run}:o", json.dumps({"content": texto})))
     assert textos_irmaos(banco, "r-b", "r-b:s") == []                  # por execução: vazio
     assert textos_irmaos(banco, "r-b", "r-b:s", operacao_id="op-1") == ["que coleção linda"]
@@ -185,8 +185,11 @@ async def test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem(harne
     monkeypatch.setattr(gates_mod, "screen_reader_of",
                         lambda _p: SimpleNamespace(visible_content=lambda arvore: arvore.texto))
 
+    telas = iter([f"{LEGENDA}\nfulano.123 primeiro!", f"{LEGENDA}\nfulano.123 primeiro!\nQue coleção linda!"])
+
     async def ler_tela(_rt: Any, _pacote: Any) -> Any:
-        return SimpleNamespace(sensitive=False, texto=LEGENDA, packages={IG})
+        # A lista de comentários aberta muda depois do 1º agente comentar: o post é o mesmo.
+        return SimpleNamespace(sensitive=False, texto=next(telas), packages={IG})
 
     monkeypatch.setattr(state.portoes, "_ler_tela", ler_tela)
     pedidos: list[dict[str, Any]] = []
@@ -210,7 +213,9 @@ async def test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem(harne
     primeiro, segundo = pedidos
     assert "Que coleção linda!" not in primeiro["avoid"] and "Que coleção linda!" in segundo["avoid"]
     assert primeiro["fatos_da_operacao"] == "" and segundo["fatos_da_operacao"] == ""   # a tela já leva a legenda
-    assert primeiro["screen"] == LEGENDA
+    assert primeiro["screen"].startswith(LEGENDA)
+    [leitura] = state.db.query("SELECT valor FROM pedido_observacoes WHERE operacao_id='op-1'")
+    assert leitura["valor"] == LEGENDA                                   # só a publicação, sem os comentários
     assert state.db.scalar("SELECT COUNT(*) FROM pedido_observacoes WHERE operacao_id='op-1'") == 1
     assert ("run-a", "conteudo_lido") in estagios and ("run-b", "conhecimento_recuperado") in estagios
     meta = json.loads(state.db.scalar("SELECT draft_meta FROM steps WHERE id='run-b:android-02:v1:comentar'"))

@@ -404,12 +404,14 @@ def textos_irmaos(db: Database, run_id: str, step_id: str, limit: int = 16, *,
     Cada perfil escreve depois dos irmãos que já passaram pela porta, então aqui ele vê o que não pode repetir.
 
     Com `operacao_id` (prova30 A1), os irmãos são os de TODAS as execuções da operação: lá cada alvo é uma execução
-    própria, e por `run_id` cada agente veria a lista vazia.
+    própria, e por `run_id` cada agente veria a lista vazia. Ali só conta o texto já ESCRITO (`draft_meta`): o
+    briefing das etapas que ainda não passaram pela porta é o mesmo em todas e tomaria as vagas dos textos reais.
     """
     if operacao_id:
         linhas = db.query(
             "SELECT bindings FROM steps WHERE run_id IN (SELECT id FROM runs WHERE operacao_id=?) AND id<>?"
-            " AND bindings LIKE '%\"content\"%' LIMIT ?", (operacao_id, step_id, max(limit, IRMAOS_DA_OPERACAO_MAX)))
+            " AND draft_meta IS NOT NULL AND bindings LIKE '%\"content\"%' LIMIT ?",
+            (operacao_id, step_id, max(limit, IRMAOS_DA_OPERACAO_MAX)))
     else:
         linhas = db.query(
             "SELECT bindings FROM steps WHERE run_id=? AND id<>? AND bindings LIKE '%\"content\"%' LIMIT ?",
