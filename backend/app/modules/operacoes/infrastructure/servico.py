@@ -14,10 +14,11 @@ pedidos pelo serviço de aprovações de sempre, só com o eco do texto que a pe
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 import secrets
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,7 @@ from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitur
 from app.security.redaction import redact
 from app.planning import costs
 from app.social.service import SocialError
+from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS
 from app.taskqueue.service import RunError
 from app.util import now_iso
 
@@ -80,12 +82,35 @@ class PedidoDeOperacao:
     max_usd: float
     assunto: str | None = None
     fontes: Sequence[str] = ()
+    #: Adendo v1.95: parâmetros FIXOS de cada execução de alvo (`username`, `caption_contains`), com estes nomes no
+    #: plano (`taskqueue/plano_da_operacao.py`), para a receita ensinada casar.
+    parametros: Mapping[str, str] | None = None
+
+
+#: Nome de parâmetro fixo: o alfabeto das chaves do plano. Os que a materialização põe por cima dos parâmetros
+#: (`instance_id`, `run_id`, `account_label`, `item`) e os dados da persona (`perfil_*`, `conta_*`) seriam engolidos.
+_NOME_DE_PARAMETRO = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+
+
+def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
+    for nome, valor in (parametros or {}).items():
+        if (not _NOME_DE_PARAMETRO.match(nome) or nome in NOMES_RESERVADOS
+                or nome.startswith(("perfil_", "conta_"))):
+            raise OperacaoError("pedido_invalido", f"Nome de parâmetro não aceito: {nome!r}.", 422)
+        if not isinstance(valor, str) or not 1 <= len(valor) <= 300 or "{" in valor or "}" in valor:
+            raise OperacaoError("pedido_invalido", f"Valor do parâmetro {nome!r}: de 1 a 300 caracteres, sem chaves.",
+                                422)
+    if len(parametros or {}) > 10:
+        raise OperacaoError("pedido_invalido", "No máximo 10 parâmetros.", 422)
 
 
 def _sha(pedido: PedidoDeOperacao) -> str:
     corpo = {"command": pedido.command.strip(), "app_id": pedido.app_id, "acao_final": pedido.acao_final,
              "max_usd": pedido.max_usd, "assunto": pedido.assunto, "fontes": list(pedido.fontes),
              "alvos": [[a.profile_id, a.account_id, a.instance_id] for a in pedido.alvos]}
+    if pedido.parametros:
+        # Só quando há: a chave de uma operação anterior ao v1.95, mandada de novo, segue casando.
+        corpo["parametros"] = dict(pedido.parametros)
     return hashlib.sha256(json.dumps(corpo, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
@@ -99,10 +124,11 @@ class ServicoDeOperacoes:
     def criar(self, pedido: PedidoDeOperacao, *, quem: str | None = None) -> dict[str, object]:
         try:
             # A MESMA recusa da execução, antes de gravar, para tudo que vai ao banco e à pesquisa externa.
-            for texto in (pedido.command, pedido.assunto or "", *pedido.fontes):
+            for texto in (pedido.command, pedido.assunto or "", *pedido.fontes, *(pedido.parametros or {}).values()):
                 self.runs._recusar_credencial(texto)  # noqa: SLF001
         except RunError as exc:
             raise OperacaoError(exc.code, exc.message, exc.status) from exc
+        _conferir_parametros(pedido.parametros)
         app = self.db.one("SELECT id, package FROM apps WHERE id=?", (pedido.app_id,))
         if app is None:
             raise OperacaoError("app_inexistente", f"O app {pedido.app_id!r} não está registrado.", 404)
@@ -118,9 +144,10 @@ class ServicoDeOperacoes:
         agora = now_iso()
         self.db.execute(
             "INSERT INTO operacoes(id, command, app_id, acao_final, max_usd, assunto, fontes, status, idempotency_key,"
-            " corpo_sha256, criada_por, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " corpo_sha256, criada_por, created_at, updated_at, parametros) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (op_id, pedido.command.strip(), pedido.app_id, pedido.acao_final, float(pedido.max_usd), pedido.assunto,
-             dumps(list(pedido.fontes)), "em_curso", pedido.idempotency_key, sha, quem, agora, agora))
+             dumps(list(pedido.fontes)), "em_curso", pedido.idempotency_key, sha, quem, agora, agora,
+             dumps(dict(pedido.parametros)) if pedido.parametros else None))
         for seq, alvo in enumerate(pedido.alvos):
             self._criar_alvo(op_id, seq, alvo, pedido)
         self.bus.emit("operacao.criada", f"Operação {op_id} criada com {len(pedido.alvos)} alvo(s).",
@@ -248,6 +275,7 @@ class ServicoDeOperacoes:
         status = self._status(op, saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
                 "max_usd": op["max_usd"], "assunto": op["assunto"], "fontes": loads(op["fontes"], []),
+                "parametros": loads(op["parametros"], None),
                 "status": status, "created_at": op["created_at"], "finished_at": self._fechar(op, status, capacidade),
                 "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id)}
 

@@ -19,7 +19,7 @@ from ..modules.execution.application.alvos import (AlvoPedido, DicasDoTexto, Mun
 from ..modules.execution.application.resources import ResourceConvergence
 from ..modules.execution.application.target_extractor import (CatalogoDeDestinos, DestinosNoTexto, PersonaNomeavel,
                                                               TargetExtractor)
-from ..modules.applications.infrastructure.registry import nomes_e_apelidos
+from ..modules.applications.infrastructure.registry import definition_of, nomes_e_apelidos
 from ..modules.execution.domain.plan_report import spec_from_decl
 from ..modules.execution.infrastructure.providers import resource_providers
 from ..modules.identity.application.available_data import common_data, missing_secrets, profile_variables
@@ -41,6 +41,7 @@ from ..shared.costuras import SISTEMA
 from ..shared.resources import Target
 from ..util import now_iso, parse_iso, to_iso
 from .balanceamento import Candidato, Distribuicao, Servidor, distribuir
+from . import plano_da_operacao
 from .costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CosturasDeAprendizado, PedidoDeLicoes,
                        RepeticaoDeExecucao, ResolucaoDeItem, avisar, pedir_licoes)
 from .dado_da_persona import DadoDaPersonaAusente, faltas_por_aparelho, perguntas as perguntas_do_dado
@@ -1064,6 +1065,20 @@ class RunService:
         ofertados = [a for a in apps if a.id in catalogos or load_catalog(a.package) is None]
         return None, catalogos, ofertados, None
 
+    def _plano_da_operacao(self, run_id: str, plan: Plan) -> Plan:
+        """O plano da execução de um alvo de operação com os `parametros` dela fixados e as chaves das etapas que o app
+        declara no bloco `operacao` normalizadas (`plano_da_operacao`). Fora de operação, o plano volta o mesmo."""
+        op = self.repo.db.one("SELECT o.parametros, a.package FROM runs r JOIN operacoes o ON o.id = r.operacao_id"
+                              " LEFT JOIN apps a ON a.id = o.app_id WHERE r.id=?", (run_id,))
+        if op is None:
+            return plan
+        fixos = {str(k): str(v) for k, v in (loads(op["parametros"], {}) or {}).items()}
+        capabilities = [cap for cap, _ in definition_of(op["package"]).operation_stages]
+        novo, motivo = plano_da_operacao.ajustar(plan, fixos, capabilities)
+        if motivo:
+            self.repo.decision(f"Plano da operação: {motivo}.", run_id=run_id)
+        return novo
+
     async def _plan(self, run_id: str) -> None:
         repo = self.repo
         run = repo.run_row(run_id)
@@ -1159,6 +1174,9 @@ class RunService:
             log.exception("planejamento %s", run_id)
             repo.set_run_status(run_id, RunStatus.failed, f"Erro interno no planejamento: {exc}", level="error")
             return
+        # 31.154 (adendo v1.95): na execução de uma operação, os parâmetros fixos e as chaves normalizadas, ANTES de
+        # gravar o plano — recuperação e revisão releem `runs.plan`, e a identidade da etapa não pode mudar no meio.
+        plan = self._plano_da_operacao(run_id, plan)
         # RA-7: a porta do item 13.2 também no PLANEJAMENTO, para todo plano (planejador, fluxo, skill), antes de
         # qualquer etapa existir. No despacho ela só recusava ao chegar na etapa com efeito, depois que os preparativos
         # (abrir, preencher destinatário, assunto…) já tinham gastado decisões.
