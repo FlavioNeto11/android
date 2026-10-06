@@ -90,11 +90,12 @@ def fonte_curta(fonte: str) -> str:
     return curto(fonte, FONTE_MAX) or ""
 
 
-def bloco(entradas: Iterable[Entrada], *, agora: str, teto: int = TETO_DO_BLOCO) -> str:
-    """O texto de `<fatos_da_operacao>`: só o que vale agora (dentro do frescor), sem pendência resolvida.
+def escolhidas(entradas: Iterable[Entrada], *, agora: str, teto: int = TETO_DO_BLOCO) -> list[tuple[str, Entrada]]:
+    """O que vai em `<fatos_da_operacao>`, com o rótulo de cada linha: só o que vale agora (dentro do frescor), sem
+    pendência resolvida.
 
     Ordem: fatos confirmados, depois hipóteses (marcadas como tais), depois as fontes. Dentro de cada grupo, o mais
-    recente primeiro, com desempate pela chave. Corta no teto sem partir uma linha; vazio quando nada vale.
+    recente primeiro, com desempate pela chave. Corta no teto sem partir uma linha.
     """
     vivas = [e for e in entradas if e.vale(agora) and not (e.tipo == "pendencia" and e.resolvida)
              and e.tipo in ("descoberta", "decisao", "fonte")]
@@ -105,16 +106,31 @@ def bloco(entradas: Iterable[Entrada], *, agora: str, teto: int = TETO_DO_BLOCO)
     fatos = grupo(e for e in vivas if e.tipo != "fonte" and e.confianca == "confirmado")
     hipoteses = grupo(e for e in vivas if e.tipo != "fonte" and e.confianca == "hipotese")
     fontes = grupo(e for e in vivas if e.tipo == "fonte")
-    linhas: list[str] = []
+    saida: list[tuple[str, Entrada]] = []
     usado = 0
     for rotulo, lista in (("fato", fatos), ("hipótese, não confirmada", hipoteses), ("fonte", fontes)):
         for e in lista:
-            linha = f"- [{rotulo}] {e.chave}: {' '.join(e.valor.split())}"
-            if usado + len(linha) > teto:
+            tamanho = len(_linha(rotulo, e))
+            if usado + tamanho > teto:
                 continue
-            linhas.append(linha)
-            usado += len(linha)
-    return "\n".join(linhas)
+            saida.append((rotulo, e))
+            usado += tamanho
+    return saida
+
+
+def _linha(rotulo: str, e: Entrada) -> str:
+    return f"- [{rotulo}] {e.chave}: {' '.join(e.valor.split())}"
+
+
+def bloco(entradas: Iterable[Entrada], *, agora: str, teto: int = TETO_DO_BLOCO) -> str:
+    """O texto de `<fatos_da_operacao>` (as linhas de `escolhidas`); vazio quando nada vale."""
+    return "\n".join(_linha(r, e) for r, e in escolhidas(entradas, agora=agora, teto=teto))
+
+
+def ref(e: Entrada) -> str:
+    """A referência da entrada, a mesma do relatório do aprendizado da operação (31.163): `fato:`, `fonte:` ou
+    `registro:` mais a chave. É o que vai em `resultado.conhecimento_ids` do alvo."""
+    return f"{'fonte' if e.tipo == 'fonte' else 'fato' if e.tipo == 'descoberta' else 'registro'}:{e.chave}"
 
 
 def quantos(entradas: Iterable[Entrada], *, agora: str) -> int:

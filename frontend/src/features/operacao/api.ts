@@ -5,6 +5,7 @@
  */
 import { ApiError, apiRequest, toApiError } from '../../api/client';
 import { lerLiberacao, lerLista, lerOperacao, type Operacao, type ResultadoDaLiberacao, type ResumoDaOperacao } from './modelo';
+import { lerAprendizado, type LeituraDoAprendizado } from './aprendizadoDaOperacao';
 import { OPERACAO_DE_EXEMPLO } from './operacaoDeExemplo';
 
 const enc = encodeURIComponent;
@@ -22,7 +23,10 @@ export interface ListaDeOperacoes { itens: ResumoDaOperacao[]; exemplo: boolean 
 export const apiOperacoes = {
   async lista(signal?: AbortSignal): Promise<ListaDeOperacoes> {
     try {
-      return { itens: lerLista(await apiRequest<unknown>('GET', '/operacoes', { query: { limite: '50' }, signal })), exemplo: false };
+      const bruto = await apiRequest<unknown>('GET', '/operacoes', { query: { limite: '50' }, signal });
+      // Resposta sem `items` não é "nenhuma operação": é resposta inválida (erro visível, não lista vazia).
+      if (!Array.isArray((bruto as { items?: unknown } | null)?.items)) throw new ApiError(502, 'resposta_invalida', 'A lista de operações veio em formato inesperado.');
+      return { itens: lerLista(bruto), exemplo: false };
     } catch (e) {
       if (rotaAusente(e)) return { itens: [EXEMPLO()], exemplo: true };
       throw e;
@@ -30,8 +34,10 @@ export const apiOperacoes = {
   },
   async detalhe(id: string, signal?: AbortSignal): Promise<Operacao> {
     try {
-      const op = lerOperacao(await apiRequest<unknown>('GET', `/operacoes/${enc(id)}`, { signal }));
-      if (!op) throw new ApiError(502, 'resposta_invalida', 'A resposta não é uma operação.');
+      const bruto = await apiRequest<unknown>('GET', `/operacoes/${enc(id)}`, { signal });
+      const op = lerOperacao(bruto);
+      // Sem a lista de alvos a operação não tem o que mostrar nem relatar: "0 agentes" seria falso.
+      if (!op || !Array.isArray((bruto as { alvos?: unknown }).alvos)) throw new ApiError(502, 'resposta_invalida', 'A resposta não é uma operação completa.');
       return op;
     } catch (e) {
       if (rotaAusente(e) && id === OPERACAO_DE_EXEMPLO.id) return EXEMPLO();
@@ -44,6 +50,23 @@ export const apiOperacoes = {
     const r = lerLiberacao(await apiRequest<unknown>('POST', `/operacoes/${enc(id)}/liberar`, { body: { itens } }));
     if (!r) throw new ApiError(502, 'resposta_invalida', 'A resposta da liberação não tem o formato esperado.');
     return r;
+  },
+  /**
+   * O aprendizado da operação nas 10 perguntas (adendo v1.96). Rota ausente, operação sem execução ou memória (404), resposta
+   * fora do formato e falha de leitura viram "indisponível" com o motivo: o relatório não pode virar "nada aprendido".
+   */
+  async aprendizado(id: string, signal?: AbortSignal, filtros?: { persona?: string | null; simulados?: boolean }): Promise<LeituraDoAprendizado> {
+    try {
+      const a = lerAprendizado(await apiRequest<unknown>('GET', `/operacoes/${enc(id)}/aprendizado`, { query: { simulados: filtros?.simulados ? 'true' : 'false', persona: filtros?.persona || undefined }, signal }));
+      return a ? { situacao: 'lido', aprendizado: a } : { situacao: 'indisponivel', motivo: 'A resposta do aprendizado veio em formato inesperado.' };
+    } catch (e) {
+      const err = toApiError(e);
+      if (err.status === 404) {
+        return { situacao: 'indisponivel', motivo: err.code === 'operacao_desconhecida'
+          ? 'A operação ainda não tem execução nem memória de aprendizado.' : 'O central ainda não oferece o aprendizado da operação.' };
+      }
+      return { situacao: 'indisponivel', motivo: `Não foi possível ler o aprendizado: ${err.message}` };
+    }
   },
   async cancelar(id: string): Promise<Operacao> {
     const op = lerOperacao(await apiRequest<unknown>('POST', `/operacoes/${enc(id)}/cancelar`, { body: {} }));

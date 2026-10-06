@@ -266,6 +266,38 @@ def test_erro_do_transporte_vira_motivo_fechado_e_linha_ok_0(status: int, corpo:
     assert CHAVE_FALSA not in str(e.value)
 
 
+@pytest.mark.parametrize("servidor", [Servidor(_ok()), Servidor({}, status=503)], ids=["resposta", "falha"])
+def test_a_reserva_do_teto_da_operacao_vale_do_post_ate_a_linha_gravada(servidor: Servidor) -> None:
+    """Achado da revisão do PR 478: o POST pago do Jev ficava fora da reserva das chamadas em voo do teto `max_usd`. A
+    conferência devolve quem solta a reserva; o decisor a segura no POST e só a solta depois de gravar a linha, também na
+    falha."""
+    ordem: list[str] = []
+    original = servidor.__call__
+
+    def _post(request: httpx.Request) -> httpx.Response:
+        ordem.append("post")
+        return original(request)
+
+    linhas: list[ChamadaAoJev] = []
+
+    def _registrar(chamada: ChamadaAoJev) -> int:
+        ordem.append("linha")
+        linhas.append(chamada)
+        return 1
+
+    def _gasto(_p: PedidoDeDecisao) -> Any:
+        ordem.append("reserva")
+        return lambda: ordem.append("solta")
+
+    jev = JevSemanticProvider(env={"TYPESAFE_API_KEY": CHAVE_FALSA}, transport=httpx.MockTransport(_post))
+    decisor = DecisorJev(jev, conferir_gasto=_gasto, registrar=_registrar)
+    try:
+        decisor.decidir(_pedido(), 5.0)
+    except FalhaDeDecisao:
+        pass
+    assert ordem == ["reserva", "post", "linha", "solta"]
+
+
 def test_timeout_do_transporte_e_rede() -> None:
     servidor = Servidor(erro=httpx.ReadTimeout("lento"))
     decisor, linhas = _decisor(servidor)
@@ -398,7 +430,7 @@ async def test_composicao_liga_o_real_so_com_decisor_jev(harness: Harness, monke
     assert isinstance(real, DecisorJev) and "jev-1.13.0" in repr(real)
     assert real._conferir_gasto is not None                                              # noqa: SLF001
     real._conferir_gasto(_pedido(run_id="run-7"))                                        # noqa: SLF001
-    assert chamadas == [{"run_id": "run-7", "origem": "decisao_fechada", "conta": "typesafe"}]
+    assert chamadas == [{"run_id": "run-7", "origem": "decisao_fechada", "conta": "typesafe", "reservar": True}]
 
 
 def test_transparencia_diz_qual_decisor_esta_montado() -> None:

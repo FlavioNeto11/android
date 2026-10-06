@@ -73,6 +73,7 @@ from .modules.execution.presentation.comandos import router as comandos_router
 from .modules.applications.presentation.apps import router as apps_router
 from .modules.operacoes.presentation.router import router as operacoes_router
 from .modules.learning.presentation.router import router as learning_router
+from .modules.pedidos.presentation.aprendizado_da_operacao import router as aprendizado_da_operacao_router
 from .modules.pedidos.presentation.router import router as pedidos_router
 from .modules.portal.presentation.contato import METODOS_DO_CONTATO, ROTA_DO_CONTATO
 from .modules.portal.presentation.contato import router as portal_contato_router
@@ -395,6 +396,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
         # (`POST /api/runs/{id}/feedback`) casaria com `POST /runs/{run_id}/{op}` de lá e viraria 404.
         app.include_router(learning_router)
         app.include_router(pedidos_router)       # `/api/pedidos` (28.9)
+        app.include_router(aprendizado_da_operacao_router)  # `/api/operacoes/{id}/aprendizado` (prova30 A3)
         app.include_router(router)
         app.include_router(fluxos_router)        # `/api/flows*` (15.15 F4): saiu de `api.py`, no mesmo lugar do `router`
         app.include_router(treino_router)        # `/api/training*` e `/api/instances/{id}/training` (15.15 F4): saiu de `api.py`

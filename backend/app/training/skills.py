@@ -234,6 +234,16 @@ JA_HAVIA_RECEITA = "já havia receita ativa para esta etapa"
 Acoes = list[dict[str, Any]]    # o que `distill_training` devolve: as ações da receita (nunca vão ao cliente)
 
 
+def _alvo_marcado(e: Mapping[str, object], dados: Mapping[str, str]) -> dict[str, object]:
+    """31.148: o texto e a descrição do elemento tocado vão ao prompt com o marcador da persona, como os textos da tela.
+    Sem alvo, nada (a entrada fica como veio)."""
+    alvo = e.get("target")
+    if not isinstance(alvo, dict):
+        return {}
+    return {"target": {**alvo, **{k: dado_da_persona.com_marcador(str(alvo[k]), dados)
+                                  for k in ("text", "desc") if alvo.get(k)}}}
+
+
 def _aviso_sem_persona(sess: Sessao) -> list[str]:
     """30.81: o ensinado só vale para a persona que ensinou até a prova; sem persona no treino, não vale em lugar nenhum."""
     if sess.get("profile_id"):
@@ -348,9 +358,17 @@ class TrainingSkills:
         app_id = self._app_da_sessao(sess, apps)
         pacote = apps[app_id]["package"] if app_id in apps else None
         tela = await self._tela_do_treino(sess)
+        # 31.148: a tela inteira de cada entrada (31.122 F2) e o que apareceu depois dela vão ao prompt, com todo dado da
+        # persona trocado pelo marcador; a IA escolhe a pós-condição com o que a etapa faz aparecer
+        dados = self.s.repo.variaveis_da_persona(sess.get("profile_id"))
+        elementos = self.s.training.elementos_da_tela(session_id)
+        com_tela = [{**e, "screen_elements": elementos.get(int(e["seq"]))} for e in sess["inputs"]]
+        textos = partida.textos_da_proposta(com_tela, dados)
         req = TrainingRequest(intent=sess["intent"], app_id=app_id, apps=list(apps.values()),
-                              inputs=[e for e in sess["inputs"]], catalog=self._catalogo(pacote), session_id=session_id,
-                              answers=respostas, tela=tela)
+                              inputs=[{**e, **_alvo_marcado(e, dados),
+                                       **({"textos_da_tela": textos[int(e["seq"])]} if int(e["seq"]) in textos else {})}
+                                      for e in sess["inputs"]],
+                              catalog=self._catalogo(pacote), session_id=session_id, answers=respostas, tela=tela)
         proposta, usage = await self.s.provider.generalize(req)
         try:
             self.s.repo.add_usage(None, None, usage)
@@ -372,6 +390,12 @@ class TrainingSkills:
         extras = _perguntas_do_arraste(proposta, {int(e["seq"]): e for e in sess["inputs"]}, respostas, tela)
         if extras:
             proposta["questions"] = [*[q for q in proposta.get("questions") or [] if isinstance(q, str)], *extras]
+        # 31.148: se mesmo assim a IA propôs uma pós-condição que já vale na partida, a proposta já volta com o alerta e
+        # as sugestões prontas (31.142), a mesma lista da prévia; nada é trocado sem a pessoa
+        passos = [st for st in proposta.get("steps") or [] if isinstance(st, dict)]
+        ja_valem = partida.ja_valem(passos, com_tela, evitar=dados.values())
+        if ja_valem:
+            proposta["pos_condicoes_ja_valem"] = partida.estruturados(ja_valem, dados)
         # N3: dois `propose` da mesma sessão: o último UPDATE ganharia e as respostas do primeiro sumiriam calado
         cur = self.s.db.execute("UPDATE training_sessions SET proposal=?, status='proposed', updated_at=? "
                                 "WHERE id=? AND updated_at=?", (dumps(proposta), now_iso(), session_id, sess["updated_at"]))

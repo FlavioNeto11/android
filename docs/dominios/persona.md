@@ -86,7 +86,7 @@ Três listas distintas, e não se confundem:
 | `PERSONA_VOICE_TRAITS` | `models.py` | os 15 traços de voz | renderizados no bloco `<persona>` e mostrados na conferência do portal |
 | `PERSONA_BIO_FIELDS` | `models.py` | desde 28/09, a biografia inteira: moradia, trabalho, formação, hobbies, origem, vida, preferências e o que não gosta (16 campos, em ordem de prioridade) | o que da **biografia** vai ao modelo, uma linha por campo, com orçamento (`ORCAMENTO_DA_BIOGRAFIA_TOKENS` = 350, no máximo 6 itens por lista; `filhos: 0` = "não tem") |
 | `BIOGRAFIA_MINIMA` | `modules/identity/domain/persona.py` | `origin.birthplace`, `home.city`, `work.profession`, `work.education`, `tastes.hobbies` | o mínimo para a biografia contar como **completa** (`generate` e `enrich`) |
-| `PERSONA_RELIGION_FIELDS` / `PERSONA_POLITICS_FIELDS` | `models.py` | os campos de `beliefs.religion` / `beliefs.politics` | seções "religião:" e "política:" do bloco `<persona>`, seguidas da linha de conduta (ADR-048) |
+| `PERSONA_RELIGION_FIELDS` / `PERSONA_POLITICS_FIELDS` | `models.py` | os campos de `beliefs.religion` / `beliefs.politics` | seções "religião:" e "política:" do bloco `<persona>`, seguidas da linha de uso das crenças (`USO_DAS_CRENCAS`; sem regra de conteúdo desde 06/10) |
 | `CRENCAS_MINIMAS` | `modules/identity/domain/persona.py` | `beliefs.religion.affiliation`, `beliefs.politics.orientation` | lacuna só do `enrich`; crença **não** conta para a biografia completa |
 
 O bloco `<persona>` (`social/context.py::SocialContextBuilder._persona_block`) leva, nesta ordem: `perfil: @username`,

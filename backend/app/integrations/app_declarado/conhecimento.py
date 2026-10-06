@@ -232,6 +232,17 @@ class Textos:
 
 
 @dataclass(frozen=True, slots=True)
+class TrocaDeConta:
+    """31.155 (ADR-080): o app DECLARA como sair da conta aberta, e só por isso o motor troca de conta sozinho. Sem esta
+    seção, a conta errada na tela é caso de pessoa (achado #115), como sempre.
+
+    Cada passo é um toque SEM segredo, com um candidato só, numa tela declarada; depois do último, a tela tem de ser a
+    de login, e só então a senha da conta esperada sai do cofre pelo canal sensível (o `_login` de sempre)."""
+
+    sair: tuple[PassoDeNavegacao, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ConhecimentoDeSessao:
     app: str
     versao: int
@@ -244,6 +255,7 @@ class ConhecimentoDeSessao:
     depois_do_envio: tuple[RegraDepoisDoEnvio, ...]
     textos: Textos
     navegador: Navegador | None = None
+    troca: TrocaDeConta | None = None
 
     # ------------------------------------------------------------------ leituras de tela, pelo dado
     def reconhecer(self, tree: UiTree, *, package: str | None, locale: str | None = None) -> TelaReconhecida:
@@ -337,6 +349,12 @@ class ConhecimentoDeSessao:
         botao = geometria.botao_unico(tree, pacote=self.app, rotulo=sig[passo.sinal_do_botao],
                                       exclusao=sig[self.formulario.sinal_de_exclusao])
         return Dispensar(onde=r.tela, botao=botao) if botao is not None else None
+
+    def botao_da_troca(self, tree: UiTree, passo: PassoDeNavegacao, locale: str | None) -> UiElement | None:
+        """O botão de um passo de saída da conta (31.155), com um candidato só; `None` = não toca."""
+        sig = self.telas.sinais_de(locale)
+        return geometria.botao_unico(tree, pacote=self.app, rotulo=sig[passo.sinal_do_botao],
+                                     exclusao=sig[self.formulario.sinal_de_exclusao])
 
     def botao_de_dispensa(self, tree: UiTree) -> UiElement | None:
         botao = geometria.dismiss_button(tree, rotulos=self.dispensa.rotulos, ids=self.dispensa.ids)
@@ -623,11 +641,24 @@ def _conta(valor: object, telas: ConhecimentoDeTelas) -> Conta:
 VERSOES_DE_SESSAO = (1,)
 
 
+def _troca(valor: object, telas: ConhecimentoDeTelas) -> TrocaDeConta:
+    """`troca.sair`: os toques que tiram a conta aberta. O primeiro é numa tela autenticada (é dela que a troca parte,
+    com a conta lida); os seguintes podem ser a confirmação (intersticial). Nenhum é na tela do campo de senha."""
+    t = _mapa(valor, "troca", permitidos=frozenset({"sair"}), obrigatorios=frozenset({"sair"}))
+    brutos = _lista(t["sair"], "troca.sair")
+    if not brutos:
+        raise SessaoInvalida("troca.sair: sem passo nenhum, a conta aberta nunca sairia")
+    sair = tuple(_passo(b, f"troca.sair[{i}]", telas,
+                        tipos=frozenset({"autenticada"}) if i == 0 else frozenset({"autenticada", "intersticial"}))
+                 for i, b in enumerate(brutos))
+    return TrocaDeConta(sair=sair)
+
+
 def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
     """Valida e monta o conhecimento de sessão sobre o conhecimento de telas do MESMO app."""
     topo = frozenset({"app", "versao", "rotulo", "ajustes", "formulario", "dispensa", "conta", "depois_do_envio",
-                      "textos", "navegador"})
-    raiz = _mapa(dados, "o arquivo", permitidos=topo, obrigatorios=topo - {"versao", "navegador"})
+                      "textos", "navegador", "troca"})
+    raiz = _mapa(dados, "o arquivo", permitidos=topo, obrigatorios=topo - {"versao", "navegador", "troca"})
     app = _texto(raiz["app"], "app").strip()
     if app != telas.app:
         raise SessaoInvalida(f"`app` ({app!r}) difere do `telas.yaml` ({telas.app!r})")
@@ -682,7 +713,8 @@ def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
     return ConhecimentoDeSessao(app=app, versao=versao, rotulo=_texto(raiz["rotulo"], "rotulo").strip(), telas=telas,
                                 ajustes=_ajustes(raiz["ajustes"]), formulario=form, dispensa=dispensa, conta=conta,
                                 depois_do_envio=regras, textos=_textos(raiz["textos"]),
-                                navegador=_navegador(raiz["navegador"], app) if "navegador" in raiz else None)
+                                navegador=_navegador(raiz["navegador"], app) if "navegador" in raiz else None,
+                                troca=_troca(raiz["troca"], telas) if "troca" in raiz else None)
 
 
 def carregar(pasta: Path) -> ConhecimentoDeSessao:

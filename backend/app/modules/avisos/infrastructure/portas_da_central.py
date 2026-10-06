@@ -55,6 +55,7 @@ MOTIVO_DA_RECUSA = {
     "sem_acao_do_catalogo": "Motivo: nenhuma ação do catálogo do app faz o que foi pedido. Nada foi executado; o detalhe "
                             "está no painel.",
     "acima_da_autonomia": "Motivo: o plano tinha etapas com efeito, e esta execução só podia observar. Nada foi feito.",
+    "parametro_em_conflito": "Motivo: o plano usava um parâmetro fixo da operação com outro valor. Nada foi feito.",
 }
 MOTIVO_DA_RECUSA_GENERICO = "Motivo: o plano foi recusado antes de começar. Nada foi executado; o detalhe está no painel."
 

@@ -14,21 +14,24 @@ pedidos pelo serviço de aprovações de sempre, só com o eco do texto que a pe
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 import secrets
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from app.contracts.origem import PREFIXO_OPERACAO
-from app.db import Database, Row, dumps, loads
-from app.models import InstanceState, RunCreate, RunTarget, SessionStatus
+from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
+from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
-from app.security.redaction import redact
+from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs
 from app.social.service import SocialError
+from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS, normal
+from app.taskqueue.recipes import SENSITIVE_PARAM
 from app.taskqueue.service import RunError
 from app.util import now_iso
 
@@ -43,16 +46,22 @@ if TYPE_CHECKING:
 SEM_PERSONA = "persona inexistente"
 SEM_CONTA = "sem conta"
 SEM_SESSAO = "sem sessão"
+#: A conta tem sessão em mais de um aparelho e nenhuma no vínculo principal da persona: qual age não se adivinha.
+FORA_DO_PRINCIPAL = "sessão fora do aparelho principal"
 SEM_APARELHO = "aparelho indisponível"
 TETO_DE_CUSTO = "teto de custo"
 LIMITE_DE_ACOES = "limite de ações executadas"
 AGUARDA_LIBERACAO = "aguarda liberação"
 
 
+#: Um @ de conta no texto do motivo (o da regra da frota cita o alvo): o motivo da operação diz "o perfil alvo".
+_ARROBA = re.compile(r"(?<![\w.])@[A-Za-z0-9._]{1,60}")
+
+
 def _motivo(texto: object) -> str | None:
-    """O motivo REDIGIDO e numa linha: o do objetivo pode trazer texto lido da tela ou da pergunta à pessoa, e vai para o
-    banco, o evento `operacao.alvo` e a API."""
-    return motivo_curto(redact(str(texto)) if texto else None)
+    """O motivo REDIGIDO, numa linha e SEM @ de conta. O do objetivo pode trazer texto lido da tela, da pergunta à pessoa
+    ou o @ do alvo (a porta de frota o cita), e vai para o banco, o evento `operacao.alvo`, a API e o relatório."""
+    return motivo_curto(_ARROBA.sub("o perfil alvo", redact(str(texto)) or "") if texto else None)
 
 
 class OperacaoError(Exception):
@@ -78,12 +87,51 @@ class PedidoDeOperacao:
     max_usd: float
     assunto: str | None = None
     fontes: Sequence[str] = ()
+    #: Adendo v1.95: parâmetros FIXOS de cada execução de alvo (`username`, `caption_contains`), com estes nomes no
+    #: plano (`taskqueue/plano_da_operacao.py`), para a receita ensinada casar.
+    parametros: Mapping[str, str] | None = None
+
+
+#: Nome de parâmetro fixo: o alfabeto das chaves do plano. Os que a materialização põe por cima dos parâmetros
+#: (`instance_id`, `run_id`, `account_label`, `item`) e os dados da persona (`perfil_*`, `conta_*`) seriam engolidos.
+_NOME_DE_PARAMETRO = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+
+
+def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
+    """Nome e valor de cada parâmetro fixo. Credencial nunca: a execução não carrega credencial (ADR-040), e um parâmetro
+    vai ao plano, ao objetivo, ao prompt e ao texto digitado pelo canal comum. A recusa olha o NOME (`senha`, `codigo`,
+    `token`), o par `nome=valor` e o FORMATO do valor sozinho (senha ou código sem rótulo).
+
+    A recusa diz a POSIÇÃO do parâmetro, nunca o nome nem o valor (achado do Copilot no PR 487): a credencial pode
+    estar no próprio nome, e o corpo do erro volta ao cliente e vai ao log."""
+    for posicao, (nome, valor) in enumerate((parametros or {}).items(), start=1):
+        texto = str(valor)
+        if (chave_sensivel(nome) or SENSITIVE_PARAM.search(nome) or redact(f"{nome}={texto}") != f"{nome}={texto}"
+                or looks_secret(texto) or parece_senha_ou_codigo(texto)):
+            raise OperacaoError("credencial_no_comando", f"O {posicao}º parâmetro parece credencial; a operação não "
+                                "leva credencial (a senha só sai do cofre, pelo canal sensível).", 409)
+        if (not _NOME_DE_PARAMETRO.match(nome) or nome in NOMES_RESERVADOS
+                or nome.startswith(("perfil_", "conta_"))):
+            raise OperacaoError("pedido_invalido", f"Nome do {posicao}º parâmetro não aceito (minúsculas, dígitos e _,"
+                                " até 40; sem os nomes reservados nem perfil_ e conta_).", 422)
+        if not isinstance(valor, str) or not 1 <= len(valor) <= 300 or "{" in valor or "}" in valor:
+            raise OperacaoError("pedido_invalido", f"Valor do {posicao}º parâmetro: de 1 a 300 caracteres, sem chaves.",
+                                422)
+    if len(parametros or {}) > 10:
+        raise OperacaoError("pedido_invalido", "No máximo 10 parâmetros.", 422)
+    valores = [normal(str(v)) for v in (parametros or {}).values()]
+    if len(set(valores)) != len(valores):
+        # Dois nomes para o mesmo valor deixariam a identidade da etapa dependente da ordem da troca.
+        raise OperacaoError("pedido_invalido", "Dois parâmetros com o mesmo valor.", 422)
 
 
 def _sha(pedido: PedidoDeOperacao) -> str:
     corpo = {"command": pedido.command.strip(), "app_id": pedido.app_id, "acao_final": pedido.acao_final,
              "max_usd": pedido.max_usd, "assunto": pedido.assunto, "fontes": list(pedido.fontes),
              "alvos": [[a.profile_id, a.account_id, a.instance_id] for a in pedido.alvos]}
+    if pedido.parametros:
+        # Só quando há: a chave de uma operação anterior ao v1.95, mandada de novo, segue casando.
+        corpo["parametros"] = dict(pedido.parametros)
     return hashlib.sha256(json.dumps(corpo, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
@@ -97,10 +145,11 @@ class ServicoDeOperacoes:
     def criar(self, pedido: PedidoDeOperacao, *, quem: str | None = None) -> dict[str, object]:
         try:
             # A MESMA recusa da execução, antes de gravar, para tudo que vai ao banco e à pesquisa externa.
-            for texto in (pedido.command, pedido.assunto or "", *pedido.fontes):
+            for texto in (pedido.command, pedido.assunto or "", *pedido.fontes, *(pedido.parametros or {}).values()):
                 self.runs._recusar_credencial(texto)  # noqa: SLF001
         except RunError as exc:
             raise OperacaoError(exc.code, exc.message, exc.status) from exc
+        _conferir_parametros(pedido.parametros)
         app = self.db.one("SELECT id, package FROM apps WHERE id=?", (pedido.app_id,))
         if app is None:
             raise OperacaoError("app_inexistente", f"O app {pedido.app_id!r} não está registrado.", 404)
@@ -116,9 +165,10 @@ class ServicoDeOperacoes:
         agora = now_iso()
         self.db.execute(
             "INSERT INTO operacoes(id, command, app_id, acao_final, max_usd, assunto, fontes, status, idempotency_key,"
-            " corpo_sha256, criada_por, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " corpo_sha256, criada_por, created_at, updated_at, parametros) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (op_id, pedido.command.strip(), pedido.app_id, pedido.acao_final, float(pedido.max_usd), pedido.assunto,
-             dumps(list(pedido.fontes)), "em_curso", pedido.idempotency_key, sha, quem, agora, agora))
+             dumps(list(pedido.fontes)), "em_curso", pedido.idempotency_key, sha, quem, agora, agora,
+             dumps(dict(pedido.parametros)) if pedido.parametros else None))
         for seq, alvo in enumerate(pedido.alvos):
             self._criar_alvo(op_id, seq, alvo, pedido)
         self.bus.emit("operacao.criada", f"Operação {op_id} criada com {len(pedido.alvos)} alvo(s).",
@@ -165,13 +215,25 @@ class ServicoDeOperacoes:
         if conta["status"] != "active":
             return "conta", _motivo(f"conta {conta['status']}"), str(conta["id"]), None
         sessoes = self._sessoes_prontas(str(conta["id"]))
-        aparelho = alvo.instance_id or (sessoes[0] if sessoes else None)
+        if alvo.instance_id is None and len(sessoes) > 1:
+            # A conta com sessão em dois aparelhos (a mesma conta lida no notebook e logada no central) executa só no
+            # vínculo PRINCIPAL da persona: a sessão mais recente podia ser a do aparelho que só lê.
+            aparelho = self._principal_com_sessao(alvo.profile_id, sessoes)
+            if aparelho is None:
+                return "sessao", FORA_DO_PRINCIPAL, str(conta["id"]), None
+        else:
+            aparelho = alvo.instance_id or (sessoes[0] if sessoes else None)
         if aparelho is None or aparelho not in sessoes:
             return "sessao", SEM_SESSAO, str(conta["id"]), alvo.instance_id
         rt = self.runs.devices.devices.get(aparelho)
         if rt is None or rt.store:
             return "aparelho", SEM_APARELHO, str(conta["id"]), aparelho
         return None, None, str(conta["id"]), aparelho
+
+    def _principal_com_sessao(self, profile_id: str, sessoes: list[str]) -> str | None:
+        principal = self.social.binding_principal(profile_id)
+        iid = str(principal["instance_id"]) if principal is not None else None
+        return iid if iid in sessoes else None
 
     def _sessoes_prontas(self, account_id: str) -> list[str]:
         return [str(r["instance_id"]) for r in self.db.query(
@@ -206,31 +268,67 @@ class ServicoDeOperacoes:
             raise OperacaoError("operacao_inexistente", "Operação não encontrada.", 404)
         definicao = self._definicao(str(op["app_id"]))
         limite = int(self.limites().operacao_max_acoes_executadas)
-        alvos, leituras = [], []
+        executadas = self._acoes_comprometidas(op_id)
+        aprovados = self._runs_com_acao_aprovada(op_id)
+        if aprovados and op["acao_final"] == "preparar" and op["status"] != "cancelada":
+            # A ação aprovada POR FORA do liberar (Pendências, Telegram: a onda 1 de 06/10) vai rodar. A operação passa a
+            # `executar` e reabre, como no liberar; sem isto, ficava `concluida` com o `finished_at` da preparação e a
+            # ação executada e verificada depois dele. A reabertura vem ANTES da leitura dos alvos (achado do Codex no
+            # PR 483): lidos com `preparar`, `acao_preparada` era concluído, e o mesmo GET fechava a operação de novo.
+            # Transição condicional no SQL, como no liberar (achado do Copilot no PR 487): o cancelar que gravou
+            # `cancelada` depois da leitura acima não pode ser sobrescrito por `em_curso`.
+            self.db.execute("UPDATE operacoes SET acao_final='executar', status='em_curso', finished_at=NULL, updated_at=?"
+                            " WHERE id=? AND acao_final='preparar' AND status<>'cancelada'", (now_iso(), op_id))
+            op = self.db.one("SELECT * FROM operacoes WHERE id=?", (op_id,)) or op
+        alvos = []
         for a in self.db.query("SELECT * FROM operacao_alvos WHERE operacao_id=? ORDER BY seq, profile_id", (op_id,)):
             leitura, resultado = self._ler_alvo(op, a, definicao)
-            leituras.append((a, leitura))
             alvos.append((a, leitura, resultado))
-        executadas = self._acoes_comprometidas(op_id)
         saida = []
         for a, lt, resultado in alvos:
             estado, motivo, parou = lt.estado, lt.motivo, lt.parou_em
-            if lt.estagio == "acao_preparada" and op["acao_final"] == "executar" and estado != "concluido":
+            # Só o alvo SEM a ação aprovada aguarda liberação; o liberado segue o estado da execução dele (em curso
+            # enquanto executa, bloqueado se falhar). Marcá-lo bloqueado fecharia a operação antes da execução.
+            if (lt.estagio == "acao_preparada" and op["acao_final"] == "executar" and estado != "concluido"
+                    and a["run_id"] not in aprovados):
                 estado, motivo, parou = ("bloqueado", LIMITE_DE_ACOES if executadas >= limite else AGUARDA_LIBERACAO,
                                          "acao_executada")
             self._anotar(op_id, a, lt.estagio, estado, motivo)
+            # O custo do alvo é o da execução DELE (com a pesquisa externa, se ela rodou ali); sem execução, nulo.
+            custo = round(costs.spent_usd(self.db, self.precos, run_id=str(a["run_id"])), 4) if a["run_id"] else None
+            if resultado is not None:
+                resultado = {**resultado, "custo_usd": custo}
             saida.append({"profile_id": a["profile_id"], "persona_nome": self._nome(str(a["profile_id"])),
                           "app_id": op["app_id"], "account_id": a["account_id"], "conta": self._handle(a),
                           "instance_id": a["instance_id"], "run_id": a["run_id"], "estagio": lt.estagio,
                           "estado": estado, "motivo": motivo,
                           "parou_em": parou if estado in ("bloqueado", "cancelado") else None,
-                          "estagios": [{"estagio": e, "em": em} for e, em in lt.estagios], "resultado": resultado})
+                          "estagios": [{"estagio": e, "em": em} for e, em in lt.estagios], "resultado": resultado,
+                          "custo_usd": custo})
         capacidade = self._capacidade(saida)
         status = self._status(op, saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
                 "max_usd": op["max_usd"], "assunto": op["assunto"], "fontes": loads(op["fontes"], []),
-                "status": status, "created_at": op["created_at"], "finished_at": self._fechar(op, status, capacidade),
+                "parametros": loads(op["parametros"], None), "fontes_da_pesquisa": self._fontes_da_pesquisa(op_id),
+                "status": status, "created_at": op["created_at"],
+                "finished_at": self._fechar(op, status, capacidade, fim=self._fim_real(saida)),
                 "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id)}
+
+    def _fontes_da_pesquisa(self, op_id: str) -> list[str]:
+        """As URLs que a pesquisa externa da operação ACHOU (frente de aprendizado, migração 125: `pedido_observacoes` com
+        `tipo='url'`). `fontes` é o que o pedido trouxe de entrada; sem isto, o GET mostrava 0 fontes com pesquisa paga."""
+        vistas: list[str] = []
+        try:
+            linhas = self.db.query("SELECT valor FROM pedido_observacoes WHERE operacao_id=? AND tipo='url' AND valor IS"
+                                   " NOT NULL ORDER BY capturado_em, id", (op_id,))
+        except OPERATIONAL_ERRORS as exc:   # banco sem a migração 125 (a coluna `operacao_id`): a pesquisa não gravou nada
+            if not coluna_ausente(exc):
+                raise
+            return vistas
+        for r in linhas:
+            if str(r["valor"]) not in vistas:
+                vistas.append(str(r["valor"]))
+        return vistas
 
     def _definicao(self, app_id: str) -> tuple[str, dict[str, str]]:
         row = self.db.one("SELECT package FROM apps WHERE id=?", (app_id,))
@@ -245,7 +343,7 @@ class ServicoDeOperacoes:
         etapas: list[EtapaLida] = []
         efeito: Row | None = None
         if a["run_id"]:
-            run = self.db.one("SELECT status FROM runs WHERE id=?", (a["run_id"],))
+            run = self.db.one("SELECT status, status_detail, finished_at FROM runs WHERE id=?", (a["run_id"],))
             obj = self.db.one("SELECT * FROM objectives WHERE run_id=? ORDER BY id LIMIT 1", (a["run_id"],))
             if obj is not None:
                 for s in self.db.query("SELECT * FROM steps WHERE objective_id=? AND plan_version=? ORDER BY seq, id",
@@ -256,7 +354,8 @@ class ServicoDeOperacoes:
                         capability=s["capability"], status=str(s["status"]), side_effect=bool(s["side_effect"]),
                         terminou_em=s["finished_at"], comecou_em=s["started_at"], tem_texto=bool(texto),
                         verificada=bool((loads(s["result"], {}) or {}).get("verified")),
-                        pedido_de_aprovacao=pedido.status if pedido is not None else None))
+                        pedido_de_aprovacao=pedido.status if pedido is not None else None,
+                        pedido_em=getattr(pedido, "created_at", None) if pedido is not None else None))
                     if s["side_effect"] and efeito is None:
                         efeito = s
         leitura = derivar(FatosDoAlvo(
@@ -266,7 +365,10 @@ class ServicoDeOperacoes:
             objetivo_motivo=_motivo((obj["blocked_reason"] or obj["status_detail"]) if obj is not None else None),
             run_status=str(run["status"]) if run is not None else None, etapas=etapas, marcas=marcas,
             abertura=abertura, estagio_por_capability=por_cap, acao_final=str(op["acao_final"]),
-            criado_em=str(op["created_at"])))
+            criado_em=str(op["created_at"]), objetivo_bloqueio=obj["blocked_kind"] if obj is not None else None,
+            recusa_no_plano=(_motivo(run["status_detail"]) or "recusada no planejamento")
+            if obj is None and run is not None and run["status"] == "failed" else None,
+            recusa_em=run["finished_at"] if run is not None else None))
         return leitura, self._resultado(a, efeito, marcas)
 
     def _resultado(self, a: Row, efeito: Row | None, marcas: dict[str, object]) -> dict[str, object] | None:
@@ -335,10 +437,17 @@ class ServicoDeOperacoes:
                       data={"operacao_id": op_id, "profile_id": a["profile_id"], "estagio": estagio, "estado": estado,
                             "motivo": motivo})
 
-    def _fechar(self, op: Row, status: str, capacidade: dict[str, object]) -> str | None:
+    @staticmethod
+    def _fim_real(alvos: list[dict[str, object]]) -> str | None:
+        """A hora do último estágio alcançado entre os alvos: é quando a operação terminou de fato. Fechar com a hora da
+        LEITURA punha o fim depois do que aconteceu (ou antes, quando a operação reabre e fecha de novo)."""
+        horas = [str(e["em"]) for a in alvos for e in a["estagios"]]  # type: ignore[attr-defined]
+        return max(horas) if horas else None
+
+    def _fechar(self, op: Row, status: str, capacidade: dict[str, object], *, fim: str | None = None) -> str | None:
         if status == "em_curso" or op["finished_at"]:
             return str(op["finished_at"]) if op["finished_at"] else None
-        agora = now_iso()
+        agora = min(fim, now_iso()) if fim else now_iso()
         if self.db.execute("UPDATE operacoes SET status=?, finished_at=?, updated_at=? WHERE id=? AND finished_at IS"
                            " NULL", (status, agora, agora, op["id"])) == 0:
             return None
@@ -353,9 +462,16 @@ class ServicoDeOperacoes:
             raise OperacaoError("operacao_inexistente", "Operação não encontrada.", 404)
         if op["finished_at"]:
             raise OperacaoError("ja_encerrada", f"A operação já terminou ({op['status']}).", 409)
-        for r in self.db.query("SELECT run_id FROM operacao_alvos WHERE operacao_id=? AND run_id IS NOT NULL"
-                               " ORDER BY seq", (op_id,)):
-            self.runs.cancel(str(r["run_id"]), por=quem)
+        # A execução que já terminou (o alvo concluído, ou o que falhou) não se cancela: `RunService.cancel` recusaria com
+        # `RunError`, e o laço pararia no meio, com uma parte dos alvos cancelada e a operação em curso. A que terminar
+        # entre a leitura e o pedido cai no mesmo `RunError`, e o laço segue para os outros alvos.
+        for r in self.db.query("SELECT a.run_id FROM operacao_alvos a JOIN runs r ON r.id=a.run_id WHERE a.operacao_id=?"
+                               " AND r.status NOT IN (?,?,?) ORDER BY a.seq",
+                               (op_id, RunStatus.completed.value, RunStatus.cancelled.value, RunStatus.failed.value)):
+            try:
+                self.runs.cancel(str(r["run_id"]), por=quem)
+            except RunError:
+                continue
         self.db.execute("UPDATE operacoes SET status='cancelada', updated_at=? WHERE id=?", (now_iso(), op_id))
         return self.ler(op_id)
 
@@ -363,37 +479,49 @@ class ServicoDeOperacoes:
         """Aprova, pelo serviço de aprovações de sempre, a ação preparada de cada alvo pedido, com o eco do texto que a
         pessoa leu, até o limite de ações executadas (contando as já executadas)."""
         atual = self.ler(op_id)
-        if atual["finished_at"]:
+        # Em `preparar`, o alvo na ação preparada está concluído: com todos ali, a operação fecha (`_fechar`) ANTES de a
+        # pessoa ler os textos. Recusar a operação fechada tornaria a liberação impossível justamente quando ela cabe;
+        # só a cancelada é recusada. O alvo sem pedido pendente sai em `recusados` como sempre.
+        if atual["status"] == "cancelada":
             raise OperacaoError("ja_encerrada", f"A operação já terminou ({atual['status']}).", 409)
         alvos = {str(a["profile_id"]): a for a in atual["alvos"]}  # type: ignore[attr-defined]
         limite = int(self.limites().operacao_max_acoes_executadas)
-        # Sem `await` daqui ao fim: duas chamadas de `liberar` não se intercalam no laço do servidor, e a contagem
-        # das já comprometidas (aprovadas, executando ou executadas) vale para a segunda.
-        feitas = self._acoes_comprometidas(op_id)
+        # Contar e aprovar na MESMA transação, com a linha da operação travada antes de contar: duas liberações (no
+        # mesmo processo, ou em dois backends sobre o mesmo PostgreSQL) se enfileiram, e a contagem das já comprometidas
+        # (aprovadas, executando ou executadas) da segunda vê o que a primeira aprovou. A `tx()` é reentrante: a do
+        # serviço de aprovações entra nesta.
         liberados: list[str] = []
         recusados: list[dict[str, str]] = []
-        for profile_id, texto in itens:
-            a = alvos.get(profile_id)
-            pedido = self._pedido_pendente(a)
-            if a is None or pedido is None:
-                recusados.append({"profile_id": profile_id, "motivo": "sem ação preparada"})
-                continue
-            visto = str(self.aprovacoes.na_tela(pedido.to_dict()).get("generated_content") or "")
-            if visto.strip() != texto.strip():
-                recusados.append({"profile_id": profile_id, "motivo": "texto_divergente"})
-                continue
-            if feitas + len(liberados) >= limite:
-                recusados.append({"profile_id": profile_id, "motivo": LIMITE_DE_ACOES})
-                continue
-            try:
-                self.aprovacoes.decide(pedido.id, "approve", note=f"liberado na operação {op_id}"
-                                                                   + (f" por {quem}" if quem else ""))
-            except SocialError as exc:
-                recusados.append({"profile_id": profile_id, "motivo": _motivo(str(exc)) or "recusado"})
-                continue
-            liberados.append(profile_id)
-        if liberados:
-            self.db.execute("UPDATE operacoes SET acao_final='executar', updated_at=? WHERE id=?", (now_iso(), op_id))
+        with self.db.tx():
+            self.db.execute("UPDATE operacoes SET updated_at=? WHERE id=?", (now_iso(), op_id))
+            if self.db.scalar("SELECT status FROM operacoes WHERE id=?", (op_id,)) == "cancelada":
+                raise OperacaoError("ja_encerrada", "A operação já terminou (cancelada).", 409)
+            feitas = self._acoes_comprometidas(op_id)
+            for profile_id, texto in itens:
+                a = alvos.get(profile_id)
+                pedido = self._pedido_pendente(a)
+                if a is None or pedido is None:
+                    recusados.append({"profile_id": profile_id, "motivo": "sem ação preparada"})
+                    continue
+                visto = str(self.aprovacoes.na_tela(pedido.to_dict()).get("generated_content") or "")
+                if visto.strip() != texto.strip():
+                    recusados.append({"profile_id": profile_id, "motivo": "texto_divergente"})
+                    continue
+                if feitas + len(liberados) >= limite:
+                    recusados.append({"profile_id": profile_id, "motivo": LIMITE_DE_ACOES})
+                    continue
+                try:
+                    self.aprovacoes.decide(pedido.id, "approve", note=f"liberado na operação {op_id}"
+                                                                       + (f" por {quem}" if quem else ""))
+                except SocialError as exc:
+                    recusados.append({"profile_id": profile_id, "motivo": _motivo(str(exc)) or "recusado"})
+                    continue
+                liberados.append(profile_id)
+            if liberados:
+                # A operação volta a correr: a ação liberada ainda vai ser executada e verificada, e é a leitura seguinte
+                # que a fecha de novo quando nenhum alvo estiver em curso.
+                self.db.execute("UPDATE operacoes SET acao_final='executar', status='em_curso', finished_at=NULL,"
+                                " updated_at=? WHERE id=? AND status<>'cancelada'", (now_iso(), op_id))
         return {"liberados": liberados, "recusados": recusados, "operacao": self.ler(op_id)}
 
     def _acoes_comprometidas(self, op_id: str) -> int:
@@ -402,6 +530,11 @@ class ServicoDeOperacoes:
         return int(self.db.scalar(
             "SELECT COUNT(DISTINCT a.run_id) FROM pending_approvals a JOIN runs r ON r.id=a.run_id"
             " WHERE r.operacao_id=? AND a.status IN ('approved','edited')", (op_id,)) or 0)
+
+    def _runs_com_acao_aprovada(self, op_id: str) -> set[object]:
+        return {r["run_id"] for r in self.db.query(
+            "SELECT DISTINCT a.run_id FROM pending_approvals a JOIN runs r ON r.id=a.run_id"
+            " WHERE r.operacao_id=? AND a.status IN ('approved','edited')", (op_id,))}
 
     def _pedido_pendente(self, alvo: dict[str, object] | None):  # type: ignore[no-untyped-def]
         if alvo is None or not alvo.get("run_id"):

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, TypeVar, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -148,6 +148,9 @@ class Usage:
     buscas: int = 0
     usd_das_buscas: float = 0.0
     preparo: "PreparoDaDecisao | None" = None
+    # 31.154 (achado do Copilot no PR 487): solta a chamada reservada no teto da operação. O hub (`_call`) a põe; quem
+    # grava o custo (`add_usage`) a chama logo depois do INSERT, e a reserva vale até o gasto estar no banco. Não é dado.
+    soltar_reserva: Callable[[], None] | None = field(default=None, repr=False, compare=False)
 
 
 #: RA-10 (migração 080): POR QUE a chamada foi ao modelo de escalonamento (`ai_calls.escalate`; NULO = não foi).
@@ -433,6 +436,9 @@ class SocialRequest:
     # É do objetivo, não da persona: vai a todas as contas da operação e não vira memória de nenhuma. Vazio fora de
     # operação.
     fatos_da_operacao: str = ""
+    # O assunto da operação (124), do comando de quem a criou: vai junto da intenção, e o texto o relaciona ao que a
+    # tela mostra só quando fizer sentido (decisão da orquestradora, onda 1). Vazio fora de operação.
+    assunto_da_operacao: str = ""
     retry: bool = False                       # segunda tentativa: a primeira saiu igual a um texto que já existe
     # Segunda tentativa porque a primeira atribuía fala, intenção ou recado a um terceiro ("seu marido mandou um oi",
     # r-20260919220216-7cfa59) — ADR-055. O prompt diz o que corrigir; a trava é `social/conteudo.py`.

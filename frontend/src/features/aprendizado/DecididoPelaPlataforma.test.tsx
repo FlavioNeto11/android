@@ -6,7 +6,7 @@ import { FakeBackend, byRole, click, installBrowserStubs, json, setValue, text, 
 import { useToastStore } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
-import { fatosDoMotivo, lerRelatorioDaAprovacao, rotuloDaRegra, tituloDaDecisao } from './aprovacaoAutomatica';
+import { fatosDoMotivo, lerRelatorioDaAprovacao, motivoEmPalavras, rotuloDaRegra, tituloDaDecisao } from './aprovacaoAutomatica';
 
 /**
  * 30.55: a seção "Decidido pela plataforma" da aba Para aprovar, contra o contrato do adendo v1.24
@@ -279,5 +279,23 @@ describe('30.66: os textos da aba Para aprovar', () => {
     expect(text(revisar)).not.toContain('Publicado antes da regra de aprovação (tem efeito externo)');
     // o item com OUTRO motivo segue dizendo o dele
     expect(text(revisar)).toContain('Publicado antes da regra de aprovação (tem texto de pessoa): vale revisar.');
+  });
+});
+
+describe('31.164: o motivo da régua nas telas que o repetem', () => {
+  const CRU = 'auto:qa_revisar v1 — classe B; app com.pocqa.messenger (qa); 3 a favor, 0 contra; 0 falhas de reprodução; saúde pouca_amostra; parecer pedir_evidencia (lr-fe4a3e84376de6ac)';
+  const EM_PALAVRAS = 'Confirmação automática do que estava em revisão — classe B; app com.pocqa.messenger (qa); 3 a favor, 0 contra; 0 falhas de reprodução; saúde: Pouca amostra; parecer do curador: pedir mais evidência';
+
+  it('põe o nome da regra e os rótulos dos fatos, com ou sem o prefixo da confirmação', () => {
+    expect(motivoEmPalavras(CRU)).toBe(EM_PALAVRAS);
+    expect(motivoEmPalavras(`confirmado que fica: ${CRU}`)).toBe(EM_PALAVRAS);
+    expect(motivoEmPalavras('auto:qa_para_aprovar v1 — saúde saudavel; parecer manter'))
+      .toBe('Aprovação automática do que esperava você — saúde: Saudável; parecer do curador: manter como está');
+  });
+
+  it('o parecer sem o id da revisão também ganha o rótulo, e o motivo digitado por uma pessoa fica como está', () => {
+    expect(fatosDoMotivo('auto:qa_revisar v1 — parecer pedir_evidencia')).toBe('parecer do curador: pedir mais evidência');
+    expect(motivoEmPalavras('conferi o alvo; saúde pouca_amostra mesmo')).toBe('conferi o alvo; saúde pouca_amostra mesmo');
+    expect(motivoEmPalavras('aprendida da IA; em prova (sombra)')).toBe('aprendida da IA; em prova (sombra)');
   });
 });

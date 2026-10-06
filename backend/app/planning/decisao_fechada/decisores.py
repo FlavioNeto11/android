@@ -191,7 +191,8 @@ class DecisorJev:
        Uma exceção que não é do transporte sobe sem marca: a porta a grava como "não se sabe".
     """
 
-    def __init__(self, transporte: TransporteDoJev, *, conferir_gasto: Callable[[PedidoDeDecisao], None] | None,
+    def __init__(self, transporte: TransporteDoJev, *,
+                 conferir_gasto: Callable[[PedidoDeDecisao], Callable[[], None] | None] | None,
                  registrar: Callable[[ChamadaAoJev], int | None] | None = None) -> None:
         self._transporte = transporte
         self._conferir_gasto = conferir_gasto
@@ -205,8 +206,17 @@ class DecisorJev:
         enviaveis = [p for p in pedido.perguntas if p.tipo in TIPOS_NO_FIO]
         if not enviaveis:
             return resultado_de_fallback(pedido, "desligado", postado=False)
-        if not self._gasto_liberado(pedido):
+        liberar = self._gasto_liberado(pedido)
+        if liberar is None:
             raise FalhaDeDecisao("orcamento", postado=False)
+        # A reserva do teto da operação (`conferir_gasto`) fica até o custo gravado (`_anotar`), também na falha.
+        try:
+            return self._decidir_liberado(pedido, enviaveis, timeout_s, t0)
+        finally:
+            liberar()
+
+    def _decidir_liberado(self, pedido: PedidoDeDecisao, enviaveis: list[Pergunta], timeout_s: float,
+                          t0: float) -> ResultadoDeDecisao:
         restante = timeout_s - (time.perf_counter() - t0)
         if restante <= 0:
             raise FalhaDeDecisao("rede", postado=False)      # a `rede` sem POST que a 083 passa a separar
@@ -233,16 +243,17 @@ class DecisorJev:
         return ResultadoDeDecisao(respostas, tokens=uso.input_tokens + uso.output_tokens, usd=uso.cost_usd,
                                   ms=uso.latency_ms, postado=True, ai_call_id=ai_call_id)
 
-    def _gasto_liberado(self, pedido: PedidoDeDecisao) -> bool:
-        """Sem conferência ligada, ou com ela quebrada, não sai: o gasto que ninguém conferiu não acontece."""
+    def _gasto_liberado(self, pedido: PedidoDeDecisao) -> Callable[[], None] | None:
+        """Sem conferência ligada, ou com ela quebrada, não sai: o gasto que ninguém conferiu não acontece. Liberado,
+        devolve quem solta a reserva da chamada em voo (uma função vazia quando não há reserva)."""
         if self._conferir_gasto is None:
-            return False
+            return None
         try:
-            self._conferir_gasto(pedido)
+            liberar = self._conferir_gasto(pedido)
         except Exception:  # noqa: BLE001 - régua estourada (AIError de orçamento ou de saldo) ou leitura quebrada
             log.warning("decisao_fechada: gasto do Jev barrado ou não conferido; nada sai")
-            return False
-        return True
+            return None
+        return liberar if callable(liberar) else (lambda: None)
 
     def _anotar(self, pedido: PedidoDeDecisao, *, ok: bool, motivo: FallbackReason | None = None,
                 uso: ProviderUsage | None = None, ms: float = 0.0) -> int | None:

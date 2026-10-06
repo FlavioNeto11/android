@@ -12,10 +12,11 @@ Sem operação (execução avulsa, ou a 124 ainda fora do banco), tudo devolve `
 """
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 
-from app.db import Database
+from app.db import Database, loads
 from app.modules.pedidos.domain import conhecimento_da_operacao as dominio
 from app.modules.pedidos.domain import memoria as dominio_memoria
 from app.modules.pedidos.infrastructure.relatorios import parece_segredo
@@ -26,13 +27,18 @@ log = logging.getLogger(__name__)
 #: Quanto tempo a leitura do alvo vale para as outras execuções da mesma operação. Uma operação de 30 agentes em ondas
 #: dura menos que isso; depois, a próxima execução relê (o post pode ter mudado) e a leitura nova vira a da operação.
 FRESCOR_DA_LEITURA_S = 6 * 3600
+#: O aviso no `draft_meta.fatos_da_operacao.conhecimento_ids` da etapa quando a lista não foi gravada (revisão do PR 480).
+NAO_GRAVADOS = "nao_gravados"
 DIVERGENTE = "a leitura deste agente difere da leitura da operação (o alvo mudou ou é outro); a execução seguiu com a própria tela"
 
 
 @dataclass(frozen=True)
 class Fatos:
     texto: str
-    quantos: int
+    quantos: int                                  # o que o texto recebeu da operação: o bloco e a leitura igual na tela
+    refs: tuple[str, ...] = ()                    # o mesmo, como referência (`fato:<chave>`, 31.163): conhecimento_ids
+    assunto: str = ""                             # `operacoes.assunto` (124): vai ao escritor junto da intenção
+    ids_gravados: bool = True                     # False: `conhecimento_ids` não foi gravado (aviso no `draft_meta`)
 
 
 class ConhecimentoDaOperacao:
@@ -118,4 +124,31 @@ class ConhecimentoDaOperacao:
         agora = self.db.agora_iso()
         no_bloco = ([e for e in entradas if e.chave != dominio.CHAVE_DO_CONTEUDO]
                     if leitura in (dominio.PRIMEIRA, dominio.IGUAL) else entradas)
-        return Fatos(dominio.bloco(no_bloco, agora=agora), dominio.quantos(entradas, agora=agora))
+        refs = [dominio.ref(e) for _, e in dominio.escolhidas(no_bloco, agora=agora)]
+        if leitura in (dominio.PRIMEIRA, dominio.IGUAL):
+            # a leitura da operação está na `<tela>` deste agente: também é conhecimento da operação usado no texto
+            refs[:0] = [dominio.ref(e) for e in entradas if e.chave == dominio.CHAVE_DO_CONTEUDO and e.vale(agora)]
+        return Fatos(dominio.bloco(no_bloco, agora=agora), len(refs), tuple(refs), self._assunto(operacao_id))
+
+    def _assunto(self, operacao_id: str) -> str:
+        """`operacoes.assunto` (124), em uma linha. Sem a tabela, sem a coluna ou sem assunto: vazio."""
+        if "operacoes" not in self.db.tables() or "assunto" not in self.db.columns("operacoes"):
+            return ""
+        return " ".join(str(self.db.scalar("SELECT assunto FROM operacoes WHERE id=?", (operacao_id,)) or "").split())
+
+    def marcar_conhecimento_usado(self, run_id: str, refs: tuple[str, ...]) -> bool:
+        """`resultado.conhecimento_ids` do alvo (contrato da operação, 124: "vem da frente de Aprendizado"): os fatos da
+        operação que foram ao texto deste agente, gravados em `operacao_alvos.marcas`. São os fatos ENTREGUES ao
+        texto; quais o modelo usou de fato, ele não diz. Sem a tabela da 124, ou sem o alvo, não faz nada."""
+        if not refs or "marcas" not in self.db.columns("operacao_alvos"):
+            return False
+        row = self.db.one("SELECT operacao_id, profile_id, marcas FROM operacao_alvos WHERE run_id=?", (run_id,))
+        if row is None:
+            return False
+        marcas = loads(row["marcas"], {}) or {}
+        bruto = marcas.get("conhecimento_ids")
+        antes = [str(x) for x in bruto] if isinstance(bruto, list) else []
+        marcas["conhecimento_ids"] = list(dict.fromkeys([*antes, *refs]))
+        self.db.execute("UPDATE operacao_alvos SET marcas=? WHERE operacao_id=? AND profile_id=?",
+                        (json.dumps(marcas, ensure_ascii=False), row["operacao_id"], row["profile_id"]))
+        return True

@@ -49,6 +49,10 @@ O que você roda é prova **simulada**: diga `arquivo::teste` e nunca escreva qu
 
 ## Quando a tarefa é revisar um PR
 
+**Olhe primeiro a branch de origem.** Em PR de branch que não é `copilot/*` (`feat/*`, `fix/*`, `docs/*`, `ci/*`), que é de uma sessão da
+coordenação, NÃO aponte violação de "Não edite à mão", de "um PR por tarefa", de "uma área por PR" nem de `[skip ci]`: esses limites são
+do agente que escreve a partir de uma issue (ver `AGENTS.md`, "A quem valem estes limites"). Revise só pelos critérios abaixo.
+
 Aponte, com arquivo e linha, e diga a gravidade:
 
 1. caminho em que falha, tempo esgotado ou resposta vazia viram sucesso;

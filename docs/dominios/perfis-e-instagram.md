@@ -139,6 +139,14 @@ Rotas: `GET/PUT /api/instagram/profiles/{id}/policy`, `GET /api/instagram/policy
 `GET /api/instagram/policy-defaults` (os limites-padrão que o editor de grupo usa como ponto de partida),
 `POST/GET/PUT/DELETE /api/instagram/policy-groups[/{group_id}]`.
 
+**Grupo "Liberado" (28.61, por dado):** o dono pediu às 19:46Z de 06/10 um grupo "com tudo liberado para todas as
+personas". O grupo `grp-AX6yCTUvW7eZFmn2` foi criado no central às 19:57Z pela rota acima.
+- Tudo `autonomous`, exceto `LOGOUT`, que segue manual. Os limites são os do grupo Operação.
+- Membros: 11 das 16 personas. As 5 do grupo Recuperação ficaram fora, porque é proteção de conta em recuperação.
+- Continuam os pisos de aprovação do código (DM fria, feed, pedido entre personas, família, repetição, exceção do 30.65)
+  e as recusas, os tetos, a conduta e a proteção de conta.
+- Desfazer é devolver cada persona ao grupo anterior (o backup foi gravado antes) e apagar o grupo.
+
 ## Aprovações
 
 `backend/app/social/approvals.py` — `ApprovalStore` guarda o pedido (`pending_approvals`, migração
@@ -232,6 +240,16 @@ Caminhos relativos a `backend/app/`.
     página de senha sem o cabeçalho da conta, a geometria a tomaria por usuário). A senha é conferida no instante de
     digitar, na MESMA árvore do campo (`_fill_password`: o `locate` do canal sensível só acha campo no pacote da conta
     ou no navegador no site permitido); fora disso o canal recusa com a mensagem fixa dele.
+
+- **Troca de conta declarada (31.155, [ADR-080](../decisoes.md#adr-080--troca-de-conta-declarada-pelo-app-o-motor-sai-da-conta-aberta-e-entra-na-esperada-pelo-cofre))**:
+  `troca: {sair: [{tela, sinal_do_botao}, …]}` no `sessao.yaml`. O primeiro passo é numa tela `autenticada`; os
+  seguintes, numa `autenticada` ou `intersticial` (a confirmação). Com ela, a conta errada lida pelo motor deixa de ser
+  caso de pessoa: `SessaoDeclarada._trocar_de_conta` primeiro confere, sem tocar, se a esperada pode entrar
+  (`_antes_de_sair`: senha com consentimento, teto diário, parada, canal sensível). Depois toca a saída, um candidato
+  por passo; invalida as sessões do app no aparelho e só entra pelo `_login` de sempre se a tela for a de login. Qualquer
+  desvio vira `wrong_account` com o motivo. O "Verificar conta" nunca troca. O app que declara a troca ganha
+  `AppDefinition.account_switch`, e só nele `quem_ja_serve` aceita outra persona do mesmo app no aparelho; o índice
+  único da 051 saiu na migração 126. **Nenhum app do parque declara a troca hoje**, nem o Instagram.
 
   O `type_secret` do executor (`taskqueue/executor.py::_conferir_destino`) ainda recusa a Custom Tab (exige o pacote da
   conta em primeiro plano): só o motor de sessão a aceita. O `telas.yaml`/`sessao.yaml` do Outlook veio no 23.8
@@ -486,6 +504,15 @@ traz `sugestoes_prontas` (`partida.pronta`): `text_visible` fica `text_visible`;
 `desc==` pelo campo em que o texto está na tela seguinte, e o botão aplica `kind` e `value` juntos. A prévia não para
 mais no 409 `duplicate_command`: devolve `code` e `message` num 200, com a frase na 1ª linha de `warnings`, junto das
 pós-condições e dos avisos. O `save` segue recusando com o 409.
+
+**A proposta que já evita a pós-condição da partida (31.148, adendo v1.93).** O 31.122 e o 31.142 pegavam o erro
+depois. O `propose` passa a mandar à IA, por entrada:
+- os textos da tela inteira (`screen_elements`, texto e descrição);
+- os que apareceram depois dela (`partida.textos_da_proposta`).
+
+Todo dado da persona vira marcador, inclusive o alvo tocado. A regra no papel do sistema: a pós-condição não pode estar
+na tela da 1ª entrada da etapa. Se a IA ainda propuser uma que já vale, a proposta já volta com `pos_condicoes_ja_valem`
+e as sugestões prontas. A pessoa decide.
 
 **O fluxo nascido de uma prova (31.130, migração 122, adendo v1.87).** Os fluxos ensinados em provas de sessão
 ficavam, no Livro e em Salvas, iguais a um fluxo real desligado por uma pessoa. A sessão aberta com

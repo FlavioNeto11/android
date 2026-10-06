@@ -24,7 +24,7 @@ from typing import Any, Protocol
 from ..models import (PERSONA_BIO_FIELDS, PERSONA_POLITICS_FIELDS, PERSONA_RELIGION_FIELDS, PERSONA_VOICE_TRAITS,
                       ROTULOS_DE_CRENCA, BioBeliefs, InteractionDTO, MemoryItemDTO, PersonaVoiceDTO, RelationshipDTO,
                       SocialContextDTO, ThreadSummaryDTO)
-from ..modules.identity.domain.persona import CONDUTA_DAS_CRENCAS, USO_DA_PERSONA, valor_no_caminho, vazio_profundo
+from ..modules.identity.domain.persona import USO_DAS_CRENCAS, USO_DA_PERSONA, valor_no_caminho, vazio_profundo
 from ..util import sem_marcacao
 from .memory import MemoryStore, estimate_tokens
 from ..db import Row
@@ -88,7 +88,7 @@ def linhas_de_crencas(crencas: BioBeliefs) -> list[str]:
         if secao:
             linhas += [f"{titulo}:", *secao]
     if linhas:
-        linhas.append(f"conduta sobre crenças: {CONDUTA_DAS_CRENCAS}")
+        linhas.append(f"uso das crenças: {USO_DAS_CRENCAS}")
     return linhas
 
 

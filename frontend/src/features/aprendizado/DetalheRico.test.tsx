@@ -360,6 +360,24 @@ describe('evidência inválida e reaprendido (30.23)', () => {
     expect(passoDaTransicao({ from: 'published', to: 'published', tipo: 'confirmacao' })).toBe('Confirmado que fica');
   });
 
+  it('31.164: a trilha mostra o motivo da régua em palavras, na confirmação e na transição, e não mexe no motivo de uma pessoa', async () => {
+    await mostrar(detalhe({
+      trilha: [
+        { id: 1, from: 'candidate', to: 'validated', reason: 'auto:qa_para_aprovar v1 — saúde saudavel; parecer manter (lr-ade33a6e8607eaeb)', decided_by: 'sistema',
+          decided_at: '2026-10-02T20:46:54Z', run_id: null, tipo: null, run_invalidada: null },
+        { id: 2, from: 'published', to: 'published', reason: 'confirmado que fica: x', decided_by: 'sistema', decided_at: '2026-10-03T10:00:00Z',
+          run_id: null, tipo: 'confirmacao', run_invalidada: null, motivo_da_pessoa: 'auto:qa_revisar v1 — classe B; app com.pocqa.messenger (qa); 3 a favor, 0 contra; 0 falhas de reprodução; saúde pouca_amostra; parecer pedir_evidencia (lr-fe4a3e84376de6ac)' },
+        { id: 3, from: 'validated', to: 'published', reason: 'conferi o alvo; saúde pouca_amostra mesmo', decided_by: 'Ana Ribeiro',
+          decided_at: '2026-10-03T11:00:00Z', run_id: null, tipo: null, run_invalidada: null },
+      ],
+    }));
+    const trilha = text(container.querySelector('[aria-label="Trilha"]')!);
+    expect(trilha).toContain('Aprovação automática do que esperava você — saúde: Saudável; parecer do curador: manter como está');
+    expect(trilha).toContain('Confirmação automática do que estava em revisão — classe B; app com.pocqa.messenger (qa); 3 a favor, 0 contra; 0 falhas de reprodução; saúde: Pouca amostra; parecer do curador: pedir mais evidência');
+    expect(trilha).toContain('conferi o alvo; saúde pouca_amostra mesmo');
+    expect(trilha).not.toMatch(/auto:qa_|lr-ade33|pedir_evidencia/);
+  });
+
   it('a receita reaprendida diz o que reaprende, com link, e por que espera o dono', async () => {
     const t = await mostrar(detalhe({
       item: { ref: '120', state: 'validated', side_effect: false, requires_owner: true,

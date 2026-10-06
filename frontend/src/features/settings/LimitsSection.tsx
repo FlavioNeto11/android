@@ -1,7 +1,7 @@
 import { Save, SlidersHorizontal, Undo2 } from 'lucide-react';
-import { useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
-import type { Health, Settings } from '../../api/types';
+import type { Health, PolicyGroup, Settings } from '../../api/types';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Checkbox, Field, Select, TextInput } from '../../components/Field';
@@ -12,7 +12,7 @@ import { toast, toastError } from '../../store/toasts';
 import { ServersLimits } from './ServersLimits';
 import styles from './Settings.module.css';
 import {
-  LIMIT_GROUPS, buildSettingsPatch, limitToText, type ChoiceField, type LimitDrafts, type LimitsFormState, type ToggleField,
+  LIMIT_GROUPS, buildSettingsPatch, limitToText, type ChoiceField, type GroupPickField, type LimitDrafts, type LimitsFormState, type ToggleField,
 } from './validation';
 
 const EMPTY_FORM: LimitsFormState = { errors: {}, patch: {}, dirtyCount: 0 };
@@ -103,8 +103,10 @@ export function LimitsSection() {
         )}
       >
         <div className={styles.limitGroups}>
-          {LIMIT_GROUPS.map((g) => (g.soSeOServidorManda ? { ...g, fields: g.fields.filter((f) => typeof settings[f.key] === 'number') } : g))
-            .filter((g) => g.fields.length > 0).map((g) => (
+          {LIMIT_GROUPS.map((g) => (g.soSeOServidorManda
+            ? { ...g, fields: g.fields.filter((f) => typeof settings[f.key] === 'number'), toggles: g.toggles?.filter((t) => typeof settings[t.key] === 'boolean'), grupos: g.grupos?.filter((p) => typeof settings[p.key] === 'string') }
+            : g))
+            .filter((g) => g.fields.length > 0 || (g.toggles?.length ?? 0) > 0 || (g.grupos?.length ?? 0) > 0).map((g) => (
             // Desabilitado enquanto salva: a resposta zera os rascunhos, e o que a pessoa mexesse com o PUT em voo sumia sem
             // ser salvo nem avisado (29.115). O `fieldset` desabilita todos os campos do grupo de uma vez.
             <fieldset key={g.title} className={styles.limitGroup} disabled={saving}>
@@ -124,6 +126,14 @@ export function LimitsSection() {
                   field={c}
                   value={drafts[c.key] ?? settings[c.key]}
                   onChange={(value) => setDrafts((d) => ({ ...d, [c.key]: value }))}
+                />
+              ))}
+              {(g.grupos ?? []).map((p) => (
+                <GroupRow
+                  key={p.key}
+                  field={p}
+                  value={drafts[p.key] ?? settings[p.key] ?? ''}
+                  onChange={(value) => setDrafts((d) => ({ ...d, [p.key]: value }))}
                 />
               ))}
               <div className={styles.limitFields}>
@@ -163,6 +173,39 @@ function ToggleRow({ field, checked, onChange }: { field: ToggleField; checked: 
       <Checkbox label={field.label} checked={checked} aria-describedby={hintId} onChange={(e) => onChange(e.target.checked)} />
       <p id={hintId} className={styles.fieldsetHint}>{field.hint}</p>
     </div>
+  );
+}
+
+/**
+ * Grupo de política pelo NOME (o servidor guarda o id). A lista vem de `GET /instagram/policy-groups`; sem ela
+ * (falha ou ainda carregando) o id continua editável como texto, para a configuração nunca ficar presa à tela.
+ * Um id salvo que já não existe aparece como tal, em vez de sumir da caixa e parecer "Nenhum".
+ */
+function GroupRow({ field, value, onChange }: { field: GroupPickField; value: string; onChange: (value: string) => void }) {
+  const [grupos, setGrupos] = useState<PolicyGroup[] | 'erro' | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    api.listPolicyGroups().then((g) => vivo && setGrupos(g), () => vivo && setGrupos('erro'));
+    return () => { vivo = false; };
+  }, []);
+
+  const lista = Array.isArray(grupos) ? [...new Map(grupos.map((g) => [g.id, g])).values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) : null;
+  const foraDaLista = value !== '' && !lista?.some((g) => g.id === value);
+  const hint = grupos === 'erro'
+    ? `${field.hint} Não consegui listar os grupos agora: informe o id do grupo (vazio = desligado).`
+    : field.hint;
+  return (
+    <Field label={field.label} hint={hint}>
+      {(ids) => grupos === 'erro' ? (
+        <TextInput id={ids.id} aria-describedby={ids.describedBy} value={value} onChange={(e) => onChange(e.target.value)} />
+      ) : (
+        <Select id={ids.id} aria-describedby={ids.describedBy} value={value} disabled={lista === null} onChange={(e) => onChange(e.target.value)}>
+          <option value="">Nenhum (desligado)</option>
+          {foraDaLista ? <option value={value}>{lista ? `${value} — grupo não encontrado` : value}</option> : null}
+          {(lista ?? []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </Select>
+      )}
+    </Field>
   );
 }
 

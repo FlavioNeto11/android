@@ -1334,12 +1334,12 @@ it('a biografia marca o que vai ao modelo, e as Crenças vão também, com a reg
   expect(doCampo(/^Profissão/)).toContain('vai ao modelo');
   expect(doCampo(/^Onde trabalha/)).toContain('vai ao modelo');
   expect(doCampo(/^Primeiro nome/)).not.toContain('vai ao modelo');
-  // Crença não é mais um campo de texto solto: é a seção rica, marcada como indo ao modelo, com a conduta.
+  // Crença não é mais um campo de texto solto: é a seção rica, marcada como indo ao modelo, sem regra de conteúdo (06/10).
   expect(allByRole('textbox', /^Religião|^Política/)).toHaveLength(0);
   const secao = byRole('group', /^\s*Religião/).closest('section') as HTMLElement;
   expect(text(secao)).toContain('Crenças');
   expect(text(secao)).toContain('vai ao modelo');
-  expect(text(secao)).toContain('não faz propaganda política nem religiosa, não pede voto nem adesão');
+  expect(text(secao)).not.toContain('propaganda');
   // A v1 (texto) aparece como o resumo da religião; política nula não inventa nada.
   expect(text(byRole('group', /^\s*Religião/))).toContain('católica');
   expect(text(byRole('group', /^\s*Política/))).toContain('Sem política registrada');

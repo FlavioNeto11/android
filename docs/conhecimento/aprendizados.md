@@ -2799,3 +2799,26 @@ um teste guarda as opções usadas.
 
 **Aplicabilidade.** Vigente. Medida de latência de uma etapa: por controle manual ou fluxo religado com motivo, nunca por um run que depende de um fluxo desligado.
 Comando `adb`/`am` novo: ler o `help` do aparelho e travar as opções num teste.
+
+### K-pendente (número pela orquestradora; pós-prova) — A gravação crua do ensino guarda o texto tocado, inclusive dado da persona
+
+**Contexto.** Ensino do 31.160 (06/10, android-01, conta real), com o alvo = o perfil da própria persona que ensinava.
+
+**O que se viu.** O fluxo, a receita e as entradas do Livro saíram limpos: 0 valores da persona, porque o 31.87 troca o
+dado dela pelo marcador. Mas o `GET /api/training/{id}` devolve a gravação crua: o `target.text` do resultado de busca
+tocado e o `target.desc` do ladrilho ("Photo by …"). Isso deu 7 ocorrências do handle e do nome. Também a busca pelo
+próprio @ fez o 31.87 trocar `{username}` por `{conta_instagram_usuario}`, e a receita ensinada virou "abrir o PRÓPRIO
+perfil": ela só serve a quem ensinou.
+
+Medido na tentativa 3 da onda 1: a receita nem é consultada. A identidade dela é `perfil de {conta_instagram_usuario}
+aberto`, e a da etapa planejada para o MESMO alvo é `perfil de {perfil} aberto`. Na execução, `para_hash` recebe o
+parâmetro do objetivo e o dado da persona com o mesmo valor, e o empate fica com o parâmetro, que entra primeiro no
+dicionário. Gravar a receita na chave genérica não resolve: ela digita o @ da persona e abriria o perfil errado em outro
+alvo.
+
+**O que fazer (pós-prova).** Mascarar o dado da persona também em `inputs[].target` e `screen_lines` na leitura da
+sessão (o painel não precisa do valor). E avisar na prévia quando um parâmetro do comando some porque o exemplo é o
+dado da própria persona: quem ensina pode querer o alvo genérico.
+
+**Aplicabilidade.** Vigente até a correção. Para ensinar navegação até um perfil, use um alvo que não seja a persona que
+ensina.

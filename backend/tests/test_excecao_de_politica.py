@@ -206,6 +206,10 @@ def test_a_criacao_recusa_prazo_longo_alvo_vazio_e_perfil_desconhecido(tmp_path:
 # ------------------------------------------------------------------ porta do despacho, rota e cartão
 def _cenario(harness: Any) -> tuple[dict[str, str], TestClient]:
     state = harness.state
+    # ADR-081: com a configuração de fábrica (até 10 contas por alvo, conta nossa viva fora da contagem) a exceção não
+    # teria o que tirar. Ela existe para a instalação que volta à regra do ADR-055 de 02/10: uma conta por alvo, conta
+    # nossa dentro.
+    state.settings.update({"frota_conta_nossa_fora_da_regra": False, "frota_max_contas_por_alvo": 1})
     pids = _execucao_em_duas_contas(state, "SEND_MESSAGE", {"username": ALVO, "content": "oi", "content_verbatim": "true"})
     state.social.create_profile(ProfileCreate(username=ALVO.lstrip("@"), password=SENHA))
     state.social_repo.record_interaction(pids["android-02"], type=InteractionType.dm_sent.value, direction="outbound",

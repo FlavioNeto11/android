@@ -80,6 +80,8 @@ export interface Alvo {
   parou_em: EstagioId | null;
   /** Frase curta e estável do backend (`sem conta`, `sem sessão`, `aguarda aprovação`…); nunca um código. */
   motivo: string | null;
+  /** O que a execução do alvo gastou em IA (US$); `null` sem execução ou com o backend anterior. */
+  custo_usd: number | null;
   resultado: Resultado | null;
 }
 
@@ -106,7 +108,8 @@ export interface ResumoDaOperacao {
   capacidade: Capacidade;
 }
 
-export interface CustoDaOperacao { pesquisa_usd: number; alvos_usd: number; total_usd: number }
+/** Cada parte que o backend não mandou fica `null` ("não informado"), nunca zero. */
+export interface CustoDaOperacao { pesquisa_usd: number | null; alvos_usd: number | null; total_usd: number | null }
 
 export interface Operacao extends ResumoDaOperacao {
   alvos: Alvo[];
@@ -124,6 +127,8 @@ export interface Operacao extends ResumoDaOperacao {
 
 const texto = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null);
 const inteiro = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.trunc(v) : null);
+/** US$ não negativo e finito; o resto é "não informado", nunca zero. */
+const usdOuNulo = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
 const registro = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
 function lerAcaoFinal(v: unknown): AcaoFinal | null {
@@ -154,7 +159,8 @@ export function lerAlvo(v: unknown, posicao: number): Alvo | null {
     profile_id: texto(o.profile_id), persona: texto(o.persona_nome), app_id: texto(o.app_id), account_id: texto(o.account_id),
     conta: texto(o.conta), instance_id: texto(o.instance_id), run_id: texto(o.run_id),
     estagio: lerEstagio(o.estagio), estagios, estado: isEstadoDoAlvo(o.estado) ? o.estado : null, parou_em: lerEstagio(o.parou_em), motivo: texto(o.motivo),
-    resultado: lerResultado(o.resultado),
+    // `custo_usd` do alvo é o dado (existe mesmo antes do texto); o do `resultado` é só a reserva (resultado é null antes do texto).
+    custo_usd: usdOuNulo(o.custo_usd) ?? usdOuNulo(registro(o.resultado)?.custo_usd), resultado: lerResultado(o.resultado),
   };
 }
 
@@ -221,9 +227,9 @@ export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
   if (!resumo || !o) return null;
   const alvos = (Array.isArray(o.alvos) ? o.alvos : []).map(lerAlvo).filter((a): a is Alvo => a !== null);
   const c = registro(o.custo);
-  const usd = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
-  const total = c ? usd(c.total_usd) : null;
-  const custo = c && total !== null ? { pesquisa_usd: usd(c.pesquisa_usd) ?? 0, alvos_usd: usd(c.alvos_usd) ?? 0, total_usd: total } : null;
+  const usd = usdOuNulo;
+  const partes = c ? { pesquisa_usd: usd(c.pesquisa_usd), alvos_usd: usd(c.alvos_usd), total_usd: usd(c.total_usd) } : null;
+  const custo = partes && Object.values(partes).some((x) => x !== null) ? partes : null;
   return {
     ...resumo, alvos, custo, max_usd: usd(o.max_usd), assunto: texto(o.assunto),
     fontes: (Array.isArray(o.fontes) ? o.fontes : []).filter((f): f is string => typeof f === 'string' && f.trim() !== ''), exemplo,

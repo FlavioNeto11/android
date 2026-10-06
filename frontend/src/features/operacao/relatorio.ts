@@ -5,10 +5,18 @@
  * custo. Consolidado: a faixa de capacidade, os custos (pesquisa, agentes, total e o teto), as falhas agrupadas por motivo e os
  * textos irmãos. O agente aparece pelo RÓTULO da persona: nunca o @ da conta, o id da conta nem login ou e-mail.
  */
+import { type AvisoDaOperacao, type ItemAprendido, type LeituraDoAprendizado, licoesDaOperacao } from './aprendizadoDaOperacao';
 import {
   ESTAGIOS, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, estagioDeParada, rotuloDaAcao, rotuloDoEstagio,
   type Alvo, type EstagioId, type Operacao,
 } from './modelo';
+
+/**
+ * Os motivos e resumos que o BACKEND escreve podem citar o @ de uma conta ("conta(s) da frota já mexeram com @fulano"): no relatório
+ * o @ sai (visto no central real, onda 1 de 06/10). O texto gerado pela persona não é metadado e não passa por aqui.
+ */
+export const semArroba = (s: string): string => s.replace(/@[A-Za-z0-9._]+/g, '@[omitido]');
+const semArrobaOuNulo = (s: string | null): string | null => (s === null ? null : semArroba(s));
 
 export type Conferencia = 'sim' | 'nao' | 'nao_conferida' | 'sem_acao';
 
@@ -32,12 +40,27 @@ export interface AgenteDoRelatorio {
   texto: string | null;
   evidencia_id: number | null;
   acao_final: { tipo: string | null; verificada: Conferencia; evidencia_id: number | null } | null;
-  /** O contrato v1.94 só traz o custo da operação inteira; por agente não há número, e o relatório não inventa. */
-  custo_usd: null;
+  /** O que a execução do agente gastou em IA; `null` sem execução (ou backend anterior), nunca zero inventado. */
+  custo_usd: number | null;
 }
 
 export interface FalhaPorMotivo { motivo: string; parou_em: string | null; agentes: number }
 export interface GrupoDeTextos { texto: string; agentes: string[] }
+
+/** O item aprendido no relatório: a persona vai pelo RÓTULO (nunca o id), e `null` é a operação inteira. */
+export type ItemDoRelatorio = Omit<ItemAprendido, 'persona'> & { persona: string | null };
+export interface AprendizadoNoRelatorio {
+  disponivel: boolean;
+  /** Por que não há aprendizado, quando `disponivel` é falso; nunca vira "nada aprendido". */
+  motivo: string | null;
+  gerado_em: string | null;
+  perguntas: { chave: string; titulo: string; veio: boolean; itens: ItemDoRelatorio[] }[];
+  /** 31.167: as lições de qualquer pergunta, separadas pela evidência efetiva (a mesma regra da aba Aprendizado). */
+  licoes: { reforcadas: ItemDoRelatorio[]; contestadas: ItemDoRelatorio[] };
+  /** 31.167: as etapas cujo conhecimento recebido não foi gravado (campo `avisos` do central), sem @ de conta. */
+  avisos: AvisoDaOperacao[];
+  nao_coberto: { chave: string; motivo: string }[];
+}
 
 export interface RelatorioDaOperacao {
   gerado_em: string;
@@ -53,12 +76,14 @@ export interface RelatorioDaOperacao {
   falhas_por_motivo: FalhaPorMotivo[];
   textos: { total: number; distintos: number; repetidos: GrupoDeTextos[]; lista: { agente: string; texto: string }[] };
   agentes: AgenteDoRelatorio[];
+  /** As 10 perguntas do dono sobre o que a operação ensinou (adendo v1.96). */
+  aprendizado: AprendizadoNoRelatorio;
   /** O que o relatório NÃO tem, para ninguém tomar a ausência por zero. */
   limites: string[];
 }
 
 const LIMITES = [
-  'Custo por agente: o contrato da operação traz só o custo da operação inteira (pesquisa, agentes e total).',
+  'Custo por agente "não informado": o alvo ainda não tinha execução (ou o central é anterior ao custo por alvo).',
   'O relatório vem do estado da operação no momento em que foi gerado; uma operação em curso muda depois.',
 ];
 
@@ -75,7 +100,7 @@ function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
     aparelho: a.instance_id,
     estado: a.estado ? ROTULO_DO_ESTADO[a.estado] : 'não informado',
     parou_em: parou ? rotuloDoEstagio(parou) : null,
-    motivo: a.motivo,
+    motivo: semArrobaOuNulo(a.motivo),
     estagios: ESTAGIOS.map((e, i) => ({
       estagio: e.id, rotulo: e.rotulo, em: alcancados.get(e.id) ?? null, alcancado: alcancados.has(e.id) || i <= ate,
     })),
@@ -83,16 +108,39 @@ function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
     texto: a.resultado?.texto ?? null,
     evidencia_id: a.resultado?.evidencia_id ?? null,
     acao_final: acao ? { tipo: acao.tipo, verificada: conferenciaDaAcao(a), evidencia_id: acao.evidencia_id } : null,
-    custo_usd: null,
+    custo_usd: a.custo_usd,
   };
 }
 
-export function montarRelatorio(op: Operacao, agora: Date = new Date()): RelatorioDaOperacao {
+const SEM_LEITURA: LeituraDoAprendizado = { situacao: 'indisponivel', motivo: 'O aprendizado da operação não foi lido para este relatório.' };
+
+function aprendizadoDoRelatorio(op: Operacao, leitura: LeituraDoAprendizado): AprendizadoNoRelatorio {
+  if (leitura.situacao === 'indisponivel') {
+    return { disponivel: false, motivo: semArroba(leitura.motivo), gerado_em: null, perguntas: [], licoes: { reforcadas: [], contestadas: [] }, avisos: [], nao_coberto: [] };
+  }
+  const rotulos = new Map(op.alvos.flatMap((a) => (a.profile_id && a.persona ? [[a.profile_id, a.persona] as const] : [])));
+  const a = leitura.aprendizado;
+  const perguntas = a.perguntas.map((p) => ({
+      chave: p.chave, titulo: p.titulo, veio: p.veio,
+      // Persona sem rótulo conhecido na operação vira "uma persona", nunca o id.
+      itens: p.itens.map((i) => ({
+        ...i, persona: i.persona === null ? null : rotulos.get(i.persona) ?? 'uma persona',
+        resumo: semArrobaOuNulo(i.resumo), motivo: semArrobaOuNulo(i.motivo), fontes: i.fontes.map((f) => ({ ...f, resumo: semArrobaOuNulo(f.resumo) })),
+      })),
+  }));
+  return {
+    disponivel: true, motivo: null, gerado_em: a.gerado_em, nao_coberto: a.nao_coberto.map((n) => ({ ...n, motivo: semArroba(n.motivo) })),
+    perguntas, licoes: licoesDaOperacao(perguntas),
+    avisos: a.avisos.map((v) => ({ ...v, aviso: semArroba(v.aviso) })),
+  };
+}
+
+export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendizado: LeituraDoAprendizado = SEM_LEITURA): RelatorioDaOperacao {
   const agentes = op.alvos.map(agenteDe);
   const falhas = new Map<string, FalhaPorMotivo>();
   for (const a of agentes) {
     if (a.estado !== ROTULO_DO_ESTADO.bloqueado && a.estado !== ROTULO_DO_ESTADO.cancelado) continue;
-    const motivo = a.motivo ?? 'sem motivo informado';
+    const motivo = a.motivo ?? 'sem motivo informado';        // já sem @ (agenteDe)
     const chave = `${motivo}|${a.parou_em ?? ''}`;
     const atual = falhas.get(chave);
     if (atual) atual.agentes += 1;
@@ -112,13 +160,14 @@ export function montarRelatorio(op: Operacao, agora: Date = new Date()): Relator
       id: op.id, comando: op.command, app_id: op.app_id, acao_final: op.acao_final, status: op.status ? ROTULO_DO_STATUS[op.status] : null,
       criada_em: op.created_at, encerrada_em: op.finished_at, assunto: op.assunto, fontes: op.fontes,
     },
-    capacidade: { ...c },
+    capacidade: { ...c, motivos: c.motivos.map((m) => ({ ...m, motivo: semArroba(m.motivo) })) },
     custo: {
       pesquisa_usd: op.custo?.pesquisa_usd ?? null, alvos_usd: op.custo?.alvos_usd ?? null, total_usd: op.custo?.total_usd ?? null, teto_usd: op.max_usd,
     },
     falhas_por_motivo: [...falhas.values()].sort((x, y) => y.agentes - x.agentes || x.motivo.localeCompare(y.motivo)),
     textos: { total: comTexto.length, distintos: grupos.size, repetidos: [...grupos.values()].filter((g) => g.agentes.length > 1), lista: comTexto },
     agentes,
+    aprendizado: aprendizadoDoRelatorio(op, aprendizado),
     limites: LIMITES,
   };
 }
@@ -127,6 +176,39 @@ const usd = (n: number | null): string => (n === null ? 'não informado' : `US$ 
 const num = (n: number | null): string => (n === null ? 'não informado' : String(n));
 /** O texto numa citação, linha a linha, para uma quebra de linha do texto não virar título do Markdown. */
 const citacao = (t: string): string => t.split(/\r?\n/).map((l) => `> ${l}`).join('\n');
+
+function itemEmMarkdown(i: ItemDoRelatorio): string {
+  const marca = i.confianca === 'confirmado' ? 'confirmado' : i.confianca === 'hipotese' ? 'hipótese' : 'confiança não informada';
+  const onde = [i.tipo, i.escopo, i.persona ?? 'operação inteira'].filter(Boolean).join(', ');
+  const contagem = i.a_favor === null && i.contra === null ? null : `${num(i.a_favor)} a favor, ${num(i.contra)} contra`;
+  const extra = [i.inferida ? 'inferida' : null, contagem, i.evidencias ? `${i.evidencias} ${i.evidencias === 1 ? 'evidência' : 'evidências'}` : null, i.motivo ? `motivo: ${i.motivo}` : null]
+    .filter(Boolean).join('; ');
+  const fontes = i.fontes.length ? ` Fontes: ${i.fontes.map((f) => f.resumo ?? f.ref).join(' | ')}.` : '';
+  return `- [${marca}] ${i.resumo ?? i.ref} (${onde}${extra ? `; ${extra}` : ''}).${fontes}`;
+}
+
+/** As 10 perguntas do dono: cada uma com os itens ou o "nada nesta operação"; o que não está disponível diz o motivo. */
+function aprendizadoEmMarkdown(a: AprendizadoNoRelatorio): string[] {
+  const linhas = ['', '## O que a operação ensinou (as 10 perguntas)', ''];
+  if (!a.disponivel) return [...linhas, `Não disponível: ${a.motivo ?? 'motivo não informado'}`];
+  for (const p of a.perguntas) {
+    linhas.push(`### ${p.titulo}`, '');
+    if (!p.veio) linhas.push('Esta pergunta não veio na resposta do central.');
+    else if (p.itens.length === 0) linhas.push('Nada registrado nesta operação.');
+    else linhas.push(...p.itens.map(itemEmMarkdown));
+    linhas.push('');
+  }
+  if (a.nao_coberto.length) {
+    linhas.push('### O que o central não responde', '', ...a.nao_coberto.map((n) => `- ${n.chave}: ${n.motivo}`), '');
+  }
+  linhas.push('### Lições reforçadas', '', ...(a.licoes.reforcadas.length ? a.licoes.reforcadas.map(itemEmMarkdown) : ['Nenhuma.']), '');
+  linhas.push('### Lições contestadas', '', ...(a.licoes.contestadas.length ? a.licoes.contestadas.map(itemEmMarkdown) : ['Nenhuma.']), '');
+  if (a.avisos.length) {
+    linhas.push('### Avisos sobre o conhecimento que o texto recebeu', '',
+      ...a.avisos.map((v) => `- ${[v.run_id ? `execução ${v.run_id}` : null, v.step_id ? `etapa ${v.step_id}` : null].filter(Boolean).join(', ') || 'etapa não informada'}: ${v.aviso}`), '');
+  }
+  return linhas;
+}
 
 export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
   const o = r.operacao;
@@ -161,6 +243,7 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
     for (const g of r.textos.repetidos) linhas.push('', citacao(g.texto), '', `Agentes: ${g.agentes.join(', ')}.`);
   }
   for (const t of r.textos.lista) linhas.push('', `**${t.agente}**`, '', citacao(t.texto));
+  linhas.push(...aprendizadoEmMarkdown(r.aprendizado));
   linhas.push('', '## Agentes');
   for (const a of r.agentes) {
     linhas.push('', `### ${a.agente}`, '', `- **Estado:** ${a.estado}${a.parou_em ? `, parou em ${a.parou_em}` : ''}${a.motivo ? ` (${a.motivo})` : ''}`);
@@ -169,7 +252,7 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
     linhas.push(a.acao_final
       ? `- **Ação final:** ${rotuloDaAcao(a.acao_final.tipo)} · verificada: ${ROTULO_DA_CONFERENCIA[a.acao_final.verificada]} · evidência: ${a.acao_final.evidencia_id ?? 'nenhuma'}`
       : '- **Ação final:** sem ação final');
-    linhas.push(`- **Evidência da tela lida:** ${a.evidencia_id ?? 'nenhuma'}`, `- **Custo:** ${usd(a.custo_usd)} (o contrato traz só o total da operação)`);
+    linhas.push(`- **Evidência da tela lida:** ${a.evidencia_id ?? 'nenhuma'}`, `- **Custo de IA:** ${usd(a.custo_usd)}`);
     linhas.push('', '| estágio | hora |', '|---|---|');
     for (const e of a.estagios) linhas.push(`| ${e.rotulo} | ${e.em ?? (e.alcancado ? 'alcançado, sem hora' : 'não alcançado')} |`);
     if (a.texto) linhas.push('', 'Texto gerado:', '', citacao(a.texto));

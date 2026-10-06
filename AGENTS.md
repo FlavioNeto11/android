@@ -15,6 +15,17 @@ Instruções para agentes de código (GitHub Copilot cloud agent, Codex e outros
 mais restritivo).** O `CLAUDE.md` manda commitar direto na `main`; para você vale PR. Ele fala em implantar, reiniciar o
 servidor e rodar scripts do plano; nada disso é seu.
 
+## A quem valem estes limites
+
+Os limites deste arquivo e dos perfis (a lista "Nunca edite", "um PR por tarefa", "uma área por PR", `[skip ci]`, prova só simulada)
+descrevem o trabalho do **agente que ESCREVE código a partir de uma issue**: o PR dele sai de uma branch `copilot/*`.
+
+**Quando você REVISA um PR**, olhe a branch de origem. Se não for `copilot/*` (por exemplo `feat/*`, `fix/*`, `docs/*`, `ci/*`), o PR
+é de uma sessão da coordenação, com dono, plano e suíte próprios: **não aponte violação** da lista "Nunca edite", de "um PR por
+tarefa", de "uma área por PR" nem do `[skip ci]`, e revise só pelos critérios de "Quando a tarefa é revisar um PR" do
+`copilot-instructions.md` (falha que vira sucesso, segredo, SQLite x PostgreSQL, teste que passa errado, migração e contrato, erro
+engolido no painel). Num PR `copilot/*`, todos os limites valem como estão.
+
 ## Perfis de agente (`.github/agents/`)
 
 | Perfil | Área | Arquivo |
