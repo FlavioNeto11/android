@@ -84,6 +84,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-075](#adr-075--site-institucional-na-raiz-e-contato-público-que-chega-ao-telegram-do-dono-emenda-ao-adr-073) | Site institucional na raiz e contato público que chega ao Telegram do dono: emenda ao ADR-073 (item 29.77) | proposto (Portal, 04/10; site e contato desligados) | 04/10 |
 | [ADR-077](#adr-077--um-caminho-só-de-ensino-o-modo-treinamento) | Um caminho só de ensino: o Modo treinamento (item 31.91) | aceito (dono, 05/10; F2 e a tela do F1 implementados) | 05/10 |
 | [ADR-078](#adr-078--o-ensino-v2-sai-em-dois-tempos-obsoleto-e-contado-agora-apagado-depois-de-14-dias-sem-uso) | O ensino v2 sai em dois tempos: obsoleto e contado agora, apagado depois de 14 dias sem uso (item 31.91, T1 e T2) | aceito (orquestradora, 06/10; T1 implementado) | 06/10 |
+| [ADR-079](#adr-079--comando-remoto-nos-notebooks-da-rede-um-módulo-de-controle-desligado-de-fábrica) | Comando remoto nos notebooks da rede: um módulo de controle, desligado de fábrica (item 29.154) | aceito (dono, 06/10; fatia 1 implementada, desligada) | 06/10 |
 
 ---
 
@@ -5575,3 +5576,68 @@ estado, reversível por não apagar linha); isso soma uma chamada ao contador, r
 **Relação.** [ADR-077](#adr-077--um-caminho-só-de-ensino-o-modo-treinamento); [dominios/skills.md](dominios/skills.md);
 `backend/app/modules/skills/infrastructure/contador_do_ensino_v2.py`, `backend/app/modules/skills/presentation/router.py`,
 `backend/app/state.py` (`features.ensino_v2_chamadas`); teste `backend/tests/test_ensino_v2_obsoleto.py`.
+
+
+## ADR-079 — Comando remoto nos notebooks da rede: um módulo de controle, desligado de fábrica
+
+**Data:** 06/10/2026 · **Estado:** aceito (pedido do dono por cartão, 06/10/2026 11:45Z; desenho aceito pela
+orquestradora às 12:34Z; item 29.154). Fatia 1 (agente, contrato, rota, tabela, evento e cancelamento) implementada e
+provada `simulated`. **Desligado**: nada roda num notebook antes do deploy, do procedimento escrito em
+[worker.md](worker.md#comando-remoto-29154-adr-079) e do sim explícito do dono para ligar.
+
+**Contexto.** Para operar o notebook da LAN (medir, ajustar, diagnosticar), a central só tem dois caminhos: o agente do
+worker, que executa os verbos fechados de aparelho (`create`, `start`, `stop`, …), e uma sessão manual por SSH. O que
+não é verbo de aparelho (ler a lista de processos, uma pasta, um log, uma configuração) fica sem caminho auditado.
+
+**Decisão do dono.** A frase do dono no cartão, literal, em 06/10/2026: "Crie um modulo para rodar no outro notebook (e
+em qualquer outro notebook controlado por você) aonde você possa executar qualquer tipo de comando que precisar de forma
+remota, como se fosse um modulo de controle".
+
+**Desenho** (da frente Android, revisado pelo `revisor-segredos`; não é fala do dono):
+
+1. **Mensagens próprias, por máquina.** A feature negociada `remote_exec` traz `exec`, `exec_cancel` e `exec_result_ack`
+   (central → agente) e `exec_ack` e `exec_result` (agente → central). Não usa o `Dispatch` de aparelho. Agente antigo
+   ignora o tipo novo; o fio congelado mudou de propósito, com o checklist em `tests/test_contratos_do_worker.py`.
+2. **Três interruptores, todos desligados de fábrica:** `comando_remoto.ativo` no `config.yaml` do central (vale na
+   subida), o interruptor POR WORKER no painel (`PUT /api/workers/{id}/comando-remoto`, ao vivo: o agente renegocia) e
+   `comando_remoto: true` no `worker.yaml` do agente. O próprio central (`LocalWorker`) fica de fora.
+3. **Quem pede é uma sessão nomeada.** O token da API é compartilhado e o loopback passa sem token; as rotas do comando
+   remoto exigem sessão de operador e gravam o nome dela, nunca um nome vindo do corpo. No host público do portal elas
+   respondem 404, mesmo com credencial.
+4. **Nada de segredo pela linha.** Linha com cara de credencial é recusada antes de ser gravada ou despachada, no central e
+   de novo no agente (`linha_de_comando_suspeita`). No banco, no evento e no diário do agente vai só o texto redigido; a
+   saída é redigida inteira ANTES de ser cortada (começo e fim, 64 KiB por fluxo). Chave privada em PEM entrou na
+   redação geral.
+5. **Auditoria é pré-condição.** Um evento `worker.comando` por pedido e por desfecho (quem pediu, linha redigida,
+   código, duração); sem auditoria, o comando não corre. A saída fica só em `worker_comandos` (migração 123), com
+   retenção de 30 dias e no máximo 200 comandos por worker.
+6. **Contenção no agente.** Um comando por vez por máquina (fila de 4 no central); prazo padrão 60 s e máximo 600 s;
+   estouro ou cancelamento mata a árvore de processos; ambiente do filho por lista de permissão
+   (`ambiente_dos_filhos`); 30 comandos por minuto por operador.
+7. **Incerteza nunca é repetida.** Canal, agente ou central que cai no meio deixa o comando `uncertain`; o que estava
+   na fila vira `rejected`; a mesma `idempotency_key` devolve o mesmo registro.
+
+**Riscos aceitos** (por escrito, como pediu a orquestradora):
+
+- O comando roda na MESMA conta do agente e, por isso, consegue ler a credencial do worker (`worker-credential.json`).
+  Defesa real: a redação da chave na saída, a rotação da credencial pelo painel e o fato de ela só valer pelo túnel.
+- "Nada em conta real" é **política, não controle técnico**: o agente tem `adb`, e um comando pode alcançar um aparelho
+  com conta real logada. O que existe é a trilha por comando e o interruptor desligado. Ligar pede o sim explícito do dono.
+
+**O que não entra:** nada exposto fora da LAN e do túnel; nada roda com a credencial do dono nem com segredo do cofre
+(senha continua só pelo canal sensível, ADR-040); sem terminal interativo, sem transferência de arquivo, sem instalar
+serviço ou tarefa pelo módulo. **A IA fica fora** até o portão externo da Fase 33 e um sim do dono: comando remoto
+disparável por injeção de prompt seria execução no notebook. É decisão da orquestradora, levada ao dono como informação.
+
+**Consequências.**
+
+- Um caminho auditado e desligável para operar as máquinas do parque, no lugar da sessão manual por SSH.
+- Quando o portão externo (Fase 33) existir, `comando` é operação que avança (domínio `worker`); a entrada fica numa função
+  só (`ComandoRemotoDoCentral.pedir`), para o portão entrar sem espalhar.
+- As próximas fatias: o terminal com histórico na tela de Infraestrutura (2), o cliente para sessões nomeadas (3) e o
+  procedimento e a prova real (4).
+
+**Relação.** [worker.md](worker.md#comando-remoto-29154-adr-079); [ADR-040](#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial);
+`backend/app/worker/comando.py`, `backend/app/workers/comando_remoto.py`, `backend/app/contracts/worker/protocol.py`
+(`FEATURE_COMANDO_REMOTO`), `backend/app/modules/fleet/presentation/workers.py`, `backend/migrations/123_comando_remoto.sql`;
+testes `backend/tests/test_comando_remoto_agente.py` e `backend/tests/test_comando_remoto_central.py`.

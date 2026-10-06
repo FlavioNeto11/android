@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 #: Marca que o agente põe no progresso quando o aparelho está ESPERANDO vaga na fila de boot dele, e que o
 #: central procura para adiar o prazo. Mora aqui porque é contrato entre os dois lados: a fila do worker existe
@@ -133,6 +133,11 @@ FEATURE_RESERVA_DE_BOOT = "boot_reservations"
 #: (um cliente UiAutomation por vez) e a derrubaria; com `appium: local` a árvore já é produzida na origem; e o XML
 #: tem de chegar ao central de qualquer jeito, porque é lá que a tela sensível é classificada.
 FEATURE_OBSERVACAO_LOCAL = "observe_local"
+#: `remote_exec` (29.154): o agente executa UM comando de linha de comando nesta máquina a pedido do central e devolve
+#: saída, erro e código de saída. É por MÁQUINA (não por aparelho), por isso tem mensagens próprias (`Exec`,
+#: `ExecResult`) em vez do `Dispatch`. Só é anunciada com `comando_remoto: true` no `worker.yaml` E só é aceita com o
+#: interruptor do central ligado: os dois lados nascem desligados.
+FEATURE_COMANDO_REMOTO = "remote_exec"
 
 
 class Hello(BaseModel):
@@ -345,6 +350,81 @@ class Refused(BaseModel):
     message: str
 
 
+# ---------------------------------------------------------------- comando remoto (`remote_exec`, 29.154)
+EXEC_TIMEOUT_PADRAO_S = 60.0
+EXEC_TIMEOUT_MAX_S = 600.0
+#: Teto da saída devolvida por fluxo (stdout, stderr), já redigida. Passando dele guarda-se o começo e o fim.
+EXEC_SAIDA_MAX_BYTES = 64 * 1024
+EXEC_LINHA_MAX = 8192
+EXEC_ARGV_MAX = 64
+ESTADOS_DE_EXEC = ("succeeded", "failed", "timed_out", "cancelled", "uncertain")
+
+
+class Exec(BaseModel):
+    """Pedido de um comando ao agente. Só vai para quem teve `remote_exec` aceito no `welcome`.
+
+    Exatamente um entre `linha` (interpretada pelo shell fixo do agente) e `argv` (executada direto, sem shell: tem
+    preferência). A linha crua é a que o central JÁ conferiu (sem credencial); o agente confere de novo e nunca a
+    grava em disco: o diário guarda só a versão redigida do desfecho."""
+
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["exec"] = "exec"
+    exec_id: str = Field(min_length=8, max_length=64)
+    linha: str | None = Field(default=None, min_length=1, max_length=EXEC_LINHA_MAX)
+    argv: list[str] | None = Field(default=None, min_length=1, max_length=EXEC_ARGV_MAX)
+    pasta: str | None = Field(default=None, max_length=1024)
+    timeout_s: float = Field(default=EXEC_TIMEOUT_PADRAO_S, gt=0, le=EXEC_TIMEOUT_MAX_S)
+    saida_max_bytes: int = Field(default=EXEC_SAIDA_MAX_BYTES, ge=1024, le=EXEC_SAIDA_MAX_BYTES)
+
+    @model_validator(mode="after")
+    def _um_so_modo(self) -> "Exec":
+        if (self.linha is None) == (self.argv is None):
+            raise ValueError("informe `linha` OU `argv`, só um dos dois")
+        if self.argv is not None and any(len(a) > EXEC_LINHA_MAX or "\x00" in a for a in self.argv):
+            raise ValueError("argumento grande demais ou com byte nulo")
+        return self
+
+
+class ExecCancel(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["exec_cancel"] = "exec_cancel"
+    exec_id: str
+
+
+class ExecAck(BaseModel):
+    """O agente aceitou e o processo JÁ está de pé (ou foi recusado: `recusa` diz por quê e nada rodou)."""
+
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["exec_ack"] = "exec_ack"
+    exec_id: str
+    recusa: str | None = Field(default=None, max_length=300)
+
+
+class ExecResult(BaseModel):
+    """O desfecho. `stdout`/`stderr` já saem REDIGIDOS do agente (redigir antes de cortar) e cortados em
+    `saida_max_bytes`; `truncated` diz que houve corte. `uncertain`: o agente caiu ou perdeu o filho de vista no
+    meio: o comando pode ter feito efeito, e nunca é repetido às cegas."""
+
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["exec_result"] = "exec_result"
+    exec_id: str
+    estado: Literal["succeeded", "failed", "timed_out", "cancelled", "uncertain"]
+    exit_code: int | None = None
+    stdout: str = Field(default="", max_length=EXEC_SAIDA_MAX_BYTES * 2)
+    stderr: str = Field(default="", max_length=EXEC_SAIDA_MAX_BYTES * 2)
+    truncated: bool = False
+    duration_ms: int = Field(default=0, ge=0)
+    error: str | None = Field(default=None, max_length=300)
+
+
+class ExecResultAck(BaseModel):
+    """O central confirma que RECEBEU o desfecho do `exec_id`; só então o agente o tira do diário."""
+
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["exec_result_ack"] = "exec_result_ack"
+    exec_id: str
+
+
 # ---------------------------------------------------------------- observação na origem (`observe_local`)
 #: Teto do corpo de UMA imagem no canal de mídia. Um JPEG cheio de 1080×2400 a q72 fica em centenas de KB; a
 #: prévia leva cheia + miniatura. 8 MiB é folga para tela grande sem abrir a porta para qualquer tamanho.
@@ -453,15 +533,16 @@ def desempacotar_midia(corpo: bytes) -> tuple[dict[str, object], dict[str, bytes
     return cab, partes
 
 
-MensagemDoWorker = Hello | Heartbeat | Ack | Progress | Result | ObserveResult
+MensagemDoWorker = Hello | Heartbeat | Ack | Progress | Result | ObserveResult | ExecAck | ExecResult
 #: Mensagens que o worker envia. Tipado como união (e não como o `ModelMetaclass` que o mypy infere) para
 #: `parse_upstream` devolver o modelo certo sem `type: ignore`.
 UPSTREAM: dict[str, type[MensagemDoWorker]] = {
     "hello": Hello, "heartbeat": Heartbeat, "ack": Ack, "progress": Progress, "result": Result,
-    "observe_result": ObserveResult}
+    "observe_result": ObserveResult, "exec_ack": ExecAck, "exec_result": ExecResult}
 #: Mensagens que o central envia.
 DOWNSTREAM = {"welcome": Welcome, "dispatch": Dispatch, "cancel": Cancel, "refused": Refused,
-              "result_ack": ResultAck, "limits": Limits, "observe_image": ObserveImage}
+              "result_ack": ResultAck, "limits": Limits, "observe_image": ObserveImage,
+              "exec": Exec, "exec_cancel": ExecCancel, "exec_result_ack": ExecResultAck}
 
 
 def parse_upstream(raw: dict[str, object]) -> MensagemDoWorker:

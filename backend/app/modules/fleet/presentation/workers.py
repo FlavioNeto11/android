@@ -12,12 +12,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.db import loads
 from app.devices.manager import DeviceRuntime
 from app.devices.verbs import sem_hibernacao
 from app.models import (AdoptDeviceBody, InstanceState, ServerLimitsDTO, ServerLimitsPatch, ServerLimitValues,
                         WorkerDeviceProposal, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
+from app.security.access import host_de, publicos_de
+from app.workers.comando_remoto import ErroDeComando
+from app.workers.comando_remoto import dto as dto_do_comando
 from app.workers.registry import INSCRICAO_TTL_S, WorkerError
 
 if TYPE_CHECKING:
@@ -280,3 +284,93 @@ async def rotate_worker_credential(request: Request, worker_id: str) -> object:
         raise _err(404 if exc.code == "not_found" else 409, exc.code, exc.message) from exc
     s.bus.emit("log", f"Credencial do worker {worker_id} rotacionada no painel.", level="warn")
     return {"credential": token}
+
+
+# ---------------------------------------------------------------- comando remoto (29.154, ADR-079)
+# Todas as rotas abaixo exigem SESSÃO NOMEADA de operador: o token da API é compartilhado e prova conhecimento, não
+# identidade (`main.py`), e o loopback passa sem token; para um comando executado numa máquina o nome de quem pediu é
+# obrigatório e vem sempre da sessão, nunca do corpo. E nenhuma delas existe no host PÚBLICO do portal: lá respondem 404
+# mesmo com credencial (`/api/workers` passa com credencial no host público; esta família não pode).
+
+
+class ComandoRemotoBody(BaseModel):
+    """Exatamente um entre `linha` e `argv`. A resposta NÃO repete a linha: ela pode ter sido digitada com pressa."""
+
+    model_config = ConfigDict(extra="forbid")
+    linha: str | None = Field(default=None, max_length=8192)
+    argv: list[str] | None = Field(default=None, max_length=64)
+    pasta: str | None = Field(default=None, max_length=1024)
+    timeout_s: float | None = Field(default=None, gt=0, le=600)
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
+
+
+class ComandoRemotoInterruptorBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ligado: bool
+
+
+def _acesso_ao_comando_remoto(request: Request) -> str:
+    """Devolve o nome do operador, ou recusa: 404 no host público, 401 sem sessão nomeada."""
+    s = _st(request)
+    if host_de(request.headers.get("host")) in publicos_de(s.cfg):
+        raise _err(404, "not_found", "Not Found")
+    operador = getattr(request.state, "operador", None)
+    if not operador:
+        raise _err(401, "sem_operador", "o comando remoto exige uma sessão de operador nomeada")
+    return str(operador)
+
+
+def _erro_do_comando(exc: ErroDeComando) -> HTTPException:
+    return _err(exc.status, exc.code, exc.message)
+
+
+@router.get("/workers/{worker_id}/comando-remoto", response_model=None)
+async def comando_remoto_interruptor(request: Request, worker_id: str) -> object:
+    _acesso_ao_comando_remoto(request)
+    return _st(request).workers.comandos.estado_do_interruptor(worker_id)
+
+
+@router.put("/workers/{worker_id}/comando-remoto", response_model=None)
+async def comando_remoto_ligar(request: Request, worker_id: str, body: ComandoRemotoInterruptorBody) -> object:
+    operador = _acesso_ao_comando_remoto(request)
+    try:
+        return _st(request).workers.comandos.definir_interruptor(worker_id, body.ligado, operador)
+    except ErroDeComando as exc:
+        raise _erro_do_comando(exc) from exc
+
+
+@router.post("/workers/{worker_id}/comandos", status_code=202, response_model=None)
+async def comando_remoto_pedir(request: Request, worker_id: str, body: ComandoRemotoBody) -> object:
+    operador = _acesso_ao_comando_remoto(request)
+    try:
+        row = await _st(request).workers.comandos.pedir(
+            worker_id, operador, linha=body.linha, argv=body.argv, pasta=body.pasta, timeout_s=body.timeout_s,
+            idempotency_key=body.idempotency_key)
+    except ErroDeComando as exc:
+        raise _erro_do_comando(exc) from exc
+    return {"id": row["id"], "worker_id": row["worker_id"], "state": row["state"], "created_at": row["created_at"]}
+
+
+@router.get("/workers/{worker_id}/comandos", response_model=None)
+async def comando_remoto_listar(request: Request, worker_id: str, limite: int = 50) -> object:
+    _acesso_ao_comando_remoto(request)
+    return {"items": [dto_do_comando(r, com_saida=False)
+                      for r in _st(request).workers.comandos.listar(worker_id, limite)]}
+
+
+@router.get("/workers/{worker_id}/comandos/{exec_id}", response_model=None)
+async def comando_remoto_ler(request: Request, worker_id: str, exec_id: str) -> object:
+    _acesso_ao_comando_remoto(request)
+    try:
+        return dto_do_comando(_st(request).workers.comandos.obter(worker_id, exec_id))
+    except ErroDeComando as exc:
+        raise _erro_do_comando(exc) from exc
+
+
+@router.post("/workers/{worker_id}/comandos/{exec_id}/cancelar", response_model=None)
+async def comando_remoto_cancelar(request: Request, worker_id: str, exec_id: str) -> object:
+    operador = _acesso_ao_comando_remoto(request)
+    try:
+        return dto_do_comando(await _st(request).workers.comandos.cancelar(worker_id, exec_id, operador))
+    except ErroDeComando as exc:
+        raise _erro_do_comando(exc) from exc

@@ -262,12 +262,16 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
                   swagger_ui_oauth2_redirect_url="/api/docs/oauth2-redirect")
 
     @app.exception_handler(RequestValidationError)
-    async def validacao_sem_segredo(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    async def validacao_sem_segredo(request: Request, exc: RequestValidationError) -> JSONResponse:
         """O 422 padrão devolve o `input` de cada erro — e o `input` de um campo de credencial é o próprio valor
         (medido: `credentials={"Nome Ruim": "…"}` voltava com a senha em claro). Erro cujo caminho passa por um
-        nome sensível sai sem `input`/`ctx`; o resto do corpo fica no formato de sempre."""
+        nome sensível sai sem `input`/`ctx`; o resto do corpo fica no formato de sempre.
+
+        O comando remoto (29.154) também: a linha digitada pode ter levado um segredo, e a rota promete não repeti-la.
+        Ali nenhum erro devolve `input`, qualquer que seja o campo."""
+        comando_remoto = "/comandos" in request.url.path or request.url.path.endswith("/comando-remoto")
         erros = [{k: v for k, v in e.items() if k not in ("input", "ctx")}
-                 if any(chave_sensivel(p) for p in e.get("loc", ())) else e for e in exc.errors()]
+                 if comando_remoto or any(chave_sensivel(p) for p in e.get("loc", ())) else e for e in exc.errors()]
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(erros)})
     # O despacho de comandos recusa sem conhecer HTTP; aqui a recusa vira o 4xx de sempre (`api.err`).
     app.add_exception_handler(DespachoRecusado, recusa_do_despacho)  # type: ignore[arg-type]

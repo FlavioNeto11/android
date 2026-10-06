@@ -71,16 +71,22 @@ def test_as_sete_rotas_de_releases_seguem_no_app_e_cada_uma_uma_vez() -> None:
         ("POST", "/api/releases/{release_id}/approve-signature"), ("POST", "/api/releases/{release_id}/lifecycle")])
 
 
-def test_as_dez_rotas_de_workers_e_limites_seguem_no_app_e_cada_uma_uma_vez() -> None:
+def test_as_rotas_de_workers_e_limites_seguem_no_app_e_cada_uma_uma_vez() -> None:
     """15.15 F4e: `/api/workers*` e `/api/servers/*/limits` saíram de `api.py` para `modules/fleet/presentation/workers.py`; o
-    conjunto (método e modelo) é o de antes. A literal de três segmentos não é engolida pelo modelo de um."""
+    conjunto (método e modelo) é o de antes. A literal de três segmentos não é engolida pelo modelo de um. 29.154
+    acrescentou as seis do comando remoto (interruptor, pedir, listar, ler e cancelar), no mesmo módulo."""
     rotas = [r for r in _rotas_na_ordem() if r[1].startswith(("/api/workers", "/api/servers"))]
     esperadas = [
         ("GET", "/api/workers"), ("GET", "/api/servers/limits"), ("PUT", "/api/servers/{worker_id}/limits"),
         ("GET", "/api/workers/{worker_id}"), ("GET", "/api/workers/devices/unbound"),
         ("POST", "/api/workers/{worker_id}/devices/adopt"), ("POST", "/api/workers/enroll"),
         ("POST", "/api/workers/{worker_id}/maintenance"), ("DELETE", "/api/workers/{worker_id}"),
-        ("POST", "/api/workers/{worker_id}/rotate-credential")]
+        ("POST", "/api/workers/{worker_id}/rotate-credential"),
+        # 29.154, comando remoto
+        ("GET", "/api/workers/{worker_id}/comando-remoto"), ("PUT", "/api/workers/{worker_id}/comando-remoto"),
+        ("POST", "/api/workers/{worker_id}/comandos"), ("GET", "/api/workers/{worker_id}/comandos"),
+        ("GET", "/api/workers/{worker_id}/comandos/{exec_id}"),
+        ("POST", "/api/workers/{worker_id}/comandos/{exec_id}/cancelar")]
     assert sorted(rotas) == sorted(esperadas)
     assert not _casa("/api/workers/{worker_id}", "/api/workers/devices/unbound")        # 1 segmento x 3: sem sobreposição
 
