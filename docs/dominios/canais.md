@@ -428,6 +428,16 @@ avisos depois da faxina"), e a trava cai no TTL.
   começa com "Falta" ou "faltam"; se a evidência não tem essa oração, fica a frase que já está no cartão e só a parte da prova
   muda; sem nenhuma das duas, vale o detalhe ou o bloqueio do estado. O item implementado que o plano classificou depois do
   registro do deploy vale como implantado quando a evidência real cita o commit que o central rodava ("central 7154d7cf") ou o número do deploy ("deploy 32", só até o último deploy). Para o item sem commit de suíte nem citação no deploy (a hora de classificação engana: rodada do registro, resultado segurado), vale o primeiro commit que pôs o cabeçalho dele no CHANGELOG: o menor deploy cujo commit do central o contém; no primeiro deploy com commit conhecido a linha diz "o deploy 38 ou um anterior", porque não dá para separar "entrou nele" de "já estava antes". O id que o CHANGELOG do deploy diz que "fica para o corte N" não conta como citado nele.
+- **Regra, o marco do deploy sai do CHANGELOG (28.64):** `python .claude/trello/marco.py [--deploy NN] [--aplicar]` lê o
+  registro "## AAAA-MM-DD — Deploy NN (...)" (o mais recente, ou o NN pedido) e monta o cartão de Programa › Marcos e deploys
+  (título `📅 Deploy NN · DD/MM HH:MMZ (sha) · resumo · migrações`; corpo com "Para quem não é técnico", "Por que importa",
+  "Técnico", prova `real`, prova `simulated`, `not_run` e fonte) e as leituras de M9 (contagens da suíte do registro) e M8
+  (`GET /api/instances` por estado, leitura pontual). Nada é inventado: os campos vêm do texto do registro, o que falta sai
+  como "não consta", e as duas frases genéricas levam a marca "(gerado do CHANGELOG; a Canais pode editar)". Tudo passa por
+  `redacao.redigir`. Idempotente: acha o marco pelo prefixo `📅 Deploy NN ` na lista (cria ou atualiza, nunca duplica) e a
+  leitura nova troca o prefixo `**Leitura de ...**` da antiga. M8 e M9 só mudam quando o deploy é o mais recente do
+  CHANGELOG. Sem `--aplicar` só imprime (a rede do ensaio é só leitura); `--offline` não usa rede. Testes:
+  `.claude/trello/test_marco.py` (simulated, trechos fictícios no formato do CHANGELOG).
 - **Hoje:** `.claude/trello/reconciliar.py` (testes em `.claude/trello/test_reconciliar.py`), a rotina da skill `trello` e o
   aviso no fim do `aplicar` do plano. As exceções acima (sem estado, "Espera você") ficam num relato para o dono ver.
 - **No produto:** nada ainda. A Central só tem o espelho dos avisos; levar a reconciliação para dentro dela é decisão a
