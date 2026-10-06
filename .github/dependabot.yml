@@ -1,0 +1,19 @@
+# Dependabot (29.157): só as actions dos workflows, uma vez por mês e num PR único. O PR dele é ACHADO a conferir pela
+# frente GitHub (nunca se mescla sozinho). Não cobre pip nem npm: dependência do produto muda pelo plano, não por bot.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    groups:
+      actions:
+        patterns:
+          - "*"
+    labels:
+      - "ci"
+    commit-message:
+      prefix: "ci(deps)"
