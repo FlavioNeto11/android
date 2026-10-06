@@ -6375,19 +6375,15 @@
   "31.13": {
    "id": "31.13",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Ponta ed0059e8. Simulado: backend/tests/test_decisao_fechada_apps.py::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
+   "proof": "real",
+   "evidence": "06/10/2026 ~02:24Z, deploy 44. Sombra, nada a ver na tela: GET /api/aprendizado/pendentes total 0 (curador modo on), /api/approvals?status=pending 0, /api/pedidos?estado=aguardando_pessoa 0; nenhuma pergunta nova apareceu no Painel nem no Aprendizado ('Para aprovar' vazio). Avisos não lidos 17 (os mesmos 17 do badge de Pedidos no começo), 4 deles pedem a pessoa (não comparei com antes do deploy).",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_decisao_fechada_apps.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-44",
+   "grupo": "portal-percurso-deploy-44",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T02:15:59+00:00"
+   "quando": "2026-10-06T02:27:18+00:00"
   },
   "31.22": {
    "id": "31.22",
@@ -9294,20 +9290,16 @@
   "31.89": {
    "id": "31.89",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Backend c5af41b1 (Jev) e painel 94404535 (Portal). Simulado: backend/tests/test_fluxos_parecidos_e_colisao.py::*, frontend/src/features/aprendizado/AprendizadoPage.test.tsx::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
+   "proof": "real",
+   "evidence": "06/10/2026 ~02:19Z a ~02:23Z, deploy 44. F4: no comando do Painel, 'pesquise nas configurações e ligue o histórico das notificações' (sem fluxo que case) mostrou 'Nenhum fluxo casa este comando. Isto parece com: “pesquise nas configurações e ligue o histórico de notificações”' (POST /api/flows/similar -> suggestions [{ref f-fe11676e54e3, score 1}], matches false); o clique na sugestão pôs o molde no comando e focou o campo, sem executar nada (nenhuma execução criada). Notas medidas: 'pesquisar nas configurações e ligar o histórico de notificações' (verbos trocados) NÃO dá sugestão (abaixo do mínimo 0,9); 'notificação' no singular dá 0,98; sem acento, com maiúscula e ponto, ou com 'agora' no fim dão 1. F5 (colisão ao salvar): POST /api/training/trn-jWX0J4JOi_TMUqlu/preview com uma proposta MONTADA À MÃO (sem IA) de molde 'pesquise nas configurações e ligue o histórico de {alvo}' devolveu 200 e warnings: 'O comando … colide com a habilidade “pesquise nas configurações e ligue o histórico de notificações” (f-fe11676e54e3): os dois casam o mesmo texto e o que já existe passa na frente…'; nada foi gravado e a sessão foi descartada.",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_fluxos_parecidos_e_colisao.py",
-    "frontend/src/features/aprendizado/AprendizadoPage.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-44",
+   "nota": "Limite da prova do F5: foi pela API (preview), não pela tela de revisão, porque a revisão só se abre com proposta da IA (paga); a exibição do aviso na revisão do salvar não foi vista.",
+   "grupo": "portal-percurso-deploy-44",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T02:15:59+00:00"
+   "quando": "2026-10-06T02:27:18+00:00"
   },
   "29.132": {
    "id": "29.132",
@@ -10203,73 +10195,56 @@
   "31.110": {
    "id": "31.110",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Ponta 10935d97. Simulado: backend/tests/test_treino_refazer_aparelho_sem_resposta.py::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
+   "proof": "real",
+   "evidence": "06/10/2026 ~02:21Z, deploy 44. Com o android-04 PARADO (Parar no Ciclo de vida; state stopped), a barra do Modo treinamento caiu no modo só revisão e 'Refazer receitas' da sessão salva trn-1nuBzRHaAkM09f6K devolveu 'Nenhuma receita nova. Sem receita: Abrir a busca das Configurações (já havia receita ativa para esta etapa; o aparelho não respondeu agora à leitura da versão do app, então a chave não foi conferida de novo); … ', ou seja, o motivo verdadeiro 'o aparelho não respondeu' em vez de 'sem receita'. O 04 foi religado depois (online ~02:24Z).",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_treino_refazer_aparelho_sem_resposta.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-44",
+   "grupo": "portal-percurso-deploy-44",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T02:15:59+00:00"
+   "quando": "2026-10-06T02:27:18+00:00"
   },
   "30.85": {
    "id": "30.85",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Backend 05f60824 (Aprendizado) e a tela 94404535 (Portal). Simulado: backend/tests/test_livro_selo_em_prova.py::*, frontend/src/features/aprendizado/AprendizadoPage.test.tsx::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
+   "proof": "real",
+   "evidence": "06/10/2026 ~02:17Z, deploy 44 (33c7d5ab). Religado o fluxo de teste f-fe11676e54e3 (Livro, Reativar com motivo): GET /api/aprendizado/fluxo/f-fe11676e54e3 trouxe state published e ensinado_em_prova {persona ig-P4F67DC5D6EdoNni, sessao trn-1nuBzRHaAkM09f6K}. Na lista do Livro a linha mostrou 'Publicado | em prova' (selo ao lado do estado, exatamente o texto 'em prova') e a nota 'Ensinado, ainda em prova: o uso fica restrito até ela passar (só a persona que ensinou; sem persona na gravação, nenhum aparelho)… “Confirmar que fica” libera o fluxo para quem estiver no escopo.'; no detalhe, o fato Estado mostrou 'Publicado em prova'.",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_livro_selo_em_prova.py",
-    "frontend/src/features/aprendizado/AprendizadoPage.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-44",
+   "grupo": "portal-percurso-deploy-44",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T02:15:59+00:00"
+   "quando": "2026-10-06T02:27:18+00:00"
   },
   "30.76": {
    "id": "30.76",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Junção da Aprendizado dc44836a, com o conserto 1d8ce28a. Simulado: backend/tests/test_leitura_que_nao_gira_sobras.py::*, backend/tests/test_curador_classe_b.py::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_leitura_que_nao_gira_sobras.py",
-    "backend/tests/test_curador_classe_b.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-44",
+   "proof": "real",
+   "evidence": "06/10/2026 ~02:23Z, deploy 44. A migração 117_versao_do_texto_do_parecer está aplicada (02:12:09Z) e a coluna learning_reviews.instrucao_versao existe (leitura somente leitura do SQLite); nas 182 revisões existentes ela está NULL (esperado: só se grava quando um texto é mandado à IA). A versão do texto do parecer NÃO aparece na revisão do Aprendizado: o adendo diz 'nenhuma rota nem campo de resposta muda' e o painel não a lê. | Orquestradora: o item não tem tela por desenho (campo de banco e leitura no parecer/inspeção); a prova real é a migração aplicada no deploy 44 e o valor gravado; status implemented.",
+   "blocker": "só se grava com uma revisão do curador (chamada paga de IA), não feita",
+   "nota": "A premissa 'a versão aparece na revisão do Aprendizado' não confere com o código: não há campo na API nem no painel.",
+   "grupo": "portal-percurso-deploy-44",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T02:15:59+00:00"
+   "quando": "2026-10-06T02:27:18+00:00"
   },
   "30.77": {
    "id": "30.77",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Junção da Aprendizado dc44836a (migração 117_versao_do_texto_do_parecer). Simulado: backend/tests/test_parecer_versao_do_texto.py::*, backend/tests/test_migracao_069_revisoes.py::*. Suíte 44 sobre a integração 33c7d5ab (origin/main b8c37ef7 + 31.89, 31.13, 31.110, script de nomes, Portal 94404535, junção da Aprendizado dc44836a, 30.85 05f60824 e a main 51b4c814; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle; migrações novas 117 e 118): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12084 passed, 13 skipped, 0 falhas (sobre ab314ad5, a ponta parcial); SQLite dos 296 arquivos afetados pela junção da Aprendizado 5855 passed, 4 skipped; SQLite dos 76 afetados do 30.85 1261 passed; frontend (ponta final) typecheck limpo, 1732 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 365 arquivos em 2 partes: 5157 passed, 8 skipped e 3191 passed, 2 skipped, 0 falhas (fim 02:10:24Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_parecer_versao_do_texto.py",
-    "backend/tests/test_migracao_069_revisoes.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; a migração entra no ensaio do deploy",
-   "grupo": "android-suite-44",
+   "proof": "real",
+   "evidence": "06/10/2026 ~02:25Z, deploy 44. A migração 118_fuso_da_ultima_atualizacao está aplicada (schema_migrations, 02:12:09Z; health.migration). Mandei 'Verificar' do QA Messenger no android-04 pelo painel e a leitura SOMENTE LEITURA do SQLite do central (data/poc.sqlite3, mode=ro) mostrou device_app_state (android-04, com.pocqa.messenger) com last_update_offset '-0300' e verified_at 2026-10-06T02:24:52Z; antes da verificação a coluna estava vazia nas 52 linhas. | Orquestradora: o item não tem tela por desenho (campo de banco e leitura no parecer/inspeção); a prova real é a migração aplicada no deploy 44 e o valor gravado; status implemented.",
+   "blocker": "o fuso não aparece em tela nem em rota: só no banco",
+   "nota": "Esperado pelo adendo: a coluna é interna. A parte 'versao_estavel_na_execucao usa o deslocamento exato' (reprodução na versão viva) não foi exercitada.",
+   "grupo": "portal-percurso-deploy-44",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T02:15:59+00:00"
+   "quando": "2026-10-06T02:27:18+00:00"
   },
   "30.78": {
    "id": "30.78",
@@ -13313,6 +13288,20 @@
    ],
    "grupos": [
     "31-87-aprendizado-prova-da-mascara"
+   ]
+  },
+  {
+   "quando": "2026-10-06T02:27:18+00:00",
+   "itens": [
+    "30.85",
+    "31.89",
+    "31.110",
+    "30.77",
+    "30.76",
+    "31.13"
+   ],
+   "grupos": [
+    "portal-percurso-deploy-44"
    ]
   }
  ]
