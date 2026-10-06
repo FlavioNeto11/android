@@ -245,7 +245,10 @@ describe('31.116 parte 2 (adendo v1.80): a intenção sugerida pelo diagnóstico
     await abrirFormulario();
     await setValue(campo(), 'Ensinar a abrir o app');
     await waitFor(() => expect(pedida).toBe(true));
+    expect(text()).toContain('Lendo a sugestão…');                                           // enquanto a resposta não chega
+    expect(text()).not.toContain('Voltar à sugestão');
     await act(async () => soltar(json(SUGESTAO)));
+    await waitFor(() => expect(text()).not.toContain('Lendo a sugestão…'));
     await waitFor(() => expect(text()).toContain('Causa provável: o app mudou de versão.'));   // a dica chega...
     expect(campo().value).toBe('Ensinar a abrir o app');                                      // ...e o campo segue da pessoa
     await enviar();
@@ -300,5 +303,66 @@ describe('31.116 parte 2 (adendo v1.80): a intenção sugerida pelo diagnóstico
     await abrirFormulario();
     await waitFor(() => expect(backend.callsTo('GET', /ensino-sugerido$/)).toHaveLength(2));
     await waitFor(() => expect(campo().value).toBe(SUGESTAO.intent));
+  });
+
+  it('"O que mostrar" fica em destaque ACIMA do campo, fora da dica; a dica traz só a causa', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json(SUGESTAO));
+    await montar();
+    await abrirFormulario();
+    const destaque = await waitFor(() => {
+      const p = [...document.querySelectorAll('p')].find((x) => x.textContent?.startsWith('O que mostrar:'));
+      expect(p).toBeTruthy();
+      return p!;
+    });
+    expect(destaque.textContent).toContain('Mostre o caminho nesta versão do app.');
+    expect(destaque.compareDocumentPosition(campo()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();   // vem antes do campo
+    const dica = document.getElementById(campo().getAttribute('aria-describedby')!)!;
+    expect(dica.textContent).toContain('Causa provável: o app mudou de versão.');
+    expect(dica.textContent).not.toContain('O que mostrar');
+  });
+
+  it('o campo tem duas linhas; Enter envia como antes, Shift+Enter não, e quebra de linha colada vira espaço', async () => {
+    comControleNaAba();
+    await montar();
+    await abrirFormulario();
+    expect(campo().tagName).toBe('TEXTAREA');
+    expect(campo().getAttribute('rows')).toBe('2');
+    await setValue(campo(), 'Abrir o app\n  pela gaveta');
+    expect(campo().value).toBe('Abrir o app pela gaveta');
+    await botaoPronto(/^Assumir o controle e abrir o treino$/);                                        // com a leitura das personas em voo o envio espera (o botão diz por quê)
+    await act(async () => { campo().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true })); });
+    expect(backend.callsTo('POST', /\/from-run$/)).toHaveLength(0);                                   // Shift+Enter não envia
+    await act(async () => { campo().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); });
+    await waitFor(() => expect(backend.callsTo('POST', /\/from-run$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /\/from-run$/)[0]!.body).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1', intent: 'Abrir o app pela gaveta' });
+    await waitFor(() => expect(useUiStore.getState().focusInstanceId).toBe('android-01'));
+  });
+
+  it('"Voltar à sugestão" só aparece depois de editar, devolve o texto da sugestão e então o intent some do envio', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json(SUGESTAO));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(campo().value).toBe(SUGESTAO.intent));
+    expect(allByRole('button', /^Voltar à sugestão$/)).toHaveLength(0);
+    await setValue(campo(), 'meu texto');
+    await click(byRole('button', /^Voltar à sugestão$/));
+    expect(campo().value).toBe(SUGESTAO.intent);
+    expect(allByRole('button', /^Voltar à sugestão$/)).toHaveLength(0);
+    await enviar();
+    expect(backend.callsTo('POST', /\/from-run$/)[0]!.body).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1' });
+  });
+
+  it('sem sugestão não há "Voltar à sugestão", mesmo com o texto editado', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json(null));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(backend.callsTo('GET', /ensino-sugerido$/)).toHaveLength(1));
+    await flush(ATRASO_MAXIMO + 30);
+    await setValue(campo(), 'meu texto');
+    expect(allByRole('button', /^Voltar à sugestão$/)).toHaveLength(0);
+    expect(text()).not.toContain('Lendo a sugestão…');                                          // a espera termina também sem sugestão
   });
 });

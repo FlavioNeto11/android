@@ -27,9 +27,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `POST /api/training/from-run` quando o texto difere da sugestão (o backend usa a mesma sugestão quando falta). Quem já escreveu antes de a resposta chegar
   não tem o texto trocado. Sem tentativa (`null`), com a rota recusando (404/409) ou com a rede falhando, fica o texto padrão de antes, sem dica e sem erro
   na tela; com `pergunta` e `rotulo` nulos (diagnóstico falhou) o campo vem com a intenção e sem dica. Fechar e abrir de novo lê outra vez e volta à sugestão.
+- Ajustes da leitura de UX (decididos pela orquestradora): "O que mostrar" vira uma linha em destaque ACIMA do campo (a dica fica só com a causa); enquanto a
+  resposta não chega a dica diz "Lendo a sugestão…" (e some também quando não há sugestão), sem nunca trocar o que a pessoa já digitou; "Voltar à sugestão"
+  aparece só depois de editar, havendo sugestão; o campo passa a ser uma caixa de duas linhas (Enter envia como antes, Shift+Enter não, quebra de linha colada
+  vira espaço). Causa indeterminada e a pergunta própria da etapa `waiting_user` ficam para o adendo v1.82 (a rota devolverá `causa` como código); até lá o painel
+  mostra o rótulo e a pergunta como vêm, sem comparar texto.
 - `api.ensinoSugerido` e `EnsinoSugerido` em `client.ts` e `types.ts`.
-- Prova `simulated`: `EnsinarACorrigir.test.tsx` (6 novos, fixture de resposta) com cinco mutações que derrubam o teste (sobrescrever o que a pessoa escreveu,
-  comparar com o padrão em vez da sugestão, mandar `intent` sempre, não zerar ao reabrir, tirar o `aria-describedby`). Prova `real`: `not_run`; depende
+- Prova `simulated`: `EnsinarACorrigir.test.tsx` (10 novos, fixture de resposta) com onze mutações que derrubam o teste (sobrescrever o que a pessoa escreveu,
+  comparar com o padrão em vez da sugestão, mandar `intent` sempre, não zerar ao reabrir, tirar o `aria-describedby`, sem o estado de leitura, a pergunta de volta
+  na dica, o "Voltar" sempre visível, Enter que não envia, quebra de linha mantida, o "Voltar" que não devolve a sugestão). Prova `real`: `not_run`; depende
   da rota no ar (deploy 48) e de uma falha real para ver a sugestão na tela.
 
 ## 2026-10-06 — K-104: a caracterização da saúde não fotografa o dialeto do banco (branch fix/saude-caracterizacao-dialeto)
