@@ -18,6 +18,7 @@ import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { apiOperacoes, type ListaDeOperacoes } from './api';
 import { LiberarAcoes } from './LiberarAcoes';
+import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
 import {
   acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
@@ -245,6 +246,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
   const [cancelando, setCancelando] = useState(false);
   const [abrirLiberar, setAbrirLiberar] = useState(false);
+  const [abrirRelatorio, setAbrirRelatorio] = useState(false);
   const limiteDeAcoes = useAppStore((s) => s.settings?.operacao_max_acoes_executadas);
   const contagem = useMemo(() => contarPorEstado(op?.alvos ?? []), [op]);
 
@@ -285,11 +287,13 @@ function DetalheDaOperacao({ id }: { id: string }) {
     <Page title="Operação" lead={op.command || 'Sem objetivo informado.'}
           actions={(
             <>
+              <Button size="sm" variant="outline" disabledReason={op.exemplo ? 'É um exemplo: não há o que relatar.' : null} onClick={() => setAbrirRelatorio(true)}>Relatório</Button>
               <Button size="sm" variant="primary" disabledReason={motivoSemLiberar} onClick={() => setAbrirLiberar(true)}>Liberar</Button>
               <Button size="sm" variant="danger" loading={cancelando} disabledReason={motivoSemCancelar} onClick={() => void cancelar()}>Cancelar a operação</Button>
             </>
           )}>
       {op.exemplo ? AVISO_DE_EXEMPLO : null}
+      {abrirRelatorio ? <RelatorioDaOperacao op={op} onFechar={() => setAbrirRelatorio(false)} /> : null}
       {abrirLiberar ? (
         <LiberarAcoes operacaoId={op.id} preparados={preparados} vagas={vagas} onFechar={() => setAbrirLiberar(false)}
                       onLiberado={() => { setAbrirLiberar(false); recarregar(); }} />
