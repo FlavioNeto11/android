@@ -44,12 +44,17 @@
   Não roda `uv pip install -r backend\requirements.txt` entre parar e subir. Só quando o `requirements.txt` não
   mudou e o `uv` não está disponível.
 
+.PARAMETER PularDocsCheck
+  Não roda `scripts\docs-check.py` antes de parar qualquer coisa (29.166). Só quando o erro que ele acusa é
+  comprovadamente só de documentação e a subida não pode esperar; o passo existe para pegar `config.example.yaml` ou
+  `.claude/plano-100.json` fora do formato ANTES do backend parar.
+
 .EXAMPLE
   pwsh -File scripts\deploy.ps1 -Ensaio      # sem janela: só backup + retrato do que está no ar
   pwsh -File scripts\deploy.ps1              # a subida
 #>
 [CmdletBinding()]
-param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend, [switch]$PularDependencias, [switch]$SemTag)
+param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend, [switch]$PularDependencias, [switch]$SemTag, [switch]$PularDocsCheck)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $base = 'http://127.0.0.1:8000'
@@ -160,6 +165,26 @@ if ($LASTEXITCODE -eq 2) {
 if ($LASTEXITCODE -ne 0) {
   throw 'a pasta site/ tem arquivo fora da lista e portal.site_ligado está ligado: o central não subiria. Limpe a pasta.'
 }
+
+# ------------------------------------------------------------------ 1c. docs-check (29.166)
+# O formato de `config/config.example.yaml` e de `.claude/plano-100.json` é cobrado aqui, com o Python do venv do backend
+# (que tem PyYAML e pydantic: sem eles o docs-check só AVISA que não conferiu), no ensaio e na subida de verdade, antes de
+# parar qualquer coisa. ERRO recusa; AVISO não. O `config.yaml` da instalação nunca é aberto por ele.
+$pythonDoBackend = Join-Path $root 'backend\.venv\Scripts\python.exe'
+# >>> docs-check (29.166)
+Write-Host '--- docs-check (29.166) ---'
+if ($PularDocsCheck) {
+  Write-Host '    PULADO por -PularDocsCheck: o formato dos arquivos de configuração versionados NÃO foi conferido.'
+} else {
+  $saidaDocs = & $pythonDoBackend (Join-Path $root 'scripts\docs-check.py') --raiz $root 2>&1
+  $codigoDocs = $LASTEXITCODE
+  $saidaDocs | ForEach-Object { Write-Host "    $_" }
+  if ($codigoDocs -ne 0) {
+    throw ('o docs-check reprovou (acima): corrija antes de parar qualquer coisa. Se o erro é só de documentação e a ' +
+           'subida não pode esperar, -PularDocsCheck.')
+  }
+}
+# <<< docs-check (29.166)
 
 if ($Ensaio) {
   Write-Host ''

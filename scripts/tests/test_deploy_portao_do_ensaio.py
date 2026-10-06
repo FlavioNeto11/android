@@ -191,3 +191,110 @@ def test_a_varredura_acha_o_defeito_quando_ele_existe(tmp_path: Path) -> None:
         "ruim_laco.ps1:2: $destino -> parametro $Destino",
         "ruim_mesma_caixa.ps1:2: $Ensaio -> parametro $Ensaio",
     ]
+
+
+# --- 29.166 (b): o docs-check roda no ensaio e na subida, antes de parar qualquer coisa -------------------------------
+
+def _trecho_do_docs_check() -> tuple[str, str]:
+    """O `param(...)` e o trecho entre os marcadores `docs-check (29.166)`, como estão no `deploy.ps1`."""
+    texto = (SCRIPTS / "deploy.ps1").read_text(encoding="utf-8")
+    param = re.search(r"(?m)^param\(.*\)\s*$", texto)
+    assert param, "o deploy.ps1 perdeu o `param(...)` de uma linha"
+    ini = texto.index("# >>> docs-check (29.166)")
+    fim = texto.index("# <<< docs-check (29.166)")
+    assert ini < fim < texto.index("'stop.ps1'"), "o docs-check tem de vir antes de parar qualquer coisa"
+    assert fim < texto.index("ENSAIO: backup feito"), "o docs-check roda também no ensaio, antes dele terminar"
+    return param.group(0), texto[ini:fim]
+
+
+def _arvore_do_docs_check(tmp: Path) -> Path:
+    """`<tmp>/scripts/docs.ps1` com o trecho do deploy e um docs-check FALSO (`<tmp>/scripts/docs-check.py`) que imprime
+    `FAKE_SAIDA` e sai com `FAKE_CODIGO`; o interpretador é o do próprio teste (no deploy é o venv do backend)."""
+    import sys
+
+    (tmp / "scripts").mkdir(parents=True)
+    (tmp / "scripts" / "docs-check.py").write_text(
+        "import os, sys\nprint(os.environ.get('FAKE_SAIDA', ''))\nsys.exit(int(os.environ.get('FAKE_CODIGO', '0')))\n",
+        encoding="utf-8")
+    param, trecho = _trecho_do_docs_check()
+    script = "\n".join([
+        param,
+        "$ErrorActionPreference = 'Stop'",
+        "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
+        "$PSStyle.OutputRendering = 'PlainText'",
+        "$root = Split-Path -Parent $PSScriptRoot",
+        f"$pythonDoBackend = '{sys.executable}'",      # no deploy: o venv do backend, definido logo acima dos marcadores
+        trecho,
+        "Write-Host \"SEGUIU Ensaio=$([bool]$Ensaio) PularDocsCheck=$([bool]$PularDocsCheck)\"",
+    ])
+    alvo = tmp / "scripts" / "docs.ps1"
+    alvo.write_text(script, encoding="utf-8-sig")
+    return alvo
+
+
+def _rodar_docs(script: Path, codigo: int, saida: str, *args: str) -> subprocess.CompletedProcess[str]:
+    import os
+
+    env = {**os.environ, "FAKE_CODIGO": str(codigo), "FAKE_SAIDA": saida}
+    return subprocess.run([PWSH or "pwsh", "-NoProfile", "-NonInteractive", "-File", str(script), *args],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=120)
+
+
+def _junta(r: subprocess.CompletedProcess[str]) -> str:
+    """Junta as duas saídas e desfaz a moldura do erro do pwsh, que parte a mensagem em linhas."""
+    return re.sub(r"\s+", " ", re.sub(r"\s*\n\s*(?:\d+\s*)?\|\s*", " ", r.stdout + r.stderr))
+
+
+@precisa_pwsh
+def test_docs_check_limpo_deixa_o_deploy_seguir(tmp_path: Path) -> None:
+    r = _rodar_docs(_arvore_do_docs_check(tmp_path), 0, "docs-check: 0 erros, 0 avisos")
+    assert r.returncode == 0, r.stderr
+    assert "docs-check: 0 erros, 0 avisos" in r.stdout          # a saída do docs-check aparece no console do deploy
+    assert "SEGUIU Ensaio=False PularDocsCheck=False" in r.stdout
+
+
+@precisa_pwsh
+def test_docs_check_so_com_aviso_nao_recusa(tmp_path: Path) -> None:
+    """AVISO não derruba: é o caso do Python sem PyYAML, em que o docs-check diz que não conferiu."""
+    aviso = "AVISO: config/config.example.yaml: formato NAO conferido (falta o pacote yaml)"
+    r = _rodar_docs(_arvore_do_docs_check(tmp_path), 0, aviso + "\ndocs-check: 0 erros, 1 avisos")
+    assert r.returncode == 0, r.stderr
+    assert "formato NAO conferido" in r.stdout and "SEGUIU" in r.stdout
+
+
+@precisa_pwsh
+def test_docs_check_com_erro_recusa_na_subida_e_diz_o_caminho_da_chave(tmp_path: Path) -> None:
+    erro = "ERRO: config/config.example.yaml: instances.countt: chave desconhecida"
+    r = _rodar_docs(_arvore_do_docs_check(tmp_path), 1, erro + "\ndocs-check: 1 erros, 0 avisos")
+    assert r.returncode != 0
+    saida = _junta(r)
+    assert "instances.countt: chave desconhecida" in saida      # o caminho da chave chega ao console do deploy
+    assert "o docs-check reprovou" in saida
+    assert "SEGUIU" not in r.stdout                              # o que vem depois (parar o backend) não rodou
+
+
+@precisa_pwsh
+def test_docs_check_com_erro_recusa_tambem_o_ensaio(tmp_path: Path) -> None:
+    r = _rodar_docs(_arvore_do_docs_check(tmp_path), 1, "ERRO: .claude/plano-100.json: batches[0].items[1]: ID fora do formato",
+                    "-Ensaio")
+    assert r.returncode != 0
+    assert "batches[0].items[1]" in _junta(r) and "SEGUIU" not in r.stdout
+
+
+@precisa_pwsh
+def test_pular_docs_check_deixa_seguir_e_diz_que_nao_conferiu(tmp_path: Path) -> None:
+    r = _rodar_docs(_arvore_do_docs_check(tmp_path), 1, "ERRO: nao pode aparecer", "-PularDocsCheck")
+    assert r.returncode == 0, r.stderr
+    assert "PULADO por -PularDocsCheck" in r.stdout and "NÃO foi conferido" in r.stdout
+    assert "ERRO: nao pode aparecer" not in r.stdout             # o docs-check nem rodou
+    assert "SEGUIU Ensaio=False PularDocsCheck=True" in r.stdout
+
+
+@precisa_pwsh
+def test_o_docs_check_de_verdade_passa_na_arvore_do_repositorio() -> None:
+    """O mesmo comando que o deploy roda, com o Python deste teste, na árvore real: um deploy não pode nascer recusado."""
+    import sys
+
+    r = subprocess.run([sys.executable, str(SCRIPTS / "docs-check.py"), "--raiz", str(ROOT)], capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", timeout=120)
+    assert r.returncode == 0, r.stdout[-1500:]

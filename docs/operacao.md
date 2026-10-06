@@ -292,6 +292,14 @@ Conferir **o resultado**, não só o código de saída (lição registrada em 24
 - Aparelhos externos aparecem no snapshot do parque (não só "backend no ar").
 - Config efetivamente lido (não o exemplo) — o painel ou `/api/diagnostics` mostram os valores de produção.
 
+**`docs-check` antes de parar (29.166).** O `deploy.ps1` roda `scripts\docs-check.py` com o Python do **venv do backend**, no
+ensaio e na subida de verdade, depois do backup e da conferência do `site/` e **antes de parar qualquer coisa**. O que ele
+cobra de útil para o deploy é o formato de `config/config.example.yaml` e de `.claude/plano-100.json` (chave desconhecida, tipo
+errado, com o caminho da chave). `ERRO` recusa a subida e o ensaio; `AVISO` não. O venv é obrigatório porque a conferência do
+exemplo precisa de PyYAML e pydantic, e sem eles o `docs-check` só avisa que não conferiu. `-PularDocsCheck` pula o passo, e o
+console diz que o formato NÃO foi conferido: só para erro comprovadamente só de documentação numa subida que não pode esperar.
+O `config.yaml` da instalação nunca é aberto por ele. Teste: `scripts/tests/test_deploy_portao_do_ensaio.py`.
+
 **Dependências.** Desde 25/09 o `deploy.ps1` roda `uv pip install -r requirements.txt` no venv do backend
 **entre parar e subir** (passo 3b; `-PularDependencias` desliga). Antes disso ele não instalava nada, e uma versão
 nova no `requirements.txt` (ex.: `cryptography` 46.0.3 → 50.0.0, item T.4) nunca chegava à produção. O venv é do
