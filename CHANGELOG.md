@@ -231,6 +231,25 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `docs/operacao.md` ganha a § 17, curta: como medir (a orquestradora lê o uso pelo painel da IDE, diz a hora do `date -u`, a cada 5 min perto do gatilho, e para SÓ ao ler 95 % do semanal, todos os modelos); a ordem de parada (handoff curto por frente em `.claude/handoffs/<frente>.md` PRIMEIRO, com o scratchpad que importa; parar crons e subagentes; registrar em `.claude/session-registry.md`; um handoff único da orquestradora em `.claude/handoff-current.md` para o dono reiniciar com OUTRA conta); quem retoma (a orquestradora nova abre as sessões com nome, continuação, modelo e força); e o que roda sem sessão (`farm-central`, agente do notebook, cron do GitHub 05:17Z e 06:03Z, amostradores) contra o que depende de sessão (reconciliação do Trello, vigia do Telegram, execução do plano-100).
 - Só documento, sem código. Prova: `docs-check` 0 erros. `not_run`: a parada de verdade (nunca foi disparada); o gatilho é a leitura humana da orquestradora, sem automação.
 
+## 2026-10-06 — prova30 A3 (extensão do 31.157): o aprendizado de uma operação nas 10 perguntas do dono (branch feat/prova30-a3-aprendizado-da-operacao)
+
+- Pedido da orquestradora (o dono pediu para adiantar): para uma operação, responder às 10 perguntas do aprendizado do
+  dono com origem, evidência, confiança e frescor por item, e com filtro por persona. Até aqui as respostas existiam
+  espalhadas (Livro, memória da persona, memória da operação), sem uma leitura por operação.
+- `GET /api/operacoes/{id}/aprendizado` (adendo v1.96): só leitura, sem IA e sem tabela nova.
+  - Ligação às execuções da operação: direta por `run_id` (evidência, transição, sinal, interação), pela origem
+    (receita, fluxo), pela proveniência (lição) e pela interação (memória da persona). O backlog é inferido e vem
+    marcado.
+  - Uma régua só de confiança, e o valor original ao lado.
+  - Reutilizável e "revisar" são regras de código.
+  - Texto redigido e cortado em 200 caracteres. O simulado fica fora por padrão. O que a rota não cobre vem em
+    `nao_coberto`.
+- O roteador mora no módulo de pedidos, com `prefix=/api/operacoes` e um caminho de dois segmentos que não colide com
+  as rotas da Jev, e não mexe no `state.py`.
+- Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
+  `::test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so`, `::test_persona_simulado_redacao_e_404` e
+  `::test_a_rota_responde_e_diz_404_sem_a_124` (5 no arquivo). Real: `not_run` até a operação de 07/10.
+
 ## 2026-10-06 — 31.157 e 31.158 (prova30 A1/A2): conhecimento comum da operação e pesquisa externa por lacuna (branch feat/prova30-a1-conhecimento-da-operacao)
 
 - Pedido do dono de 06/10 (prova de capacidade, FULL INSTAGRAM): N agentes de uma operação precisam de conhecimento COMUM, separado do de cada persona, sem segundo sistema de conhecimento e sem repetir a mesma frase.

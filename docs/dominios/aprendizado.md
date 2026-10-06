@@ -2317,3 +2317,15 @@ O que seria um segundo sistema, e por que não se fez assim: `.claude/handoffs/p
   `usd`).
 - Falha deixa a marca `pesquisa.estado` por 1 h. Código: `planning/pesquisa.py` e
   `modules/pedidos/infrastructure/pesquisa_da_operacao.py`.
+
+### O aprendizado de uma operação nas 10 perguntas do dono (prova30 A3)
+
+`GET /api/operacoes/{id}/aprendizado` responde, para UMA operação, às 10 perguntas do dono: o que a plataforma
+aprendeu, o que a persona aprendeu, o que é do app, o que é do processo, o conhecimento geral, as fontes externas, o que
+sustenta cada conhecimento, o que é reutilizável, o que revisar e as falhas que geraram aprendizado. Não há tabela nova:
+a resposta é lida de onde cada coisa já mora, pelas execuções da operação. A lista de ligações (direta, por prefixo,
+pela proveniência, pela interação ou inferida) está no topo de `infrastructure/aprendizado_da_operacao.py`.
+
+A confiança fica numa régua só (`confirmado`/`hipotese`) e o valor original aparece ao lado, em `estado`. O que a rota
+não responde aparece em `nao_coberto`. Contrato: adendo v1.96. O relatório da operação da Portal (31.162) lê esta rota.
+

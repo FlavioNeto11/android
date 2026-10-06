@@ -7317,3 +7317,49 @@ estava na tela de partida. O 31.122 e o 31.142 só pegavam o erro depois, no `pr
   - `simulated`: `backend/tests/test_treino_pos_condicao_na_proposta.py`;
   - `real`: `not_run` até o deploy. São 3 gravações do Configurações (~US$ 0,04), e uma sessão fica em `proposed`
     para a Portal.
+
+## Adendo v1.96 (06/10/2026; prova30 A3, extensão do 31.157) — o aprendizado de uma operação nas 10 perguntas do dono
+
+`GET /api/operacoes/{operacao_id}/aprendizado?persona=<profile_id>&simulados=false`: só leitura, sem IA. As 10
+perguntas do aprendizado do dono, respondidas pelas execuções da operação (`runs.operacao_id`, 124).
+
+- `200 {operacao_id, gerado_em, simulados, persona, perguntas: [{chave, titulo, itens}], contagem: {chave: n},
+  nao_coberto: [{chave, motivo}]}`.
+- `404 operacao_desconhecida`: a operação não tem execução nem memória, ou a 124 ainda não está no banco.
+- As `chave`, na ordem: `plataforma_aprendeu`, `persona_aprendeu`, `do_app`, `do_processo`, `conhecimento_geral`,
+  `fontes_externas`, `fontes_que_sustentam`, `reutilizavel`, `revisar_ou_descartar` e
+  `falhas_que_geraram_aprendizado`.
+- O item tem estes campos:
+  - `ref`: `receita:<id>`, `fluxo:<id>`, `licao:<id>`, `tela:<id>`, `memoria:<id>`, `interacao:<id>`,
+    `fato:<chave>`, `fonte:<chave>`, `registro:<chave>`, `observacao:<id>`, `queda:<item_ref>`, `sinal:<id>` ou
+    `backlog:<id>`;
+  - `tipo`, `escopo` (`app`, `processo`, `persona`, `operacao` ou `falha`) e `resumo` (redigido, até 200
+    caracteres);
+  - `origem`, `confianca` (`confirmado` ou `hipotese`) e `estado`, o valor original: estado do Livro, situação da
+    observação ou confiança de 0 a 1 da memória da persona;
+  - `evidencia`: run ids, ids de observação e refs;
+  - `persona` (`null` = da operação inteira), `observado_em`, `frescor_ate`, `a_favor`, `contra` e `inferida`;
+  - em `revisar_ou_descartar`, também `motivo`.
+- O item de `fontes_que_sustentam` é `{ref, confianca, fontes: [{ref, resumo?, observacao?}]}`.
+- **Régua única de confiança:**
+  - o Livro conta `active`, `published` e `validated` como `confirmado`; o resto, como `hipotese`;
+  - a memória da persona conta 0,7 ou mais como `confirmado`;
+  - a memória da operação já guarda `confirmado` ou `hipotese`.
+- **Reutilizável:** confirmado, dentro do frescor, sem evidência contra e, no Livro, com evidência a favor.
+- **Revisar:** evidência contra, leitura incerta, vencido, estado do Livro em quarentena, desligado, obsoleto ou
+  candidato, ou hipótese.
+- **`persona`:** deixa o que é dela e o que é da operação inteira.
+- **`simulados=true`:** inclui `learning_evidence` e `learning_signals` simulados.
+- **O backlog de falhas** não guarda a execução: casa por app, ação e tipo de falha dos sinais, e sai com
+  `inferida: true`.
+- **`estado`** de um item do Livro é o de agora. A transição que uma execução da operação fez aparece à parte, como a
+  falha `queda:<item_ref>`.
+- **`nao_coberto`** diz o que a rota não responde:
+  - a promoção a conhecimento geral pela curadoria;
+  - o relatório do pedido, porque a operação não é um pedido;
+  - o vínculo direto do backlog;
+  - a memória da persona aprendida de observação de tela, que não guarda execução. Só a aprendida de uma interação
+    se liga à operação.
+
+Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
+`backend/tests/test_aprendizado_da_operacao.py`.
