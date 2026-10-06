@@ -50,9 +50,18 @@ def test_start_app_com_tarefa_limpa_apaga_a_tarefa_e_abre_a_tela_inicial() -> No
     falso, comandos = _adb_que_grava()
     Adb.start_app(falso, SETTINGS, ".Settings", tarefa_limpa=True)
     Adb.start_app(falso, SETTINGS, None, tarefa_limpa=True)
-    assert comandos[0] == f"am start -n {SETTINGS}/.Settings --activity-clear-task --activity-new-task"
+    assert comandos[0] == f"am start -n {SETTINGS}/.Settings --activity-clear-task"
     assert comandos[1] == ("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "
-                           f"-p {SETTINGS} --activity-clear-task --activity-new-task")
+                           f"-p {SETTINGS} --activity-clear-task")
+
+
+def test_a_abertura_so_usa_opcoes_que_o_am_do_android_34_conhece() -> None:
+    """Medido no aparelho (`am help`, 06/10): `--activity-clear-task` existe; `--activity-new-task` NÃO (o `am` falhava com "Unknown option" e a
+    abertura de Configurações do 31.137 quebrava no deploy 52). O `am start` já abre em tarefa nova, então só a primeira vale."""
+    falso, comandos = _adb_que_grava()
+    Adb.start_app(falso, SETTINGS, None, tarefa_limpa=True)
+    opcoes = {p for p in comandos[0].split() if p.startswith("--")}
+    assert opcoes == {"--activity-clear-task"}
 
 
 def test_start_app_com_tarefa_limpa_recusa_activity_invalida_e_erro_do_am() -> None:
