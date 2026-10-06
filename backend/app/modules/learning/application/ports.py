@@ -272,6 +272,11 @@ class LeitorDoEnsinado(Protocol):
         "Confirmar que fica"), nas mesmas condições de `espera_da_pessoa`."""
         ...
 
+    def em_prova(self, kind: LivroKind, ref: str) -> dict[str, str | None] | None:
+        """30.85: `{persona, sessao}` do fluxo ensinado que ainda espera a prova, pela MESMA regra do casamento e das
+        outras respostas do 30.81 (`taskqueue.flows.ensinado_em_prova`); `None` em todo o resto."""
+        ...
+
 
 class CatalogoDeRisco(Protocol):
     """O que o catálogo de ações do app diz do risco, só em fatos (nada de texto de ação). Sem catálogo, `None`."""

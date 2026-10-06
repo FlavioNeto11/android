@@ -6785,3 +6785,16 @@ persona e a pessoa digitou, como uma entrada inteira, um dado não sigiloso dela
 - **O que o painel precisa mudar:** nada obrigatório. A revisão mostra `{perfil_x}` como texto e o aviso entra na lista
   de `warnings` que ela já exibe.
 - **Prova:** `simulated` (`backend/tests/test_treino_dado_da_persona.py`); `real`: `not_run`.
+
+## Adendo v1.73 (05/10/2026; número da orquestradora; item 30.85) — o Livro leva o selo do ensinado em prova
+
+Aditivo. Achado da Portal no percurso do deploy 42: o Livro mostrava o fluxo ensinado em prova como "Publicado", sem
+selo, porque a entrada não levava o campo do adendo v1.65.
+- **`ensinado_em_prova`** `{"persona": string|null, "sessao": "trn-…"}` passa a ir também em cada item de fluxo de
+  `GET /api/aprendizado` (a lista do Livro) e em `GET /api/aprendizado/fluxo/{ref}` (a mesma entrada). Forma e regra são as do
+  v1.65: enquanto o fluxo ensinado, ativo, espera a prova. AUSENTE quando não se aplica: provado, confirmado por uma
+  pessoa, desligado, ou fluxo que não veio do treino. Receita e lição não o levam.
+- `state` não muda: o fluxo em prova segue `published`. O selo é o campo.
+- **O que o painel precisa mudar:** o Livro mostra o `SeloEmProva` (o mesmo de `GuiaHabilidades` e da cobertura) quando o
+  item tem `ensinado_em_prova`.
+- **Prova:** `simulated` (`backend/tests/test_livro_selo_em_prova.py`); `real`: `not_run`.

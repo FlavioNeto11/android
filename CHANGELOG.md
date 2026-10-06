@@ -25,6 +25,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   main 07b803d5). Conflitos só de CHANGELOG e do fim de `DetalheRico.test.tsx` (31.88 F2 e 30.85 acrescentaram blocos ao fim): ficaram os dois.
 - Prova `simulated`: frontend inteiro, typecheck e build com os números do commit de junção. `not_run`: percurso real (depende dos backends 30.85 e 31.89).
 
+## 2026-10-05 — 30.85: o Livro leva o selo do ensinado em prova (branch feat/30-85-selo-em-prova-no-livro)
+
+- Achado da Portal no percurso do deploy 42: a entrada de fluxo do Livro não levava `ensinado_em_prova`, e o fluxo em
+  prova aparecia "Publicado" sem selo.
+- `presentation/livro.py::_da_espera` põe `ensinado_em_prova` `{persona, sessao}` na entrada do fluxo ensinado em
+  prova, pela regra do casamento (`taskqueue.flows.ensinado_em_prova`), por `LearningService.ensinado_em_prova` e pela
+  porta nova `LeitorDoEnsinado.em_prova`. Ausente fora disso. Adendo v1.73.
+- Funções tocadas (K-095): `_da_espera`, `LearningService.ensinado_em_prova` (nova), `AvisadorDoEnsinado.em_prova`
+  (nova), `LeitorDoEnsinadoSql.em_prova` (nova), `LeitorDoEnsinado` (método novo na porta).
+- Prova `simulated`: `backend/tests/test_livro_selo_em_prova.py` (7). Real: `not_run`.
+
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e

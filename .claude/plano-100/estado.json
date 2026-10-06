@@ -8748,19 +8748,13 @@
    "id": "29.104",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "Ponta a03278e1 (Portal). Simulado: frontend/src/features/training/TrainingBar.test.tsx::*, frontend/src/features/focus/FocusPanel.test.tsx::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
-   "blocker": null,
-   "arquivos": [
-    "frontend/src/features/training/TrainingBar.test.tsx",
-    "frontend/src/features/focus/FocusPanel.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-43",
+   "evidence": "29.104: frontend: arquivo::teste na suíte (vitest 1732 passados em 94404535), não é um item de navegador; sem percurso real.",
+   "grupo": "portal-percurso-deploy-43",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T00:44:32+00:00"
+   "quando": "2026-10-06T01:13:11+00:00"
   },
   "29.106": {
    "id": "29.106",
@@ -9286,22 +9280,14 @@
   "31.90": {
    "id": "31.90",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "31.90-D (63a00368) e 31.90-C, E e F (Portal a03278e1). Simulado: backend/tests/test_treino_desfazer_a_ultima.py::*, backend/tests/test_treino_previa_e_refazer_receitas.py::*, frontend/src/features/training/CorrigirEtapa.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_treino_desfazer_a_ultima.py",
-    "backend/tests/test_treino_previa_e_refazer_receitas.py",
-    "frontend/src/features/training/CorrigirEtapa.test.tsx",
-    "frontend/src/features/training/TrainingReview.test.tsx"
-   ],
-   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-43",
+   "proof": "real",
+   "evidence": "31.90-C: 06/10/2026 ~00:52Z a ~01:02Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (notebook da LAN), com 2 personas (Teste Portal Um e Dois) vinculadas, o formulário do Modo treinamento mostrou 'De quem é o ensino?' com as duas, o 'Iniciar treinamento' ficou indisponível com o motivo 'Escolha de qual persona é o ensino.' até a escolha; escolhi a Um e a gravação iniciou sem 409; a sessão trn-5s0gF_li3BaMdlNA nasceu com profile_id ig-P4F67DC5D6EdoNni (GET /api/training). Antes de vincular, GET /api/instances/android-04/personas devolvia lista vazia e só depois das duas. 2ª rodada: de novo 'De quem é o ensino?' com as 2 personas e a sessão trn-1nuBzRHaAkM09f6K nasceu com profile_id ig-P4F67DC5D6EdoNni. | 31.90-F: 06/10/2026 ~00:52Z a ~01:02Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (notebook da LAN), na revisão da sessão trn-5s0gF_li3BaMdlNA as entradas mostraram o reconhecimento: '#1 toque (reconhecido por id, id page_indicator)' e '#2 toque em Home (reconhecido por descrição)'. | 31.90-D: 06/10/2026 ~01:03Z a ~01:11Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (Configurações do Android, sem conta real, sem efeito externo), persona de teste Teste Portal Um, sessão trn-1nuBzRHaAkM09f6K (6 entradas: busca, texto com o nome da persona, tecla back, Notificações, Histórico, interruptor), fluxo f-fe11676e54e3. o painel implantado NÃO tem botão de desfazer a última entrada (a rota POST /training/{id}/undo é só backend e o botão é da Portal, ainda não construído), então o 'desfazer' real não foi exercitado. O que existe e foi provado: descartar e 'Devolver' a entrada #3 a uma etapa: '#3 voltou à etapa 3 (Abrir Notificações).' e depois Descartar de novo: '#3 foi para Descartadas; para desfazer, devolva a uma etapa.' (reconhecido como 31.90-A/B). | 31.90-E: 06/10/2026 ~01:03Z a ~01:11Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (Configurações do Android, sem conta real, sem efeito externo), persona de teste Teste Portal Um, sessão trn-1nuBzRHaAkM09f6K (6 entradas: busca, texto com o nome da persona, tecla back, Notificações, Histórico, interruptor), fluxo f-fe11676e54e3. corrigi o que a etapa 5 (interruptor, julgada pela tela) confere: troquei o texto para 'O interruptor de Use notification history aparece ligado' e a linha 'Confere' da etapa passou a mostrar exatamente isso. As etapas com receita ('sem IA') mostram o editor mas o texto vem do catálogo.",
+   "grupo": "portal-percurso-deploy-43",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T00:44:32+00:00"
+   "quando": "2026-10-06T01:13:11+00:00"
   },
   "31.89": {
    "id": "31.89",
@@ -9394,22 +9380,14 @@
   "31.87": {
    "id": "31.87",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "F2 da identidade, ponta 9d2e2b5d (feat/31-87-f2-gender-e-locale). Simulado: backend/tests/test_perfil_variaveis_da_persona.py::*, backend/tests/test_ensino_v2.py::*, frontend/src/app.integration.test.tsx::*, frontend/src/features/personas/DetalheRico.test.tsx::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_perfil_variaveis_da_persona.py",
-    "backend/tests/test_ensino_v2.py",
-    "frontend/src/app.integration.test.tsx",
-    "frontend/src/features/personas/DetalheRico.test.tsx"
-   ],
-   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-43",
+   "proof": "real",
+   "evidence": "31.87 F2: 06/10/2026 ~01:03Z a ~01:11Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (Configurações do Android, sem conta real, sem efeito externo), persona de teste Teste Portal Um, sessão trn-1nuBzRHaAkM09f6K (6 entradas: busca, texto com o nome da persona, tecla back, Notificações, Histórico, interruptor), fluxo f-fe11676e54e3. a proposta (1ª chamada paga) trocou o texto digitado, que era o nome da persona, por {perfil_nome_exibicao}: a etapa 'Pesquisar o nome da persona' confere 'aparece o texto “{perfil_nome_exibicao}”', o comando ficou 'pesquise nas configurações e ligue o histórico de notificações' (sem o termo), e a revisão e o relatório do salvar trazem o aviso '{perfil_nome_exibicao}: vem do perfil da persona de cada aparelho (o aparelho sem esse dado não roda o fluxo)'. No Livro (GET /api/aprendizado/fluxo/f-fe11676e54e3) o nome da persona aparece 0 vezes e só existe o marcador perfil_nome_exibicao.",
+   "grupo": "portal-percurso-deploy-43",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T00:44:32+00:00"
+   "quando": "2026-10-06T01:13:11+00:00"
   },
   "31.100": {
    "id": "31.100",
@@ -9558,21 +9536,14 @@
   "31.91": {
    "id": "31.91",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "F1, ponta 5e5668a0. Simulado: backend/tests/test_ensino_v2.py::*, frontend/src/features/training/CorrigirEtapa.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_ensino_v2.py",
-    "frontend/src/features/training/CorrigirEtapa.test.tsx",
-    "frontend/src/features/training/TrainingReview.test.tsx"
-   ],
-   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-43",
+   "proof": "real",
+   "evidence": "31.91 F1: 06/10/2026 ~01:03Z a ~01:11Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (Configurações do Android, sem conta real, sem efeito externo), persona de teste Teste Portal Um, sessão trn-1nuBzRHaAkM09f6K (6 entradas: busca, texto com o nome da persona, tecla back, Notificações, Histórico, interruptor), fluxo f-fe11676e54e3. health.features.ensino_v2=false esconde o painel do ensino v2. A proposta veio com 2 perguntas, cada uma com campo e o aviso de não escrever senha nem código; respondi as duas, 'Pedir nova proposta com as respostas' mostrou a confirmação ('A proposta atual e o que você mudou … são substituídos pela nova. O que você escolheu em Vale para continua.'), e a 2ª proposta veio sem perguntas, com as 2 respostas guardadas (answers) e a tecla back fundida na etapa 2 ([2,3]). | F1 provada; F2/F3 e a decisão v1 x v2 pendentes.",
+   "grupo": "portal-percurso-deploy-43",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T00:44:32+00:00"
+   "quando": "2026-10-06T01:13:11+00:00"
   },
   "31.97": {
    "id": "31.97",
@@ -10216,22 +10187,15 @@
   },
   "31.88": {
    "id": "31.88",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "F2: ponta 63a00368 (backend) e painel na a03278e1. Simulado: backend/tests/test_treino_dado_da_persona.py::*, backend/tests/test_treino_escopo_ao_provar.py::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 43 sobre a integração 0a96c1f6 (cb6742d4 + 28.54-teste, 31.91 F1, 31.108, 31.87 F2 identidade, Aprendizado 63a00368 e Portal a03278e1, mais as main 2e41f18b e 07b803d5; só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 683 passed; backend SQLite -n 6 12030 passed, 13 skipped, 0 falhas (sobre 6e999197, antes do 31.87 F2 e do Aprendizado); SQLite dos 401 arquivos afetados desde 6e999197 7651 passed, 1 skipped, 0 falhas; frontend (ponta com tudo) typecheck limpo, 1724 passed (131 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido 456 arquivos em 2 partes: 5416 passed, 7 skipped e 4390 passed, 5 skipped, 0 falhas (fim 00:43:24Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_treino_dado_da_persona.py",
-    "backend/tests/test_treino_escopo_ao_provar.py",
-    "frontend/src/features/training/TrainingReview.test.tsx"
-   ],
-   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-43",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "31.88 F2: 06/10/2026 ~01:03Z a ~01:11Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (Configurações do Android, sem conta real, sem efeito externo), persona de teste Teste Portal Um, sessão trn-1nuBzRHaAkM09f6K (6 entradas: busca, texto com o nome da persona, tecla back, Notificações, Histórico, interruptor), fluxo f-fe11676e54e3. (a) revisão: 'Vale para' com 3 opções, escolhi 'Só quem ensinou' e a prévia disse 'Ao salvar vale para só a persona que ensinou, também depois da prova'; (b) 'Salvar como fluxo' devolveu 'Fluxo f-fe11676e54e3 salvo [em prova]. Até a prova, só a persona que ensinou pode pedir pelo comando … Vale para só a persona que ensinou, também depois da prova.' (scope_on_proof quem_ensinou aceito, sem 400/409); (c) GET /api/flows/cobertura traz ensinado_em_prova {persona ig-P4F67DC5D6EdoNni, sessao trn-1nuBzRHaAkM09f6K}; (d) Livro: 'Mudar a quem vale' do fluxo f-21f399425646 gravou o grupo Recuperação (PUT scope 200) e voltou a todos, como na 1ª rodada.",
+   "grupo": "portal-percurso-deploy-43",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T00:44:32+00:00"
+   "quando": "2026-10-06T01:13:11+00:00"
   }
  },
  "rodadas": [
@@ -13113,6 +13077,19 @@
    ],
    "grupos": [
     "android-suite-43"
+   ]
+  },
+  {
+   "quando": "2026-10-06T01:13:11+00:00",
+   "itens": [
+    "31.90",
+    "31.88",
+    "31.91",
+    "31.87",
+    "29.104"
+   ],
+   "grupos": [
+    "portal-percurso-deploy-43"
    ]
   }
  ]
