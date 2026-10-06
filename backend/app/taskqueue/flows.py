@@ -666,7 +666,7 @@ class FlowStore:
             for passo in plano.steps:
                 achada = receitas.get((str(f["source"]), passo.key))
                 app = passo.app_id or plano.app_id or f["app_id"]
-                if achada is None or not app or not oferecivel(passo):
+                if achada is None or not app or not oferecivel(passo, plano.parameters.values()):
                     continue
                 saida.append(EtapaEnsinada(nome=passo.key, app_id=str(app), passo=passo, receita=achada[0],
                                            reproducoes=achada[1], origem=str(f["source"])))

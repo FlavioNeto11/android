@@ -40,6 +40,9 @@ def test_so_a_estavel_sem_efeito_e_uma_por_nome() -> None:
     assert ens.escolher([a, b, c], ["qa"]) == [b]
     assert ens.oferecivel(_passo("buscar")) and not ens.oferecivel(_passo("enviar", side_effect=True))
     assert not ens.oferecivel(_passo("buscar_2"))                                  # nome fora do formato
+    assert not ens.oferecivel(_passo("fazer_login")) and not ens.oferecivel(_passo("digitar_senha"))   # sessão
+    assert not ens.oferecivel(_passo("seguir_joao_silva"), ["João Silva"])         # a chave traz o valor demonstrado
+    assert ens.oferecivel(_passo("abrir_perfil"), ["@joao", "Ana"])
     com_param = ens.EtapaEnsinada("buscar", "qa", _passo("buscar").model_copy(update={"goal": "buscar {termo}"}),
                                   receita=1, reproducoes=1, origem="training:s1")
     assert com_param.parametros == ("termo",)
@@ -47,6 +50,9 @@ def test_so_a_estavel_sem_efeito_e_uma_por_nome() -> None:
     assert not trocadas and recusas == ["buscar: o plano não declarou {termo}"] and passos[0].title == "outro texto"
     passos, trocadas, _ = ens.trocar([_passo("buscar", depends_on=[])], "qa", [com_param], {"termo": "wifi"})
     assert trocadas and passos[0].goal == "buscar {termo}"
+    # a etapa do plano com efeito não é rebaixada ao molde (perderia a marca que a leva à aprovação)
+    passos, trocadas, recusas = ens.trocar([_passo("buscar", side_effect=True)], "qa", [com_param], {"termo": "wifi"})
+    assert not trocadas and passos[0].side_effect and recusas == ["buscar: a etapa do plano tem efeito, trava ou ação do catálogo"]
 
 
 async def test_o_plano_livre_que_usa_o_nome_ganha_o_hash_da_receita(harness: Harness,

@@ -15,10 +15,12 @@ a todas ou só ao escopo de quem ensinou) não muda isso aqui.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+import unicodedata
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from ..models import PlanStep
+from ..modules.learning.domain.licoes import ACAO_DE_SESSAO
 from .habilidades import RESERVADOS
 
 #: O nome de uma etapa ensinada oferecida: o formato da chave livre (sem dígito, sem valor).
@@ -50,8 +52,27 @@ class EtapaEnsinada:
         return f"- nome: {self.nome} | app: {self.app_id} | parâmetros: {params}"
 
 
-def oferecivel(passo: PlanStep) -> bool:
-    return bool(_NOME.match(passo.key)) and not passo.side_effect and not passo.commit_guard and not passo.capability
+def _normal(texto: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", texto.casefold()) if not unicodedata.combining(c))
+
+
+def oferecivel(passo: PlanStep, exemplos: Iterable[str] = ()) -> bool:
+    """Fora: a etapa com efeito, com `commit_guard` ou do catálogo; a de sessão, login ou desafio (`ACAO_DE_SESSAO`:
+    o planejador livre não passa a acionar um login ensinado); e a chave que carrega um valor demonstrado (`exemplos`,
+    os valores dos parâmetros do fluxo: "seguir_joao_silva" iria ao prompt de todas as personas do app)."""
+    if not _NOME.match(passo.key) or passo.side_effect or passo.commit_guard or passo.capability:
+        return False
+    if ACAO_DE_SESSAO.search(passo.key):
+        return False
+    chave = _normal(passo.key.replace("_", " "))
+    palavras = {p for v in exemplos for p in re.findall(r"[^\W\d_]{3,}", _normal(str(v).lstrip("@")))}
+    return not any(re.search(r"(?<![a-z])" + re.escape(p) + r"(?![a-z])", chave) for p in palavras)
+
+
+def _com_efeito(passo: PlanStep) -> bool:
+    """A etapa do plano que o planejador marcou com efeito, trava, ação do catálogo ou digitação: trocá-la pelo molde
+    (que não tem essas marcas) a tiraria da aprovação e do catálogo."""
+    return bool(passo.side_effect or passo.commit_guard or passo.capability or passo.bindings)
 
 
 def escolher(candidatas: Sequence[EtapaEnsinada], apps: Sequence[str]) -> list[EtapaEnsinada]:
@@ -84,7 +105,7 @@ def trocar(passos: Sequence[PlanStep], app_do_plano: str | None, oferecidas: Seq
            parametros: Mapping[str, str]) -> tuple[list[PlanStep], list[tuple[str, EtapaEnsinada]], list[str]]:
     """(etapas, trocadas, recusas): a etapa do plano com o nome de uma oferecida, no mesmo app e com todos os
     parâmetros declarados no plano, vira a etapa-molde do ensino (mantendo as dependências e o app da etapa do plano).
-    Faltando parâmetro, fica a do plano, e a recusa diz qual."""
+    Faltando parâmetro, ou se a etapa do plano tem efeito (`_com_efeito`), fica a do plano, e a recusa diz por quê."""
     por = {(e.app_id, e.nome): e for e in oferecidas}
     saida: list[PlanStep] = []
     trocadas: list[tuple[str, EtapaEnsinada]] = []
@@ -92,6 +113,10 @@ def trocar(passos: Sequence[PlanStep], app_do_plano: str | None, oferecidas: Seq
     for s in passos:
         e = por.get((s.app_id or app_do_plano or "", s.key))
         if e is None:
+            saida.append(s)
+            continue
+        if _com_efeito(s):
+            recusas.append(f"{s.key}: a etapa do plano tem efeito, trava ou ação do catálogo")
             saida.append(s)
             continue
         faltam = [p for p in e.parametros if not str(parametros.get(p, "")).strip()]

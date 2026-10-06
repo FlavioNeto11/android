@@ -33,6 +33,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   etapa-molde do ensino, mantendo as dependências. A etapa materializada ganha o MESMO `template_hash` da receita, e o
   executor a roda sem IA, caindo na IA se divergir. A trilha diz qual receita. Faltando parâmetro, fica a etapa do
   plano, com o motivo.
+- Revisão de segredos (médio e baixos corrigidos): a etapa do plano com efeito, trava, ação do catálogo ou `bindings`
+  não é trocada pelo molde (perderia a marca que a leva à aprovação); a etapa de sessão ou login (`ACAO_DE_SESSAO`) e a
+  chave que carrega uma palavra de um valor demonstrado do fluxo não são oferecidas.
 - O esquema de saída do plano não muda. O escopo da receita segue o 30.81; a decisão do dono (a ação ensinada serve a
   todas as personas ou só ao escopo de quem ensinou) fica pendente.
 - Prova `simulated`: `backend/tests/test_etapas_ensinadas_no_plano_livre.py` (2 testes; a etapa materializada tem o
