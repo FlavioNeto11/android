@@ -1,10 +1,18 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it } from 'vitest';
-import { click, setValue, waitFor } from './harness';
+import { afterEach, expect, it, vi } from 'vitest';
+import { atrasoMaximoDoFetchMs, click, setValue, waitFor } from './harness';
+
+vi.hoisted(() => { vi.stubEnv('ATRASO_DO_FETCH_MS', '75'); });
 
 // 29.130: o harness recusa o gesto que a tela não permite, nos dois sentidos (clicar e digitar), e diz em quê.
 
-afterEach(() => { document.body.innerHTML = ''; });
+afterEach(() => { document.body.innerHTML = ''; vi.unstubAllEnvs(); });
+
+it('o atraso máximo devolve o teto lido pelo harness, mesmo se o ambiente mudar depois', () => {
+  expect(atrasoMaximoDoFetchMs()).toBe(75);
+  vi.stubEnv('ATRASO_DO_FETCH_MS', '150');
+  expect(atrasoMaximoDoFetchMs()).toBe(75);
+});
 
 it('click recusa controle desabilitado, também dentro de fieldset desabilitado; aria-disabled segue clicável', async () => {
   document.body.innerHTML = `
