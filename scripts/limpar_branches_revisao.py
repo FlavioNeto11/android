@@ -1,10 +1,13 @@
-"""Frente GitHub (29.155, C18): apaga no GitHub as branches de revisão e de teste que JÁ ESTÃO na main.
+"""Frente GitHub (29.155, C18): apaga no GitHub as branches de revisão que JÁ ESTÃO na main.
 
-As frentes abrem PRs só de revisão a partir de branches `revisao/*` e provas descartáveis em `teste/*`: cada uma aponta para um
-commit que depois entra na main por avanço rápido. Sem limpeza elas se acumulam. Este script apaga uma branch só se TODAS estas
-condições valem: o nome começa por um prefixo permitido (`revisao/`, `teste/`), a ponta já está contida na main (a comparação do
-GitHub diz `identical` ou `behind`), não há PR ABERTO com ela como origem e o último commit tem mais de `--horas-minimas` horas.
-Qualquer dúvida (erro de API, estado desconhecido) deixa a branch como está. Nada fora desses dois prefixos é tocado, nem a main.
+As frentes abrem PRs só de revisão a partir de branches `revisao/*`: cada uma aponta para um commit que depois entra na main por
+avanço rápido. Sem limpeza elas se acumulam. Este script apaga uma branch só se TODAS estas
+condições valem: o nome começa por `revisao/`, a ponta já está contida na main (a comparação do GitHub diz `identical` ou `behind`),
+já existiu PR com ela como origem (uma branch recém-criada num commit antigo da main também está "contida" e não pode ser apagada),
+não há PR ABERTO com ela como origem nem como base e o último commit tem mais de `--horas-minimas` horas. Antes de apagar a ref é
+lida de novo e só cai se a ponta não mudou; no máximo `MAXIMO_POR_EXECUCAO` por execução. Qualquer dúvida (erro de API, estado
+desconhecido) deixa a branch. Nada fora de `revisao/` é tocado, nem a main. Branch `teste/*` descartável nunca está na main:
+quem a cria a apaga.
 
 Por padrão é ensaio (só imprime); `--aplicar` apaga. Roda no workflow `limpa-branches-revisao.yml` (runner hospedado).
 """
@@ -18,7 +21,8 @@ import sys
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
-PREFIXOS = ("revisao/", "teste/")
+PREFIXOS = ("revisao/",)
+MAXIMO_POR_EXECUCAO = 20
 _NOME = re.compile(r"[\w./-]{1,200}")
 Gh = Callable[..., str]
 
@@ -54,7 +58,8 @@ def listar(repo: str, prefixos: tuple[str, ...], gh: Gh) -> list[tuple[str, str]
             nome = str(it.get("ref", "")).removeprefix("refs/heads/")
             obj = it.get("object")
             sha = str(obj.get("sha", "")) if isinstance(obj, dict) else ""
-            if nome.startswith(prefixos) and _NOME.fullmatch(nome) and re.fullmatch(r"[0-9a-f]{40}", sha):
+            if (nome.startswith(prefixos) and _NOME.fullmatch(nome) and ".." not in nome and "//" not in nome
+                    and re.fullmatch(r"[0-9a-f]{40}", sha)):
                 achadas.append((nome, sha))
     return sorted(set(achadas))
 
@@ -65,8 +70,10 @@ def decidir(repo: str, nome: str, sha: str, agora: datetime, horas_minimas: int,
     if comp.get("status") not in ("identical", "behind"):
         return False, f"não está na main ({comp.get('status')})"
     abertos = json.loads(gh("pr", "list", "--repo", repo, "--head", nome, "--state", "open", "--json", "number"))
-    if abertos:
+    if abertos or json.loads(gh("pr", "list", "--repo", repo, "--base", nome, "--state", "open", "--json", "number")):
         return False, "tem PR aberto"
+    if not json.loads(gh("pr", "list", "--repo", repo, "--head", nome, "--state", "all", "--json", "number")):
+        return False, "nunca teve PR (pode ser branch nova num commit antigo)"
     data = json.loads(gh("api", f"repos/{repo}/commits/{sha}"))["commit"]["committer"]["date"]
     quando = datetime.fromisoformat(data.replace("Z", "+00:00"))
     if agora - quando < timedelta(hours=horas_minimas):
@@ -75,7 +82,7 @@ def decidir(repo: str, nome: str, sha: str, agora: datetime, horas_minimas: int,
 
 
 def main(argv: list[str] | None = None, gh: Gh | None = None, agora: datetime | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Apaga branches revisao/* e teste/* já mescladas na main.")
+    ap = argparse.ArgumentParser(description="Apaga branches revisao/* já mescladas na main.")
     ap.add_argument("--repo", required=True)
     ap.add_argument("--aplicar", action="store_true", help="apaga de verdade (padrão: ensaio)")
     ap.add_argument("--horas-minimas", type=int, default=6)
@@ -91,15 +98,22 @@ def main(argv: list[str] | None = None, gh: Gh | None = None, agora: datetime | 
     apagadas = mantidas = erros = 0
     try:
         branches = listar(a.repo, PREFIXOS, gh)
-    except (RuntimeError, ValueError, KeyError) as e:
+    except (RuntimeError, ValueError, KeyError, TypeError, AttributeError) as e:
         print(f"erro: {e}", file=sys.stderr)
         return 1
     for nome, sha in branches:
         try:
             apagar, motivo = decidir(a.repo, nome, sha, agora, a.horas_minimas, gh)
             if apagar and a.aplicar:
-                gh("api", "-X", "DELETE", f"repos/{a.repo}/git/refs/heads/{nome}")
-        except (RuntimeError, ValueError, KeyError) as e:
+                if apagadas >= MAXIMO_POR_EXECUCAO:
+                    apagar, motivo = False, f"teto de {MAXIMO_POR_EXECUCAO} apagadas por execução"
+                else:
+                    atual = json.loads(gh("api", f"repos/{a.repo}/git/ref/heads/{nome}"))["object"]["sha"]
+                    if atual != sha:
+                        apagar, motivo = False, "a ponta mudou depois da decisão"
+                    else:
+                        gh("api", "-X", "DELETE", f"repos/{a.repo}/git/refs/heads/{nome}")
+        except (RuntimeError, ValueError, KeyError, TypeError, AttributeError) as e:
             erros += 1
             print(f"mantida {nome}: erro ({type(e).__name__}), nada feito")
             continue

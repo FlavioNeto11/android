@@ -23,8 +23,9 @@ def sha(c: str) -> str:
 
 
 class FakeGh:
-    def __init__(self, branches, estado=None, abertos=(), datas=None, falha_em=None):
+    def __init__(self, branches, estado=None, abertos=(), datas=None, falha_em=None, sem_pr=(), base_aberta=(), muda_ponta=()):
         self.branches, self.estado, self.abertos = branches, estado or {}, set(abertos)
+        self.sem_pr, self.base_aberta, self.muda_ponta = set(sem_pr), set(base_aberta), set(muda_ponta)
         self.datas, self.falha_em, self.chamadas = datas or {}, falha_em, []
 
     def __call__(self, *args: str) -> str:
@@ -38,9 +39,19 @@ class FakeGh:
                 raise RuntimeError("gh api saiu com 1: simulado")
             return json.dumps({"status": self.estado.get(s, "behind")})
         if args[:2] == ("pr", "list"):
-            return json.dumps([{"number": 1}] if args[args.index("--head") + 1] in self.abertos else [])
+            if "--base" in args:
+                return json.dumps([{"number": 2}] if args[args.index("--base") + 1] in self.base_aberta else [])
+            nome, estado = args[args.index("--head") + 1], args[args.index("--state") + 1]
+            if estado == "open":
+                return json.dumps([{"number": 1}] if nome in self.abertos else [])
+            return json.dumps([] if nome in self.sem_pr else [{"number": 1}])
+        if args[0] == "api" and "/git/ref/heads/" in args[1]:
+            nome = args[1].split("/heads/", 1)[1]
+            atual = next(s for n, s in self.branches if n == nome)
+            return json.dumps({"object": {"sha": "f" * 40 if nome in self.muda_ponta else atual}})
         if args[0] == "api" and "/commits/" in args[1]:
-            return json.dumps({"commit": {"committer": {"date": self.datas.get(args[1].rsplit("/", 1)[1], "2026-10-05T10:00:00Z")}}})
+            data = self.datas.get(args[1].rsplit("/", 1)[1], "2026-10-05T10:00:00Z")
+            return json.dumps({"commit": {"committer": {"date": data} if data else None}})
         if args[:3] == ("api", "-X", "DELETE"):
             return ""
         raise AssertionError(args)
@@ -64,9 +75,44 @@ class Limpeza(unittest.TestCase):
         self.assertIn("apagaria revisao/a", out)
 
     def test_aplicar_apaga_a_mesclada_antiga_sem_pr(self) -> None:
-        gh = FakeGh([("revisao/a", sha("a")), ("teste/b", sha("b"))])
+        gh = FakeGh([("revisao/a", sha("a")), ("revisao/b", sha("b"))])
         self.assertEqual(rodar(gh, "--aplicar")[0], 0)
-        self.assertEqual(gh.apagadas(), ["revisao/a", "teste/b"])
+        self.assertEqual(gh.apagadas(), ["revisao/a", "revisao/b"])
+
+    def test_identical_tambem_conta_como_na_main(self) -> None:
+        gh = FakeGh([("revisao/a", sha("a"))], estado={sha("a"): "identical"})
+        rodar(gh, "--aplicar")
+        self.assertEqual(gh.apagadas(), ["revisao/a"])
+
+    def test_branch_que_nunca_teve_pr_fica(self) -> None:
+        gh = FakeGh([("revisao/a", sha("a"))], estado={sha("a"): "identical"}, sem_pr={"revisao/a"})
+        rodar(gh, "--aplicar")
+        self.assertEqual(gh.apagadas(), [])
+
+    def test_pr_aberto_com_ela_como_base_fica(self) -> None:
+        gh = FakeGh([("revisao/a", sha("a"))], base_aberta={"revisao/a"})
+        rodar(gh, "--aplicar")
+        self.assertEqual(gh.apagadas(), [])
+
+    def test_ponta_que_mudou_antes_de_apagar_fica(self) -> None:
+        gh = FakeGh([("revisao/a", sha("a")), ("revisao/b", sha("b"))], muda_ponta={"revisao/a"})
+        rodar(gh, "--aplicar")
+        self.assertEqual(gh.apagadas(), ["revisao/b"])
+
+    def test_teto_por_execucao(self) -> None:
+        gh = FakeGh([(f"revisao/{i:03d}", sha("a")) for i in range(mod.MAXIMO_POR_EXECUCAO + 3)])
+        rodar(gh, "--aplicar")
+        self.assertEqual(len(gh.apagadas()), mod.MAXIMO_POR_EXECUCAO)
+
+    def test_commit_sem_committer_vira_erro_e_mantem(self) -> None:
+        gh = FakeGh([("revisao/a", sha("a")), ("revisao/b", sha("b"))], datas={sha("a"): ""})
+        codigo, _, _ = rodar(gh, "--aplicar")
+        self.assertEqual((codigo, gh.apagadas()), (1, ["revisao/b"]))
+
+    def test_teste_barra_barra_e_ponto_ponto_sao_ignorados(self) -> None:
+        gh = FakeGh([("teste/b", sha("b")), ("revisao/../main", sha("a")), ("revisao//x", sha("c")), ("revisao/ok", sha("d"))])
+        rodar(gh, "--aplicar")
+        self.assertEqual(gh.apagadas(), ["revisao/ok"])
 
     def test_nao_mesclada_fica(self) -> None:
         gh = FakeGh([("revisao/a", sha("a"))], estado={sha("a"): "ahead"})
@@ -101,7 +147,7 @@ class Limpeza(unittest.TestCase):
         self.assertEqual(gh.apagadas(), ["revisao/ok"])
         for c in gh.chamadas:  # a lista só pede os dois prefixos
             if c[:2] == ("api", "--paginate"):
-                self.assertTrue(c[2].endswith(("/heads/revisao/", "/heads/teste/")))
+                self.assertTrue(c[2].endswith("/heads/revisao/"))
 
     def test_nome_estranho_e_ignorado(self) -> None:
         gh = FakeGh([("revisao/a b", sha("a")), ("revisao/ok", sha("c"))])
