@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 28.57: arquivo de texto com o nome original no envio e repasse do `.txt` do dono sem legenda (branch canais/anexos-28-57)
+
+- Achado de 06/10 ao mandar os arquivos do 29.161: `enviar_anexo` renomeava tudo para `anexo-<sha>.<ext>` e não aceitava `.ps1`/`.md`, o que quebraria o comando `-File .\script.ps1`; e o `.txt` que o dono mandou sem legenda ficava `ignorada`. A premissa de que o canal não recebia o anexo estava errada: a recepção do 28.24 já guardava os 4 `.txt` (`canal_anexos` 1 a 4), só faltava o repasse (K-105).
+- **Envio:** `enviar_anexo`/`enviar_conteudo` aceitam `nome` (o código nosso, nunca o remetente): lista fechada `.ps1`, `.md`, `.txt`, `.json`, `.csv` (`domain/anexos.EXTENSOES_COM_NOME`), nome só de `[A-Za-z0-9._-]` até 80, sem `..` nem oculto, e conteúdo que de fato é texto UTF-8 pela assinatura; fora disso, recusa definitiva sem enviar. O armazém e a recepção não mudam (tudo `.txt`).
+- **Recepção:** o `.txt` do dono sem legenda vai à orquestradora (`previa.repasse = "anexo_recebido"`) com o id, o tamanho e a contagem de identificadores por categoria (ip, mac, email, usuario_em_caminho, serial, nome_da_maquina, segredo), só números, sem eco do achado nem do nome do arquivo e sem resposta nova ao dono. Foto e PDF sem legenda seguem `ignorada` (o `/ler` em reply). O filtro de credencial do texto colado não mudou.
+- Prova `simulated`: `backend/tests/test_canais_anexos.py` 103 passed (10 testes novos: nome no multipart, 10 nomes recusados, binário e imagem com nome recusados, `enviar_conteudo` com nome, domínio, `.txt` com e sem achado, foto ignorada, legenda segue a gramática); dirigidos de canais, Telegram, arquitetura e catracas 632 passed; catracas 88; Trello leitor e webhook 78; mypy 257 no teto; docs-check 0. Doc: `docs/dominios/canais.md`; aprendizado K-105.
+- `not_run`: prova real (um envio com nome e uma recepção com o dono, só depois do deploy do corte 53).
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
