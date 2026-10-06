@@ -418,6 +418,10 @@ async def test_credencial_no_assunto_ou_na_fonte_e_recusada_e_o_motivo_sai_redig
             s.criar(_pedido([AlvoPedido(pid)], chave=f"teste-op-cred-{len(kw)}{list(kw)[0]}", **kw))
         assert exc.value.code == "credencial_no_comando"
     assert "segredo123" not in (_motivo("a tela pediu Senha: segredo123 de novo") or "")
+    # O motivo da regra da frota cita o @ do alvo; o da operação diz "o perfil alvo" (achado do percurso da Portal).
+    frota = _motivo("1 outra(s) conta(s) da frota já mexeram com @conta.de_teste9 nos últimos 30 dias")
+    assert frota is not None and "@" not in frota and "o perfil alvo" in frota
+    assert _motivo("escreva para fulano@exemplo.com") == "escreva para fulano@exemplo.com"     # e-mail não é @ de conta
 
 
 async def test_custo_por_alvo_e_o_da_execucao_dele(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:

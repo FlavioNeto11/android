@@ -54,10 +54,14 @@ LIMITE_DE_ACOES = "limite de ações executadas"
 AGUARDA_LIBERACAO = "aguarda liberação"
 
 
+#: Um @ de conta no texto do motivo (o da regra da frota cita o alvo): o motivo da operação diz "o perfil alvo".
+_ARROBA = re.compile(r"(?<![\w.])@[A-Za-z0-9._]{1,60}")
+
+
 def _motivo(texto: object) -> str | None:
-    """O motivo REDIGIDO e numa linha: o do objetivo pode trazer texto lido da tela ou da pergunta à pessoa, e vai para o
-    banco, o evento `operacao.alvo` e a API."""
-    return motivo_curto(redact(str(texto)) if texto else None)
+    """O motivo REDIGIDO, numa linha e SEM @ de conta. O do objetivo pode trazer texto lido da tela, da pergunta à pessoa
+    ou o @ do alvo (a porta de frota o cita), e vai para o banco, o evento `operacao.alvo`, a API e o relatório."""
+    return motivo_curto(_ARROBA.sub("o perfil alvo", redact(str(texto))) if texto else None)
 
 
 class OperacaoError(Exception):
@@ -320,7 +324,8 @@ class ServicoDeOperacoes:
                         capability=s["capability"], status=str(s["status"]), side_effect=bool(s["side_effect"]),
                         terminou_em=s["finished_at"], comecou_em=s["started_at"], tem_texto=bool(texto),
                         verificada=bool((loads(s["result"], {}) or {}).get("verified")),
-                        pedido_de_aprovacao=pedido.status if pedido is not None else None))
+                        pedido_de_aprovacao=pedido.status if pedido is not None else None,
+                        pedido_em=getattr(pedido, "created_at", None) if pedido is not None else None))
                     if s["side_effect"] and efeito is None:
                         efeito = s
         leitura = derivar(FatosDoAlvo(
@@ -330,7 +335,7 @@ class ServicoDeOperacoes:
             objetivo_motivo=_motivo((obj["blocked_reason"] or obj["status_detail"]) if obj is not None else None),
             run_status=str(run["status"]) if run is not None else None, etapas=etapas, marcas=marcas,
             abertura=abertura, estagio_por_capability=por_cap, acao_final=str(op["acao_final"]),
-            criado_em=str(op["created_at"])))
+            criado_em=str(op["created_at"]), objetivo_bloqueio=obj["blocked_kind"] if obj is not None else None))
         return leitura, self._resultado(a, efeito, marcas)
 
     def _resultado(self, a: Row, efeito: Row | None, marcas: dict[str, object]) -> dict[str, object] | None:
