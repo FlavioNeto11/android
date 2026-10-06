@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.148: a IA não propõe a pós-condição que já vale na partida (branch feat/31-148-pos-condicao-na-partida)
+
+- Achado das provas reais de 06/10: 2 de 2 propostas puseram em "abrir a busca" um texto que já estava na tela de partida.
+- **Prompt do `propose`:**
+  - Por entrada, "textos na tela" (a tela inteira, de `screen_elements`) e "apareceram depois" (o que a etapa fez surgir), no lugar das 8 linhas filtradas.
+  - A regra no papel do sistema: a pós-condição não pode estar na tela da 1ª entrada da etapa.
+  - Todo dado da persona vira marcador, inclusive o texto e a descrição do elemento tocado.
+- **Proposta:** quando a IA ainda assim propõe uma que já vale, `pos_condicoes_ja_valem` vem com as `sugestoes_prontas` (31.142). Nada é trocado sozinho.
+- Adendo v1.93.
+- Prova `simulated`: `tests/test_treino_pos_condicao_na_proposta.py` (5).
+- Real: `not_run` até o deploy (3 gravações, ~US$ 0,04).
+
 ## 2026-10-06 — 31.143: a marca de prova na lista do Livro (branch feat/31-142-sugestao-pronta)
 
 - Achado do percurso 52 da Portal: `nascido_de_prova` (31.130) só saía em `conteudo.origem` do detalhe, e o selo e o filtro "Prova" da lista (31.131) ficavam sem dado.

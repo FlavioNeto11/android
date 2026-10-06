@@ -487,6 +487,15 @@ traz `sugestoes_prontas` (`partida.pronta`): `text_visible` fica `text_visible`;
 mais no 409 `duplicate_command`: devolve `code` e `message` num 200, com a frase na 1ª linha de `warnings`, junto das
 pós-condições e dos avisos. O `save` segue recusando com o 409.
 
+**A proposta que já evita a pós-condição da partida (31.148, adendo v1.93).** O 31.122 e o 31.142 pegavam o erro
+depois. O `propose` passa a mandar à IA, por entrada:
+- os textos da tela inteira (`screen_elements`, texto e descrição);
+- os que apareceram depois dela (`partida.textos_da_proposta`).
+
+Todo dado da persona vira marcador, inclusive o alvo tocado. A regra no papel do sistema: a pós-condição não pode estar
+na tela da 1ª entrada da etapa. Se a IA ainda propuser uma que já vale, a proposta já volta com `pos_condicoes_ja_valem`
+e as sugestões prontas. A pessoa decide.
+
 **O fluxo nascido de uma prova (31.130, migração 122, adendo v1.87).** Os fluxos ensinados em provas de sessão
 ficavam, no Livro e em Salvas, iguais a um fluxo real desligado por uma pessoa. A sessão aberta com
 `nascido_de_prova: true` leva a marca (`training_sessions.nascido_de_prova`), e o `save` a passa ao fluxo
