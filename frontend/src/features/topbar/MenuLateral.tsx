@@ -1,6 +1,6 @@
 import {
   CalendarClock, GraduationCap, Inbox, LayoutGrid, ListChecks, Package, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon,
-  Radio, Stethoscope, UserRound, X, type LucideIcon,
+  Radio, Stethoscope, UserRound, Workflow, X, type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { hashDe, type Tela } from '../../lib/rotas';
@@ -33,6 +33,7 @@ export const NAV: readonly { tela: Tela; label: string; icon: LucideIcon }[] = [
   { tela: 'configuracao', label: 'Configuração', icon: SettingsIcon },
   { tela: 'diagnostico', label: 'Diagnóstico', icon: Stethoscope },
   { tela: 'canais', label: 'Canais', icon: Radio },
+  { tela: 'operacoes', label: 'Operação', icon: Workflow },
 ];
 
 export const ID_MENU = 'menu-principal';
