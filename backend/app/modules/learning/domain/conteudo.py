@@ -252,8 +252,11 @@ def etapa_de_fluxo(indice: int, passo: JsonValue) -> JsonObject:
     `{param}` ou texto do plano e não saem)."""
     if not isinstance(passo, dict):
         return {"indice": indice, "chave": None, "app": None, "capability": None, "alvo": None, "efeito": False,
-                "pos_condicao": None, "parametros": [], "segredo": False}
+                "pos_condicao": None, "parametros": [], "segredo": False, "pacotes_aceitos": []}
     pos = passo.get("postcondition")
+    # 31.140 (v1.89): os pacotes vizinhos em que a etapa conclui (31.123); lista vazia = só o app da etapa
+    brutos = passo.get("pacotes_aceitos")
+    aceitos: list[JsonValue] = [p for p in brutos if isinstance(p, str)] if isinstance(brutos, list) else []
     bindings = passo.get("bindings")
     chaves = [k for k in bindings if isinstance(k, str)] if isinstance(bindings, dict) else []
     return {
@@ -262,19 +265,22 @@ def etapa_de_fluxo(indice: int, passo: JsonValue) -> JsonObject:
         "alvo": _texto(passo.get("commit_selector")), "efeito": passo.get("side_effect") is True,
         "pos_condicao": ({"tipo": _texto(pos.get("kind")), "descricao": _texto(pos.get("description"))}
                          if isinstance(pos, dict) else None),
-        "parametros": [k for k in chaves if not _sigiloso(k)], "segredo": any(_sigiloso(k) for k in chaves)}
+        "parametros": [k for k in chaves if not _sigiloso(k)], "segredo": any(_sigiloso(k) for k in chaves),
+        "pacotes_aceitos": aceitos}
 
 
 def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: str | None,
                   source_run_id: str | None, apps: Iterable[str] = (),
-                  correcao: Mapping[str, str | None] | None = None) -> JsonObject:
+                  correcao: Mapping[str, str | None] | None = None, nascido_de_prova: bool = False) -> JsonObject:
     """`app`: o principal do plano, onde rodam as etapas sem app próprio; `apps`: os exigidos (`flow_required_apps`),
     na ordem em que o plano os usa (29.42: ler no Outlook e depois procurar no Instagram → Outlook, Instagram).
     Um comando que atravessa apps (12.1: ler no Outlook, procurar no Instagram) tem o principal e os dois exigidos.
 
     `correcao` (31.117): a execução que falhou e deu origem à correção ensinada (`{session_id, run_id, step_id, attempt_id}`, a
-    mesma forma de `flows[].origin`); `None` quando o fluxo não veio de uma falha. Os quatro ids vão em `origem` (null sem
-    correção) e `source_run_id` cai para o run da falha quando a coluna do fluxo é null (o treino não a preenche)."""
+    mesma forma de `flows[].origin`); `None` quando o fluxo não veio de uma falha. Desde o 31.135 (v1.88) vem de todo fluxo
+    ensinado, com `instance_id`, `operator` e `ensinado_em`, e os três ids da falha `None` quando não veio de uma. Os quatro ids vão em `origem` (null sem
+    correção) e `source_run_id` cai para o run da falha quando a coluna do fluxo é null (o treino não a preenche).
+    `nascido_de_prova` (31.130): o fluxo nasceu de uma prova (da sessão aberta com a marca), não de uso real."""
     origem_da_falha = correcao or {}
     passos = plano.get("steps") if isinstance(plano, dict) else None
     etapas = [etapa_de_fluxo(i, p) for i, p in enumerate(passos if isinstance(passos, list) else [])]
@@ -286,7 +292,11 @@ def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: st
         "origem": {"tipo": "treino" if treino else "execucao", "fonte": fonte,
                    "source_run_id": source_run_id or origem_da_falha.get("run_id"),
                    "session_id": origem_da_falha.get("session_id"), "run_id": origem_da_falha.get("run_id"),
-                   "step_id": origem_da_falha.get("step_id"), "attempt_id": origem_da_falha.get("attempt_id")},
+                   "step_id": origem_da_falha.get("step_id"), "attempt_id": origem_da_falha.get("attempt_id"),
+                   # 31.135 (v1.88): a sessão de treino de onde veio, de todo fluxo ensinado; `None` fora do treino
+                   "instance_id": origem_da_falha.get("instance_id"), "operator": origem_da_falha.get("operator"),
+                   "ensinado_em": origem_da_falha.get("ensinado_em"),
+                   "nascido_de_prova": nascido_de_prova},
         "etapas": etapas,
         "efeito": {"externo": fluxo_tem_efeito(plano),
                    "etapas_com_efeito": [e["indice"] for e in etapas if e["efeito"] is True]}}

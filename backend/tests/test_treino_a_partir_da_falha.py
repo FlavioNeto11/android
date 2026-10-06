@@ -196,14 +196,17 @@ async def test_f3_a_correcao_salva_nasce_candidata_com_escopo_e_prova_e_ligada_a
     assert json.loads(ev["data"])["origin"] == {"run_id": run, "step_id": step, "attempt_id": f"{step}:a2"}
     async with _cliente(harness) as c:
         fluxos = {f["id"]: f for f in (await c.get("/api/flows")).json()}
-    assert fluxos[flow_id]["origin"] == {"session_id": sid, "run_id": run, "step_id": step, "attempt_id": f"{step}:a2"}
+    fim = st.db.scalar("SELECT finished_at FROM training_sessions WHERE id=?", (sid,))
+    assert fluxos[flow_id]["origin"] == {"session_id": sid, "run_id": run, "step_id": step, "attempt_id": f"{step}:a2",
+                                         "instance_id": "android-01", "operator": None, "ensinado_em": fim}   # 31.135
     assert [fid for fid, f in fluxos.items() if f["origin"]] == [flow_id]           # os outros fluxos não têm origem
     # 31.117: o Livro lê a mesma origem (os quatro ids de `flows[].origin`) em `conteudo.origem`, e o `source_run_id`, que o
     # treino não grava na coluna, cai para a execução que falhou.
     async with _cliente(harness) as c:
         lido = (await c.get(f"/api/aprendizado/fluxo/{flow_id}")).json()["conteudo"]["origem"]
     assert st.db.scalar("SELECT source_run_id FROM flows WHERE id=?", (flow_id,)) is None
-    assert {k: lido[k] for k in ("session_id", "run_id", "step_id", "attempt_id")} == fluxos[flow_id]["origin"]
+    assert {k: lido[k] for k in ("session_id", "run_id", "step_id", "attempt_id", "instance_id", "operator",
+                                 "ensinado_em")} == fluxos[flow_id]["origin"]
     assert lido["source_run_id"] == run and lido["tipo"] == "treino" and lido["fonte"] == f"training:{sid}"
 
 

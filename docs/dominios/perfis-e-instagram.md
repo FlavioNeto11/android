@@ -479,6 +479,35 @@ v1.86; achados da prova conjunta r-20261006102728-1157c6).**
   `independente: true` na etapa da proposta. O executor já esperava a dependência; antes, a 2ª etapa rodava com a 1ª em
   `retry_wait`, e o objetivo fechou `completed` na tela inicial.
 
+**O fluxo nascido de uma prova (31.130, migração 122, adendo v1.87).** Os fluxos ensinados em provas de sessão
+ficavam, no Livro e em Salvas, iguais a um fluxo real desligado por uma pessoa. A sessão aberta com
+`nascido_de_prova: true` leva a marca (`training_sessions.nascido_de_prova`), e o `save` a passa ao fluxo
+(`flows.nascido_de_prova`). Ela sai no GET e na listagem das sessões, em `GET /api/flows` e na `origem` do conteúdo
+do fluxo no Livro, com o filtro `nascido_de_prova=true|false` nas duas listagens. As provas das frentes abrem a sessão
+com a marca e, ao desligar o fluxo de prova, mandam `motivo` no `PUT /api/flows/{id}` dizendo que é prova (vai à
+trilha do livro). Os de antes se marcam pelo id com `scripts/marcar-fluxo-de-prova.py`.
+
+**A abertura pelo lançador (31.139).** 2 de 9 fluxos ensinados começavam na tela inicial do aparelho (abrir a gaveta,
+tocar no ícone), e a receita guardava o toque no layout do lançador daquele aparelho (a 198 nunca reproduziu). Na
+destilação, o trecho do começo feito no lançador, seguido de entrada já no app da sessão, sai das etapas, e a etapa da
+1ª entrada ganha `open_app` do app (`training/lancador.py`). O 31.121 cobre a gravação que começa dentro do app. A
+gravação não muda.
+
+**A abertura nas receitas antigas (31.138).** As regras do 31.121 e do 31.139 só valem para o que se salva depois
+delas: o único fluxo ensinado ativo e três desligados seguiam com a 1ª receita só com o toque. O passe único
+`scripts/abertura-nas-receitas-ensinadas.py` (`training/reparo_da_abertura.py`) destila de novo cada fluxo ensinado e
+troca a receita viva da etapa que agora abre o app, como a demonstração troca (30.79), na mesma chave e com a trilha
+no livro. Ensaio por padrão; a Android aplica como operadora.
+
+**Os pacotes aceitos à vista (31.140, adendo v1.89).** `pacotes_aceitos` existia só no plano salvo e nas etapas da
+execução. Agora cada etapa da prévia, do `save` e do reparo das receitas o traz, e a etapa do fluxo no Livro
+(`etapa_de_fluxo`) também. A tela usa isso no 31.141.
+
+**A origem do fluxo ensinado (31.135, adendo v1.88).** O fluxo só dizia "Demonstrado no treino". Agora a `origin` de
+`GET /api/flows` e a `origem` do conteúdo no Livro trazem, de todo fluxo ensinado, a sessão (`session_id`), o
+aparelho, quem ensinou (`operator`) e quando (`ensinado_em`), no molde do v1.81. Os ids da falha seguem `null` quando
+não veio de uma.
+
 **Teclas ao ensinar (31.84).** O texto digitado pelo painel acrescenta ao campo (`clear_first=false`), e quem ensina
 apagava um caractere por vez com "Apagar". Como a receita digita com `clear_first=True`, que já limpa o campo,
 `distill_training` trata assim as teclas gravadas na etapa:

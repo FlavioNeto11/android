@@ -280,16 +280,20 @@ class FontesSql:
 
     def _correcao_do_fluxo(self, fonte: str | None) -> dict[str, str | None] | None:
         """31.117: a execução que falhou e originou a correção ensinada deste fluxo (a sessão de treino em `flows.source`);
-        a mesma regra e forma do `origin` de `GET /api/flows` (`taskqueue/flows.py`). `None` se não veio de uma falha."""
+        a mesma regra e forma do `origin` de `GET /api/flows` (`taskqueue/flows.py`). 31.135 (v1.88): de TODO fluxo
+        ensinado, com o aparelho, quem ensinou e quando; os três ids da falha `None` sem falha. `None` fora do treino."""
         if not fonte or not fonte.startswith(PREFIXO_DE_TREINO):
             return None
-        sessao = self._db.one("SELECT id, origin_run_id, origin_step_id, origin_attempt_id FROM training_sessions"
-                              " WHERE id=? AND origin_run_id IS NOT NULL", (fonte[len(PREFIXO_DE_TREINO):],))
+        sessao = self._db.one("SELECT id, origin_run_id, origin_step_id, origin_attempt_id, instance_id, operator,"
+                              " finished_at FROM training_sessions WHERE id=?", (fonte[len(PREFIXO_DE_TREINO):],))
         if sessao is None:
             return None
-        return {"session_id": linhas.texto(sessao, "id"), "run_id": linhas.texto(sessao, "origin_run_id"),
+        return {"session_id": linhas.texto(sessao, "id"), "run_id": linhas.texto_ou_nulo(sessao, "origin_run_id"),
                 "step_id": linhas.texto_ou_nulo(sessao, "origin_step_id"),
-                "attempt_id": linhas.texto_ou_nulo(sessao, "origin_attempt_id")}
+                "attempt_id": linhas.texto_ou_nulo(sessao, "origin_attempt_id"),
+                "instance_id": linhas.texto_ou_nulo(sessao, "instance_id"),
+                "operator": linhas.texto_ou_nulo(sessao, "operator"),
+                "ensinado_em": linhas.texto_ou_nulo(sessao, "finished_at")}
 
     def _conteudo_do_fluxo(self, ref: str) -> JsonObject | None:
         row = self._db.one("SELECT * FROM flows WHERE id=?", (ref,))
@@ -300,7 +304,8 @@ class FontesSql:
                              correcao=self._correcao_do_fluxo(linhas.texto_ou_nulo(row, "source")),
                              comando_modelo=linhas.texto(row, "command_template"),
                              fonte=linhas.texto_ou_nulo(row, "source"),
-                             source_run_id=linhas.texto_ou_nulo(row, "source_run_id"), apps=exigidos.get(ref, []))
+                             source_run_id=linhas.texto_ou_nulo(row, "source_run_id"), apps=exigidos.get(ref, []),
+                             nascido_de_prova=bool(linhas.inteiro_ou_nulo(row, "nascido_de_prova")))
 
     def _conteudo_da_habilidade(self, ref: str) -> JsonObject | None:
         row = self._db.one("SELECT skill_id, version, state, schema_version, content, content_hash, command_template,"

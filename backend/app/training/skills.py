@@ -27,7 +27,7 @@ from ..planning.training import TrainingRequest
 from ..taskqueue.flows import PLACEHOLDER, RESERVED, ensinado_em_prova
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..util import now_iso
-from . import dado_da_persona, partida
+from . import dado_da_persona, lancador, partida
 from .reparo_da_gravacao import marcar_telas
 from .recorder import TrainingError
 from .arraste import arrastes_finais, confirmou, pode_ser_receita
@@ -496,6 +496,8 @@ class TrainingSkills:
         except ValueError as exc:
             raise TrainingError("duplicate_command", str(exc), 409) from None
         self.s.scheduler.flows.set_scope(flow_id, profile_ids=prep.profile_ids, group_ids=prep.group_ids)
+        if sess.get("nascido_de_prova"):        # 31.130: o fluxo de uma sessão de prova leva a marca
+            self.s.db.execute("UPDATE flows SET nascido_de_prova=1 WHERE id=?", (flow_id,))
         relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
                                           prep, session_id, gravar=True)
         self.s.db.execute("UPDATE training_sessions SET status='saved', flow_id=?, proposal=?, updated_at=? WHERE id=?",
@@ -628,7 +630,9 @@ class TrainingSkills:
         identidades: dict[str, tuple[str, str, str] | str] = {}      # 31.110: uma leitura por app, não uma por etapa
         for d in destiladas:
             passo = d.passo
-            linha: dict[str, object] = {"key": passo.key, "title": passo.title, "recipe": False, "reason": d.motivo}
+            # 31.140 (v1.89): os pacotes vizinhos em que a etapa conclui (31.123), por etapa, e não só a linha de `warnings`
+            linha: dict[str, object] = {"key": passo.key, "title": passo.title, "recipe": False, "reason": d.motivo,
+                                        "pacotes_aceitos": list(passo.pacotes_aceitos)}
             relatorio.append(linha)
             if not d.acoes:
                 continue
@@ -749,9 +753,13 @@ def _destilar(sess: Sessao, p: Proposta, passos: list[PlanStep], exemplos: dict[
     vivas = sorted(s for s in por_seq if s not in descartadas)
     primeira = por_seq[vivas[0]] if vivas else None
     app_id = p.get("app_id") if isinstance(p.get("app_id"), str) else None
+    # 31.139: a gravação que começou no lançador (gaveta, ícone) e entrou no app: o trecho do lançador vira `open_app`
+    pacote_do_app = pacotes.get(app_id or "")
+    pelo_lancador = lancador.abertura_pelo_lancador([por_seq[s] for s in vivas], pacote_do_app)
     for st, passo in zip(p["steps"], passos):
         entradas = [por_seq[i] for i in _inteiros(st.get("inputs")) if i in por_seq and i not in descartadas]
-        entradas = partida.com_abertura(entradas, primeira, app_id, pacotes.get(app_id or ""))
+        entradas = lancador.sem_o_lancador(entradas, pelo_lancador, primeira, app_id, pacote_do_app)
+        entradas = partida.com_abertura(entradas, primeira, app_id, pacote_do_app)
         # 31.114 F2: o arraste que termina a etapa só vira receita confirmado pela pessoa, com a tela conhecida e sem borda.
         final = confirmou(respostas, str(st.get("key"))) and pode_ser_receita(arrastes_finais(entradas), tela)
         acoes, motivo = distill_training(entradas, exemplos, side_effect=passo.side_effect, app_packages=pacotes,
