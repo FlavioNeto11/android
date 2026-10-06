@@ -392,11 +392,14 @@ class PolicyEngine:
         # 30.65: a exceção de uso único, criada por pessoa, tira só ESTA recusa; quem a usa (`excecoes_usadas`) passa
         # a etapa por aprovação. O espaçamento abaixo e as demais regras do `check` continuam valendo. Só entre contas
         # nossas vivas: a rota já recusa outro alvo, e a porta não confia só nisso.
+        # P-030 (proposta de emenda ao ADR-055): com `fleet_one_account_rule_for_own_accounts` desligado, o alvo que é
+        # conta nossa VIVA sai só da regra de uma conta por alvo (e então não precisa de exceção). Pessoa real nunca sai.
+        fora_da_regra = nossa_viva and not bool(getattr(s, "fleet_one_account_rule_for_own_accounts", True))
         excecao = (ExcecoesDePolitica(self.repo.db).ativa_para(profile_id, alvo, cap.key, step_id)
-                   if outras >= teto and excecoes_usadas is not None and nossa_viva else None)
+                   if outras >= teto and excecoes_usadas is not None and nossa_viva and not fora_da_regra else None)
         if excecao is not None and excecoes_usadas is not None:
             excecoes_usadas.append(excecao)
-        elif outras >= teto:
+        elif outras >= teto and not fora_da_regra:
             regra = ("uma conta por alvo" if teto == 1 else f"no máximo {teto} contas por alvo")
             return (f"{outras} outra(s) conta(s) da frota já mexeram com {alvo} nos últimos {dias} dias ou têm pedido "
                     f"em aberto para ele; em {_ROTULO_DO_BALDE.get(cap.limit_bucket, cap.limit_bucket)} vale {regra} "

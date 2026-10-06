@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — P-030 (proposta): conta nossa viva fora da regra de uma conta por alvo, atrás de um limite ao vivo (branch feat/adr055-frota-nossa-fora-da-regra)
+
+- `LimitsCfg.fleet_one_account_rule_for_own_accounts` (padrão `true`, a regra de 02/10). Com `false`, a porta de frota não
+  aplica a regra de uma conta por alvo quando o alvo é conta nossa viva; o resto continua. Pessoa real nunca sai da
+  regra. Emenda proposta no ADR-055. Não muda nada até o sim do dono (P-030), que é um `PUT /api/settings`.
+- Prova `simulated`: `backend/tests/test_interacao_entre_contas_nossas.py`. `not_run`: o central.
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.

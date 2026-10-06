@@ -398,6 +398,11 @@ class LimitsCfg(BaseModel):
     # (viva), esta conta espera ao menos isto, em segundos, desde o último gesto com efeito DELA (vale o maior entre este valor e
     # `cooldown_between_external_actions_s` do perfil). Ritmo baixo de propósito; conta retirada por bloqueio segue recusada.
     fleet_min_spacing_to_own_account_s: int = Field(600, ge=0, le=86400)
+    # P-030 (proposta de emenda ao ADR-055, 06/10): a regra de UMA conta por alvo na janela vale também quando o alvo é conta
+    # nossa VIVA (decisão do dono de 02/10, emenda do ADR-050). `false` tira desse alvo só essa regra: três contas nossas
+    # podem comentar no mesmo post nosso. O resto continua: conta retirada recusada, espaçamentos, tetos e aprovação.
+    # Pessoa real nunca sai da regra. Lido ao vivo (`PUT /api/settings`); `true` até o sim do dono.
+    fleet_one_account_rule_for_own_accounts: bool = True
     # 30.60 (N4): publicar no feed (balde `posts`) passa por uma pessoa mesmo com perfil ou grupo `autonomous`, como a DM
     # fria do ADR-055. Só a instalação afrouxa, aqui; um perfil não tem esse poder.
     publicar_sem_aprovacao: bool = False

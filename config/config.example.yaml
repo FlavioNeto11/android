@@ -211,6 +211,9 @@ limits:
   # públicos da MESMA conta quando o alvo é outra conta da frota (viva); vale o maior entre ele e o cooldown do perfil (45 s).
   # Conta retirada por bloqueio segue recusada. Baixe com cuidado: é o ritmo baixo que a decisão do dono pede.
   fleet_min_spacing_to_own_account_s: 600
+  # P-030 (proposta, emenda ao ADR-055): false tira a conta nossa VIVA da regra de uma conta por alvo em 30 dias (três contas
+  # nossas no mesmo post nosso). Pessoa real nunca sai da regra. true até o sim do dono.
+  fleet_one_account_rule_for_own_accounts: true
   # 30.60 (N4): publicar no feed passa por uma pessoa mesmo com perfil ou grupo autônomo. true só se o dono decidir.
   publicar_sem_aprovacao: false
   # Item 17.12: num for_each, cada item além do primeiro soma ai_max_calls_per_item ao teto acima, até ai_max_calls_absolute

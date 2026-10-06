@@ -3535,6 +3535,24 @@ autorização.
 
 Prova `simulated`: `backend/tests/test_excecao_de_politica.py`.
 
+**Emenda P-030 PROPOSTA, 06/10/2026 (orquestradora; só vale com o sim do dono na P-030):** o alvo que é conta nossa
+VIVA pode sair da regra de uma conta por alvo na janela. O motivo é a prova de 07/10, que põe três contas nossas no
+mesmo post nosso. A onda 1 (`op-20261006193344-2f4bf1`) mostrou o problema: com a regra valendo também entre contas
+nossas (emenda 29.28 do ADR-050, decisão do dono de 02/10), qualquer post nosso é recusado, porque as contas com
+sessão já interagiram entre si.
+- Fica atrás do limite ao vivo `LimitsCfg.fleet_one_account_rule_for_own_accounts`, com padrão `true` (a regra de
+  02/10). O sim do dono vira `PUT /api/settings {"fleet_one_account_rule_for_own_accounts": false}`, sem deploy, e
+  desfazer é o mesmo PUT com `true`.
+- Com `false`, a porta (`PolicyEngine._fleet_gate`) não aplica a regra nem procura exceção para esse alvo. Continuam:
+  - conta retirada recusada;
+  - o espaçamento entre contas sobre o mesmo alvo;
+  - o ritmo baixo entre contas nossas (`fleet_min_spacing_to_own_account_s`);
+  - os tetos, a política do perfil e a aprovação.
+- Pessoa real nunca sai da regra.
+
+Prova `simulated`: `backend/tests/test_interacao_entre_contas_nossas.py`
+(`test_p030_sem_a_regra_para_conta_nossa_o_mesmo_alvo_nosso_passa_e_pessoa_real_segue_recusada`).
+
 ## ADR-056 — Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida e revisão da cláusula de rede do ADR-055
 
 **Data:** 29/09/2026 · **Estado:** vigente (decisão); implementação planejada na Fase 25, `not_run` · **Decisão do

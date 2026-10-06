@@ -32,6 +32,7 @@ class _Ritmo(_Frota):
     def __init__(self, **over: Any):
         super().__init__(**over)
         self.fleet_min_spacing_to_own_account_s = over.get("nossa_s", 600)
+        self.fleet_one_account_rule_for_own_accounts = over.get("regra_nossa", True)
 
 
 def _tres(tmp_path: Path, **over: Any) -> tuple[Any, Any, PolicyEngine, dict[str, str]]:
@@ -121,6 +122,30 @@ def test_uma_conta_por_alvo_continua_valendo_entre_contas_nossas(tmp_path: Path)
         assert not veredito.allowed and veredito.retry_at is None and "uma conta por alvo" in veredito.reason
     # a própria Ana segue sendo a conta daquele alvo (e o ritmo baixo já passou: 5000 s)
     assert policies.check(c["ana"], capability_of(IG, "FOLLOW"), counterparty=f"@{CLO}").allowed
+
+
+def test_p030_sem_a_regra_para_conta_nossa_o_mesmo_alvo_nosso_passa_e_pessoa_real_segue_recusada(tmp_path: Path) -> None:
+    """P-030 (proposta de emenda ao ADR-055, só com o sim do dono): `fleet_one_account_rule_for_own_accounts=false` tira o
+    alvo que é conta nossa VIVA da regra de uma conta por alvo; o resto (espaçamento, retirada, pessoa real) continua."""
+    svc, _db, policies, c = _tres(tmp_path, regra_nossa=False, espaco_s=120)
+    _fez(svc, c["ana"], f"@{CLO}", segundos_atras=5000)
+    comentar = capability_of(IG, "CREATE_COMMENT")
+    veredito = policies.check(c["bia"], comentar, counterparty=f"@{CLO}")
+    assert veredito.allowed and veredito.retry_at is None
+    # o espaçamento entre contas sobre o mesmo alvo continua: a Ana acabou de mexer com a Clô, a Bia espera
+    _fez(svc, c["ana"], f"@{CLO}", segundos_atras=1)
+    veredito = policies.check(c["bia"], comentar, counterparty=f"@{CLO}")
+    assert not veredito.allowed and veredito.retry_at is not None
+    # pessoa real nunca sai da regra
+    _fez(svc, c["ana"], "@pessoa.real", segundos_atras=5000)
+    veredito = policies.check(c["bia"], comentar, counterparty="@pessoa.real")
+    assert not veredito.allowed and veredito.retry_at is None and "uma conta por alvo" in veredito.reason
+    # conta retirada segue recusada
+    svc.retirar_conta_bloqueada(c["clo"], str(svc.repo.conta_ancora(c["clo"])["id"]))
+    veredito = policies.check(c["bia"], comentar, counterparty=f"@{CLO}")
+    assert not veredito.allowed and "retirada" in veredito.reason
+    # o padrão é a regra valendo, como decidido em 02/10, até o sim do dono
+    assert LimitsCfg().fleet_one_account_rule_for_own_accounts is True
 
 
 def test_o_valor_vem_de_configuracao_com_padrao_de_600s() -> None:
