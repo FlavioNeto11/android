@@ -944,6 +944,9 @@ do provedor nas chamadas dela. `domain/ensino_da_falha.py` traduz a causa em ró
 "Corrigir a etapa «…»: <rótulo>". A causa `indeterminada` não acrescenta nada à intenção, e a intenção da pessoa vence.
 Nenhuma IA: a única chamada continua sendo a proposta do próprio ensino. Sem tentativa, sem tipo ou com erro na leitura,
 `diagnostico` é `null` e a sessão abre igual. Quem liga é o `AppState` (`TrainingRecorder.diagnostico_da_falha`).
+Antes da sessão existir, `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` (31.116, parte 2) devolve a mesma
+sugestão (`{intent, pergunta, rotulo}`) para o painel pré-preencher o formulário: só leitura, sem IA, `null` sem
+tentativa.
 
 ## Evidência inválida e o reaprendido (30.23)
 

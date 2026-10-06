@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.116 (parte 2): a sugestão do ensino antes da sessão (branch feat/31-116-ensino-sugerido)
+
+- `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}`. Usa o mesmo diagnóstico do
+  31.111 F4, com as mesmas recusas do `from-run`, sem IA e sem gravar. Responde `null` sem tentativa; com o diagnóstico
+  em erro, devolve a intenção de base. Adendo v1.80.
+- Funções tocadas (K-095): a rota `ensino_sugerido` (nova, `modules/learning/presentation/treino.py`, o router de treino do 15.15 F4).
+- Prova `simulated`: `backend/tests/test_ensino_sugerido.py` (4: causa conhecida sem gravar nada, indeterminada, `null` e
+  recusas, diagnóstico em erro). Real: `not_run`.
+
 ## 2026-10-06 — K-104: a caracterização da saúde não fotografa o dialeto do banco (branch fix/saude-caracterizacao-dialeto)
 
 - Na suíte 47 o PG dirigido reprovou os 31 cenários de `test_saude_caracterizacao.py`: o dourado foi gerado em SQLite e a fotografia levava `database.dialect`
