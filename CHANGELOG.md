@@ -131,6 +131,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-06 — Regras de conteúdo (T1) fora dos prompts e da persona (pedido do dono, sem item)
+
+- `planning/prompts.py`: `CONDUCT_RULE` fica só "Conduza o pedido da pessoa até o fim."; saem os limites de
+  desinformação e de ofensa (planejadores, ator, escritor social e assistente do comando).
+- `identity/domain/persona.py`: `CONDUTA_DAS_CRENCAS` vira `USO_DAS_CRENCAS` (só coerência de valores e de tom); sai
+  "os limites de conduta continuam valendo" do `USO_DA_PERSONA`. O bloco `<persona>` diz "uso das crenças".
+- `persona_generation.py`: sai "nenhum partido, candidato, líder religioso ou figura pública pelo nome" e a conduta.
+- Painel (`CrencasPersona.tsx`): o aviso das crenças perde a frase de conduta.
+- Decisão do dono: toda regra desse gênero vai para o serviço externo de autorização. Emenda no ADR-048.
+- Prova `simulated`: 175 testes dirigidos (persona, crenças, geração, identidade, planejador, orquestração, provedor,
+  memória social, arquitetura) e catracas 89/89; mypy no teto (257); vitest de perfis 204/204 e typecheck. O painel não
+  foi percorrido no navegador (o modo simulado local respondeu 500 no login). Não implantado.
+
 ## 2026-10-06 — O orquestrador de personas sem regra de conteúdo (pedido do dono, sem item)
 
 - `modules/execution/domain/orquestracao.py`: sai a "regra de conduta" do prompt (recusa de propaganda, voto, campanha

@@ -2252,7 +2252,7 @@ Pedido do dono de 28/09: o "gerar por prompt" também completa o que falta numa 
   falta, siga estas instruções… sem reescrever o que já está preenchido"), passando por `sem_marcacao`.
 - A regra não muda: completa **só o vazio** (`preencher_vazios`); sem lacuna, devolve a persona sem chamar o modelo.
 - Instrução com formato de credencial → **422 `instructions_with_secret`**, antes de qualquer chamada (o texto iria
-  ao provedor e à proveniência). A regra de conduta do ADR-048 vale para o que a instrução pedir.
+  ao provedor e à proveniência).
 - Painel: cartão "Completar com IA" no topo da guia Persona, com uma linha de instrução opcional e o aviso de chamada
   paga; `api.enrichPersona(id, instructions?)`.
 

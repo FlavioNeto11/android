@@ -2242,6 +2242,10 @@ da saída estruturada: este esquema é pequeno e sem união).
 
 ## ADR-048 — Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2)
 
+**Emenda (06/10/2026, decisão do dono):** a regra de conduta das crenças (`CONDUTA_DAS_CRENCAS`) e a regra de geração
+"sem partido, candidato nem figura pública pelo nome" saem; fica `USO_DAS_CRENCAS` (coerência de valores e de tom). A
+regra de conteúdo vai para o serviço externo de autorização.
+
 **Data:** 28/09/2026 · **Estado:** vigente na `main` · **Decisão do dono** (28/09): "sobre a religião e política eles
 devem ir para o modelo sim e de forma rica, não apenas uma flag simples, tanto a política quanto a religião, e mostrar
 isso visualmente de forma rica também, e isso deve inferir no contexto também". Substitui em parte o ADR-041. Código:

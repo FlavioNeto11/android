@@ -15,7 +15,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 
-from app.modules.identity.domain.persona import (BIOGRAFIA_MINIMA, CONDUTA_DAS_CRENCAS, MAIORIDADE, idade_em,
+from app.modules.identity.domain.persona import (BIOGRAFIA_MINIMA, MAIORIDADE, idade_em,
                                                  lacunas_da_biografia, nome_ficticio_plausivel)
 from app.util import sem_marcacao
 
@@ -134,8 +134,7 @@ PERSONA_GENERATION_SYSTEM = (
     "que evita e resumo; `politics` com orientação no espectro, engajamento, pautas com a posição dela (curtas), "
     "como fala de política, de onde se informa (por TIPO de veículo), valores e resumo. Plausíveis e VARIADAS entre "
     "pessoas: não repita sempre a mesma religião nem o mesmo ponto do espectro; 'sem religião', 'apolitica' e "
-    "'nao_declara' também são respostas legítimas. Nenhum partido, candidato, líder religioso ou figura pública "
-    "pelo nome. Conduta que valerá quando ela escrever: " + CONDUTA_DAS_CRENCAS + "\n"
+    "'nao_declara' também são respostas legítimas.\n"
     "7. `visual`: aparência, estilo visual e cenário típico de foto, descritos como para um fotógrafo, sem nomes.\n"
     "8. `summary` é uma frase de apresentação; `persona_prompt` são instruções curtas de escrita na voz dela.\n"
     "9. Ao ENRIQUECER uma persona existente, mantenha exatamente o que já está preenchido e complete só o vazio "
