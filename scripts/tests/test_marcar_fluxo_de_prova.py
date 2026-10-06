@@ -83,7 +83,8 @@ def test_id_inexistente_sai_com_codigo_1_e_banco_antigo_aborta(tmp_path: Path, c
     assert marcador.main(["--banco", str(banco), "--fluxo", "f-nao-existe"]) == 1
     assert "inexistentes f-nao-existe" in capsys.readouterr().out
     db = Database(banco)
-    db.execute("DELETE FROM schema_migrations WHERE version LIKE '122_%'")
+    # a MAIOR migração some (não a 122 pelo nome: com uma migração depois dela, o banco continuaria igual ao código)
+    db.execute("DELETE FROM schema_migrations WHERE version=(SELECT MAX(version) FROM schema_migrations)")
     db.close()
     assert marcador.main(["--banco", str(banco), "--fluxo", "f-prova"]) == 2          # código e banco divergem
     assert marcador.main(["--banco", str(tmp_path / "nada.sqlite3"), "--fluxo", "f-prova"]) == 2
