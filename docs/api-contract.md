@@ -6800,7 +6800,7 @@ selo, porque a entrada não levava o campo do adendo v1.65.
   item tem `ensinado_em_prova`.
 - **Prova:** `simulated` (`backend/tests/test_livro_selo_em_prova.py`); `real`: `not_run`.
 
-## Adendo v1.75 (06/10/2026; número da orquestradora; item 31.111 F1 e F2) — ensinar a corrigir a partir de uma etapa que falhou
+## Adendo v1.75 (06/10/2026; número da orquestradora; item 31.111 F1, F2 e F3) — ensinar a corrigir a partir de uma etapa que falhou
 
 Uma rota nova e um campo novo na sessão de treino; migração 119 (três colunas). Nada muda nas rotas que existem nem no
 `save`: a correção é uma sessão de treino comum, só que ligada à etapa que falhou.
@@ -6826,6 +6826,11 @@ Uma rota nova e um campo novo na sessão de treino; migração 119 (três coluna
   - `evidencias` (até 10): `{id, kind, nota, disponivel}`; a imagem se lê em `GET /api/evidence/{id}`, que recusa a que foi
     redigida; `disponivel` já diz isso.
   - Todo texto do executor, da etapa e da evidência passa pelo mascaramento de segredo antes de sair.
+- **F3, o ensinado liga à execução:** a correção segue o caminho comum (gravar, `propose`, `save`) e nasce candidata com o
+  escopo do 31.88 e a prova do 30.81, sem campo novo no corpo do `save`. O que muda é só a ligação: cada item de
+  `GET /api/flows` ganha `origin`, `null` ou `{session_id, run_id, step_id, attempt_id}` (o fluxo cuja sessão de treino
+  veio de uma falha); e o evento `log` do salvar leva `data.origin {run_id, step_id, attempt_id}` quando há origem.
+  O `session` da resposta do `save` já traz o `origin` da sessão.
 - **Reservado ao F4 (Aprendizado):** `origin.diagnostico {causa, fatos, proposta}`, que pré-preenche o `intent` e a pergunta.
   Este adendo não o devolve.
 - **O que o painel precisa mudar (F5):** um botão "Ensinar a corrigir" na etapa que falhou, que pede o controle do aparelho
