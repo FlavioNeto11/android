@@ -1033,3 +1033,81 @@ async def test_sem_armazem_o_baixar_responde_em_vez_de_levantar(tmp_path: Path) 
     c = CenarioAnexos(tmp_path, anexos=False)
     texto = await c.conversa()._baixar(SaidaDoTelegram(c.canal), {"id": 1, "ref_externa": "x"})   # type: ignore[arg-type]
     assert texto.startswith("Não guardei o anexo:")
+
+
+# ---------------------------------------------------------------- 28.57: nome original no envio e repasse do texto sem legenda
+SCRIPT = "param([string]$Maquina)\nWrite-Output 'ok'\n".encode()
+
+
+async def test_envio_com_nome_original_vai_como_documento_com_o_nome_pedido(c: CenarioAnexos) -> None:
+    """`hardware-degrau0-aplicar.ps1` chega com esse nome (o comando `-File` depende dele), não como `anexo-<sha>.txt`."""
+    mid = await c.canal.enviar_anexo(SCRIPT, "text/plain", "P-024", nome="hardware-degrau0-aplicar.ps1")
+    assert mid is not None and [e["metodo"] for e in c.bot.envios] == ["sendDocument"]
+    corpo = bytes(c.bot.envios[0]["corpo"])                                           # type: ignore[arg-type]
+    assert b'filename="hardware-degrau0-aplicar.ps1"' in corpo and b"anexo-" not in corpo
+    await c.canal.enviar_anexo(SCRIPT, "text/plain")                                  # sem nome: o neutro de sempre
+    assert f'filename="anexo-{sha(SCRIPT)[:12]}.txt"'.encode() in bytes(c.bot.envios[1]["corpo"])   # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("nome", ["programa.exe", "../x.ps1", "a b.ps1", ".oculto.md", "sem-extensao", "é.md", "a..ps1",
+                                  "x" * 90 + ".md", "dir/x.ps1", "x.ps1 "])
+async def test_envio_com_nome_fora_da_lista_fechada_e_recusado_sem_enviar(c: CenarioAnexos, nome: str) -> None:
+    with pytest.raises(FalhaDeEnvio) as erro:
+        await c.canal.enviar_anexo(SCRIPT, "text/plain", nome=nome)
+    assert erro.value.definitiva and c.bot.envios == []
+
+
+@pytest.mark.parametrize(("conteudo", "mime"), [(PNG, "image/png"), (PDF, "application/pdf"), (b"MZ\x00\x01", "text/plain")])
+async def test_nome_proprio_so_vale_para_arquivo_de_texto_de_verdade(c: CenarioAnexos, conteudo: bytes, mime: str) -> None:
+    """Imagem e PDF não ganham nome de script; um binário que se diz texto também não (a assinatura decide)."""
+    with pytest.raises(FalhaDeEnvio):
+        await c.canal.enviar_anexo(conteudo, mime, nome="coleta.ps1")
+    assert c.bot.envios == []
+
+
+async def test_a_conversa_leva_o_nome_ao_canal_e_guarda_como_texto(c: CenarioAnexos) -> None:
+    saida = SaidaDoTelegram(c.canal)
+    await c.conversa().enviar_conteudo(saida, SCRIPT, "P-024", mime_declarado="text/plain",   # type: ignore[arg-type]
+                                       nome="hardware-degrau0-aplicar.ps1")
+    assert b'filename="hardware-degrau0-aplicar.ps1"' in bytes(c.bot.envios[0]["corpo"])        # type: ignore[arg-type]
+    [linha] = c.linhas()
+    assert (linha["direcao"], linha["mime"]) == ("saida", "text/plain")
+    assert c.arquivos() == [c.pasta / sha(SCRIPT)[:2] / f"{sha(SCRIPT)}.txt"]                  # o armazém não guarda o nome
+
+
+async def test_nome_de_envio_e_varredura_de_identificadores_no_dominio() -> None:
+    from app.modules.avisos.domain.anexos import nome_de_envio, varrer_identificadores
+    assert nome_de_envio("hardware-notebook.txt") == "hardware-notebook.txt" and nome_de_envio("A_b-1.JSON") == "A_b-1.JSON"
+    with pytest.raises(ValueError):
+        nome_de_envio("a.sh")
+    texto = ("IP 192.168.0.10 e 10.0.0.1; mac aa:bb:cc:dd:ee:ff; a@b.com; C:\\Users\\joao\\x; SerialNumber: ABC123; "
+             "ComputerName=PC1; senha: x; versão 1.2.3.4.5")
+    assert varrer_identificadores(texto) == {"ip": 2, "mac": 1, "email": 1, "usuario_em_caminho": 1, "serial": 1,
+                                             "nome_da_maquina": 1, "segredo": 1}
+    assert varrer_identificadores("CPU i9, 32 GB, 95 C, tudo limpo") == {}
+
+
+async def test_texto_sem_legenda_vai_a_orquestradora_com_a_contagem_e_sem_eco(c: CenarioAnexos) -> None:
+    """O .txt que o dono manda sozinho não fica `ignorada`: vai à orquestradora, só com números; o achado não sai."""
+    conteudo = "CPU: i9\nIP 192.168.0.10\nSerialNumber: ZXCV98765\n".encode()
+    c.bot.arquivos["t-1"] = conteudo
+    await c.volta(documento(5, "t-1", mime="text/plain", nome="hardware-notebook.txt"))
+    entrada = c.entrada(5)
+    assert entrada["estado"] == "orquestradora"
+    previa = json.loads(str(entrada["previa"]))
+    assert previa["repasse"] == "anexo_recebido" and "anexo 1" in previa["texto"] and "ip 1, serial 1" in previa["texto"]
+    assert "192.168" not in previa["texto"] and "ZXCV" not in previa["texto"] and "hardware-notebook" not in previa["texto"]
+    assert len(c.bot.textos()) == 1 and c.ultima().startswith("Recebi")           # só o "guardei": nenhuma resposta a mais
+
+
+async def test_texto_limpo_diz_nenhum_e_foto_sem_legenda_segue_ignorada(c: CenarioAnexos) -> None:
+    c.bot.arquivos.update({"t-1": TEXTO, "foto-g": JPEG})
+    await c.volta(documento(5, "t-1", mime="text/plain"), foto(6, "foto-g"))
+    assert "varredura de identificadores: nenhum" in json.loads(str(c.entrada(5)["previa"]))["texto"]
+    assert c.entrada(6)["estado"] == "ignorada"                                      # a foto espera o /ler em reply, como sempre
+
+
+async def test_texto_com_legenda_segue_a_gramatica_e_nao_vira_anexo_recebido(c: CenarioAnexos) -> None:
+    c.bot.arquivos["t-1"] = TEXTO
+    await c.volta(documento(5, "t-1", mime="text/plain", legenda="/status"))
+    assert c.portas.nomes() == ["status"] and c.entrada(5)["estado"] != "orquestradora"

@@ -597,6 +597,18 @@ avisos depois da faxina"), e a trava cai no TTL.
     de imagem, ícone de PDF, canal, sentido, data e tamanho, sem nome de remetente nem caminho de disco. Só imagem e PDF têm
     prévia (o texto guardado e o anexo de convidado não saem por `/conteudo`), o arquivo sai como download com
     `Cache-Control: no-store`, e "Anexar ao cartão" é a rota da exceção (b) com o id do cartão e a confirmação na própria linha.
+  - **28.57, nome original no envio:** o código nosso (nunca o remetente) pode pedir o `nome` de um arquivo de TEXTO ao
+    `enviar_anexo`/`enviar_conteudo`, para o comando `-File .\script.ps1` valer no destino. Lista fechada de extensões
+    (`.ps1`, `.md`, `.txt`, `.json`, `.csv`, `domain/anexos.EXTENSOES_COM_NOME`), nome só de `[A-Za-z0-9._-]` (até 80, sem
+    `..` nem nome oculto) e conteúdo que de fato seja texto UTF-8 (a assinatura decide); qualquer outro caso é recusa
+    definitiva, sem enviar. O armazém e a recepção não mudam: tudo continua `.txt` em `data/anexos`, e o nome não é guardado.
+  - **28.57, o `.txt` do dono sem legenda não fica mudo:** a recepção já guardava o arquivo (28.24), mas a linha caía em
+    `vazia` e ficava `ignorada`, sem ninguém saber (os 4 `.txt` de 06/10, anexos 1 a 4). Agora a linha vai à orquestradora
+    (`previa.repasse = "anexo_recebido"`) com o id, o tamanho e a CONTAGEM de identificadores por categoria (IP, MAC,
+    e-mail, usuário em caminho, serial, nome da máquina, segredo): só números, nunca o achado nem o nome do arquivo. Sem
+    resposta nova ao dono (ele já recebeu o "guardei"). O conteúdo se lê pelo armazém
+    (`GET /api/canais/anexos/{id}/conteudo`) e se risca antes de repassar. Foto e PDF sem legenda seguem como sempre (o
+    `/ler` em reply). O filtro de credencial do texto colado não mudou: continua apagando saída de script como texto.
 - **Hoje:** nada na operação provisória.
 - **No produto:** item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, `anexos_trello.py`, o
   adaptador do Telegram, `GET /api/canais/anexos/{id}`, `POST /api/canais/anexos/{id}/trello`, `devices/captura_pontual.py`,
