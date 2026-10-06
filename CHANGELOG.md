@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.175, parte simulada: concorrência de IA por medida (branch feat/31-175-medida-sobre-main, corte 59)
+
+- `backend/tests/test_medida_concorrencia_31175.py` (opt-in, `MEDIR_31175=1`) mede uma operação de 6 alvos no harness
+  com 4 e com 6 vagas, com latência artificial fixa por chamada.
+- Com 2 s por chamada, a duração total foi de 11,1 s com 4 vagas e de 7,7 s com 6, e a espera pela vaga caiu de p95
+  2009 ms para 0. A tabela está em `.claude/handoffs/jev-31-175-medida.md`.
+- Sem mudança de código: a fila por vaga já existe, e `max_ai_concurrency` é relido ao vivo.
+- Prova `simulated`; a leitura real fica para a onda 2.
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.
