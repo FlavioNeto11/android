@@ -163,8 +163,8 @@ export const LIMIT_GROUPS: LimitGroup[] = [
       },
     ],
     fields: [
-      int('fleet_max_accounts_per_target', 'Contas da frota por alvo', 'contas',
-         'Quantas contas diferentes da frota podem agir sobre o mesmo perfil dentro da janela; passando disso, a próxima conta é recusada, não adiada. Vale para todas as ações. Padrão 3; vai de 1 a 50.', 1, 50),
+      int('fleet_max_accounts_per_target', 'Contas da frota que podem agir sobre o mesmo alvo', 'contas',
+         'Quantas contas diferentes da frota podem agir sobre o mesmo perfil dentro da janela, em qualquer ação; passando disso, a próxima conta é recusada, não adiada. O padrão é 3 e o dono sobe o valor aqui quando quiser mais contas. Vai de 1 a 50.', 1, 50),
       int('fleet_target_window_days', 'Janela da regra da frota', 'dias',
          'Por quantos dias a ação de outra conta sobre o mesmo perfil conta para a regra (o "nos últimos 30 dias" do motivo de parada). Padrão 30; vai de 1 a 365.', 1, 365),
     ],

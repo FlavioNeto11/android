@@ -134,7 +134,7 @@ it('J1: cada limite explica o que é, o padrão e o teto, e a recusa do backend 
 });
 
 // ADR-081: a regra da frota sobre o mesmo alvo (fleet_max_accounts_per_target, fleet_target_window_days e o interruptor das contas nossas).
-const TETO = 'Contas da frota por alvo';
+const TETO = 'Contas da frota que podem agir sobre o mesmo alvo';
 const JANELA = 'Janela da regra da frota';
 const INTERRUPTOR = /Uma conta por alvo também vale para post de conta nossa/;
 const interruptor = () => Array.from(container.querySelectorAll('label')).find((l) => INTERRUPTOR.test(l.textContent ?? ''))?.querySelector('input') as HTMLInputElement;
@@ -147,7 +147,7 @@ it('ADR-081: o grupo da regra da frota mostra os dois números e o interruptor, 
   expect(campo(JANELA).value).toBe('30');
   expect(interruptor().checked).toBe(true);          // padrão: ligado
   expect(container.textContent).toMatch(/Janela da regra da frota\s*dias/);                  // a unidade ao lado do rótulo
-  expect(container.textContent).toContain('Vale para todas as ações. Padrão 3; vai de 1 a 50.');
+  expect(container.textContent).toContain('em qualquer ação; passando disso, a próxima conta é recusada, não adiada. O padrão é 3 e o dono sobe o valor aqui quando quiser mais contas. Vai de 1 a 50.');
   expect(container.textContent).toContain('Padrão 30; vai de 1 a 365.');
   expect(container.textContent).toContain('pessoa real nunca sai da regra');
   expect(container.textContent).not.toContain('Janela da coordenação de frota');            // a janela em segundos não tem mais uso
