@@ -155,6 +155,9 @@ async def test_o_teto_da_operacao_reserva_as_chamadas_em_voo_dos_alvos_paralelos
     uma = costs.spent_usd(st.db, st.cfg.file.ai.prices, run_id=run_id)
     assert uma > 0
     st.db.execute("UPDATE operacoes SET max_usd=? WHERE id=?", (uma * 2.5, op["id"]))
+    # Achado da revisão do PR 478: a falha (gasto zero) não entra na média; contá-la baixaria a reserva à metade.
+    st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, input_tokens, output_tokens, ok) VALUES (?,?,?,?,?,?,?)",
+                  (now_iso(), run_id, "decide", modelo, 0, 0, 0))
     roteador = RoutingProvider(harness.cfg)
     roteador.attach(repo=st.repo, settings_getter=st.settings.get)
     assert roteador._budget(run_id) == op["id"]                               # gasto 1x, nada em voo  # noqa: SLF001
@@ -183,6 +186,13 @@ async def test_o_teto_da_operacao_reserva_as_chamadas_em_voo_dos_alvos_paralelos
     with pytest.raises(AIError):
         await roteador._call("decide", run_id, lambda p: None)  # noqa: SLF001
     assert vistos == [1, 1] and roteador._em_voo_da_operacao == {}  # noqa: SLF001
+    # A chamada de fora do hub (o POST do Jev) reserva pela conferência, até quem chamou soltar (achado do PR 478).
+    solta = roteador.conferir_gasto(run_id=run_id, origem="decisao_fechada", conta="typesafe", reservar=True)
+    assert roteador._em_voo_da_operacao == {op["id"]: 1}  # noqa: SLF001
+    solta()
+    assert roteador._em_voo_da_operacao == {}  # noqa: SLF001
+    roteador.conferir_gasto(run_id=run_id, origem="decisao_fechada", conta="typesafe")()    # sem reservar: nada
+    assert roteador._em_voo_da_operacao == {}  # noqa: SLF001
 
 
 async def test_registrar_estagio_marca_uma_vez_e_fora_de_operacao_nao_faz_nada(harness: Harness) -> None:
