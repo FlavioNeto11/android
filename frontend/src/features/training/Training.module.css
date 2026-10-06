@@ -13,6 +13,10 @@
 .liveList { margin: 0; padding-left: var(--sp-4); font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 2px; }
 .actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .pending { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); border-top: 1px solid var(--border-1); padding-top: var(--sp-2); }
+.leitura { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.leituraProposta { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-1); overflow-wrap: anywhere; }
+.leituraProposta p { margin: 0; }
+.marca { display: inline-flex; align-items: center; }
 .pendentes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); flex: 1 1 100%; }
 .pendente { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
 .seloLink { text-decoration: none; color: inherit; border-radius: var(--radius-md); }

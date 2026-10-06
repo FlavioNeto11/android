@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.120: a sessão de treino salva e o fluxo ensinado abrem em leitura, com a origem em ids e o diagnóstico (branch feat/31-120-sessao-salva-em-leitura)
+
+- Achado do percurso 48b: depois de salvar, a origem e o diagnóstico da falha ficavam invisíveis (a lista "Salvas" só tinha "Refazer receitas"). Agora cada sessão
+  de "Salvas" tem **Ver**, que abre um diálogo só de leitura (`SessaoSalva`, `GET /api/training/{id}`, adendos v1.75 e v1.77, sem rota nova) com: o estado, o aparelho, o fluxo
+  (`f-…`), a persona **só como marca** (as iniciais; o nome fica no rótulo acessível, não impresso), a origem (selo-link da execução, motivo, **etapa e tentativa em
+  ids**, o diagnóstico com a causa, o que mostrar e os fatos), as entradas que a pessoa fez (as descartadas da proposta riscadas) e a proposta (resumo, comando modelo,
+  parâmetros, etapas com as entradas e o que conferem). Sem ação nenhuma além de Fechar; sessão sem entradas ou sem proposta diz isso; falha de leitura tem "Tentar de novo".
+- `OrigemDoTreino` passa a mostrar a etapa e a tentativa em ids em todo lugar (barra, revisão, leitura). O **Livro** (detalhe do fluxo, adendo v1.81) mostra "Etapa de
+  origem", "Tentativa de origem" e "Sessão do treino" quando o fluxo nasceu de uma falha, e nada disso quando os campos vêm nulos ou faltam (backend anterior).
+- Prova `simulated`: `SessaoSalva.test.tsx` (3) e um caso novo em `DetalheRico.test.tsx`, com sete mutações derrubadas. Prova `real`: `not_run`, depende do deploy 49.
+
 ## 2026-10-06 — 31.119: descartar o treino já concluído, na revisão e em "Para revisar" (branch feat/31-116-formulario-sugerido)
 
 - Achado do percurso 48b: quem concluía a gravação e desistia ficava com a sessão "só gravada" para sempre; o "Descartar" só existia na gravação viva. Agora a

@@ -253,6 +253,10 @@ function ConteudoFluxo({ c, appsNaIdentidade }: { c: ConteudoDoFluxo; appsNaIden
           {c.origem.tipo === 'treino' ? 'Demonstrado no treino' : c.origem.source_run_id ? 'Aprendido na' : 'Aprendido de execução'}
           {c.origem.source_run_id ? <>{c.origem.tipo === 'treino' ? ' · ' : ' '}<a className={styles.linkAlvo} href={hrefDaExecucao(c.origem.source_run_id)} title={c.origem.source_run_id}>{rotuloDaExecucao(c.origem.source_run_id)}</a></> : null}
         </Fato>
+        {/* 31.120 (v1.81): o fluxo ensinado a partir de uma falha diz de onde veio, só ids. */}
+        {c.origem.step_id ? <Fato rotulo="Etapa de origem"><span className="mono">{c.origem.step_id}</span></Fato> : null}
+        {c.origem.attempt_id ? <Fato rotulo="Tentativa de origem"><span className="mono">{c.origem.attempt_id}</span></Fato> : null}
+        {c.origem.session_id ? <Fato rotulo="Sessão do treino"><span className="mono">{c.origem.session_id}</span></Fato> : null}
         <Fato rotulo="Efeito">{c.efeito.externo ? 'tem efeito fora do sistema' : 'sem efeito fora do sistema'}</Fato>
       </dl>
       <ol className={styles.passos} aria-label="Etapas do fluxo">

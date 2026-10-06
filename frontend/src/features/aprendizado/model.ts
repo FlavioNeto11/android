@@ -314,7 +314,11 @@ export interface ConteudoDoFluxo {
   /** Os apps exigidos na ordem do plano (29.42); o principal do plano vem em `app`. Ausente em backend antigo. */
   apps?: string[];
   comando_modelo: string | null;
-  origem: { tipo: 'execucao' | 'treino'; fonte: string | null; source_run_id: string | null };
+  origem: {
+    tipo: 'execucao' | 'treino'; fonte: string | null; source_run_id: string | null;
+    /** 31.120 (adendo v1.81): a falha de onde o fluxo ensinado nasceu; `null` quando não veio de uma falha, ausente em backend anterior. */
+    session_id?: string | null; run_id?: string | null; step_id?: string | null; attempt_id?: string | null;
+  };
   etapas: EtapaDoFluxo[];
   efeito: { externo: boolean; etapas_com_efeito: number[] };
 }
