@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F7: as máquinas de estado de execução, objetivo e tentativa passam a ser impostas (branch feat/15-15-f7-impor-maquinas)
+
+- `Repository._conferir` deixa de só avisar: levanta `InvalidTransition` ANTES de gravar em `set_run_status`, `set_objective` e
+  `finish_attempt` (a etapa já era imposta). O evento `warn` e a contagem seguem. Na tentativa, a cerca da posse continua
+  primeiro (`PosseDaEtapaPerdida`); no `set_run_status` com `so_se` só confere quando a troca vale.
+- Medido no central antes de impor (só leitura, 27/09 a 06/10, ~8,6 dias): 1 transição fora da tabela em ~20 mil,
+  `completed_with_issues → cancelled`, que é o vencimento do 31.50 fechando a execução com cancelamento pedido (não um
+  cancelamento pela API). A aresta foi declarada em `RUN_TRANSITIONS`.
+- Um handler em `main.py` devolve 409 `invalid_transition` ao gesto que chega depois de o estado mudar, em vez de 500.
+  Cancelar execução terminada segue 409 `invalid_state` (já era assim). Sem migração.
+- Prova `simulated`: `tests/test_maquinas_de_estado.py` (19, com recusa de run, objetivo e tentativa, a aresta nova e a
+  posse) e `tests/test_maquinas_de_estado_http.py` (2). Ambiente real: `not_run` até o deploy; depois, o contador de
+  eventos `warn` "(recusada)" no central é a leitura.
 ## 2026-10-05 — 31.111 F5: "Ensinar a corrigir" na etapa que falhou e selo de origem no treino (branch feat/31-111-f5-ensinar-a-corrigir)
 
 - Contra o adendo v1.75 (Jev, `feat/31-111-f1-ensinar-a-partir-da-falha`): na etapa `failed` ou `uncertain` de uma execução (aba Aparelhos), o botão

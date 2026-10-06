@@ -48,6 +48,7 @@ from fastapi.staticfiles import StaticFiles
 from . import marca_de_partida
 from .api import ROTAS_DE_SESSAO, recusa_do_despacho, router, worker_router
 from .commands.despacho import DespachoRecusado
+from .taskqueue.states import InvalidTransition
 from .config import Config, ModoDaCspDoPainel, get_config
 from .modules.avisos.presentation.anexos import router as canais_anexos_router
 from .modules.avisos.presentation.estado import router as canais_estado_router
@@ -261,6 +262,12 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(erros)})
     # O despacho de comandos recusa sem conhecer HTTP; aqui a recusa vira o 4xx de sempre (`api.err`).
     app.add_exception_handler(DespachoRecusado, recusa_do_despacho)  # type: ignore[arg-type]
+
+    @app.exception_handler(InvalidTransition)
+    async def transicao_recusada(_request: Request, exc: InvalidTransition) -> JSONResponse:
+        """15.15 F7: a tabela de estados é imposta, e um gesto que chega depois de o estado ter mudado (cancelar uma
+        execução que acabou de fechar, por exemplo) não escreve nada. Para quem chamou é 409, como `invalid_state`."""
+        return JSONResponse(status_code=409, content={"detail": {"code": "invalid_transition", "message": str(exc)}})
     app.add_middleware(CORSMiddleware, allow_origins=cfg.file.server.allowed_origins, allow_methods=["*"],
                        allow_headers=["*"], expose_headers=["X-Frame-Id", "X-Frame-Ts", "X-Frame-Width",
                                                             "X-Frame-Height", "X-Frame-Orientation"])
