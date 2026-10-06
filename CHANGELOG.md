@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F4, corte 5 (F4e): as 10 rotas de workers e de limites por servidor saem de `api.py` (branch feat/15-15-f4e-router-workers)
+
+- `/api/workers*` (8 rotas: listar, ler, aparelhos sem dono, adotar, cadastrar, manutenção, remover, girar a credencial) e `/api/servers/limits` e
+  `PUT /api/servers/{worker_id}/limits` (as 2 dos limites por servidor, que dividiam o bloco) agora moram em
+  `backend/app/modules/fleet/presentation/workers.py`, montado em `main.py` no mesmo lugar do `api.router`. Mesmo caminho, método, corpo e resposta.
+  A credencial nova de `rotate-credential` continua indo só na resposta; nem ela nem o corpo de `enroll` entram em log ou evento (o evento diz o id
+  do worker). `Any` virou tipo (`AppState`, `DeviceRuntime`, `object`); teto de `Any` de `app.api` 113 → 100.
+- Prova do OpenAPI contra a ponta do F4d (870fd7bd): 271 método+caminho idênticos; os schemas só diferem no título automático de resposta
+  (`response_model=None`, como nos cortes anteriores). `test_ordem_das_rotas.py` ganhou o caso das 10 rotas (e a literal `/workers/devices/unbound`
+  não se sobrepõe a `/workers/{worker_id}`).
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
 ## 2026-10-06 — 15.15 F4, corte 4 (F4d): as 7 rotas de releases saem de `api.py` (branch feat/15-15-f4d-router-releases)
 
 - `/api/releases*` (listar, importar, ícone, alvos, upload, aprovar assinatura, ciclo de vida) agora moram em
