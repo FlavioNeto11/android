@@ -72,6 +72,7 @@ from .modules.identity.domain.persona_image import OrcamentoEsgotado
 from .modules.identity.infrastructure.persona_images import imagens_dto
 from .modules.identity.presentation.schemas import (FeitaPorIaBody, PersonaBatchBody, PersonaEnrichBody, PersonaGenerateBody,
                                                      PersonaImagesBody)
+from .modules.learning.domain.ensino_da_falha import intencao_sugerida
 from .modules.learning.domain.vocabulario import LivroKind
 from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.presentation.livro import mudar_status_legado
@@ -101,7 +102,7 @@ from .social.service import SocialError
 from .taskqueue import observabilidade
 from .taskqueue.flows import id_do_fluxo
 from .taskqueue.repository import CONTENT_TYPES
-from .models import RunSummary
+from .models import CustosExecucao, RunDetail, RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
 from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
 from .taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody, RunTargetsSuggestion
@@ -600,7 +601,10 @@ async def start_training_from_run(request: Request, body: TrainingDeFalhaBody) -
         if body.profile_id and body.profile_id not in s.social.profiles_of(origem.instance_id):
             raise err(400, "profile_not_on_device", f"A persona {body.profile_id} não está vinculada a "
                                                     f"{origem.instance_id}: o treino é de uma persona deste aparelho.")
-        intent = body.intent or f"Corrigir a etapa «{origem.titulo}»"[:400]
+        # 31.111 F4: sem intenção escrita pela pessoa, a sugerida leva a causa provável da tentativa (30.13, sem IA)
+        diagnostico = (s.training.diagnostico_da_falha(origem.attempt_id)
+                       if origem.attempt_id and s.training.diagnostico_da_falha is not None else None)
+        intent = body.intent or intencao_sugerida(origem.titulo, diagnostico)
         return s.training.start(origem.instance_id, intent=intent, lease_id=body.lease_id, app_id=body.app_id,
                                 operator=getattr(request.state, "operator", None), profile_id=body.profile_id,
                                 origem=origem)
@@ -3232,10 +3236,15 @@ async def preview_distribution_get_removido() -> None:
 
 
 @router.get("/runs/{run_id}")
-async def get_run(request: Request, run_id: str) -> Any:
-    detail = st(request).repo.run_detail(run_id)
+async def get_run(request: Request, run_id: str) -> RunDetail:
+    s = st(request)
+    detail = s.repo.run_detail(run_id)
     if detail is None:
         raise err(404, "not_found", "Execução não encontrada.")
+    detail.costs = CustosExecucao(
+        spent_usd=costs.spent_usd(s.db, s.cfg.file.ai.prices, run_id=run_id),
+        calls=int(s.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE run_id=?", (run_id,))),
+    )
     return detail
 
 

@@ -12,12 +12,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from reconciliar import (  # noqa: E402
     MARCA,
+    SEPARADOR,
     Acao,
     auditar_historico_e_programa,
     com_linha,
     decidir,
     deploy_do_item,
+    deploy_pela_evidencia,
     deploys_do_changelog,
+    deploys_por_commit,
+    frase_da_evidencia,
+    frase_do_cartao,
+    linha_do_parcial,
     ids_citados_por_deploy,
     ids_citados_por_deploy,
     id_do_item,
@@ -103,14 +109,15 @@ def test_parcial_sai_de_concluido_e_diz_o_que_falta():
     est = estado(**{"29.1": {"status": "partial", "status_detail": "falta a prova real no aparelho"}})
     a = roda([cartao("c1", "29.1 · algo", "✅ Concluído nesta semana")], est).acoes[0]
     assert (a.tipo, a.para) == ("mover", "em_validacao")
-    assert a.linha == "item parcial no plano; falta: falta a prova real no aparelho"
+    assert a.linha == "item parcial no plano, com prova simulada (ver o item 29.1 no estado do plano); falta: falta a prova real no aparelho"
 
 
 def test_parcial_em_execucao_so_ganha_a_linha_uma_vez():
     est = estado(**{"29.1": {"status": "partial"}})
     a = roda([cartao("c1", "29.1 · algo", "🛠 Em execução")], est).acoes[0]
     assert a.tipo == "marcar"
-    pronto = cartao("c1", "29.1 · algo", "🛠 Em execução", desc=MARCA + "estado do plano (x):** fica.")
+    pronto = cartao("c1", "29.1 · algo", "🛠 Em execução",
+                    desc=com_linha("corpo", topo_da_linha(a, "06/10/2026 02:00Z")))
     assert roda([pronto], est).acoes == []
 
 
@@ -200,3 +207,96 @@ def test_raiz_trocada_depois_do_import_vale_para_as_consultas_ao_git(monkeypatch
     assert reconciliar.suite_do_commit("29.1") is None
     assert reconciliar.horas_dos_deploys() == {}
     assert all(str(tmp_path) in c for c in chamadas) and len(chamadas) == 2
+
+
+def test_prova_real_nova_troca_a_linha_simulada_do_cartao_concluido():
+    est = estado(**{"29.1": {"status": "implemented", "proof": "real", "quando": "2026-10-05T17:00:00+00:00",
+                             "evidence": "validado em 06/10 na execução r-20261006012340-abc"}})
+    velha = MARCA + "estado do plano (06/10/2026 02:00Z):** fica em Concluído. Prova simulada (a.py::t), no ar desde o deploy 38." + SEPARADOR + "corpo"
+    a = roda([cartao("c1", "29.1 · algo", "✅ Concluído nesta semana", desc=velha)], est).acoes
+    assert [(x.tipo, x.motivo) for x in a] == [("marcar", "o plano ganhou prova real")]
+    assert a[0].linha.startswith("prova real (06/10, r-20261006012340-abc")
+    nova = com_linha("corpo", topo_da_linha(a[0], "06/10/2026 03:30Z"))
+    assert roda([cartao("c1", "29.1 · algo", "✅ Concluído nesta semana", desc=nova)], est).acoes == []
+
+
+PARCIAL_REAL = {"status": "partial", "proof": "real", "quando": "2026-10-06T03:33:00+00:00",
+                "evidence": "06/10/2026 provado na execução r-20261006012340-abc. Faltam F4 e F5 (tela). A em ponta própria.",
+                "blocker": "F4 e F5 ainda não entregues"}
+
+
+def test_frase_do_que_falta_vem_da_evidencia():
+    assert frase_da_evidencia(PARCIAL_REAL, lambda t: t) == "faltam F4 e F5 (tela)"
+    assert frase_da_evidencia({"evidence": "tudo provado"}, lambda t: t) is None
+    assert frase_da_evidencia({"evidence": "só uma parte; falta provar o resto. Outra frase."}, lambda t: t) == "falta provar o resto"
+
+
+def test_linha_do_parcial_tem_o_nivel_da_prova_e_a_frase_da_evidencia():
+    linha = linha_do_parcial("31.111", PARCIAL_REAL, cartao("c", "31.111 · x", "🧪 Em validação"), lambda t: t)
+    assert linha == ("item parcial no plano, com prova real (06/10/2026, r-20261006012340-abc; evidência no estado do plano, item 31.111); "
+                     "faltam F4 e F5 (tela)")
+
+
+def test_sem_frase_na_evidencia_mantem_a_do_cartao_e_so_troca_a_prova():
+    item = {"status": "partial", "proof": "real", "quando": "2026-10-06T03:33:00+00:00", "evidence": "06/10/2026 provado em r-20261006012340-abc"}
+    velha = MARCA + "estado do plano (06/10/2026 01:00Z):** fica em Em validação. Item parcial no plano; falta: a decisão do dono sobre os ids antigos." + SEPARADOR + "corpo"
+    c = cartao("c1", "29.1 · algo", "🧪 Em validação", desc=velha)
+    assert frase_do_cartao(c) == "falta: a decisão do dono sobre os ids antigos"
+    a = roda([c], estado(**{"29.1": item})).acoes
+    assert [(x.tipo, x.motivo) for x in a] == [("marcar", "a linha do parcial mudou (prova ou o que falta)")]
+    assert a[0].linha.endswith("); falta: a decisão do dono sobre os ids antigos")
+    assert "prova real (06/10/2026, r-20261006012340-abc" in a[0].linha
+    nova = cartao("c1", "29.1 · algo", "🧪 Em validação", desc=com_linha("corpo", topo_da_linha(a[0], "06/10/2026 03:40Z")))
+    assert roda([nova], estado(**{"29.1": item})).acoes == []          # idempotente
+    assert frase_do_cartao(nova) == "falta: a decisão do dono sobre os ids antigos"
+
+
+def test_sem_frase_em_lugar_nenhum_cai_no_bloqueio_do_estado():
+    item = {"status": "partial", "proof": "simulated", "blocker": "espera o 31.113"}
+    linha = linha_do_parcial("29.1", item, cartao("c", "29.1 · x", "🧪 Em validação"), lambda t: t)
+    assert linha.endswith("); falta: espera o 31.113") and "com prova simulada" in linha
+
+
+def test_cartao_parcial_com_prova_simulada_antiga_ganha_a_real():
+    simulada = {**PARCIAL_REAL, "proof": "simulated", "evidence": "backend/tests/test_x.py::test_a. Faltam F4 e F5 (tela)."}
+    c0 = cartao("c1", "31.111 · x", "🧪 Em validação")
+    a0 = roda([c0], estado(**{"31.111": simulada})).acoes[0]
+    c1 = cartao("c1", "31.111 · x", "🧪 Em validação", desc=com_linha("corpo", topo_da_linha(a0, "06/10/2026 03:00Z")))
+    assert roda([c1], estado(**{"31.111": simulada})).acoes == []
+    a1 = roda([c1], estado(**{"31.111": PARCIAL_REAL})).acoes
+    assert [x.tipo for x in a1] == ["marcar"] and "com prova real" in a1[0].linha and a1[0].linha.endswith("faltam F4 e F5 (tela)")
+
+
+def test_frase_que_falta_aguenta_ponto_dentro_de_nome_de_arquivo():
+    ev = "Real (06/10). Falta: .claude/trello/mapa.json fora do Git como estado por instalação (corte 46). Outra frase."
+    assert frase_da_evidencia({"evidence": ev}, lambda t: t) == "falta: .claude/trello/mapa.json fora do Git como estado por instalação (corte 46)"
+
+
+CHANGELOG_45 = ("## 2026-10-06 — Deploy 45 (suíte 45)\n\n- **Implantado** às 03:13Z: central em `7154d7cf`, migração 119.\n\n"
+                "## 2026-10-06 — Deploy 44 (suíte 44)\n\n- **Implantado** às 02:15Z: central em `33c7d5ab`, migrações 117 e 118.\n")
+
+
+def test_deploy_pelo_commit_do_central_citado_na_evidencia():
+    pc = deploys_por_commit(CHANGELOG_45)
+    assert pc == {"7154d7cf": 45, "33c7d5ab": 44}
+    item = {"status": "implemented", "proof": "real", "quando": "2026-10-06T03:36:17+00:00",
+            "evidence": "Real, 06/10/2026, central 7154d7cf (contém f7153ddf), android-04 sem conta real."}
+    assert deploy_pela_evidencia(item, pc) == 45
+    assert deploy_pela_evidencia({"evidence": "sem commit"}, pc) is None
+    c = [cartao("c1", "29.5 · algo", "🧭 Próximas")]
+    sem = roda(c, estado(**{"29.5": item})).acoes[0]
+    assert sem.para == "em_validacao"                                   # classificado depois do último deploy registrado
+    com = decidir(c, estado(**{"29.5": item}), agora=AGORA, horas=HORAS, suite_de=lambda p: None,
+                  listas_do_historico=HIST, por_commit=pc).acoes[0]
+    assert (com.para, "deploy 45" in com.linha) == ("concluido", True)
+
+
+def test_deploy_pelo_numero_citado_na_evidencia_so_vale_ate_o_ultimo_deploy():
+    item = {"evidence": "04/10/2026, deploy 32 (2c47b9fa), r-20261004232524-2e0775"}
+    assert deploy_pela_evidencia(item, {}, 45) == 32
+    assert deploy_pela_evidencia({"evidence": "vai no deploy 46"}, {}, 45) is None
+    assert deploy_pela_evidencia({"evidence": "deploy 44 e depois o deploy 45"}, {}, 45) == 44
+    real = {"status": "implemented", "proof": "real", "quando": "2026-10-06T03:41:14+00:00", "evidence": "provado no deploy 32 (2c47b9fa)"}
+    c = [cartao("c1", "29.6 · algo", "🧪 Em validação")]
+    a = decidir(c, estado(**{"29.6": real}), agora=AGORA, horas=HORAS, suite_de=lambda p: None, listas_do_historico=HIST).acoes[0]
+    assert (a.para, "deploy 32" in a.linha) == ("concluido", True)

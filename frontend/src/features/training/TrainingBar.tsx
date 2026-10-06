@@ -16,6 +16,7 @@ import { isRecord, plural } from '../../lib/format';
 import { useAppStore } from '../../store/app';
 import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
+import { OrigemDoTreino, SeloDeOrigem } from './OrigemDoTreino';
 import { RefazerReceitas, TrainingReview, toqueSemAlvo } from './TrainingReview';
 import { useTrainingStore } from './trainingStore';
 import styles from './Training.module.css';
@@ -228,6 +229,8 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             <CircleDot size={14} className={styles.recDot} aria-hidden /> Gravando: <strong>{ativa.intent}</strong>
             <Badge size="sm">{plural((ativa.inputs ?? []).length, 'entrada', 'entradas')}</Badge>
           </p>
+          {/* 31.111 F5: o treino aberto a partir de uma etapa que falhou mostra de onde veio e o que a execução fez. */}
+          {ativa.origin ? <OrigemDoTreino origin={ativa.origin} /> : null}
           <ol className={styles.liveList}>
             {(ativa.inputs ?? []).slice(-6).map((e) => (
               <li key={e.seq}>
@@ -298,11 +301,12 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
           <span className={styles.muted}>Para revisar:</span>
           {pendentes.map((s) => (
             <Button key={s.id} size="sm" variant="ghost" onClick={() => setRevisando(s.id)}
-                    label={`Revisar “${s.intent}”${s.status === 'proposed' ? ', proposta pronta' : ', só gravada'}`}>
+                    label={`Revisar “${s.intent}”${s.status === 'proposed' ? ', proposta pronta' : ', só gravada'}${s.origin ? ', corrige uma falha' : ''}`}>
               {/* 29.142: o rótulo leva o nome inteiro; o estado aparece nas duas situações, para a só gravada não
                   parecer igual à de proposta pronta. */}
               {encurtar(s.intent)}
               {s.status === 'proposed' ? ' · proposta pronta' : ' · só gravada'}
+              {s.origin ? <> <SeloDeOrigem origin={s.origin} /></> : null}
             </Button>
           ))}
         </div>

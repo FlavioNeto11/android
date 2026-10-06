@@ -6807,7 +6807,8 @@ Uma rota nova e um campo novo na sessão de treino; migração 119 (três coluna
 - **`POST /api/training/from-run`**, corpo `{run_id, step_id, lease_id, intent?, app_id?, profile_id?}` (`extra=forbid`;
   `run_id`, `step_id` e `lease_id` obrigatórios, senão **422**). O aparelho é o da etapa. Responde **201** com a sessão
   (igual a `POST /api/instances/{id}/training`) mais `origin`.
-  - A etapa precisa ter `failed` ou `uncertain`: outra coisa é **409** `step_not_failed`; etapa que não é daquela execução,
+  - A etapa precisa ter `failed`, `uncertain` ou `waiting_user` (o bloqueio que espera uma pessoa): outra coisa é **409**
+    `step_not_failed`; etapa que não é daquela execução,
     ou que não existe, é **404** `step_not_found`. Etapa de aparelho que já não existe: **404** `not_found`.
   - Vale para qualquer aparelho, com as MESMAS travas do treino de hoje: só quem está com o controle (`lease_id`) abre
     (**409** `control_required`), a loja não é aparelho de treino, e persona de outro aparelho é **400**
@@ -6831,11 +6832,80 @@ Uma rota nova e um campo novo na sessão de treino; migração 119 (três coluna
   `GET /api/flows` ganha `origin`, `null` ou `{session_id, run_id, step_id, attempt_id}` (o fluxo cuja sessão de treino
   veio de uma falha); e o evento `log` do salvar leva `data.origin {run_id, step_id, attempt_id}` quando há origem.
   O `session` da resposta do `save` já traz o `origin` da sessão.
-- **Reservado ao F4 (Aprendizado):** `origin.diagnostico {causa, fatos, proposta}`, que pré-preenche o `intent` e a pergunta.
-  Este adendo não o devolve.
+- **F4 (Aprendizado):** `origin.diagnostico`, ver o adendo v1.77.
 - **O que o painel precisa mudar (F5):** um botão "Ensinar a corrigir" na etapa que falhou, que pede o controle do aparelho
   e chama `POST /api/training/from-run`; o Foco abre com `origin.context` (a trilha, o esperado e as imagens).
 - **Prova:** `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
+
+## Adendo v1.74 (06/10/2026; número da orquestradora; item 29.153) — custo no detalhe da execução
+
+Mudança aditiva em `GET /api/runs/{run_id}` (`RunDetail`), sem migração. Os números v1.72 e v1.73 permanecem
+reservados pela orquestradora.
+
+- O detalhe sempre traz `costs: {"spent_usd": 0.0407, "calls": 2}`.
+- `spent_usd` é o gasto estimado em US$ da execução, calculado por `planning/costs.py::spent_usd` a partir de
+  `ai_calls` e dos preços de `ai.prices`, filtrado por `run_id`, sem limitar ao dia atual. Mantém as regras do cálculo
+  existente: cache, modelo que realmente respondeu, custo declarado e chamadas simuladas sem cobrança.
+- `calls` é o número de linhas de `ai_calls` dessa execução, inclusive as simuladas.
+- Sem chamadas de IA: `costs: {"spent_usd": 0.0, "calls": 0}`; o campo nunca é omitido nem nulo.
+- **`GET /api/runs` não muda:** os itens da lista continuam sem `costs`. Execução inexistente no detalhe continua
+  respondendo 404 `not_found`.
+- **Prova:** `simulated` (`backend/tests/test_run_detalhe_custo.py`); `real`: `not_run`.
+
+## Adendo v1.76 (06/10/2026; número da orquestradora; item 31.114 F1 e F2) — o arraste gravado: o gesto do dedo para a IA e, confirmado, a receita
+
+Sem rota nova, sem migração e sem corpo novo. Muda o que o `propose` lê, o que ele guarda e uma pergunta; o `save` e o `preview`
+seguem como eram.
+- **O texto do arraste que a IA lê** (`planning/training.py::descrever_arraste`): o gesto do DEDO, de onde saiu e quanto percorreu,
+  e não mais "rolou para cima/baixo" (que era o movimento do conteúdo e levava a ler o contrário). Exemplo (caso real da prova do
+  31.111): "arrastou o dedo de cima para baixo, saindo da borda superior, por 60 % da altura". Sem a tela do aparelho, ou com
+  coordenada que não cabe nela: "arrastou o dedo de cima para baixo (borda de origem desconhecida)". Borda = até 3 % da largura
+  ou da altura. Arraste sem coordenada (31.97: teclado, padrão de bloqueio, tela sensível) segue "não gravado".
+- **`screen`** na proposta guardada (`GET /api/training/{id}` → `proposal.screen`): `[largura, altura]` do aparelho em retrato, lida
+  na hora do `POST /api/training/{id}/propose` e só quando a gravação tem arraste com coordenada. Ausente (a proposta tem as chaves
+  de sempre) se não há arraste ou se o aparelho não respondeu a tempo (8 s). É a tela que a destilação usa depois; o `proposal`
+  que o cliente manda no `save` não a carrega nem precisa: vale a da sessão.
+- **A pergunta fixa do arraste final**: para cada etapa que TERMINA num arraste com coordenada, sem sair da borda e com a tela
+  conhecida, a proposta ganha em `questions`: "A etapa «<chave>» termina num arraste. O arraste é o objetivo dela, para a receita
+  repetir a rolagem? Responda sim ou não." O texto é fixo por chave de etapa. Responde-se pelo caminho do 31.91 (`propose` com
+  `{"answers": [{"question", "answer"}]}`; a resposta fica em `answers`, e a pergunta respondida não volta). Arraste de borda ou
+  sem tela conhecida não gera pergunta.
+- **A receita**: só com "sim" (sem acento e sem ponto, qualquer caixa) à pergunta da etapa, e com a tela conhecida e o dedo fora da
+  borda, a etapa ganha a receita de rolagem: um item `scroll` por arraste da cauda, na direção do conteúdo (dedo sobe = `down`),
+  relativo à área rolável, nunca com pixel. Qualquer outra resposta, ou a falta dela, deixa o motivo de sempre: "rolagem sem
+  ação-alvo depois dela" no relatório por etapa do `preview`/`save` (`steps[].reason`). Arraste no MEIO da etapa segue como dica
+  "rolar até o alvo aparecer" da ação seguinte. Gesto de borda (a gaveta de notificações) segue sem receita: o F3 (tool de borda)
+  está fora até haver demanda. `drag` continua em `UNSAFE_TO_REPLAY`.
+- **O que o painel precisa mudar:** mostrar a pergunta como as outras `questions` (campo de resposta e envio pelo `propose`); nada
+  além disso. O relatório por etapa já traz o motivo.
+- **Prova:** `simulated` (`backend/tests/test_treino_descricao_do_arraste.py`, `test_treino_arraste_vira_receita.py`); `real`:
+  `not_run`.
+
+## Adendo v1.77 (06/10/2026; número da orquestradora; item 31.111 F4) — a causa provável abre o ensino da correção
+
+Aditivo, sem migração e sem IA. Preenche o campo que o v1.75 reservou ao F4.
+- **`origin.diagnostico`** SÓ em `GET /api/training/{id}` e na resposta do `POST /api/training/from-run` (a lista
+  `GET /api/training` não o leva, como o `context`). É `null` quando a sessão tem `origin` sem tentativa
+  (`attempt_id: null`), quando a tentativa não tem tipo de falha, ou quando o diagnóstico não pôde ser lido; a sessão
+  abre igual. Fora disso, `{causa, rotulo, pergunta, fatos, proposta, amostra}`:
+  - `causa`: o valor de `CausaProvavel` do 30.13 (`teto_de_ia`, `provedor_de_ia`, `sessao_ou_autenticacao`, `aparelho`,
+    `plano`, `informacao_da_pessoa`, `catalogo_recusou`, `verificador`, `receita_divergiu`, `versao_nova`,
+    `licao_atrapalha`, `tela_desconhecida`, `falta_conhecimento`, `indeterminada`). Nunca `null`.
+  - `rotulo`: a causa em poucas palavras, para a pessoa. Nunca `null`.
+  - `pergunta`: o que a pessoa mostra ou responde ao corrigir. Nunca `null`; na `indeterminada`, a genérica "O que a
+    etapa devia ter feito nesta tela?".
+  - `fatos`: `[{codigo, valor}]`, os fatos que sustentam a causa (os mesmos do relatório de falhas). Lista, pode ser
+    vazia.
+  - `proposta`: `{tipo, alvo}` (o `TipoDeProposta` do 30.13 e o alvo, ex. `grupo:<id>`, `receita:<id>`), ou `null`
+    quando a causa não traz proposta.
+  - `amostra`: `1` quando o contexto da tentativa foi lido, `0` quando só o tipo da falha decidiu.
+- A regra é a do relatório de falhas para UMA tentativa: o tipo relido pelo texto quando não gravado, o app pela etapa ou
+  pela execução, e os tipos de erro do provedor nas chamadas dela.
+- **`POST /api/training/from-run` sem `intent`:** o texto sugerido passa a ser "Corrigir a etapa «<título>»: <rotulo>"
+  quando a causa é conhecida. Na `indeterminada`, ou sem diagnóstico, continua "Corrigir a etapa «<título>»". **A
+  intenção escrita pela pessoa vence** sempre.
+- **O que o painel precisa mudar (F5):** mostrar `rotulo` e `pergunta` ao abrir o Foco do ensino que veio da falha.
+- **Prova:** `simulated` (`backend/tests/test_treino_diagnostico_da_falha.py`); `real`: `not_run`.
 
 ## Adendo v1.79 (06/10/2026; número da orquestradora; item 31.113 F3) — o pedido de aprovação guarda o marcador da persona
 

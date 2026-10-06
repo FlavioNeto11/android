@@ -313,6 +313,13 @@ materialização, e o pré-voo do F1 recusa o aparelho sem o dado. O `save` e a 
 perfil. O consumo é genérico por chave (`profile_variables`, da identidade): as chaves novas entram sem mudar o
 ensino. Valor com menos de 3 caracteres, ou só dentro de outro texto, não é trocado. Sem persona no treino, nada muda.
 
+**A pergunta da IA também leva o marcador (31.112; achado da prova real do 31.87).** `questions[]` e
+`answers[].question` (31.91) trocam o dado por palavra, como o título (`dado_da_persona.nas_perguntas`). A troca vale
+ao guardar: no `propose`, para a pergunta nova da IA e para a pergunta que o corpo devolve, e no `save` e na prévia.
+Vale também ao mostrar: `TrainingRecorder.get` e `list` mascaram a proposta gravada antes do 31.112, pela mesma regra do
+dado digitado inteiro. A resposta da pessoa (`answer`) fica como ela escreveu. A pergunta devolvida com o valor (cliente
+aberto antes) casa com a guardada, e a IA passa a receber o marcador na pergunta respondida.
+
 **O registro da execução guarda o marcador, não o valor (31.113, F1; achado da prova real do 31.87).** A tela segue
 com o valor: o executor digita e confere com o que tem em memória. O que FICA troca valor → marcador na fronteira de
 escrita (`security/mascara_da_persona.py`, camada irmã de `redact` e de `enderecos_limpos`):
@@ -327,6 +334,12 @@ digitou INTEIRO, de qualquer chave. Regras do ensino: o valor mais longo primeir
 inteira, sem diferença de maiúscula. O valor que está num parâmetro do comando fica, porque o parâmetro vence (regra do
 F2) e a receita aprendida da execução continua guardando `{param}`. O `actions.target` fica com o valor: é o seletor da
 receita e da lição (o elemento da tela), e o evento não o leva.
+
+A F1 não cobre o texto das etapas (`steps.postcondition`/`goal`/`title` e `plan_versions.steps`): a materialização ainda
+grava o valor resolvido. Isso é a F2 (o molde na linha e a resolução em memória no executor, combinada com a Android).
+A aprovação e a porta de política guardam e mostram o marcador; a tela de aprovação resolve o valor ao vivo pela
+persona (F2). As execuções anteriores ficam como estão: o registro nasce mascarado a partir do deploy que levar o
+commit da F1 (ramo `feat/31-113-f1-registro-mascarado`).
 
 **F2: a etapa guarda o marcador, e o executor resolve num ponto só.** A materialização (e a revisão do plano)
 deixa as variáveis da persona como marcador no texto que descreve e confere a etapa: título, objetivo, pré e

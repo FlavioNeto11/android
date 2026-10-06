@@ -24,6 +24,7 @@ import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextInput } from '../../components/Field';
 import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
+import { OrigemDoTreino, SeloDeOrigem } from './OrigemDoTreino';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { useAppStore } from '../../store/app';
 import { plural } from '../../lib/format';
@@ -392,7 +393,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     setPensando(true);
     try {
       const s = await api.proposeTraining(sessionId, answers);
-      setSessao(s);
+      // A origem não muda numa sessão e o contexto completo só vem da leitura (`GET /training/{id}`): a resposta da proposta não a apaga.
+      setSessao((ant) => ({ ...s, origin: ant?.origin ?? s.origin }));
       setRespostas({});
       setErroResposta(null);
       setProposta(s.proposal);
@@ -603,6 +605,13 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           {resultado.ensinado_em_prova ? (
             <p className={styles.muted} role="status">{explicacaoEmProva(resultado.ensinado_em_prova)}</p>
           ) : null}
+          {/* 31.111 F5: o fluxo candidato que nasceu da correção de uma etapa que falhou diz de onde veio. */}
+          {sessao.origin ? (
+            <p className={styles.muted}>
+              <SeloDeOrigem origin={sessao.origin} /> Este fluxo nasceu da correção da etapa <span className="mono">{sessao.origin.step_key}</span> da
+              execução <span className="mono">{sessao.origin.run_id}</span>.
+            </p>
+          ) : null}
           {resultado.scope ? (
             <p className={styles.muted}>Vale para {textoDoEscopo(resultado.scope, escopo.perfis, escopo.grupos)}.{resultado.ensinado_em_prova ? '' : ` ${ATE_A_PROVA}`}</p>
           ) : null}
@@ -639,6 +648,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         </div>
       ) : (
         <div className={styles.review}>
+          {sessao.origin ? <div className={styles.origemLinha}><OrigemDoTreino origin={sessao.origin} /></div> : null}
           <div className={styles.recordingCol}>
             <h4 className={styles.sub}>O que você fez ({plural(sessao.inputs?.length ?? 0, 'entrada', 'entradas')})</h4>
             <ol className={styles.inputList}>
