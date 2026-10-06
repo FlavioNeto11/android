@@ -102,6 +102,13 @@ def test_sem_migracao_uma_migracao_e_hora_com_no_ar() -> None:
     assert d89.real is None and d89.not_run is None and d89.backup is None and d89.tag is None
 
 
+def test_titulo_nao_repete_a_migracao_que_o_resumo_do_cabecalho_ja_diz() -> None:
+    d = _d(90)
+    d.resumo = "correções do corte 56; sem migração"
+    t = titulo_marco(d)
+    assert t.count("sem migração") == 1 and t.endswith("sem migração")
+
+
 def test_titulo_do_marco_no_formato_do_molde() -> None:
     t = titulo_marco(_d(91))
     assert t.startswith("📅 Deploy 91 · 05/03 21:15Z (abcdef01) · corte de teste: tela nova, regra configurável, relatório")
