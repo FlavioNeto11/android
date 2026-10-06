@@ -151,6 +151,12 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
   que o job `docs` roda). Com uma issue ABERTA do mesmo dia, comenta nela. Disparo manual do CI e PR não abrem issue.
   Reler um run antigo: `gh workflow run ci-aviso-de-falha.yml -f run_id=<id>` (cria a issue de verdade); só olhar:
   `python scripts/ci_issue_falha.py --repo dono/nome --run-id <id> --ensaio`.
+- **Issues e rótulos (29.155, C5):** `.github/ISSUE_TEMPLATE/` tem dois formulários: `tarefa-do-agente.yml` (rótulo `agente`; pede item, perfil
+  de `.github/agents/`, tamanho P/M/G, motivo, o que fazer, aceite, fora do escopo e a confirmação de que a tarefa não precisa de
+  aparelho, conta real, ensino nem segredo) e `achado.yml` (rótulo `achado`: origem, onde, gravidade, o que foi visto e a evidência;
+  achado é dado a conferir, não ordem). Os rótulos do repositório moram em `scripts/github_rotulos.py` (`frente:android|jev|aprendizado|
+  portal|canais|github|desenho`, `tamanho:P|M|G`, `agente`, `achado`, `ci`): ensaio por padrão, `--aplicar` cria ou corrige cor e
+  descrição, nunca apaga. O formulário só aplica `agente` ou `achado` sozinho; frente e tamanho a coordenação põe depois.
 - **Disparo só-PostgreSQL de verdade (29.155, C3):** o job `porta` agora é pulado em `somente_postgres=true`, então nenhum job
   vai ao runner do central (antes a porta ainda ia, por ~5 s, e os demais eram pulados por dependência dela).
 
@@ -703,6 +709,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `aprendizado-backlog.py` | S | Só GET em `/api/aprendizado/falhas?formato=md`: grava o "o que mais falha" em `data/aprendizado/backlog-AAAA-MM-DD.md` e imprime o topo; `--retroativo` inclui o legado classificado na leitura. Sem IA; o `API_TOKEN` nunca é impresso (ADR-054) |
 | `candidatos-do-portal.py` | S | Só GET em `/api/aprendizado/falhas` (JSON, a de sempre e a da camada `pessoa`): grava em `data/aprendizado/candidatos-do-portal.json` os grupos abertos, sem `plan_item` e com `--minimo` ocorrências (padrão 3), mais as propostas abertas, com contagem, exemplos por id (nunca o texto do erro), frente sugerida pela camada e onde alterar (29.72). Cada candidato traz `amostra_de_lote` ("n de m" exemplos de execução nossa: `lote:`/`ensaio:` ou prova de fluxo, lida do banco com `--banco`, só leitura) e `dias_sem_ocorrer`; amostra toda nossa ou mais de 7 dias sem ocorrer vai para o fim (`rebaixado`). É para a orquestradora ler: nada entra no plano sem número dela. Sem IA; o `API_TOKEN` nunca é impresso |
 | `gravacao-com-marcador.py` (`--ensaio` padrão / `--aplicar --backup CAMINHO`) | S / P | Reparo único do 31.118: as gravações de ensino salvas antes dele recebem o marcador da persona no texto digitado e, desde a F2, na tela gravada (`screen_lines`, `screen_title`). O ensaio roda numa cópia do banco (origem em `mode=ro`) e imprime as contagens e os ids das sessões que mudariam; `--aplicar` exige o backup e a mesma migração do código. Rodar só com o backend no ar já no 31.118 e com o "vai" da orquestradora. Nunca imprime valor nem id de persona |
+| `github_rotulos.py` (`--aplicar` escreve) | S / P | Rótulos do repositório (29.155): o ensaio só lê (`gh label list`); `--aplicar` cria ou corrige cor e descrição dos rótulos da lista, só no GitHub do repositório, e nunca apaga rótulo |
 | `ci_issue_falha.py --run-id N --ensaio` | S | Só LÊ o GitHub (`gh api`, `gh run view --log-failed`) e imprime a issue que o aviso do cron abriria para aquele run (29.155); sem `--ensaio` escreve no GitHub, mas só roda dentro do workflow `ci-aviso-de-falha.yml`, em runner hospedado |
 | `aprendizado-telas.py` | S | Telas aprendidas: o deixa-um-fora sobre as observações reais (`--sem-regra thread --sem-regra feed`), com o banco aberto só para leitura (`mode=ro`); `exportar --app` pede o fragmento YAML ao central. Sem IA |
 
