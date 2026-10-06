@@ -417,6 +417,12 @@ avisos depois da faxina"), e a trava cai no TTL.
   Histórico (item que o plano não dá como feito) e o Programa (métrica, custo e risco sem leitura datada). É idempotente:
   a segunda rodada não acha nada para mudar, e a linha nova troca a antiga em vez de empilhar. A linha escrita passa por
   `redacao.redigir` e só carrega o que o estado do plano diz.
+- **Regra, a linha do cartão acompanha a prova (06/10):** o cartão nunca precisa de linha à mão. A linha do concluído é o nível
+  da prova do plano (real com data e ids, ou simulada) mais o deploy; quando o plano ganha prova real, a linha simulada é
+  trocada. A linha do **parcial** é o nível da prova mais a frase do que falta, tirada da oração da evidência do item que
+  começa com "Falta" ou "faltam"; se a evidência não tem essa oração, fica a frase que já está no cartão e só a parte da prova
+  muda; sem nenhuma das duas, vale o detalhe ou o bloqueio do estado. O item implementado que o plano classificou depois do
+  registro do deploy vale como implantado quando a evidência real cita o commit que o central rodava ("central 7154d7cf").
 - **Hoje:** `.claude/trello/reconciliar.py` (testes em `.claude/trello/test_reconciliar.py`), a rotina da skill `trello` e o
   aviso no fim do `aplicar` do plano. As exceções acima (sem estado, "Espera você") ficam num relato para o dono ver.
 - **No produto:** nada ainda. A Central só tem o espelho dos avisos; levar a reconciliação para dentro dela é decisão a

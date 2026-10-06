@@ -112,6 +112,25 @@ def deploy_do_item(quando: str | None, suite: int | None, horas: dict[int, str])
     return None
 
 
+def deploys_por_commit(texto: str) -> dict[str, int]:
+    """Prefixo de 8 caracteres do commit que o central rodou → número do deploy, lido da linha "central em `sha`" de cada
+    seção `## … — Deploy N` do CHANGELOG."""
+    achados: dict[str, int] = {}
+    for m in re.finditer(r"^## \d{4}-\d{2}-\d{2} — Deploy (\d+)\b.*?(?=^## |\Z)", texto, flags=re.M | re.S):
+        c = re.search(r"central em `([0-9a-f]{7,40})`", m.group(0))
+        if c:
+            achados.setdefault(c.group(1)[:8], int(m.group(1)))
+    return achados
+
+
+def deploy_pela_evidencia(item: dict, por_commit: dict[str, int]) -> int | None:
+    """O item foi classificado depois do registro do deploy, mas a evidência real diz em que commit do central foi
+    provado ("central 7154d7cf"): esse é o deploy dele (o menor, se citar mais de um)."""
+    ev = str(item.get("evidence") or "")
+    ns = [n for sha, n in por_commit.items() if sha in ev]
+    return min(ns) if ns else None
+
+
 def _provas(item: dict) -> list[str]:
     ev = str(item.get("evidence") or "") + " " + " ".join(str(x) for x in (item.get("testes") or []))
     achados = re.findall(r"[\w./-]*(?:test|spec)[\w./-]*\.(?:py|tsx?|ps1)(?:::[\w*\[\]-]+)?", ev)
@@ -146,11 +165,49 @@ def linha_de_prova(pid: str, item: dict, deploy: int, primeiro: int) -> str:
     return "prova simulada (" + (", ".join(ts) if ts else f"ver o item {pid} no estado do plano") + f"), no ar desde {rotulo}"
 
 
-def linha_do_que_falta(item: dict, redigir: Callable[[str], str]) -> str:
-    for k in ("status_detail", "status_note", "blocker"):
-        if item.get(k):
-            return "item parcial no plano; falta: " + _limpa(str(item[k]), redigir)
-    return "item parcial no plano; o estado do plano não diz o que falta"
+def nivel_da_prova(pid: str, item: dict) -> str:
+    """"prova real (data, ids; …)" ou "prova simulada (arquivo::teste)", como na linha dos itens concluídos."""
+    if item.get("proof") == "real":
+        data, ids = _real(item)
+        return f"prova real ({data}" + (f", {', '.join(ids)}" if ids else "") + f"; evidência no estado do plano, item {pid})"
+    ts = _provas(item)
+    return "prova simulada (" + (", ".join(ts) if ts else f"ver o item {pid} no estado do plano") + ")"
+
+
+def frase_da_evidencia(item: dict, redigir: Callable[[str], str]) -> str | None:
+    """A oração da evidência do item que começa com "Falta", "Faltam" ou "faltam", sem o ponto final."""
+    m = re.search(r"\b([Ff]altam?\b.*?)(?:\.(?=\s|$)|;|\n|$)", str(item.get("evidence") or ""))
+    if not m:
+        return None
+    t = _limpa(m.group(1), redigir)
+    return t[0].lower() + t[1:] if t else None
+
+
+def frase_do_cartao(c: dict) -> str | None:
+    """A frase do que falta que já está na linha do topo do cartão (`; falta: …`), sem o ponto final."""
+    primeira = str(c.get("desc", "")).split(SEPARADOR, 1)[0]
+    if not primeira.startswith(MARCA):
+        return None
+    m = re.search(r";\s*(falta[^\n]*)$", primeira.strip())
+    return m.group(1).rstrip(".;").strip() if m else None
+
+
+def linha_do_parcial(pid: str, item: dict, c: dict, redigir: Callable[[str], str]) -> str:
+    """Nível da prova + a frase do que falta: a da evidência do item; senão a que o cartão já tem; senão o campo de
+    detalhe, a nota ou o bloqueio do estado."""
+    frase = frase_da_evidencia(item, redigir) or frase_do_cartao(c)
+    if frase is None:
+        for k in ("status_detail", "status_note", "blocker"):
+            if item.get(k):
+                frase = "falta: " + _limpa(str(item[k]), redigir)
+                break
+    return f"item parcial no plano, com {nivel_da_prova(pid, item)}; " + (frase or "o estado do plano não diz o que falta")
+
+
+def _linha_desatualizada(c: dict, linha: str) -> bool:
+    """O cartão não tem a linha do plano: sem a marca, ou com uma linha que não é esta (a prova mudou, por exemplo)."""
+    primeira = str(c.get("desc", "")).split(SEPARADOR, 1)[0]
+    return not primeira.startswith(MARCA) or linha[1:] not in primeira
 
 
 def _tem_linha(c: dict) -> bool:
@@ -174,7 +231,8 @@ def _lista_da_fase(pid: str, listas: dict[str, str]) -> str | None:
 
 def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[int, str],
             suite_de: Callable[[str], int | None], listas_do_historico: dict[str, str],
-            redigir: Callable[[str], str] = lambda t: t, citados: dict[str, int] | None = None) -> Relatorio:
+            redigir: Callable[[str], str] = lambda t: t, citados: dict[str, int] | None = None,
+            por_commit: dict[str, int] | None = None) -> Relatorio:
     """Compara cada cartão do quadro Execução com o estado do plano e devolve o que mudar.
 
     `cartoes`: [{"id", "nome", "lista" (nome da lista), "desc"}]. `listas_do_historico`: nome da lista de fase → id.
@@ -205,13 +263,16 @@ def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[i
                 rel.acoes.append(Acao(c["id"], nome, "mover", atual, "bloqueado",
                                       "item bloqueado no plano: " + _limpa(str(motivo), redigir), "bloqueado no plano"))
         elif st == "partial":
-            linha = linha_do_que_falta(it, redigir)
+            linha = linha_do_parcial(pid, it, c, redigir)
             if atual in ("concluido", "proximas"):
                 rel.acoes.append(Acao(c["id"], nome, "mover", atual, "em_validacao", linha, "parcial no plano"))
-            elif not _tem_linha(c):
-                rel.acoes.append(Acao(c["id"], nome, "marcar", atual, None, linha, "parcial sem a linha do que falta"))
+            elif _linha_desatualizada(c, linha):
+                motivo = "parcial sem a linha do que falta" if not _tem_linha(c) else "a linha do parcial mudou (prova ou o que falta)"
+                rel.acoes.append(Acao(c["id"], nome, "marcar", atual, None, linha, motivo))
         elif st == "implemented":
             n = deploy_do_item(it.get("quando"), suite_de(pid) or (citados or {}).get(pid), horas)
+            if n is None and it.get("proof") == "real":
+                n = deploy_pela_evidencia(it, por_commit or {})
             if n is None:
                 if atual != "em_validacao":
                     rel.acoes.append(Acao(c["id"], nome, "mover", atual, "em_validacao",
@@ -345,9 +406,10 @@ async def _principal(aplicar: bool) -> int:
     hist = {x["name"]: x["id"] for x in hl}
     estado = json.loads((RAIZ / ".claude/plano-100/estado.json").read_text(encoding="utf-8"))
     agora = datetime.now(timezone.utc)
-    citados = ids_citados_por_deploy((RAIZ / "CHANGELOG.md").read_text(encoding="utf-8"))
+    changelog = (RAIZ / "CHANGELOG.md").read_text(encoding="utf-8")
     rel = decidir(cartoes, estado, agora=agora, horas=horas_dos_deploys(), suite_de=suite_do_commit,
-                  listas_do_historico=hist, redigir=redigir, citados=citados)
+                  listas_do_historico=hist, redigir=redigir, citados=ids_citados_por_deploy(changelog),
+                  por_commit=deploys_por_commit(changelog))
     outros = auditar_historico_e_programa(await _cartoes(cl, ident["historico"]), await _cartoes(cl, ident["programa"]),
                                           estado, agora=agora)
     print("Execução:", len(cartoes), "cartões; ações:", rel.contagem() or "nenhuma")
