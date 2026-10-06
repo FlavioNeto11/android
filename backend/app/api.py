@@ -612,6 +612,26 @@ async def start_training_from_run(request: Request, body: TrainingDeFalhaBody) -
         raise _training_error(exc) from exc
 
 
+@router.get("/runs/{run_id}/steps/{step_id}/ensino-sugerido")
+async def ensino_sugerido(request: Request, run_id: str, step_id: str) -> dict[str, object] | None:
+    """31.116 (parte 2): o que o formulário de "Ensinar a corrigir" pré-preenche ANTES da sessão existir: a intenção
+    sugerida, a pergunta e o rótulo da causa provável, pelo mesmo diagnóstico do 31.111 F4. Só leitura: sem IA, sem
+    gravar, sem pedir o controle. As recusas são as do `from-run` (404 `step_not_found`, 409 `step_not_failed`); sem
+    tentativa, `null`. A intenção que a pessoa escrever vence (é ela que vai no `POST /training/from-run`)."""
+    s = st(request)
+    try:
+        origem = s.training.origem_da_falha(run_id, step_id)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+    if not origem.attempt_id:
+        return None
+    diagnostico = (s.training.diagnostico_da_falha(origem.attempt_id)
+                   if s.training.diagnostico_da_falha is not None else None)
+    return {"intent": intencao_sugerida(origem.titulo, diagnostico),
+            "pergunta": diagnostico.get("pergunta") if diagnostico else None,
+            "rotulo": diagnostico.get("rotulo") if diagnostico else None}
+
+
 @router.get("/training")
 async def list_training(request: Request, instance_id: str | None = None, limit: int = Query(30, ge=1, le=200)) -> Any:
     return st(request).training.list(instance_id=instance_id, limit=limit)

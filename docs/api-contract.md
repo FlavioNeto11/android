@@ -1102,6 +1102,7 @@ campo.
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
 | `POST /api/training/from-run` | `TrainingDeFalhaBody {run_id, step_id, lease_id, intent?, app_id?, profile_id?}` | `TrainingSession` (201) com `origin {run_id, step_id, step_key, attempt_id, motivo}`: abre o ensino a partir de uma etapa que falhou (31.111 F1 e F2, adendo v1.75); 404 `step_not_found`, 409 `step_not_failed` e as recusas de `POST /instances/{id}/training` |
+| `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` | — | `{intent, pergunta, rotulo}` ou `null` (sem tentativa): o que "Ensinar a corrigir" pré-preenche antes da sessão, pelo diagnóstico do 31.111 F4; só leitura, sem IA (31.116, adendo v1.80); 404 `step_not_found`, 409 `step_not_failed` |
 | `POST /api/training/{session_id}/undo` | `TrainingUndoBody {lease_id, seq?}` | `TrainingSession` com `undone: {seq, type}`: tira a última entrada da gravação viva (31.90-D, adendo v1.70) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
@@ -6906,3 +6907,12 @@ Aditivo, sem migração e sem IA. Preenche o campo que o v1.75 reservou ao F4.
   intenção escrita pela pessoa vence** sempre.
 - **O que o painel precisa mudar (F5):** mostrar `rotulo` e `pergunta` ao abrir o Foco do ensino que veio da falha.
 - **Prova:** `simulated` (`backend/tests/test_treino_diagnostico_da_falha.py`); `real`: `not_run`.
+
+## Adendo v1.80 (06/10/2026; número da orquestradora; item 31.116, parte 2) — a sugestão do ensino antes da sessão
+
+- **`GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido`** → `{intent, pergunta, rotulo}`, pelo mesmo diagnóstico do
+  v1.77 (`FontesDaTentativa.chave_da_tentativa`): só leitura, sem IA, sem gravar e sem o controle do aparelho. Responde
+  `null` quando não há tentativa, e `pergunta`/`rotulo` nulos quando o diagnóstico falha. As recusas são as do
+  `from-run` (404 `step_not_found`, 409 `step_not_failed`).
+- O painel pré-preenche o formulário de "Ensinar a corrigir"; a intenção que a pessoa escrever vence (vai no
+  `POST /api/training/from-run`). **Prova:** `simulated` (`backend/tests/test_ensino_sugerido.py`); `real`: `not_run`.
