@@ -8,6 +8,8 @@ Nível de prova: `simulated` (harness com aparelho falso; nenhuma IA).
 """
 from __future__ import annotations
 
+import json
+
 from .conftest import Harness
 from .test_perfil_bloqueado_e_capacidades import _cliente
 
@@ -155,3 +157,43 @@ async def test_o_contexto_nao_leva_segredo_e_some_quando_a_execucao_foi_limpa(ha
         assert "hunter2-segredo" not in str(ctx) and "hunter2-segredo" not in str(sessao)
         st.db.execute("DELETE FROM steps WHERE id=?", (step,))
         assert (await c.get(f"/api/training/{sessao['id']}")).json()["origin"]["context"] == {"disponivel": False}
+
+
+async def test_f3_a_correcao_salva_nasce_candidata_com_escopo_e_prova_e_ligada_a_execucao(harness: Harness) -> None:
+    """F3: a sessão aberta pela falha segue o caminho comum (gravar, propor, salvar). O fluxo nasce candidato (escopo do
+    31.88, prova do 30.81, só casa para quem ensinou até a prova), e fica ligado à execução de origem: no evento do salvar
+    e em `GET /api/flows`. Um fluxo que não veio de falha não tem origem."""
+    from .test_treino_escopo_ao_provar import _ensinou, _persona
+    from .test_modo_treinamento import SEGREDO, _entrada
+    from .test_treino_previa_e_refazer_receitas import PACOTE_DO_APP, _proposta
+    from .test_treino_validacao_do_salvar import COMANDO
+
+    st, rt, lease = await _com_controle(harness)
+    run, step = _execucao(st)
+    origem = st.training.origem_da_falha(run, step)
+    sessao = st.training.start("android-01", intent="Corrigir a etapa", lease_id=lease, app_id=PACOTE_DO_APP, origem=origem)
+    sid = sessao["id"]
+    st.training.record(rt, {"type": "open_app", "app_id": PACOTE_DO_APP}, None)
+    harness.fakes["android-01"].screen = "home"
+    await _entrada(st, rt, lease, type="tap", x=100, y=200 + 3 * 120 + 30)      # o contato
+    await _entrada(st, rt, lease, type="tap", x=100, y=1200)                    # o campo de mensagem
+    await _entrada(st, rt, lease, type="text", text=SEGREDO)
+    await _entrada(st, rt, lease, type="tap", x=640, y=1200)                    # Enviar
+    await _entrada(st, rt, lease, type="key", key="back")
+    st.training.stop(sid, lease_id=lease)
+    persona = _persona(st, "ensinou.falha")
+    _ensinou(st, sid, persona)
+
+    salvo = await st.skills.save(sid, proposal=_proposta(), profile_ids=[], group_ids=[], scope_on_proof="quem_ensinou")
+    flow_id = salvo["flow_id"]
+    assert salvo["scope"] == {"on_proof": "quem_ensinou", "profile_ids": [persona], "group_ids": []}
+    assert salvo["session"]["origin"]["run_id"] == run and salvo["session"]["origin"]["attempt_id"] == f"{step}:a2"
+    assert salvo["ensinado_em_prova"]["persona"] == persona                    # a prova do 30.81 segue valendo
+    outra = _persona(st, "outra.sem.aparelho", aparelho=False)
+    assert st.scheduler.flows.match(COMANDO.replace("{contato}", "QA-001").replace("{mensagem}", "oi"), [outra]) is None
+    ev = st.db.one("SELECT data FROM events WHERE kind='log' AND data LIKE ? ORDER BY id DESC LIMIT 1", (f"%{flow_id}%",))
+    assert json.loads(ev["data"])["origin"] == {"run_id": run, "step_id": step, "attempt_id": f"{step}:a2"}
+    async with _cliente(harness) as c:
+        fluxos = {f["id"]: f for f in (await c.get("/api/flows")).json()}
+    assert fluxos[flow_id]["origin"] == {"session_id": sid, "run_id": run, "step_id": step, "attempt_id": f"{step}:a2"}
+    assert [fid for fid, f in fluxos.items() if f["origin"]] == [flow_id]           # os outros fluxos não têm origem

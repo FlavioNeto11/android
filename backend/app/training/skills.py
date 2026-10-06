@@ -456,8 +456,11 @@ class TrainingSkills:
                                           prep, session_id, gravar=True)
         self.s.db.execute("UPDATE training_sessions SET status='saved', flow_id=?, proposal=?, updated_at=? WHERE id=?",
                           (flow_id, dumps(prep.p), now_iso(), session_id))
-        self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento",
-                        data={"training_session_id": session_id, "flow_id": flow_id})
+        origem = {k: v for k, v in (sess.get("origin") or {}).items() if k in ("run_id", "step_id", "attempt_id")}
+        self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento"
+                               f"{' (correção de uma execução que falhou)' if origem else ''}",
+                        data={"training_session_id": session_id, "flow_id": flow_id,
+                              **({"origin": origem} if origem else {})})       # 31.111 F3: a trilha do ensino liga à execução
         return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio,
                 "warnings": [*prep.avisos, *_aviso_sem_persona(sess)], "scope": _escopo_da_resposta(prep, scope_on_proof),
                 **self._em_prova(flow_id)}

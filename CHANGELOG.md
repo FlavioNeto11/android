@@ -33,6 +33,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-06 — 31.111 F1 e F2: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
 
+## 2026-10-06 — 31.111 F1, F2 e F3: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
+
 - `POST /api/training/from-run` `{run_id, step_id, lease_id, intent?, app_id?, profile_id?}` abre uma sessão de ensino ligada à
   etapa que falhou (ou ficou incerta). O aparelho é o da etapa; as travas são as do treino de hoje: só a pessoa com o
   controle do aparelho abre, nada é automático, a loja não é aparelho de treino. Etapa de outra execução: 404
@@ -44,6 +46,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   pós-condição esperada, a tentativa que falhou e as evidências dela (o `id` que `GET /api/evidence/{id}` serve; a imagem
   redigida vem como indisponível). Só leitura, sem IA, e todo texto do executor passa pelo mascaramento de segredo, o
   `motivo` do F1 também (o teste do F2 pegou o `motivo` saindo sem máscara). Adendo v1.75 do contrato.
+- F3: a correção salva (caminho comum: gravar, propor, salvar) nasce candidata com o escopo do 31.88 e a prova do 30.81 e
+  fica ligada à execução: `GET /api/flows` ganha `origin` por item (`null` se o fluxo não veio de uma falha) e o evento do
+  salvar leva `data.origin` (ids opacos). Sem campo novo no corpo do `save`; o teste percorre a sessão da falha até o
+  fluxo candidato, que só casa para quem ensinou.
 - Fica para o F4 (Aprendizado): `origin.diagnostico`.
 - Prova: `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
 
