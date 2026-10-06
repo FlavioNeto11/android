@@ -1065,19 +1065,35 @@ class RunService:
         ofertados = [a for a in apps if a.id in catalogos or load_catalog(a.package) is None]
         return None, catalogos, ofertados, None
 
-    def _plano_da_operacao(self, run_id: str, plan: Plan) -> Plan:
+    def _plano_da_operacao(self, run_id: str, plan: Plan) -> tuple[Plan, list[str]]:
         """O plano da execução de um alvo de operação com os `parametros` dela fixados e as chaves das etapas que o app
-        declara no bloco `operacao` normalizadas (`plano_da_operacao`). Fora de operação, o plano volta o mesmo."""
+        declara no bloco `operacao` normalizadas (`plano_da_operacao`). Fora de operação, o plano volta o mesmo.
+
+        Devolve também os nomes fixos que o plano já usa com OUTRO valor (`plano_da_operacao.colisoes`): quem chama
+        recusa a execução do alvo (achado da revisão do PR 479)."""
         op = self.repo.db.one("SELECT o.parametros, a.package FROM runs r JOIN operacoes o ON o.id = r.operacao_id"
                               " LEFT JOIN apps a ON a.id = o.app_id WHERE r.id=?", (run_id,))
         if op is None:
-            return plan
+            return plan, []
         fixos = {str(k): str(v) for k, v in (loads(op["parametros"], {}) or {}).items()}
         capabilities = [cap for cap, _ in definition_of(op["package"]).operation_stages]
         novo, motivo = plano_da_operacao.ajustar(plan, fixos, capabilities)
         if motivo:
             self.repo.decision(f"Plano da operação: {motivo}.", run_id=run_id)
-        return novo
+        return novo, plano_da_operacao.colisoes(plan, fixos)
+
+    def _recusar_por_conflito(self, run_id: str, plan: Plan, nomes: list[str]) -> None:
+        """Achado da revisão do PR 479: o plano usa um nome fixo da operação com OUTRO valor (`username` = A no plano,
+        B na operação). Seguir mandaria a ação ao alvo do planejador; sobrescrever, ao do fixo com a referência dele
+        trocada. Nenhum dos dois é o que a operação pediu com certeza: a execução do alvo termina recusada, antes de
+        qualquer etapa, e a operação lê o alvo em `acao_bloqueada`. Só os NOMES vão ao texto, nunca os valores."""
+        texto = (f"parâmetro em conflito: {', '.join(nomes)} já tem outro valor no plano; a ação deste alvo não roda. "
+                 "Nada foi feito.")
+        self.repo.save_plan(run_id, plan)
+        self.repo.decision(f"Recusado no planejamento (31.154): {texto}", run_id=run_id)
+        self.repo.bus.emit("plan.refused", texto, level="warn", run_id=run_id,
+                           data={"motivo": "parametro_em_conflito", "parametros": nomes})
+        self.repo.set_run_status(run_id, RunStatus.failed, texto, level="warn", message=f"Execução {run_id}: {texto}")
 
     async def _plan(self, run_id: str) -> None:
         repo = self.repo
@@ -1176,7 +1192,10 @@ class RunService:
             return
         # 31.154 (adendo v1.95): na execução de uma operação, os parâmetros fixos e as chaves normalizadas, ANTES de
         # gravar o plano — recuperação e revisão releem `runs.plan`, e a identidade da etapa não pode mudar no meio.
-        plan = self._plano_da_operacao(run_id, plan)
+        plan, conflito = self._plano_da_operacao(run_id, plan)
+        if conflito:
+            self._recusar_por_conflito(run_id, plan, conflito)
+            return
         # RA-7: a porta do item 13.2 também no PLANEJAMENTO, para todo plano (planejador, fluxo, skill), antes de
         # qualquer etapa existir. No despacho ela só recusava ao chegar na etapa com efeito, depois que os preparativos
         # (abrir, preencher destinatário, assunto…) já tinham gastado decisões.

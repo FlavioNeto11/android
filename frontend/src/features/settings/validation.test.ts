@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SETTINGS } from '../../test/fixtures';
 import {
-  ALL_CHOICE_FIELDS, ALL_LIMIT_FIELDS, ALL_TOGGLE_FIELDS, LIMIT_GROUPS, buildSettingsPatch, crossValidate, draftToInput, limitToText,
+  ALL_CHOICE_FIELDS, ALL_GROUP_FIELDS, ALL_LIMIT_FIELDS, ALL_TOGGLE_FIELDS, LIMIT_GROUPS, buildSettingsPatch, crossValidate, draftToInput, limitToText,
   parseNumber, validateApp, validateLimit, type AppDraft, type LimitDrafts, type NumericSettingKey,
 } from './validation';
 
@@ -29,7 +29,8 @@ describe('limites', () => {
     // nada de Settings fica de fora: vagas e boots DESTE servidor são editados no cartão dele (Por servidor),
     // porque não valem para o notebook — ficavam no formulário do parque como se valessem.
     const noCartaoDoServidor = ['boot_parallelism', 'max_online_devices'];
-    const covered = [...keys, ...ALL_TOGGLE_FIELDS.map((t) => t.key), ...ALL_CHOICE_FIELDS.map((c) => c.key), ...noCartaoDoServidor].sort();
+    expect(ALL_GROUP_FIELDS.map((g) => g.key)).toEqual(['grupo_sem_aprovacao']);
+    const covered = [...keys, ...ALL_TOGGLE_FIELDS.map((t) => t.key), ...ALL_CHOICE_FIELDS.map((c) => c.key), ...ALL_GROUP_FIELDS.map((g) => g.key), ...noCartaoDoServidor].sort();
     expect(covered).toEqual(Object.keys(SETTINGS).sort());
     // e nenhum campo aparece duas vezes
     expect(new Set(covered).size).toBe(covered.length);

@@ -55,9 +55,9 @@ export const apiOperacoes = {
    * O aprendizado da operação nas 10 perguntas (adendo v1.96). Rota ausente, operação sem execução ou memória (404), resposta
    * fora do formato e falha de leitura viram "indisponível" com o motivo: o relatório não pode virar "nada aprendido".
    */
-  async aprendizado(id: string, signal?: AbortSignal): Promise<LeituraDoAprendizado> {
+  async aprendizado(id: string, signal?: AbortSignal, filtros?: { persona?: string | null; simulados?: boolean }): Promise<LeituraDoAprendizado> {
     try {
-      const a = lerAprendizado(await apiRequest<unknown>('GET', `/operacoes/${enc(id)}/aprendizado`, { query: { simulados: 'false' }, signal }));
+      const a = lerAprendizado(await apiRequest<unknown>('GET', `/operacoes/${enc(id)}/aprendizado`, { query: { simulados: filtros?.simulados ? 'true' : 'false', persona: filtros?.persona || undefined }, signal }));
       return a ? { situacao: 'lido', aprendizado: a } : { situacao: 'indisponivel', motivo: 'A resposta do aprendizado veio em formato inesperado.' };
     } catch (e) {
       const err = toApiError(e);

@@ -257,3 +257,37 @@ async def test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem(harne
     assert marcas["run-a"]["conhecimento_ids"] == ["fato:alvo.conteudo"] == marcas["run-b"]["conhecimento_ids"]
     # Nenhum texto da persona nem dos fatos foi para a memória da persona.
     assert state.db.scalar("SELECT COUNT(*) FROM memory_items") == 0
+
+
+async def test_falha_ao_gravar_conhecimento_ids_nao_derruba_e_fica_visivel(harness: Any, monkeypatch: Any) -> None:
+    """Revisão do PR 480: a lista é auditoria; o texto sai, mas a falha vai ao `draft_meta` e aos `avisos` do GET."""
+    from app.modules.pedidos.infrastructure.aprendizado_da_operacao import LeitorDoAprendizadoDaOperacao
+    state = harness.state
+    briefing = {"content": "comente o lançamento", "caption_contains": "coleção de outono", "post_author": "@loja.nossa"}
+    _plano(state, [{"key": "comentar", "cap": "CREATE_COMMENT", "bindings": briefing}], run_id="run-a")
+    _com_operacao(state.db, "run-a")
+    monkeypatch.setattr(gates_mod, "screen_reader_of",
+                        lambda _p: SimpleNamespace(visible_content=lambda arvore: arvore.texto))
+
+    async def ler_tela(_rt: Any, _pacote: Any) -> Any:
+        return SimpleNamespace(sensitive=False, texto=LEGENDA, packages={IG})
+
+    async def draft_response(_pid: str, **_kw: Any) -> Any:
+        return SimpleNamespace(content="Que coleção linda!", refused=False, refusal_reason=None, rationale="r",
+                               memory_candidates=[]), None
+
+    def quebra(*_a: Any) -> bool:
+        raise RuntimeError("banco ocupado")
+
+    monkeypatch.setattr(state.portoes, "_ler_tela", ler_tela)
+    monkeypatch.setattr(state.social, "draft_response", draft_response)
+    monkeypatch.setattr(state.portoes._conhecimento, "marcar_conhecimento_usado", quebra)  # noqa: SLF001
+    monkeypatch.setitem(sys.modules, "app.modules.operacoes.infrastructure.estagios",
+                        SimpleNamespace(registrar_estagio=lambda *_a: None))
+    obj = state.db.one("SELECT * FROM objectives WHERE run_id='run-a'")
+    etapa = state.db.one("SELECT * FROM steps WHERE id='run-a:android-01:v1:comentar'")
+    cap = capability_of(IG, "CREATE_COMMENT")
+    assert await state.portoes._draft_gate(obj, etapa, cap, obj["profile_id"], pacote=IG) is None  # noqa: SLF001
+    meta = json.loads(state.db.scalar("SELECT draft_meta FROM steps WHERE id='run-a:android-01:v1:comentar'"))
+    assert meta["fatos_da_operacao"]["conhecimento_ids"] == "nao_gravados"
+    assert [a["step_id"] for a in LeitorDoAprendizadoDaOperacao(state.db).avisos("op-1")] == ["run-a:android-01:v1:comentar"]

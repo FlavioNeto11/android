@@ -67,7 +67,10 @@ class Item:
     confianca: str                            # confirmado | hipotese
     estado: str = ""                          # o valor original (estado do Livro, situação da observação, confiança 0–1)
     evidencia: tuple[str, ...] = ()           # run ids, ids de observação, urls
-    persona: str | None = None                # profile_id; None = da operação inteira
+    persona: str | None = None                # profile_id; None com `personas` vazio = da operação inteira
+    #: As personas a que o item se liga quando são mais de uma (a lição citada por execuções de duas personas). Revisão
+    #: do Codex no PR 482: sem isto, a lição de duas personas virava "da operação inteira" e aparecia para uma terceira.
+    personas: tuple[str, ...] = ()
     observado_em: str | None = None
     frescor_ate: str | None = None
     a_favor: int = 0
@@ -80,7 +83,15 @@ class Item:
     def como_dict(self) -> dict[str, object]:
         d = asdict(self)
         d["evidencia"] = list(self.evidencia)
+        d["personas"] = list(self.personas)
         return d
+
+
+def da_persona(item: Item, persona: str) -> bool:
+    """O item é dela (`persona` ou uma das `personas`) ou da operação inteira (nenhuma das duas)."""
+    if item.persona is None and not item.personas:
+        return True
+    return item.persona == persona or persona in item.personas
 
 
 def confianca_do_livro(estado: str) -> str:
@@ -134,7 +145,7 @@ def responder(itens: Sequence[Item], *, agora: str, persona: str | None = None) 
     for i in itens:
         if i.confianca not in CONFIANCAS or i.escopo not in ESCOPOS:
             raise ValueError(f"item fora do vocabulário: {i.ref}")
-    vistos = [i for i in itens if persona is None or i.persona in (None, persona)]
+    vistos = [i for i in itens if persona is None or da_persona(i, persona)]
 
     def lista(cond: Iterable[Item]) -> list[dict[str, object]]:
         return [i.como_dict() for i in cond]

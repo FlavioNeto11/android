@@ -23,9 +23,12 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 
-from app.db import Database, Row
+from app.db import Database, Row, loads
+from app.modules.learning.domain.promocao import ORIGEM_DA_REPRODUCAO, Evidencia, contrarias, efetivas
+from app.modules.learning.domain.vocabulario import Posicao
 from app.modules.pedidos.domain.aprendizado_da_operacao import Item, confianca_da_persona, confianca_do_livro
 from app.modules.pedidos.domain.memoria import Entrada
+from app.modules.pedidos.infrastructure.conhecimento_da_operacao import NAO_GRAVADOS
 from app.modules.pedidos.infrastructure.repositorio_memoria import RepositorioDeMemoria
 from app.security.redaction import redact
 
@@ -83,6 +86,22 @@ class LeitorDoAprendizadoDaOperacao:
             itens += self._falhas(runs, quedas, simulados)
         return itens
 
+    def avisos(self, operacao_id: str) -> list[dict[str, str]]:
+        """O que a porta de escrita não conseguiu gravar e deixou marcado na etapa (revisão do PR 480): hoje, só o
+        `conhecimento_ids` do alvo. Sem a 124 ou sem execução, vazio."""
+        runs = self.execucoes(operacao_id) or {}
+        if not runs:
+            return []
+        saida: list[dict[str, str]] = []
+        for st in self.db.query(f"SELECT id, run_id, draft_meta FROM steps WHERE run_id IN ({_marcas(len(runs))})"
+                                f" AND draft_meta LIKE ? ORDER BY run_id, seq, id", (*runs, f"%{NAO_GRAVADOS}%")):
+            meta = loads(st["draft_meta"], {}) or {}
+            fatos = meta.get("fatos_da_operacao") if isinstance(meta, dict) else None
+            if isinstance(fatos, dict) and fatos.get("conhecimento_ids") == NAO_GRAVADOS:
+                saida.append({"run_id": str(st["run_id"]), "step_id": str(st["id"]),
+                              "aviso": "conhecimento_ids do alvo não gravados: o texto saiu, a lista não"})
+        return saida
+
     # ------------------------------------------------------------------ operação
     def _da_operacao(self, fatos: Sequence[Entrada], observacoes: Sequence[Row],
                      runs: dict[str, str | None]) -> list[Item]:
@@ -101,20 +120,35 @@ class LeitorDoAprendizadoDaOperacao:
 
     # ------------------------------------------------------------------ Livro
     def _evidencias(self, run_ids: list[str], simulados: bool) -> dict[str, Evid]:
-        """Por `item_ref`, o que as execuções da operação disseram dele: a favor, contra, a última e quais execuções."""
+        """Por `item_ref`, o que as execuções da operação disseram dele: a favor, contra, a última e quais execuções.
+
+        As contagens passam pela MESMA regra de todo leitor do Livro (`promocao.efetivas`/`contrarias`, revisão do PR 480):
+        a linha que uma `forma` ou `invalida` da mesma origem neutralizou não conta, e o `conflict` conta contra. A
+        reprodução da receita (`reproducao:`), que a promoção não reconta, aqui conta: é o registro do uso NESTA
+        operação, e o relatório não soma `replay_ok`. Ela só troca de prefixo para a regra não a tirar."""
         sim = "" if simulados else " AND simulated=0"
-        linhas = self.db.query(f"SELECT item_ref, stance, run_id, observed_at FROM learning_evidence WHERE run_id IN"
-                               f" ({_marcas(len(run_ids))}){sim}", tuple(run_ids))
-        favor: Counter[str] = Counter()
-        contra: Counter[str] = Counter()
+        linhas = self.db.query(f"SELECT item_ref, stance, origin_ref, run_id, instance_id, app_version, simulated,"
+                               f" observed_at FROM learning_evidence WHERE run_id IN ({_marcas(len(run_ids))}){sim}"
+                               f" ORDER BY id", tuple(run_ids))
+        evidencias: list[Evidencia] = []
         ultima: dict[str, str] = {}
         execs: dict[str, set[str]] = defaultdict(set)
         for r in linhas:
             ref = str(r["item_ref"])
-            favor[ref] += r["stance"] == "for"
-            contra[ref] += r["stance"] == "against"
             ultima[ref] = max(ultima.get(ref, ""), str(r["observed_at"] or ""))
             execs[ref].add(str(r["run_id"]))
+            try:
+                posicao = Posicao(str(r["stance"]))
+            except ValueError:
+                continue
+            origem = str(r["origin_ref"] or "")
+            if origem.startswith(ORIGEM_DA_REPRODUCAO):
+                origem = "operacao:" + origem
+            evidencias.append(Evidencia(item_ref=ref, stance=posicao, origin_ref=origem, run_id=r["run_id"],
+                                        instance_id=r["instance_id"], app_version=r["app_version"],
+                                        simulated=bool(r["simulated"]), detail=None, observed_at=str(r["observed_at"])))
+        favor = Counter(e.item_ref for e in efetivas(evidencias) if e.stance is Posicao.FOR)
+        contra = Counter(e.item_ref for e in contrarias(evidencias))
         return {ref: (favor[ref], contra[ref], ultima[ref], tuple(sorted(rs))) for ref, rs in execs.items()}
 
     def _quedas(self, run_ids: list[str]) -> dict[str, Row]:
@@ -173,19 +207,30 @@ class LeitorDoAprendizadoDaOperacao:
         return itens
 
     def _licoes(self, runs: dict[str, str | None], evid: dict[str, Evid]) -> list[Item]:
+        """A lição citada pela `provenance` de uma execução da operação, ou reforçada por ela. A evidência do item do
+        Livro é gravada pelo id CRU (`li-…`, `livro.ref_da_trilha`), não pela ref deste relatório (`licao:li-…`).
+        Voz e preferência têm dona (`scope_profile_id`): são da persona, não da plataforma."""
         conds = " OR ".join(["provenance LIKE ?"] * len(runs))
+        args: list[object] = [f'%"{r}"%' for r in runs]
+        reforcadas = [r for r in evid if r.startswith("li-")]
+        if reforcadas:
+            conds += f" OR id IN ({_marcas(len(reforcadas))})"
+            args += reforcadas
         itens = []
-        for li in self.db.query(f"SELECT * FROM learning_items WHERE {conds}", tuple(f'%"{r}"%' for r in runs)):
+        for li in self.db.query(f"SELECT * FROM learning_items WHERE {conds} ORDER BY id", tuple(args)):
             ref = f"{li['kind']}:{li['id']}"
-            a, c, ult, ev = self._favor(ref, evid)
+            a, c, ult, ev = self._favor(str(li["id"]), evid)
             citadas = tuple(r for r in runs if f'"{r}"' in str(li["provenance"] or ""))
             estado = str(li["state"])
-            personas = {runs[r] for r in citadas}
-            itens.append(Item(ref=ref, tipo=str(li["kind"]),
-                              escopo="processo" if li["scope_capability"] or li["scope_step_hash"] else "app",
+            dona = str(li["scope_profile_id"] or "") or None
+            personas = {p for r in citadas if (p := runs[r])}
+            escopo = ("persona" if dona else
+                      "processo" if li["scope_capability"] or li["scope_step_hash"] else "app")
+            itens.append(Item(ref=ref, tipo=str(li["kind"]), escopo=escopo,
                               resumo=_resumo(li["summary"]), origem=str(li["source_kind"] or "execucao"),
                               confianca=confianca_do_livro(estado), estado=estado, evidencia=ev or citadas,
-                              persona=personas.pop() if len(personas) == 1 else None,
+                              persona=dona or (next(iter(personas)) if len(personas) == 1 else None),
+                              personas=() if dona or len(personas) < 2 else tuple(sorted(personas)),
                               observado_em=ult or li["updated_at"], a_favor=a or int(li["evidence_for"] or 0),
                               contra=c))
         return itens

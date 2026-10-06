@@ -2252,7 +2252,7 @@ Pedido do dono de 28/09: o "gerar por prompt" também completa o que falta numa 
   falta, siga estas instruções… sem reescrever o que já está preenchido"), passando por `sem_marcacao`.
 - A regra não muda: completa **só o vazio** (`preencher_vazios`); sem lacuna, devolve a persona sem chamar o modelo.
 - Instrução com formato de credencial → **422 `instructions_with_secret`**, antes de qualquer chamada (o texto iria
-  ao provedor e à proveniência). A regra de conduta do ADR-048 vale para o que a instrução pedir.
+  ao provedor e à proveniência).
 - Painel: cartão "Completar com IA" no topo da guia Persona, com uma linha de instrução opcional e o aviso de chamada
   paga; `api.enrichPersona(id, instructions?)`.
 
@@ -2272,7 +2272,8 @@ Corpos em `backend/app/taskqueue/orquestrador.py`.
   - `modo=texto`: o comando cita destinos; é a prévia de `/runs/targets/resolve`, sem IA.
   - `modo=distribuir`: app sem conta; aparelhos pela carga (`N aparelhos` no texto, senão 1), sem IA.
   - `modo=ia`: uma chamada do papel `plan` (`ai_calls.role = "plan"`, sem `run_id`); com `alerta_conduta`,
-    `targets` e `escolhidas` vêm vazios.
+    `targets` e `escolhidas` vêm vazios. Desde 06/10 o orquestrador não preenche `alerta_conduta` (a regra de
+    conteúdo do pedido vai para o serviço externo de autorização); o campo fica como ponto de recusa.
   - `modo=nenhuma`: sem app identificado e sem persona disponível, ou app com conta sem persona vinculada livre.
   - 409 `credencial_no_comando` (nada vai à IA); 503 `ai_not_configured`; 503 `ai_error`; 422 corpo inválido.
   - Declarada antes de `/runs/{run_id}/{op}`.
@@ -7328,6 +7329,19 @@ nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal`
   motivo, e o nome fica o do planejador.
 - O teto `max_usd` também reserva o POST do Jev (`conferir_gasto(reservar=True)`, segurado até a linha de custo). A
   média da reserva conta só as chamadas cobradas.
+- A ação final aprovada POR FORA do liberar (Pendências, Telegram) vale como liberação: a operação passa a `executar`
+  e reabre. Em todo fechamento, o `finished_at` é a hora do último estágio alcançado, não a da leitura. Na onda 1 de
+  06/10, ele ficava em 19:44:58, antes da ação verificada às 19:48:05.
+- A reabertura pela aprovação por fora vem antes da leitura dos alvos. O mesmo GET não fecha a operação de novo. Ela
+  é condicional (`status<>'cancelada'`): o cancelar concorrente vence.
+- A recusa de `parametros` (`credencial_no_comando`, `pedido_invalido`) diz a POSIÇÃO do parâmetro ("o 2º
+  parâmetro"), nunca o nome nem o valor.
+- Alvo cuja execução foi recusada no planejamento (sem objetivo): `estado=bloqueado`, `estagio=parou_em=acao_bloqueada`,
+  com o motivo da recusa. Inclui o nome fixo em conflito: o plano usa um nome de `parametros` com outro valor, o
+  `plan.refused` sai com `{"motivo": "parametro_em_conflito", "parametros": [<nomes>]}`, e o motivo do alvo começa por
+  "parâmetro em conflito:". Os valores não entram.
+- `OperacaoDetalhe.fontes_da_pesquisa: string[]`: as URLs que a pesquisa externa achou (`pedido_observacoes`,
+  `tipo='url'`, sem repetição, na ordem da captura). `fontes` continua sendo só a entrada do pedido.
 
 Migração `127_operacoes_parametros` (`operacoes.parametros`, só `ADD COLUMN`). Código: `backend/app/taskqueue/plano_da_operacao.py`,
 `RunService._plano_da_operacao`, `backend/app/modules/operacoes/`. Testes: `backend/tests/test_plano_da_operacao.py`,
@@ -7404,6 +7418,19 @@ operação (`fato:alvo.conteudo`), quando ela é igual à tela do agente. Quais 
 **O assunto da operação no texto.** Com `operacoes.assunto`, o escritor recebe o bloco `<assunto_da_operacao>` logo
 depois de `<intencao>`, com o pedido de relacionar o texto ao assunto só quando fizer sentido com a publicação. O
 `draft_meta.fatos_da_operacao` da etapa ganha `assunto: true`. Sem assunto, nada muda.
+
+**Revisão do PR 480 (corte 57).**
+- A evidência de uma lição, voz, preferência ou tela é lida pelo id cru do item (`li-…`, como o Livro a grava). A lição
+  reforçada por uma execução da operação aparece mesmo sem `provenance` que a cite.
+- `a_favor` e `contra` seguem a regra de todo leitor do Livro (`promocao.efetivas`/`contrarias`): a linha neutralizada
+  por `forma` ou `invalida` da mesma origem não conta, e `conflict` conta contra. A reprodução da receita conta, porque é
+  o registro do uso nesta operação.
+- Voz e preferência com `scope_profile_id` saem com `escopo: persona` e `persona` = a dona.
+- Campo novo por item, `personas: [profile_id]` (revisão do Codex no PR 482): a lição citada por execuções de duas ou
+  mais personas sai com `persona: null` e o conjunto em `personas`. No filtro `?persona=`, ela aparece só para elas;
+  `persona: null` com `personas: []` continua querendo dizer "da operação inteira".
+- Campo novo `avisos: [{run_id, step_id, aviso}]`: a etapa cujo `conhecimento_ids` não foi gravado. O texto sai, e o
+  `draft_meta.fatos_da_operacao.conhecimento_ids` da etapa fica `nao_gravados`.
 
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.
