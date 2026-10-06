@@ -63,6 +63,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - varredura do leitor único.
 
   `test_etapa_com_marcador_da_persona.py` vira para o marcador na linha. Real: `not_run`.
+- Custo medido (harness, SQLite, 200 escritas, 06/10 05:07Z, `simulated`):
+  - a máscara por escrita (persona lida na hora mais a troca), p50 0,059 ms e p95 0,077 ms;
+  - `Repository.decision` com a máscara, p50 0,213 ms e p95 0,360 ms; sem ela, p50 0,120 ms e p95 0,154 ms.
+
+  Abaixo do limite de 5 ms da orquestradora: fica sem cache do valor. No PostgreSQL: `not_run`.
+- Contrato: adendo v1.79 de `docs/api-contract.md`.
 
 ## 2026-10-06 — 31.113 F2: a etapa guarda o marcador da persona, e o executor resolve num ponto só (branch feat/31-113-f2-etapa-com-marcador)
 
