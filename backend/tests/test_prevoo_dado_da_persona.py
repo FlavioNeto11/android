@@ -24,7 +24,7 @@ import pytest
 
 from app.models import Plan, PlanStep, PlannerInfo, Postcondition, ProfileCreate, RunCreate
 from app.taskqueue.dado_da_persona import (DadoDaPersonaAusente, exigir_resolvido, faltas_por_aparelho, nomes_citados,
-                                           perguntas, rotulo)
+                                           perguntas, resolver_persona, rotulo)
 
 from .conftest import Harness
 from .test_for_each import ALL
@@ -168,9 +168,13 @@ async def test_caminho_feliz_com_todos_os_dados_materializa_e_resolve(harness: H
     assert harness.state.repo.run_row(run.id)["status"] == "planned"            # type: ignore[union-attr]
     assert _linhas(harness, run.id, "objectives") == 1 and _linhas(harness, run.id, "steps") > 0
     primeira = harness.state.db.one(                                            # type: ignore[union-attr]
-        "SELECT goal FROM steps WHERE run_id=? ORDER BY seq LIMIT 1", (run.id,))
-    assert primeira["goal"] == f"Conferir o sobrenome {SOBRENOME} do cadastro."
-    assert "{perfil_" not in primeira["goal"]
+        "SELECT * FROM steps WHERE run_id=? ORDER BY seq LIMIT 1", (run.id,))
+    # 31.113 F2: a linha guarda o marcador; a etapa da tentativa recebe o valor, em memória, no executor.
+    assert primeira["goal"] == "Conferir o sobrenome {perfil_sobrenome} do cadastro."
+    obj = harness.state.repo.objective_row(primeira["objective_id"])            # type: ignore[union-attr]
+    etapa = resolver_persona(harness.state.repo.step_dto(primeira),             # type: ignore[union-attr]
+                             harness.state.repo.variaveis_da_persona(obj["profile_id"]))  # type: ignore[union-attr]
+    assert etapa.goal == f"Conferir o sobrenome {SOBRENOME} do cadastro."
 
 
 async def test_plano_sem_variavel_da_persona_nao_muda_com_persona_ausente(harness: Harness) -> None:
@@ -326,7 +330,8 @@ def test_revise_plan_confere_e_insere_com_o_mesmo_retrato_da_persona(harness: Ha
                                                                       monkeypatch: pytest.MonkeyPatch) -> None:
     """31.99 (achado do #437): a persona editada entre a conferência e a inserção. A conferência lia a persona FORA da
     transação e a inserção a relia DENTRO; com o dado sumindo no intervalo, `{perfil_nome}` ia cru para a etapa. Agora
-    as duas usam a mesma leitura, feita dentro da transação."""
+    as duas usam a mesma leitura, feita dentro da transação. 31.113 F2: a linha guarda o marcador por desenho (o
+    executor resolve na vez da etapa); o que se protege aqui é a conferência e a inserção com a mesma leitura."""
     repo = harness.state.repo                                                   # type: ignore[union-attr]
     run_id, oid, plano = _objetivo_sem_persona(harness, "k-replano-retrato")
     leituras = iter([{"perfil_nome": NOME}])
@@ -334,7 +339,7 @@ def test_revise_plan_confere_e_insere_com_o_mesmo_retrato_da_persona(harness: Ha
     versao = repo.revise_plan(oid, "teste", plano.steps)
     goals = [str(r["goal"]) for r in harness.state.db.query(                     # type: ignore[union-attr]
         "SELECT goal FROM steps WHERE objective_id=? AND plan_version=?", (oid, versao))]
-    assert goals and all("{perfil_nome}" not in g and NOME in g for g in goals), goals
+    assert goals and all("{perfil_nome}" in g and NOME not in g for g in goals), goals
 
 
 def test_recuperacao_automatica_e_recusada_com_motivo_so_com_nomes(harness: Harness) -> None:

@@ -328,11 +328,26 @@ inteira, sem diferença de maiúscula. O valor que está num parâmetro do coman
 F2) e a receita aprendida da execução continua guardando `{param}`. O `actions.target` fica com o valor: é o seletor da
 receita e da lição (o elemento da tela), e o evento não o leva.
 
-A F1 não cobre o texto das etapas (`steps.postcondition`/`goal`/`title` e `plan_versions.steps`): a materialização ainda
-grava o valor resolvido. Isso é a F2 (o molde na linha e a resolução em memória no executor, combinada com a Android).
-A aprovação e a porta de política guardam e mostram o marcador; a tela de aprovação resolve o valor ao vivo pela
-persona (F2). As execuções anteriores ficam como estão: o registro nasce mascarado a partir do deploy que levar o
-commit da F1 (ramo `feat/31-113-f1-registro-mascarado`).
+**F2: a etapa guarda o marcador, e o executor resolve num ponto só.** A materialização (e a revisão do plano)
+deixa as variáveis da persona como marcador no texto que descreve e confere a etapa: título, objetivo, pré e
+pós-condição e guardas (`Repository._insert_steps`, argumento `molde`). A linha, o `plan_versions` e o evento
+`step.updated` ficam com o marcador. `StepExecutor.run_step` resolve com a persona do objetivo
+(`dado_da_persona.resolver_persona`), e dali em diante o ator, a receita, a conferência da tela (`text_visible`) e
+o juiz recebem o valor, só em memória. A mesma leitura da persona serve ao `Replayer` da receita ensinada. Se o dado
+sumiu da persona depois da materialização, a etapa espera a pessoa ("Dado ausente: …", só o nome do campo) e nada é
+digitado. A identidade da etapa (`template_hash`) não muda: é calculada antes, com todas as variáveis.
+
+**Os `bindings` ficam com o valor na linha até a F3.** Eles saem RESOLVIDOS da materialização, de propósito. A porta de política e a chave da aprovação os leem da linha
+antes do executor, e argumento com `{` não fecha a chave (`argumentos_da_acao`, nota da Ferramentas de 04/10). Com o
+marcador ali, todo item aprovável que cita a persona passaria a "decidir na execução". O título da etapa, que a
+aprovação mostra, vai com o marcador. O valor não SAI da linha: o detalhe da execução (`GET /runs/{id}`), o relatório,
+as versões do plano na resposta e o evento `step.updated` levam o marcador nos `bindings`
+(`Repository._etapa_para_fora`), e o `steps.result` é gravado com o marcador. A F3 (depois do 31.111 F4) põe o
+marcador também nos `bindings` da linha: a porta calcula a chave com a persona resolvida em memória pelo mesmo
+`resolver_persona`, e `argumentos_da_acao` passa a aceitar `{perfil_*}` (combinado com a Ferramentas).
+
+As execuções anteriores ficam como estão. O registro nasce mascarado a partir do deploy 46, que leva a F1
+(`feat/31-113-f1-registro-mascarado`) e a F2 (`feat/31-113-f2-etapa-com-marcador`).
 
 **Rotas por conta** (`api.py`; as antigas por perfil são apelidos da conta âncora):
 

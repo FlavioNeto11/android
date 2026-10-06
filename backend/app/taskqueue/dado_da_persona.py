@@ -14,13 +14,41 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator, Mapping, Sequence
 
-from ..models import Plan, PlanStep
+from ..models import Plan, PlanStep, StepDTO
 from ..modules.identity.domain.available_data import ROTULOS_DO_PERFIL, SUFIXO_USUARIO
 
 #: Só os campos que a persona de fato expõe (listas FECHADAS `PROFILE_FIELDS` e `BIOGRAPHY_FIELDS`) e o usuário da
 #: conta. Não é `perfil_\w+`: um parâmetro de fluxo como `{perfil_alvo}` é do comando, não da persona.
 _PERFIL = dict(ROTULOS_DO_PERFIL)
 _CITACAO = re.compile(r"\{(" + "|".join(sorted(_PERFIL)) + r"|conta_[a-z0-9_]+?_" + SUFIXO_USUARIO + r"(?:_\d+)?)\}")
+
+
+def resolver_persona(step: StepDTO, variaveis: Mapping[str, str]) -> StepDTO:
+    """31.113 F2: a etapa da TENTATIVA com o dado da persona do objetivo no lugar do marcador, em memória. A linha, o
+    `plan_versions` e o evento `step.updated` ficam com o marcador; o ator, a receita, a conferência da tela
+    (`text_visible`) e o juiz recebem o valor. Só os marcadores da persona (`_CITACAO`); o que a persona não tem fica
+    como está (o pré-voo do F1 já recusou a execução sem o dado). Os `bindings` já vêm resolvidos da materialização."""
+    if not variaveis:
+        return step
+
+    def r(texto: str | None) -> str | None:
+        return _CITACAO.sub(lambda m: variaveis.get(m.group(1), m.group(0)), texto) if texto else texto
+
+    post = step.postcondition.model_copy(update={"value": r(step.postcondition.value) or "",
+                                                 "description": r(step.postcondition.description) or ""})
+    return step.model_copy(update={
+        "title": r(step.title) or "", "goal": r(step.goal) or "", "precondition": r(step.precondition),
+        "postcondition": post, "commit_guard": [r(g) or "" for g in step.commit_guard],
+        "band_guard": [r(g) or "" for g in step.band_guard],
+        "bindings": {k: r(v) or "" for k, v in step.bindings.items()}})
+
+
+def sem_valor_na_etapa(step: StepDTO) -> list[str]:
+    """31.113 F2: os marcadores da persona que sobraram na etapa da tentativa depois de `resolver_persona` (o dado
+    sumiu da persona entre a materialização e a vez da etapa). Só nomes, sem repetir."""
+    textos = (step.title, step.goal, step.precondition, step.postcondition.value, step.postcondition.description,
+              *step.commit_guard, *step.band_guard, *step.bindings.values())
+    return list(dict.fromkeys(m.group(1) for t in textos if t for m in _CITACAO.finditer(t)))
 
 
 class DadoDaPersonaAusente(ValueError):
