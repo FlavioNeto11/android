@@ -71,6 +71,50 @@ def test_as_sete_rotas_de_releases_seguem_no_app_e_cada_uma_uma_vez() -> None:
         ("POST", "/api/releases/{release_id}/approve-signature"), ("POST", "/api/releases/{release_id}/lifecycle")])
 
 
+def test_as_dez_rotas_de_workers_e_limites_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4e: `/api/workers*` e `/api/servers/*/limits` saíram de `api.py` para `modules/fleet/presentation/workers.py`; o
+    conjunto (método e modelo) é o de antes. A literal de três segmentos não é engolida pelo modelo de um."""
+    rotas = [r for r in _rotas_na_ordem() if r[1].startswith(("/api/workers", "/api/servers"))]
+    esperadas = [
+        ("GET", "/api/workers"), ("GET", "/api/servers/limits"), ("PUT", "/api/servers/{worker_id}/limits"),
+        ("GET", "/api/workers/{worker_id}"), ("GET", "/api/workers/devices/unbound"),
+        ("POST", "/api/workers/{worker_id}/devices/adopt"), ("POST", "/api/workers/enroll"),
+        ("POST", "/api/workers/{worker_id}/maintenance"), ("DELETE", "/api/workers/{worker_id}"),
+        ("POST", "/api/workers/{worker_id}/rotate-credential")]
+    assert sorted(rotas) == sorted(esperadas)
+    assert not _casa("/api/workers/{worker_id}", "/api/workers/devices/unbound")        # 1 segmento x 3: sem sobreposição
+
+
+def test_as_dez_rotas_de_rede_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4f: `/api/network/*` saiu de `api.py` para `modules/fleet/presentation/rede.py`; o conjunto (método e modelo) é o de
+    antes, sem repetição nem rota perdida."""
+    rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/network")]
+    assert sorted(rotas) == sorted([
+        ("GET", "/api/network/profiles"), ("POST", "/api/network/profiles"), ("DELETE", "/api/network/profiles/{profile_id}"),
+        ("GET", "/api/network/devices"), ("POST", "/api/network/assign"),
+        ("POST", "/api/network/devices/{instance_id}/verify"), ("POST", "/api/network/devices/{instance_id}/reapply"),
+        ("POST", "/api/network/devices/{instance_id}/apply"), ("GET", "/api/network/server"),
+        ("POST", "/api/network/server/firewall-check")])
+
+
+def test_as_dezoito_rotas_de_aparelhos_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4g: `/api/instances*` (menos `personas`, que fica com as personas, e `training`, que é do treino) saiu de `api.py` para
+    `modules/fleet/presentation/instancias.py`; o conjunto (método e modelo) é o de antes. `/instances/bulk` (literal) vem antes dos
+    modelos de um segmento que ela também casaria."""
+    fora = {"/api/instances/{instance_id}/personas", "/api/instances/{instance_id}/training"}
+    rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/instances") and r[1] not in fora]
+    assert sorted(rotas) == sorted([
+        ("GET", "/api/instances"), ("POST", "/api/instances"), ("DELETE", "/api/instances/{instance_id}"),
+        ("PUT", "/api/instances/{instance_id}"), ("POST", "/api/instances/{instance_id}/app/install"),
+        ("POST", "/api/instances/{instance_id}/app/verify"), ("GET", "/api/instances/{instance_id}/operational-context"),
+        ("GET", "/api/instances/{instance_id}/packages"), ("POST", "/api/instances/bulk"),
+        ("POST", "/api/instances/{instance_id}/actions/{action}"), ("GET", "/api/instances/{instance_id}/frame"),
+        ("GET", "/api/instances/{instance_id}/hierarchy"), ("POST", "/api/instances/{instance_id}/locked-account/resolve"),
+        ("PUT", "/api/instances/{instance_id}/repair-pause"), ("DELETE", "/api/instances/{instance_id}/repair-pause"),
+        ("POST", "/api/instances/{instance_id}/control/take"), ("POST", "/api/instances/{instance_id}/control/release"),
+        ("POST", "/api/instances/{instance_id}/input")])
+
+
 def test_modulos_de_apresentacao_nao_importam_app_api() -> None:
     """Ciclo: `app.api` importa os módulos; um módulo que importa `app.api` de volta só funciona por acidente de ordem."""
     raiz = Path(__file__).resolve().parent.parent / "app" / "modules"

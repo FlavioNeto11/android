@@ -70,6 +70,40 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `dado_da_persona.com_marcador` (nova), `_destilar`, `TrainingSkills._preparar` e `save` (`training/skills.py`).
 - Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
   para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
+
+## 2026-10-06 — 15.15 F4, corte 7 (F4g): as 18 rotas de aparelhos (`/api/instances*`) saem de `api.py` (branch feat/15-15-f4g-router-instances)
+
+- `GET/POST /instances`, `DELETE/PUT /instances/{id}`, instalar e verificar o app, o contexto operacional, os pacotes, o lote, as ações, o quadro e a hierarquia, a conta
+  travada, a pausa do reparo e o controle manual (pegar, soltar, entrada) moram agora em `backend/app/modules/fleet/presentation/instancias.py`, montado em
+  `main.py` no mesmo lugar do `api.router`, com o que só elas usam (a partida encadeada depois de criar, a recusa de provisionamento e a de mudar de servidor).
+  Ficam em `api.py` as 5 de `/commands*` e `/profiles/{id}/context` (que dividiam o bloco) e `/instances/{id}/personas`. Mesmo caminho, método, corpo e resposta.
+  Sem importar `app.modules.execution` (ciclo de contextos): o autor do pedido de controle vem de `shared.costuras.autor_do_gesto`. Teto de `Any` de `app.api` 100 → 84.
+- Prova do OpenAPI contra a ponta do F4f (32ccfb08): 271 método+caminho idênticos; os schemas só diferem no título automático de resposta
+  (`response_model=None`, como nos cortes anteriores). `test_ordem_das_rotas.py` ganhou o caso das 18 rotas.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 F4, corte 6 (F4f): as 10 rotas de rede por aparelho saem de `api.py` (branch feat/15-15-f4f-router-network)
+
+- `/api/network/*` (perfis de VPN e de proxy, atribuição, aplicar, reaplicar, verificar, o servidor e a conferência do Firewall) agora moram em
+  `backend/app/modules/fleet/presentation/rede.py`, montado em `main.py` no mesmo lugar do `api.router`. `quem()` (quem está pedindo), que `api.py` também
+  usa em 22 lugares, foi para `modules/fleet/presentation/comum.py` e `api.py` o importa de lá (`from app.api import quem` segue valendo). Mesmo caminho, método,
+  corpo e resposta; o segredo de um perfil continua entrando uma vez pelo corpo lido à mão, indo ao cofre e não voltando.
+- Prova do OpenAPI contra a ponta do F4e (2142b2a2): 271 método+caminho idênticos e NENHUMA diferença de schema (as rotas já tinham o tipo de retorno).
+  `test_ordem_das_rotas.py` ganhou o caso das 10 rotas. Sem `Any` movido (a base não muda).
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 F4, corte 5 (F4e): as 10 rotas de workers e de limites por servidor saem de `api.py` (branch feat/15-15-f4e-router-workers)
+
+- `/api/workers*` (8 rotas: listar, ler, aparelhos sem dono, adotar, cadastrar, manutenção, remover, girar a credencial) e `/api/servers/limits` e
+  `PUT /api/servers/{worker_id}/limits` (as 2 dos limites por servidor, que dividiam o bloco) agora moram em
+  `backend/app/modules/fleet/presentation/workers.py`, montado em `main.py` no mesmo lugar do `api.router`. Mesmo caminho, método, corpo e resposta.
+  A credencial nova de `rotate-credential` continua indo só na resposta; nem ela nem o corpo de `enroll` entram em log ou evento (o evento diz o id
+  do worker). `Any` virou tipo (`AppState`, `DeviceRuntime`, `object`); teto de `Any` de `app.api` 113 → 100.
+- Prova do OpenAPI contra a ponta do F4d (870fd7bd): 271 método+caminho idênticos; os schemas só diferem no título automático de resposta
+  (`response_model=None`, como nos cortes anteriores). `test_ordem_das_rotas.py` ganhou o caso das 10 rotas (e a literal `/workers/devices/unbound`
+  não se sobrepõe a `/workers/{worker_id}`).
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
 ## 2026-10-06 — 29.151: a readoção espera o tempo que o aparelho leva (branch feat/29-151-readocao-espera-o-aparelho)
 
 - Depois do reinício do backend, o aparelho readotado esperava 60 s fixos pela primeira resposta do framework e ficava
