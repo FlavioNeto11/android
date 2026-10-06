@@ -31,6 +31,7 @@ from enum import StrEnum
 
 from app.modules.learning.domain.ciclo import SkillState
 from app.modules.learning.domain.curador import Decisao, Falta
+from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
 from app.modules.learning.domain.prova import motivo_da_invalida
 from app.modules.learning.domain.vocabulario import LivroKind
 
@@ -208,16 +209,20 @@ class FatosDoParecer:
     comando_com_credencial: bool
     fluxo_ativo: bool
     caminho: bool = True
+    #: 30.34: a classe de AGORA (a mais restritiva entre o dossiê e o parecer); só decide o `observar` da classe B.
+    classe: ClasseDeRisco | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class Pedido:
-    """O que o parecer gera: `estado` PENDENTE (vai à fila) ou RECUSADA (registro do porquê)."""
+    """O que o parecer gera: `estado` PENDENTE (vai à fila) ou RECUSADA (registro do porquê). `pelo_observar`: nasceu
+    do `observar` da classe B (30.34), contado à parte na saúde."""
 
     estado: EstadoDoPedido
     grupo: Grupo
     falta: tuple[Falta, ...]
     motivo: Motivo | None = None
+    pelo_observar: bool = False
 
 
 def falta_automatizavel(falta: Iterable[Falta]) -> tuple[Falta, ...]:
@@ -234,16 +239,24 @@ def grupo_de(*, efeito: bool, app_qa: bool) -> Grupo:
 
 def pedido_do_parecer(f: FatosDoParecer) -> Pedido | None:
     """O pedido que este parecer gera, ou `None` quando não há o que pedir (parecer que não é `pedir_evidencia`, ou
-    só falta o que é da pessoa). As recusas nascem como registro, na ordem: a primeira que vale explica."""
-    if f.decisao is not Decisao.PEDIR_EVIDENCIA:
+    só falta o que é da pessoa). As recusas nascem como registro, na ordem: a primeira que vale explica.
+
+    30.34 (sim da orquestradora, 06/10): na classe B, o `observar` cuja falta uma execução produz também gera pedido,
+    SÓ no app de prova. Desde o 30.73 o parecer B não pede mais voto nem decisão da pessoa e fica em `observar` com
+    `execucao_real`; sem isto, o fluxo B nunca ganhava a 2ª execução, e a sombra da autopublicação ficava sem casos. O
+    efeito em app real segue fora (nem registro: ninguém pediu evidência), dentro do teto e da verba de sempre."""
+    pelo_observar = f.decisao is Decisao.OBSERVAR and f.classe is ClasseDeRisco.B
+    if f.decisao is not Decisao.PEDIR_EVIDENCIA and not pelo_observar:
         return None
     falta = falta_automatizavel(f.falta)
     if not falta:
         return None
     grupo = grupo_de(efeito=f.efeito, app_qa=f.app_qa)
+    if pelo_observar and grupo is not Grupo.QA:
+        return None
     motivo = _recusa(f, grupo)
     estado = EstadoDoPedido.PENDENTE if motivo is None else EstadoDoPedido.RECUSADA
-    return Pedido(estado, grupo, falta, motivo)
+    return Pedido(estado, grupo, falta, motivo, pelo_observar=pelo_observar)
 
 
 def _recusa(f: FatosDoParecer, grupo: Grupo) -> Motivo | None:

@@ -49,6 +49,11 @@ def _ocorrencias() -> list[str]:
                     and isinstance(no.func.value, ast.Name) and no.func.value.id == "log"):
                 for arg in no.args[1:]:
                     saida.extend(f"{caminho.name}:{no.lineno} log {n}" for n in _cru(arg))
+            # `presentation/fluxos.py` (saído de `api.py` no 15.15 F4): o `_err(409, ...)` é a RESPOSTA ao operador autenticado e diz
+            # qual habilidade publicada bloqueia religar o fluxo; não é exceção de log. Antes de sair de `api.py`, a varredura não o via.
+            if (isinstance(no, ast.Raise) and isinstance(no.exc, ast.Call) and caminho.name == "fluxos.py"
+                    and _nome(no.exc.func) == "_err"):
+                continue
             if isinstance(no, ast.Raise) and isinstance(no.exc, ast.Call):
                 for arg in no.exc.args:
                     if isinstance(arg, ast.JoinedStr):

@@ -20,6 +20,7 @@ import psutil
 from app.models import AiStatus, AppiumStatus, DatabaseStatus, Health, InstanceState, Problem, SdkStatus
 from app.modules.avisos.infrastructure.trello_saude import problemas_do_trello
 from app.modules.identity.infrastructure.persona_images import status_de_imagem
+from app.modules.learning.infrastructure.contador_pelo_observar import ContadorPeloObservar
 from app.modules.skills.infrastructure.contador_do_ensino_v2 import ContadorDoEnsinoV2
 from app.planning import saldos
 from app.planning.decisao_fechada import transparencia
@@ -231,6 +232,9 @@ class SaudeDoSistema:
                                 # 31.91 T1 (ADR-078): chamadas às rotas OBSOLETAS do ensino v2, desde o início da medição.
                                 # É a régua do T2: 14 dias com `total` parado em zero autorizam tirar o código.
                                 "ensino_v2_chamadas": ContadorDoEnsinoV2(self._e.db).resumo(),
+                                # 30.34: pedidos de prova nascidos do `observar` da classe B (no app de prova), por
+                                # estado, desde a ligação. A régua da medida do efeito (leitura de 12/10 do 30.72).
+                                "validacao_pelo_observar_b": ContadorPeloObservar(self._e.db).resumo(),
                                 # Aparelhos com o reparo automático PAUSADO (experimento/manutenção): `{id: {until, reason, by,
                                 # remaining_s}}`; vazio = nenhum. Informativo: não é problema de saúde.
                                 "repair_pause": {rt.id: dto.model_dump(mode="json") for rt in self._e.devices.devices.values()
