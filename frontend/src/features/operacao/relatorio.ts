@@ -5,7 +5,7 @@
  * custo. Consolidado: a faixa de capacidade, os custos (pesquisa, agentes, total e o teto), as falhas agrupadas por motivo e os
  * textos irmãos. O agente aparece pelo RÓTULO da persona: nunca o @ da conta, o id da conta nem login ou e-mail.
  */
-import { type ItemAprendido, type LeituraDoAprendizado } from './aprendizadoDaOperacao';
+import { type AvisoDaOperacao, type ItemAprendido, type LeituraDoAprendizado, licoesDaOperacao } from './aprendizadoDaOperacao';
 import {
   ESTAGIOS, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, estagioDeParada, rotuloDaAcao, rotuloDoEstagio,
   type Alvo, type EstagioId, type Operacao,
@@ -55,6 +55,10 @@ export interface AprendizadoNoRelatorio {
   motivo: string | null;
   gerado_em: string | null;
   perguntas: { chave: string; titulo: string; veio: boolean; itens: ItemDoRelatorio[] }[];
+  /** 31.167: as lições de qualquer pergunta, separadas pela evidência efetiva (a mesma regra da aba Aprendizado). */
+  licoes: { reforcadas: ItemDoRelatorio[]; contestadas: ItemDoRelatorio[] };
+  /** 31.167: as etapas cujo conhecimento recebido não foi gravado (campo `avisos` do central), sem @ de conta. */
+  avisos: AvisoDaOperacao[];
   nao_coberto: { chave: string; motivo: string }[];
 }
 
@@ -111,19 +115,23 @@ function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
 const SEM_LEITURA: LeituraDoAprendizado = { situacao: 'indisponivel', motivo: 'O aprendizado da operação não foi lido para este relatório.' };
 
 function aprendizadoDoRelatorio(op: Operacao, leitura: LeituraDoAprendizado): AprendizadoNoRelatorio {
-  if (leitura.situacao === 'indisponivel') return { disponivel: false, motivo: semArroba(leitura.motivo), gerado_em: null, perguntas: [], nao_coberto: [] };
+  if (leitura.situacao === 'indisponivel') {
+    return { disponivel: false, motivo: semArroba(leitura.motivo), gerado_em: null, perguntas: [], licoes: { reforcadas: [], contestadas: [] }, avisos: [], nao_coberto: [] };
+  }
   const rotulos = new Map(op.alvos.flatMap((a) => (a.profile_id && a.persona ? [[a.profile_id, a.persona] as const] : [])));
   const a = leitura.aprendizado;
-  return {
-    disponivel: true, motivo: null, gerado_em: a.gerado_em, nao_coberto: a.nao_coberto.map((n) => ({ ...n, motivo: semArroba(n.motivo) })),
-    perguntas: a.perguntas.map((p) => ({
+  const perguntas = a.perguntas.map((p) => ({
       chave: p.chave, titulo: p.titulo, veio: p.veio,
       // Persona sem rótulo conhecido na operação vira "uma persona", nunca o id.
       itens: p.itens.map((i) => ({
         ...i, persona: i.persona === null ? null : rotulos.get(i.persona) ?? 'uma persona',
         resumo: semArrobaOuNulo(i.resumo), motivo: semArrobaOuNulo(i.motivo), fontes: i.fontes.map((f) => ({ ...f, resumo: semArrobaOuNulo(f.resumo) })),
       })),
-    })),
+  }));
+  return {
+    disponivel: true, motivo: null, gerado_em: a.gerado_em, nao_coberto: a.nao_coberto.map((n) => ({ ...n, motivo: semArroba(n.motivo) })),
+    perguntas, licoes: licoesDaOperacao(perguntas),
+    avisos: a.avisos.map((v) => ({ ...v, aviso: semArroba(v.aviso) })),
   };
 }
 
@@ -172,7 +180,8 @@ const citacao = (t: string): string => t.split(/\r?\n/).map((l) => `> ${l}`).joi
 function itemEmMarkdown(i: ItemDoRelatorio): string {
   const marca = i.confianca === 'confirmado' ? 'confirmado' : i.confianca === 'hipotese' ? 'hipótese' : 'confiança não informada';
   const onde = [i.tipo, i.escopo, i.persona ?? 'operação inteira'].filter(Boolean).join(', ');
-  const extra = [i.inferida ? 'inferida' : null, i.evidencias ? `${i.evidencias} ${i.evidencias === 1 ? 'evidência' : 'evidências'}` : null, i.motivo ? `motivo: ${i.motivo}` : null]
+  const contagem = i.a_favor === null && i.contra === null ? null : `${num(i.a_favor)} a favor, ${num(i.contra)} contra`;
+  const extra = [i.inferida ? 'inferida' : null, contagem, i.evidencias ? `${i.evidencias} ${i.evidencias === 1 ? 'evidência' : 'evidências'}` : null, i.motivo ? `motivo: ${i.motivo}` : null]
     .filter(Boolean).join('; ');
   const fontes = i.fontes.length ? ` Fontes: ${i.fontes.map((f) => f.resumo ?? f.ref).join(' | ')}.` : '';
   return `- [${marca}] ${i.resumo ?? i.ref} (${onde}${extra ? `; ${extra}` : ''}).${fontes}`;
@@ -190,7 +199,13 @@ function aprendizadoEmMarkdown(a: AprendizadoNoRelatorio): string[] {
     linhas.push('');
   }
   if (a.nao_coberto.length) {
-    linhas.push('### O que o central não responde', '', ...a.nao_coberto.map((n) => `- ${n.chave}: ${n.motivo}`));
+    linhas.push('### O que o central não responde', '', ...a.nao_coberto.map((n) => `- ${n.chave}: ${n.motivo}`), '');
+  }
+  linhas.push('### Lições reforçadas', '', ...(a.licoes.reforcadas.length ? a.licoes.reforcadas.map(itemEmMarkdown) : ['Nenhuma.']), '');
+  linhas.push('### Lições contestadas', '', ...(a.licoes.contestadas.length ? a.licoes.contestadas.map(itemEmMarkdown) : ['Nenhuma.']), '');
+  if (a.avisos.length) {
+    linhas.push('### Avisos sobre o conhecimento que o texto recebeu', '',
+      ...a.avisos.map((v) => `- ${[v.run_id ? `execução ${v.run_id}` : null, v.step_id ? `etapa ${v.step_id}` : null].filter(Boolean).join(', ') || 'etapa não informada'}: ${v.aviso}`), '');
   }
   return linhas;
 }
