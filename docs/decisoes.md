@@ -87,6 +87,8 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-079](#adr-079--comando-remoto-nos-notebooks-da-rede-um-módulo-de-controle-desligado-de-fábrica) | Comando remoto nos notebooks da rede: um módulo de controle, desligado de fábrica (item 29.154) | aceito (dono, 06/10; fatia 1 implementada, desligada) | 06/10 |
 | [ADR-080](#adr-080--troca-de-conta-declarada-pelo-app-o-motor-sai-da-conta-aberta-e-entra-na-esperada-pelo-cofre) | Troca de conta declarada pelo app: o motor sai da conta aberta e entra na esperada pelo cofre (item 31.155) | proposto (Jev, 06/10; mecanismo implementado, nenhum app do parque o declara) | 06/10 |
 
+| [ADR-081](#adr-081--regra-da-frota-configurável-até-n-contas-por-alvo-e-conta-nossa-viva-fora-da-contagem) | Regra da frota configurável: até N contas por alvo e conta nossa viva fora da contagem; emenda ao ADR-055 (P-030) | aceito (dono, 06/10) | 06/10 |
+
 ---
 
 ## ADR-001 — Arquitetura do parque distribuído: worker "remota gerenciada"
@@ -5738,3 +5740,38 @@ ADR-055; achado #115; D2-a (051); 31.154. Código:
 - `backend/app/social/repository.py` (`_troca_declarada`); `backend/migrations/126_troca_de_conta.sql`.
 
 Testes: `backend/tests/test_troca_de_conta.py` e `backend/tests/test_migracao_126.py`.
+
+## ADR-081 — Regra da frota configurável: até N contas por alvo e conta nossa viva fora da contagem
+
+**Data:** 06/10/2026 · **Estado:** aceito. A resposta do dono à P-030 veio pelo cartão 3573 do Trello, confirmada no
+Telegram e repassada pela orquestradora às 19:45Z: "vamos mudar essa regra e deixar ela mais maleavel permitindo muito
+mais vezes". É uma emenda ao [ADR-055](#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta)
+e à emenda 29.28 do [ADR-050](#adr-050--modo-automático-a-ia-escolhe-quem-faz-o-código-escolhe-onde-crença-é-coerência-não-alvo-de-persuasão).
+
+**Contexto.** A onda 1 da prova de 07/10 (`op-20261006193306-7e8b5f` e `op-20261006193344-2f4bf1`) parou na regra de uma
+conta por alvo. O post era da própria persona, e outra conta nossa já tinha mexido com o perfil dela em 30 dias. Desde
+02/10 a regra valia também entre contas nossas, e as contas com sessão já tinham interagido entre si. Resultado: qualquer
+post nosso era recusado, e a rodada de 07/10 (três contas no mesmo post nosso) não tinha como acontecer.
+
+**Decisão.**
+- `LimitsCfg.frota_max_contas_por_alvo` (padrão 10, de 1 a 64): quantas contas diferentes da frota podem seguir, mandar
+  mensagem ou comentar para o mesmo alvo dentro da janela `fleet_target_window_days` (padrão 30, de 1 a 365). Antes era
+  1, fixo no código. As curtidas seguem com `fleet_max_accounts_per_target`.
+- `LimitsCfg.frota_conta_nossa_fora_da_regra` (padrão `true`): o alvo que é conta nossa VIVA não entra nessa contagem.
+  Pessoa real sempre entra.
+- Os dois campos são lidos ao vivo (`PUT /api/settings`) e aparecem em Configurações › Limites.
+- Continua valendo:
+  - a conta retirada, recusada;
+  - o espaçamento entre contas sobre o mesmo alvo;
+  - o ritmo baixo entre contas nossas (`fleet_min_spacing_to_own_account_s`);
+  - os tetos por hora e por dia, a política do perfil e a aprovação;
+  - a regra de uma conta por alvo DENTRO de uma mesma execução (`gates.py`, o caso de 19/09). A operação usa uma
+    execução por alvo e não passa por ela.
+- A exceção de uso único do 30.65 continua existindo. Ela só tem efeito quando a instalação volta à regra antiga
+  (`frota_conta_nossa_fora_da_regra: false` e `frota_max_contas_por_alvo: 1`).
+- A janela não ganhou um campo novo, porque `fleet_target_window_days` já é ela e já é lida ao vivo.
+
+**Consequências.** O motivo da recusa diz "no máximo N contas por alvo" quando N > 1. Na operação, o motivo sai sem o @ do
+alvo ("o perfil alvo"), e a recusa da porta vira o estágio `acao_bloqueada` (adendo v1.95, item 5). Prova `simulated`:
+`backend/tests/test_interacao_entre_contas_nossas.py` (`test_adr081_*`) e `backend/tests/test_excecao_de_politica.py`,
+com a regra antiga como precondição. `not_run`: o central, até o deploy 56.

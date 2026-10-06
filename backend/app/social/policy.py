@@ -341,10 +341,11 @@ class PolicyEngine:
     # ------------------------------------------------------------------ coordenação de frota (achado #114, ADR-055)
     @staticmethod
     def teto_de_contas(cap: Capability, settings: object) -> int:
-        """Quantas contas da frota podem mexer com a mesma pessoa nesta ação: 1 em seguir, mensagem e comentário
-        (regra do dono, ADR-055); o teto configurado nas curtidas."""
+        """Quantas contas da frota podem mexer com a mesma pessoa nesta ação: em seguir, mensagem e comentário,
+        `frota_max_contas_por_alvo` (ADR-081, emenda ao ADR-055; era 1 fixo, e 1 continua sendo o valor quando a
+        configuração não o traz); nas curtidas, `fleet_max_accounts_per_target`."""
         if cap.limit_bucket in UMA_CONTA_POR_ALVO:
-            return 1
+            return max(1, int(getattr(settings, "frota_max_contas_por_alvo", 1) or 1))
         return max(1, int(getattr(settings, "fleet_max_accounts_per_target", 1) or 1))
 
     def _fleet_gate(self, profile_id: str, cap: Capability, counterparty: str | None,
@@ -392,11 +393,14 @@ class PolicyEngine:
         # 30.65: a exceção de uso único, criada por pessoa, tira só ESTA recusa; quem a usa (`excecoes_usadas`) passa
         # a etapa por aprovação. O espaçamento abaixo e as demais regras do `check` continuam valendo. Só entre contas
         # nossas vivas: a rota já recusa outro alvo, e a porta não confia só nisso.
+        # ADR-081: com `frota_conta_nossa_fora_da_regra`, o alvo que é conta nossa VIVA não entra na contagem de contas
+        # por alvo (e então não precisa de exceção). Pessoa real sempre entra. Sem a configuração, a regra vale (ADR-055).
+        fora_da_regra = nossa_viva and bool(getattr(s, "frota_conta_nossa_fora_da_regra", False))
         excecao = (ExcecoesDePolitica(self.repo.db).ativa_para(profile_id, alvo, cap.key, step_id)
-                   if outras >= teto and excecoes_usadas is not None and nossa_viva else None)
+                   if outras >= teto and excecoes_usadas is not None and nossa_viva and not fora_da_regra else None)
         if excecao is not None and excecoes_usadas is not None:
             excecoes_usadas.append(excecao)
-        elif outras >= teto:
+        elif outras >= teto and not fora_da_regra:
             regra = ("uma conta por alvo" if teto == 1 else f"no máximo {teto} contas por alvo")
             return (f"{outras} outra(s) conta(s) da frota já mexeram com {alvo} nos últimos {dias} dias ou têm pedido "
                     f"em aberto para ele; em {_ROTULO_DO_BALDE.get(cap.limit_bucket, cap.limit_bucket)} vale {regra} "

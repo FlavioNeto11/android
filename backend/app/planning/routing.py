@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import threading
 from collections.abc import Iterator
 from typing import Any, Callable
 
@@ -112,6 +113,8 @@ class RoutingProvider:
         self._perfil_por_execucao: dict[str, str | None] = {}
         #: operação → chamadas pagas em voo dos alvos dela (31.154): a reserva do teto `max_usd`, ver `_budget`.
         self._em_voo_da_operacao: dict[str, int] = {}
+        #: O `DecisorJev` (e a sombra da intenção, que o usa) reserva de uma thread; o laço do servidor, de outra.
+        self._em_voo_trava = threading.Lock()
         # Item 12.5: `leitura` só existe quando escrita em `ai.roles`. Entra em `roles` DEPOIS de montar `providers` de
         # propósito: o leitor ausente ou sem chave não derruba `configured` do hub inteiro (só a leitura visual recusa),
         # e a instância dele sai de `_instance`, sob demanda.
@@ -265,7 +268,8 @@ class RoutingProvider:
             # reserva é zero (o estouro possível fica em uma chamada por vaga de IA). A chamada conta desde aqui, também
             # enquanto espera a vaga da função, então a reserva pode sobrar um pouco (no máximo as vagas de IA). Um
             # processo só: a reserva é da instância do roteador, e o deploy é um processo.
-            em_voo = self._em_voo_da_operacao.get(str(operacao["id"]), 0)
+            with self._em_voo_trava:
+                em_voo = self._em_voo_da_operacao.get(str(operacao["id"]), 0)
             reservado = em_voo * self._custo_medio_da_chamada(str(operacao["id"]), gasto) if em_voo else 0.0
             if gasto + reservado >= float(operacao["max_usd"]):
                 emvoo = f" (com {em_voo} chamada(s) em voo, reserva de US$ {reservado:.2f})" if reservado else ""
@@ -292,23 +296,37 @@ class RoutingProvider:
 
     def _custo_medio_da_chamada(self, operacao_id: str, gasto: float) -> float:
         assert self.repo is not None
+        # Só as chamadas COBRADAS entram no denominador (achado da revisão do PR 478): a falha e a recusa gravam linha com
+        # gasto zero, e contá-las baixaria a média e a reserva.
         chamadas = int(self.repo.db.scalar(
             "SELECT COUNT(*) FROM ai_calls a JOIN runs r ON r.id=a.run_id WHERE r.operacao_id=?"
-            " AND COALESCE(a.provider,'') <> 'simulated'", (operacao_id,)) or 0)
+            " AND COALESCE(a.provider,'') <> 'simulated' AND COALESCE(a.ok, 1) = 1"
+            " AND (COALESCE(a.input_tokens, 0) + COALESCE(a.output_tokens, 0) > 0 OR COALESCE(a.usd, 0) > 0)",
+            (operacao_id,)) or 0)
         return gasto / chamadas if chamadas else 0.0
 
-    def conferir_gasto(self, *, run_id: str | None, origem: str, conta: str) -> None:
+    def conferir_gasto(self, *, run_id: str | None, origem: str, conta: str,
+                       reservar: bool = False) -> Callable[[], None]:
         """A MESMA rubrica de `_budget` (pedido, execução, dia, fatia da origem) e o bloqueio de saldo de uma CONTA, para
         quem chama um provedor fora do hub: o `DecisorJev` (31.14) confere aqui ANTES do POST (`origem='decisao_fechada'`,
         conta `typesafe`). Barrado = `AIError` (`kind` `budget` ou `balance`); sem repositório ligado é barrado também,
-        porque o gasto que ninguém confere não acontece."""
+        porque o gasto que ninguém confere não acontece.
+
+        `reservar` (achado da revisão do PR 478): a chamada de fora do hub também fica EM VOO no teto da operação
+        (`_budget`). Devolve quem solta a reserva, e quem chamou a solta depois de gravar o custo (`DecisorJev.decidir`).
+        Sem `reservar`, ou fora de operação, devolve uma função que não faz nada."""
         if self.repo is None or self.get_settings is None:
             raise AIError("Teto de gasto sem como conferir (hub sem repositório).", kind="not_configured")
-        self._budget(run_id, origem)
+        operacao = self._budget(run_id, origem)
         motivo = saldos.motivo_de_bloqueio(self.repo.db, self.cfg, conta)
         if motivo:
             raise AIError(f"{motivo} Recarregue no console e registre a recarga em Configuração › IA para retomar.",
                           kind="balance")
+        if not reservar or operacao is None:
+            return lambda: None
+        reserva = self._reserva(operacao)
+        reserva.__enter__()
+        return lambda: reserva.__exit__(None, None, None)
 
     def _fatia_da_origem(self, origem: str | None, teto_dia: float, prices: dict[str, list[float]]
                          ) -> tuple[tuple[str, float, Callable[[], float], str, str], ...]:
@@ -439,14 +457,16 @@ class RoutingProvider:
         if operacao is None:
             yield
             return
-        self._em_voo_da_operacao[operacao] = self._em_voo_da_operacao.get(operacao, 0) + 1
+        with self._em_voo_trava:
+            self._em_voo_da_operacao[operacao] = self._em_voo_da_operacao.get(operacao, 0) + 1
         try:
             yield
         finally:
-            if (restam := self._em_voo_da_operacao.get(operacao, 1) - 1) > 0:
-                self._em_voo_da_operacao[operacao] = restam
-            else:
-                self._em_voo_da_operacao.pop(operacao, None)
+            with self._em_voo_trava:
+                if (restam := self._em_voo_da_operacao.get(operacao, 1) - 1) > 0:
+                    self._em_voo_da_operacao[operacao] = restam
+                else:
+                    self._em_voo_da_operacao.pop(operacao, None)
 
     def _instance(self, papel: str, r: ResolvedRole) -> AIProvider:
         chave = _chave_da_instancia(r)

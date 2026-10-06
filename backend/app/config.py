@@ -398,6 +398,13 @@ class LimitsCfg(BaseModel):
     # (viva), esta conta espera ao menos isto, em segundos, desde o último gesto com efeito DELA (vale o maior entre este valor e
     # `cooldown_between_external_actions_s` do perfil). Ritmo baixo de propósito; conta retirada por bloqueio segue recusada.
     fleet_min_spacing_to_own_account_s: int = Field(600, ge=0, le=86400)
+    # ADR-081 (dono, P-030, 06/10: "deixar ela mais maleável permitindo muito mais vezes"), emenda ao ADR-055:
+    # `frota_max_contas_por_alvo` é quantas contas DIFERENTES da frota podem seguir, mandar mensagem ou comentar para o
+    # mesmo alvo dentro de `fleet_target_window_days` (era 1, fixo no código). As curtidas seguem em
+    # `fleet_max_accounts_per_target`. `frota_conta_nossa_fora_da_regra`: o alvo que é conta nossa VIVA não entra nessa
+    # contagem (três contas nossas no mesmo post nosso); pessoa real sempre entra. Os dois são lidos ao vivo.
+    frota_max_contas_por_alvo: int = Field(10, ge=1, le=64)
+    frota_conta_nossa_fora_da_regra: bool = True
     # 30.60 (N4): publicar no feed (balde `posts`) passa por uma pessoa mesmo com perfil ou grupo `autonomous`, como a DM
     # fria do ADR-055. Só a instalação afrouxa, aqui; um perfil não tem esse poder.
     publicar_sem_aprovacao: bool = False

@@ -179,6 +179,21 @@ def test_dado_da_persona_e_nome_sensivel_do_plano_nao_sao_renomeados() -> None:
     assert p.steps[0].postcondition.value == "perfil {perfil_email} e {codigo}"
 
 
+def test_nome_fixo_ja_usado_com_outro_valor_nao_e_sobrescrito() -> None:
+    """Achado da revisão do PR 478: o plano já tem `username` = outro perfil e um segundo parâmetro com o valor do fixo.
+    Fixar sobrescreveria `username`, e as duas referências apontariam para o mesmo perfil (ação na conta errada)."""
+    plano = Plan(summary="x", planner=PLANEJADOR, parameters={"username": "outro.perfil", "perfil_alvo": "@" + LOJA},
+                 steps=[_etapa("ab", "OPEN_PROFILE", "perfil de {username} e de {perfil_alvo}")])
+    p, motivo = pdo.ajustar(plano, {"username": LOJA}, CAPS)
+    assert p.parameters == {"username": "outro.perfil", "perfil_alvo": "@" + LOJA}
+    assert p.steps[0].postcondition.value == "perfil de {username} e de {perfil_alvo}"
+    assert motivo is not None and "username" in motivo
+    # o mesmo valor (sem @ e sem caixa) não é colisão: o fixo vale, sem motivo
+    igual = plano.model_copy(update={"parameters": {"username": "@" + LOJA.upper()}})
+    p2, motivo2 = pdo.ajustar(igual, {"username": LOJA}, CAPS)
+    assert p2.parameters == {"username": LOJA} and motivo2 is None
+
+
 def test_chave_normalizada_fora_do_formato_nao_renomeia_nada() -> None:
     plano = Plan(summary="x", planner=PLANEJADOR, steps=[_etapa("abrir", "ABRIR_" + "X" * 40, "p")])
     p, motivo = pdo.normalizar_chaves(plano, ["ABRIR_" + "X" * 40])

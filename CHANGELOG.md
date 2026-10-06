@@ -162,6 +162,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - o teto `max_usd` reserva as chamadas em voo dos alvos paralelos;
   - o limite de ações conta e aprova numa transação, com a linha travada;
   - `operacao_da_execucao` só tolera a coluna ausente; os outros erros de banco sobem.
+- Achados da revisão do PR 478 e do percurso da Portal, corrigidos com teste:
+  - o nome fixo que o plano já usa com outro valor não é mais sobrescrito;
+  - o POST do Jev também entra na reserva do `max_usd`, e a média conta só as chamadas cobradas;
+  - o motivo do alvo sai sem @;
+  - a recusa da porta vira `acao_bloqueada`;
+  - a hora do rascunho que espera o liberar passa a ser a do pedido.
+- **ADR-081** (dono, P-030, 06/10): `frota_max_contas_por_alvo` (padrão 10) no lugar do "uma conta por alvo" fixo, e
+  `frota_conta_nossa_fora_da_regra` (padrão `true`). Os dois são lidos ao vivo. Teste:
+  `backend/tests/test_interacao_entre_contas_nossas.py`.
 - Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (identidade igual à da etapa ensinada, reprodução e o
   controle sem os fixos, operação no harness, execução fora de operação sem mudança, validação),
   `backend/tests/test_operacoes.py` e `backend/tests/test_migracao_127.py`. `not_run`: prova real (rodada de 07/10).
