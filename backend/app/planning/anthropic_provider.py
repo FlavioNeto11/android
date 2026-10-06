@@ -154,7 +154,7 @@ class AnthropicProvider:
     def _kwargs(self, *, model: str, system: str, content: list[dict[str, Any]], effort: str, max_tokens: int,
                 tools: bool, schema: dict[str, Any] | None, pensar: bool = True,
                 cache_ttl: str | None = None, cachear: bool = True, paralelo: bool = False,
-                ferramentas: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+                ferramentas: list[dict[str, object]] | None = None) -> dict[str, Any]:
         """Monta a requisição respeitando a capacidade DECLARADA deste modelo (`ai.models`) e o que ele já recusou.
         `pensar=False` (item 17.14, `thinking: false` da função) deixa de mandar `thinking`, como num modelo sem ele.
         `cache_ttl` (31.30): validade do ponto de cache; `None` é o padrão da API (5 min), sem o campo.
@@ -222,7 +222,7 @@ class AnthropicProvider:
                       max_tokens: int, tools: bool = False, schema: dict[str, Any] | None = None, tier: int = 0,
                       with_image: bool = False, funcao: str | None = None, cache_ttl: str | None = None,
                       cachear: bool = True, paralelo: bool = False,
-                      ferramentas: list[dict[str, Any]] | None = None) -> tuple[Any, Usage]:
+                      ferramentas: list[dict[str, object]] | None = None) -> tuple[Any, Usage]:
         """`funcao`: a função do hub que a chamada serve, quando difere de `role` (a decisão escalada é `escalation`).
         `cache_ttl`: validade do cache do prefixo (31.30); só o plano da execução pede outra que não a padrão."""
         if self._client is None:

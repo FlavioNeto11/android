@@ -63,20 +63,23 @@ class ConhecimentoDaOperacao:
         if leitura is None or parece_segredo(leitura.texto):
             return None
         agora = self.db.agora_iso()
-        base = dict(pedido_id=None, operacao_id=operacao_id, pedido_versao=1, ocorrencia_id=run_id, run_id=run_id,
-                    step_id=step_id, nome=dominio.NOME_DA_LEITURA, tipo="text", fonte=dominio.fonte_curta(fonte),
-                    capturado_em=agora)
+
+        def observacao(alvo: str, situacao: str, trecho: str | None) -> NovaObservacao:
+            return NovaObservacao(pedido_id=None, operacao_id=operacao_id, pedido_versao=1, ocorrencia_id=run_id,
+                                  run_id=run_id, step_id=step_id, alvo=alvo, nome=dominio.NOME_DA_LEITURA, tipo="text",
+                                  situacao=situacao, valor=leitura.texto, fonte=dominio.fonte_curta(fonte),
+                                  trecho=trecho, sha256=leitura.sha256, capturado_em=agora)
+
         with self.db.tx():
             da_operacao = self.repo.observacao_da_operacao(operacao_id, dominio.NOME_DA_LEITURA)
             vencida = da_operacao is not None and self._fato_vencido(operacao_id, agora)
             if da_operacao is None or vencida:
-                if vencida:
+                if da_operacao is not None and vencida:
                     # Leitura velha: a nova toma o lugar (a velha fica na história como observação do agente que a fez).
                     self.db.execute("UPDATE pedido_observacoes SET alvo=? WHERE id=?",
                                     (f"vencida:{da_operacao['id']}"[:120], da_operacao["id"]))
-                self.repo.inserir_observacoes([NovaObservacao(
-                    **base, alvo="", situacao="observado", valor=leitura.texto,
-                    trecho="valor cortado no teto" if leitura.cortado else None, sha256=leitura.sha256)])
+                self.repo.inserir_observacoes([observacao("", "observado",
+                                                          "valor cortado no teto" if leitura.cortado else None)])
                 nova = self.repo.observacao_da_operacao(operacao_id, dominio.NOME_DA_LEITURA)
                 if nova is not None and nova["sha256"] == leitura.sha256 and nova["run_id"] == run_id:
                     self._gravar_fato(operacao_id, leitura.texto, evidencia=str(nova["id"]), agora=agora, run_id=run_id)
@@ -84,9 +87,7 @@ class ConhecimentoDaOperacao:
                 da_operacao = nova                               # outro agente gravou primeiro: confere com a dele
             resultado = dominio.conferir(da_operacao["sha256"] if da_operacao is not None else None, leitura.sha256)
             if resultado == dominio.DIFERENTE:
-                self.repo.inserir_observacoes([NovaObservacao(
-                    **base, alvo=agente, situacao="incerto", valor=leitura.texto, trecho=DIVERGENTE,
-                    sha256=leitura.sha256)])
+                self.repo.inserir_observacoes([observacao(agente, "incerto", DIVERGENTE)])
             return resultado
 
     def _fato_vencido(self, operacao_id: str, agora: str) -> bool:

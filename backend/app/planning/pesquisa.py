@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
-from .prompts import sem_marcacao
+from ..util import sem_marcacao
 
 ASSUNTO_MAX = 300
 CONTEXTO_MAX = 1200

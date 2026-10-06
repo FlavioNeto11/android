@@ -21,7 +21,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from .db import Row, loads
+from .db import Database, Row, loads
 from .devices.manager import DeviceRuntime
 from .modules.pedidos.domain import conhecimento_da_operacao as conhecimento_dominio
 from .modules.pedidos.infrastructure.conhecimento_da_operacao import ConhecimentoDaOperacao, Fatos
@@ -52,6 +52,9 @@ from .social.service import SocialError, thread_de_dm
 from .util import now, parse_iso
 
 if TYPE_CHECKING:
+    from .automation.hierarchy import UiTree
+    from .planning.capabilities import Capability
+    from .planning.pesquisa import PesquisaBruta, PesquisaRequest
     from .state import AppState
 
 log = logging.getLogger("poc")
@@ -62,7 +65,7 @@ log = logging.getLogger("poc")
 _TELA_TIMEOUT_S = 15.0
 
 
-def _registrar_estagio(db: Any, run_id: str, estagio: str) -> None:
+def _registrar_estagio(db: Database, run_id: str, estagio: str) -> None:
     """O estágio do agente na operação (`operacao_alvos.estagio`, 124, da Jev). Import tardio: a função é da camada de
     operações, e até ela chegar ao banco (ou fora de operação) não faz nada. Nunca derruba a escrita."""
     try:
@@ -533,9 +536,10 @@ class Portoes:
             log.exception("não deu para ler a operação da execução %s", run_id)
             return None
 
-    async def _conhecimento_da_operacao(self, operacao_id: str | None, obj: Any, srow: Any, cap: Any, arvore: Any,
+    async def _conhecimento_da_operacao(self, operacao_id: str | None, obj: Row, srow: Row, cap: Capability,
+                                        arvore: UiTree | None,
                                         tela: str, pacote: str | None,
-                                        bindings: Mapping[str, Any]) -> tuple[Fatos | None, str | None]:
+                                        bindings: Mapping[str, object]) -> tuple[Fatos | None, str | None]:
         """A leitura do alvo entra na memória da operação (uma vez; as outras conferem), a pesquisa externa preenche a
         lacuna do assunto (uma vez por operação, prova30 A2) e os fatos voltam para o texto.
 
@@ -571,7 +575,7 @@ class Portoes:
             _registrar_estagio(self._st.db, run_id, "conhecimento_recuperado")
         return fatos, leitura
 
-    async def _pesquisar_se_preciso(self, operacao_id: str, obj: Any, srow: Any, contexto: str) -> None:
+    async def _pesquisar_se_preciso(self, operacao_id: str, obj: Row, srow: Row, contexto: str) -> None:
         """A pesquisa externa da operação (31.158), pelo caminho de IA da execução: tetos, vaga e custo no run certo.
         A consulta leva o assunto da operação e, como contexto, a leitura do alvo; nunca nada da persona."""
         executor = self._st.scheduler.executor
@@ -579,7 +583,7 @@ class Portoes:
         if not hasattr(provedor, "pesquisar"):
             return
 
-        async def chamar(req: Any) -> Any:
+        async def chamar(req: PesquisaRequest) -> PesquisaBruta:
             return await executor._ai(str(obj["run_id"]), str(obj["id"]),  # noqa: SLF001
                                       lambda: provedor.pesquisar(req), step_id=str(srow["id"]), role="plan")
 
