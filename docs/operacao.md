@@ -776,6 +776,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `rotation-test.ps1` | P/T | Liga/hiberna instâncias reais; gasta IA se não estiver em modo simulado |
 | `scale-test.ps1` | P | Liga instâncias reais até o hardware não sustentar; pula aparelho em quarentena (`locked_account`) |
 | `sincronizar-relogio.ps1` | P | Mede o desvio do relógio do central pelo NTP.br e ajusta acima de 0,2 s (`-Simular` só mede); `-Instalar` registra a tarefa `farm-relogio` e tira a sincronização do `w32time`. Mexer no relógio exige autorização do dono (dada em 28/09) |
+| `python scripts/reverificar-sessoes.py aparelho:perfil:conta …` | P | Reverifica as sessões das contas reais pela API do central, só observando (`session/verify`, sem adb nem senha): no máximo 2 tentativas por aparelho, o @ redigido no motivo e a tela "Confirm you're human" parando o aparelho na hora; `--json` grava o desfecho por comando |
 | `recuperar-parque.ps1` | P | Reinicia aparelhos remotos pelo worker |
 | `worker-install.ps1` / `worker-agent.ps1 -Instalar` | P | Instala/registra o agente numa máquina worker |
 | `install-central-service.ps1` | P | Registra o backend do central como tarefa supervisionada |
