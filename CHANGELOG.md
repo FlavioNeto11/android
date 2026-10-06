@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.111 F1: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
+
+- `POST /api/training/from-run` `{run_id, step_id, lease_id, intent?, app_id?, profile_id?}` abre uma sessão de ensino ligada à
+  etapa que falhou (ou ficou incerta). O aparelho é o da etapa; as travas são as do treino de hoje: só a pessoa com o
+  controle do aparelho abre, nada é automático, a loja não é aparelho de treino. Etapa de outra execução: 404
+  `step_not_found`; etapa que deu certo ou foi cancelada: 409 `step_not_failed`. Sem `intent`, o texto sai do título da etapa.
+- A sessão guarda três ids opacos (migração 119, `origin_run_id`, `origin_step_id`, `origin_attempt_id`, sem chave
+  estrangeira) e `GET /api/training/{id}` e a lista passam a trazer `origin: {run_id, step_id, step_key, attempt_id, motivo}`
+  (`null` na gravação comum); o motivo é o literal do executor, lido da etapa na hora. As colunas `origin_*` não vazam.
+- Fica para o F2: a trilha, a tela e a pós-condição; para o F4 (Aprendizado): `origin.diagnostico`.
+- Prova: `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
+
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e

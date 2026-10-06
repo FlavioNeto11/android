@@ -21,6 +21,7 @@ from ..db import dumps, loads
 from ..security.redaction import looks_secret, mentions_credential, parece_codigo, parece_linha_com_codigo, parece_senha_ou_codigo
 from ..social.observacao import linhas_de_conteudo
 from ..util import new_token, now_iso
+from .origem import OrigemDaFalha, OrigemRecusada, origem_da_falha, origin_da_linha
 
 if TYPE_CHECKING:
     from ..automation.hierarchy import UiTree
@@ -196,8 +197,10 @@ class TrainingRecorder:
 
     # ------------------------------------------------------------------ sessão
     def start(self, instance_id: str, *, intent: str, lease_id: str | None, app_id: str | None = None,
-              operator: str | None = None, profile_id: str | None = None) -> dict[str, Any]:
-        """`profile_id`: a persona escolhida pela pessoa; sem ela, a que o aparelho tem sozinho (ou nenhuma)."""
+              operator: str | None = None, profile_id: str | None = None,
+              origem: OrigemDaFalha | None = None) -> dict[str, Any]:
+        """`profile_id`: a persona escolhida pela pessoa; sem ela, a que o aparelho tem sozinho (ou nenhuma). `origem`
+        (31.111 F1): a etapa que falhou e deu origem ao ensino; só rotula a sessão, não muda nenhuma trava."""
         rt = self.devices.get(instance_id)
         intent = (intent or "").strip()
         if not intent:
@@ -219,13 +222,22 @@ class TrainingRecorder:
         sid = f"trn-{new_token()}"
         agora = now_iso()
         self.db.execute("INSERT INTO training_sessions(id, instance_id, profile_id, app_id, intent, status, operator,"
-                        " created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                        (sid, instance_id, profile_id, app_id, intent[:400],
-                         "recording", operator, agora, agora))
+                        " created_at, updated_at, origin_run_id, origin_step_id, origin_attempt_id)"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (sid, instance_id, profile_id, app_id, intent[:400], "recording", operator, agora, agora,
+                         origem.run_id if origem else None, origem.step_id if origem else None,
+                         origem.attempt_id if origem else None))
         rt.training_session_id = sid
         self.bus.emit("log", f"{instance_id}: treinamento iniciado — {intent[:80]}", instance_id=instance_id,
                       data={"training_session_id": sid})
         return self.get(sid)
+
+    def origem_da_falha(self, run_id: str, step_id: str) -> OrigemDaFalha:
+        """31.111 F1: a etapa que falhou, lida do banco; recusa (404/409) como o resto do treino."""
+        try:
+            return origem_da_falha(self.db, run_id, step_id)
+        except OrigemRecusada as exc:
+            raise TrainingError(exc.code, exc.message, exc.status) from exc
 
     def _persona_da_gravacao(self, instance_id: str, app_id: str | None, escolhida: str | None) -> str | None:
         """A persona da gravação: a escolhida pela pessoa (precisa estar vinculada ao aparelho), ou a ÚNICA que o
@@ -477,6 +489,7 @@ class TrainingRecorder:
 
     def get(self, session_id: str) -> dict[str, Any]:
         s = dict(self._row(session_id))
+        s["origin"] = origin_da_linha(self.db, s)
         s["proposal"] = loads(s["proposal"])
         s["inputs"] = self.inputs(session_id)
         return s
@@ -491,6 +504,7 @@ class TrainingRecorder:
         saida = []
         for r in self.db.query(sql, tuple(args)):
             d = dict(r)
+            d["origin"] = origin_da_linha(self.db, d)
             d["proposal"] = loads(d["proposal"])
             d["input_count"] = int(self.db.scalar("SELECT COUNT(*) FROM training_inputs WHERE session_id=?", (r["id"],)) or 0)
             saida.append(d)

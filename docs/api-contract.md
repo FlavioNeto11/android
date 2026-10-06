@@ -1101,6 +1101,7 @@ campo.
 | `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
+| `POST /api/training/from-run` | `TrainingDeFalhaBody {run_id, step_id, lease_id, intent?, app_id?, profile_id?}` | `TrainingSession` (201) com `origin {run_id, step_id, step_key, attempt_id, motivo}`: abre o ensino a partir de uma etapa que falhou (31.111 F1; adendo a numerar); 404 `step_not_found`, 409 `step_not_failed` e as recusas de `POST /instances/{id}/training` |
 | `POST /api/training/{session_id}/undo` | `TrainingUndoBody {lease_id, seq?}` | `TrainingSession` com `undone: {seq, type}`: tira a última entrada da gravação viva (31.90-D, adendo v1.70) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também

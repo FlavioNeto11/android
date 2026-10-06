@@ -77,7 +77,7 @@ from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
-from .modules.skills.presentation.schemas import EscopoDoFluxoBody, TrainingStopBody, TrainingUndoBody
+from .modules.skills.presentation.schemas import EscopoDoFluxoBody, TrainingDeFalhaBody, TrainingStopBody, TrainingUndoBody
 from .planning import conciliacao, costs, saldos
 from .porta_do_plano import (AprovarPlanoBody, PortaIndisponivel, PreviaDoItemBody, aprovar_plano, previa_da_porta,
                              previa_do_item, renovar_plano)
@@ -582,6 +582,28 @@ async def start_training(request: Request, instance_id: str, body: TrainingStart
     try:
         return s.training.start(instance_id, intent=body.intent, lease_id=body.lease_id, app_id=body.app_id,
                                 operator=getattr(request.state, "operator", None), profile_id=body.profile_id)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+
+
+@router.post("/training/from-run", status_code=201)
+async def start_training_from_run(request: Request, body: TrainingDeFalhaBody) -> dict[str, object]:
+    """31.111 F1: abre a sessão de ensino já ligada à etapa que falhou. Só a pessoa com o controle do aparelho abre;
+    as travas são as do treino de hoje (nada automático, a loja não é aparelho de treino)."""
+    s = st(request)
+    try:
+        origem = s.training.origem_da_falha(body.run_id, body.step_id)
+        try:
+            s.devices.get(origem.instance_id)
+        except KeyError as exc:
+            raise err(404, "not_found", "O aparelho desta etapa não existe mais.") from exc
+        if body.profile_id and body.profile_id not in s.social.profiles_of(origem.instance_id):
+            raise err(400, "profile_not_on_device", f"A persona {body.profile_id} não está vinculada a "
+                                                    f"{origem.instance_id}: o treino é de uma persona deste aparelho.")
+        intent = body.intent or f"Corrigir a etapa «{origem.titulo}»"[:400]
+        return s.training.start(origem.instance_id, intent=intent, lease_id=body.lease_id, app_id=body.app_id,
+                                operator=getattr(request.state, "operator", None), profile_id=body.profile_id,
+                                origem=origem)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
