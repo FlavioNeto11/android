@@ -89,6 +89,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `scripts/marcar-fluxo-de-prova.py`: marca pelo id os fluxos de prova anteriores e a sessão de origem; ensaio por padrão, `--aplicar --backup`, idempotente.
 - Prova `simulated`: `tests/test_fluxo_nascido_de_prova.py` (2) e `scripts/tests/test_marcar_fluxo_de_prova.py` (3). Real: `not_run` até o deploy e o script rodado pela Android nos três ids.
 
+## 2026-10-06 — 31.142 (Portal): "Usar" aplica a sugestão pronta e a prévia 200 com comando repetido trava o Salvar (branch feat/31-142-painel-sugestao-pronta)
+
+- O botão "Usar" da conferência que já vale aplica `sugestoes_prontas[i].kind` e `.value` (adendo v1.91; `desc==Back` vira `element_present`), mantendo o texto do botão; backend anterior sem o campo cai em `text_visible`, como antes.
+- A prévia 200 com `code: duplicate_command` e `message` trava o "Salvar" e mostra a mensagem no campo Comando; a frase não se repete nos avisos. Sem `code`, nada muda.
+- Prova `simulated`: `PosCondicaoQueJaVale.test.tsx` (14 casos, dois deles os de `desc==Back` e `text_visible`), 3 mutações mortas; `real` `not_run` até o deploy.
+
 ## 2026-10-06 — 31.128 e 31.129: a conferência que já vale vira aviso na etapa, e os pacotes que a etapa aceita aparecem (branch feat/31-128-pos-condicao-na-etapa)
 
 - Achados da conferência do painel contra os adendos v1.83 e v1.84 (deploy 50): as linhas novas de `warnings` e a recusa 400 `pos_condicao_ja_vale` chegavam como frase solta (lista de avisos da prévia, dica do "Salvar", toast), sem dizer onde mexer, e o campo `pacotes_aceitos` não aparecia em tela nenhuma.

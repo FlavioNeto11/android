@@ -383,6 +383,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         if (minha !== leitura.current) return;
         setPrevia(r);
         setJaValem(lerPosCondicoes(r.pos_condicoes_ja_valem));
+        // 31.142 (v1.91): o comando repetido volta como 200 com `code`/`message`; trava o Salvar como a recusa 409 do salvar.
+        if (r.code) setRecusa({ code: r.code, message: r.message || 'O comando já existe.' });
       }).catch((e) => {
         if (minha !== leitura.current) return;
         setPrevia(null);
@@ -574,7 +576,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   const duplicada = new Set(duplicadas);
   const previaPorEtapa = new Map((previa?.steps ?? []).map((x) => [x.key, x]));
   // A linha de `warnings` que a etapa já mostra por dentro (31.128) não se repete na lista de avisos da prévia.
-  const avisosDaPrevia = (previa?.warnings ?? []).filter((w) => !jaValem.some((j) => j.message && j.message === w && proposta?.steps.some((s) => s.key === j.etapa)));
+  const avisosDaPrevia = (previa?.warnings ?? []).filter((w) => !(previa?.code && w === previa.message)).filter((w) => !jaValem.some((j) => j.message && j.message === w && proposta?.steps.some((s) => s.key === j.etapa)));
   const linhaDaEntrada = (seq: number) => {
     const e = porSeq.get(seq);
     return (
@@ -801,7 +803,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       <PacotesAceitos pacotes={s.pacotes_aceitos?.length ? s.pacotes_aceitos : previaPorEtapa.get(s.key)?.pacotes_aceitos} />
                       {jaValem.filter((j) => j.etapa === s.key).map((j) => (
                         <AvisoDaPosCondicao key={j.valor} item={j}
-                                            onUsar={(texto) => mudarEtapa(i, { postcondition: { ...s.postcondition, kind: 'text_visible', value: texto } })} />
+                                            onUsar={(p) => mudarEtapa(i, { postcondition: { ...s.postcondition, kind: p.kind as typeof s.postcondition.kind, value: p.value } })} />
                       ))}
                       <EditorDaPosCondicao indice={i} etapa={s} onChange={(postcondition) => mudarEtapa(i, { postcondition })} />
                       {previaPorEtapa.get(s.key) ? (
