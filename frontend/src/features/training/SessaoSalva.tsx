@@ -16,6 +16,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { plural } from '../../lib/format';
+import { FluxoNoLivro } from './FluxoNoLivro';
 import { OrigemDoTreino } from './OrigemDoTreino';
 import { DescricaoEntrada, agruparTeclas, falhaDe } from './TrainingReview';
 import styles from './Training.module.css';
@@ -78,6 +79,7 @@ export function SessaoSalva({ sessionId, onClose }: { sessionId: string; onClose
             {sessao.flow_id ? <span>· fluxo <span className="mono">{sessao.flow_id}</span></span> : null}
           </p>
           <p className={styles.hint}>Só leitura: nada daqui roda nem muda.</p>
+          {sessao.flow_id ? <FluxoNoLivro flowId={sessao.flow_id} /> : null}
 
           {sessao.origin ? <OrigemDoTreino origin={sessao.origin} /> : null}
 

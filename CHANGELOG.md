@@ -34,6 +34,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **31.127** (adendo v1.85): cada etapa ensinada espera a anterior (`depends_on`), salvo `independente: true` na proposta; tipo errado dá 400 `etapa_invalida`.
 - Revisão de segredos (agente, só leitura): nem uma palavra do dado da persona vira sugestão; a entrada marcada (teclado de PIN, padrão) não guarda os elementos.
 - Prova `simulated`: `tests/test_treino_partida_f2_e_sequencia.py` (13) e os ajustes de `tests/test_etapa_pacotes_aceitos.py` (a 1ª etapa agora também aceita o vizinho) e de `tests/test_treino_previa_e_refazer_receitas.py` (a chave nova da prévia). Dirigidos: 124 arquivos um por vez, com 1944 aprovados e as 3 falhas corrigidas e rodadas de novo; `scripts/tests`: 683. Real: `not_run` até o corte 51.
+## 2026-10-06 — 31.132: depois de salvar, a pessoa chega ao fluxo e vê o estado dele (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (`.claude/handoffs/portal-leitura-ensino.md`, candidatos 1, 2 e 12): o resultado do salvar e o diálogo "Treinamento salvo" mostravam "Fluxo f-… salvo" com o id cru, sem link, sem o estado do fluxo e sem o próximo passo; a sessão aparecia como "salvo" enquanto o Livro mostrava o mesmo fluxo como Desligado.
+- Novo `FluxoNoLivro` no resultado do salvar e no diálogo da sessão salva: lê o estado atual do fluxo no Livro (`GET /api/aprendizado/fluxo/{id}`, só leitura) e mostra "No Livro agora: <Estado>" com os selos "em prova" e "Nascido de uma prova", o **próximo passo** pelo estado (em prova: acompanhar no Livro; espera a pessoa: o motivo em português e "Confirmar que fica"; desligado: só uma pessoa o reativa; candidato ou validado: Para aprovar; aposentado; publicado: já vale) e o link **Abrir no Livro** (`?aba=aprendido&item=fluxo:<id>`).
+- Fluxo que já não existe (404): diz isso e não oferece link morto; outra falha de leitura: avisa que não deu para ler e mantém o link.
+- Só frontend e CHANGELOG. Prova `simulated`: `FluxoNoLivro.test.tsx` (6), um caso em `SessaoSalva.test.tsx` e um em `TrainingReview.test.tsx`; oito mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy do corte 52 (percurso 52).
+
 ## 2026-10-06 — 31.131: o selo "Nascido de uma prova" no Livro e em Salvas, e o filtro que separa prova de uso real (branch feat/31-131-nascido-de-prova)
 
 - Achado da leitura dos três fluxos desligados que nasceram de provas: no Livro eles pareciam fluxos reais desligados por uma pessoa, e em Salvas as sessões eram linhas comuns; nada dizia "veio de prova".

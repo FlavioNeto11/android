@@ -889,4 +889,19 @@ it('31.129: a etapa da proposta que aceita um pacote vizinho diz em qual; a que 
   await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [PROPOSTA.steps[0]!, vizinha] });
   expect(text()).toContain('Também aceita concluir em: com.google.android.googlequicksearchbox');
   expect(text().match(/Também aceita concluir em/g)).toHaveLength(1);
+// 31.132: depois de salvar, o resultado lê o estado do fluxo no Livro, diz o próximo passo e leva ao item.
+it('31.132: o resultado do salvar mostra o estado do fluxo no Livro, o próximo passo e o link para o item', async () => {
+  backend.on('GET', /\/aprendizado\/fluxo\/mandar-mensagem$/, () => json({
+    item: { kind: 'fluxo', ref: 'mandar-mensagem', state: 'published', title: 'Mandar mensagem', ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' } },
+    evidencias: [], trilha: [], exposicoes: [],
+  }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  await click(byRole('button', /Pedir proposta à IA/i));
+  await click(await botaoPronto(/Salvar como fluxo/i));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  const estado = await waitFor(() => { const e = document.querySelector('[aria-label="Estado do fluxo no Livro"]'); expect(e).toBeTruthy(); return e as HTMLElement; });
+  expect(estado.textContent).toContain('No Livro agora: Publicado');
+  expect(estado.textContent).toContain('Falta a prova');
+  expect(byRole('link', /Abrir no Livro/).getAttribute('href')).toBe('#/aprendizado?aba=aprendido&item=fluxo%3Amandar-mensagem');
 });

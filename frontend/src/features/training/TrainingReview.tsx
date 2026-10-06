@@ -27,6 +27,7 @@ import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { AvisoDaPosCondicao, lerPosCondicoes, motivoDaPosCondicao } from './PosCondicaoQueJaVale';
 import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
 import { descartarSessaoConcluida } from './descartarSessao';
+import { FluxoNoLivro } from './FluxoNoLivro';
 import { OrigemDoTreino, SeloDeOrigem } from './OrigemDoTreino';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { useAppStore } from '../../store/app';
@@ -639,6 +640,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           {resultado.ensinado_em_prova ? (
             <p className={styles.muted} role="status">{explicacaoEmProva(resultado.ensinado_em_prova)}</p>
           ) : null}
+          {/* 31.132: o estado do fluxo no Livro agora, o próximo passo e o link para o item. */}
+          <FluxoNoLivro flowId={resultado.flow_id} />
           {/* 31.111 F5: o fluxo candidato que nasceu da correção de uma etapa que falhou diz de onde veio. */}
           {sessao.origin ? (
             <p className={styles.muted}>
