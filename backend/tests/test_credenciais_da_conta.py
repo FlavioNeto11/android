@@ -32,6 +32,7 @@ from app.modules.skills.domain.lifecycle import SkillState
 from app.modules.skills.domain.versions import Provenance, SourceKind
 from app.planning.prompts import dados_block, planner_capability_user, planner_user, step_block
 from app.planning.provider import AppContext, PlanRequest, StepContext
+from app.taskqueue.dado_da_persona import resolver_persona
 from app.security.sensitive_input import SensitiveInputChannel
 from app.social.service import SocialError
 from app.taskqueue.executor import pede_intervencao_humana, urls_da_pessoa
@@ -483,8 +484,12 @@ async def test_o_planejamento_recebe_a_lista_e_a_variavel_resolve_por_aparelho(h
         params = json.loads(s.repo.objective_row(f"{run.id}:{iid}")["parameters"])
         assert params["email"] == email and params["usuario"] == "qa-operador"
         assert params["senha"] == "{" + SENHA_CHROME + "}"                  # segredo não é variável
-        etapa = s.db.one("SELECT title, postcondition FROM steps WHERE id=?", (f"{run.id}:{iid}:v1:entrar",))
-        assert email in etapa["title"] and email in etapa["postcondition"]
+        linha = s.repo.step_row(f"{run.id}:{iid}:v1:entrar")
+        # 31.113 F2: a linha guarda o marcador; o executor resolve por aparelho, em memória (`resolver_persona`)
+        assert linha["title"] == "Entrar como {perfil_email}" and email not in linha["postcondition"]
+        perfil = s.repo.objective_row(f"{run.id}:{iid}")["profile_id"]
+        etapa = resolver_persona(s.repo.step_dto(linha), s.repo.variaveis_da_persona(perfil))
+        assert etapa.title == f"Entrar como {email}" and etapa.postcondition.value == email
     _em_lugar_nenhum(harness, valor)
 
 

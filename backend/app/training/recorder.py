@@ -196,6 +196,9 @@ class TrainingRecorder:
         self.owner_id = owner_id
         #: `(aparelho, app) -> personas vinculadas` (N:N, migração 051). Com `app`, só as que servem àquele app.
         self._personas_do_aparelho = personas_do_aparelho
+        #: 31.111 F4: `attempt_id -> origin.diagnostico` (o diagnóstico do 30.13 em linguagem de gente). Quem liga é o
+        #: `AppState`, depois de montar o aprendizado; sem ele, a sessão sai com `diagnostico: null`.
+        self.diagnostico_da_falha: Callable[[str], dict[str, object] | None] | None = None
         #: 31.112: `persona -> {perfil_…: valor}` (só o não sigiloso), para mascarar as perguntas da proposta na leitura.
         self._variaveis_da_persona = variaveis_da_persona
 
@@ -497,6 +500,10 @@ class TrainingRecorder:
         if s["origin"]:                       # 31.111 F2: o contexto só na leitura de UMA sessão (a lista fica leve)
             s["origin"]["context"] = contexto_da_falha(self.db, s["origin"]["run_id"], s["origin"]["step_id"],
                                                        s["origin"]["attempt_id"])
+            # 31.111 F4: a causa provável (30.13) da tentativa que falhou, com a pergunta do que mostrar. Sem IA.
+            aid = s["origin"]["attempt_id"]
+            s["origin"]["diagnostico"] = (self.diagnostico_da_falha(str(aid))
+                                          if aid and self.diagnostico_da_falha is not None else None)
         s["inputs"] = self.inputs(session_id)
         s["proposal"] = self._proposta_mascarada(loads(s["proposal"]), s.get("profile_id"), s["inputs"])
         return s

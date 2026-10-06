@@ -2,7 +2,7 @@ import { HelpCircle } from 'lucide-react';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { RunSummary } from '../../api/types';
 import { Tooltip } from '../../components/Tooltip';
-import { cx } from '../../lib/format';
+import { cx, formatUsd4, plural } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { useNow } from '../../lib/time';
 import { apiAprendizado } from '../aprendizado/api';
@@ -48,6 +48,20 @@ function VereditoDaValidacao({ runId }: { runId: string }) {
   const veredito = vereditoDoPedido(dado?.itens[0] ?? null);
   if (!veredito) return <LegendaDeSucessoComprovado />;
   return <span data-veredito={veredito}>Veredito da validação: <strong>{veredito}</strong></span>;
+}
+
+/**
+ * 29.153 (adendo v1.74): o custo de IA da execução, lido do detalhe. Sem o campo (backend antigo, ou o detalhe ainda não
+ * chegou) diz "custo não lido": não é zero e não é erro. Zero de verdade vem como "US$ 0,0000 · nenhuma chamada de IA".
+ */
+export function CustoDaExecucao({ costs }: { costs?: RunSummary['costs'] }) {
+  if (!costs || !Number.isFinite(costs.spent_usd)) return <span className={styles.secundario}>custo não lido</span>;
+  return (
+    <span>
+      <strong>{formatUsd4(costs.spent_usd)}</strong>
+      <span className={styles.secundario}> · {costs.calls > 0 ? `${plural(costs.calls, 'chamada', 'chamadas')} de IA` : 'nenhuma chamada de IA'}</span>
+    </span>
+  );
 }
 
 /** 29.60: uma etapa com efeito repetido, já pronta para o resumo. */
@@ -138,6 +152,10 @@ export function ResumoDaExecucao({
               : <LegendaDeSucessoComprovado />}</>
           ) : null}
         </dd>
+      </div>
+      <div className={styles.linha}>
+        <dt className={styles.rotulo}>Custo</dt>
+        <dd className={styles.valor}><CustoDaExecucao costs={run.costs} /></dd>
       </div>
       {repetidos.length > 0 ? (
         <div className={cx(styles.linha, styles.linhaAtencao)}>

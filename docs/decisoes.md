@@ -83,6 +83,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-074](#adr-074--fechamento-da-fase-28-pedidos-persistentes-aceitos-a-fase-fecha-por-cláusula-as-emendas-do-dado-real-e-a-colaboração-em-fatias) | Fechamento da Fase 28: pedidos persistentes aceitos, a fase fecha por cláusula, as emendas do dado real e a colaboração em fatias (item 28.13) | proposto (Canais, 04/10) | 04/10 |
 | [ADR-075](#adr-075--site-institucional-na-raiz-e-contato-público-que-chega-ao-telegram-do-dono-emenda-ao-adr-073) | Site institucional na raiz e contato público que chega ao Telegram do dono: emenda ao ADR-073 (item 29.77) | proposto (Portal, 04/10; site e contato desligados) | 04/10 |
 | [ADR-077](#adr-077--um-caminho-só-de-ensino-o-modo-treinamento) | Um caminho só de ensino: o Modo treinamento (item 31.91) | aceito (dono, 05/10; F2 e a tela do F1 implementados) | 05/10 |
+| [ADR-078](#adr-078--o-ensino-v2-sai-em-dois-tempos-obsoleto-e-contado-agora-apagado-depois-de-14-dias-sem-uso) | O ensino v2 sai em dois tempos: obsoleto e contado agora, apagado depois de 14 dias sem uso (item 31.91, T1 e T2) | aceito (orquestradora, 06/10; T1 implementado) | 06/10 |
 
 ---
 
@@ -5525,3 +5526,52 @@ aparecem e morrem, porque não há onde respondê-las; só o ensino v2 sabia fec
 
 **Relação.** [api-contract.md](api-contract.md) adendo v1.63; `backend/app/training/skills.py`,
 `backend/app/training/respostas.py`, `backend/app/planning/training.py`, `backend/app/training/generalizer.py`.
+
+## ADR-078 — O ensino v2 sai em dois tempos: obsoleto e contado agora, apagado depois de 14 dias sem uso
+
+**Data:** 06/10/2026 · **Estado:** aceito (orquestradora, 06/10/2026, sobre a proposta da frente do item 31.91). T1
+implementado e provado `simulated`; T2 é o item 31.115, ainda fora do plano. Cumpre o [ADR-077](#adr-077--um-caminho-só-de-ensino-o-modo-treinamento).
+
+**Contexto.** O ADR-077 fixou um caminho só de ensino, o Modo treinamento, e escondeu a tela do ensino v2 atrás de chave.
+Sobrou o que fazer com o código e com os dados do ensino v2. Fatos medidos no ambiente central em 06/10 (só leitura):
+
+| | Modo treinamento (v1) | Ensino v2 |
+|---|---|---|
+| Sessões | 11 `training_sessions` | 1 `teaching_session`, parada em `asking` desde 27/09 |
+| Resultado | 70 fluxos (5 vindos de treino) e 204 receitas | 1 habilidade publicada |
+| Código | o caminho de produto | ~1610 linhas no backend (`skills/application/teaching.py`, `skills/domain/teaching.py`, `skills/domain/generalization.py`, `skills/infrastructure/sql_teaching_repository.py`), 12 rotas e 2 telas (`TeachingPanel`, `CorrigirEtapa`) |
+
+**Regra do dono (05/10/2026):** "caminho único de ensino, sem redundância". Apagar de imediato, porém, é irreversível e
+o ensino v2 ainda é chamável por quem tiver o endereço das rotas; não há medida de que ninguém o use.
+
+**Decisão.** Dois tempos, com a medida entre eles.
+
+- **T1 (agora, item 31.91):** as 12 rotas `/api/teaching-sessions*` e `/api/skill-candidates*` ficam **obsoletas**
+  (`deprecated` no OpenAPI) e **contadas**: cada chamada soma em `settings["ensino_v2.chamadas"]` (total, início, última,
+  por molde de rota; nunca id, corpo nem operador) e o resumo sai em `GET /api/health`, `features.ensino_v2_chamadas`.
+  O contador é persistido para o deploy não zerar a medição, não conta chamada recusada por `skills_disabled` e nunca
+  derruba a rota que conta. A chave `skills.ensino_v2_na_tela` segue desligada por padrão. Responde igual a antes.
+- **T2 (item 31.115):** com **14 dias seguidos em que `total` não passou de zero** (depois do deploy do T1), apaga-se o código
+  do ensino v2 que não é camada interna do Modo treinamento e as duas telas (a tela é da frente Portal). O resolvedor de
+  intenção, a validação estática e o laço de perguntas e respostas continuam, como camada interna, conforme o ADR-077; o que
+  ainda depender do código apagado migra antes. Os dados e o apagamento das tabelas `teaching_*` **não** entram no T2 sem o
+  sim do dono: a pergunta vai como cartão pelo canal dele, no dia em que a medida fechar.
+
+**O que fica:** `skill_definitions`/`skill_versions`, o `SkillRunPlanner` (backend de execução de uma habilidade), `/api/skills`
+e a conversão de fluxo; todas as linhas de `flows` e `recipes`; as tabelas `teaching_*` até a decisão do dono.
+**O que sai (T2):** as 12 rotas, o serviço, o domínio e o repositório do ensino, as duas telas e seus testes.
+**O que migra:** o que o Modo treinamento já usa do ensino v2 (F2 do ADR-077) e a validação estática no salvar (F3, coberta
+pelas fatias 31.83, 31.96, 31.99 e 31.100). **F4 do ADR-077 (versionar a habilidade por adoção) está fora.**
+A sessão de ensino v2 parada em `asking` desde 27/09 é **descartada** (`POST /api/teaching-sessions/{id}/discard`, só
+estado, reversível por não apagar linha); isso soma uma chamada ao contador, registrada como a de abertura da medição.
+
+**Consequências.**
+
+- A medida de uso deixa de ser opinião: 14 dias de `total: 0` autorizam o T2, e qualquer chamada reinicia a conversa.
+- O OpenAPI avisa quem integra que as rotas vão sair; o painel não as chama com a tela desligada.
+- Reverter o T1 é tirar a marca e o contador de 12 decoradores; nenhum dado muda.
+- Nenhuma migração: a medição vive em `settings`.
+
+**Relação.** [ADR-077](#adr-077--um-caminho-só-de-ensino-o-modo-treinamento); [dominios/skills.md](dominios/skills.md);
+`backend/app/modules/skills/infrastructure/contador_do_ensino_v2.py`, `backend/app/modules/skills/presentation/router.py`,
+`backend/app/state.py` (`features.ensino_v2_chamadas`); teste `backend/tests/test_ensino_v2_obsoleto.py`.

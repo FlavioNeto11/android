@@ -348,7 +348,7 @@ export async function loadRunDetail(runId: string | null, opts: { silent?: boole
 /** Campos opcionais do resumo que o detalhe também traz: a linha da lista é TROCADA pelo resumo quando o detalhe
  *  chega, e sem eles abrir uma execução apagava o selo de origem (30.38) e a prova de fluxo da linha. */
 const OPCIONAIS_DO_RESUMO: readonly (keyof RunSummary)[] = [
-  'app_ids', 'pedido_id', 'ocorrencia_id', 'prova_fluxo_id', 'origem', 'origem_ref',
+  'app_ids', 'pedido_id', 'ocorrencia_id', 'prova_fluxo_id', 'origem', 'origem_ref', 'costs',
 ];
 
 export function summaryOf(detail: RunSummary): RunSummary {
