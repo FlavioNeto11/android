@@ -10,7 +10,7 @@ import { Page } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { cx, formatInt, formatUsd4 } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
-import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
+import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
 import { formatClock } from '../../lib/time';
 import { toast, toastError } from '../../store/toasts';
@@ -216,8 +216,8 @@ function CustoEAssunto({ op }: { op: Operacao }) {
     <section aria-label="Custo e assunto" className={styles.faixa}>
       {custo || teto !== null ? (
         <p className={styles.objetivo}>
-          {custo ? <>Custo de IA <strong>{formatUsd4(custo.total_usd)}</strong>{teto !== null ? <> de um teto de {formatUsd4(teto)}</> : null}
-            {' '}<span className={styles.mudo}>(pesquisa {formatUsd4(custo.pesquisa_usd)} · agentes {formatUsd4(custo.alvos_usd)})</span></>
+          {custo ? <>Custo de IA <strong>{custo.total_usd === null ? 'total não informado' : formatUsd4(custo.total_usd)}</strong>{teto !== null ? <> de um teto de {formatUsd4(teto)}</> : null}
+            {' '}<span className={styles.mudo}>(pesquisa {custo.pesquisa_usd === null ? 'não informada' : formatUsd4(custo.pesquisa_usd)} · agentes {custo.alvos_usd === null ? 'não informado' : formatUsd4(custo.alvos_usd)})</span></>
             : <>Teto de custo de IA {formatUsd4(teto ?? 0)}</>}
         </p>
       ) : null}
@@ -293,6 +293,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
               <Button size="sm" variant="danger" loading={cancelando} disabledReason={motivoSemCancelar} onClick={() => void cancelar()}>Cancelar a operação</Button>
             </>
           )}>
+      {erro ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {op.exemplo ? AVISO_DE_EXEMPLO : null}
       {abrirRelatorio ? <RelatorioDaOperacao op={op} onFechar={() => setAbrirRelatorio(false)} /> : null}
       {abrirLiberar ? (
@@ -360,6 +361,7 @@ function ListaDeOperacoes() {
   const itens: ResumoDaOperacao[] = dado?.itens ?? [];
   return (
     <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim.">
+      {erro && dado ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {dado?.exemplo ? AVISO_DE_EXEMPLO : null}
       {itens.length === 0 ? (
         <EmptyState icon={Workflow} title="Nenhuma operação ainda" hint="Quando uma operação for criada, ela aparece aqui, da mais nova para a mais antiga." />

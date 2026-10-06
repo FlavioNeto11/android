@@ -256,6 +256,51 @@ describe('com a rota no central', () => {
     expect(celulas).toEqual(['US$ 0,0123', 'US$ 0,5000', '—']);
   });
 
+  it('uma recarga que falha depois de uma carga boa mantém a operação, MOSTRA o erro e deixa tentar de novo', async () => {
+    let falhar = false;
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => (falhar ? apiError(500, 'erro_interno', 'quebrou') : json(OPERACAO)));
+    backend.on('POST', /^\/api\/operacoes\/op-1\/cancelar$/, () => { falhar = true; return json({ ...OPERACAO, status: 'cancelada' }); });
+    await ir(['op-1']);
+    await waitFor(() => expect(linhas()).toHaveLength(2));
+    expect(text(container)).not.toContain('Mostrando a última leitura');
+    await click(byRole('button', /^Cancelar a operação/, container));
+    const d = await waitFor(() => byRole('dialog', /Cancelar a operação\?/));
+    await click(byRole('button', /^Cancelar a operação$/, d));
+    await waitFor(() => expect(text(container)).toContain('Mostrando a última leitura'));
+    expect(linhas()).toHaveLength(2);                                  // a leitura anterior segue na tela, avisada como velha
+    falhar = false;
+    await click(byRole('button', /Tentar de novo/, container));
+    await waitFor(() => expect(text(container)).not.toContain('Mostrando a última leitura'));
+  });
+
+  it('a lista sem `items` (formato inesperado) é erro de leitura, não "Nenhuma operação ainda"', async () => {
+    backend.on('GET', /^\/api\/operacoes$/, () => json({ itens: [] }));
+    await ir([]);
+    await waitFor(() => expect(text(container)).toContain('Não foi possível'));
+    expect(text(container)).not.toContain('Nenhuma operação ainda');
+  });
+
+  it('a operação sem a lista de alvos é erro de leitura, não "0 agentes"', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, alvos: undefined }));
+    await ir(['op-1']);
+    await waitFor(() => expect(text(container)).toContain('Não foi possível'));
+    expect(linhas()).toHaveLength(0);
+    expect(allByRole('button', /^Relatório$/, container)).toHaveLength(0);
+  });
+
+  it('custo parcial: a parte que falta aparece como "não informada", nunca como US$ 0,0000', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, custo: { total_usd: 0.03 } }));
+    await ir(['op-1']);
+    const faixa = await waitFor(() => {
+      const e = container.querySelector('section[aria-label="Custo e assunto"]');
+      if (!e) throw new Error('a faixa de custo ainda não apareceu');
+      return e as HTMLElement;
+    });
+    expect(text(faixa)).toContain('US$ 0,0300');
+    expect(text(faixa)).toContain('pesquisa não informada · agentes não informado');
+    expect(text(faixa)).not.toContain('0,0000');
+  });
+
   it('sem custo, teto, assunto nem fontes a faixa não aparece', async () => {
     backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, custo: undefined, max_usd: undefined, assunto: undefined, fontes: undefined }));
     await ir(['op-1']);

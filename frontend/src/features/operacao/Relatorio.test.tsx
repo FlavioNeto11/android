@@ -95,6 +95,15 @@ describe('montarRelatorio', () => {
     expect(relatorioEmMarkdown(sem)).toContain('Total:** não informado');
   });
 
+  it('custo parcial: a parte que falta fica nula (não informado), nunca zero, no JSON e no Markdown', () => {
+    const parcial = montarRelatorio(lerOperacao({ ...BRUTA, custo: { total_usd: 0.97 } })!);
+    expect(parcial.custo).toEqual({ pesquisa_usd: null, alvos_usd: null, total_usd: 0.97, teto_usd: 4.5 });
+    const md = relatorioEmMarkdown(parcial);
+    expect(md).toContain('Pesquisa externa: não informado');
+    expect(md).toContain('- Agentes: não informado');
+    expect(lerOperacao({ ...BRUTA, custo: {} })!.custo).toBeNull();
+  });
+
   it('sem a lista de estágios (backend antigo), o último estágio e os anteriores contam, sem hora', () => {
     const antigo = montarRelatorio(lerOperacao({ id: 'o', alvos: [{ profile_id: 'p', persona_nome: 'Persona 09', estagio: 'conta', estado: 'bloqueado', motivo: 'sem sessão' }] })!);
     expect(antigo.agentes[0]!.estagios.filter((e) => e.alcancado).map((e) => e.estagio)).toEqual(['persona', 'conta']);
