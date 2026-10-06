@@ -274,6 +274,9 @@ class EntradaDoLivro:
     #: que fica todo no `app`. O `app` continua o principal (onde rodam as etapas sem app próprio): por ele se leem o
     #: modo do pacote, o rótulo QA/PRODUTO e o `scope_app` da revisão; quem agrupa ou filtra por app usa `apps_do_item`.
     apps: tuple[str, ...] = ()
+    #: 31.143: o fluxo nasceu de uma prova (`flows.nascido_de_prova`, 31.130), não de uso real. Só o fluxo tem a marca;
+    #: os outros tipos ficam `False`. É o dado do selo e do filtro "Prova" da lista (31.131).
+    nascido_de_prova: bool = False
 
     @property
     def requires_owner(self) -> bool:

@@ -1098,7 +1098,7 @@ campo.
 | `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
 | `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[], scope_on_proof?}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo); 400 `pos_condicao_ja_vale` quando a `text_visible` ou a `element_present` de uma etapa já vale na tela em que ela começa (31.122, adendos v1.83 e v1.86, com `pos_condicoes_ja_valem`); etapa da proposta aceita `independente: bool` (31.127, adendo v1.85) |
-| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason, pacotes_aceitos}], warnings, pos_condicoes_ja_valem}`, sem gravar nada (v1.58, v1.86, v1.89) |
+| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason, pacotes_aceitos}], warnings, pos_condicoes_ja_valem, code, message}`, sem gravar nada; o comando repetido vem em `code: duplicate_command` num 200 (v1.58, v1.86, v1.89, v1.91) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
 | `POST /api/training/from-run` | `TrainingDeFalhaBody {run_id, step_id, lease_id, intent?, app_id?, profile_id?}` | `TrainingSession` (201) com `origin {run_id, step_id, step_key, attempt_id, motivo}`: abre o ensino a partir de uma etapa que falhou (31.111 F1 e F2, adendo v1.75); 404 `step_not_found`, 409 `step_not_failed` e as recusas de `POST /instances/{id}/training` |
@@ -7116,3 +7116,43 @@ respondem `404`, mesmo com credencial. O resto de `/api/workers*` não muda.
 Eventos novos: `worker.comando` (pedido, recusa e desfecho; `data` com a linha redigida, até 500 caracteres, e sem a
 saída), `worker.comando.interruptor` e `worker.comando.cancelamento`.
 
+## Adendo v1.91 (06/10/2026; número da orquestradora; item 31.142) — sugestão de pós-condição pronta e prévia com o comando repetido
+
+Achados da prova F2 (06/10, `trn-YjYU8iobj_V42xXx`, deploy 51). A única sugestão era "Back", a descrição do botão
+voltar, sem texto. Trocar só o valor de um `element_present` deixaria o seletor puro "Back", que só olha o texto, e a
+etapa nunca passaria. E a prévia parava no 409 `duplicate_command`, escondendo as pós-condições que já valem e os
+avisos até a pessoa trocar o comando.
+
+- **`pos_condicoes_ja_valem[]`** (prévia e `detail` do 400 `pos_condicao_ja_vale` do `save`, v1.86): cada entrada ganha
+  `sugestoes_prontas: [{kind, value, texto}]`, na mesma ordem de `sugestoes`, que fica igual. É a pós-condição inteira
+  que o botão da revisão aplica, `kind` e `value` juntos:
+  - com a pós-condição original `text_visible`, `{kind: "text_visible", value: <texto>}`, porque o verificador lê texto
+    e descrição;
+  - com `element_present`, `{kind: "element_present", value: "text==<texto>"}` ou `"desc==<texto>"`, pelo campo em que o
+    texto está na tela seguinte;
+  - sem achar o elemento (a linha veio só das `screen_lines`), ou com `|` no texto, `text_visible`.
+
+  `texto` é o rótulo do botão. O dado da persona vira o marcador em `value` e `texto`, como em `sugestoes`.
+- **`POST /api/training/{session_id}/preview`**: o comando repetido não é mais 409. A resposta é 200, com:
+  - `code: "duplicate_command"` e `message`, a mesma frase do 409 do `save`;
+  - a mesma frase como 1ª linha de `warnings`;
+  - `steps`, `pos_condicoes_ja_valem` e `scope` como sempre.
+
+  Sem recusa, `code` e `message` são `null`. As outras recusas da prévia (400 da proposta, 409 `closed`) não mudam. O
+  `save` segue com o 409 `duplicate_command`.
+- **Prova:** `simulated` (`backend/tests/test_sugestao_pronta_e_previa_com_recusa.py`); `real`: `not_run` (o botão é da
+  Portal, no 31.128, corte 53).
+
+## Adendo v1.92 (06/10/2026; número da orquestradora; item 31.143) — `nascido_de_prova` na lista do Livro
+
+Achado do percurso 52 da Portal: a marca do 31.130 só saía em `conteudo.origem` do detalhe do fluxo. O selo e o filtro
+"Prova" da lista (31.131) ficavam sem dado.
+
+- **`Entrada` do livro** (cada elemento de `itens[]` em `GET /api/aprendizado`, `/pendentes` e `/revisar`, e o `item` de
+  `GET /api/aprendizado/{kind}/{ref}`): ganha `nascido_de_prova: bool`, sempre presente. Só o fluxo tem a marca
+  (`flows.nascido_de_prova`, migração 122); os outros tipos vêm `false`.
+- **`GET /api/aprendizado?nascido_de_prova=true|false`**: com `true`, só os itens com a marca; com `false`, o resto, os
+  outros tipos inclusive. Sem o parâmetro, tudo. Soma com os outros filtros (`kind`, `state`, `app`, `origem`,
+  `rotulo`) e entra antes da contagem: `total` e `contagem` já vêm filtrados. Valor inválido dá 422, como nos outros
+  filtros.
+- **Prova:** `simulated` (`backend/tests/test_livro_nascido_de_prova.py`); `real`: `not_run`.
