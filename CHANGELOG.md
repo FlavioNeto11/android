@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.90-D (painel): "Desfazer a última" na barra de gravação (branch feat/31-90-d-painel-desfazer)
+
+- Só frontend, contra o adendo v1.70 (`POST /api/training/{id}/undo`, já no deploy 43): a barra do Modo treinamento ganha o
+  botão "Desfazer a última", só no ramo da gravação de quem tem o controle (quem só olha e a gravação órfã não o veem).
+  Manda o `lease_id` e o `seq` da última entrada que a tela mostra; a resposta já é a sessão sem ela, e o número desfeito
+  é reaproveitado pela próxima entrada (nada se guarda por `seq`). O aparelho não volta, só a gravação, e o aviso diz isso.
+- Recusas (`entrada_mudou`, `control_required`, `nao_esta_gravando`, `sem_entrada`): o aviso mostra a mensagem do backend e a barra
+  relê a gravação, então a última passa a ser a de verdade; nada se apaga. Sem entrada ou sem lease o botão diz o motivo;
+  enquanto o desfazer corre, Concluir e Descartar explicam que esperam.
+- Prova `simulated`: `TrainingBar.test.tsx` (6 testes novos, fetch falso; 3 mutações pegas: `seq` fixo, sem reler na recusa,
+  sem o motivo no Concluir); frontend inteiro, typecheck e build com os números do commit. `real`: `not_run` (o percurso do deploy 43
+  provou a revisão, mas o desfazer da gravação viva ainda não foi exercitado no aparelho; depende de deploy com este painel).
+
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e
