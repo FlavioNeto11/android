@@ -10,6 +10,7 @@ import type {
   OperationalContext,
   Worker,
   WorkerDeviceProposal,
+  ComandoRemoto, ComandoRemotoInterruptor, ComandoRemotoPedido,
   WorkerEnrollment,
   Approval,
   ApprovalBatchResult,
@@ -591,6 +592,20 @@ export const api = {
   worker: (id: string) => request<Worker>('GET', `/workers/${enc(id)}`),
   enrollWorker: (label?: string) =>
     request<WorkerEnrollment>('POST', '/workers/enroll', { body: label ? { label } : {} }),
+  /** Comando remoto (29.154): só com sessão nomeada de operador; 404 no host público. */
+  comandoRemoto: (workerId: string) =>
+    request<ComandoRemotoInterruptor>('GET', `/workers/${enc(workerId)}/comando-remoto`),
+  comandoRemotoLigar: (workerId: string, ligado: boolean) =>
+    request<ComandoRemotoInterruptor>('PUT', `/workers/${enc(workerId)}/comando-remoto`, { body: { ligado } }),
+  comandosRemotos: (workerId: string, limite = 50) =>
+    request<{ items: ComandoRemoto[] }>('GET', `/workers/${enc(workerId)}/comandos`, { query: { limite } }),
+  comandoRemotoLer: (workerId: string, id: string) =>
+    request<ComandoRemoto>('GET', `/workers/${enc(workerId)}/comandos/${enc(id)}`),
+  comandoRemotoPedir: (workerId: string, pedido: ComandoRemotoPedido) =>
+    request<{ id: string; worker_id: string; state: string; created_at: string }>(
+      'POST', `/workers/${enc(workerId)}/comandos`, { body: pedido }),
+  comandoRemotoCancelar: (workerId: string, id: string) =>
+    request<ComandoRemoto>('POST', `/workers/${enc(workerId)}/comandos/${enc(id)}/cancelar`),
   workerMaintenance: (id: string, on: boolean) =>
     request<Worker>('POST', `/workers/${enc(id)}/maintenance`, { body: { on } }),
   removeWorker: (id: string, force = false) =>

@@ -795,7 +795,7 @@ adendo v0.20 de [`api-contract.md`](api-contract.md) (C6 e C7). ADR-027.
 
 ## Comando remoto (29.154, ADR-079)
 
-**Estado:** fatia 1 no código, provada `simulated`; **desligado** em todos os lados. `real`: `not_run`. Decisão e riscos aceitos no
+**Estado:** fatias 1 (agente, central, rotas) e 2 (terminal no painel) no código, provadas `simulated`; **desligado** em todos os lados. `real`: `not_run`. Decisão e riscos aceitos no
 [ADR-079](decisoes.md#adr-079--comando-remoto-nos-notebooks-da-rede-um-módulo-de-controle-desligado-de-fábrica).
 
 O agente executa UMA linha de comando (ou um `argv`) na máquina dele, a pedido do central, e devolve saída, erro e
@@ -814,6 +814,10 @@ código de saída. É por máquina, não por aparelho: tem mensagens próprias (
    `worker.comando`.
 
 Desligar é qualquer um dos três interruptores; o painel é o mais rápido (vale ao vivo).
+
+**No painel** (Infraestrutura, cartão do worker remoto, seção *Comando remoto*): os três interruptores e o estado da
+negociação, o botão de ligar e desligar o do worker, o terminal (linha, pasta, prazo, Executar, Cancelar) e o histórico
+dos últimos 50 comandos; a saída aparece em bloco monoespaçado, já redigida, com o aviso quando foi cortada.
 
 **Regras que valem sempre:** só sessão nomeada (o token compartilhado e o loopback sem sessão recebem 401); 404 no host
 público do portal; linha com cara de credencial é recusada (422 `linha_com_credencial`) e o texto não é guardado; saída

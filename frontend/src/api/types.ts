@@ -1521,6 +1521,47 @@ export interface Worker {
 
 export interface WorkerEnrollment { enrollment_token: string; expires_in_s: number }
 
+/** Comando remoto (29.154, ADR-079): o estado dos três interruptores de um worker e o que o agente negociou. */
+export interface ComandoRemotoInterruptor {
+  worker_id: string;
+  /** `comando_remoto.ativo` do config do central (vale na subida). */
+  central_ativo: boolean;
+  /** O interruptor deste worker no painel (ao vivo). */
+  worker_ligado: boolean;
+  /** O `worker.yaml` dele anuncia a feature `remote_exec`. */
+  agente_anuncia: boolean;
+  /** Os três juntos: só com isso um comando é aceito. */
+  negociado: boolean;
+  /** O central não entra: é a máquina do dono. */
+  e_o_central: boolean;
+}
+
+export type EstadoDoComando =
+  'created' | 'dispatched' | 'running' | 'succeeded' | 'failed' | 'timed_out' | 'cancelled' | 'uncertain' | 'rejected';
+
+/** Um comando remoto. `linha` é a REDIGIDA; `stdout`/`stderr` só vêm no detalhe e já saem redigidos e cortados. */
+export interface ComandoRemoto {
+  id: string;
+  worker_id: string;
+  requested_by: string;
+  modo: 'linha' | 'argv';
+  linha: string;
+  pasta: string | null;
+  timeout_s: number;
+  state: EstadoDoComando;
+  exit_code: number | null;
+  stdout?: string;
+  stderr?: string;
+  truncated: boolean;
+  duration_ms: number | null;
+  reason: string | null;
+  created_at: string;
+  dispatched_at: string | null;
+  finished_at: string | null;
+}
+
+export interface ComandoRemotoPedido { linha: string; pasta?: string; timeout_s?: number; idempotency_key?: string }
+
 /** O que `POST /instances/{id}/actions/{action}` devolve agora: algo para ACOMPANHAR, não uma promessa. */
 export interface CommandAccepted {
   command_id: string; state: CommandState; deduplicated: boolean;

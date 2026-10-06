@@ -27,6 +27,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_canais_anexos.py` 103 passed (10 testes novos: nome no multipart, 10 nomes recusados, binário e imagem com nome recusados, `enviar_conteudo` com nome, domínio, `.txt` com e sem achado, foto ignorada, legenda segue a gramática); dirigidos de canais, Telegram, arquitetura e catracas 632 passed; catracas 88; Trello leitor e webhook 78; mypy 257 no teto; docs-check 0. Doc: `docs/dominios/canais.md`; aprendizado K-105.
 - `not_run`: prova real (um envio com nome e uma recepção com o dono, só depois do deploy do corte 53).
 
+## 2026-10-06 — 29.154 fatia 2: o terminal do comando remoto na Infraestrutura (branch feat/29-154-comando-remoto-f2)
+
+- No cartão de cada worker remoto, a seção **Comando remoto** (recolhida; nada é consultado até abrir) mostra os três
+  interruptores (central, worker, agente) e se a feature foi negociada, liga e desliga o do worker (o ligar pede
+  confirmação), e tem o terminal: linha, pasta opcional e prazo (1 a 600 s), Executar e Cancelar, a saída em bloco
+  monoespaçado com o aviso de segredo mascarado e de corte, e o histórico dos últimos 50 (estado, código, duração, quem
+  pediu). Consulta o comando a cada 2 s até o fim; sem rolagem ao vivo.
+- Parado, o botão Executar diz o primeiro interruptor desligado; as recusas do central (sem sessão nomeada, linha com
+  credencial, fila cheia, limite por minuto) viram texto, não código. O central fica de fora (a máquina é do dono).
+- **Prova:** `simulated` (`frontend/src/features/infra/TerminalDoWorker.test.tsx`, 11 testes com o backend falso;
+  frontend inteiro 145 arquivos e 1865 testes, typecheck e build ok). `real`: `not_run` (falta o percurso no navegador
+  depois do deploy e o sim do dono para ligar; o comando remoto segue desligado de fábrica).
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
