@@ -7304,6 +7304,30 @@ Migração `127_operacoes_parametros` (`operacoes.parametros`, só `ADD COLUMN`)
 `RunService._plano_da_operacao`, `backend/app/modules/operacoes/`. Testes: `backend/tests/test_plano_da_operacao.py`,
 `backend/tests/test_operacoes.py`, `backend/tests/test_migracao_127.py`.
 
+## Adendo v1.102 (06/10/2026; número da orquestradora; item 31.180) — as amostras do host
+
+`GET /api/host/amostras?horas=N` (só leitura, atrás do login; `N` de 1 a 168, padrão 24). Ela lê o CSV diário do
+amostrador permanente do host (29.156, `scripts/amostrador-host.ps1`, um arquivo por dia UTC em
+`<data_dir>/observabilidade/host/AAAAMMDD.csv`) e devolve as amostras das últimas `N` horas, da mais antiga à mais nova. O formato é o contrato do painel do Portal
+(`frontend/src/features/host/contratoDoHost.ts`):
+
+```json
+{"items": [{"ts_utc": "2026-10-06T22:39:00Z", "cpu_host_pct": 41.5, "vm_convidado_nucleos": 2.25, "vmmem_ws_mb": 5120,
+            "qemu_host_pct": 30.2, "ram_livre_mb": 8192, "disco_livre_gb": 120.5,
+            "processos_top": [{"nome": "python", "pct": 12.3}],
+            "avisos_pressao": [{"instance_id": "android-05", "n": 3}]},
+           {"ts_utc": "2026-10-06T22:40:00Z", "erro": "IOException"}]}
+```
+
+- Uma medida vazia no CSV vira `null`. Um par malformado em `processos_top` ou em `avisos_pressao` fica de fora.
+- A linha de falha do amostrador (`ts,erro,<tipo>`) vira `{ts_utc, erro}`, com o tipo da exceção.
+- Sem CSV dos dias da janela: 404 `{"code": "sem_amostras"}`. Com o arquivo e sem linha na janela: 200 com
+  `items: []`.
+- A resposta não leva nome de máquina nem caminho. Os nomes de processo são só o nome, como o amostrador os grava.
+
+Código: `backend/app/modules/fleet/infrastructure/amostras_do_host.py`,
+`backend/app/modules/fleet/presentation/host.py`. Teste: `backend/tests/test_amostras_do_host.py`. A tela é do Portal.
+
 ## Adendo v1.104 (06/10/2026; número da orquestradora; item 31.173) — a sessão na operação
 
 - `AlvoDaOperacao.sessao_verificada_em` (string ou `null`): a última verificação, na tela, da sessão da conta do alvo

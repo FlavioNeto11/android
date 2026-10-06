@@ -65,6 +65,7 @@ from .modules.execution.presentation.router import router as execucoes_router
 from .modules.applications.presentation.releases import router as releases_router
 from .modules.fleet.presentation.workers import router as workers_router
 from .modules.fleet.presentation.rede import router as rede_router
+from .modules.fleet.presentation.host import router as host_router
 from .modules.fleet.presentation.instancias import router as instancias_router
 from .modules.identity.presentation.personas import router as personas_router
 from .modules.identity.presentation.instagram import router as instagram_router
@@ -402,6 +403,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
         app.include_router(releases_router)      # `/api/releases*` (15.15 F4d): saiu de `api.py`, no mesmo lugar do `router`
         app.include_router(workers_router)       # `/api/workers*` e `/api/servers/*/limits` (15.15 F4e): saíram de `api.py`, no mesmo lugar do `router`
         app.include_router(rede_router)          # `/api/network/*` (15.15 F4f): saíram de `api.py`, no mesmo lugar do `router`
+        app.include_router(host_router)          # `/api/host/amostras` (31.180): a série do amostrador do host, só leitura
         app.include_router(instancias_router)    # `/api/instances*` (15.15 F4g): saíram de `api.py`, no mesmo lugar do `router`
         app.include_router(personas_router)      # `/api/personas*` (15.15 F4h): saíram de `api.py`, no mesmo lugar do `router`
         app.include_router(instagram_router)     # `/api/instagram/*` (15.15 F4i): saíram de `api.py`, no mesmo lugar do `router`

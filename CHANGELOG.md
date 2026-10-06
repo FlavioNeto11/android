@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.180: as amostras do host pela API (branch feat/31-180-amostras-do-host, corte 59)
+
+- `GET /api/host/amostras?horas=` (só leitura, adendo v1.102) lê o CSV diário do amostrador do host (29.156) e devolve
+  as amostras das últimas N horas: CPU, VM do WSL, qemu, RAM, disco, os 3 processos do topo e os avisos de pressão por
+  aparelho.
+- Sem CSV, dá 404 `sem_amostras`. A resposta não leva nome de máquina nem caminho.
+- A tela é do Portal.
+- Prova `simulated`: `backend/tests/test_amostras_do_host.py`, com o CSV falso, a janela na virada do dia, a linha de
+  falha e a rota com 200, 404 e 422.
+
 ## 2026-10-06 — 31.174: pool elegível para operação, adendo v1.105 (branch feat/31-174-pool-elegivel, corte 58, sobre o 31.173)
 
 - `GET /api/operacoes/elegiveis?app_id=` mostra quem pode ser alvo agora. É só leitura: nada é criado nem despachado.
