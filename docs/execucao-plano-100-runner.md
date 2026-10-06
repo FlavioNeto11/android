@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-661 de 710 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+660 de 717 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -434,7 +434,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.123 | implemented | simulated | claude-opus-5-5 | — | #420, ponta f87ec674. Simulado: backend/tests/test_readocao_sem_log_antigo.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQ… | None |
 | 29.124 | implemented | simulated | claude-opus-5-5 | — | #433, ponta 056b14af. A partida do deploy 38 subiu sem kill do supervisor (o deploy deu ok). Simulado: backend/tests/test_supervisor_partida.py::*, backend/tests/test_vigia_do_laco.py::*. Suíte 38 sobre a integração 86a… | None |
 | 29.125 | implemented | simulated | claude-opus-5-5 | — | #435, ponta eb92cdfa. Simulado: backend/tests/test_supervisao_do_central.py::*, backend/tests/test_supervisor_partida.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP,… | None |
-| 29.126 | implemented | simulated | sonnet-5.5 | — | Conferido no código de c0d2fd5f (06/10/2026 16:03Z), sem mudança nova: a readoção do Appium que o 29.126 pede já foi consertada pelo 29.132 e pelo 29.138 (CHANGELOG de 05/10, branch fix/29-131-sobras-supervisor-readocao… | Prova real da readoção sob carga (reinício do central com o Appium vivo e o disco saturado) fica not_run; só se o dono autorizar o reinício em condição de carg… |
+| 29.126 | partial | simulated | sonnet-5.5 | — | Readoção do Appium coberta por 29.132/29.138 (dono da porta antes do PID gravado, órfão nosso sem máscara trocado, externo se um dono alheio escuta). ACHADO do revisor-segredos em 06/10 (Jev): `log_masking_active` só é… | Ponta da correção com revisor-segredos; prova real da readoção sob carga pede reinício com carga (Android). |
 | 29.127 | implemented | simulated | claude-opus-5-5 | — | #441, ponta 044bd2f8, sobre o #420. Simulado: backend/tests/test_readocao_marco.py::*, backend/tests/test_readocao_sem_log_antigo.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7… | None |
 | 29.128 | implemented | simulated | claude-opus-5-5 | — | Ramo da Portal, ponta 8b847e2b. Simulado: frontend/src/features/profiles/AcoesEmLote.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e… | None |
 | 29.129 | implemented | simulated | claude-opus-5-5 | — | Ramo da Portal, ponta 6e746a5e. Simulado: frontend/src/test/esperas.test.ts::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, cen… | None |
@@ -471,6 +471,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.161 | partial | real | misto | — | Parte 1 em 06/10 14:03Z (sessão Frente Hardware, só leitura, central 360d133a): central Core Ultra 9 185H (22 threads), 64 GB nos 2 slots, NVMe 1 TB com 140 GB livres, RTX 2000 Ada, emuladores em WHPX com -gpu host; not… | Falta: coleta no notebook (P-019, SIM do dono 14:01Z, script hardware-coleta-notebook.ps1), preços, porte de SO e degraus 0-3. |
 | 29.162 | pendente | — | — | — |  |  |
 | 29.163 | pendente | — | — | — |  |  |
+| 29.164 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -700,6 +701,12 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.139 | implemented | real | misto | — | 06/10 15:12-15:18Z, central cdee6620 (deploy 52, migração 123), android-04 com controle none conferido por /api/instances às 15:12Z, persona de teste, só no Configurações, texto wifi. Sessão trn-njNBypJ7vD5u9y6Q (aberta… |  |
 | 31.140 | implemented | real | misto | — | 06/10 15:12-15:18Z, central cdee6620 (deploy 52, migração 123), android-04 com controle none conferido por /api/instances às 15:12Z, persona de teste, só no Configurações, texto wifi. Sessão trn-njNBypJ7vD5u9y6Q (aberta… |  |
 | 31.141 | implemented | real | misto | — | Central cdee6620: Livro, fluxo f-760f95b8e930 mostra 'Também aceita concluir em: com.google.android.settings.intelligence' em duas etapas. No ar desde o deploy 52 (cdee6620, 15:08Z). |  |
+| 31.142 | pendente | — | — | — |  |  |
+| 31.143 | pendente | — | — | — |  |  |
+| 31.144 | pendente | — | — | — |  |  |
+| 31.145 | pendente | — | — | — |  |  |
+| 31.146 | pendente | — | — | — |  |  |
+| 31.147 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -717,7 +724,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (49): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.57, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.145, 29.152, 29.154, 29.155, 29.156, 29.159, 29.160, 29.161, 29.162, 29.163, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (57): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.57, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.145, 29.152, 29.154, 29.155, 29.156, 29.159, 29.160, 29.161, 29.162, 29.163, 29.164, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 31.142, 31.143, 31.144, 31.145, 31.146, 31.147, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
