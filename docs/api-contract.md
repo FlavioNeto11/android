@@ -7457,3 +7457,18 @@ motivo do não.
 - `404 app_desconhecido`: o app não está cadastrado. `422`: `app` ausente.
 - **Prova:** `simulated` (`backend/tests/test_alcance_por_persona.py`). `real`: `not_run`, pede o deploy.
 
+## Adendo v1.109 (07/10/2026; número da orquestradora; item 31.183) — a proposta do ensino para exibir
+
+`GET /api/training/{id}` ganha `proposal_exibicao`, uma cópia da `proposal` só para exibir:
+
+- todo dado da persona vira o marcador `{nome}`, sem diferença de caixa, também depois do @ e com qualquer espaço;
+- vale em título, objetivo, resumo, comando, perguntas e conferência;
+- os identificadores ficam como estão: `key`, `capability`, `app_id`, `kind`, `name`, `inputs`, `seq` e as marcas de
+  etapa;
+- sem proposta, ou sem persona, a cópia é igual à `proposal`.
+
+A `proposal` não muda: é ela que o painel devolve na prévia e no salvar. Limite: o valor só é trocado inteiro. As outras
+respostas que trazem a sessão não levam o campo. O painel passa a exibir a cópia no 31.189 (Portal).
+
+**Prova:** `simulated` (`backend/tests/test_proposta_para_exibir.py`). `real`: `not_run`, pede o deploy.
+

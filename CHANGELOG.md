@@ -30,7 +30,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - em título, objetivo, resumo, comando, perguntas e conferência;
   - os identificadores (`key`, `capability`, `app_id`) ficam.
 - A `proposal` não muda: o painel a devolve na prévia e no salvar. Limite: casa o valor inteiro. O painel passa a
-  exibir a cópia num item da Portal.
+  exibir a cópia no 31.189 (Portal). Adendo v1.109.
 - Prova `simulated`: `backend/tests/test_proposta_para_exibir.py` (2 testes). Ensino, personas, alcance, arquitetura e
   rotas: 720 passaram; mypy 257. `real`: `not_run`, pede o deploy.
 
