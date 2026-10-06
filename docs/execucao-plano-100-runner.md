@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-602 de 671 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+604 de 671 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -390,7 +390,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.80 | implemented | real | claude-fable-5-1 | — | Real, 05/10/2026, WIN-7S2UASNLFOP, central em 584ac9c8 (deploy 34, /api/health às 03:31:03Z), endereço público https://dev.nvit.com.br, só GET. 03:30:43Z: /assets/site.css pela borda traz a cor nova do rótulo 'Ilustraçã… | None |
 | 29.81 | implemented | simulated | claude-fable-5-1 | — | PR #351 (ponta 24b5f179, migração 108) na suíte 34, no ar em 584ac9c8 desde 05/10/2026 às 03:21:23Z (suíte: SQLite 10748 passed, PG dirigido 4965 passed com test_upload_feito_por_ia.py, frontend 1598 passed). Leitura re… | Real not_run: o envio de uma foto com a resposta e a correção depois, na foto, mudam dado de persona e ficam com o dono no uso. |
 | 29.82 | implemented | real | claude-fable-5-1 | — | PR #339 (fix/29-82-vagas-decididas, ponta 757ba4bc, com a W1 da revisão) na suíte 33, no ar em a0c9865e desde 05/10 01:12Z (deploy 33, migração 107). WorkerRegistry.vagas_que_valem é a regra única do agendador (capacida… | O topo e a Infraestrutura do painel com o notebook em 9 ligados não foram fotografados depois do deploy (a caminhada da orquestradora carregou as telas, sem es… |
-| 29.83 | partial | real | claude-fable-5-1 | — | Real, 05/10/2026, WIN-7S2UASNLFOP, central em 584ac9c8 com a migração 109_portal_exclusoes (/api/health às 03:31:03Z, deploy 34). Prova de fora às 03:30:23Z contra https://dev.nvit.com.br: POST /api/portal/contatos/busc… | Falta a exclusão de verdade de um contato, que só acontece a pedido de um titular ou com um contato de teste autorizado pelo dono (envio válido pelo formulário… |
+| 29.83 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 ~03:31Z, central 7154d7cf, sessão do painel 'Portal (sessão Claude)'. Configuração > Site e privacidade > Exclusão a pedido do titular, com um contato de TESTE fictício (nome, empresa, telefone e mensag… | None |
 | 29.84 | implemented | simulated | claude-fable-5-1 | — | PR #352 (fix/29-84-vagas-pela-regra, ponta 7c226593) na suíte 34, no ar em 584ac9c8 desde 05/10 às 03:21:23Z (deploy 34, migração 109; 'no ar' da orquestradora às 03:27Z). Mudanças: `Scheduler._vagas_do_host(s: LimitsCf… | Sem prova real própria: com a regra única dando hoje o mesmo número do setting no central, o comportamento no ar não muda, e não há leitura que separe o antes… |
 | 29.85 | implemented | real | claude-fable-5-1 | — | Real, 05/10/2026, WIN-7S2UASNLFOP, central em 584ac9c8 (deploy 34, #353 na main). Web Analytics / RUM desligado na zona às 02:23Z (com o sim do dono). Prova de fora nova (SITE=ligado SEM_LIMITE_DE_TAXA=1) às 03:30:23Z:… | None |
 | 29.86 | implemented | simulated | claude-fable-5-1 | — | PR #354 (fix/29-86-vagas-restantes, ponta c9507d3e, empilhado no #352) na suíte 34, no ar em 584ac9c8 desde 05/10 às 03:21:23Z. R1: um worker remoto não inscrito sai com 0 vagas livres na foto (`Scheduler.servidores`),… | Sem prova real: hoje nenhum remoto está fora do registro, e a regra do central dá o mesmo número do setting. |
@@ -412,7 +412,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.102 | pendente | — | — | — |  |  |
 | 29.103 | implemented | simulated | claude-fable-5-1 | — | Entregue pelo PR #382 (ponta 419ba865), na suíte 36, implantada em e5f1b22b (05/10/2026 09:42Z, migração 113). A execução running/paused cancelada sem worker vivo (fechada pelo Scheduler._finish_cancel) nunca assentava:… | Prova real (`not_run`): um cancelamento de execução sem worker vivo no central depois do deploy 36. |
 | 29.104 | implemented | simulated | claude-sonnet-5-5 | — | 29.104: frontend: arquivo::teste na suíte (vitest 1732 passados em 94404535), não é um item de navegador; sem percurso real. |  |
-| 29.105 | pendente | — | — | — |  |  |
+| 29.105 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 ~03:26Z a ~03:30Z, central 7154d7cf (contém f7153ddf do 29.105), android-04 sem conta real. No Foco, com o controle: Abrir app > Chrome (rodou Abrir app, concluído) e, no menu do Chrome, 'New Incognito… | None |
 | 29.106 | implemented | simulated | claude-fable-5-1 | — | PR #393, ponta FINAL 23ef490a, branch fix/29-106-partir-de, sobre o #392. Mudança de produto: no editor de grupo novo, o 'começar a partir de' não descartava a resposta velha (A respondendo depois de B deixava o rascunh… | Prova real not_run de 'só vale a última' e da trava durante a leitura: os perfis do central rendem o mesmo rascunho. |
 | 29.107 | pendente | — | — | — |  |  |
 | 29.108 | pendente | — | — | — |  |  |
@@ -678,7 +678,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (69): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.56, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.83, 29.102, 29.105, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.145, 29.151, 29.152, 29.153, 30.34, 30.72, 30.73, 30.74, 30.80, 30.83, 30.84, 31.11, 31.12, 31.26, 31.40, 31.45, 31.55, 31.58, 31.79, 31.81, 31.87, 31.91, 31.111, 31.113, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (67): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.56, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.145, 29.151, 29.152, 29.153, 30.34, 30.72, 30.73, 30.74, 30.80, 30.83, 30.84, 31.11, 31.12, 31.26, 31.40, 31.45, 31.55, 31.58, 31.79, 31.81, 31.87, 31.91, 31.111, 31.113, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
