@@ -23,8 +23,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - Seção opcional `troca: {sair: [{tela, sinal_do_botao}]}` no `sessao.yaml` (`TrocaDeConta`, recusada na carga se mal
   declarada). O motor de sessão troca de conta só no app que a declara. Antes de tocar, confere se a conta esperada pode
-  entrar (senha com consentimento, teto diário, parada, canal sensível). Depois toca a saída, um candidato por passo;
-  tela de verificação não é tocada. Por fim, invalida as sessões do app no aparelho e entra pelo `_login` de sempre: a
+  entrar (senha com consentimento, teto diário, parada, canal sensível), se a aberta é conta nossa com senha guardada
+  e se o aparelho não está em quarentena. Depois toca a saída, um candidato por passo;
+  tela de verificação vira o desafio de sempre, sem toque. Nesta parte passaram o `revisor-segredos` e 6 achados, todos corrigidos ou registrados como risco no ADR. Por fim, invalida as sessões do app no aparelho e entra pelo `_login` de sempre: a
   senha vem do cofre, só pelo canal sensível. Desvio vira `wrong_account` com o motivo, sem laço. O "Verificar conta"
   nunca troca.
 - `AppDefinition.account_switch`, derivado do `sessao.yaml` na descoberta. `quem_ja_serve` (D2-a) só aceita outra
