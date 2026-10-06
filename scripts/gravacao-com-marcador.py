@@ -113,7 +113,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     print(("APLICADO" if args.aplicar else "ENSAIO (cópia descartada; nada foi gravado)")
           + f": sessoes_lidas={r['sessoes_lidas']}, sessoes_com_marca={r['sessoes_com_marca']},"
-          f" entradas_marcadas={r['entradas_marcadas']}")
+          f" entradas_marcadas={r['entradas_marcadas']}, telas_marcadas={r['telas_marcadas']}")
     sessoes = r["sessoes"]
     for sid in sessoes if isinstance(sessoes, list) else []:
         print(f"  sessao {sid}")

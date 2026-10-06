@@ -28,6 +28,7 @@ from ..taskqueue.flows import PLACEHOLDER, RESERVED, ensinado_em_prova
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..util import now_iso
 from . import dado_da_persona, partida
+from .reparo_da_gravacao import marcar_telas
 from .recorder import TrainingError
 from .arraste import arrastes_finais, confirmou, pode_ser_receita
 from .arraste import pergunta as pergunta_do_arraste
@@ -485,6 +486,8 @@ class TrainingSkills:
         plano = prep.plano.model_dump_json()
         self.s.training.marcar_entradas(session_id, dado_da_persona.marcas_das_entradas(
             sess["inputs"], {n: v for n, v in persona.items() if "{" + n + "}" in plano}))
+        # 31.118 F2: a tela gravada também mostra o dado (o campo preenchido); todo dado da persona vira o marcador nela
+        marcar_telas(self.s.db, session_id, prep.persona)
         origem = {k: v for k, v in (sess.get("origin") or {}).items() if k in ("run_id", "step_id", "attempt_id")}
         self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento"
                                f"{' (correção de uma execução que falhou)' if origem else ''}",

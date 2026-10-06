@@ -10,11 +10,16 @@ a mesma. O que não é dado ligado (outro texto, dado dentro de frase, dado que 
 O reparo único das sessões salvas antes do 31.118 (`scripts/gravacao-com-marcador.py`, sim da orquestradora 07:52Z)
 aplica a mesma regra: ensaio numa cópia por padrão; `--aplicar` exige `--backup`; idempotente; só ids e contagens.
 
+31.118 F2 (achado da conferência real de 06/10 09:01Z: a tela gravada depois da digitação mostrava o campo preenchido,
+e o GET devolvia o valor em `screen_lines`): o `save` e o reparo trocam, por palavra, todo dado não sigiloso da persona
+pelo marcador também em `screen_lines` e `screen_title`.
+
 Nível de prova: `simulated` (harness com aparelho falso; nenhuma IA).
 """
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 
@@ -123,7 +128,8 @@ async def test_o_reparo_conta_sem_gravar_e_depois_marca_uma_vez(harness: Harness
     st, sid = await _salva_antes_do_31118(harness)
     variaveis = st.repo.variaveis_da_persona
     contado = marcar_gravacoes_salvas(st.db, variaveis, escrever=False)
-    assert contado == {"sessoes_lidas": 1, "sessoes_com_marca": 1, "entradas_marcadas": 1, "sessoes": [sid]}
+    assert contado == {"sessoes_lidas": 1, "sessoes_com_marca": 1, "entradas_marcadas": 1, "telas_marcadas": 0,
+                       "sessoes": [sid]}
     assert _textos(st, sid) == [EMAIL]                                     # só contou
     assert marcar_gravacoes_salvas(st.db, variaveis, escrever=True)["entradas_marcadas"] == 1
     assert _textos(st, sid) == ["{perfil_email}"]
@@ -163,3 +169,43 @@ async def test_o_script_ensaia_na_copia_exige_backup_e_nao_ecoa_o_valor(harness:
     assert _textos(st, sid) == ["{perfil_email}"]
     assert script.main(["--banco", str(banco), "--aplicar", "--backup", str(tmp_path)]) == 0
     assert "entradas_marcadas=0" in capsys.readouterr().out                # idempotente
+
+
+# ------------------------------------------------------------------ 31.118 F2: a tela gravada
+def _tela_com_o_dado(st, sid: str) -> None:  # type: ignore[no-untyped-def]
+    """A tela gravada mostra o campo preenchido (a busca do Configurações, na prova real) e o nome no título."""
+    st.db.execute("UPDATE training_inputs SET screen_lines=?, screen_title=? WHERE session_id=? AND type='text'",
+                  (json.dumps(["Entrar", f"Conta {EMAIL}", "Ana Lopes respondeu", "banana"]), "Ana Lopes", sid))
+
+
+def _tela(st, sid: str) -> tuple[list[str], str]:  # type: ignore[no-untyped-def]
+    r = st.db.one("SELECT screen_lines, screen_title FROM training_inputs WHERE session_id=? AND type='text'", (sid,))
+    return json.loads(r["screen_lines"]), r["screen_title"]
+
+
+MARCADA = (["Entrar", "Conta {perfil_email}", "{perfil_nome} {perfil_sobrenome} respondeu", "banana"],
+           "{perfil_nome} {perfil_sobrenome}")
+
+
+async def test_o_save_troca_o_dado_tambem_na_tela_gravada_e_a_api_nao_o_devolve(harness: Harness) -> None:
+    st, sid = await _sessao_com_persona(harness)
+    _tela_com_o_dado(st, sid)
+    await st.skills.preview(sid, proposal=_proposta(), profile_ids=[], group_ids=[])
+    assert _tela(st, sid)[1] == "Ana Lopes"                                  # a prévia não grava nada
+    await st.skills.save(sid, proposal=_proposta(), profile_ids=[], group_ids=[])
+    assert _tela(st, sid) == MARCADA                                          # por palavra: "banana" fica
+    async with _cliente(harness) as c:
+        corpo = (await c.get(f"/api/training/{sid}")).text
+    assert EMAIL not in corpo and "Ana Lopes" not in corpo and "Lopes" not in corpo
+
+
+async def test_o_reparo_cobre_a_tela_gravada_e_segue_idempotente(harness: Harness) -> None:
+    st, sid = await _salva_antes_do_31118(harness)
+    _tela_com_o_dado(st, sid)
+    variaveis = st.repo.variaveis_da_persona
+    r = marcar_gravacoes_salvas(st.db, variaveis, escrever=False)
+    assert (r["entradas_marcadas"], r["telas_marcadas"], r["sessoes"]) == (1, 1, [sid]) and _tela(st, sid)[1] == "Ana Lopes"
+    marcar_gravacoes_salvas(st.db, variaveis, escrever=True)
+    assert _tela(st, sid) == MARCADA and _textos(st, sid) == ["{perfil_email}"]
+    de_novo = marcar_gravacoes_salvas(st.db, variaveis, escrever=True)
+    assert (de_novo["entradas_marcadas"], de_novo["telas_marcadas"], de_novo["sessoes"]) == (0, 0, [])

@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.118 F2: a tela gravada também guarda o marcador (branch feat/31-121-122-partida-e-pos-condicao)
+
+- Achado da conferência real do reparo (06/10 09:01Z): a tela gravada depois da digitação mostrava o campo preenchido,
+  e `GET /api/training/{id}` devolvia o valor em `screen_lines`. No `save` e no reparo único, todo dado não sigiloso
+  da persona troca pelo marcador, por palavra, em `screen_lines` e `screen_title`. O reparo continua idempotente e
+  ganha `telas_marcadas`. Ensaio no banco central: 1 sessão, 1 tela.
+- Funções tocadas (K-095): `reparo_da_gravacao.marcar_telas` (nova) e `marcar_gravacoes_salvas`, `TrainingSkills.save`,
+  `scripts/gravacao-com-marcador.py`.
+- Prova `simulated`: `backend/tests/test_treino_gravacao_com_marcador.py` (11; 2 novos). Real: o reparo roda de novo
+  depois do deploy 50.
+
 ## 2026-10-06 — 31.121 e 31.122: a etapa ensinada começa onde a reprodução começa e só passa quando agiu (branch feat/31-121-122-partida-e-pos-condicao)
 
 - 31.121: a receita da etapa da 1ª entrada ganha `open_app` do app da sessão quando a gravação começou dentro dele sem
