@@ -1719,3 +1719,33 @@ async def test_a_mensagem_encaminhada_nao_casa_com_a_escolha(tmp_path: Path, cam
     # a pergunta segue aberta: o "1" do próprio dono, logo depois, casa
     await c.volta(_dono(6, "1", 296))
     assert c.linha(6)["alvo"] == "escolha:294"
+
+
+# ------------------------------------------------------------------ A1 da leitura do 31.113 F3 (06/10): a prévia da porta
+async def test_previa_da_porta_mascara_o_dado_da_persona_e_o_item_vai_ao_painel(c: Cenario) -> None:
+    """A prévia da porta leva texto de ETAPA (título e texto) ao canal: o dado da biografia (agora variável da persona,
+    31.87 F2) sai como `<dado da persona>`, e o item cujo texto o traz não se aprova pelo canal (vai ao painel). O `Alvo:`
+    segue só redigido, a exceção do ADR-071 (d): aprovar sem saber para quem não é aprovação informada."""
+    from app.modules.avisos.domain.privacidade import DADO_OCULTO, DadoDaPersona
+
+    c.portas.personas = ["Zelda"]
+    c.portas.nomes_e_dados_de_persona = lambda: ["Zelda", DadoDaPersona("Cidadela"),  # type: ignore[attr-defined]
+                                                 DadoDaPersona("Oficina Exemplo")]
+    c.portas.previa_da_porta = _porta(
+        _item("s1"),
+        _item("s2", titulo="Mudar para Cidadela", texto="moro em Cidadela e trabalho na Oficina Exemplo"))
+    await _executar(c)
+    textos = " ".join(c.bot.textos())
+    assert "Cidadela" not in textos and "Oficina Exemplo" not in textos, textos
+    assert DADO_OCULTO in textos
+    previa = json.loads(str(c.linha(5)["previa"]))
+    assert previa["aprovar"] == [["s1", f"{'s1':0<64}"]]          # o s2 não cabe no sim pelo canal
+
+
+async def test_sem_a_porta_dos_dados_a_previa_fica_com_os_nomes(c: Cenario) -> None:
+    """A porta de teste antiga (sem `nomes_e_dados_de_persona`) segue funcionando, com os nomes de sempre: é o lado que a
+    porta real cobre. Mutação: sem a troca em `_mostrar_porta`, o teste de cima vaza "Cidadela"."""
+    c.portas.personas = ["Zelda"]
+    c.portas.previa_da_porta = _porta(_item("s1", titulo="Comentar para Zelda"))
+    await _executar(c)
+    assert "Zelda" not in " ".join(c.bot.textos())

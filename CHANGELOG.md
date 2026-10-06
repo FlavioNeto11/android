@@ -31,7 +31,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `domain/validacao.pedido_do_parecer`, `FatosDoParecer.classe` e `Pedido.pelo_observar`;
   - `ServicoDeValidacao.__init__` (`contar_pelo_observar`), `ao_parecer` e `_fatos`;
   - `ligar_validacao.ligar`;
-  - `AppState.health`;
+  - `SaudeDoSistema.health` (`app/saude.py`, desde o 15.15 F2);
   - `ContadorPeloObservar` (novo, `infrastructure/contador_pelo_observar.py`).
 - Prova `simulated`: `backend/tests/test_validacao_pelo_observar_b.py` (11). Cobre:
   - a regra pura: B no app de prova, efeito real, A, C, só a pessoa, recusa e `pedir_evidencia` igual;
@@ -40,6 +40,147 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - a saúde com o serviço ligado.
 
   Real: `not_run`.
+
+## 2026-10-06 — K-104: a caracterização da saúde não fotografa o dialeto do banco (branch fix/saude-caracterizacao-dialeto)
+
+- Na suíte 47 o PG dirigido reprovou os 31 cenários de `test_saude_caracterizacao.py`: o dourado foi gerado em SQLite e a fotografia levava `database.dialect`
+  e `database.target`. Agora o teste troca o dialeto e o endereço do banco pelo marcador `<dialeto>` (também no "(dialeto)" da mensagem `database_down`) antes
+  de comparar; `problems` segue inteiro. O dourado mudou só nessas linhas; nenhum código de produção mudou. K-104 em `docs/conhecimento/aprendizados.md`.
+- Prova `simulated` (33 testes em SQLite); no PostgreSQL, `not_run` até a Android repetir o arquivo no PG dirigido.
+
+## 2026-10-06 — 15.15 F2, passo 2: a saúde sai de `AppState` para `app/saude.py` (branch feat/15-15-f2-saude)
+
+- Novo `backend/app/saude.py` com `SaudeDoSistema`: `health()`, `ai_status()`, `ultima_migracao()` e o que eles usam (`_saude_do_banco`,
+  `_banco_sem_segredo`, `_problema_de_capacidade_local`, `_ia_em_fallback`, `_problema_de_exposicao_publica`, `_problemas_de_saldo`) e o
+  `checar()` (era `_check_health`, com o `_last_health`, que emite `health.updated` só quando o resultado muda). O corpo é o mesmo, com
+  `self.X` lido por `self._e.X`. `AppState` guarda `self.saude = SaudeDoSistema(self)` e expõe `health()`, `ai_status()` e `ultima_migracao()`
+  como delegações de uma linha; o laço de saúde chama `saude.checar`. `diagnostics()` e `_diag_cache`, `_clock_skew_s` e `saldos_de_ia`
+  continuam em `AppState` (a saúde só lê). `AppState` entra em `saude.py` só em `TYPE_CHECKING`; portas estreitas no lugar da referência
+  ficam para outro corte.
+- O arquivo dourado `tests/golden/saude_caracterizacao.json` e `test_saude_caracterizacao.py` NÃO mudaram: os 31 cenários dão o mesmo
+  `problems` (código, mensagem, dica e ordem) antes e depois. Em `test_saude_ao_vivo.py` só mudou onde o teste alcança o método movido
+  (`state.saude.checar()`, `state.saude._problema_de_capacidade_local` e o alvo do patch de `psutil`, agora `psutil.virtual_memory`).
+  Catraca `app.state` de `Any` baixou de 50 para 48 (o `_ia_em_fallback` saiu tipado sem `Any`); mypy 257.
+- Prova `simulated` (caracterização + `test_saude_ao_vivo` + 61 arquivos que chamam a saúde); `real`: `not_run` até o deploy, onde se compara
+  `GET /api/health` (`problems` e `features`) antes e depois. Sem migração e sem adendo.
+## 2026-10-06 — 15.15 F2, passo 1: teste de caracterização da saúde (`GET /api/health`), antes de mover o código (branch feat/15-15-f2-saude)
+
+- Novo `backend/tests/test_saude_caracterizacao.py` com o arquivo dourado `backend/tests/golden/saude_caracterizacao.json`: 31 cenários
+  (um por código de problema, mais o `base` sem defeito e o `tudo_de_uma_vez`, que fixa a ORDEM dos grupos em `problems`). Cada um
+  fotografa `status`, `problems` (código, mensagem e dica, em ordem), banco, SDK, Appium, IA e `features`. O teste mexe só nas ENTRADAS
+  (SDK, banco, aparelhos, workers, Appium, IA, cofre, serviços de canal, RAM do host, relógio, diagnóstico), nunca nos métodos de saúde,
+  então o mesmo arquivo vale antes e depois de a saúde ir para `app/saude.py`.
+- Gravado na `main` de 06/10 (`cb2e8382`), sem mudar código de produção; estável com `PYTHONHASHSEED` diferente e em `-n 4`. Um terceiro
+  teste reprova um código novo em `health()` sem cenário. O move em si vem depois da junção pós-46, no mesmo ramo.
+- Prova `simulated`; `real`: `not_run`. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 F7: as máquinas de estado de execução, objetivo e tentativa passam a ser impostas (branch feat/15-15-f7-impor-maquinas)
+
+- `Repository._conferir` deixa de só avisar: levanta `InvalidTransition` ANTES de gravar em `set_run_status`, `set_objective` e
+  `finish_attempt` (a etapa já era imposta). O evento `warn` e a contagem seguem. Na tentativa, a cerca da posse continua
+  primeiro (`PosseDaEtapaPerdida`); no `set_run_status` com `so_se` só confere quando a troca vale.
+- Medido no central antes de impor (só leitura, 27/09 a 06/10, ~8,6 dias): 1 transição fora da tabela em ~20 mil,
+  `completed_with_issues → cancelled`, que é o vencimento do 31.50 fechando a execução com cancelamento pedido (não um
+  cancelamento pela API). A aresta foi declarada em `RUN_TRANSITIONS`.
+- Um handler em `main.py` devolve 409 `invalid_transition` ao gesto que chega depois de o estado mudar, em vez de 500.
+  Cancelar execução terminada segue 409 `invalid_state` (já era assim). Sem migração.
+- Prova `simulated`: `tests/test_maquinas_de_estado.py` (19, com recusa de run, objetivo e tentativa, a aresta nova e a
+  posse) e `tests/test_maquinas_de_estado_http.py` (2). Ambiente real: `not_run` até o deploy; depois, o contador de
+  eventos `warn` "(recusada)" no central é a leitura.
+
+## 2026-10-06 — 15.15 F4, corte 3: as 16 rotas de execuções saem de `api.py` (branch feat/15-15-f4c-router-execucoes, sobre o corte 2)
+
+- `POST /api/runs`, `GET /api/runs`, `POST /runs/targets/resolve|suggest`, `POST /runs/distribution` (e o `GET` escondido do OpenAPI que responde 405 `metodo_removido`), `GET /runs/{id}` e `/projection|events|report|porta`, `POST /runs/{id}/aprovar-plano|porta/item|porta/renovar|successor`, o coringa `POST /runs/{id}/{op}` e `POST /runs/{id}/objectives/{oid}/resolve` passam de `backend/app/api.py` para `backend/app/modules/execution/presentation/router.py`, montado em `main.py` depois dos routers de fluxos e de treino. São 16 rotas no OpenAPI mais o `GET` escondido (o plano dizia 17: `POST /api/commands/refine` estava no meio do bloco e FICOU em `api.py`, não é de execução). A ordem interna é a de antes: as literais e as específicas antes do coringa `{op}`, e o `GET /runs/distribution` antes de `GET /runs/{run_id}`.
+- Dois nomes que `api.py` e o módulo novo dividem foram para `modules/execution/presentation/comum.py` (`autor_do_sinal` e `run_error`), importados pelos dois lados; nenhum módulo importa `app.api`. `api.py` perdeu `_autor_do_sinal` e `_run_error` (os usos viraram `autor_do_sinal(` e `run_error(`).
+- Nenhum caminho, método, corpo ou resposta muda: o conjunto método+caminho do OpenAPI é idêntico (270 operações), e só o título automático do schema de 7 respostas some (`{}`). Catraca de `Any` de `app.api` baixada: 130→122.
+- Prova `simulated`: 1290 testes (os 61 arquivos que tocam `/api/runs`, `/api/commands` ou o `RunService`, contrato HTTP, cobertura de rotas, arquitetura, ordem das rotas, `models_fatiado` e as catracas); mypy 257. `real`: `not_run`. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 F4, corte 2: as 11 rotas do modo treinamento saem de `api.py` (branch feat/15-15-f4b-router-treino, sobre o corte 1)
+
+- `POST /api/instances/{id}/training`, `POST /api/training/from-run`, `GET /api/training`, `GET /api/training/{id}` e `POST /api/training/{id}/stop|propose|save|preview|recipes|discard|undo` passam de `backend/app/api.py` para `backend/app/modules/learning/presentation/treino.py`, montado em `main.py` logo depois do router dos fluxos. São 11 rotas (o plano dizia 10: faltava o `POST /instances/{id}/training`, que mora no caminho de aparelhos). `/training/from-run` continua antes de `/training/{session_id}`.
+- Nenhum caminho, método, corpo ou resposta muda: o conjunto método+caminho do OpenAPI é idêntico (270 operações) e só o título automático do schema de 6 respostas some (`{}` = o mesmo "qualquer valor"; a catraca de `Any` impede `-> Any`). A ordem das 11 rotas só muda dentro do bloco movido, sem sobreposição com outra rota.
+- Os imports tardios do bloco (`TrainingError`, `AIError`) viram imports de topo do módulo novo, sem ciclo. Catracas baixadas: imports tardios de `app.api` 16→9 e `Any` 138→130.
+- Prova `simulated`: 1111 testes (os 53 arquivos que tocam as rotas de treino ou de aparelhos, contrato HTTP, cobertura de rotas, arquitetura, ordem das rotas, `models_fatiado` e as catracas); mypy 257. `real`: `not_run`. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 F4, corte 1: as 7 rotas de fluxos saem de `api.py` (branch feat/15-15-f4a-router-fluxos)
+
+- `GET /api/flows`, `/flows/cobertura`, `POST /flows/match`, `/flows/similar`, `PUT /flows/{id}`, `/flows/{id}/scope` e `DELETE /flows/{id}`
+  passam de `backend/app/api.py` para `backend/app/modules/learning/presentation/fluxos.py`, montado em `main.py` logo depois do
+  `router`. Nenhum caminho, método, corpo ou resposta muda: o conjunto método+caminho do OpenAPI é idêntico antes e depois (270
+  operações) e só o título automático do schema de 4 respostas (`Response List Flows…`) sai, ficando `{}`, que é o mesmo "qualquer
+  valor" (a catraca de `Any` impede `-> Any` em módulo novo). Nenhuma delas se sobrepõe a outra rota, então a ordem não muda nada.
+- O módulo não importa `app.api`: estado por `request.app.state.poc` (tipado por `AppState` só em `TYPE_CHECKING`) e erro com o mesmo
+  `{code, message}` do `api.err`. Dois imports tardios e 5 `Any` a menos em `api.py` (bases da catraca baixadas: 18→16 e 143→138).
+- Novo `tests/test_ordem_das_rotas.py`: nenhuma rota-modelo vem antes de uma literal que ela também casa (método a método), o voto
+  `POST /runs/{id}/feedback` vem antes do coringa `POST /runs/{run_id}/{op}`, e nenhum módulo de apresentação importa `app.api`.
+- Prova `simulated`: 395 testes (os de fluxos, contrato HTTP, cobertura de rotas, arquitetura, os 3 novos e as catracas); mypy 257.
+  `real`: `not_run`. Sem migração e sem adendo de contrato.
+
+## 2026-10-06 — A1: a prévia da porta pelo Telegram mascara o dado da persona (decisão da orquestradora, 04:22Z)
+
+- **A1 da leitura do 31.113 F3 (06/10):** a prévia da porta pelo Telegram (`_mostrar_porta`) passa a filtrar o título e o texto da etapa com os nomes E os dados da biografia (o `Alvo:` segue só redigido, ADR-071 (d)) (`PortasReais.nomes_e_dados_de_persona`), que saem como `<dado da persona>`; o item cujo texto traz um dado vai ao painel. A resposta da ANA e o eco do Trello seguem só com nomes. Sem migração. Prova `simulated`: `test_telegram_entrada.py` (2) e `test_perfil_variaveis_da_persona.py` (1). Real: `not_run`.
+
+## 2026-10-06 — 31.91 T1 (painel): o ensino por habilidade (v2) sai da tela; "Ensinar a corrigir" é o único caminho (branch feat/31-91-t1-painel-sem-ensino-v2)
+
+- Decisão do 31.91 (ADR-078): o caminho único de ensino é o Modo treinamento. Saem do painel `TeachingPanel` (a leitura do ensino v2 na revisão do treino),
+  `CorrigirEtapa` e a marca "corrigível" da etapa (o "Corrigir esta etapa" do ensino de habilidade, plano 22.7), a flag `features.ensino_v2`
+  (`skills.ensino_v2_na_tela`, 31.91 F1), os métodos do cliente das rotas `/teaching-sessions` e `/skill-candidates`, os testes deles e o CSS que só eles usavam.
+  O "Gerar habilidade deste fluxo" (`features.skills`, fase J) e a lista de habilidades ficam. A revisão do treino já não consulta `/teaching-sessions`.
+- **31.111 A:** `ETAPA_CORRIGIVEL` (agora em `EnsinarACorrigir.tsx`) ganha `waiting_user`: o botão "Ensinar a corrigir" aparece também na etapa que parou esperando
+  uma pessoa, como o backend aceita desde a6d52001 (`training/origem.py::STATUS_ENSINAVEIS`). Achado no 31.79: a versão 2 da execução parou em `waiting_user` e o botão não aparecia.
+- Prova `simulated`: `EnsinarACorrigir.test.tsx` (teste novo de `waiting_user`, e `running`, `pending`, `cancelled`, `skipped` sem botão) e `TrainingReview.test.tsx` (a revisão não
+  mostra nem consulta o ensino v2). `not_run`: o percurso real depois do deploy.
+
+## 2026-10-06 — 31.113 F3: os `bindings` guardam o marcador da persona, e a porta resolve o valor de agora (branch feat/31-113-f3-bindings-com-marcador)
+
+- A materialização deixa `{perfil_*}`/`{conta_*_usuario}` também nos argumentos da etapa. A porta, a frota, a
+  repetição e a chave da aprovação os leem por um leitor único (`Repository.bindings_da_etapa`), que usa a persona lida
+  na hora e não grava. A chave é calculada sobre o valor, igual na prévia e na execução. A persona trocada depois do sim
+  muda a chave e a porta pergunta de novo. `argumentos_da_acao`, `tem_variavel` e `VERSAO_DA_CHAVE` não mudam
+  (parecer da Ferramentas). O dado ausente ou vazio deixa o marcador, nunca "", e a chave falha fechado.
+- O pedido de aprovação guarda o marcador: alvo e texto pela máscara reversível (mesma caixa, só com a volta exata),
+  resumo pela máscara do registro. O rascunho da IA e a edição do dono seguem a regra reversível. A tela do painel
+  (`GET /api/approvals`, a resposta da decisão e a prévia) recebe o valor de agora. O canal leva o marcador: a prévia
+  do Telegram (`previa_para_o_canal`, também o `objeto_alvo`), `approval.pending` e as pendências. Achado A1 da
+  Ferramentas.
+- Corrigido na F1: o cache da máscara do registro guardava o valor da persona, e o nome trocado no perfil sairia em
+  claro até o reinício. Agora o valor é lido a cada uso.
+- Ficam com o valor, de propósito: `social_interactions.outgoing_content` (o texto que saiu) e `remember_screen` (a
+  memória da própria persona).
+- Funções tocadas (K-095), novas:
+  - `Repository.bindings_da_etapa`, `perfil_do_objetivo`, `texto_ao_vivo`, `texto_reversivel`, `texto_mascarado`;
+  - `dado_da_persona.resolver_texto`, `resolver_argumentos`;
+  - `mascara_da_persona.na_mesma_caixa`, `no_alvo`;
+  - `porta_do_plano.previa_para_o_canal`, `aprovar_pelo_canal`;
+  - `ApprovalService.na_tela`, `_reversivel`;
+  - `SocialRepository._persona_de_agora`.
+- Funções tocadas (K-095), alteradas:
+  - `Repository._insert_steps`, `_mascara_do_objetivo`, `_trocas_da_acao`;
+  - `AppState._policy_gate`, `_mesmo_pedido_noutras_contas`, `_alvo_da_conversa`, `_draft_gate`, `_approval_gate`,
+    `_sim_do_plano_nao_vale`;
+  - `porta_do_plano._item`, `aprovar_plano`;
+  - `SocialRepository.saidas_da_acao`, `etapas_em_curso_da_acao`, `pedidos_da_acao`;
+  - `ApprovalService.decide`;
+  - rotas `GET /api/approvals`, `POST /api/approvals/decide` e `POST /api/approvals/{id}/decide`;
+  - `StepExecutor.run_step` (a persona com o mesmo fallback da porta).
+- Prova `simulated`: `backend/tests/test_bindings_com_marcador_da_persona.py` (15). Cobre:
+  - o vazio nunca vira "";
+  - a chave da prévia vale na execução;
+  - a persona trocada faz perguntar de novo;
+  - frota com duas personas;
+  - repetição com marcador e com valor antigo;
+  - canal com marcador e painel com valor;
+  - máscara reversível e edição do dono;
+  - cache da F1;
+  - varredura do leitor único.
+
+  `test_etapa_com_marcador_da_persona.py` vira para o marcador na linha. Real: `not_run`.
+- Custo medido (harness, SQLite, 200 escritas, 06/10 05:07Z, `simulated`):
+  - a máscara por escrita (persona lida na hora mais a troca), p50 0,059 ms e p95 0,077 ms;
+  - `Repository.decision` com a máscara, p50 0,213 ms e p95 0,360 ms; sem ela, p50 0,120 ms e p95 0,154 ms.
+
+  Abaixo do limite de 5 ms da orquestradora: fica sem cache do valor. No PostgreSQL: `not_run`.
+- Contrato: adendo v1.79 de `docs/api-contract.md`.
 
 ## 2026-10-05 — 31.111 F5: "Ensinar a corrigir" na etapa que falhou e selo de origem no treino (branch feat/31-111-f5-ensinar-a-corrigir)
 
@@ -593,6 +734,13 @@ Da leitura do 31.78.
 
 - `PortaDoPlano.test.tsx` "mostra a validade dos sins do plano…" usava `2026-10-05T21:00Z` como instante futuro; às 21:00Z de hoje o sim passou a "vencido" e o teste falhou (determinístico, também em ramos que passavam antes). A validade agora é relativa ao relógio (6 h à frente; a renovação, 30 h).
 - Prova `simulated`: o arquivo sozinho, 22/22 em duas rodadas, em 05/10 depois das 21:00Z. Outras datas fixas próximas em testes (a conferir, sem mudança aqui): `ValidacaoTab.test.tsx` (`expira_em` em 06/10), `NovoPedido.test.tsx` (prazo em 09/10), `MetricasTab.test.tsx` (17/10).
+
+## 2026-10-06 — Deploy 47 (suíte 47: máquinas de estado impostas, routers por contexto, saúde em módulo, bindings com marcador, prévia da porta, telas v2 fora)
+
+- **Implantado** às 06:47Z: central em `d2d346cd`, sem migração nova (mais alta 119), 6 pontas mais o ajuste do dourado (`d2d346cd`, K-104) sobre `8721158e` (mains até `dd134ec8` dentro). Itens: 15.15 F7 (as quatro máquinas de estado impõem `InvalidTransition` antes de gravar; a corrida de gesto devolve 409 `invalid_transition`, adendo v1.78; a aresta do vencimento de 24 h declarada), 15.15 F4 (34 rotas de fluxos, treino e execuções saem de `api.py` para routers por contexto, contrato idêntico pelo OpenAPI; `autor_do_sinal` e `run_error` em módulo comum), 15.15 F2 (saúde do sistema em `app/saude.py`, `problems` idêntico por prova de caracterização com 31 cenários), 31.113 F3 (bindings da etapa com o marcador; leitor único resolve a persona em memória; chave da aprovação sobre o valor; aprovações e evento com o marcador; adendo v1.79; cache da F1 corrigido), A1 (prévia da porta no Telegram filtra também os dados da persona; o Alvo segue só redigido, ADR-071 d), 31.91 T1 na tela (TeachingPanel e CorrigirEtapa fora; "Ensinar a corrigir" também na etapa bloqueada aguardando a pessoa), 31.116 e 31.117 ficam para o corte 48.
+- Prova `real` (06/10, central WIN-7S2UASNLFOP): ff e push às 06:46Z; `deploy.ps1 -Ensaio` às 06:46Z pela trava de 60 min (cópia `dataackups61006-034615`, nada parado) e `-PularBackup` de 06:46Z a 06:47Z, rc 0; `GET /api/health` às 06:47Z ok, commit `d2d346cd`, migração mais alta 119, `problems []` idêntico ao de antes do deploy, mesmas chaves e mesmas `features` (só `repair_pause.remaining_s` mudou, relógio da pausa): prova de ambiente do 15.15 F2; prova de fora às 06:47Z como esperado (46 checagens; `/api/instances` 401 de fora e 403 com Host forjado); agente do notebook `0.1.0+d2d346c` às 06:48Z, online, sem outdated; aparelhos 01, 02, 03, 06 e 13 com automação `ready` às 06:49Z; hooks ok; eventos warn "(recusada)" das máquinas de estado desde o deploy: 0 (prova do 15.15 F7).
+- Prova `simulated` (suíte 47 sobre `d2d346cd`): `scripts/tests` 684 passed; backend em SQLite 7108 passed e 1 skipped nos 372 afetados desde a parcial; frontend 1718 passed e build (131 arquivos); catracas 88 (backend) e 6 (scripts); docs-check 0; mypy 257 igual ao teto; PostgreSQL dirigido em 2 partes, 7066 passed, e as 31 falhas do dourado da caracterização (dialeto do banco, K-104) sumiram com `d2d346cd` (44 passed no PG); 0 falhas na ponta final.
+- `not_run`: percurso no navegador (Portal, a seguir); prova real do 31.113 F2+F3 (uma execução com persona de teste, teto US$ 0,35, meu sim).
 
 ## 2026-10-06 — Deploy 46 (suíte 46: registro mascarado, diagnóstico e tela do ensino a partir da falha, custo no detalhe, Trello sem arquivo no Git)
 

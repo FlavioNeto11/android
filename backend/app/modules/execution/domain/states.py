@@ -8,12 +8,11 @@ ATUAL — cada aresta diz de onde vem —, e a suíte inteira confere que nenhum
 
 Duas fases, como o §16 manda:
 
-1. **conferir e registrar** (agora): `Repository` lê o estado anterior, pergunta `pode(de, para)` e, fora da tabela,
-   emite um evento `log` de nível `warn` e conta em `TRANSICOES_FORA_DA_TABELA` — sem bloquear. A etapa é exceção:
-   ela já era imposta e continua sendo;
-2. **impor** (próximo passo): com a suíte e a produção sem aviso por um ciclo, o aviso vira `InvalidTransition`,
-   como a etapa já faz, e cada aresta marcada "reabertura" abaixo é revista (§2.4: `recompute_run` reabre execução
-   terminal sem tabela que o declare).
+1. **conferir e registrar** (de 27/09 ao 15.15 F7): `Repository` lê o estado anterior, pergunta `pode(de, para)` e, fora
+   da tabela, emitia um evento `log` de nível `warn` e contava em `TRANSICOES_FORA_DA_TABELA`, sem bloquear. Medido no
+   central até 06/10: 1 aviso em ~20 mil transições (`completed_with_issues → cancelled`, agora declarada);
+2. **impor** (15.15 F7, agora): o aviso virou `InvalidTransition`, como a etapa já fazia. A escrita só acontece depois da
+   conferência, então a transição recusada não grava nada; o evento `warn` e a contagem continuam, para quem olha.
 
 Puro: sem banco, sem `app.models`. Os estados são as strings que o banco grava; `RunStatus` e os outros enums de
 `app.models` são `StrEnum` e entram direto em `pode`. `tests/test_maquinas_de_estado.py` garante que o vocabulário
@@ -86,8 +85,11 @@ RUN_TRANSITIONS: Mapping[str, frozenset[str]] = _tabela({
     # confirma o último item, e REABRE (`running`/`paused`) quando um item é retomado — a reabertura que o §2.4
     # aponta. `cancel` é permitido aqui (`RunService.cancel`). `awaiting_person`: o item incerto resolvido que volta a
     # esperar um gesto sem trabalho automático no meio (29.93).
+    # `cancelled` direto (15.15 F7, medido em 06/10): a execução com cancelamento já pedido e um objetivo parado esperando a
+    # pessoa fica `completed_with_issues`; quando o vencimento do 31.50 encerra esse objetivo, `recompute_run` conta o
+    # cancelado e fecha como `cancelled`, sem passar por `cancelling` (que só vale para quem manda cancelar agora).
     "completed_with_issues": frozenset({"completed_with_issues", "completed", "running", "paused", "cancelling",
-                                        "awaiting_person"}),
+                                        "awaiting_person", "cancelled"}),
     # Reabertura: resolver (repetir) um item incerto/falho de uma execução cancelada; e reafirmação do detalhe.
     "cancelled": frozenset({"cancelled", "running", "paused"}),
     "failed": frozenset(),

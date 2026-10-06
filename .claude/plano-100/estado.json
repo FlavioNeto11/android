@@ -9527,14 +9527,19 @@
    "id": "31.91",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "F1 (tela atrás de chave), F2 (propose com respostas) e o T1 do fechamento estão entregues. T1: ponta 4b9a2a8a (integ 286a9a0c), as 12 rotas /api/teaching-sessions* e /api/skill-candidates* saem deprecated no OpenAPI e cada chamada soma num contador persistido em settings (ensino_v2.chamadas; molde da rota, sem id, corpo nem operador), exposto em /api/health features.ensino_v2_chamadas; ADR-078 (dois tempos: T1 agora, T2 = 31.115 após 14 dias de zero chamadas), CHANGELOG e linha em docs/dominios/skills.md; sem migração. Prova simulated: backend/tests/test_ensino_v2_obsoleto.py (5 testes) + test_ensino_v2, test_arquitetura, test_cobertura_de_rotas, test_contrato_http (47 passed), mypy 257 no teto, docs-check 0/0. A sessão de ensino v2 parada em asking desde 27/09 foi descartada por POST discard (só estado). A prova real é a leitura de features.ensino_v2_chamadas no /api/health central depois do deploy 46 (real = not_run até lá).",
+   "evidence": "T1 completo: painel sem ensino v2 (Portal 8a040bea: TeachingPanel, CorrigirEtapa, flag e métodos do cliente v2 fora; 'Ensinar a corrigir' também em waiting_user) sobre o contador do ensino v2 do corte 46. Simulado: frontend/src/features/runs/EnsinarACorrigir.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 47 sobre a integração d2d346cd (main dd134ec8 dentro; Jev F7 6c5a8c96, routers 7a708220 (8e30a011, 6bf397a0), A1 c9236810, F2 9b8b52c3 e a correção do dialeto d2d346cd; Portal 31.91 T1 8a040bea; Aprendizado 31.113 F3 7969c74b; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); SQLite -n 6 dos 372 arquivos afetados desde a main dd134ec8 7108 passed, 1 skipped, 0 falhas (sobre 7ea713c8); frontend typecheck limpo, 1718 passed (131 arquivos), build ok (sobre b1db06ce, sem mudança de frontend depois); catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 372 arquivos em 2 partes sobre 7ea713c8: 3566 passed, 9 skipped e 3500 passed, 3 skipped, 31 falhas só no golden da saúde (dialeto do banco, defeito do teste); correção d2d346cd (a fotografia troca o dialeto por um marcador): test_saude_caracterizacao e test_saude_ao_vivo no PG 44 passed, 0 falhas (06:44:23Z) e a catraca + caracterização no SQLite 121 passed.",
    "blocker": null,
-   "grupo": "jev",
+   "arquivos": [
+    "frontend/src/features/runs/EnsinarACorrigir.test.tsx",
+    "frontend/src/features/training/TrainingReview.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-47",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T05:23:28+00:00"
+   "quando": "2026-10-06T06:49:50+00:00"
   },
   "31.97": {
    "id": "31.97",
@@ -10332,15 +10337,18 @@
    "id": "31.111",
    "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 06/10/2026 ~05:28Z a ~05:31Z, deploy 46 (325a04fb). F5 na tela: Execuções > r-20261006012340-d92795 > Por aparelho > android-04 > etapa 'Abrir Notificações' (Falhou): apareceu o botão 'Ensinar a corrigir'. O formulário disse 'Isto assume o controle de android-04 (a IA fica em espera nele até você devolver) e abre o treino no Foco. Nada roda sozinho.', trouxe o texto 'Corrigir a etapa «Abrir N…»' e, com 2 personas no aparelho, exigiu a escolha ('Escolha a persona'); escolhi a persona de teste Teste Portal Um. 'Assumir o controle e abrir o treino' tomou o controle do android-04 e levou ao Foco (?foco=android-04) com 'Controle: Você' e o Modo treinamento 'Gravando: Corrigir a etapa «Abrir Notificações»: a IA gastou o orçamento da etapa' (POST /api/training/from-run sem intent: o backend montou o texto pelo diagnóstico do F4: causa teto_de_ia, rótulo 'a IA gastou o orçamento da etapa', pergunta 'Mostre o caminho curto, toque a toque, para a etapa não depender da IA.'). A origem apareceu na barra: selo 'corrige uma falha', 'Etapa abrir_notificacoes da execução r-20261006012340-d92795', 'Motivo: A etapa passou do orçamento de 10 chamadas de IA…' e, no recolhível 'O que a execução fez, o esperado e as imagens': a trilha (Pesquisar o nome da persona · Cancelada; Abrir Notificações · Falhou · a que falhou; as duas seguintes Canceladas), 'A etapa esperava: A tela de Notificações mostra a opção Notification history (Notification history)' e 'Tentativa 1 (failed) · ia_orcamento · estratégia recipe>ai_actor: …'. GET /api/training/trn-cUIEX-M2QCTokWeA devolveu origin {run_id, step_id, step_key, attempt_id, motivo, context{disponivel, trilha, esperado, tentativa, evidencias []}, diagnostico{causa, rotulo, pergunta, fatos, proposta null, amostra 1}} e o profile_id da persona escolhida. Descartada ao fim.",
+   "evidence": "Real, 06/10/2026 ~05:28Z a ~05:31Z, deploy 46 (325a04fb). F5 na tela: Execuções > r-20261006012340-d92795 > Por aparelho > android-04 > etapa 'Abrir Notificações' (Falhou): apareceu o botão 'Ensinar a corrigir'. O formulário disse 'Isto assume o controle de android-04 (a IA fica em espera nele até você devolver) e abre o treino no Foco. Nada roda sozinho.', trouxe o texto 'Corrigir a etapa «Abrir N…»' e, com 2 personas no aparelho, exigiu a escolha ('Escolha a persona'); escolhi a persona de teste Teste Portal Um. 'Assumir o controle e abrir o treino' tomou o controle do android-04 e levou ao Foco (?foco=android-04) com 'Controle: Você' e o Modo treinamento 'Gravando: Corrigir a etapa «Abrir Notificações»: a IA gastou o orçamento da etapa' (POST /api/training/from-run sem intent: o backend montou o texto pelo diagnóstico do F4: causa teto_de_ia, rótulo 'a IA gastou o orçamento da etapa', pergunta 'Mostre o caminho curto, toque a toque, para a etapa não depender da IA.'). A origem apareceu na barra: selo 'corrige uma falha', 'Etapa abrir_notificacoes da execução r-20261006012340-d92795', 'Motivo: A etapa passou do orçamento de 10 chamadas de IA…' e, no recolhível 'O que a execução fez, o esperado e as imagens': a trilha (Pesquisar o nome da persona · Cancelada; Abrir Notificações · Falhou · a que falhou; as duas seguintes Canceladas), 'A etapa esperava: A tela de Notificações mostra a opção Notification history (Notification history)' e 'Tentativa 1 (failed) · ia_orcamento · estratégia recipe>ai_actor: …'. GET /api/training/trn-cUIEX-M2QCTokWeA devolveu origin {run_id, step_id, step_key, attempt_id, motivo, context{disponivel, trilha, esperado, tentativa, evidencias []}, diagnostico{causa, rotulo, pergunta, fatos, proposta null, amostra 1}} e o profile_id da persona escolhida. Descartada ao fim. [Suíte 47 (Android): Nota: A1 c9236810 (Jev), a prévia da porta pelo Telegram mascara o dado da persona; e o 31.111 A (painel e diagnóstico, já no corte 46), sem mudança de status. Simulado: backend/tests/test_telegram_entrada.py::*. Suíte 47 sobre a integração d2d346cd (main dd134ec8 dentro; Jev F7 6c5a8c96, routers 7a708220 (8e30a011, 6bf397a0), A1 c9236810, F2 9b8b52c3 e a correção do dialeto d2d346cd; Portal 31.91 T1 8a040bea; Aprendizado 31.113 F3 7969c74b; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); SQLite -n 6 dos 372 arquivos afetados desde a main dd134ec8 7108 passed, 1 skipped, 0 falhas (sobre 7ea713c8); frontend typecheck limpo, 1718 passed (131 arquivos), build ok (sobre b1db06ce, sem mudança de frontend depois); catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 372 arquivos em 2 partes sobre 7ea713c8: 3566 passed, 9 skipped e 3500 passed, 3 skipped, 31 falhas só no golden da saúde (dialeto do banco, defeito do teste); correção d2d346cd (a fotografia troca o dialeto por um marcador): test_saude_caracterizacao e test_saude_ao_vivo no PG 44 passed, 0 falhas (06:44:23Z) e a catraca + caracterização no SQLite 121 passed.]",
    "blocker": null,
-   "nota": "Não provado nesta passagem: a revisão do treino com origem, o salvar e o selo no fluxo candidato (dependem de uma proposta paga; ficam no 31.79) e a evidência em imagem (a tentativa não tem evidência). O painel NÃO mostra o diagnóstico do F4 (origin.diagnostico: rótulo, pergunta e fatos): o rótulo só chega no texto da intenção e a 'pergunta' não aparece em tela; é lacuna do painel (item novo se o dono quiser a pergunta na revisão).",
-   "grupo": "portal-percurso-deploy-46",
+   "arquivos": [
+    "backend/tests/test_telegram_entrada.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; nota do 31.111 A e da A1, sem ID próprio",
+   "grupo": "android-suite-47",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T05:33:02+00:00"
+   "quando": "2026-10-06T06:49:50+00:00"
   },
   "31.112": {
    "id": "31.112",
@@ -10427,13 +10435,20 @@
    "id": "31.113",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "F1 80b22dbc e F2 a133e58a (marcador da persona na linha da etapa, resolver_persona único em run_step) mais a regra 93898149 (motivo da persona sem o dado = falta_informacao). F3 vai ao corte 47; os bindings ficam com o valor na linha até lá. Simulado: backend/tests/test_etapa_com_marcador_da_persona.py::*, backend/tests/test_registro_mascarado_da_persona.py::*, backend/tests/test_prevoo_dado_da_persona.py::*, backend/tests/test_credenciais_da_conta.py::*, backend/tests/test_learning_falhas.py::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z). [Percurso 46 (Portal): not_run, F1/F2 não têm tela. Falta: F3 (bindings com marcador, ponta ae539033, corte 47) e a prova real (uma execução com persona de teste, após o deploy 47).]",
-   "grupo": "orquestrador-correcao-31-113",
-   "modelo": "claude-fable-5-1",
-   "esforco": "medium",
+   "evidence": "F3 7969c74b (bindings com marcador, leitor único, chave da aprovação sobre o valor, approvals ao vivo, evento com marcador; adendo v1.79). Simulado: backend/tests/test_bindings_com_marcador_da_persona.py::*, backend/tests/test_etapa_com_marcador_da_persona.py::*, backend/tests/test_perfil_variaveis_da_persona.py::*. Suíte 47 sobre a integração d2d346cd (main dd134ec8 dentro; Jev F7 6c5a8c96, routers 7a708220 (8e30a011, 6bf397a0), A1 c9236810, F2 9b8b52c3 e a correção do dialeto d2d346cd; Portal 31.91 T1 8a040bea; Aprendizado 31.113 F3 7969c74b; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); SQLite -n 6 dos 372 arquivos afetados desde a main dd134ec8 7108 passed, 1 skipped, 0 falhas (sobre 7ea713c8); frontend typecheck limpo, 1718 passed (131 arquivos), build ok (sobre b1db06ce, sem mudança de frontend depois); catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 372 arquivos em 2 partes sobre 7ea713c8: 3566 passed, 9 skipped e 3500 passed, 3 skipped, 31 falhas só no golden da saúde (dialeto do banco, defeito do teste); correção d2d346cd (a fotografia troca o dialeto por um marcador): test_saude_caracterizacao e test_saude_ao_vivo no PG 44 passed, 0 falhas (06:44:23Z) e a catraca + caracterização no SQLite 121 passed.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_bindings_com_marcador_da_persona.py",
+    "backend/tests/test_etapa_com_marcador_da_persona.py",
+    "backend/tests/test_perfil_variaveis_da_persona.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; falta a prova real",
+   "grupo": "android-suite-47",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T05:33:32+00:00"
+   "quando": "2026-10-06T06:49:50+00:00"
   },
   "29.153": {
    "id": "29.153",
@@ -10481,6 +10496,86 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T05:42:42+00:00"
+  },
+  "15.15": {
+   "id": "15.15",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Parcial, três dos seis tópicos, todos mergeados com 8721158e e empurrados. F7 (impor as máquinas de estado), feat/15-15-f7-impor-maquinas 6c5a8c96: Repository._conferir recusa a transição fora das tabelas de execution/domain/states.py com InvalidTransition ANTES de escrever (set_run_status, set_objective, finish_attempt), main.py devolve 409 invalid_transition, aresta completed_with_issues->cancelled declarada, ADR-038, adendo v1.78; 1765 testes dirigidos verdes (76 arquivos). F4 (routers por contexto, 3 cortes sem mudar caminho, método, corpo nem resposta): fluxos 7 rotas (f4a 8e30a011), treino 11 rotas (f4b 6bf397a0), execuções 16 rotas mais a escondida (f4c 7a708220, ponta); main.py monta os três routers no lugar do api.router; OpenAPI contra a main: 270 método+caminho idênticos, schemas só diferem em 16 títulos automáticos de resposta 200, ordem protegida por tests/test_ordem_das_rotas.py (3 testes); 2230 testes dirigidos verdes (119 arquivos). F2 (saúde fora de state.py), feat/15-15-f2-saude f1d0b60b: app/saude.py com SaudeDoSistema (health, ai_status, ultima_migracao, checar e os 6 auxiliares), AppState só delega em uma linha; o teste de caracterização (31 cenários, golden) não mudou e passa igual antes e depois; 132 testes (caracterização, saude_ao_vivo, arquitetura, catracas) e 61 arquivos que chamam a saúde verdes; catraca Any de app.state 50->48. Em todas: catracas 88, mypy 257 no teto, docs-check 0/0, sem migração. Faltam do 15.15: cluster de apps e portões, bootstrap, adapters ai|android, identidade de receita por capability, ligar o apply no ciclo e a conversão dos fluxos reais (recomendação em avaliacao-15-15.md: tirar do 15.15). Prova real = not_run: depois do deploy, comparar GET /api/health (problems e features) antes e depois, e o 409 invalid_transition num pedido recusado.",
+   "blocker": null,
+   "grupo": "jev",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T06:49:50+00:00"
+  },
+  "30.72": {
+   "id": "30.72",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Re-medida (só leitura, banco do central em mode=ro + query_only, 06/10 ~06:01Z, main dd134ec8, script medir3072b.py; nenhuma IA). Calibragem em vigor desde o 1º pedido com teto 0,25, 05/10 10:48:35Z; janela de ~19 h.\n- Antes (03/10–05/10 10:48Z): 80 pedidos de prova, dos quais 18 feitos e 3 `plano_acima_do_teto`. Custo das que gastaram: mediana US$ 0,070, máximo 0,167; 3 acima de 0,15.\n- Depois: 6 pedidos, 1 feito (US$ 0,020); recusas: 2 `efeito_real`, 2 `sem_caminho`, 1 `app_sem_sessao`. 0 `plano_acima_do_teto` (meta cumprida) e nenhuma prova acima de 0,15. A mediana não subiu, mas a amostra tem n=1.\n- Curador em fluxo B, depois: 3 revisões reais (2 `observar` e 1 `rebaixar`, todas com confiança média). 0 `aprovar` (antes: 0 em 27). Na última revisão real de cada um dos 23 fluxos B: 12 `pedir_evidencia` (4 com confiança alta), 10 `observar`, 1 `rebaixar`.\n- Sombra da autopublicação: 0 sinais `autopublicaria`, no total e depois.\n- O 30.73 está no ar desde o deploy 37. O `dossie-v1` não muda por desenho (N1). As 2 revisões B depois do deploy 37 pedem só `execucao_real`, sem voto nem decisão da pessoa (antes eram 17 e 19 em 28), e param em `observar` por evidência.\n- As evidências reais de fluxo depois da calibragem trazem a versão do app (4/4, 30.77 no ar): a lacuna `reproducao_na_versao_viva` deixou de ser de dado.\n- Transições de fluxo depois: 8 `published` (6 por ensino e 2 reativações pelo painel ou pelo Portal) e 7 `disabled` (painel ou Portal). Nenhuma veio da autopublicação.\nConclusão parcial: o teto deixou de recusar, mas o volume de provas caiu (6 em ~19 h, contra 80 em ~2 dias), e o funil B segue sem `aprovar`. Quem trava hoje é a evidência (execução real, outro aparelho), não o limite nem o pedido à pessoa. A medida de 7 dias fica para 12/10.\n\nMedida anterior:\nMedida (só leitura, banco do central em mode=ro + query_only, 05/10 ~08:40Z, main d025b671): 27 revisões reais do curador em 22 fluxos B, nenhuma `aprovar`; nenhum dos 22 tinha caminho para `aprovar` (detalhe em .claude/handoffs/aprendizado-medida-30-72.md). Calibragem aprovada pela orquestradora e aplicada no central (C:/git/android, deploy 36, código e5f1b22b) em config/config.yaml às 2026-10-05T09:49:22Z: aprendizado.validacao.teto_por_pedido_usd 0.15 -> 0.25, extra_usd 2.5 renovado com extra_ate 2026-10-05T15:55:42.000Z -> 2026-10-12T09:49:23.000Z (não há API viva desses limites; load_config conferido). Tarefa farm-central reiniciada de 09:52:24Z a 09:53:41Z (health ok, migração 113; 12 aparelhos online às 09:54:03Z; o processo da :8000 nasceu às 09:52:51Z). Valor vivo: o pedido lv-cf7657751e4ccb18, criado em 2026-10-05T10:48:35.434Z, gravou teto_usd 0.25 (fluxo, recusado ao despachar por efeito_real, sem gasto); o último antes do reinício, lv-dc4b83f143d6c913 (09:48:35Z), tinha 0.15. Saídas de item: 30.73 (#403) e 30.74 (#404).",
+   "blocker": "Medida final da semana em 2026-10-12, com o mesmo script: `plano_acima_do_teto` = 0, a mediana do custo por prova com n suficiente e a contagem de voto e decisão nas faltas B.",
+   "grupo": "aprendizado-30-72-remedida",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T06:49:50+00:00"
+  },
+  "30.73": {
+   "id": "30.73",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Código na main: 50bb9fb1 (o parecer da classe B não pede voto nem decisão da pessoa), 853cdc55 (redação da Jev), 32a326be (a falta descartada fica no registro e no log; adendo v1.53) e 26846018 (N1: VERSAO_DO_DOSSIE segue 1). Mesclados na suíte 37 (e5988493) e no ar desde o deploy 37 (05/10 ~12:43Z). Prova simulated: backend/tests/test_curador_classe_b.py. Prova real, só leitura (banco do central em mode=ro + query_only, 06/10 ~06:08Z, main dd134ec8, nenhuma IA), nas revisões reais do curador em fluxo B. Antes do deploy 37 (28 revisões), a lista do que falta trazia voto_da_pessoa 17 vezes e decisao_da_pessoa 19 vezes, além de reproducao_em_outro_aparelho (23), execucao_real (19), reproducao_na_versao_viva (10) e sombra (5). Depois do deploy 37 (2 revisões, 05/10 19:05Z e 23:04Z), a lista traz só execucao_real: nenhum voto nem decisão da pessoa, e falta_descartada vazia, porque o modelo nem os ofereceu. As duas seguem em `observar` por evidência (contraditória e insuficiente), não pelo pedido à pessoa. Ressalva: amostra de 2; a medida de 7 dias do 30.72 (12/10) repete esta contagem. A autopublicação segue em observação (sombra, 0 casos).",
+   "blocker": "",
+   "grupo": "aprendizado-30-73",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T06:49:50+00:00"
+  },
+  "30.74": {
+   "id": "30.74",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Código na main: b61e0ca7 (a evidência do fluxo leva a versão do app instalada no aparelho da execução, nas três gravações de evidência de fluxo) e 947be893 (V1: a versão só vale se o app não mudou depois do início da execução), mesclados na suíte 37 (e5988493) e no ar desde o deploy 37 (05/10 ~12:43Z). Prova simulated: backend/tests/test_versao_na_evidencia_do_fluxo.py. Prova real, só leitura (banco do central em mode=ro + query_only, 06/10 ~06:05Z, main dd134ec8, nenhuma IA). Das evidências reais de fluxo (learning_evidence, item_ref fluxo:*, simulated=0) desde 04/10 00:00Z: 105 até 05/10 10:15Z, antes do deploy 37, todas sem app_version; depois do deploy 37, 4 de 4 com app_version (05/10 13:37Z, 16:49Z e 22:24Z). Com o 30.77 (deploy 44), a versão viva não se perde. Efeito no curador: medido na re-medida do 30.72 (a lacuna `reproducao_na_versao_viva` deixou de ser de dado).",
+   "blocker": "",
+   "grupo": "aprendizado-30-74",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T06:49:51+00:00"
+  },
+  "29.112": {
+   "id": "29.112",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/aprendizado/SaudeDoApp.test.tsx (segura o Livro, abre o Fluxo à mão, solta: a Receita abre e o Fluxo segue aberto; falha no código anterior), Disclosure.openWhen em frontend/src/components/Disclosure.tsx; commit 7b8b866a na main; reexecutado em 06/10 sobre dd134ec8 com atraso semeado 7/11/22/44/88/99, 413/413 em aprendizado+profiles.",
+   "blocker": null,
+   "nota": "Prova real (bloco com atenção abre quando a saúde chega, na tela) ainda não feita.",
+   "grupo": "portal-29-112-29-114-atraso-semeado",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T06:49:51+00:00"
+  },
+  "29.114": {
+   "id": "29.114",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/profiles/AcoesEmLote.test.tsx (releitura segurada: sem 'Terminado' nem fechar antes dela; tirar do grupo depois manda o PATCH das duas; falha, rejeição, releitura mais nova, X e Esc); commit c3393856 na main; reexecutado em 06/10 sobre dd134ec8 com atraso semeado 7/11/22/44/88/99, 413/413 em aprendizado+profiles.",
+   "blocker": null,
+   "nota": "Prova real (lote de personas na tela com a releitura) ainda não feita.",
+   "grupo": "portal-29-112-29-114-atraso-semeado",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T06:49:51+00:00"
   }
  },
  "rodadas": [
@@ -13582,6 +13677,64 @@
    ],
    "grupos": [
     "portal-31-79-ensino-assistido-ponta-a-ponta"
+   ]
+  },
+  {
+   "quando": "2026-10-06T06:49:50+00:00",
+   "itens": [
+    "15.15",
+    "31.113",
+    "31.91",
+    "31.111"
+   ],
+   "grupos": [
+    "android-suite-47"
+   ]
+  },
+  {
+   "quando": "2026-10-06T06:49:50+00:00",
+   "itens": [
+    "15.15"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T06:49:50+00:00",
+   "itens": [
+    "30.72"
+   ],
+   "grupos": [
+    "aprendizado-30-72-remedida"
+   ]
+  },
+  {
+   "quando": "2026-10-06T06:49:50+00:00",
+   "itens": [
+    "30.73"
+   ],
+   "grupos": [
+    "aprendizado-30-73"
+   ]
+  },
+  {
+   "quando": "2026-10-06T06:49:51+00:00",
+   "itens": [
+    "30.74"
+   ],
+   "grupos": [
+    "aprendizado-30-74"
+   ]
+  },
+  {
+   "quando": "2026-10-06T06:49:51+00:00",
+   "itens": [
+    "29.112",
+    "29.114"
+   ],
+   "grupos": [
+    "portal-29-112-29-114-atraso-semeado"
    ]
   }
  ]

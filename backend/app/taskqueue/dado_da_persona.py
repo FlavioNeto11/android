@@ -23,16 +23,36 @@ _PERFIL = dict(ROTULOS_DO_PERFIL)
 _CITACAO = re.compile(r"\{(" + "|".join(sorted(_PERFIL)) + r"|conta_[a-z0-9_]+?_" + SUFIXO_USUARIO + r"(?:_\d+)?)\}")
 
 
+def resolver_texto(texto: str | None, variaveis: Mapping[str, str]) -> str | None:
+    """31.113 F3: o marcador da persona (`_CITACAO`) trocado pelo valor, em memória. O dado ausente ou VAZIO deixa o
+    marcador (nunca ""): um argumento vazio passaria como valor final, e o `{` que sobra faz a chave da aprovação falhar
+    fechado (`argumentos_da_acao`) e o executor parar com "Dado ausente"."""
+    if not texto or not variaveis:
+        return texto
+
+    def valor(m: re.Match[str]) -> str:
+        v = variaveis.get(m.group(1))
+        return v if v and v.strip() else m.group(0)
+
+    return _CITACAO.sub(valor, texto)
+
+
+def resolver_argumentos(bindings: Mapping[str, object], variaveis: Mapping[str, str]) -> dict[str, object]:
+    """31.113 F3: os `bindings` da LINHA (com o marcador) com o valor da persona, para a porta, a política e a chave da
+    aprovação (`Repository.bindings_da_etapa`). Nunca gravado."""
+    return {k: resolver_texto(v, variaveis) if isinstance(v, str) else v for k, v in bindings.items()}
+
+
 def resolver_persona(step: StepDTO, variaveis: Mapping[str, str]) -> StepDTO:
     """31.113 F2: a etapa da TENTATIVA com o dado da persona do objetivo no lugar do marcador, em memória. A linha, o
     `plan_versions` e o evento `step.updated` ficam com o marcador; o ator, a receita, a conferência da tela
     (`text_visible`) e o juiz recebem o valor. Só os marcadores da persona (`_CITACAO`); o que a persona não tem fica
-    como está (o pré-voo do F1 já recusou a execução sem o dado). Os `bindings` já vêm resolvidos da materialização."""
+    como está (o pré-voo do F1 já recusou a execução sem o dado). F3: os `bindings` também chegam com o marcador."""
     if not variaveis:
         return step
 
     def r(texto: str | None) -> str | None:
-        return _CITACAO.sub(lambda m: variaveis.get(m.group(1), m.group(0)), texto) if texto else texto
+        return resolver_texto(texto, variaveis)
 
     post = step.postcondition.model_copy(update={"value": r(step.postcondition.value) or "",
                                                  "description": r(step.postcondition.description) or ""})

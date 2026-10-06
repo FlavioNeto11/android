@@ -443,6 +443,20 @@ class ApprovalService:
         return [{**a.to_dict(), "vence_em": prazos.get(a.objective_id) if a.status == "pending" and a.objective_id
                  else None} for a in itens]
 
+    def _reversivel(self, texto: str, objective_id: str | None) -> str:
+        reversivel = getattr(self.repo, "texto_reversivel", None)
+        return (reversivel(texto, objective_id) or texto) if reversivel is not None and objective_id else texto
+
+    def na_tela(self, item: dict[str, object]) -> dict[str, object]:
+        """31.113 F3: o pedido gravado com o marcador da persona, com o valor de AGORA, só para a tela do painel
+        (`GET /api/approvals` e a resposta da decisão). Não grava; evento, canal e relatório seguem com o marcador."""
+        ao_vivo = getattr(self.repo, "texto_ao_vivo", None)
+        oid = item.get("objective_id")
+        if ao_vivo is None or not oid:
+            return item
+        return {**item, **{k: ao_vivo(item.get(k), oid) for k in ("target", "summary", "generated_content",
+                                                                  "approved_content", "content")}}
+
     def decide_many(self, decisoes: list[Any]) -> dict[str, Any]:
         """Decide várias de uma vez — é como se lê uma execução: os N textos juntos, um por perfil.
 
@@ -494,13 +508,14 @@ class ApprovalService:
                               "Só `edit` recebe texto; aprovar ou rejeitar não trocam o que será enviado.", 400)
 
         editar: Callable[[Row], None] | None = None
+        # 31.113 F3: o texto do dono guarda o marcador da persona só se a volta for exata (mesma caixa); senão, literal.
+        gravado = self._reversivel(content.strip(), pedido.objective_id) if content else None
         if verb == "edit" and pedido.step_id:
-            texto, etapa = content.strip(), pedido.step_id                     # type: ignore[union-attr]
+            texto, etapa = gravado or "", pedido.step_id
             editar = lambda _row: apply_edit(self.repo.db, etapa, texto)
         decidido = self.store.decide(approval_id, status={"approve": "approved", "edit": "edited",
                                                           "reject": "rejected"}[verb],
-                                     content=content.strip() if content else None, note=note,
-                                     na_mesma_transacao=editar)
+                                     content=gravado, note=note, na_mesma_transacao=editar)
         if decidido is None:
             raise SocialError("already_decided", "Esta aprovação já foi decidida.", 409)
         if verb == "reject" and self.excecoes is not None:

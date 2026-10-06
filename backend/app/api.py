@@ -72,10 +72,10 @@ from .modules.identity.domain.persona_image import OrcamentoEsgotado
 from .modules.identity.infrastructure.persona_images import imagens_dto
 from .modules.identity.presentation.schemas import (FeitaPorIaBody, PersonaBatchBody, PersonaEnrichBody, PersonaGenerateBody,
                                                      PersonaImagesBody)
-from .modules.learning.domain.ensino_da_falha import intencao_sugerida
 from .modules.learning.domain.vocabulario import LivroKind
 from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.presentation.livro import mudar_status_legado
+from .modules.execution.presentation.comum import autor_do_sinal, run_error
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .modules.skills.presentation.schemas import EscopoDoFluxoBody, TrainingDeFalhaBody, TrainingStopBody, TrainingUndoBody
@@ -102,7 +102,7 @@ from .social.service import SocialError
 from .taskqueue import observabilidade
 from .taskqueue.flows import id_do_fluxo
 from .taskqueue.repository import CONTENT_TYPES
-from .models import CustosExecucao, RunDetail, RunSummary
+from .models import RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
 from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
 from .taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody, RunTargetsSuggestion
@@ -167,14 +167,6 @@ def quem(request: Request | None = None, informado: str | None = None) -> str:
     """
     da_sessao = getattr(request.state, "operador", None) if request is not None else None
     return da_sessao or operador_atual() or (informado or "").strip() or PAINEL
-
-
-def _autor_do_sinal(request: Request) -> str:
-    """Quem fez um gesto que vira sinal do aprendizado (ADR-054): o operador da SESSÃO, ou `panel` — a regra das
-    rotas do livro. Diferente de `quem`, o `requested_by` do corpo não entra: qualquer chamador o escreve, e um
-    `sistema` ali tiraria o gesto da conta das pessoas na régua diária. Por isso pode diferir do `resolved_by` que o
-    comando grava (aquele aceita o corpo sem sessão); o do comando vai em `data` do sinal, para cruzar os dois."""
-    return autor_do_gesto(getattr(request.state, "operador", None))
 
 
 #: A triagem de credencial do voto do D2 (`registrar_sinal(recusar_nota=True)`), para a nota livre que uma pessoa
@@ -564,150 +556,6 @@ async def app_conhecimento_route(pacote: str) -> dict[str, object]:
     return asdict(prova)
 
 
-# ---------------------------------------------------------------- modo treinamento (itens 13.1–13.3)
-def _training_error(exc: Any) -> HTTPException:
-    return err(exc.status, exc.code, exc.message)
-
-
-@router.post("/instances/{instance_id}/training", status_code=201)
-async def start_training(request: Request, instance_id: str, body: TrainingStartBody) -> Any:
-    from .training.recorder import TrainingError  # noqa: PLC0415
-    s = st(request)
-    try:
-        s.devices.get(instance_id)
-    except KeyError as exc:
-        raise err(404, "not_found", "Instância não encontrada.") from exc
-    if body.profile_id and body.profile_id not in s.social.profiles_of(instance_id):
-        raise err(400, "profile_not_on_device", f"A persona {body.profile_id} não está vinculada a {instance_id}: "
-                                                "o treino é de uma persona deste aparelho.")
-    try:
-        return s.training.start(instance_id, intent=body.intent, lease_id=body.lease_id, app_id=body.app_id,
-                                operator=getattr(request.state, "operator", None), profile_id=body.profile_id)
-    except TrainingError as exc:
-        raise _training_error(exc) from exc
-
-
-@router.post("/training/from-run", status_code=201)
-async def start_training_from_run(request: Request, body: TrainingDeFalhaBody) -> dict[str, object]:
-    """31.111 F1: abre a sessão de ensino já ligada à etapa que falhou. Só a pessoa com o controle do aparelho abre;
-    as travas são as do treino de hoje (nada automático, a loja não é aparelho de treino)."""
-    s = st(request)
-    try:
-        origem = s.training.origem_da_falha(body.run_id, body.step_id)
-        try:
-            s.devices.get(origem.instance_id)
-        except KeyError as exc:
-            raise err(404, "not_found", "O aparelho desta etapa não existe mais.") from exc
-        if body.profile_id and body.profile_id not in s.social.profiles_of(origem.instance_id):
-            raise err(400, "profile_not_on_device", f"A persona {body.profile_id} não está vinculada a "
-                                                    f"{origem.instance_id}: o treino é de uma persona deste aparelho.")
-        # 31.111 F4: sem intenção escrita pela pessoa, a sugerida leva a causa provável da tentativa (30.13, sem IA)
-        diagnostico = (s.training.diagnostico_da_falha(origem.attempt_id)
-                       if origem.attempt_id and s.training.diagnostico_da_falha is not None else None)
-        intent = body.intent or intencao_sugerida(origem.titulo, diagnostico)
-        return s.training.start(origem.instance_id, intent=intent, lease_id=body.lease_id, app_id=body.app_id,
-                                operator=getattr(request.state, "operator", None), profile_id=body.profile_id,
-                                origem=origem)
-    except TrainingError as exc:
-        raise _training_error(exc) from exc
-
-
-@router.get("/training")
-async def list_training(request: Request, instance_id: str | None = None, limit: int = Query(30, ge=1, le=200)) -> Any:
-    return st(request).training.list(instance_id=instance_id, limit=limit)
-
-
-@router.get("/training/{session_id}")
-async def get_training(request: Request, session_id: str) -> Any:
-    from .training.recorder import TrainingError  # noqa: PLC0415
-    try:
-        return st(request).training.get(session_id)
-    except TrainingError as exc:
-        raise _training_error(exc) from exc
-
-
-@router.post("/training/{session_id}/stop")
-async def stop_training(request: Request, session_id: str, body: TrainingStopBody | None = None) -> Any:
-    from .training.recorder import TrainingError  # noqa: PLC0415
-    try:
-        return st(request).training.stop(session_id, lease_id=body.lease_id if body else None)
-    except TrainingError as exc:
-        raise _training_error(exc) from exc
-
-
-@router.post("/training/{session_id}/propose")
-async def propose_training(request: Request, session_id: str) -> Any:
-    """A IA lê a gravação e propõe a habilidade (comando com parâmetros, etapas, descartes). Uma chamada do modelo
-    do planejador; a proposta fica guardada para a pessoa revisar. Corpo OPCIONAL `{"answers": [{question, answer}]}`
-    (31.91): as respostas da pessoa às perguntas da proposta anterior; lido à mão para o erro de forma ser 400
-    `invalid_answers` (e não o 422 do FastAPI)."""
-    from .planning.provider import AIError  # noqa: PLC0415
-    from .training.recorder import TrainingError  # noqa: PLC0415
-    cru = await request.body()
-    corpo: object = None
-    if cru.strip():
-        try:
-            corpo = json.loads(cru)
-        except ValueError:
-            raise err(400, "invalid_answers", "O corpo tem de ser um JSON {\"answers\": [...]}.") from None
-    try:
-        return await st(request).skills.propose(session_id, corpo)
-    except TrainingError as exc:
-        raise _training_error(exc) from exc
-    except AIError as exc:
-        raise err(502, "ai_error", f"A IA não conseguiu propor a habilidade: {exc}") from exc
-
-
-@router.post("/training/{session_id}/save")
-async def save_training(request: Request, session_id: str, body: TrainingSaveBody) -> Any:
-    from .training.recorder import TrainingError  # noqa: PLC0415
-    try:
-        return await st(request).skills.save(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
-                                             group_ids=body.group_ids, scope_on_proof=body.scope_on_proof)
-    except TrainingError as exc:
-        raise _training_error(exc) from exc
-
-
-@router.post("/training/{session_id}/preview")
-async def preview_training(request: Request, session_id: str, body: TrainingSaveBody) -> dict[str, object]:
-    """O que o `save` faria com esta proposta, sem gravar nada (31.86): os mesmos erros e, por etapa, se vira receita e
-    por que não. A pessoa corrige a proposta ANTES de salvar, em vez de descobrir o motivo depois."""
-    try:
-        return await st(request).skills.preview(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
-                                                group_ids=body.group_ids, scope_on_proof=body.scope_on_proof)
-    except TrainingError as exc:
-        raise _training_error(exc) from exc
-
-
-@router.post("/training/{session_id}/recipes")
-async def redo_training_recipes(request: Request, session_id: str) -> dict[str, object]:
-    """Refaz a destilação de uma habilidade JÁ salva e grava a receita das etapas que ficaram sem (31.86): o reparo do
-    que foi salvo com o aparelho fora do ar. Idempotente; sessão não salva: 409 `sessao_nao_salva`."""
-    try:
-        return await st(request).skills.refazer_receitas(session_id)
-    except TrainingError as exc:
-        raise _training_error(exc) from exc
-
-
-@router.post("/training/{session_id}/discard")
-async def discard_training(request: Request, session_id: str, body: TrainingStopBody | None = None) -> Any:
-    from .training.recorder import TrainingError  # noqa: PLC0415
-    try:
-        return st(request).training.stop(session_id, discard=True, lease_id=body.lease_id if body else None)
-    except TrainingError as exc:
-        raise _training_error(exc) from exc
-
-
-@router.post("/training/{session_id}/undo")
-async def undo_training_input(request: Request, session_id: str, body: TrainingUndoBody) -> dict[str, object]:
-    """31.90-D: tira a ÚLTIMA entrada da gravação VIVA (o toque errado) sem descartar a sessão. Exige o controle do
-    aparelho (`lease_id`); `seq` opcional confere que a última ainda é a que a pessoa viu. O aparelho não volta."""
-    try:
-        return st(request).training.desfazer_a_ultima(session_id, lease_id=body.lease_id, seq=body.seq)
-    except TrainingError as exc:
-        raise _training_error(exc) from exc
-
-
 @router.get("/desempenho")
 async def desempenho(request: Request, janelas: int = Query(24, ge=0, le=672),
                      dias: int = Query(0, ge=0, le=90), irq_horas: int = Query(0, ge=0, le=336),
@@ -825,61 +673,6 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
                                      desde=None if run_id else iso_in(-days * 86400))}
 
 
-@router.get("/flows")
-async def list_flows(request: Request) -> Any:
-    return st(request).scheduler.flows.list()
-
-
-@router.get("/flows/cobertura")
-async def flows_coverage(request: Request) -> Any:
-    """Cada fluxo com quantas etapas já têm receita ativa para a versão promovida do app: os "caminhos mapeados"
-    do parque, e o custo de IA esperado ao repetir cada um (zero / parcial / total). Só leitura."""
-    from .social.capacidades import cobertura_dos_fluxos  # noqa: PLC0415
-
-    return cobertura_dos_fluxos(st(request))
-
-
-class FlowMatchBody(BaseModel):
-    """Corpo de `POST /flows/match` (29.25): o rascunho do comando, que pode trazer e-mail e nunca deve ir para a URL
-    (query string vira linha de log de acesso). O teto é o do comando de uma execução e de `/skills/resolve`."""
-    model_config = ConfigDict(extra="forbid")
-    command: str = Field(min_length=1, max_length=4000)
-
-
-@router.post("/flows/match")
-async def flows_match(request: Request, body: FlowMatchBody) -> Any:
-    """Item 7.7 ("quanto vai custar?" do Osintgram): o comando digitado casa com uma habilidade ou um fluxo
-    conhecido? Devolve a cobertura e a estimativa em US$ do plano, ou `null` — sem nada casado não há o que estimar.
-
-    Fase G (decisão P2): a MESMA resolução que o planejamento usa (`skill_planner`: habilidade publicada atrás de
-    `skills.enabled`, depois fluxo ativo atrás de `ai.flows`), então a estimativa é do plano que REALMENTE rodaria.
-    Mudança visível: antes a rota ignorava `ai.flows` e estimava um fluxo que a execução nunca usaria. Para
-    habilidade, `flow_id` traz a versão (`ig.abrir_conversa@1`) e `skill_ref` diz que não é fluxo."""
-    from .social.capacidades import cobertura_do_fluxo  # noqa: PLC0415
-
-    s = st(request)
-    casado = s.skill_planner.for_command(s.runs.sem_destinos(body.command), None)   # como a execução o vê (onda C)
-    if casado is None or casado.plan is None:
-        return None
-    if casado.legacy_flow_id is not None:
-        row = s.db.one("SELECT * FROM flows WHERE id=?", (casado.legacy_flow_id,))
-        return cobertura_do_fluxo(s, row) if row is not None else None
-    modelo = {"id": str(casado.ref), "app_id": casado.plan.app_id, "plan": casado.plan.model_dump_json()}
-    return {**cobertura_do_fluxo(s, modelo), "skill_ref": str(casado.ref)}
-
-
-@router.post("/flows/similar")
-async def flows_similar(request: Request, body: FlowMatchBody) -> dict[str, object]:
-    """31.89 F5: "este comando parece com o fluxo tal". Só pergunta: devolve até 3 fluxos ativos cujo texto fixo o
-    comando contém (sem acento, caixa, artigo, com pequenas variações), com a referência pública, o molde e a nota. Se
-    um fluxo já casa o comando por inteiro, a lista vem vazia e `matches` é verdadeiro. Não cria execução e não usa IA;
-    o `/flows/match` (cobertura e custo) segue como era."""
-    s = st(request)
-    comando = s.runs.sem_destinos(body.command)
-    return {"matches": s.scheduler.flows.match(comando) is not None,
-            "suggestions": s.scheduler.flows.parecidos(comando)}
-
-
 @router.post("/skills/resolve", response_model=None)
 async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObject:
     """Fase I: a RESOLVE sozinha — que habilidade a frase pede, com que valores tipados, ou que pergunta falta.
@@ -912,77 +705,6 @@ async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObj
         # "resolveu outra coisa em silêncio" (a execução recusa do mesmo jeito, em `needs_input`).
         raise err(409, exc.code, str(exc), gated_by_config=portas) from exc
     return {**resolvido.as_dict(), "gated_by_config": portas}
-
-
-@router.put("/flows/{flow_id}")
-async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> Any:
-    s = st(request)
-    flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: o id ou a referência pública (o `href` dos avisos)
-    if s.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)) is None:
-        raise err(404, "not_found", "Fluxo não encontrado.")
-    if patch.get("status") not in ("active", "disabled"):
-        raise err(400, "invalid", "status deve ser 'active' ou 'disabled'.")
-    # Fase G (guarda apontada pela fase D): fluxo ADOTADO por uma habilidade publicada não se religa por aqui — o
-    # mesmo comando ficaria vivo nos dois backends. Voltar ao fluxo é desfazer a adoção, que desabilita a versão
-    # na mesma transação.
-    # Fase J: nem por outra habilidade publicada com o MESMO comando (critério da fase: nenhum fluxo ativo e skill
-    # publicada com o mesmo comando). A conferência e a escrita numa transação: no SQLite, a publicação concorrente
-    # espera (BEGIN IMMEDIATE).
-    with s.db.tx():
-        if patch["status"] == "active" and (adotante := s.skill_repo.published_adopter(flow_id)) is not None:
-            raise err(409, "flow_adopted", f"O fluxo foi adotado pela habilidade {adotante.ref}, que está publicada: "
-                                           "religá-lo deixaria o mesmo comando vivo nos dois lugares. Desfaça a adoção "
-                                           "para voltar ao fluxo.")
-        chave = s.db.scalar("SELECT match_key FROM flows WHERE id=?", (flow_id,))
-        if patch["status"] == "active" and (outra := s.skill_repo.published_with_command(chave)) is not None:
-            raise err(409, "command_published", f"A habilidade {outra.ref} está publicada com o mesmo comando: "
-                                                "religar o fluxo deixaria o comando vivo nos dois lugares. Desabilite "
-                                                "a habilidade antes.")
-        # ADR-054 (D1): pelo livro, na MESMA transação das guardas — status e trilha com a pessoa que decidiu, ou
-        # nenhum dos dois. Sem a trilha, o fluxo que ela desligou aqui podia renascer do próximo plano (a última
-        # linha da trilha seguia sendo a refutação do sistema) e o conteúdo não ficava vetado.
-        mudar_status_legado(request, LivroKind.FLUXO, flow_id, patch["status"],
-                            reason="ligado na lista de fluxos do painel" if patch["status"] == "active"
-                            else "desligado na lista de fluxos do painel")
-    return next(f for f in s.scheduler.flows.list() if f["id"] == flow_id)
-
-
-@router.put("/flows/{flow_id}/scope")
-async def set_flow_scope(request: Request, flow_id: str, body: EscopoDoFluxoBody) -> dict[str, object]:
-    """31.88 F2: a pessoa amplia ou restringe a quem o fluxo vale (vazio = todos). O escopo é distribuição, não
-    conteúdo: não muda o status nem passa pelo livro (a decisão da prova é outra). A trilha é o evento `log` com o
-    antes e o depois e quem decidiu."""
-    s = st(request)
-    if s.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)) is None:
-        raise err(404, "not_found", "Fluxo não encontrado.")
-    for pid in body.profile_ids:
-        if s.social_repo.profile_row(pid) is None:
-            raise err(400, "unknown_profile", f"Perfil inexistente: {pid}.")
-    for gid in body.group_ids:
-        if s.social_repo.policy_group_row(gid) is None:
-            raise err(400, "unknown_group", f"Grupo de acesso inexistente: {gid}.")
-    antes = s.scheduler.flows.scope(flow_id)
-    s.scheduler.flows.set_scope(flow_id, profile_ids=body.profile_ids, group_ids=body.group_ids)
-    depois = s.scheduler.flows.scope(flow_id)
-    quem = autor_do_gesto(getattr(request.state, "operador", None))
-    s.bus.emit("log", "Escopo da habilidade mudou", data={
-        "flow_id": flow_id, "por": quem,
-        "antes": {"profile_ids": antes["profile_ids"], "group_ids": antes["group_ids"]},
-        "depois": {"profile_ids": depois["profile_ids"], "group_ids": depois["group_ids"]}})
-    return {"flow_id": flow_id, **depois}
-
-
-@router.delete("/flows/{flow_id}", status_code=204)
-async def delete_flow(request: Request, flow_id: str) -> Response:
-    s = st(request)
-    flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: antes da guarda da adoção, que lê pelo id
-    # Fluxo adotado por uma habilidade é o caminho de volta da adoção (`release_flow` o religa): apagá-lo deixaria
-    # a habilidade sem ter para onde desfazer. Desligar continua possível; apagar, só depois de desfazer.
-    if (dona := s.skill_repo.adopter_id(flow_id)) is not None:
-        raise err(409, "flow_adopted", f"O fluxo foi adotado pela habilidade {dona}: apagá-lo tiraria o caminho de "
-                                       "volta da adoção. Desfaça a adoção antes de apagar.")
-    s.db.execute("DELETE FROM flows WHERE id=?", (flow_id,))
-    return Response(status_code=204)
 
 
 @router.get("/recipes")
@@ -1954,22 +1676,27 @@ async def profile_runs(request: Request, profile_id: str, limit: int = 20) -> An
 @router.get("/approvals")
 async def list_approvals(request: Request, status: str | None = "pending", profile_id: str | None = None,
                          run_id: str | None = None, limit: int = 50) -> Any:
-    """`run_id` junta os textos de uma execução — um por perfil — para serem lidos e decididos de uma vez."""
-    return st(request).approval_service.list(status=status or None, profile_id=profile_id, run_id=run_id,
-                                             limit=min(max(limit, 1), 200))
+    """`run_id` junta os textos de uma execução — um por perfil — para serem lidos e decididos de uma vez. 31.113 F3:
+    o pedido guarda o marcador da persona; a tela recebe o valor de agora (`na_tela`), sem gravar."""
+    servico = st(request).approval_service
+    return [servico.na_tela(a) for a in servico.list(status=status or None, profile_id=profile_id, run_id=run_id,
+                                                     limit=min(max(limit, 1), 200))]
 
 
 @router.post("/approvals/decide")
 async def decide_approvals(request: Request, body: ApprovalBatchBody) -> Any:
     """Decide várias aprovações. Cada uma é independente: uma recusada não impede as demais, e a resposta diz quais."""
-    return st(request).approval_service.decide_many(body.decisions)
+    servico = st(request).approval_service
+    feito = servico.decide_many(body.decisions)
+    return {**feito, "decided": [servico.na_tela(a) for a in feito["decided"]]}
 
 
 @router.post("/approvals/{approval_id}/decide")
 async def decide_approval(request: Request, approval_id: str, body: ApprovalDecision) -> Any:
     """Aprovar, editar ou rejeitar. Nenhum dos três marca a etapa como concluída: eles decidem o que VAI acontecer."""
     try:
-        return st(request).approval_service.decide(approval_id, body.verb, content=body.content, note=body.note)
+        servico = st(request).approval_service
+        return servico.na_tela(servico.decide(approval_id, body.verb, content=body.content, note=body.note))
     except SocialError as exc:
         raise _social_error(exc) from exc
 
@@ -3008,7 +2735,7 @@ async def resolve_command(request: Request, command_id: str, body: CommandResolv
     # Sinal `comando_incerto_resolvido` (ADR-054), só depois de a decisão valer. A falha do livro nunca desfaz nem
     # derruba a resolução (`avisar`).
     avisar(s.costuras.comando_incerto_resolvido, ResolucaoDeComando(
-        command_id=command_id, resolucao=body.outcome, nota=nota, quem=_autor_do_sinal(request),
+        command_id=command_id, resolucao=body.outcome, nota=nota, quem=autor_do_sinal(request),
         simulated=s.provider.simulated))
     return command_dto(novo)
 
@@ -3088,7 +2815,7 @@ async def take_control(request: Request, instance_id: str, body: TakeControlBody
     # Pedir o aparelho com a IA numa etapa é o gesto `tomou_controle` (ADR-054): leva o operador da sessão, que desde o
     # 29.143 também é o dono do lease (outra pessoa recebe 409 `controlled_by_other`, com `dono` e `desde`).
     try:
-        status, lease = s.devices.request_control(rt, por=_autor_do_sinal(request), tomar=bool(body and body.tomar))
+        status, lease = s.devices.request_control(rt, por=autor_do_sinal(request), tomar=bool(body and body.tomar))
     except ControlError as exc:
         raise err(409, exc.code, exc.message, **exc.detalhes) from exc
     return {"status": status, "lease_id": lease}
@@ -3119,199 +2846,6 @@ async def manual_input(request: Request, instance_id: str, body: ManualInput) ->
 
 
 # ====================================================================== execuções
-def _run_error(exc: RunError) -> HTTPException:
-    # `details` carrega o que o painel precisa para OFERECER a saída — no pré-voo, a lista por aparelho e quais
-    # seguem aptos. Sem isso a recusa seria só uma frase, e "seguir só com os aptos" não teria como existir.
-    return err(exc.status, exc.code, exc.message, **exc.details)
-
-
-@router.post("/runs")
-async def create_run(request: Request, body: RunCreate) -> Any:
-    """Cria a execução. Com `mode=plan`, a resposta leva também `plan_report`: o relatório dos recursos declarados
-    (design §14.2) — o que está certo, o que diverge, o que seria feito e o que só uma pessoa resolve —, lido sem
-    aplicar nada. Aditivo: o resumo de sempre continua igual, campo a campo."""
-    runs = st(request).runs
-    try:
-        resumo = runs.create(body)
-    except RunError as exc:
-        raise _run_error(exc) from exc
-    if body.mode != "plan":
-        return resumo
-    try:
-        relatorio: dict[str, object] = runs.relatorio_de_recursos(resumo.id)
-    except Exception as exc:  # noqa: BLE001 - a execução já existe: o relatório ao lado não pode virar um 500
-        log.exception("relatório de recursos da execução %s", resumo.id)
-        relatorio = {"source": "error", "detail": f"o relatório dos recursos não pôde ser montado: {exc}"}
-    return {**jsonable_encoder(resumo), "plan_report": relatorio}
-
-
-@router.post("/runs/targets/resolve")
-async def resolve_run_targets(request: Request, body: RunTargetsResolveBody) -> RunTargetsPreview:
-    """Prévia OBRIGATÓRIA dos alvos (onda C; design persona-e-parque §7.6): para quem e onde a execução aconteceria,
-    com a origem de cada alvo (`ui`, `texto`, `vinculo`, `balanceamento`), as perguntas e o comando sem os destinos.
-    Não cria execução, não grava nada e não chama o planejador. Declarada antes de `/runs/{run_id}/{op}`."""
-    try:
-        return st(request).runs.previa_de_alvos(body)
-    except RunError as exc:
-        raise _run_error(exc) from exc
-
-
-@router.post("/runs/targets/suggest")
-async def suggest_run_targets(request: Request, body: RunTargetsSuggestBody) -> RunTargetsSuggestion:
-    """Modo Automático (ADR-050): quem faz e onde, pelo pedido. Não cria execução. Sem IA quando o texto já diz o
-    destino ou quando o app não usa conta (distribuição pela carga); senão uma chamada do papel `plan` escolhe as
-    personas pelo perfil e o resolvedor põe cada uma no aparelho dela. Declarada antes de `/runs/{run_id}/{op}`."""
-    state = st(request)
-    try:
-        return await Orquestrador(state.runs, state.social_repo).sugerir(body)
-    except RunError as exc:
-        raise _run_error(exc) from exc
-
-
-@router.get("/runs")
-async def list_runs(request: Request, limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0),
-                    instance_id: str | None = None, worker_id: str | None = None) -> Any:
-    """A lista de execuções, paginada e filtrável por ONDE rodou.
-
-    Sem paginação, o painel pedia 50 e as execuções mais antigas simplesmente sumiam — não havia como chegar
-    nelas por nenhum caminho. Os filtros vêm da mesma fotografia do objetivo (migração 022): "o que rodou naquele
-    servidor" e "o que rodou naquele aparelho" passam a ser perguntas que a tela sabe fazer.
-
-    O filtro por aparelho também olha `runs.instance_ids` porque uma execução em `planning` ainda não tem
-    objetivo materializado — e some-la da lista seria esconder justamente a que está acontecendo agora.
-    """
-    s = st(request)
-    where, params = [], []
-    if instance_id:
-        where.append("(EXISTS (SELECT 1 FROM objectives o WHERE o.run_id=r.id AND o.instance_id=?)"
-                     " OR r.instance_ids LIKE ?)")
-        params += [instance_id, f'%"{instance_id}"%']
-    if worker_id:
-        where.append("EXISTS (SELECT 1 FROM objectives o WHERE o.run_id=r.id AND o.worker_id=?)")
-        params.append(worker_id)
-    sql = "SELECT r.* FROM runs r" + (" WHERE " + " AND ".join(where) if where else "")
-    total = s.db.scalar("SELECT COUNT(*) FROM (" + sql + ") x", tuple(params)) or 0
-    rows = s.db.query(sql + " ORDER BY r.created_at DESC LIMIT ? OFFSET ?", tuple(params) + (limit, offset))
-    return {"runs": s.repo.run_summaries(rows), "total": int(total), "limit": limit, "offset": offset}
-
-
-class DistributionPreviewBody(BaseModel):
-    """Corpo de `POST /runs/distribution` (29.26): o comando, que pode trazer e-mail e nunca deve ir para a URL (query
-    string vira linha de log de acesso). O teto é o do comando de uma execução, de `/skills/resolve` e de `/flows/match`."""
-    model_config = ConfigDict(extra="forbid")
-    count: int = Field(ge=1, le=64)
-    app_id: str | None = Field(default=None, min_length=1, max_length=80)
-    command: str | None = Field(default=None, min_length=1, max_length=4000)
-
-
-@router.post("/runs/distribution")
-async def preview_distribution(request: Request, body: DistributionPreviewBody) -> Any:
-    """Quais aparelhos uma execução distribuída pegaria AGORA, por servidor — sem criar nada.
-
-    Item 24.6: `app_id` ficou opcional. Sem ele, os apps são os que o `command` usa (a mesma leitura da criação);
-    um dos dois é obrigatório. Comando com credencial recebe a mesma recusa da criação. Item 29.26: era `GET` com tudo
-    na query; o texto do comando agora vai no corpo."""
-    count, app_id, command = body.count, body.app_id, body.command
-    if app_id is None and command is None:
-        raise err(422, "distribution_sem_alvo", "Informe o app (`app_id`) ou o comando (`command`) da distribuição.")
-    s = st(request)
-    try:
-        if command is not None:
-            s.runs._recusar_credencial(command)
-        return s.runs.previa_de_distribuicao(DistributeSpec(count=count, app_id=app_id), command)
-    except RunError as exc:
-        raise _run_error(exc) from exc
-
-
-@router.get("/runs/distribution", include_in_schema=False)
-async def preview_distribution_get_removido() -> None:
-    """Sem isto, o GET antigo cairia em `/runs/{run_id}` e responderia 404 "Execução não encontrada" (29.26)."""
-    raise HTTPException(405, detail={"code": "metodo_removido", "message": "A prévia da distribuição agora é POST /api/runs/distribution, "
-                                     "com o comando no corpo."}, headers={"Allow": "POST"})
-
-
-@router.get("/runs/{run_id}")
-async def get_run(request: Request, run_id: str) -> RunDetail:
-    s = st(request)
-    detail = s.repo.run_detail(run_id)
-    if detail is None:
-        raise err(404, "not_found", "Execução não encontrada.")
-    detail.costs = CustosExecucao(
-        spent_usd=costs.spent_usd(s.db, s.cfg.file.ai.prices, run_id=run_id),
-        calls=int(s.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE run_id=?", (run_id,))),
-    )
-    return detail
-
-
-@router.get("/runs/{run_id}/projection")
-async def run_projection(request: Request, run_id: str) -> dict[str, object]:
-    """Item 18.3: o normal medido de cada etapa do plano (chamadas de IA, segundos e US$ — mediana e p90 por ação,
-    nas etapas concluídas da janela configurada), somado. Não chama IA. 409 `no_plan` enquanto o plano não existe."""
-    s = st(request)
-    run = s.repo.run_row(run_id)
-    if run is None:
-        raise err(404, "not_found", "Execução não encontrada.")
-    bruto = loads(run["plan"], None) if run["plan"] else None
-    if not bruto:
-        raise err(409, "no_plan", "A execução ainda não tem plano.")
-    return s.runs.projecao(Plan.model_validate(bruto))
-
-
-@router.get("/runs/{run_id}/events")
-async def run_events(request: Request, run_id: str, after: int = 0, limit: int = Query(500, ge=1, le=5000)) -> Any:
-    return st(request).bus.since(after, run_id=run_id, limit=limit)
-
-
-@router.get("/runs/{run_id}/report")
-async def run_report(request: Request, run_id: str) -> Any:
-    try:
-        return st(request).runs.report(run_id)
-    except RunError as exc:
-        raise _run_error(exc) from exc
-
-
-@router.get("/runs/{run_id}/porta")
-async def run_porta(request: Request, run_id: str) -> dict[str, object]:
-    """30.61: a prévia da porta do despacho numa execução `planned`: o selo de cada etapa com efeito (permitido,
-    aprovacao, adiado, recusado, na_execucao), a chave dos itens aprováveis e o que só se decide na execução. Só leitura:
-    não grava decisão, não abre pedido, não chama IA. 404 sem execução; 409 `invalid_state` fora de `planned`."""
-    try:
-        return previa_da_porta(st(request), run_id)
-    except PortaIndisponivel as exc:
-        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
-
-
-@router.post("/runs/{run_id}/aprovar-plano")
-async def run_aprovar_plano(request: Request, run_id: str, body: AprovarPlanoBody) -> dict[str, object]:
-    """30.61: "Aprovar N e iniciar". 409 `plano_mudou` (com `mudaram` e a `previa` nova) quando algum item não é mais o
-    que o dono viu; nada é gravado. Senão grava os sins de origem `plano`, cancela as tiradas e inicia."""
-    try:
-        return aprovar_plano(st(request), run_id, body, por=_autor_do_sinal(request))
-    except PortaIndisponivel as exc:
-        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
-    except RunError as exc:
-        raise _run_error(exc) from exc
-
-
-@router.post("/runs/{run_id}/porta/item")
-async def run_porta_item(request: Request, run_id: str, body: PreviaDoItemBody) -> dict[str, object]:
-    """30.68: a prévia de UM item com o texto proposto no cartão (selo, motivo e chave). Só leitura: não grava e não
-    chama IA. 409 `plano_mudou` se a etapa saiu do plano; 422 para o texto vazio, longo ou com variável."""
-    try:
-        return previa_do_item(st(request), run_id, body)
-    except PortaIndisponivel as exc:
-        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
-
-
-@router.post("/runs/{run_id}/porta/renovar")
-async def run_porta_renovar(request: Request, run_id: str) -> dict[str, object]:
-    """30.61 "Renovar": a validade dos sins do plano em aberto volta a contar de agora, sem reabrir os itens."""
-    try:
-        return renovar_plano(st(request), run_id)
-    except PortaIndisponivel as exc:
-        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
-
-
 @router.post("/commands/refine")
 async def refine_command(request: Request, body: CommandRefineBody) -> CommandRefinement:
     """Assistente do comando (ADR-047): o comando reescrito em blocos, o que ainda falta e se está pronto para
@@ -3320,44 +2854,7 @@ async def refine_command(request: Request, body: CommandRefineBody) -> CommandRe
     try:
         return await ComandoAssistido(st(request).runs).refinar(body)
     except RunError as exc:
-        raise _run_error(exc) from exc
-
-
-@router.post("/runs/{run_id}/successor")
-async def run_successor(request: Request, run_id: str, body: RunSuccessorBody) -> RunSummary:
-    """Responde a uma execução em `needs_input`: cria a execução com o comando respondido e o mesmo pedido de alvos
-    e cancela a antiga, que aponta para a nova. Declarada antes de `/runs/{run_id}/{op}`."""
-    try:
-        nova, _ = ComandoAssistido(st(request).runs).sucessora(run_id, body, por=_autor_do_sinal(request))
-    except RunError as exc:
-        raise _run_error(exc) from exc
-    return nova
-
-
-@router.post("/runs/{run_id}/{op}")
-async def run_op(request: Request, run_id: str, op: str) -> Any:
-    runs = st(request).runs
-    # Cancelar pela rota é o GESTO de uma pessoa (sinal `cancelou_execucao`); o cancelamento que a sucessora faz não é.
-    # Repetir também é gesto (`repetiu_execucao`): os dois levam o operador da sessão ao sinal. Iniciar leva a pessoa ao
-    # evento (`iniciada_por`, P12): é o que separa a prévia iniciada de propósito do início automático do `mode=execute`.
-    ops = {"start": lambda rid: runs.start(rid, por=_autor_do_sinal(request)), "pause": runs.pause,
-           "resume": runs.resume,
-           "cancel": lambda rid: runs.cancel(rid, por=_autor_do_sinal(request)),
-           "retry_failed": lambda rid: runs.retry_failed(rid, por=_autor_do_sinal(request))}
-    if op not in ops:
-        raise err(404, "not_found", "Operação desconhecida.")
-    try:
-        return ops[op](run_id)
-    except RunError as exc:
-        raise _run_error(exc) from exc
-
-
-@router.post("/runs/{run_id}/objectives/{objective_id}/resolve")
-async def resolve(request: Request, run_id: str, objective_id: str, body: ResolveBody) -> Any:
-    try:
-        return st(request).runs.resolve(run_id, objective_id, body, por=_autor_do_sinal(request))
-    except RunError as exc:
-        raise _run_error(exc) from exc
+        raise run_error(exc) from exc
 
 
 def _armazem_de(s: AppState, onde: str) -> Storage | None:

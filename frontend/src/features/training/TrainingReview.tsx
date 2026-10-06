@@ -5,7 +5,7 @@
  * recebe. Salvar cria o fluxo + as receitas; o relatório diz, etapa a etapa, o que já roda sem IA.
  * 31.91 (caminho único de ensino, decisão do dono de 05/10): o fluxo salvo é o ponto de partida; com `features.skills`,
  * a habilidade versionada nasce dele ("Gerar habilidade deste fluxo", a conversão da fase J). O ensino v2 que a gravação
- * já tinha aparece só para leitura (`TeachingPanel somenteLeitura`).
+ * já tinha saiu da tela (31.91 T1, ADR-078: o caminho único de ensino é o Modo treinamento).
  */
 import { GraduationCap, RefreshCw, ServerCrash, Sparkles, WandSparkles } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -29,7 +29,6 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { useAppStore } from '../../store/app';
 import { plural } from '../../lib/format';
 import { toast, toastError } from '../../store/toasts';
-import { TeachingPanel } from './TeachingPanel';
 import styles from './Training.module.css';
 import { ATE_A_PROVA, corpoDoEscopo, SeletorValePara, textoDoEscopo, type ModoDoEscopo } from './ValePara';
 
@@ -310,11 +309,9 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     void carregarEscopo();
   }, [carregarEscopo]);
 
-  // Com `features.skills` ligado, o relatório do salvar oferece gerar a habilidade do fluxo. A revisão só mostra (só
-  // leitura) o ensino v2 antigo da gravação com a tela do ensino v2 também ligada (`features.ensino_v2`, 31.91 F1,
-  // desligada por padrão e reversível). Desligado (ou backend sem o campo), nada disso aparece.
+  // Com `features.skills` ligado, o relatório do salvar oferece gerar a habilidade do fluxo. Desligado (ou backend sem o
+  // campo), isso não aparece.
   const habilidades = useAppStore((st) => st.health?.features?.skills === true);
-  const ensinoV2 = useAppStore((st) => st.health?.features?.skills === true && st.health?.features?.ensino_v2 === true);
 
   // Catálogo do app (se houver): etapa com efeito num app com catálogo precisa dizer QUAL ação ela é.
   const appsDoStore = useAppStore((st) => st.apps);
@@ -833,7 +830,6 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                 </span>
               </>
             )}
-            {ensinoV2 ? <TeachingPanel trainingSessionId={sessao.id} intent={sessao.intent} appId={sessao.app_id} somenteLeitura /> : null}
           </div>
         </div>
       )}

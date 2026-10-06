@@ -148,6 +148,10 @@ class PortasReais:
     def nomes_de_persona(self) -> list[str]:
         return nomes_de_persona(self.db)
 
+    def nomes_e_dados_de_persona(self) -> list[str]:
+        """Só a prévia da porta pelo canal usa (A1, 06/10): os nomes e os dados da biografia como `DadoDaPersona`."""
+        return nomes_e_dados_da_persona(self.db)
+
     def status(self) -> str:
         h = self._saude()
         online = self._online()

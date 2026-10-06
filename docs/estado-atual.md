@@ -1,10 +1,20 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `325a04fb` (migração 119, deploy 46); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `d2d346cd` (migração 119, deploy 47); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 47 no ar (06/10/2026, 06:47Z, central `d2d346cd`, sem migração nova).** 6 pontas: 15.15 F7+F4+F2 (máquinas impostas,
+  routers por contexto, saúde em módulo), 31.113 F3 (bindings com marcador, v1.79), A1 (prévia da porta), 31.91 T1 na tela,
+  31.116 e 31.117 no corte 48.
+  - `real` (central WIN-7S2UASNLFOP): ensaio pela trava de 60 min (cópia `dataackups61006-034615`) e deploy `-PularBackup`; saúde ok, migração 119,
+    `problems []` e `features` idênticos aos de antes (prova do F2); 0 transições recusadas (prova do F7); prova de fora como
+    esperado; agente `0.1.0+d2d346c`; aparelhos 01, 02, 03, 06 e 13 `ready`.
+  - `simulated` (suíte 47): números do CHANGELOG.
+  - `not_run`: percurso no navegador; prova real do 31.113.
+  - Plano-100: resultado da suíte 47 aplicado; IDs 31.116 e 31.117 (janela 48). Corte 48: 31.116 (Portal), 31.117 (Jev),
+    prova real do 31.113, 15.15 restante (portas estreitas, cluster de apps), 31.115 em 20/10.
 - **Deploy 46 no ar (06/10/2026, 05:21Z, central `325a04fb`, sem migração nova).** 13 pontas: 31.113 F1+F2 (registro mascarado;
   bindings até a F3), 31.111 F4+F5+A (diagnóstico, tela "Ensinar a corrigir", bloqueio ensinável), 29.153 (custo no detalhe,
   backend e painel), 28.56 (mapa do Trello fora do Git, reconciliação dos parciais), 31.114 (arraste, v1.76), 31.91 T1 (ADR-078,
