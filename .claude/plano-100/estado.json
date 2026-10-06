@@ -10496,19 +10496,14 @@
    "id": "15.15",
    "status": "partial",
    "proof": "real",
-   "evidence": "Leitura real no central WIN-7S2UASNLFOP (só leitura), deploy 49 = 1b86bd6b às 08:56Z, migração 119, 06/10/2026 08:58Z. F7 (máquinas de estado impostas, deploy 47) e o evento do 409 (deploy 49): 0 eventos warn '409 invalid_transition' desde 08:55Z e 0 em todo o histórico (portanto, por modelo de rota: nenhum); 0 eventos '(recusada)' (execução, objetivo e tentativa) desde 08:55Z, por tipo: nenhum; GET /api/health com 0 problemas, commit 1b86bd6b. F2 (saúde em app/saude.py, deploy 47): /api/health com problems [] e features iguais aos de antes (leitura anterior da orquestradora). F4d (as 7 rotas de /api/releases* em modules/applications/presentation/releases.py, deploy 49): GET /api/releases 200 com a lista (6 releases); GET /api/releases/{id}/targets 200 application/json; GET /api/releases/{id}/icon 404 sem_icone (release sem ícone) e o mesmo código para release inexistente, como o desenho original. F4a, F4b e F4c (routers de fluxos, treino e execuções) no ar desde o deploy 47. Prova real: o central responde pelas rotas movidas; os 409 reais ainda não ocorreram para serem contados. Entregues e ainda sem deploy (corte 50): F4e workers/limites (2142b2a2, 10 rotas), F4f rede (32ccfb08, 10 rotas) e F4g aparelhos (807ac237, 18 rotas), com prova simulated. Faltam: routers de instagram (41 rotas), personas (19), proxies (4), commands (5), apps (6) e o resto de api.py; cluster de apps e portões de state.py; bootstrap; adapters ai e android; identidade de receita por capability (medir antes); ligar o apply no ciclo (decisão do dono); conversão dos fluxos reais (a recomendação é tirar do 15.15, ADR-078). Suíte 50 (simulado, Android): F4e workers (10 rotas), F4f network (10) e F4g instances (18) em modules/fleet/presentation (Jev 70e15685; OpenAPI idêntico). Simulado: backend/tests/test_ordem_das_rotas.py::*, backend/tests/test_arquitetura.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) Real, 06/10/2026 10:17Z, central bec1621c (deploy 50): GET /api/workers (2), GET /api/network/profiles (1) e GET /api/instances (15) respondendo como antes (F4e-F4g); 0 eventos warn do 409 desde 10:15Z.",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_ordem_das_rotas.py",
-    "backend/tests/test_arquitetura.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; faltam as demais fatias do 15.15",
-   "grupo": "android-suite-50",
+   "evidence": "Leitura real no central WIN-7S2UASNLFOP (só leitura), deploy 49 = 1b86bd6b às 08:56Z, migração 119, 06/10/2026 08:58Z. F7 (máquinas de estado impostas, deploy 47) e o evento do 409 (deploy 49): 0 eventos warn '409 invalid_transition' desde 08:55Z e 0 em todo o histórico (portanto, por modelo de rota: nenhum); 0 eventos '(recusada)' (execução, objetivo e tentativa) desde 08:55Z, por tipo: nenhum; GET /api/health com 0 problemas, commit 1b86bd6b. F2 (saúde em app/saude.py, deploy 47): /api/health com problems [] e features iguais aos de antes (leitura anterior da orquestradora). F4d (as 7 rotas de /api/releases* em modules/applications/presentation/releases.py, deploy 49): GET /api/releases 200 com a lista (6 releases); GET /api/releases/{id}/targets 200 application/json; GET /api/releases/{id}/icon 404 sem_icone (release sem ícone) e o mesmo código para release inexistente, como o desenho original. F4a, F4b e F4c (routers de fluxos, treino e execuções) no ar desde o deploy 47. Prova real: o central responde pelas rotas movidas; os 409 reais ainda não ocorreram para serem contados. F4e workers/limites (10 rotas), F4f rede por aparelho (10) e F4g aparelhos (18) no ar desde o deploy 50 (central bec1621c, 06/10/2026 10:16Z; ponta 70e15685 com a main de 1b86bd6b). Leitura real pós-deploy 50, só leitura, 06/10/2026 10:19Z, GET em 127.0.0.1:8000, só contagens e chaves, nenhum valor: GET /api/workers 200 lista[2], GET /api/workers/{id} 200 com as mesmas 26 chaves, GET /api/workers/naoexiste 404 not_found, GET /api/workers/devices/unbound 200 lista[0] (o literal vem antes de /workers/{id}, ordem preservada), GET /api/servers/limits 200 lista[2]; GET /api/network/profiles 200 {profiles}, GET /api/network/devices 200 {central_egress,devices}, GET /api/network/server 200 com 15 chaves; GET /api/instances 200 lista[15] com 41 chaves por item, GET /api/instances/{id}/operational-context 200 com 8 chaves, inexistente 404 not_found. A Android leu os mesmos GET (2, 1, 15) e 0 eventos do 409 desde 10:15Z. Não lidas de propósito: frame, hierarchy e packages (tocam o ADB). As mutações dessas famílias seguem só com prova simulated (nenhuma foi disparada no parque real). Faltam: routers de instagram (41 rotas), personas (19), proxies (4), commands (5), apps (6) e o resto de api.py (workers, rede e aparelhos saíram); cluster de apps e portões de state.py; bootstrap; adapters ai e android; identidade de receita por capability (medir antes); ligar o apply no ciclo (decisão do dono); conversão dos fluxos reais (a recomendação é tirar do 15.15, ADR-078).",
+   "blocker": "Faltam os routers restantes e os itens listados na evidência; o corte 51 leva F5a (portões em gates.py) e F4h (personas), o 52 leva F5b (apps) e F4i (instagram).",
+   "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:18:29+00:00"
+   "quando": "2026-10-06T10:20:18+00:00"
   },
   "30.72": {
    "id": "30.72",
@@ -14180,6 +14175,15 @@
    ],
    "grupos": [
     "android-suite-50"
+   ]
+  },
+  {
+   "quando": "2026-10-06T10:20:18+00:00",
+   "itens": [
+    "15.15"
+   ],
+   "grupos": [
+    "jev"
    ]
   }
  ]
