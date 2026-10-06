@@ -46,6 +46,94 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `POST /runs/{id}/feedback` vem antes do coringa `POST /runs/{run_id}/{op}`, e nenhum módulo de apresentação importa `app.api`.
 - Prova `simulated`: 395 testes (os de fluxos, contrato HTTP, cobertura de rotas, arquitetura, os 3 novos e as catracas); mypy 257.
   `real`: `not_run`. Sem migração e sem adendo de contrato.
+## 2026-10-05 — 31.111 F5: "Ensinar a corrigir" na etapa que falhou e selo de origem no treino (branch feat/31-111-f5-ensinar-a-corrigir)
+
+- Contra o adendo v1.75 (Jev, `feat/31-111-f1-ensinar-a-partir-da-falha`): na etapa `failed` ou `uncertain` de uma execução (aba Aparelhos), o botão
+  **Ensinar a corrigir** abre um formulário curto que diz qual aparelho vai ser assumido (a IA fica em espera nele), traz o texto «Corrigir a etapa «…»» e,
+  se o aparelho tem mais de uma persona, exige a escolha de quem ensina. Só ao confirmar o painel toma o controle (ou reaproveita o lease desta aba),
+  chama `POST /api/training/from-run` (`run_id`, `step_id`, `lease_id`; `intent` só se o texto foi reescrito; `profile_id` só quando a escolha foi pedida) e leva
+  ao Foco do aparelho. Controle só pedido (a IA termina a ação) não abre nada e diz para clicar de novo; recusa do backend (`step_not_failed`, `control_required`…)
+  aparece no formulário e não muda nada.
+- Selo "corrige uma falha" e a origem (`origin`): na barra do treino (gravando), em "Para revisar" (também no nome acessível do botão), na revisão (com o motivo, a
+  trilha da execução marcando a etapa que falhou, o esperado, a tentativa e as imagens da falha pela rota de evidências; imagem redigida vira texto) e no resultado
+  do salvar ("Este fluxo nasceu da correção da etapa … da execução …"). Etapa já apagada ou contexto indisponível dizem isso. A origem da sessão não se perde
+  quando a resposta da proposta vem sem ela.
+- Prova `simulated`: `EnsinarACorrigir.test.tsx` (9), `TrainingBar.test.tsx` e `TrainingReview.test.tsx` (fetch falso), com mutações que derrubam o teste (guarda de status, `intent`
+  sempre enviado, origem perdida na proposta, lease velho) e sementes de atraso do fetch. `not_run`: percurso real (depende do backend `POST /api/training/from-run`
+  no deploy e do controle de um aparelho de teste).
+
+## 2026-10-06 — 29.153 (painel): o custo da execução no detalhe e na lista (branch feat/29-153-custo-da-execucao)
+
+- Contra o adendo v1.74 (PR 465, rascunho do Copilot): o resumo no topo do detalhe ganha a linha **Custo** com `costs.spent_usd` em US$ com 4 casas e o número
+  de chamadas de IA (`US$ 0,0407 · 2 chamadas de IA`; uma chamada no singular; sem chamadas, `US$ 0,0000 · nenhuma chamada de IA`). `costs` ausente, nulo ou
+  não numérico (backend de antes do PR 465) mostra "custo não lido", sem erro e sem NaN.
+- A lista de Execuções não recebe `costs` do backend (v1.74: a lista não muda). Por isso a linha da lista mostra o ÚLTIMO custo lido no detalhe daquela execução
+  (`summaryOf` o leva e `upsertRun`/`mergeRuns` o guardam quando o resumo de um evento ou da lista chega sem ele); execução nunca aberta fica sem valor na lista.
+- Tolera o campo ausente: entra antes ou junto do PR 465, sem mudar o que o painel faz hoje além da linha "custo não lido".
+- Prova `simulated`: `CustoDaExecucao.test.tsx` (6 testes, fetch falso, com e sem o campo), 5 mutações derrubam teste (custo perdido no evento e na lista, `costs` fora do
+  resumo, 2 casas no lugar de 4, ausente sem texto, valor não finito) e as sementes de atraso 7, 88, 1, 2, 3 e 4 verdes. `not_run`: o detalhe real com `costs` (o
+  backend do PR 465 não está no deploy).
+
+## 2026-10-06 — 31.113 F2: a etapa guarda o marcador da persona, e o executor resolve num ponto só (branch feat/31-113-f2-etapa-com-marcador)
+
+- A materialização e a revisão do plano deixam `{perfil_*}`/`{conta_*_usuario}` como marcador no título, no objetivo,
+  na pré e na pós-condição e nas guardas da etapa (`_insert_steps(molde=…)`). Linha, `plan_versions` e `step.updated`
+  com o marcador. `StepExecutor.run_step` resolve em memória com a persona do objetivo (`resolver_persona`); o ator,
+  a receita, a `text_visible` e o juiz recebem o valor. O dado que sumiu da persona depois da materialização faz a
+  etapa esperar a pessoa (só o nome do campo), sem digitar o molde.
+- Os `bindings` ficam com o valor na linha até a F3: a porta e a chave da aprovação os leem dali, e argumento com `{`
+  não fecha a chave. O valor não sai: detalhe da execução, relatório, versões do plano na resposta e `step.updated`
+  levam o marcador nos `bindings` (`_etapa_para_fora`), e o `steps.result` é gravado com o marcador. O
+  `template_hash` não muda.
+- Testes antigos que liam o valor na linha (`test_prevoo_dado_da_persona.py`: caminho feliz e 31.99) passam a
+  conferir o marcador na linha e o valor pelo `resolver_persona`.
+- Funções tocadas (K-095): `Repository.materialize`, `Repository.revise_plan`, `Repository._insert_steps`,
+  `Repository.transition_step`, `Repository.run_detail`, `Repository.emit_step`,
+  `Repository._sem_dado_nos_argumentos` (nova), `Repository._etapa_para_fora` (nova), `StepExecutor.run_step`,
+  `dado_da_persona.resolver_persona` (nova), `dado_da_persona.sem_valor_na_etapa` (nova).
+- Prova `simulated`: `backend/tests/test_etapa_com_marcador_da_persona.py` (5: o ator recebe o valor de cada
+  persona e a tela é conferida com ele; linha, `plan_versions` e `step.updated` com o marcador; duas personas no mesmo
+  plano; o dado que sumiu não vai cru; os `bindings` ficam na linha e não saem). Real: `not_run`.
+
+## 2026-10-06 — 31.113 F1: o registro da execução guarda o marcador da persona (branch feat/31-113-f1-registro-mascarado)
+
+- Achado da prova real do 31.87 (r-20261006012340-d92795): o nome da persona ficou em claro em `events`, `actions`,
+  `attempts.error`, `evidence.note` e `steps`. A F1 troca valor → marcador na fronteira de escrita
+  (`security/mascara_da_persona.py`): diário de ações, erro e resultado observado da tentativa, nota da evidência,
+  detalhe da etapa e todo evento com contexto de execução (máscara do `Repository` ligada no `EventBus`). A tela e o
+  executor seguem com o valor. `actions.target` fica (seletor da receita e da lição). O texto das etapas é a F2.
+- Execuções anteriores não são reescritas; o registro nasce mascarado a partir do deploy 46.
+- Funções tocadas (K-095): `EventBus.__init__`, `EventBus.emit`, `Repository.__init__`, `Repository.log_intent`,
+  `Repository.finish_action`, `Repository.note_attempt`, `Repository.finish_attempt`,
+  `Repository._registrar_evidencia`, `Repository.transition_step`, `Repository.mascara_do_registro` (nova),
+  `Repository._objetivo_do_registro` (nova), `Repository._mascara_do_objetivo` (nova), `Repository._trocas_da_acao`
+  (nova), `Repository._tentativa_da_acao` (nova), `security.mascara_da_persona` (módulo novo).
+- Prova `simulated`: `backend/tests/test_registro_mascarado_da_persona.py` (8). Real: `not_run`.
+
+## 2026-10-06 — 31.91 T1: o ensino v2 fica obsoleto e contado, ADR-078 (branch feat/31-91-t1-ensino-v2-obsoleto)
+
+- As 12 rotas `/api/teaching-sessions*` e `/api/skill-candidates*` saem marcadas `deprecated` no OpenAPI e cada chamada é
+  contada (`settings["ensino_v2.chamadas"]`: total, início, última, por molde de rota; sem id, corpo nem operador). O resumo
+  sai em `GET /api/health`, `features.ensino_v2_chamadas`. O contador persiste (o deploy não zera a medição), não conta
+  chamada recusada por `skills_disabled` e nunca derruba a rota. `skills.ensino_v2_na_tela` segue `false`. As rotas respondem igual.
+- ADR-078: dois tempos (T1 agora; T2 = 31.115, apagar o código depois de 14 dias de `total` em zero, com a pergunta das
+  tabelas `teaching_*` ao dono só então) e os fatos que o sustentam (v1: 11 sessões, 70 fluxos, 204 receitas; v2: 1 sessão
+  parada e 1 habilidade). Sem migração, sem adendo de contrato (nenhuma rota ou corpo mudou).
+- Prova `simulated`: `backend/tests/test_ensino_v2_obsoleto.py` (5 testes) e `test_ensino_v2.py`. Em ambiente real: `not_run`
+  até o deploy; depois dele, a prova é a leitura de `features.ensino_v2_chamadas` no `/api/health` central.
+
+## 2026-10-06 — 31.111 F4: a causa provável da tentativa abre o ensino da correção (branch feat/31-111-f4-diagnostico-na-falha)
+
+- `origin.diagnostico {causa, rotulo, pergunta, fatos, proposta, amostra}` em `GET /api/training/{id}` e na resposta do
+  `from-run` (adendo v1.77, que substitui a reserva do v1.75). É o diagnóstico do 30.13 para UMA tentativa:
+  `ServicoDeFalhas.diagnostico_da_tentativa`, com a porta `FontesDaTentativa.chave_da_tentativa`, e a tradução em
+  `domain/ensino_da_falha.py`. A intenção sugerida leva a causa quando ela é conhecida, e a da pessoa vence. Sem IA.
+- `test_treino_a_partir_da_falha.py` (da Jev) passa a ignorar a chave nova na comparação exata do `origin`.
+- Funções tocadas (K-095): `ServicoDeFalhas.diagnostico_da_tentativa` (nova), `ServicoDeFalhas.diagnostico_para_o_ensino`
+  (nova), `FontesDeFalhaSql.chave_da_tentativa` (nova), `TrainingRecorder.__init__`, `TrainingRecorder.get`,
+  `start_training_from_run` (api), `AppState.__init__`, `ensino_da_falha.para_o_ensino` (nova),
+  `ensino_da_falha.intencao_sugerida` (nova).
+- Prova `simulated`: `backend/tests/test_treino_diagnostico_da_falha.py` (4). Real: `not_run`.
 
 ## 2026-10-06 — 31.101, o `--amplo` real: pedaços de nome de conta trocados por valores de exemplo nos testes (branch chore/trocar-nomes-amplo)
 
@@ -59,7 +147,33 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   fica (cerca de 100 ocorrências em testes). Não foi mexido; fica para uma rodada própria se o dono quiser.
 - Prova: `simulated` (91 arquivos de backend, 3551 testes; `scripts/tests`, 684; frontend, 486; mypy 257; docs-check 0/0).
 
+## 2026-10-06 — 31.114 F1 e F2: o arraste gravado chega à IA como o gesto do dedo e, confirmado, vira receita (branch feat/31-114-arraste-sem-arvore)
+
+- Achado da prova real do 31.111 (sessão trn-jrE1zcBoKSoHFqX5): a coordenada do arraste FOI gravada (360,5 a 360,768, tela de 720x1280); o
+  texto que ia à IA ("rolou para cima", o movimento do CONTEÚDO) é que a fez ler "deslizar para cima", e a receita não nasceu porque o
+  arraste no fim da etapa caía em "rolagem sem ação-alvo depois dela".
+- F1: `descrever_arraste` (`planning/training.py`) diz o gesto do DEDO, de onde saiu e quanto percorreu ("arrastou o dedo de cima para baixo,
+  saindo da borda superior, por 60 % da altura"). A tela (largura e altura em retrato) é lida do aparelho na hora do `propose`
+  (`DeviceManager.tamanho_da_tela`, 8 s; só se a gravação tem arraste com coordenada). Aparelho mudo, ou coordenada que não cabe na tela
+  lida: "borda de origem desconhecida", sem chute. Borda = até 3 % da largura ou da altura (`automation/gestos.py`).
+- F2: o arraste que TERMINA a etapa vira receita (`scroll` relativo, uma ação por rolagem, nunca pixel) só se (a) a tela do `propose` era
+  conhecida, (b) o dedo não saiu da borda (gesto de sistema como abrir as notificações segue sem receita: o F3, tool de borda, está fora
+  até haver demanda) e (c) a pessoa respondeu "sim" à pergunta FIXA da etapa (`training/arraste.py`; entra em `questions` da proposta; a
+  resposta fica em `answers`, pelo caminho do 31.91). `distill_training(..., arraste_final=True)`; sem o parâmetro nada muda.
+- A proposta guardada ganha a chave `screen: [largura, altura]` só quando a tela foi lida (a destilação a lê dali); sem arraste ou com o
+  aparelho mudo a proposta tem as chaves de sempre. Sem migração.
+- Prova: `simulated` (`backend/tests/test_treino_descricao_do_arraste.py`, `test_treino_arraste_vira_receita.py`; `test_treino_arraste_sem_coordenada.py`
+  ajustado ao texto novo); `real`: `not_run` (a sessão da F6 serve de caso; o arraste dela era de borda e continua sem receita).
+
 ## 2026-10-06 — 31.111 F1 e F2: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
+
+## 2026-10-06 — 31.111 A: o bloqueio que espera uma pessoa também é ponto de partida do ensino (branch feat/31-111-a-bloqueio-aguardando-pessoa)
+
+- `POST /api/training/from-run` passa a aceitar a etapa em `waiting_user` (a IA concluiu que não dá e o executor rejeitou:
+  a execução fica em `awaiting_person`), além de `failed` e `uncertain`. Motivo: na prova real do F1-F3 (06/10), a execução
+  que pedia um item inexistente caiu aí e não em `failed`. O `motivo` e a trilha mostram o texto do bloqueio como nos
+  outros casos. Sem migração nem campo novo; 409 `step_not_failed` só para as outras (sucesso, cancelada, pendente…).
+- Prova: `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run` (o bloqueio real da f6-2 é o caso de origem).
 
 ## 2026-10-06 — 31.111 F1, F2 e F3: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
 
@@ -81,6 +195,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Fica para o F4 (Aprendizado): `origin.diagnostico`.
 - Prova: `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
 
+## 2026-10-06 — 31.113 F1: o registro da execução guarda o marcador da persona (branch feat/31-113-f1-registro-mascarado)
+
+- Achado da prova real do 31.87 (r-20261006012340-d92795): o nome da persona ficou em claro em `events`, `actions`,
+  `attempts.error`, `evidence.note` e `steps`. A F1 troca valor → marcador na fronteira de escrita
+  (`security/mascara_da_persona.py`): diário de ações, erro e resultado observado da tentativa, nota da evidência,
+  detalhe da etapa e todo evento com contexto de execução (máscara do `Repository` ligada no `EventBus`). A tela e o
+  executor seguem com o valor. `actions.target` fica (seletor da receita e da lição). O texto das etapas é a F2.
+- Execuções anteriores não são reescritas; o registro nasce mascarado a partir do deploy deste commit.
+- Funções tocadas (K-095): `EventBus.__init__`, `EventBus.emit`, `Repository.__init__`, `Repository.log_intent`,
+  `Repository.finish_action`, `Repository.note_attempt`, `Repository.finish_attempt`,
+  `Repository._registrar_evidencia`, `Repository.transition_step`, `Repository.mascara_do_registro` (nova),
+  `Repository._objetivo_do_registro` (nova), `Repository._mascara_do_objetivo` (nova), `Repository._trocas_da_acao`
+  (nova), `Repository._tentativa_da_acao` (nova), `security.mascara_da_persona` (módulo novo).
+- Prova `simulated`: `backend/tests/test_registro_mascarado_da_persona.py` (8). Real: `not_run`.
+
+
 ## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)
 
 - Une o painel do 31.89 já sobre a junção do corte 43 (`feat/31-89-painel-corte-44`, 5cb96676) e a tela do 30.85 (`feat/30-85-selo-no-livro`, b083e683, sobre a
@@ -97,6 +227,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Funções tocadas (K-095): `_da_espera`, `LearningService.ensinado_em_prova` (nova), `AvisadorDoEnsinado.em_prova`
   (nova), `LeitorDoEnsinadoSql.em_prova` (nova), `LeitorDoEnsinado` (método novo na porta).
 - Prova `simulated`: `backend/tests/test_livro_selo_em_prova.py` (7). Real: `not_run`.
+
+## 2026-10-06 — O mapa de cartões do Trello sai do Git (28.56, branch canais/mapa-fora-do-git)
+
+- `.claude/trello/mapa.json` vira estado por instalação, como o `config/config.yaml`: sai do índice (`git rm --cached`), entra no
+  `.gitignore`, e a skill `trello`, o `mapa.py` e as regras C-17 e `dono:<shortLink>` de `docs/dominios/canais.md` dizem isso. Motivo: o
+  script de espelho o regrava a cada deploy e o arquivo versionado modificado no central trava o fast-forward do deploy. Fonte durável: a
+  tabela `trello_cartoes` (migração 087). Aprendizado K-103. Prova `simulated`: `docs-check` 0 erros; `git check-ignore` confirma o caminho
+  ignorado. `not_run`: o deploy 46 com o arquivo do central guardado e reposto pela Android em volta do fast-forward.
+
+## 2026-10-06 — A reconciliação do Trello refaz a linha de prova e a do parcial (28.56, branch canais/reconciliacao-parciais)
+
+- `.claude/trello/reconciliar.py`: o cartão concluído troca a linha "prova simulada" quando o plano ganha prova real; a linha do parcial passa a ser
+  o nível da prova mais a frase do que falta (a oração "Falta" da evidência, ou a que o cartão já tem); o item classificado depois do registro do
+  deploy vale como implantado quando a evidência real cita o commit do central. Regra no C-28. Prova `simulated`: `.claude/trello/test_reconciliar.py`
+  (26 passed, dados fictícios). Prova `real` (06/10): ensaio contra os três quadros, 26 linhas de parcial a refazer e 29.83 e 29.105 para Concluído.
 
 ## 2026-10-06 — Reconciliação total dos quadros do Trello e a dinâmica dos cartões (branch canais/reconciliacao-trello)
 
@@ -137,6 +282,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `TrainingRecorder.get`, `TrainingRecorder.list`, `TrainingRecorder._proposta_mascarada` (nova),
   `dado_da_persona.nas_perguntas` (nova).
 - Prova `simulated`: `backend/tests/test_treino_pergunta_mascarada.py` (6; 5 reprovam sem a mudança). Real: `not_run`.
+
+## 2026-10-06 — Custo no detalhe da execução (29.153)
+
+- `GET /api/runs/{run_id}` passa a trazer `costs: {spent_usd, calls}`, usando o cálculo existente e os preços
+  configurados. Sem chamadas, retorna zeros. A lista `GET /api/runs` não muda; sem migração. Contrato: Adendo v1.74.
+- Prova `simulated`: `backend/tests/test_run_detalhe_custo.py::test_detalhe_soma_custo_e_conta_so_as_chamadas_da_execucao`,
+  `::test_detalhe_sem_chamadas_traz_zeros` e `::test_lista_continua_sem_custos`. Ambiente real: `not_run`.
 
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
@@ -446,6 +598,13 @@ Da leitura do 31.78.
 
 - `PortaDoPlano.test.tsx` "mostra a validade dos sins do plano…" usava `2026-10-05T21:00Z` como instante futuro; às 21:00Z de hoje o sim passou a "vencido" e o teste falhou (determinístico, também em ramos que passavam antes). A validade agora é relativa ao relógio (6 h à frente; a renovação, 30 h).
 - Prova `simulated`: o arquivo sozinho, 22/22 em duas rodadas, em 05/10 depois das 21:00Z. Outras datas fixas próximas em testes (a conferir, sem mudança aqui): `ValidacaoTab.test.tsx` (`expira_em` em 06/10), `NovoPedido.test.tsx` (prazo em 09/10), `MetricasTab.test.tsx` (17/10).
+
+## 2026-10-06 — Deploy 46 (suíte 46: registro mascarado, diagnóstico e tela do ensino a partir da falha, custo no detalhe, Trello sem arquivo no Git)
+
+- **Implantado** às 05:21Z: central em `325a04fb`, sem migração nova (mais alta 119), 13 pontas sobre `7ea48fca` (mains até `cb2e8382` dentro). Itens: 31.113 F1+F2 (registro da execução com o marcador da persona em ações, erros, notas, eventos, etapas, plan_versions, step.updated, steps.result; bindings ficam com o valor na linha até a F3; "Dado ausente" para à espera da pessoa), 31.111 F4 (diagnóstico da falha em `origin.diagnostico`, adendo v1.77), F5 (botão "Ensinar a corrigir" na etapa falhada ou bloqueada, selo e contexto de origem) e A (`from-run` aceita `waiting_user`), 29.153 (custo no detalhe da execução: `costs {spent_usd, calls}` no backend, PR 465 do Copilot, e no painel), 28.56 (mapa de cartões do Trello fora do Git como estado por instalação, K-103; reconciliação refaz a linha dos parciais e conta o deploy citado na evidência), 31.114 (arraste descrito pelo gesto do dedo e rolagem relativa na receita, adendo v1.76) e 31.91 T1 (ADR-078: caminho único de ensino = Modo treinamento; as 12 rotas do Ensino por habilidade saem `deprecated` com contador persistido, `features.ensino_v2_chamadas` em `/api/health`; os 14 dias do T2, 31.115, contam deste deploy).
+- Prova `real`: deploy `deploy.ps1 -PularBackup` (sem migração, sem ensaio); mapa.json do central guardado e reposto em volta do ff e ignorado pelo Git; `GET /api/health` ESTADO, migração mais alta 119; prova de fora como esperado; agente do notebook em `0.1.0+PONTA7`; aparelhos ESTADO; hooks ok.
+- Prova `simulated` (suíte 46 sobre `325a04fb`): `scripts/tests` 684 passed; backend em SQLite 12135 passed e 13 skipped na ponta parcial `8629cd3e`, mais 7989 passed nos 425 afetados (1 falha, o motivo "Dado ausente" sem regra no classificador, corrigida em `93898149` e repetida em 66 testes de learning); frontend 1759 passed e build; catracas 88 (backend) e 6 (scripts); docs-check 0; mypy 257 igual ao teto; PostgreSQL dirigido 433 arquivos em 2 partes, 8077 passed e 0 falhas.
+- `not_run`: percurso no navegador (Portal, a seguir: F5 na tela, custo no detalhe); prova real do 31.113 F2 (meu sim, com corte de custo); 31.79 (a seguir, com teto).
 
 ## 2026-10-06 — Deploy 45 (suíte 45: Trello reconciliado, ensinar a partir da falha, nomes trocados nos testes)
 

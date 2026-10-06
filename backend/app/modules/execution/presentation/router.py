@@ -21,9 +21,10 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db import loads
-from app.models import (DistributeSpec, Plan, ResolveBody, RunCreate, RunSummary, RunTargetsPreview,
-                        RunTargetsResolveBody)
+from app.models import (CustosExecucao, DistributeSpec, Plan, ResolveBody, RunCreate, RunDetail, RunSummary,
+                        RunTargetsPreview, RunTargetsResolveBody)
 from app.modules.execution.presentation.comum import autor_do_sinal, run_error
+from app.planning import costs
 from app.porta_do_plano import (AprovarPlanoBody, PortaIndisponivel, PreviaDoItemBody, aprovar_plano, previa_da_porta,
                                 previa_do_item, renovar_plano)
 from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
@@ -151,11 +152,16 @@ async def preview_distribution_get_removido() -> None:
                                      "com o comando no corpo."}, headers={"Allow": "POST"})
 
 
-@router.get("/runs/{run_id}", response_model=None)
-async def get_run(request: Request, run_id: str) -> object:
-    detail = _st(request).repo.run_detail(run_id)
+@router.get("/runs/{run_id}")
+async def get_run(request: Request, run_id: str) -> RunDetail:
+    s = _st(request)
+    detail = s.repo.run_detail(run_id)
     if detail is None:
         raise _err(404, "not_found", "Execução não encontrada.")
+    detail.costs = CustosExecucao(
+        spent_usd=costs.spent_usd(s.db, s.cfg.file.ai.prices, run_id=run_id),
+        calls=int(s.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE run_id=?", (run_id,))),
+    )
     return detail
 
 

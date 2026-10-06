@@ -268,7 +268,7 @@ avisos depois da faxina"), e a trava cai no TTL.
   5. Pedido novo vai à orquestradora entre aspas. Quem numera é ela.
   6. Segredo achado no cartão: avisa-se o dono para apagar, sem copiar o valor.
 - **Hoje:** leitura dos quadros a cada 20 minutos, por `list_activity` com ações de criação. O cartão entra em
-  `.claude/trello/mapa.json` como `dono:<shortLink>`.
+  `.claude/trello/mapa.json` (estado por instalação, fora do Git) como `dono:<shortLink>`.
 - **No produto:** 32.2; o webhook substitui a leitura periódica.
 
 **C-15 · Mensagem com cara de segredo.**
@@ -371,7 +371,9 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Todo cartão tem uma parte para quem não é técnico (`**Para quem não é técnico:**` e `**Por que importa:**`) e
     uma parte técnica.
   - Cartão se arquiva, nunca se apaga.
-  - Todo cartão que a ANA cria entra em `.claude/trello/mapa.json`.
+  - Todo cartão que a ANA cria entra em `.claude/trello/mapa.json`, que é **estado por instalação e fica fora do Git**
+    (28.56, `.gitignore`, como o `config/config.yaml`): ele é regravado por script a cada espelho de deploy, e arquivo
+    versionado mexido no central trava o fast-forward do deploy. A fonte durável é a tabela `trello_cartoes`.
   - A estrutura dos quadros está em `.claude/trello/estrutura.json`, e as rotinas na skill `trello`.
 - **No produto:** a tabela `trello_cartoes` (migração 087) é o mapa do 32.2.
 
@@ -415,6 +417,12 @@ avisos depois da faxina"), e a trava cai no TTL.
   Histórico (item que o plano não dá como feito) e o Programa (métrica, custo e risco sem leitura datada). É idempotente:
   a segunda rodada não acha nada para mudar, e a linha nova troca a antiga em vez de empilhar. A linha escrita passa por
   `redacao.redigir` e só carrega o que o estado do plano diz.
+- **Regra, a linha do cartão acompanha a prova (06/10):** o cartão nunca precisa de linha à mão. A linha do concluído é o nível
+  da prova do plano (real com data e ids, ou simulada) mais o deploy; quando o plano ganha prova real, a linha simulada é
+  trocada. A linha do **parcial** é o nível da prova mais a frase do que falta, tirada da oração da evidência do item que
+  começa com "Falta" ou "faltam"; se a evidência não tem essa oração, fica a frase que já está no cartão e só a parte da prova
+  muda; sem nenhuma das duas, vale o detalhe ou o bloqueio do estado. O item implementado que o plano classificou depois do
+  registro do deploy vale como implantado quando a evidência real cita o commit que o central rodava ("central 7154d7cf") ou o número do deploy ("deploy 32", só até o último deploy).
 - **Hoje:** `.claude/trello/reconciliar.py` (testes em `.claude/trello/test_reconciliar.py`), a rotina da skill `trello` e o
   aviso no fim do `aplicar` do plano. As exceções acima (sem estado, "Espera você") ficam num relato para o dono ver.
 - **No produto:** nada ainda. A Central só tem o espelho dos avisos; levar a reconciliação para dentro dela é decisão a

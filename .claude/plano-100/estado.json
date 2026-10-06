@@ -9526,15 +9526,16 @@
   },
   "31.91": {
    "id": "31.91",
-   "status": "partial",
-   "proof": "real",
-   "evidence": "31.91 F1: 06/10/2026 ~01:03Z a ~01:11Z, WIN-7S2UASNLFOP, deploy 43 (commit f15ef2e1), navegador embutido em http://localhost:8000/central, android-04 (Configurações do Android, sem conta real, sem efeito externo), persona de teste Teste Portal Um, sessão trn-1nuBzRHaAkM09f6K (6 entradas: busca, texto com o nome da persona, tecla back, Notificações, Histórico, interruptor), fluxo f-fe11676e54e3. health.features.ensino_v2=false esconde o painel do ensino v2. A proposta veio com 2 perguntas, cada uma com campo e o aviso de não escrever senha nem código; respondi as duas, 'Pedir nova proposta com as respostas' mostrou a confirmação ('A proposta atual e o que você mudou … são substituídos pela nova. O que você escolheu em Vale para continua.'), e a 2ª proposta veio sem perguntas, com as 2 respostas guardadas (answers) e a tecla back fundida na etapa 2 ([2,3]). | F1 provada; F2/F3 e a decisão v1 x v2 pendentes.",
-   "grupo": "portal-percurso-deploy-43",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "F1 (tela atrás de chave), F2 (propose com respostas) e o T1 do fechamento estão entregues. T1: ponta 4b9a2a8a (integ 286a9a0c), as 12 rotas /api/teaching-sessions* e /api/skill-candidates* saem deprecated no OpenAPI e cada chamada soma num contador persistido em settings (ensino_v2.chamadas; molde da rota, sem id, corpo nem operador), exposto em /api/health features.ensino_v2_chamadas; ADR-078 (dois tempos: T1 agora, T2 = 31.115 após 14 dias de zero chamadas), CHANGELOG e linha em docs/dominios/skills.md; sem migração. Prova simulated: backend/tests/test_ensino_v2_obsoleto.py (5 testes) + test_ensino_v2, test_arquitetura, test_cobertura_de_rotas, test_contrato_http (47 passed), mypy 257 no teto, docs-check 0/0. A sessão de ensino v2 parada em asking desde 27/09 foi descartada por POST discard (só estado). A prova real é a leitura de features.ensino_v2_chamadas no /api/health central depois do deploy 46 (real = not_run até lá).",
+   "blocker": null,
+   "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T01:13:11+00:00"
+   "quando": "2026-10-06T05:23:28+00:00"
   },
   "31.97": {
    "id": "31.97",
@@ -10331,15 +10332,21 @@
   "31.111": {
    "id": "31.111",
    "status": "partial",
-   "proof": "real",
-   "evidence": "06/10/2026 03:19Z a 03:35Z, central no deploy 45 (commit 7154d7cf, migração 119), android-04, sem conta real, nenhuma execução nova do parque na parte B. F1-F3 provados no ar: (1) POST /api/training/from-run sobre a falha REAL r-20261006012340-d92795 (etapa abrir_notificacoes, tentativa a1, status failed, 'passou do orçamento de 10 chamadas de IA') abriu a sessão trn-jrE1zcBoKSoHFqX5 com origin {run_id, step_id, step_key, attempt_id, motivo} (201); (2) uma gravação (1 swipe, controle pela API, liberado ao fim); a proposta da IA fez 2 perguntas (a gravação sem árvore perdeu as coordenadas do arraste) e foi respondida pela API (caminho 31.86), propose 2 com 'answers' fechou sem perguntas; (2b) GET /api/training/{id} trouxe origin.context real: trilha de 4 etapas da execução no aparelho com a de origem marcada falhou, esperado {kind, value, description}, tentativa failed com failure_kind ia_orcamento; (3) save com scope_on_proof=quem_ensinou criou o fluxo f-6d07590e1db6 com escopo [persona do treino] e ensinado_em_prova (30.81); GET /api/flows traz origin {session_id, run_id, step_id, attempt_id} para ele; (4) FlowStore.match lido só leitura no banco do central: casa para a persona que ensinou (f-6d07590e1db6) e dá None para a outra persona do android-04, para execução sem persona e para as duas juntas. Custo: execuções f6-1 r-20261006031948-60fd9b (US$ 0,0000, needs_input por duas personas) e f6-2 r-20261006032040-eb32fe (US$ 0,2027, spent_usd) + parte B, duas chamadas 'ensino' de proposta (US$ 0,0153 lido por spent_usd desde 03:30Z; antes 0, depois 0,0153): total da F6 US$ 0,2180, abaixo do teto de 0,35 e de 0,10 na parte B. Bloqueio da f6-2 (por que existe o item A): a IA concluiu que o item pedido não existe nas Configurações e emitiu step_blocked; o executor o rejeitou e a execução parou em awaiting_person com a etapa em waiting_user, sem etapa failed; cancelada por mim (a etapa terminou cancelled). Ressalvas: o fluxo salvo nasce com status active mas só vale para quem ensinou até a prova (30.81), não 'candidate'; a etapa de só um arraste não gerou receita ('rolagem sem ação-alvo depois dela'), então a prova de receita da correção não foi feita; a tentativa de origem não tinha evidência (nenhuma imagem), então `evidencias` veio vazio.",
-   "blocker": "F4 (diagnóstico, Aprendizado) e F5 (tela, Portal) ainda não entregues; A (STATUS_ENSINAVEIS aceitar waiting_user) em ponta própria para o corte 46.",
-   "grupo": "jev",
+   "proof": "simulated",
+   "evidence": "F4 8b71120e (diagnóstico da falha no from-run, contrato v1.77), com a F5 do Portal 732e6c30 e o from-run que aceita waiting_user (Jev a6d52001). Simulado: backend/tests/test_treino_diagnostico_da_falha.py::*, backend/tests/test_treino_a_partir_da_falha.py::*, frontend/src/features/runs/EnsinarACorrigir.test.tsx::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_diagnostico_da_falha.py",
+    "backend/tests/test_treino_a_partir_da_falha.py",
+    "frontend/src/features/runs/EnsinarACorrigir.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-46",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T03:33:09+00:00"
+   "quando": "2026-10-06T05:23:28+00:00"
   },
   "31.112": {
    "id": "31.112",
@@ -10393,15 +10400,20 @@
   },
   "28.56": {
    "id": "28.56",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "Pontas 95f95242 e 1647a2ab (Canais): .claude/trello/reconciliar.py, aviso no scripts/claude-plan-100.py aplicar, regra C-28 em docs/dominios/canais.md e na skill trello. Simulado: .claude/trello/test_reconciliar.py::*, na suíte 45 (7154d7cf) e no ar desde o deploy 45. Real (06/10 ~02:00Z, central, pela API do Trello): Execução 364 para 171 cartões, divergências 201 para 10, Em validação 98 para 27, Histórico 265 para 446, Programa 72 para 100. Falta: .claude/trello/mapa.json fora do Git como estado por instalação (ramo da Canais no corte 46).",
-   "grupo": "orquestrador-pos-deploy-45",
-   "modelo": "claude-fable-5-1",
-   "esforco": "medium",
+   "evidence": "Reconciliação dos quadros do Trello da Canais (7b341347, b0ff8cda, acdd0744: parciais, deploy citado conta como implantado; mapa.json fora do Git). 27 testes. Simulado: .claude/trello/test_reconciliar.py::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z).",
+   "blocker": null,
+   "arquivos": [
+    ".claude/trello/test_reconciliar.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-46",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T03:16:40+00:00"
+   "quando": "2026-10-06T05:23:28+00:00"
   },
   "29.105": {
    "id": "29.105",
@@ -10416,6 +10428,64 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T03:36:17+00:00"
+  },
+  "31.113": {
+   "id": "31.113",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "F1 80b22dbc e F2 a133e58a (marcador da persona na linha da etapa, resolver_persona único em run_step) mais a regra 93898149 (motivo da persona sem o dado = falta_informacao). F3 vai ao corte 47; os bindings ficam com o valor na linha até lá. Simulado: backend/tests/test_etapa_com_marcador_da_persona.py::*, backend/tests/test_registro_mascarado_da_persona.py::*, backend/tests/test_prevoo_dado_da_persona.py::*, backend/tests/test_credenciais_da_conta.py::*, backend/tests/test_learning_falhas.py::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_etapa_com_marcador_da_persona.py",
+    "backend/tests/test_registro_mascarado_da_persona.py",
+    "backend/tests/test_prevoo_dado_da_persona.py",
+    "backend/tests/test_credenciais_da_conta.py",
+    "backend/tests/test_learning_falhas.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; faltam a F3 e a prova real",
+   "grupo": "android-suite-46",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T05:23:28+00:00"
+  },
+  "29.153": {
+   "id": "29.153",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR 465 do Copilot (ffbfa857, lido como achado e aprovado no corte: costs {spent_usd, calls} no detalhe da execução) e o painel da Portal 56924bee, que tolera costs ausente. Ressalva: uma consulta COUNT extra por GET do detalhe. Simulado: backend/tests/test_run_detalhe_custo.py::*, frontend/src/features/runs/CustoDaExecucao.test.tsx::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_run_detalhe_custo.py",
+    "frontend/src/features/runs/CustoDaExecucao.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-46",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T05:23:28+00:00"
+  },
+  "31.114": {
+   "id": "31.114",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Arraste sem árvore vira receita no treino (Jev 2f5d807b, adendo v1.76). ID ainda fora do plano; a orquestradora aplica depois. Simulado: backend/tests/test_treino_arraste_vira_receita.py::*, backend/tests/test_treino_descricao_do_arraste.py::*, backend/tests/test_treino_arraste_sem_coordenada.py::*. Suíte 46 sobre a integração 325a04fb (main cb2e8382 dentro; 31.113 F1 80b22dbc e F2 a133e58a mais a regra 93898149, Portal 732e6c30 e 56924bee, Canais 7b341347/b0ff8cda/acdd0744, Jev a6d52001, 2f5d807b e 4b9a2a8a, PR 465 ffbfa857, 31.111 F4 8b71120e; só conflitos de CHANGELOG, api-contract e persona.md juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 12135 passed, 13 skipped, 0 falhas (sobre a parcial 8629cd3e); SQLite dos 425 arquivos afetados desde a parcial 7989 passed, 1 skipped, 1 falha (motivo novo da F2 sem regra no classificador, corrigida pela 93898149; learning e marcador repetidos na ponta final: 66 passed); frontend typecheck limpo, 1759 passed (133 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido na ponta final, 433 arquivos em 2 partes: 4063 passed, 7 skipped e 4014 passed, 5 skipped, 0 falhas (fim 05:18:13Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_arraste_vira_receita.py",
+    "backend/tests/test_treino_descricao_do_arraste.py",
+    "backend/tests/test_treino_arraste_sem_coordenada.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-46",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T05:23:28+00:00"
   }
  },
  "rodadas": [
@@ -13461,6 +13531,29 @@
    "quando": "2026-10-06T04:00:21+00:00",
    "itens": [
     "30.83"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T05:23:28+00:00",
+   "itens": [
+    "31.113",
+    "31.111",
+    "29.153",
+    "28.56",
+    "31.114",
+    "31.91"
+   ],
+   "grupos": [
+    "android-suite-46"
+   ]
+  },
+  {
+   "quando": "2026-10-06T05:23:28+00:00",
+   "itens": [
+    "31.91"
    ],
    "grupos": [
     "jev"
