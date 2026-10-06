@@ -28,6 +28,28 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_ensino_sugerido.py` (4: causa conhecida sem gravar nada, indeterminada, `null` e
   recusas, diagnóstico em erro). Real: `not_run`.
 
+## 2026-10-06 — 30.34: o `observar` da classe B gera pedido de prova no app de prova (branch feat/30-34-observar-b-gera-prova)
+
+- Na classe B, o parecer `observar` cuja falta uma execução produz (desde o 30.73, `execucao_real`) também gera pedido
+  de prova. Vale só no app de prova; o efeito em app real fica fora, sem registro, e A e C não mudam. A classe é a
+  mais restritiva entre o dossiê e a faixa do parecer. Teto, verba (`extra_usd`) e ritmo são os que já existem.
+- O que nasce por aqui é contado por estado em `GET /api/health` (`features.validacao_pelo_observar_b`, persistido em
+  `settings`, como o contador do ensino v2) e numa linha `info` do log. A medida do efeito entra na leitura de 12/10
+  do 30.72. Sem ADR: fica dentro do ADR-054 e do α de 10 %.
+- Funções tocadas (K-095):
+  - `domain/validacao.pedido_do_parecer`, `FatosDoParecer.classe` e `Pedido.pelo_observar`;
+  - `ServicoDeValidacao.__init__` (`contar_pelo_observar`), `ao_parecer` e `_fatos`;
+  - `ligar_validacao.ligar`;
+  - `SaudeDoSistema.health` (`app/saude.py`, desde o 15.15 F2);
+  - `ContadorPeloObservar` (novo, `infrastructure/contador_pelo_observar.py`).
+- Prova `simulated`: `backend/tests/test_validacao_pelo_observar_b.py` (11). Cobre:
+  - a regra pura: B no app de prova, efeito real, A, C, só a pessoa, recusa e `pedir_evidencia` igual;
+  - o serviço gravando e contando, sem contar o segundo pedido do mesmo item;
+  - o contador persistido;
+  - a saúde com o serviço ligado.
+
+  Real: `not_run`.
+
 ## 2026-10-06 — K-104: a caracterização da saúde não fotografa o dialeto do banco (branch fix/saude-caracterizacao-dialeto)
 
 - Na suíte 47 o PG dirigido reprovou os 31 cenários de `test_saude_caracterizacao.py`: o dourado foi gerado em SQLite e a fotografia levava `database.dialect`
