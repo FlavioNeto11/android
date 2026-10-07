@@ -22,6 +22,7 @@ import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
 import { CriarOperacao } from './CriarOperacao';
 import { guardarRascunho, rascunhoDaOperacao } from './criar';
 import { LiberarAcoes } from './LiberarAcoes';
+import { SomasDoCusto } from './LinhaDoTempoDoAlvo';
 import { ModelosDoAlvo } from './ModelosDoAlvo';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
@@ -157,7 +158,7 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
       </div>
       <div className={styles.blocoDeModelos}>
         <h4 className={styles.subtitulo}>Modelos e custo</h4>
-        {alvo.run_id ? <ModelosDoAlvo runId={alvo.run_id} /> : <p className={styles.mudo}>Este agente não tem execução: não há chamada de IA a mostrar.</p>}
+        {alvo.run_id ? <ModelosDoAlvo runId={alvo.run_id} custoPorPasso={alvo.custo_por_passo} /> : <p className={styles.mudo}>Este agente não tem execução: não há chamada de IA a mostrar.</p>}
       </div>
     </div>
   );
@@ -226,7 +227,8 @@ const AVISO_DE_EXEMPLO = (
 /** O custo (total, teto e a divisão pesquisa × agentes), o assunto e as fontes que o operador indicou. */
 function CustoEAssunto({ op }: { op: Operacao }) {
   const { custo, max_usd: teto, assunto, fontes } = op;
-  if (!custo && teto === null && !assunto && fontes.length === 0) return null;
+  const somas = (op.custo_por_modelo?.length ?? 0) + (op.custo_por_estagio?.length ?? 0) > 0;
+  if (!custo && teto === null && !assunto && fontes.length === 0 && !somas) return null;
   return (
     <section aria-label="Custo e assunto" className={styles.faixa}>
       {custo || teto !== null ? (
@@ -236,6 +238,7 @@ function CustoEAssunto({ op }: { op: Operacao }) {
             : <>Teto de custo de IA {formatUsd4(teto ?? 0)}</>}
         </p>
       ) : null}
+      <SomasDoCusto porModelo={op.custo_por_modelo ?? []} porEstagio={op.custo_por_estagio ?? []} rotulo="Na operação" />
       {assunto ? <p className={styles.objetivo}><strong>Assunto:</strong> {assunto}</p> : null}
       {fontes.length ? (
         <p className={styles.objetivo}>

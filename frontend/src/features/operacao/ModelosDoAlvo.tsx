@@ -5,13 +5,21 @@ import { formatInt, formatPercent } from '../../lib/format';
 import { formatUsd } from '../usage/usage';
 import { useUsage } from '../usage/useUsage';
 import styles from './Operacao.module.css';
+import type { CustoPorPasso } from './custoPorPasso';
+import { LinhaDoTempoDoAlvo } from './LinhaDoTempoDoAlvo';
 import { modelosDoAlvo } from './modelosLidos';
 
 /**
  * 31.228: "Modelos e custo" no detalhe de um agente: por função e modelo, quantas chamadas e quanto custaram, e a divisão das decisões
  * entre os modelos (para medir quem decide a navegação e quem decide o que tem efeito, 31.223). Lido só ao abrir o detalhe.
  */
-export function ModelosDoAlvo({ runId }: { runId: string }) {
+export function ModelosDoAlvo({ runId, custoPorPasso }: { runId: string; custoPorPasso?: CustoPorPasso | null }) {
+  // v1.124: o central que manda o custo por passo dispensa a segunda leitura; sem ele (central anterior), o uso por função e modelo.
+  if (custoPorPasso) return <LinhaDoTempoDoAlvo dado={custoPorPasso} />;
+  return <ModelosPorUso runId={runId} />;
+}
+
+function ModelosPorUso({ runId }: { runId: string }) {
   const { report, error, loading } = useUsage({ run_id: runId });
   if (!report) {
     if (loading) return <Skeleton height={56} radius={8} />;

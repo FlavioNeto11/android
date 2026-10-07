@@ -239,3 +239,5 @@
 .tabelaDeModelos th, .tabelaDeModelos td { text-align: left; padding: var(--sp-1) var(--sp-3) var(--sp-1) 0; }
 .tabelaDeModelos thead th { color: var(--text-3); font-weight: var(--fw-semibold); }
 .tabelaDeModelos tfoot th, .tabelaDeModelos tfoot td { border-top: 1px solid var(--border-1); font-weight: var(--fw-semibold); }
+.somasDoCusto { display: flex; flex-direction: column; gap: var(--sp-1); }
+.somasDoCusto p { margin: 0; }
