@@ -231,6 +231,13 @@ if ($Linha) { $linhaDeComando = '"{0}" /d /s /c "{1}"' -f $env:ComSpec, $Linha }
 $job = [TetoDeCpu]::Criar($Teto, $mascara)
 $primeiro = if ($Linha) { ($Linha.Trim() -split '\s+')[0] } else { $cmd[0] }
 Write-Host ("com-teto-de-cpu: teto {0} % (≈ {1} de {2} threads), afinidade {3}; comando: {4}" -f $Teto, $plano.teto_em_threads, $total, $descricaoDaAfinidade, $primeiro)
+# O pwsh 7 deste host é um app MSIX: o Windows o ativa FORA do job e toda a descendência dele (pytest, workers, node) fica sem teto.
+# Medido em 07/10/2026: `pwsh` e o caminho real do pwsh.exe usaram 0,0 s de CPU dentro do job, `powershell` (5.1) e python direto, 100 %.
+$textoDoComando = if ($Linha) { $Linha } else { $cmd -join ' ' }
+$usaPwsh = $textoDoComando -match '(?i)(^|[\s"\\/&|;(])pwsh(\.exe)?(["\s]|$)'
+if ($usaPwsh) {
+  Write-Host 'com-teto-de-cpu: AVISO: o comando usa `pwsh` (PowerShell 7, app MSIX): ele escapa do job e o teto NÃO vale para ele nem para os filhos. Use `powershell` (5.1) ou chame o python direto.'
+}
 $relogio = [Diagnostics.Stopwatch]::StartNew()
 try { $codigo = [TetoDeCpu]::Rodar($job, $linhaDeComando) }
 catch { Write-Host ("com-teto-de-cpu: o comando não rodou ({0})" -f $_.Exception.Message); $codigo = 126 }
@@ -239,5 +246,8 @@ $cpuDaArvore = [TetoDeCpu]::CpuDoJob($job)
 if ($cpuDaArvore -ge 0 -and $parede -gt 0) {
   Write-Host ("com-teto-de-cpu: a árvore usou {0:F1} s de CPU em {1:F1} s de relógio = {2:F1} % do total de {3} threads (teto {4} %); código de saída {5}" -f `
               $cpuDaArvore, $parede, (100 * $cpuDaArvore / ($parede * $total)), $total, $Teto, $codigo)
+}
+if ($cpuDaArvore -ge 0 -and $parede -gt 10 -and $cpuDaArvore -lt 0.5) {
+  Write-Host 'com-teto-de-cpu: AVISO: a árvore quase não usou CPU: o comando provavelmente escapou do job (pwsh 7?) e rodou SEM teto.'
 }
 exit $codigo
