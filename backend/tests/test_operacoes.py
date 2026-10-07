@@ -923,3 +923,62 @@ async def test_teto_da_operacao_com_corte_suave_o_alvo_seguinte_nem_comeca(harne
     # o alvo cortado no MEIO pela conferência do roteador cai no mesmo motivo, para a contagem por motivo
     assert mod._motivo("Teto de custo da operação atingido: US$ 0.02 de US$ 0.01.") == mod.TETO_DA_OPERACAO
     assert mod._motivo("Teto de custo da execução atingido") != mod.TETO_DA_OPERACAO
+
+
+async def test_o_get_traz_a_fila_do_aparelho_do_alvo_pendente(harness: Harness) -> None:
+    """31.206 (adendo v1.114): o alvo pendente traz a posição na fila do aparelho, contando o trabalho de OUTRA operação
+    que já roda nele, e a previsão pela mediana de trabalho dos alvos terminados desta operação. O alvo que não está
+    pendente vem com `fila` None."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Fila", "android-01")
+    _conta(harness, pid, "qa-user-55", sessao_em="android-01")
+    outra = _persona(harness, "Feita", "android-02")
+    _conta(harness, outra, "qa-user-56", sessao_em="android-02")
+    s = _servico(harness)
+    antes = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-fila-antes"))
+    op = s.criar(_pedido([AlvoPedido(pid), AlvoPedido(outra)], chave="teste-op-fila"))
+    roda, minha = _alvo(antes, pid)["run_id"], _alvo(op, pid)["run_id"]
+    st.db.execute("UPDATE runs SET status='running' WHERE id IN (?,?)", (roda, minha))
+    st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version) VALUES (?,?,?,?,?)",
+                  ("obj-fila-roda", roda, "android-01", "running", 1))
+    pendente = Leitura("sessao", "pendente", None, (("persona", "2026-10-07T10:00:00.000Z"),))
+    feito = Leitura("acao_preparada", "concluido", None, (("persona", "2026-10-07T10:00:00.000Z"),
+                                                          ("aparelho", "2026-10-07T10:00:00.000Z"),
+                                                          ("acao_preparada", "2026-10-07T10:02:00.000Z")))
+    s._ler_alvo = lambda op_, a, d: ((pendente if a["profile_id"] == pid else feito), None)  # type: ignore[method-assign]
+    lida = {a["profile_id"]: a for a in s.ler(op["id"])["alvos"]}  # type: ignore[attr-defined]
+    fila = lida[pid]["fila"]
+    assert (fila["posicao"], fila["a_frente"], fila["base_ms"]) == (2, 1, 120_000)
+    assert fila["previsao_inicio_em"] is not None and fila["previsao_inicio_em"].endswith("Z")
+    assert lida[outra]["fila"] is None
+
+
+async def test_a_lista_filtrada_por_persona_ou_aparelho_traz_so_as_operacoes_dela_com_o_resumo_do_alvo(
+        harness: Harness) -> None:
+    """31.213 (adendo v1.116): o histórico da persona sem ler o detalhe das 20 mais recentes. Com `profile_id` e/ou
+    `instance_id`, só as operações com alvo deles, com o resumo DESSES alvos; sem filtro, a lista de sempre."""
+    st = harness.state
+    assert st is not None
+    p1 = _persona(harness, "Hist1", "android-01")
+    _conta(harness, p1, "qa-user-31", sessao_em="android-01")
+    p2 = _persona(harness, "Hist2", "android-02")
+    _conta(harness, p2, "qa-user-32", sessao_em="android-02")
+    s = _servico(harness)
+    so_p2 = s.criar(_pedido([AlvoPedido(p2)], chave="teste-op-hist-a"))
+    as_duas = s.criar(_pedido([AlvoPedido(p1), AlvoPedido(p2)], chave="teste-op-hist-b"))
+    da_p1 = s.listar(profile_id=p1)["items"]
+    assert [i["id"] for i in da_p1] == [as_duas["id"]]  # type: ignore[index]
+    assert [a["profile_id"] for a in da_p1[0]["alvos"]] == [p1]  # type: ignore[index]
+    assert set(da_p1[0]["alvos"][0]) == {"profile_id", "instance_id", "estado", "estagio", "motivo",  # type: ignore[index]
+                                         "parou_em", "acao_verificada", "custo_usd", "duracao_ms"}
+    assert {i["id"] for i in s.listar(instance_id="android-02")["items"]} == {so_p2["id"], as_duas["id"]}  # type: ignore[index]
+    assert s.listar(profile_id=p1, instance_id="android-02")["items"] == []
+    assert "alvos" not in s.listar()["items"][0]  # type: ignore[index,operator]
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/operacoes", params={"profile_id": p1})
+        assert r.status_code == 200 and [i["id"] for i in r.json()["items"]] == [as_duas["id"]]
+        r = await c.get("/api/operacoes", params={"profile_id": ""})
+        assert r.status_code == 422

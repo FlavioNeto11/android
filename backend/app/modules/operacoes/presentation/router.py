@@ -113,8 +113,12 @@ async def criar_operacao(request: Request, body: OperacaoCreate) -> object:
 
 
 @router.get("/operacoes", response_model=None)
-async def listar_operacoes(request: Request, limite: int = Query(50, ge=1, le=200)) -> object:
-    return _servico(request).listar(limite)
+async def listar_operacoes(request: Request, limite: int = Query(50, ge=1, le=200),
+                           profile_id: str | None = Query(None, min_length=1, max_length=100),
+                           instance_id: str | None = Query(None, min_length=1, max_length=100)) -> object:
+    """Com `profile_id` e/ou `instance_id` (31.213, adendo v1.116): só as operações com alvo deles, com o resumo desses
+    alvos em `alvos`."""
+    return _servico(request).listar(limite, profile_id=profile_id, instance_id=instance_id)
 
 
 @router.get("/operacoes/{operacao_id}", response_model=None)

@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.206 e 31.213: a fila do aparelho no GET e a lista de operações por persona (branch feat/operacao-latencia-por-estagio, corte 60)
+
+- 31.206 (adendo v1.114): o alvo pendente traz `fila` `{posicao, a_frente, previsao_inicio_em, base_ms}`, na ordem do
+  despacho e contando o trabalho de qualquer operação no mesmo aparelho. A previsão é a mediana de trabalho dos alvos
+  terminados; sem amostra, `null`.
+- 31.213 (adendo v1.116): `GET /api/operacoes?profile_id=&instance_id=` traz só as operações com alvo daquela persona
+  ou aparelho, com o resumo desses alvos.
+- Prova `simulated`: `backend/tests/test_operacoes_estagios.py` (a fila no domínio) e `backend/tests/test_operacoes.py`
+  (`test_o_get_traz_a_fila_do_aparelho_do_alvo_pendente` e o teste da lista filtrada). Real: not_run.
+
 ## 2026-10-07 — 31.205: teto da operação com corte suave (branch feat/operacao-latencia-por-estagio, corte 60)
 
 - Com a operação já no `max_usd`, a execução de alvo que ainda vai planejar é recusada antes de qualquer chamada de IA

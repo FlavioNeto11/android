@@ -209,3 +209,26 @@ def test_a_latencia_de_cada_estagio_e_desde_o_evento_anterior_no_tempo_e_o_liber
     alvos = [{"estagios": [{"estagio": "aparelho", "etapa_ms": ms}, {"estagio": "conta", "etapa_ms": None}]}
              for ms in (1000, 2000, 3000, 10_000)]
     assert por_estagio(alvos) == {"aparelho": {"n": 4, "p50_ms": 3000, "p95_ms": 10_000, "max_ms": 10_000}}
+
+
+def test_a_fila_do_aparelho_conta_quem_roda_a_prioridade_e_a_idade_e_a_previsao_so_com_amostra() -> None:
+    """31.206 (adendo v1.114): a posição segue a ordem do despacho (o que roda, a maior prioridade, a execução mais
+    antiga) e conta trabalho de qualquer operação; a previsão é a_frente x a mediana de trabalho dos terminados, e sem
+    nenhum terminado é None, nunca um número inventado."""
+    from datetime import datetime, timezone
+
+    from app.modules.operacoes.domain.fila import Trabalho, a_frente, base_ms, previsao
+
+    t = [Trabalho("r-roda", True, 0, "2026-10-07T10:09:00Z"), Trabalho("r-alta", False, 5, "2026-10-07T10:08:00Z"),
+         Trabalho("r-velha", False, 0, "2026-10-07T09:00:00Z"), Trabalho("r-nova", False, 0, "2026-10-07T11:00:00Z"),
+         Trabalho("r-eu", False, 0, "2026-10-07T10:00:00Z")]
+    assert a_frente("r-eu", 0, "2026-10-07T10:00:00Z", t) == 3          # roda, alta prioridade e a mais velha
+    assert a_frente("r-eu", 9, "2026-10-07T10:00:00Z", t) == 1          # prioridade maior: só o que já roda
+    terminado = {"estado": "concluido", "estagios": [{"estagio": "persona", "em": "2026-10-07T09:00:00.000Z"},
+                                                     {"estagio": "aparelho", "em": "2026-10-07T10:00:00.000Z"},
+                                                     {"estagio": "acao_preparada", "em": "2026-10-07T10:01:30.000Z"}]}
+    assert base_ms([terminado, {"estado": "pendente", "estagios": []}]) == 90_000   # do aparelho ao último estágio
+    assert base_ms([{"estado": "pendente", "estagios": []}]) is None
+    agora = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
+    assert previsao(agora, 2, 90_000) == "2026-10-07T12:03:00.000Z"
+    assert previsao(agora, 2, None) is None

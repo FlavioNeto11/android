@@ -20,13 +20,14 @@ import secrets
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from app.contracts.origem import PREFIXO_OPERACAO
 from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
-from app.modules.operacoes.domain import latencia, relatorio as rel
+from app.modules.operacoes.domain import fila as filas, latencia, relatorio as rel
 from app.modules.operacoes.domain.estagios import ESTADOS, EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs
@@ -69,6 +70,18 @@ def _motivo(texto: object) -> str | None:
     if texto and _DO_TETO.match(str(texto)):
         return TETO_DA_OPERACAO
     return motivo_curto(_ARROBA.sub("o perfil alvo", redact(str(texto)) or "") if texto else None)
+
+
+def _resumo_do_alvo(a: Mapping[str, object]) -> dict[str, object]:
+    """O alvo na lista filtrada (v1.116): o que o histórico da persona mostra, sem os estágios e sem o texto."""
+    resultado = a.get("resultado") if isinstance(a.get("resultado"), dict) else None
+    acao = resultado.get("acao_final") if isinstance(resultado, dict) else None
+    latencia_lida = a.get("latencia")
+    return {"profile_id": a["profile_id"], "instance_id": a.get("instance_id"), "estado": a["estado"],
+            "estagio": a["estagio"], "motivo": a.get("motivo"), "parou_em": a.get("parou_em"),
+            "acao_verificada": acao.get("verificada") if isinstance(acao, dict) else None,
+            "custo_usd": a.get("custo_usd"),
+            "duracao_ms": latencia_lida.get("duracao_ms") if isinstance(latencia_lida, dict) else None}
 
 
 class OperacaoError(Exception):
@@ -288,13 +301,34 @@ class ServicoDeOperacoes:
                    for r in self.db.query("SELECT id FROM runs WHERE operacao_id=?", (op_id,)))
 
     # ------------------------------------------------------------------ ler
-    def listar(self, limite: int = 50) -> dict[str, object]:
-        linhas = self.db.query("SELECT id FROM operacoes ORDER BY created_at DESC, id DESC LIMIT ?", (int(limite),))
+    def listar(self, limite: int = 50, *, profile_id: str | None = None,
+               instance_id: str | None = None) -> dict[str, object]:
+        """As operações mais recentes. Com `profile_id` e/ou `instance_id` (31.213, adendo v1.116), só as que têm alvo
+        daquela persona e/ou daquele aparelho, cada uma com o resumo DESSES alvos (`alvos`): o histórico da persona
+        sem ler o detalhe das 20 mais recentes. Sem filtro, a lista de sempre, sem `alvos`."""
+        filtros, params = [], []
+        if profile_id:
+            filtros.append("a.profile_id=?")
+            params.append(profile_id)
+        if instance_id:
+            filtros.append("a.instance_id=?")
+            params.append(instance_id)
+        if filtros:
+            linhas = self.db.query(
+                "SELECT o.id FROM operacoes o WHERE EXISTS (SELECT 1 FROM operacao_alvos a WHERE a.operacao_id=o.id AND "
+                + " AND ".join(filtros) + ") ORDER BY o.created_at DESC, o.id DESC LIMIT ?", (*params, int(limite)))
+        else:
+            linhas = self.db.query("SELECT id FROM operacoes ORDER BY created_at DESC, id DESC LIMIT ?", (int(limite),))
         itens = []
         for r in linhas:
             d = self.ler(str(r["id"]))
-            itens.append({k: d[k] for k in ("id", "command", "app_id", "acao_final", "status", "created_at",
-                                            "finished_at", "capacidade")})
+            item = {k: d[k] for k in ("id", "command", "app_id", "acao_final", "status", "created_at",
+                                      "finished_at", "capacidade")}
+            if filtros:
+                item["alvos"] = [_resumo_do_alvo(a) for a in d["alvos"]  # type: ignore[attr-defined]
+                                 if (not profile_id or a["profile_id"] == profile_id)
+                                 and (not instance_id or a["instance_id"] == instance_id)]
+            itens.append(item)
         return {"items": itens}
 
     def ler(self, op_id: str) -> dict[str, object]:
@@ -355,6 +389,7 @@ class ServicoDeOperacoes:
                                        for (e, em), ms in zip(lt.estagios, lat.etapas_ms, strict=True)],
                           "latencia": {"duracao_ms": lat.duracao_ms, "espera_do_liberar_ms": lat.espera_do_liberar_ms},
                           "resultado": resultado, "custo_usd": custo})
+        self._anotar_filas(saida)
         capacidade = self._capacidade(saida)
         status = self._status(op, saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
@@ -509,6 +544,38 @@ class ServicoDeOperacoes:
                 "conhecimento_ids": ids, "evidencia_id": captura["id"] if captura is not None else None,
                 "acao_final": {"tipo": efeito["capability"], "verificada": verificada,
                                "evidencia_id": prova["id"] if prova is not None and verificada else None}}
+
+    def _anotar_filas(self, alvos: list[dict[str, object]]) -> None:
+        """31.206 (adendo v1.114): `fila` = {posicao, a_frente, previsao_inicio_em, base_ms} do alvo PENDENTE, a posição
+        dele na fila do aparelho (`domain/fila.py`); None no alvo que já começou, terminou ou parou. Duas consultas por
+        leitura, para todos os alvos."""
+        pendentes = [a for a in alvos if a["estado"] == "pendente" and a.get("run_id") and a.get("instance_id")]
+        for a in alvos:
+            a["fila"] = None
+        if not pendentes:
+            return
+        runs = sorted({str(a["run_id"]) for a in pendentes})
+        meus = {str(r["id"]): r for r in self.db.query(
+            f"SELECT id, prioridade, created_at FROM runs WHERE id IN ({','.join('?' * len(runs))})", tuple(runs))}
+        aparelhos = sorted({str(a["instance_id"]) for a in pendentes})
+        trabalhos: dict[str, list[filas.Trabalho]] = {}
+        for r in self.db.query(
+                "SELECT o.instance_id, o.run_id, o.status, r.prioridade, r.created_at FROM objectives o JOIN runs r ON"
+                " r.id=o.run_id WHERE o.status IN ('pending','running') AND r.status='running' AND r.pause_requested=0"
+                f" AND r.cancel_requested=0 AND o.instance_id IN ({','.join('?' * len(aparelhos))})", tuple(aparelhos)):
+            trabalhos.setdefault(str(r["instance_id"]), []).append(filas.Trabalho(
+                run_id=str(r["run_id"]), rodando=r["status"] == "running", prioridade=int(r["prioridade"] or 0),
+                criado_em=str(r["created_at"])))
+        base = filas.base_ms(alvos)
+        agora = datetime.now(timezone.utc)
+        for a in pendentes:
+            meu = meus.get(str(a["run_id"]))
+            if meu is None:
+                continue
+            frente = filas.a_frente(str(a["run_id"]), int(meu["prioridade"] or 0), str(meu["created_at"]),
+                                    trabalhos.get(str(a["instance_id"]), []))
+            a["fila"] = {"posicao": frente + 1, "a_frente": frente,
+                         "previsao_inicio_em": filas.previsao(agora, frente, base), "base_ms": base}
 
     def _gasto_do_run(self, run_id: str) -> float:
         if self._lote is not None and run_id in self._lote.runs:

@@ -7524,3 +7524,41 @@ corpo esquecido no `…/cancelar` não pode virar "cancelar tudo".
 Código: `ServicoDeOperacoes.cancelar_alvos` e `modules/operacoes/presentation/router.py`. Testes:
 `backend/tests/test_operacoes.py::test_cancelar_alvos_por_filtro_cancela_so_os_que_casam_e_a_operacao_segue` e
 `test_rota_http_cancelar_alvos`.
+
+## Adendo v1.114 (07/10/2026; número da orquestradora; item 31.206) — a fila por aparelho do alvo pendente
+
+`GET /api/operacoes/{id}` ganha `alvos[].fila`, aditivo, para a Portal mostrar onde o alvo está na fila do aparelho
+dele.
+
+- `fila`: `{posicao, a_frente, previsao_inicio_em, base_ms}` no alvo `pendente`. Vem `null` no alvo que já começou,
+  terminou ou parou.
+  - `a_frente` (int): quantos trabalhos abertos do MESMO aparelho, de qualquer operação ou execução avulsa, passam antes
+    dele. A ordem é a do despacho: o que já roda, depois a maior `prioridade` e, entre iguais, a execução mais antiga.
+    `posicao` é `a_frente + 1`; 1 é o próximo.
+  - `base_ms` (int ou `null`): a duração mediana de trabalho dos alvos desta operação que já terminaram, do estágio
+    `aparelho` ao último alcançado.
+  - `previsao_inicio_em` (ISO UTC ou `null`): agora + `a_frente` × `base_ms`. É estimativa. Sem nenhum alvo terminado
+    não há amostra, e `base_ms` e `previsao_inicio_em` vêm `null`, nunca um número inventado.
+
+Junto, sem adendo próprio (31.205): o alvo que ainda ia começar com a operação já no `max_usd` é recusado no
+planejamento e fica em `acao_bloqueada` com o motivo literal `"teto da operação"`. Esse motivo aparece em
+`alvos[].motivo` e como chave de `capacidade.motivos`. O evento `plan.refused` sai com `motivo: "teto_da_operacao"`.
+
+Código: `backend/app/modules/operacoes/domain/fila.py` e `ServicoDeOperacoes._anotar_filas`. Testes:
+`backend/tests/test_operacoes_estagios.py::test_a_fila_do_aparelho_conta_quem_roda_a_prioridade_e_a_idade_e_a_previsao_so_com_amostra`
+e `backend/tests/test_operacoes.py::test_o_get_traz_a_fila_do_aparelho_do_alvo_pendente`.
+
+## Adendo v1.116 (07/10/2026; número da orquestradora; item 31.213) — a lista de operações por persona ou aparelho
+
+`GET /api/operacoes?profile_id=&instance_id=`: os dois são opcionais e se somam. Com algum deles, a lista traz só as
+operações que têm alvo daquela persona e/ou daquele aparelho, as mais recentes primeiro (`limite`, como antes). Cada
+item ganha `alvos`, com o resumo SÓ dos alvos que casam:
+
+`{profile_id, instance_id, estado, estagio, motivo, parou_em, acao_verificada, custo_usd, duracao_ms}`
+
+`acao_verificada` é o `verificada` da ação final (`true`, `false` ou `null` sem ação). `duracao_ms` é a do v1.108.
+Sem filtro, a lista é a de sempre, sem `alvos`. Um filtro vazio (`?profile_id=`) dá 422. É o histórico da persona
+(31.212) sem ler o detalhe das 20 operações mais recentes.
+
+Código: `ServicoDeOperacoes.listar` e a rota em `modules/operacoes/presentation/router.py`. Teste:
+`backend/tests/test_operacoes.py::test_a_lista_filtrada_por_persona_ou_aparelho_traz_so_as_operacoes_dela_com_o_resumo_do_alvo`.
