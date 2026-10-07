@@ -125,6 +125,14 @@ def planejar(repo: str, a: argparse.Namespace, agora: datetime, gh: Gh) -> dict:
     if abertos:
         plano.update(erro=f"já existe PR aberto para essa branch (#{abertos[0].get('number')}): ele acompanha a ponta, não abra outro", codigo=1)
         return plano
+    slug = re.sub(r"[^\w.-]+", "-", a.id).strip("-")
+    if re.fullmatch(r"[0-9a-f]{7,40}", a.base):  # base dada como commit: o PR precisa de uma branch, então nasce revisao/base-<id> nele
+        sha = str(json.loads(gh("api", f"repos/{repo}/commits/{a.base}")).get("sha", ""))
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            plano.update(erro="não consegui resolver o commit da base", codigo=1)
+            return plano
+        plano.update(base=f"revisao/base-{slug}", criar_base=sha)
+        plano["avisos"].append(f"a base é um commit: branch revisao/base-{slug} em {sha[:8]}")
     cmp_ = comparar(repo, a.base, a.head, gh)
     estado = str(cmp_.get("status", ""))
     if estado in ("identical", "behind") or int(cmp_.get("ahead_by", 0) or 0) == 0:
@@ -136,7 +144,6 @@ def planejar(repo: str, a: argparse.Namespace, agora: datetime, gh: Gh) -> dict:
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             plano.update(erro="não consegui o commit comum entre a base e a branch", codigo=1)
             return plano
-        slug = re.sub(r"[^\w.-]+", "-", a.id).strip("-")
         plano.update(base=f"revisao/base-{slug}", criar_base=sha)
         plano["avisos"].append(f"a branch não está sobre '{a.base}': base nova em {sha[:8]} (merge-base)")
         cmp_ = comparar(repo, sha, a.head, gh)

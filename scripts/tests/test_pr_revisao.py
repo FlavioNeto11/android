@@ -37,6 +37,8 @@ class Fake:
         self.chamadas.append(args)
         if self.falha_em and self.falha_em in " ".join(args):
             raise RuntimeError("o gh falhou")
+        if args[0] == "api" and "/commits/" in args[-1]:
+            return json.dumps({"sha": SHA})
         if args[0] == "api" and "/compare/" in args[-1]:
             return json.dumps(self.cmp)
         if args[:2] == ("pr", "list") and "--head" in args:
@@ -92,6 +94,19 @@ class Plano(unittest.TestCase):
         self.assertIn("ref=refs/heads/revisao/base-31.241", post)
         criar = next(c for c in gh.escritas() if c[:2] == ("pr", "create"))
         self.assertEqual(criar[criar.index("--base") + 1], "revisao/base-31.241")
+
+    def test_base_dada_como_commit_vira_branch_de_base(self) -> None:
+        gh = Fake()
+        codigo, out, _ = rodar(gh, "--base", "9a718527", "--aplicar")
+        self.assertEqual(codigo, 0)
+        self.assertIn("a base é um commit", out)
+        post = next(c for c in gh.escritas() if c[0] == "api")
+        self.assertIn(f"sha={SHA}", post)
+        criar = next(c for c in gh.escritas() if c[:2] == ("pr", "create"))
+        self.assertEqual(criar[criar.index("--base") + 1], "revisao/base-31.241")
+        ensaio = Fake()
+        self.assertEqual(rodar(ensaio, "--base", "9a718527")[0], 0)
+        self.assertEqual(ensaio.escritas(), [])  # no ensaio nem a branch de base é criada
 
     def test_sem_commit_novo_nao_abre(self) -> None:
         for cmp_ in (comparacao(status="identical", ahead=0), comparacao(status="behind", ahead=0)):
