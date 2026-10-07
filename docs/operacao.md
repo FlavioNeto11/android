@@ -164,6 +164,10 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
 - **Achados das revisões automáticas (29.170):** `python scripts/coletar_achados_revisao.py --repo dono/nome [--horas 48 | --prs 487,488] [--json]` (só leitura; `--json` é o contrato da Canais: `id`, `pr`, `revisor`, `gravidade`, `arquivo`, `linha`, `frase`, `artefato`, `url`, `pr_estado`) tabela os achados do Codex e do Copilot nos PRs, com gravidade e arquivo:linha, para a orquestradora conferir; achado é a conferir, nunca ordem. Não dispara revisão (cada uma do Copilot custa créditos do dono). O quadro vai para o terminal ou `.claude/handoffs`, nunca para o Git.
 - **Modelo de PR e rótulo (29.171):** `.github/pull_request_template.md` lembra prova, um PR por tarefa e `[skip ci]`; `.github/workflows/rotula-pr.yml` (hospedado, `pull_request_target`, sem checkout do PR) põe `frente:github` em branch `ci/…` e `agente` em `copilot/…` (`scripts/rotulo_do_pr.py`); outro prefixo não ganha rótulo, e o rótulo precisa existir (`scripts/github_rotulos.py --aplicar`).
 
+- **PostgreSQL do CI em 2 processos (29.179):** o job `backend-postgres` (hospedado) roda `pytest -n 2` com `pytest-xdist==3.8.0` instalado só nele; medido em 06/10: 33 min contra 69 min serial. O cron das 05:17Z e o `-n` do SQLite do central ficam como estão (decisão da orquestradora e do dono).
+- **Resumo por job no CI leve (29.179):** o `pr-leve.yml` termina cada job com uma linha (tempo por etapa, soma e testes do pytest e do vitest) no job summary e no log; é a base da leitura de custo por PR.
+- **Custo semanal do GitHub (29.178):** `python scripts/github_custo.py --repo dono/nome --dias 7 --anexar .claude/handoffs/github-custo-revisao.md` (só leitura, ~1,5 min) junta minutos hospedados faturáveis ESTIMADOS por workflow, minutos no runner `central`, créditos do Copilot estimados e as falhas. Não lê saldo nem gasto extra (a API de billing pede o escopo `user`) e o timing do run vem zerado em repositório privado: o saldo real continua sendo a página de uso, no Chrome do dono.
+- **Issue a partir do pacote (29.177):** `python scripts/issue_do_pacote.py <id> --repo dono/nome` (ensaio por padrão; `--aplicar` cria) gera a issue de tarefa do pacote do item, idempotente pela marca `<!-- pacote:<id> -->`. Não atribui ao agente de nuvem (a atribuição é manual, com o sim do dono) e recusa texto com e-mail, IP, serial ou arroba; leia a prévia antes de `--aplicar`, porque nome de persona não é detectável. Os pacotes ficam fora do Git: rode no checkout central (`--pacotes DIR` aponta outro lugar).
 - **Gatilhos travados e `[skip ci]` (29.176):** o `ci.yml` só tem `schedule` e `workflow_dispatch`; push de branch e PR nunca acionam o runner `central` (`scripts/tests/test_ci_gatilhos.py` falha se mudar). Por isso `[skip ci]` é SÓ dos commits que entram na `main`; o último commit de uma branch de PR não o leva, para o check leve rodar.
 - **CI leve do PR (29.175):** `.github/workflows/pr-leve.yml` roda em runner HOSPEDADO (`ubuntu-latest`, nunca o `central`) a cada PR: `docs-check`, `pytest scripts/tests` e `typecheck` + `vitest` + `build` do frontend; sem a suíte do backend (essa é do funil e do cron). Cerca de 6 min de relógio e 7 faturáveis por PR (medido em 06/10). Commit com `[skip ci]` na ponta não dispara o check de `pull_request`: dispare à mão (`gh workflow run pr-leve.yml --ref <branch>`, hospedado) ou use uma ponta sem a marca. `AnexosTab.test.tsx` fica de fora até a Canais corrigi-lo em Linux.
 - **Leitura diária do GitHub (29.155, C10):** `python scripts/github_rotina.py --repo dono/nome` (só leitura, `--json` para os dados) imprime a linha que a frente GitHub manda à coordenação toda manhã: cron da noite, runner `central`, runs ruins das últimas 26 h, issues `ci` e `agente` abertas, PRs do agente e créditos do Copilot ESTIMADOS (146 por revisão, 31 por tarefa do agente, medidos em 06/10). Roteiro e o que ler à mão no Chrome: `.claude/handoffs/github-rotina-diaria.md`. Sem workflow novo e nada no runner central.
@@ -319,7 +323,7 @@ instala na máquina dele.
 (fora do Git, como o resto de `data\`): `ts_utc`, `resultado` (`ok` ou `falhou`), `commit_antes`/`migracao_antes` (o que
 estava no ar), `commit_depois`/`migracao_depois`, `backup` (a pasta em `data\backups` que vale para voltar),
 `backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s`, `opcoes` e `etapas_s` (29.156: segundos de cada etapa na ordem do deploy, `backup`, `site`, `docs_check`,
-`painel`, `parada`, `dependencias`, `subida`, `conferencia`, `tag`; numa falha, `interrompida` é o tempo da etapa que quebrou;
+`painel`, `parada`, `dependencias`, `subida`, `conferencia`, `tag`, `ensaio_de_rollback`; numa falha, `interrompida` é o tempo da etapa que quebrou;
 linhas anteriores ao campo não têm; a mesma lista sai na tela como "tempo por etapa"). Ensaio, recusa
 do portão do `-PularBackup` e falha do build do painel (antes de parar) não entram: não mudaram nada no ar. Ler:
 `Get-Content data\deploys.jsonl | ConvertFrom-Json | Select-Object ts_utc, resultado, commit_antes, commit_depois, backup, tag`.
@@ -329,6 +333,13 @@ do portão do `-PularBackup` e falha do build do painel (antes de parar) não en
 release com as notas geradas. É no melhor esforço: sem `gh`, sem rede ou sem permissão a tela mostra o aviso, a linha do
 histórico leva o aviso em `motivo` e o deploy segue (a tag não desfaz nem atrasa nada). `-SemTag` pula a tag e o release; a
 linha do histórico sai sempre. A tag não dispara o `conteiner.yml` (29.157: ele só roda em push da `main`).
+
+**Notas do release** (29.156, fatia 5): a release da tag `deploy-*` leva como notas as entradas NOVAS do `CHANGELOG.md` desde o deploy
+anterior (os títulos `## …` que não existiam no `commit_antes`, até 40), a migração de antes para depois, a contagem de commits e o link de
+comparação `dono/repositório/compare/<antes>...<depois>` (a URL da origem, que pode carregar credencial, nunca entra no texto). Sem
+deploy anterior, sem `CHANGELOG.md` num dos commits ou qualquer falha, cai nas notas que o `gh --generate-notes` monta, como antes.
+O texto passa por `Remove-DadosDaMaquina` (IP, `WIN-…`, `worker-…-NN`, caminho `C:\…`, e-mail, chaves `sk-`/`ghp_`/`github_pat_` e
+sequências de 40+ caracteres em base64); só os títulos sobem, nunca o corpo das entradas.
 
 **Rollback: o que muda com a migração.** Primeiro responda uma pergunta: o deploy que se quer desfazer trouxe migração
 (`migracao_antes` diferente de `migracao_depois`)? Migração aplicada não se edita, e o código antigo sobre um banco mais
@@ -361,6 +372,13 @@ integridade está ok, a migração da cópia é a `migracao_antes` da linha e o 
 `data\rollback-ensaio\ultimo.json`; saída 0 ok, 1 falhou, 2 pulado (backup podado ou commit ausente: aviso, não aprovação). Rode depois de
 um deploy que trouxe migração, antes de precisar do rollback.
 
+**O deploy já o chama** (29.156, fatia 4): depois da tag e antes de gravar a linha, só quando a migração de depois difere da de antes
+e há pasta de backup, o `deploy.ps1` roda `rollback-ensaio.ps1` para ESSE deploy (commit, migração e backup por parâmetro: a linha ainda não
+existe). O resultado vai à linha de `data\deploys.jsonl` em `ensaio_de_rollback` (`ok`, `falhou` ou `pulado`) e, quando não é `ok`,
+em `ensaio_de_rollback_motivo` (texto fixo, até 200 caracteres); a tela mostra um aviso. **Nunca reverte nada nem derruba o
+deploy**, e `pulado` (backup podado, commit ausente) nunca conta como aprovação. `-SemEnsaioDeRollback` pula o passo. A etapa
+aparece em `etapas_s` como `ensaio_de_rollback`.
+
 4. **Depois de qualquer rollback:** `GET /api/health` (commit e migração), a 8010 escutando, a prova de fora, e uma linha
    nova em `data\deploys.jsonl` (o rollback também é uma subida e fica no histórico).
 
@@ -392,8 +410,8 @@ estado antigo, nunca uma edição retroativa.
   pasta de trabalho própria (apagada no fim), confere integridade, migração e nº de tabelas contra o manifesto e aplica a
   migração do código atual NA CÓPIA (`-SemMigrar` pula). Falha também se a cópia mais nova tiver mais de 48 h (o `farm-backup`
   parou). Veredito em `data/restore-ensaio/ultimo.json` e `historico.jsonl` (só fatos, nenhum valor de tabela); saída 0 ok,
-  1 falhou, 2 pulado. **Não manda Telegram**: o canal do § 15 só aceita os tipos de aviso montados no backend; ligar o `falhou`
-  ao aviso é trabalho de backend (ver o resultado do 29.167). PostgreSQL (`parque.dump`) não é ensaiado aqui.
+  1 falhou, 2 pulado. **Não manda Telegram**: quem avisa é o backend (28.60), que lê o `ultimo.json` a cada 15 min e manda `falhou`, `pulado`,
+  veredito ilegível ou veredito com mais de 192 h pela rotina do canal (`avisos.restore_ensaio.*`; `docs/dominios/canais.md`). PostgreSQL (`parque.dump`) não é ensaiado aqui.
 - **Restaurar o banco regride a cerca** (`commands.fence`, usada para invalidar comando obsoleto por aparelho):
   depois de restaurar, o agente recusa comandos com "cerca N é anterior à última executada (M)" e os `start`
   ficam `failed` sem reparo automático. Procedimento: subir manualmente o `fence` do último comando do aparelho
@@ -470,8 +488,26 @@ Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06
   `data/observabilidade/host/AAAAMMDD.csv` (UTC), retenção de 7 dias só nessa pasta: `ts_utc, cpu_host_pct,
   vm_convidado_nucleos, vmmem_ws_mb, qemu_host_pct, ram_livre_mb, disco_livre_gb, processos_top` (até 3 NOMES de processo com mais
   CPU no minuto, em % do host, sem linha de comando) e `avisos_pressao` (`android-05:3;android-01:1`, lidos do banco em
-  `mode=ro`; vazio = nenhum ou não medido). É a entrada do 29.165 e da janela da prova. Na primeira leitura de teste, o topo
+  `mode=ro`; vazio = nenhum ou não medido). Desde o 29.185 há três colunas no fim: `cpu_media_pct` (CPU do host como média do
+  minuto; `cpu_host_pct` é só o instantâneo de uma janela curta e oscila de 8 % a 91 % entre minutos vizinhos), `demais_processos_pct`
+  (processos fora do topo e do qemu) e `nao_atribuido_pct` (média − todos os processos: o que nasce e morre dentro do minuto,
+  núcleo/interrupções, VM; é onde se enxerga a carga que o topo não mostra). Um arquivo do dia começado por versão antiga ganha a nova
+  linha de cabeçalho uma vez; quem lê deve ignorar linhas cujo primeiro campo não seja data. O mutex tem o nome `Global\farm-amostrador-host`
+  por padrão; `-NomeDoMutex` existe só para os testes não disputarem com o amostrador real. É a entrada do 29.165 e da janela da prova. Na primeira leitura de teste, o topo
   da CPU do host foi `python` (provavelmente os testes do funil) e o antivírus, não a VM do WSL nem os emuladores.
+- **Teto de CPU para o funil** (29.174) — `scripts/com-teto-de-cpu.ps1 -Teto 40 [-NucleosE] -Linha "<comando>"` (ou
+  `-ComandoJson '["exe","arg"]'` para argumentos exatos). Cria um Job Object com teto rígido de CPU (percentual do total de
+  threads do host) e a afinidade opcional dos núcleos E (`-NucleosE`: as threads de menor eficiência, lidas do próprio Windows;
+  `-Afinidade 0x..` fixa uma máscara; `-Simular` só mostra o plano), e roda o comando **criado já dentro do job** (suspenso, entra, retoma):
+  pytest, workers do xdist e netos ficam sob o teto; sem administrador; o job some com o comando e, se o wrapper morrer, a árvore
+  morre junto. `-Linha` passa pelo `cmd.exe /d /c`. **O `pwsh` (PowerShell 7) deste host é um app MSIX e o Windows o ativa FORA do job: o
+  teto não vale para ele nem para nada que ele inicie** (o funil 58 rodou assim, sem teto, com a árvore em 0,0 s de CPU no
+  contador do wrapper). Use `powershell` (5.1) como hospedeiro do script do funil, ou chame o python/pytest direto; o wrapper
+  avisa quando o comando usa `pwsh` e quando a árvore quase não usa CPU. `-BatimentoS N` (padrão 60; 0 desliga) imprime a cada N s a
+  CPU que a árvore já usou e acusa árvore com 0 s depois de `-ZeroAposS` s (padrão 20): dá para conferir no primeiro minuto, pelo
+  arquivo de saída, que o funil está dentro do job. Imprime a CPU usada pela árvore (% do total) e propaga o código de saída. Não toca `.wslconfig`, WSL, túnel nem relógio e não
+  mata processo alheio. Teste: `scripts/tests/test_com_teto_de_cpu.py`. O custo do teto é tempo de funil: compare a duração da
+  suíte sem e com teto antes de adotar.
 
 ## 11. Segurança
 
@@ -783,6 +819,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
 | `amostrador-host.ps1` | S | Amostrador permanente do host (CPU, RAM, disco, VM do WSL, processos que mais usam CPU, avisos de pressão por aparelho), 1 linha/min em `data\observabilidade\host`, retenção 7 dias; `-Instalar` [P] registra a tarefa `farm-amostrador-host` |
+| `com-teto-de-cpu.ps1` | S | Roda um comando sob teto rígido de CPU (Job Object) e, opcional, nos núcleos E; só limita a árvore do próprio comando |
 | `rollback-ensaio.ps1` | S | Ensaio do rollback com migração: backup da última linha de `deploys.jsonl` aberto pelo código do `commit_antes`, em pasta própria (Idle, sem tocar o checkout nem `data\poc.sqlite3`) |
 | `restore-ensaio.ps1` | S | Ensaio semanal sobre a cópia mais nova (pasta própria, Idle, não toca `data\poc.sqlite3`); `-Instalar` [P] registra a tarefa `farm-restore-ensaio` |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central`; grava `data\deploys.jsonl` e, conferida a subida, cria a tag `deploy-AAAAMMDD-HHMM` e o release (29.159; `-SemTag` pula a tag) |
@@ -802,6 +839,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `sincronizar-relogio.ps1` | P | Mede o desvio do relógio do central pelo NTP.br e ajusta acima de 0,2 s (`-Simular` só mede); `-Instalar` registra a tarefa `farm-relogio` e tira a sincronização do `w32time`. Mexer no relógio exige autorização do dono (dada em 28/09) |
 | `recuperar-parque.ps1` | P | Reinicia aparelhos remotos pelo worker |
 | `worker-install.ps1` / `worker-agent.ps1 -Instalar` | P | Instala/registra o agente numa máquina worker |
+| `worker-comando.py` (`--worker`, `--linha` ou `--argv-json`; sessão em `CENTRAL_SESSAO`) | P | Cliente do comando remoto (29.154, ADR-079): pede a execução de UMA linha na máquina de um worker, espera o estado final e imprime a saída já redigida pela central; desligado de fábrica nos três interruptores; sem IA; o código de saída é o do comando (2 recusa/`uncertain`, 3 prazo, 4 sem sessão, 5 central fora) |
 | `install-central-service.ps1` | P | Registra o backend do central como tarefa supervisionada |
 | `worker-tunnel.ps1` | P | Sobe/mantém o túnel SSH real |
 | `portal-instalar-tunel.ps1` | P | **Rodado pelo dono**, como Administrador, depois do `cloudflared tunnel login`: cria o túnel da Cloudflare, grava o `config.yml` com as travas do ADR-073, aponta o DNS e instala o serviço `Cloudflared`. Não abre porta nem mexe no central |
@@ -821,6 +859,8 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `candidatos-do-portal.py` | S | Só GET em `/api/aprendizado/falhas` (JSON, a de sempre e a da camada `pessoa`): grava em `data/aprendizado/candidatos-do-portal.json` os grupos abertos, sem `plan_item` e com `--minimo` ocorrências (padrão 3), mais as propostas abertas, com contagem, exemplos por id (nunca o texto do erro), frente sugerida pela camada e onde alterar (29.72). Cada candidato traz `amostra_de_lote` ("n de m" exemplos de execução nossa: `lote:`/`ensaio:` ou prova de fluxo, lida do banco com `--banco`, só leitura) e `dias_sem_ocorrer`; amostra toda nossa ou mais de 7 dias sem ocorrer vai para o fim (`rebaixado`). É para a orquestradora ler: nada entra no plano sem número dela. Sem IA; o `API_TOKEN` nunca é impresso |
 | `gravacao-com-marcador.py` (`--ensaio` padrão / `--aplicar --backup CAMINHO`) | S / P | Reparo único do 31.118: as gravações de ensino salvas antes dele recebem o marcador da persona no texto digitado e, desde a F2, na tela gravada (`screen_lines`, `screen_title`). O ensaio roda numa cópia do banco (origem em `mode=ro`) e imprime as contagens e os ids das sessões que mudariam; `--aplicar` exige o backup e a mesma migração do código. Rodar só com o backend no ar já no 31.118 e com o "vai" da orquestradora. Nunca imprime valor nem id de persona |
 | `github_rotulos.py` (`--aplicar` escreve) | S / P | Rótulos do repositório (29.155): o ensaio só lê (`gh label list`); `--aplicar` cria ou corrige cor e descrição dos rótulos da lista, só no GitHub do repositório, e nunca apaga rótulo |
+| `issue_do_pacote.py` | S | Gera a issue de tarefa do pacote de um item (29.177), idempotente por ID, sem atribuir ao agente; ensaio por padrão, `--aplicar` cria; lê pacotes que ficam fora do Git |
+| `github_custo.py` | S | Relatório de custo do GitHub numa janela (29.178), só leitura: minutos hospedados faturáveis estimados por workflow, minutos no runner `central`, créditos do Copilot estimados; `--anexar` acrescenta a um arquivo; não lê saldo (billing pede o escopo `user`) |
 | `github_rotina.py` | S | Leitura diária do GitHub (29.155, C10), só leitura: uma linha com o cron da noite, runner, runs ruins, issues `ci` e `agente`, PRs do agente e uma ESTIMATIVA de créditos do Copilot (contagem de runs; o saldo real só a página de uso mostra) |
 | `limpar_branches_revisao.py` (`--aplicar` apaga) | S / P | Apaga no GitHub as branches `revisao/*` já mescladas (29.155, C18); o ensaio só lê; não toca o parque nem o central |
 | `coletar_achados_revisao.py` | S | Tabela dos achados das revisões automáticas (Codex e Copilot) nos PRs da janela (29.170), só leitura; mascara e-mail, IPv4 e sequências longas |

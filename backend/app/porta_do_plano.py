@@ -46,8 +46,6 @@ PERMITIDO, APROVACAO, ADIADO, RECUSADO, NA_EXECUCAO = "permitido", "aprovacao", 
 VALIDADE_PADRAO_H = 24
 #: O maior texto editado aceito no cartão do plano (o do comentário e da legenda do Instagram).
 LIMITE_DO_TEXTO = 2200
-#: O que sempre pede a pessoa na execução, qualquer que seja o plano (ADR-009).
-SEMPRE_NA_EXECUCAO = ("desafio", "2FA", "CAPTCHA")
 
 
 class PortaIndisponivel(Exception):
@@ -271,7 +269,7 @@ def previa_da_porta(state: AppState, run_id: str) -> dict[str, object]:
         "estimativa": True, "parcial": 0 < falhas < len(itens), "total": bool(itens) and falhas == len(itens),
         "itens": itens,
         "na_execucao": {"textos_da_tela": sum(1 for i in itens if i.get("texto_na_execucao")),
-                        "itens_for_each": modelos_for_each, "sempre": list(SEMPRE_NA_EXECUCAO)},
+                        "itens_for_each": modelos_for_each},
     }
 
 

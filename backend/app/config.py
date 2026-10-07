@@ -367,44 +367,9 @@ class LimitsCfg(BaseModel):
     # e só vale onde não há vínculo (hoje, nenhum caminho automático). Continua limitando o `unknown_streak`. Não
     # remova nem renomeie: o `config.yaml` de uma instalação pode ter a chave.
     session_unknown_retry_cap: int = Field(3, ge=1, le=20)
-    # Coordenação de frota sobre o mesmo alvo (achado #114, endurecida pelo ADR-055). Fica em LimitsCfg, não no
-    # `automation_policy` de cada perfil: é regra da OPERAÇÃO como um todo — um perfil não pode afrouxar sozinho o
-    # que protege a conta dos outros 7. Seguir, mandar mensagem e comentar são de UMA conta por alvo, e isso é
-    # regra do dono no código (`social/policy.py::UMA_CONTA_POR_ALVO`), não número daqui.
-    # `fleet_max_accounts_per_target`: desde o ADR-055, o teto de contas DIFERENTES por alvo só nas CURTIDAS; o
-    # excedente é recusado, não adiado. Conta-se qualquer ação das outras contas sobre o alvo (todos os baldes).
-    # `fleet_target_window_days`: a janela dessa contagem, em DIAS — a de 1 h deixava a segunda conta mandar DM à
-    # mesma pessoa uma hora depois (r-20260919220216-7cfa59: sete contas, oito minutos, uma pessoa).
-    # `fleet_min_spacing_between_accounts_s` + `fleet_spacing_jitter_s`: intervalo mínimo (mais aleatoriedade, para
-    # não virar um padrão regular por si só) entre a curtida de uma conta e a de outra sobre o MESMO alvo, abaixo do
-    # teto. `fleet_target_window_s` ficou sem uso (substituído pela janela em dias); continua aqui só porque o tipo
-    # `Settings` do painel e o valor gravado no banco o citam — sai quando o painel mudar.
-    # Prova de 07/10 (J1): a sugestão de alvos (`POST /api/runs/targets/suggest`) escolhe até `orquestracao_max_escolhidas`
-    # personas, entre as `orquestracao_max_candidatas` mais disponíveis que vão ao modelo. Eram as constantes 10 e 20 do
-    # domínio, e um pedido de 30 voltava com 10. Lidos a cada sugestão (sem reiniciar). Cada candidata é um cartão no prompt:
-    # subir a segunda sobe o custo da chamada.
     orquestracao_max_escolhidas: int = Field(30, ge=1, le=64)
     orquestracao_max_candidatas: int = Field(60, ge=1, le=120)
-    # 31.154: numa operação com N agentes, quantos alvos podem EXECUTAR a ação final (o comentário no post nosso); os
-    # demais param em `acao_preparada` com o motivo "limite de ações executadas". Pedido do dono (06/10): configurável
-    # aqui, junto dos outros limites, e lido a cada liberação.
     operacao_max_acoes_executadas: int = Field(3, ge=0, le=64)
-    fleet_max_accounts_per_target: int = Field(3, ge=1, le=50)
-    fleet_target_window_days: int = Field(30, ge=1, le=365)
-    fleet_target_window_s: int = Field(3600, ge=60, le=86400)
-    fleet_min_spacing_between_accounts_s: int = Field(120, ge=0, le=3600)
-    fleet_spacing_jitter_s: int = Field(180, ge=0, le=3600)
-    # Interação entre contas NOSSAS vivas (29.28, emenda do ADR-050): quando o alvo da ação com efeito é outra conta da frota
-    # (viva), esta conta espera ao menos isto, em segundos, desde o último gesto com efeito DELA (vale o maior entre este valor e
-    # `cooldown_between_external_actions_s` do perfil). Ritmo baixo de propósito; conta retirada por bloqueio segue recusada.
-    fleet_min_spacing_to_own_account_s: int = Field(600, ge=0, le=86400)
-    # ADR-081 (dono, P-030, 06/10: "deixar ela mais maleável permitindo muito mais vezes"), emenda ao ADR-055:
-    # `frota_max_contas_por_alvo` é quantas contas DIFERENTES da frota podem seguir, mandar mensagem ou comentar para o
-    # mesmo alvo dentro de `fleet_target_window_days` (era 1, fixo no código). As curtidas seguem em
-    # `fleet_max_accounts_per_target`. `frota_conta_nossa_fora_da_regra`: o alvo que é conta nossa VIVA não entra nessa
-    # contagem (três contas nossas no mesmo post nosso); pessoa real sempre entra. Os dois são lidos ao vivo.
-    frota_max_contas_por_alvo: int = Field(10, ge=1, le=64)
-    frota_conta_nossa_fora_da_regra: bool = True
     # 28.61 (dono, 06/10 19:46Z: "crie um grupo com tudo liberado para todas as personas … para que nao seja necessario
     # permissoes por enquanto"): o id do grupo de política cujas personas NÃO passam pela aprovação de POLÍTICA
     # (a escolha do perfil ou do grupo, a DM fria, a publicação no feed, a pessoa real num pedido, a citação da família e a
@@ -1415,6 +1380,29 @@ class DecisoesAutomaticasCfg(BaseModel):
     intervalo_s: float = Field(30.0, ge=5, le=3600)
 
 
+class RestoreEnsaioAvisoCfg(BaseModel):
+    """28.60: o aviso do ensaio de restauração. A Central lê o veredito que `scripts/restore-ensaio.ps1` grava e avisa
+    (rotina) quando ele `falhou`, foi `pulado`, não pôde ser lido ou ficou velho. Só vale com `avisos.enabled`."""
+
+    enabled: bool = True
+    intervalo_min: int = Field(15, ge=1, le=1440)             # de quanto em quanto tempo o veredito é relido
+    ultimo_json: str = "data/restore-ensaio/ultimo.json"      # relativo à raiz do projeto; ausente = nada a avisar
+    #: Idade máxima do veredito. O ensaio é SEMANAL (domingo 04:30), então 48 h alarmaria toda terça: o padrão é 7 dias
+    #: mais 1 de folga. A cópia com mais de 48 h já vira `falhou` no próprio script (a tarefa diária `farm-backup` parou).
+    idade_max_h: float = Field(192.0, gt=0, le=8760)
+
+
+class DiscoAvisoCfg(BaseModel):
+    """28.58: o aviso de disco baixo no central. O livre do disco (o mesmo leitor da saúde) abaixo de `piso_gb` avisa, e
+    de novo a cada `degrau_gb` abaixo dele; ao voltar ao piso, rearma. NUNCA apaga nada. Só vale com `avisos.enabled`."""
+
+    enabled: bool = True
+    piso_gb: float = Field(100.0, gt=0, le=100_000)
+    degrau_gb: float = Field(20.0, gt=0, le=100_000)
+    critico_gb: float = Field(60.0, ge=0, le=100_000)         # abaixo disto o aviso diz que backup e criação podem falhar
+    intervalo_min: int = Field(15, ge=1, le=1440)
+
+
 class AvisosCfg(BaseModel):
     """Aviso fora do painel (item 28.11; decisão do dono, 02/10: Telegram). Espelho da caixa de Pendências (ADR-062).
     Desde o 28.15 (ADR-071) o aviso leva o conteúdo (a pergunta, o que se aprova), redigido e cortado, e o mesmo bot
@@ -1444,6 +1432,8 @@ class AvisosCfg(BaseModel):
     aprendizado_faixas: list[Literal["B", "C"]] = Field(default_factory=lambda: ["C"])
     entrada: EntradaDoTelegramCfg = EntradaDoTelegramCfg()
     decisoes_automaticas: DecisoesAutomaticasCfg = DecisoesAutomaticasCfg()
+    restore_ensaio: RestoreEnsaioAvisoCfg = RestoreEnsaioAvisoCfg()    # 28.60
+    disco: DiscoAvisoCfg = DiscoAvisoCfg()                             # 28.58
 
 
 #: Os papéis que `trello.listas` aceita (32.2): onde a Central cria os cartões, as listas cujo destino vale sim e não, e

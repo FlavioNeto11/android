@@ -1,10 +1,16 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `0c8683e8b8549d` (migração 127, deploy 58); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `8552b160281e8d` (migração 127, deploy 59); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 59 no ar (07/10/2026, 02:32Z, central `8552b160281e8d`, sem migração; ensino por semelhança e receitas como ação, concorrência por medida, avisos do host e da operação, CI e custo do GitHub).** 9 pontas: Aprendizado 31.151,
+  31.153, 31.157, K-107; Jev 31.175 e hora por estágio; Canais 28.62, 28.60, 28.58; DevOps 29.156 fatias 4 e 5, 29.174, 29.185; GitHub 29.177 a 29.179; Android 29.154 fatias 3 e 4; Portal custo no relatório. Nenhuma correção de código durante o funil 59.
+  - `real` (central WIN-7S2UASNLFOP): deploy com backup `20261006-233052`; saúde ok, migração 127; prova de fora; agente `0.1.0+8552b16`; A10 ok. GitHub 29.177 a 29.179 reais. Funil com teto: funil inteiro em 1:11:30 (01:15:36Z a 02:27:06Z, rc 0; 58 saturado: 1:36:54) sob -Teto 25 com PowerShell 5.1, árvore a 8,1 % da CPU do host e no teto em no máximo 5 % das batidas (só apara picos); SQLite 18:48 contra 15:22 sem teto no 57 (+22 %) e 31:07 no 58; avisos de pressão no SQLite 3 contra 24 no 58; o PostgreSQL dirigido é 63 % do funil e o teto não o alcança (a carga mora no contêiner na VM do WSL): teto fixo 25 % passa a ser o padrão do funil (29.174 e 29.180 reais, comparação da DevOps em `devops-29-180-comparacao-59.md`).
+  - `simulated` (suíte 59): números do CHANGELOG.
+  - `not_run`: amostrador v2 registrado; 31.157, 31.151 e 31.153 reais na operação de 07/10; avisos do host reais.
+  - Próxima ação: prova de 07/10 (onda 2 10:00Z, rodada 13:00Z, relatório 15:00Z), cenário em `.claude/handoffs/prova30/cenario.md`; deploy 60 (migração 128, com -Ensaio) depois das 15:00Z.
 - **Deploy 58 no ar (07/10/2026, 01:12Z, central `0c8683e8b8549d`, sem migração; reposição do ensino, operação pela tela, observabilidade e canais).** 19 pontas: Aprendizado 31.165,
   31.150, 31.149, 31.169, 31.152; Portal 31.168, 31.170 a 31.172, 31.176; GitHub 29.169 a 29.171 e 29.166a; DevOps 29.160 e 29.156 fatia 1; Canais 28.63 e 28.64 (28.62, 28.60 e 28.58 vão no 59); Jev 15.15 F5c B. Correções feitas durante o funil 58, só teste e uma importação: `fix/31-177-prefixo-do-lote` 6f21669a (`rendimento.py` importa `PREFIXO_LOTE` de `app/contracts/origem.py`, achado da Jev no dirigido do vigia) e os seis hashes de `test_prompts_licoes` recalculados após o dfaeb216 (regras de conteúdo T1, decisão do dono; lição: quem muda `prompts.py` roda `test_prompts_licoes`).
   - `real` (central WIN-7S2UASNLFOP): deploy com backup `20261006-221038`; saúde ok, migração 127; prova de fora; agente `0.1.0+0.1.0+0c8683e`; A10 ok. Hardware 29.161 real.

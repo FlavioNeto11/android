@@ -17,7 +17,7 @@ import pytest
 
 from app.main import create_app
 from app.models import PersonaCreate, PersonaDraft, PersonaTraits, voice_gaps
-from app.modules.identity.domain.persona import lacunas_da_biografia, nome_ficticio_plausivel
+from app.modules.identity.domain.persona import lacunas_da_biografia
 from app.modules.identity.domain.persona_generation import (PersonaGenerationRequest, persona_generation_user_text,
                                                             preencher_vazios, problemas_do_rascunho, textos_de)
 from app.modules.identity.presentation.schemas import PersonaGenerateBody
@@ -36,7 +36,7 @@ HOJE = date(2026, 9, 27)
 
 def _completo(draft: PersonaDraft) -> None:
     assert voice_gaps(draft.traits) == [] and lacunas_da_biografia(draft.biography.model_dump(exclude_none=True)) == []
-    assert nome_ficticio_plausivel(draft.name) and draft.birth_date and draft.visual.appearance
+    assert len(draft.name.split()) >= 2 and draft.birth_date and draft.visual.appearance
     assert not any(looks_secret(t) for t in textos_de(draft.model_dump()))
     assert problemas_do_rascunho(nome=draft.name, birth_date=draft.birth_date, lacunas_de_voz=voice_gaps(draft.traits),
                                  biography=draft.biography.model_dump(exclude_none=True), hoje=HOJE) == []
@@ -165,7 +165,7 @@ async def test_openai_manda_o_prompt_de_persona_com_esquema_e_le_o_rascunho(tmp_
     p, vistos = provedor_openai(tmp_path, [_resposta(json.dumps(rascunho))])
     draft, usage = await p.generate_persona(PersonaGenerationRequest(prompt="uma barista", locale="pt-BR", today=HOJE))
     corpo = json.loads(vistos[0].content)
-    assert "FICTÍCIAS" in corpo["messages"][0]["content"] and "<pedido>\numa barista\n</pedido>" in corpo["messages"][1]["content"][0]["text"]
+    assert "personas para contas de redes sociais" in corpo["messages"][0]["content"] and "<pedido>\numa barista\n</pedido>" in corpo["messages"][1]["content"][0]["text"]
     assert corpo["response_format"]["json_schema"]["name"] == "persona"
     assert draft.name == rascunho["name"] and usage.role == "persona" and usage.calls == 1
     p, _ = provedor_openai(tmp_path, [_resposta(None, finish="content_filter")])
@@ -187,7 +187,7 @@ async def test_anthropic_gera_persona_pelo_papel_persona_com_saida_estruturada(t
     # Sem gramática (K-042: a API recusou o esquema do rascunho duas vezes em produção): o esquema vai no texto.
     assert "format" not in chamada.get("output_config", {})
     texto = chamada["messages"][0]["content"][0]["text"]
-    assert "FICTÍCIAS" in chamada["system"][0]["text"] and "um chef" in texto
+    assert "personas para contas de redes sociais" in chamada["system"][0]["text"] and "um chef" in texto
     assert '"persona_prompt"' in texto and '"biography"' in texto
     assert draft.name == rascunho["name"]
 

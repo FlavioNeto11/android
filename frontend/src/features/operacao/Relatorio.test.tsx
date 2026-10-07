@@ -96,6 +96,10 @@ describe('montarRelatorio', () => {
   it('o custo por agente vem do próprio alvo, do resultado só como reserva, e é nulo (não zero) sem execução', () => {
     expect(r.agentes.map((a) => a.custo_usd)).toEqual([0.1, 0.2, 0.05, null, null]);
     expect(r.limites.join(' ')).toContain('Custo por agente "não informado"');
+    // com todos os custos informados a nota não aparece (só a do estado de agora)
+    const completo = montarRelatorio(lerOperacao({ id: 'o', alvos: [{ run_id: 'r1', estado: 'concluido', custo_usd: 0.1 }, { run_id: 'r2', estado: 'concluido', custo_usd: 0 }] })!);
+    expect(completo.limites).toHaveLength(1);
+    expect(completo.limites[0]).toContain('estado da operação');
     expect(OP.alvos.map((a) => a.custo_usd)).toEqual([0.1, 0.2, 0.05, null, null]);
     // o do alvo vale mais que o do resultado quando os dois vêm
     expect(lerOperacao({ id: 'o', alvos: [{ custo_usd: 0.3, resultado: { texto: 'x', custo_usd: 0.9 } }] })!.alvos[0]!.custo_usd).toBe(0.3);

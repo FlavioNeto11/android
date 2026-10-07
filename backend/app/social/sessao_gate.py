@@ -81,7 +81,7 @@ def acoes_de_sessao(*, instance_id: str | None, app: AppOnDevice | None, app_nam
     if status is SessionStatus.session_ready:
         fase, detalhe = "authenticated", "Conta confirmada na tela do aparelho."
     elif status is SessionStatus.auth_challenge:
-        fase, detalhe = "challenge", ("O app pediu confirmação (desafio/2FA). Só uma pessoa resolve; depois use "
+        fase, detalhe = "challenge", ("O app pediu confirmação (desafio/2FA). Depois use "
                                       "Verificar conta.")
     elif status is SessionStatus.needs_person:
         # Vocabulário único (049): a marcação "precisa de mim" de um app sem provedor cai na mesma fase do

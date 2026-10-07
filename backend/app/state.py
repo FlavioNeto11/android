@@ -52,6 +52,7 @@ from .modules.avisos.infrastructure.portas_da_central import PortasReais, nomes_
 from .porta_do_plano import (AprovarPlanoBody, ItemAprovado, aprovar_pelo_canal, previa_da_porta,
                              previa_para_o_canal)
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos, trava_de_avisos_em_uso
+from .modules.avisos.infrastructure.vigia_do_host import VigiaDoHost
 from .decisoes_inversas import inversas_das_filas
 from .modules.decisoes.application.desfazer import DesfazerDecisoes
 from .modules.avisos.infrastructure.trello_leitor import ComentariosDoTrello, LeitorDoTrello
@@ -210,6 +211,7 @@ class AppState:
     canais_da_frota: CanaisDaFrota
     anexos_canal: ArmazemDeAnexos
     avisos: ServicoDeAvisos
+    vigia_do_host: VigiaDoHost
     portal: Portal
     decisoes_registro: RegistroSql
     decisoes: ServicoDeDecisoes
@@ -1365,6 +1367,8 @@ class AppState:
             # O vigia da borda (29.97): de hora em hora, no mesmo líder; sem nome público não faz nada.
             self._bg.append(asyncio.create_task(self.portal.laco_da_borda(lambda: self._lider(AVISOS)),
                                                 name="portal-borda"))
+            # O ensaio de restauração e o disco do central (28.60, 28.58): no mesmo líder, só com o aviso ligado.
+            self._bg.append(asyncio.create_task(self.vigia_do_host.laco(lambda: self._lider(AVISOS)), name="vigia-do-host"))
             # O recolher das decisões automáticas (28.25) em qualquer réplica; o resumo, só no líder da trava `avisos`.
             self._bg.append(asyncio.create_task(self.decisoes.laco(), name="decisoes-automaticas"))
             # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).

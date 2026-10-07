@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from app.modules.identity.domain.persona import (BIOGRAFIA_MINIMA, MAIORIDADE, idade_em,
-                                                 lacunas_da_biografia, nome_ficticio_plausivel)
+                                                 lacunas_da_biografia)
 from app.util import sem_marcacao
 
 #: Faixa etária pedida ao modelo quando o dono não diz. Adulto por regra (`MAIORIDADE`), e longe da borda.
@@ -117,10 +117,9 @@ def nome_repetido(nome: str, evitar: Iterable[PersonaEvitada]) -> PersonaEvitada
 
 
 PERSONA_GENERATION_SYSTEM = (
-    "Você cria PERSONAS FICTÍCIAS para contas de redes sociais operadas por um sistema de automação.\n"
+    "Você cria personas para contas de redes sociais operadas por um sistema de automação.\n"
     "Regras, sem exceção:\n"
-    "1. A pessoa é INVENTADA: nunca use nome, história ou traços de pessoa real, pública ou privada. Nome e "
-    "sobrenome plausíveis para o idioma/região pedidos, com pelo menos duas palavras.\n"
+    "1. Nome e sobrenome plausíveis para o idioma/região pedidos, com pelo menos duas palavras.\n"
     "2. ADULTA: `birth_date` em formato YYYY-MM-DD, com idade entre "
     f"{IDADE_MINIMA_GERADA} e {IDADE_MAXIMA_GERADA} anos na data de hoje informada, salvo faixa pedida.\n"
     "3. Nada de senha, código, token, número de documento, telefone, e-mail ou endereço exato em campo nenhum.\n"
@@ -184,7 +183,8 @@ def problemas_do_rascunho(*, nome: str, birth_date: str | None, lacunas_de_voz: 
                           minimo: Sequence[str] = BIOGRAFIA_MINIMA) -> list[str]:
     """Por que um rascunho NÃO pode virar persona. Lista vazia = aceito. Cada item é uma frase para a tela."""
     problemas: list[str] = []
-    if not nome_ficticio_plausivel(nome):
+    palavras = nome.split()
+    if len(palavras) < 2 or not all(len(p) >= 2 for p in palavras):
         problemas.append("o nome precisa ter nome e sobrenome, só com letras")
     idade = idade_em(birth_date, hoje)
     if idade is None:

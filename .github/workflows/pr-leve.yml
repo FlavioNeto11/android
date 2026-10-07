@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read   # só para o resumo do job ler os tempos das etapas do próprio run
 
 concurrency:
   # Um push novo no mesmo PR cancela o check anterior: só o último importa e cada minuto hospedado conta.
@@ -42,9 +43,19 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache-dependency-path: backend/requirements.txt
-      - run: pip install -r backend/requirements.txt pytest
-      - run: python scripts/docs-check.py
-      - run: python -m pytest -q scripts/tests
+      - name: instalar dependências
+        run: pip install -r backend/requirements.txt pytest
+      - name: docs-check
+        run: python scripts/docs-check.py
+      - name: pytest scripts/tests
+        shell: bash   # bash explícito liga o pipefail: o `tee` não esconde a falha do pytest
+        run: python -m pytest -q scripts/tests 2>&1 | tee "$RUNNER_TEMP/pytest.out"
+      - name: Resumo do job
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/pr_leve_resumo.py --nome "docs-check + scripts/tests" --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --tentativa "$GITHUB_RUN_ATTEMPT" --runner "$RUNNER_NAME" --pytest "$RUNNER_TEMP/pytest.out" | tee -a "$GITHUB_STEP_SUMMARY"
 
   frontend:
     name: frontend · typecheck + vitest + build
@@ -62,9 +73,21 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
+      - name: npm ci
+        run: npm ci
+      - name: typecheck
+        run: npm run typecheck
       # AnexosTab.test.tsx falha só em Linux/Node 22 (5 testes esperando <img> da miniatura; passa no Windows do central): fora do check
       # leve até a Canais corrigir o teste (achado 29.175); o resto do vitest roda inteiro.
-      - run: npm test -- --maxWorkers=2 --exclude src/features/canais/AnexosTab.test.tsx
-      - run: npm run build
+      - name: vitest
+        shell: bash   # bash explícito liga o pipefail: o `tee` não esconde a falha do vitest
+        run: npm test -- --maxWorkers=2 --exclude src/features/canais/AnexosTab.test.tsx 2>&1 | tee "$RUNNER_TEMP/vitest.out"
+      - name: build
+        run: npm run build
+      - name: Resumo do job
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/pr_leve_resumo.py --nome "frontend · typecheck + vitest + build" --repo "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID" --tentativa "$GITHUB_RUN_ATTEMPT" --runner "$RUNNER_NAME" --vitest "$RUNNER_TEMP/vitest.out" | tee -a "$GITHUB_STEP_SUMMARY"
