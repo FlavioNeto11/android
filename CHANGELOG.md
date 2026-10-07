@@ -27,8 +27,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   e a BASE: se a branch não nasceu da base pedida, cria `revisao/base-<id>` no merge-base (API de comparação) para o diff ficar só do item.
   Recusa branch sem commit novo, branch que já tem PR aberto e diff com formato de e-mail, IPv4 ou credencial (diz só o formato; `--valores-falsos`
   liberta o valor falso de teste que a pessoa conferiu); avisa diff acima de 40 arquivos; respeita as ondas (4 por hora, 20 por janela de 5 h do
-  Codex, regra do dono de 07/10) e diz a hora em que cabe (saída 2). Ensaio por padrão; só `gh`, nunca em workflow.
-- Prova `simulated`: `scripts/tests/test_pr_revisao.py` (19 testes, `gh` falso; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, `date -u` 12:45Z, esta máquina,
+  Codex, regra do dono de 07/10) e diz a hora em que cabe (saída 2). `--base` aceita também um commit (nasce `revisao/base-<id>` nele). Ensaio por padrão; só `gh`, nunca em workflow.
+- Prova `simulated`: `scripts/tests/test_pr_revisao.py` (20 testes, `gh` falso; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, `date -u` 12:45Z, esta máquina,
   API): ensaio sobre branch inexistente (erro limpo, sem nome de repositório) e sobre `jev/integ-61` contra a `main` (merge-base 50760e86, 246 arquivos, formato sensível: recusou).
 
 ## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
