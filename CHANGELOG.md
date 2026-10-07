@@ -164,6 +164,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   não muda. `ai.imagem_quando_alvo_fora_da_arvore: false` volta ao de antes.
 - Prova `simulated`: `backend/tests/test_imagem_do_alvo_fora_da_arvore.py` (6). `real`: `not_run`.
 
+## 2026-10-07 — 31.238: o rejulgamento do efeito dispensado por app (branch feat/31-238-rejulgamento-dispensado-por-app)
+
+- Medida real (07/10, `GET /api/usage?days=7`, só leitura): 119 rejulgamentos `sim_com_efeito` em 7 dias, 0
+  discordâncias, US$ 1,59. A taxa de 9 % do total vem toda do `nivel`.
+- Agora o rejulgamento `sim_com_efeito` sai quando o "sim" veio da prova local do app (marcador do catálogo ou
+  `sent_text`) e o app tem pelo menos 30 rejulgamentos em 7 dias sem discordância. Hoje o QA Messenger qualifica e
+  o Instagram (4) não. O "sim" do juiz barato segue rejulgado; o verify não muda. A dispensa fica na trilha
+  (`rejulgamento_dispensado`). `ai.rejulgamento_dispensado_por_app: false` desliga.
+- Prova `simulated`: `backend/tests/test_rejulgamento_dispensado_por_app.py` (7). `real`: a medida acima; a dispensa,
+  `not_run`.
+
 ## 2026-10-07 — 31.233: a receita ativa que diverge ensina a candidata (branch feat/31-233-candidata-da-ativa-que-divergiu)
 
 - Leitura real da onda 2 (07/10, `op-20261007100755-096a28`, só leitura): US$ 0,9249 nos 3 alvos (0,3083 por alvo)

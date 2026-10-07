@@ -277,6 +277,10 @@ ai:
                                       # imagem quando o alvo não está na árvore (toque por coordenada); false = como antes
   cascade_blocked_to_tier1: true  # (true) 17.10: step_blocked do modelo de ação sobe UMA vez ao de escalonamento antes de pedir uma
                                   # pessoa (não vale para challenge, auth_required e wrong_account); false = como antes
+  rejulgamento_dispensado_por_app: true  # (true) 31.238: com a prova local do app no efeito e o app com >= mínimo
+                                        # rejulgamentos sim_com_efeito na janela sem discordância, o rejulgamento sai
+  rejulgamento_dispensa_minimo: 30      # (30)
+  rejulgamento_dispensa_janela_dias: 7  # (7)
   rejudge_yes_on_side_effect: true  # (true) 17.10: o "sim" do verificador barato em etapa com efeito externo (ou que confirma o
                                     # nível de entrega) é conferido UMA vez pelo modelo de escalonamento; só age se os modelos diferem
   sent_text_dispensa_primeiro_juiz: true  # (true) 31.26 A: nível `sent` com a prova local `sent_text` (SEND_MESSAGE do

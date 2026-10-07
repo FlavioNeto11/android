@@ -806,6 +806,14 @@ class AiCfg(BaseModel):
     # UMA vez pelo modelo de escalonamento, e quem vale é o mais forte (discordou → não conta como prova). Só age quando o
     # modelo do verificador é DIFERENTE do de escalonamento (senão seria a mesma pergunta ao mesmo modelo).
     rejudge_yes_on_side_effect: bool = True
+    # 31.238: o rejulgamento do "sim" com efeito é dispensado quando a PROVA LOCAL do app já comprovou o efeito na árvore
+    # (o marcador do catálogo, 31.57, ou o `sent_text`, 31.26) E o app ganhou o direito: pelo menos
+    # `rejulgamento_dispensa_minimo` rejulgamentos `sim_com_efeito` nos últimos `rejulgamento_dispensa_janela_dias`, sem
+    # nenhuma discordância. Medido em 07/10: 0 discordâncias em 119 (QA Messenger qualifica; Instagram, com 4, não).
+    # O app que deixa de ter o mínimo na janela volta a ser rejulgado e recupera o direito sozinho. `false` desliga.
+    rejulgamento_dispensado_por_app: bool = True
+    rejulgamento_dispensa_minimo: int = Field(30, ge=1, le=10_000)
+    rejulgamento_dispensa_janela_dias: int = Field(7, ge=1, le=90)
     # Item 31.26 (opção A): na etapa com nível de entrega `sent` cuja ação declara a prova local `sent_text` (a SEND_MESSAGE
     # do Instagram: o texto numa mensagem do fio e fora do campo), essa prova substitui o PRIMEIRO julgamento (o barato).
     # O rejulgamento do "sim" com efeito (17.10) continua e é quem vale; sem ele (desligado ou mesmo modelo), nada muda.
