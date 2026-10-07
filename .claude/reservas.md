@@ -802,3 +802,4 @@ orquestradora; ela anota aqui antes de responder.
 | adendo api-contract v1.128 | 31.271 (Aprendizado): campo aditivo prova_da_candidata na receita candidata | Aprendizado | CONCEDIDO 07/10 18:4xZ; próximo livre v1.129 (o 31.269 da Jev pega o v1.129 se for ao contrato de eventos) |
 | migração 130 | 31.273 (Jev): steps.exploratoria (marca da etapa descoberta fora do catálogo; ADR-084) | Jev | reservada 07/10 19:1xZ; código só na conta de sábado; próxima livre 131 |
 | adendo api-contract v1.129 | 31.273 (Jev + Aprendizado): etapas_descobertas / fragmento de catálogo proposto | Jev | reservado 07/10 19:1xZ; o 31.269 passa ao v1.130 se for ao contrato |
+| adendo api-contract (renumeração 07/10 19:3xZ) | v1.129 = 31.274 parte 2 (escolhidas[].preparo, Jev, já usado em 9a70091f); v1.130 = 31.273 (etapas_descobertas); v1.131 = 31.269 se for ao contrato; próximo livre v1.132 | orquestradora | |
