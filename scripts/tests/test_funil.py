@@ -266,3 +266,64 @@ def test_paralelo_e_workers_do_pg_chegam_ao_pg_rapido_e_a_linha_interna(tmp_path
     assert "-ParalelosPg 2" in plano["linha_interna"] and "-WorkersPg 6" in plano["linha_interna"]
     sem = json.loads(_funil(tmp_path, None, "-Simular", "-ListaPg", str(lista)).stdout)
     assert "--paralelo" not in [e for e in sem["etapas"] if e["chave"] == "pg"][0]["comandos"][0]
+
+
+def _dorme(segundos: int, texto: str, rc: int = 0) -> list[str]:
+    return py(f"import sys, time; time.sleep({segundos}); print({texto!r}); sys.exit({rc})")
+
+
+def _instante(valor: str) -> float:
+    from datetime import datetime, timezone
+    return datetime.strptime(valor, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+
+
+@precisa_ps51
+class TestSobrepor:
+    """29.204: o PG roda junto das etapas 1 a 5 (processo-filho no mesmo job). Simulado: comandos que dormem; nada de pytest nem PG de verdade."""
+
+    def test_simular_diz_se_sobrepoe(self, tmp_path):
+        com_pg = {**TODAS_OK, "pg": [imprime("3 passed in 1s")]}
+        plano = json.loads(_funil(tmp_path, com_pg, "-Simular", "-Sobrepor").stdout)
+        assert plano["sobrepor"] is True and [e["chave"] for e in plano["etapas"] if e["sobreposta"]] == ["pg"]
+        assert "-Sobrepor" in plano["linha_interna"]
+        sem_pg = json.loads(_funil(tmp_path, TODAS_OK, "-Simular", "-Sobrepor").stdout)
+        assert sem_pg["sobrepor"] is False, "sem comando de PG não há o que sobrepor"
+        so_pg = json.loads(_funil(tmp_path, com_pg, "-Simular", "-Sobrepor", "-Etapas", "6").stdout)
+        assert so_pg["sobrepor"] is False, "PG sozinho roda como sempre"
+        serie = json.loads(_funil(tmp_path, com_pg, "-Simular").stdout)
+        assert serie["sobrepor"] is False and not any(e["sobreposta"] for e in serie["etapas"])
+
+    def test_os_intervalos_se_cruzam_e_o_total_encolhe(self, tmp_path):
+        cmds = {"scripts": [_dorme(4, "5 passed in 4s")], "sqlite": [_dorme(4, "7 passed in 4s")], "pg": [_dorme(5, "9 passed in 5s")]}
+        r = _funil(tmp_path, cmds, "-SemTeto", "-Sobrepor", "-Etapas", "1,2,6")
+        assert r.returncode == 0, r.stdout + r.stderr
+        regs = _registros(tmp_path)
+        topo = [x for x in regs if x["tipo"] == "FUNIL"]
+        assert topo[0]["sobrepor"] == "sim" and topo[-1]["rc"] == "0" and topo[-1]["ok"] == "3" and topo[-1]["falhas"] == "0"
+        e = {x["chave"]: x for x in regs if x["tipo"] == "ETAPA"}
+        assert e["pg"]["sobreposta"] == "sim" and e["pg"]["status"] == "ok" and e["pg"]["passed"] == "9" and "sobreposta" not in e["scripts"]
+        ini = {k: _instante(v["ini"]) for k, v in e.items()}
+        fim = {k: _instante(v["fim"]) for k, v in e.items()}
+        assert ini["pg"] < fim["sqlite"] and ini["sqlite"] < fim["pg"], "o PG começa antes de o sqlite acabar (intervalos cruzados)"
+        total = _instante(topo[-1]["fim"]) - _instante(topo[0]["inicio"])
+        soma = sum(float(v["dur_s"]) for v in e.values())
+        assert total < soma - 2, f"sobrepor tem de encolher o relógio: total {total}s contra soma das etapas {soma}s"
+
+    def test_falha_do_pg_reprova_o_funil_com_o_nome_do_teste(self, tmp_path):
+        cmds = {"scripts": [_dorme(1, "5 passed in 1s")],
+                "pg": [py("print('FAILED tests/test_pg.py::test_z - boom'); print('1 failed, 4 passed in 1s'); import sys; sys.exit(1)")]}
+        r = _funil(tmp_path, cmds, "-SemTeto", "-Sobrepor", "-Etapas", "1,6")
+        assert r.returncode == 1, r.stdout + r.stderr
+        regs = _registros(tmp_path)
+        pg = [x for x in regs if x["tipo"] == "ETAPA" and x["chave"] == "pg"][0]
+        assert pg["status"] == "falhou" and pg["sobreposta"] == "sim" and pg["nomes_falhos"] == "tests/test_pg.py::test_z"
+        assert [x for x in regs if x["tipo"] == "FUNIL"][-1]["falhas"] == "1"
+
+    def test_teto_por_etapa_e_ignorado_com_aviso_e_o_pg_herda_o_teto_unico(self, tmp_path):
+        cmds = {"scripts": [_dorme(1, "5 passed in 1s")], "pg": [_dorme(1, "2 passed in 1s")]}
+        r = _funil(tmp_path, cmds, "-Sobrepor", "-Etapas", "1,6", "-Teto", "30", "-TetoPorEtapa", "pg=40")
+        assert r.returncode == 0, r.stdout + r.stderr
+        regs = _registros(tmp_path)
+        assert any(x["tipo"] == "FUNIL" and "TetoPorEtapa ignorado" in x.get("aviso", "") for x in regs)
+        e = {x["chave"]: x for x in regs if x["tipo"] == "ETAPA"}
+        assert e["scripts"]["teto"] == "30" and e["pg"]["teto"] == "30", "um teto só para o job inteiro"

@@ -54,6 +54,13 @@
   Roda sem o wrapper (so para diagnostico; o run.txt registra teto=sem).
 .PARAMETER ParaNoErro
   Para na primeira etapa que falha; as seguintes ficam `nao_rodou`.
+.PARAMETER Sobrepor
+  29.204: a etapa 6 (PG, que gasta CPU na VM do Docker, fora do teto do host) roda AO MESMO TEMPO que as etapas 1 a 5, num processo-filho dentro do
+  mesmo job. Um teto so para o funil inteiro (-Teto; -TetoPorEtapa e ignorado, com aviso no run.txt). O ETAPA do PG entra no run.txt ao fim com
+  `sobreposta=sim`; os intervalos ini/fim das etapas mostram a sobreposicao. Sem o switch, tudo em serie como sempre. Depende de medida (amostrador
+  v2) entre cortes antes de virar padrao.
+.PARAMETER SaidaDaLinha
+  Uso do proprio funil (filho do -Sobrepor): arquivo onde as linhas FUNIL/ETAPA do filho sao gravadas (os detalhes seguem em -Saida).
 .PARAMETER Simular
   Imprime o plano em JSON e nao roda nada.
 .PARAMETER Interno
@@ -78,7 +85,7 @@
 [CmdletBinding()]
 param([string]$Raiz = '', [string]$Saida = '', [string]$ListaPg = '', [int]$PartesPg = 2, [ValidateRange(1, 4)][int]$ParalelosPg = 1, [ValidateRange(0, 64)][int]$WorkersPg = 0, [string]$ResumoPg = '',
       [string]$Etapas = '1,2,3,4,5,6', [ValidateRange(1, 100)][int]$Teto = 25, [string]$TetoPorEtapa = '', [switch]$SemTeto,
-      [switch]$ParaNoErro, [switch]$Simular, [switch]$Interno, [string]$ArquivoDeTeto = '', [string]$ComandosDeTeste = '', [switch]$ExigirCommit,
+      [switch]$ParaNoErro, [switch]$Simular, [switch]$Interno, [switch]$Sobrepor, [string]$SaidaDaLinha = '', [string]$ArquivoDeTeto = '', [string]$ComandosDeTeste = '', [switch]$ExigirCommit,
       [string]$Python = '', [string]$MypyPython = '', [ValidateRange(0, 3600)][int]$BatimentoS = 30)
 $ErrorActionPreference = 'Stop'
 $inv = [Globalization.CultureInfo]::InvariantCulture
@@ -166,6 +173,8 @@ if ($ComandosDeTeste) {
 }
 
 # ---------------------------------------------------------------------------------------------- plano
+# Sobreposicao (29.204): so vale com a etapa 6 tendo comando E outra etapa para rodar junto; o filho (SaidaDaLinha) nunca se sobrepoe de novo.
+$sobreporAtivo = [bool]($Sobrepor -and -not $SaidaDaLinha -and ($ids -contains 6) -and $ids.Count -gt 1 -and @($comandos['pg']).Count -gt 0)
 $hospedeiroInterno = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $wrapper = Join-Path $PSScriptRoot 'com-teto-de-cpu.ps1'
 function Get-ArgumentosEncaminhados {
@@ -177,6 +186,7 @@ function Get-ArgumentosEncaminhados {
   if ($TetoPorEtapa) { $a += @('-TetoPorEtapa', $TetoPorEtapa) }
   if ($ComandosDeTeste) { $a += @('-ComandosDeTeste', $ComandosDeTeste) }
   if ($ParaNoErro) { $a += '-ParaNoErro' }
+  if ($Sobrepor) { $a += '-Sobrepor' }
   return $a
 }
 function Join-Citado([string[]]$partes) { return (($partes | ForEach-Object { if ($_ -match '\s' -or $_ -eq '') { '"' + $_ + '"' } else { $_ } }) -join ' ') }
@@ -187,16 +197,16 @@ if ($Simular) {
     $d = $definicao | Where-Object { $_.id -eq $id }
     $cmds = @($comandos[$d.chave] | ForEach-Object { (Join-Citado (@($_.exe) + @($_.args))) })
     [ordered]@{ id = $id; chave = $d.chave; nome = $d.nome; teto = $(if ($SemTeto) { 'sem' } else { Get-TetoDaEtapa $id })
-                status_previsto = $(if ($cmds.Count -eq 0) { 'pulado' } else { 'roda' }); comandos = $cmds }
+                status_previsto = $(if ($cmds.Count -eq 0) { 'pulado' } else { 'roda' }); sobreposta = [bool]($sobreporAtivo -and $id -eq 6); comandos = $cmds }
   }
-  [ordered]@{ raiz = $Raiz; saida = $Saida; arquivo_de_teto = $ArquivoDeTeto; teto = $(if ($SemTeto) { 'sem' } else { $Teto }); para_no_erro = [bool]$ParaNoErro
+  [ordered]@{ raiz = $Raiz; saida = $Saida; arquivo_de_teto = $ArquivoDeTeto; teto = $(if ($SemTeto) { 'sem' } else { $Teto }); para_no_erro = [bool]$ParaNoErro; sobrepor = $sobreporAtivo
               relanca_sob_wrapper = (-not $SemTeto); linha_interna = $linhaInterna; etapas = @($plano) } | ConvertTo-Json -Depth 6 -Compress
   return
 }
 
 New-Item -ItemType Directory -Force (Split-Path -Parent $Saida) | Out-Null
 $utf8 = New-Object Text.UTF8Encoding($false)
-function Add-Run([string]$linha) { [IO.File]::AppendAllText($Saida, $linha + "`r`n", $utf8) }
+function Add-Run([string]$linha) { [IO.File]::AppendAllText($(if ($SaidaDaLinha) { $SaidaDaLinha } else { $Saida }), $linha + "`r`n", $utf8) }
 function Get-Agora { return (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', $inv) }
 try { (Get-Process -Id $PID).PriorityClass = 'Idle' } catch { }
 
@@ -270,10 +280,28 @@ try { $commit = [string](& git -C $Raiz rev-parse --short HEAD 2>$null); if ($LA
 $commit = $commit.Trim()
 $exigirCommit = if ($ComandosDeTeste) { [bool]$ExigirCommit } else { $true }
 $tetoDeclarado = if ($SemTeto) { 'sem' } else { [string]$Teto }
-Add-Run ('FUNIL inicio={0} raiz={1} commit={2} teto={3} teto_por_etapa={4} hospedeiro={5}' -f (Get-Agora), $Raiz, $(if ($commit) { $commit } else { 'desconhecido' }), $tetoDeclarado, $(if ($TetoPorEtapa) { $TetoPorEtapa } else { 'nenhum' }), $PSVersionTable.PSVersion.ToString(2))
+Add-Run ('FUNIL inicio={0} raiz={1} commit={2} teto={3} teto_por_etapa={4} hospedeiro={5} sobrepor={6}' -f (Get-Agora), $Raiz, $(if ($commit) { $commit } else { 'desconhecido' }), $tetoDeclarado, $(if ($TetoPorEtapa) { $TetoPorEtapa } else { 'nenhum' }), $PSVersionTable.PSVersion.ToString(2), $(if ($sobreporAtivo) { 'sim' } else { 'nao' }))
 $ok = 0; $falhas = 0; $puladas = 0; $naoRodou = 0; $parou = $false
+# 29.204: o PG sobe agora, como filho deste processo (mesmo job, entao mesmo teto), e as etapas 1 a 5 seguem em serie enquanto ele roda.
+$filho = $null; $filhoErro = ''; $linhasDoFilho = $Saida + '.sobre6'
+if ($sobreporAtivo) {
+  Remove-Item -LiteralPath $linhasDoFilho -Force -ErrorAction SilentlyContinue
+  if ($TetoPorEtapa) { Add-Run 'FUNIL aviso="-TetoPorEtapa ignorado com -Sobrepor: um teto so, o de -Teto, vale para o funil inteiro"' }
+  $argsDoFilho = @('-Raiz', $Raiz, '-Saida', $Saida, '-SaidaDaLinha', $linhasDoFilho, '-Interno', '-SemTeto', '-Etapas', '6', '-PartesPg', [string]$PartesPg, '-ResumoPg', $ResumoPg,
+                   '-Python', $Python, '-MypyPython', $MypyPython)
+  if ($ListaPg) { $argsDoFilho += @('-ListaPg', $ListaPg) }
+  if ($ParalelosPg -gt 1) { $argsDoFilho += @('-ParalelosPg', [string]$ParalelosPg) }
+  if ($WorkersPg -gt 0) { $argsDoFilho += @('-WorkersPg', [string]$WorkersPg) }
+  if ($ComandosDeTeste) { $argsDoFilho += @('-ComandosDeTeste', $ComandosDeTeste) }
+  if ($ExigirCommit) { $argsDoFilho += '-ExigirCommit' }
+  try {
+    $filho = Start-Process -FilePath $hospedeiroInterno -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + $esteScript + '" ' + (Join-Citado $argsDoFilho)) -PassThru -WindowStyle Hidden
+    $null = $filho.Handle   # no 5.1 o ExitCode some se o Handle nao foi pego antes do fim do processo
+  } catch { $filhoErro = 'nao foi possivel lancar o filho do PG: ' + $_.Exception.Message }
+}
 foreach ($d in $definicao) {
   if ($ids -notcontains $d.id) { continue }
+  if ($sobreporAtivo -and $d.id -eq 6) { continue }   # registrada ao fim, vinda do filho
   $rotulo = 'id={0} chave={1} nome="{2}"' -f $d.id, $d.chave, $d.nome
   if ($parou) { Add-Run ("ETAPA $rotulo status=nao_rodou motivo=`"parou na falha anterior`""); $naoRodou++; continue }
   $lista = @($comandos[$d.chave])
@@ -281,8 +309,8 @@ foreach ($d in $definicao) {
     $motivo = if ($d.chave -eq 'pg' -and $ListaPg -and $pgElegiveis -eq 0) { 'lista do PG sem teste elegivel' } elseif ($d.chave -eq 'pg') { 'sem -ListaPg' } else { 'sem comando' }
     Add-Run ("ETAPA $rotulo status=pulado motivo=`"$motivo`""); $puladas++; continue
   }
-  $tetoDaEtapa = Get-TetoDaEtapa $d.id
-  if (-not $SemTeto) { [IO.File]::WriteAllText($ArquivoDeTeto, [string]$tetoDaEtapa, $utf8); Start-Sleep -Milliseconds 2500 }   # o wrapper le o arquivo a cada 2 s
+  $tetoDaEtapa = if ($sobreporAtivo) { $Teto } else { Get-TetoDaEtapa $d.id }
+  if (-not $SemTeto -and -not $sobreporAtivo) { [IO.File]::WriteAllText($ArquivoDeTeto, [string]$tetoDaEtapa, $utf8); Start-Sleep -Milliseconds 2500 }   # o wrapper le o arquivo a cada 2 s
   $detalhe = '{0}.{1}-{2}.txt' -f $Saida, $d.id, $d.chave
   Remove-Item -LiteralPath $detalhe -Force -ErrorAction SilentlyContinue
   $ini = Get-Agora; $relogio = [Diagnostics.Stopwatch]::StartNew()
@@ -324,6 +352,22 @@ foreach ($d in $definicao) {
   }
   Add-Run $linhaEtapa
   if ($status -eq 'ok') { $ok++ } else { $falhas++; if ($ParaNoErro) { $parou = $true } }
+}
+if ($sobreporAtivo) {
+  $rotuloPg = 'id=6 chave=pg nome="pg dirigido"'
+  $linhaPg = $null
+  if ($filho) {
+    $filho.WaitForExit()
+    if (Test-Path -LiteralPath $linhasDoFilho) { $linhaPg = Get-Content -LiteralPath $linhasDoFilho | Where-Object { $_ -match '^ETAPA id=6 ' } | Select-Object -First 1 }
+  }
+  if ($linhaPg) {
+    $linhaPg = ([string]$linhaPg) -replace ' teto=sem', (' teto=' + $(if ($SemTeto) { 'sem' } else { $Teto }))
+    Add-Run ($linhaPg + ' sobreposta=sim')
+    if ($linhaPg -match ' status=ok ') { $ok++ } elseif ($linhaPg -match ' status=pulado ') { $puladas++ } else { $falhas++ }
+  } else {
+    $m = if ($filhoErro) { $filhoErro } else { 'o filho do PG terminou sem registrar a etapa (ver ' + (Split-Path -Leaf $linhasDoFilho) + ')' }
+    Add-Run ("ETAPA $rotuloPg status=falhou motivo=`"$m`" sobreposta=sim"); $falhas++
+  }
 }
 if (-not $commit -and $exigirCommit) {
   Add-Run 'FUNIL status=reprovado motivo="commit nao identificado (git rev-parse falhou ou sem .git): o resultado nao tem vinculo verificavel com o corte"'
