@@ -41,6 +41,7 @@ from .social.approvals import (
     DICA_DA_RECUSA,
     Approval,
     definir_texto,
+    fixar_post_em_foco,
     guardar_rascunho,
     guardar_recusa,
     ler_rascunho,
@@ -455,6 +456,13 @@ class Portoes:
             alvo = alvo_da_acao(cap, bindings)
             arvore = await self._ler_tela(rt, pacote)
             tela = leitor.visible_content(arvore) if leitor is not None and arvore is not None else ""
+            # 31.260 (b): post por posição (sem legenda no pedido) e ação que confere a legenda no commit: a identidade
+            # do post EM FOCO entra na etapa antes do texto. O commit, a aprovação e o 30.64 passam a falar dele.
+            if (arvore is not None and "{caption_contains}" in cap.commit_guard
+                    and not str(bindings.get("caption_contains") or "").strip()
+                    and (trecho := getattr(leitor, "trecho_em_foco", lambda _a: None)(arvore))):
+                fixar_post_em_foco(self._st.db, srow["id"], trecho)
+                bindings = {**bindings, "caption_contains": trecho}
             fatos, leitura = await self._conhecimento_da_operacao(operacao_id, obj, srow, cap, arvore, tela, pacote,
                                                                   bindings)
             # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta

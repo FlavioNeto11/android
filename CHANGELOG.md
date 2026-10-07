@@ -19,7 +19,7 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-10-07 — 31.260 (parte a): o rascunho lê só o post em foco no feed "Posts" (branch feat/31-260-post-em-foco)
+## 2026-10-07 — 31.260: o rascunho lê só o post em foco no feed "Posts", e o commit confere o mesmo post (branch feat/31-260-post-em-foco)
 
 - O defeito, na rodada de 07/10 12:55Z (android-06, r-20261007125539-542a75): o feed "Posts" abriu com o post tocado no
   alto e o cabeçalho do cartão seguinte à vista. O conteúdo da tela que vai ao rascunho levava os dois, e o texto aprovado
@@ -29,13 +29,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   ao seguinte.
 - Na dúvida, a tela inteira, como antes: sem cabeçalho, ou com conteúdo acima do primeiro cabeçalho (o cartão de cima
   rolou). A leitura da operação (`recorte_do_alvo`) passa a ser a do post em foco.
-- Ficam para o 31.260 seguinte:
-  - (b) a identidade do post guardada no texto e conferida no commit;
-  - (c) não replanejar o mesmo caminho depois de "outro post" (hoje `MAX_PLAN_REVISIONS` = 1 limita a uma revisão).
+- (b) Post por posição, quando a ação confere a legenda no commit (o CREATE_COMMENT): ao escrever o texto, a porta
+  do rascunho fixa a identidade do post em foco. São as 6 primeiras palavras da legenda do cartão, sem o autor e sem
+  o "… more". Viram `caption_contains` e guarda de commit da etapa (`fixar_post_em_foco`; a legenda citada no pedido
+  vence). Daí o comentário só sai com aquele post na tela, e a chave da aprovação e o objeto do 30.64 passam a dizer
+  QUAL post. Na dúvida (cartão indefinido, legenda curta), nada muda.
+- (c) Sem código novo: depois de "outro post" o plano já é revisado no máximo uma vez (`MAX_PLAN_REVISIONS` = 1;
+  ~US$ 0,10 na rodada). Com (b), a nova versão fixa de novo o post em foco.
 - `scripts/grupo-liberado-todas.py`: o desfazer vai aos handoffs do checkout central (`--desfazer-em`). Num worktree,
   a pasta não existia.
-- Prova `simulated`: `backend/tests/test_post_em_foco.py` (8), sobre a árvore real com os textos trocados por texto
-  inventado. `real`: `not_run` até a próxima rodada com post por posição.
+- Prova `simulated`: `backend/tests/test_post_em_foco.py` (10, um pela porta do rascunho de verdade), sobre a árvore
+  real com os textos trocados por texto inventado. `real`: `not_run` até a próxima rodada com post por posição.
 
 ## 2026-10-07 — 31.259: a pesquisa no relatório consolidado e os critérios 5 e 6 pelo estado dela (adendo v1.127; branch feat/pesquisa-no-relatorio)
 

@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -93,3 +95,60 @@ def test_na_duvida_a_tela_inteira_como_antes() -> None:
 def test_cartao_invalido_e_recusado_na_carga(valor: object) -> None:
     with pytest.raises(leitura_de_tela.LeituraInvalida):
         leitura_de_tela.de_dados({"conteudo": {"cartao": valor}})
+
+
+# ===================================================================== 31.260 (b): a identidade do post em foco
+TRECHO_A = "Uma legenda inventada do cartão A,"
+
+
+def test_o_trecho_do_post_em_foco_e_o_comeco_da_legenda_sem_o_autor() -> None:
+    assert _leitor().trecho_em_foco(_arvore()) == TRECHO_A
+    sem_cabecalho = UiTree(elements=[e for e in _arvore().elements
+                                     if not e.resource_id.endswith("row_feed_profile_header")],
+                           packages=[PKG], sensitive=False)
+    assert _leitor().trecho_em_foco(sem_cabecalho) is None                  # na dúvida, post por posição como antes
+    assert _leitor().trecho_em_foco(replace(_arvore(), sensitive=True)) is None
+
+
+async def test_a_porta_do_rascunho_fixa_o_post_em_foco_e_o_commit_recusa_outro_post(harness: Any,
+                                                                                   monkeypatch: Any) -> None:
+    """O texto é escrito com o post em foco identificado: a etapa ganha `caption_contains` e a guarda de commit. Com o
+    outro cartão no lugar (o que o android-06 viu na hora de comentar), o executor recusa pela guarda."""
+    from app.planning.capabilities import capability_of
+    from app.taskqueue.executor import textos_do_cartao_ausentes
+
+    from .test_porta_do_plano import _plano
+    state = harness.state
+    _plano(state, [{"key": "comentar", "cap": "CREATE_COMMENT",
+                    "bindings": {"content_brief": "elogie o post", "post_author": "@perfil.alvo"}}], run_id="run-foco")
+
+    async def ler_tela(_rt: Any, _pacote: Any) -> UiTree:
+        return _arvore()
+
+    monkeypatch.setattr(state.portoes, "_ler_tela", ler_tela)
+    telas: list[str] = []
+
+    async def draft_response(_pid: str, **kw: Any) -> Any:
+        telas.append(str(kw.get("screen") or ""))
+        return SimpleNamespace(content="Que vista linda!", refused=False, refusal_reason=None, rationale="r",
+                               memory_candidates=[]), None
+
+    monkeypatch.setattr(state.social, "draft_response", draft_response)
+    obj = state.db.one("SELECT * FROM objectives WHERE run_id='run-foco'")
+    etapa = state.db.one("SELECT * FROM steps WHERE id='run-foco:android-01:v1:comentar'")
+    cap = capability_of(PKG, "CREATE_COMMENT")
+    assert await state.portoes._draft_gate(obj, etapa, cap, obj["profile_id"], pacote=PKG) is None  # noqa: SLF001
+    linha = state.db.one("SELECT bindings, commit_guard FROM steps WHERE id='run-foco:android-01:v1:comentar'")
+    assert json.loads(linha["bindings"])["caption_contains"] == TRECHO_A
+    guardas = json.loads(linha["commit_guard"])
+    assert TRECHO_A in guardas and "Que vista linda!" in guardas
+    assert telas and CABECALHO_B not in telas[0] and LEGENDA_A in telas[0]
+    # na hora de comentar: com o post A na tela, a guarda passa; com só o cartão B (o que o 06 viu), falta o trecho
+    so_b = UiTree(elements=[e for e in _arvore().elements if e.bounds[1] >= 948], packages=[PKG], sensitive=False)
+    assert textos_do_cartao_ausentes([TRECHO_A], _arvore()) == []
+    assert textos_do_cartao_ausentes([TRECHO_A], so_b) == [TRECHO_A]
+    # a legenda citada no pedido vence: a porta não a troca
+    from app.social.approvals import fixar_post_em_foco
+    fixar_post_em_foco(state.db, "run-foco:android-01:v1:comentar", "outro trecho qualquer aqui")
+    assert json.loads(state.db.scalar("SELECT bindings FROM steps WHERE id='run-foco:android-01:v1:comentar'")
+                      )["caption_contains"] == TRECHO_A

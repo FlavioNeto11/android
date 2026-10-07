@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from .hierarchy import UiElement, UiTree
 
 AUTOR = "{autor}"
+#: 31.260 (b): quantas palavras da legenda identificam o post em foco (as primeiras, depois do autor).
+TRECHO_PALAVRAS = 6
 
 
 class LeituraInvalida(ValueError):
@@ -56,13 +58,18 @@ class LeituraDeclarada:
     def em_foco(self, tree: UiTree) -> list[UiElement]:
         """31.260: os elementos do cartão em foco, do topo do primeiro cabeçalho visível ao topo do seguinte (ou ao fim
         da tela). Na rodada de 07/10 o feed "Posts" abriu com o post tocado no alto e o cabeçalho do seguinte à vista,
-        e o rascunho misturou os dois. Na dúvida, a tela inteira, como antes: sem cabeçalho, ou com conteúdo ACIMA do
-        primeiro cabeçalho (o cartão de cima rolou e o cabeçalho dele saiu da tela; não dá para dizer qual é o foco)."""
+        e o rascunho misturou os dois. Na dúvida, a tela inteira, como antes (`_cartao_em_foco`)."""
+        regiao = self._cartao_em_foco(tree)
+        return list(tree.elements) if regiao is None else regiao
+
+    def _cartao_em_foco(self, tree: UiTree) -> list[UiElement] | None:
+        """`None` = não dá para dizer qual é o cartão em foco: sem cabeçalho declarado ou visível, ou com conteúdo ACIMA
+        do primeiro cabeçalho (o cartão de cima rolou e o cabeçalho dele saiu da tela)."""
         if not self.cartao:
-            return list(tree.elements)
+            return None
         cabecalhos = sorted({e.bounds[1] for e in tree.find(resource_id=self.cartao)})
         if not cabecalhos:
-            return list(tree.elements)
+            return None
         topo = cabecalhos[0]
         fim = cabecalhos[1] if len(cabecalhos) > 1 else None
 
@@ -70,8 +77,24 @@ class LeituraDeclarada:
             return (e.bounds[1] + e.bounds[3]) // 2
 
         if any(meio(e) < topo and self._conteudo((e.text or "").strip()) for e in tree.elements):
-            return list(tree.elements)
+            return None
         return [e for e in tree.elements if topo <= meio(e) and (fim is None or meio(e) < fim)]
+
+    def trecho_em_foco(self, tree: UiTree, *, palavras: int = TRECHO_PALAVRAS) -> str | None:
+        """31.260 (b): um trecho LITERAL da legenda do cartão em foco, para identificar o post quando o pedido não citou
+        a legenda (post por posição). A legenda é o maior texto do cartão sem resource-id (o nome no cabeçalho e a música
+        têm id). Corta a 1ª palavra (o autor, que o Instagram põe na frente) e o "… more" do fim, e fica com as
+        `palavras` seguintes: o começo da legenda segue na árvore com a folha de comentários aberta. `None` na dúvida
+        (cartão indefinido, tela sensível ou legenda curta demais): o post segue por posição, como antes."""
+        regiao = None if tree.sensitive else self._cartao_em_foco(tree)
+        textos = [(e.text or "").strip() for e in regiao or () if not e.resource_id]
+        textos = [x for x in textos if self._conteudo(x)]
+        if not textos:
+            return None
+        legenda = re.sub(r"\s*(?:…|\.\.\.)\s*(?:more|mais)?\s*$", "", max(textos, key=len), flags=re.IGNORECASE)
+        resto = legenda.split()[1:palavras + 1]
+        trecho = " ".join(resto)
+        return trecho if len(resto) >= 3 and len(trecho) >= self.minimo else None
 
     def visible_content(self, tree: UiTree, *, limite: int = 600, max_linhas: int = 8) -> str:
         """O que está ESCRITO na tela: sem os rótulos de interface declarados e sem texto curto demais para ser
