@@ -22,7 +22,7 @@ from app.modules.learning.application.espera import AvisadorDeEspera, RiscoDoNat
 from app.modules.learning.application.obsolescencia import ContextoDeObsolescencia, LeitorDeObsolescencia
 from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, LeitorDoEnsinado,
                                                     Minerador, MudancaNativa, LacoPeriodico, NovoSinal,
-                                                    PassoDeCuradoria, PortaDeEventos, PortaDoEnsinado,
+                                                    PassoDeCuradoria, PassoPorOperacao, PortaDeEventos, PortaDoEnsinado,
                                                     RepositorioDeAprendizado, TitulosDoCatalogo, TriagemDeTexto)
 from app.modules.learning.domain import relacoes as rel
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
@@ -836,6 +836,26 @@ class LearningService:
         if not self.ajustes.enabled:
             return Relatorio(pulado=True)
         return _rodar({m.nome: partial(m.minerar, run_id) for m in self._mineradores}, f"digest {run_id}")
+
+    def curar_operacao(self, operacao: str) -> JsonObject | None:
+        """A curadoria de UMA operação que acabou de encerrar (o laço ouve `operacao.encerrada`): os passos que sabem
+        rodar por operação (`PassoPorOperacao`), com o relatório de cada um por nome. None: aprendizado desligado, ou
+        nenhum passo achou a operação encerrada. O passo que falha fica fora do relatório; a volta periódica o repete."""
+        if not self.ajustes.enabled or not operacao:
+            return None
+        agora = self._relogio()
+        saida: JsonObject = {}
+        for p in self._passos:
+            if not isinstance(p, PassoPorOperacao):
+                continue
+            try:
+                feito = p.da_operacao(operacao, agora)
+            except Exception:  # noqa: BLE001 - um passo que falha não derruba os outros (como no `_rodar`)
+                log.exception("aprendizado: curadoria da operação %s, passo %s", operacao, p.nome)
+                continue
+            if feito is not None:
+                saida[p.nome] = feito
+        return saida or None
 
     def curar(self) -> Relatorio:
         """Um passo da curadoria periódica: a régua diária dos últimos dias e os passos registrados."""

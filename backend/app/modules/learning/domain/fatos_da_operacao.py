@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 
 from app.modules.learning.domain.licoes import LICAO_MAX_CARACTERES
 from app.modules.learning.domain.livro import Escopo, NovoItem, assunto_canonico
@@ -59,15 +60,51 @@ def elegivel(f: FatoDaOperacao, agora: str) -> bool:
             and (f.frescor_ate is None or f.frescor_ate > agora))
 
 
-def candidata(f: FatoDaOperacao, agora: str) -> NovoItem | None:
-    """A candidata do escritor, ou None quando o fato não serve (inelegível ou maior que a lição cabe no prompt)."""
+class MotivoDaRecusa(StrEnum):
+    """Por que um fato da memória da operação não vai ao Livro (o relatório da curadoria por operação conta por ele)."""
+
+    NAO_E_FATO = "nao_e_fato"                  # fonte, estado da pesquisa, leitura do alvo, texto vazio
+    HIPOTESE = "hipotese"
+    VENCIDO = "vencido"
+    SEM_APP = "sem_app"
+    LONGO = "longo"                            # maior que a lição cabe no prompt
+    IDENTIFICADOR = "identificador"            # um @ ou um e-mail no texto
+    SEM_ASSUNTO = "sem_assunto"                # 31.200: sem assunto, a lição iria a todo texto do app
+
+
+def recusa(f: FatoDaOperacao, agora: str) -> MotivoDaRecusa | None:
+    """O primeiro motivo por que o fato não vira candidata, ou None quando vira. A mesma régua da `candidata`."""
     texto = " ".join(f.texto.split())
-    if not elegivel(f, agora) or len(texto) > LICAO_MAX_CARACTERES or _IDENTIFICADOR.search(texto):
+    if not (f.chave.startswith(PREFIXO_DO_FATO) and f.chave != CHAVE_DO_ESTADO and f.tipo == "descoberta" and texto):
+        return MotivoDaRecusa.NAO_E_FATO
+    if f.confianca != "confirmado":
+        return MotivoDaRecusa.HIPOTESE
+    if f.frescor_ate is not None and f.frescor_ate <= agora:
+        return MotivoDaRecusa.VENCIDO
+    if not f.pacote:
+        return MotivoDaRecusa.SEM_APP
+    if len(texto) > LICAO_MAX_CARACTERES:
+        return MotivoDaRecusa.LONGO
+    if _IDENTIFICADOR.search(texto):
+        return MotivoDaRecusa.IDENTIFICADOR
+    if not assunto_canonico("" if _IDENTIFICADOR.search(f.assunto) else f.assunto[:200]):
+        return MotivoDaRecusa.SEM_ASSUNTO
+    return None
+
+
+def vencida(provenance: JsonObject, agora: str) -> bool:
+    """O item do Livro que nasceu de um fato cujo frescor passou (a curadoria por operação o relata; não o muda)."""
+    frescor = provenance.get("frescor_ate")
+    return isinstance(frescor, str) and bool(frescor) and frescor <= agora
+
+
+def candidata(f: FatoDaOperacao, agora: str) -> NovoItem | None:
+    """A candidata do escritor, ou None quando o fato não serve (`recusa` diz o motivo)."""
+    if recusa(f, agora) is not None:
         return None
+    texto = " ".join(f.texto.split())
     assunto = "" if _IDENTIFICADOR.search(f.assunto) else f.assunto[:200]
     escopo_do_assunto = assunto_canonico(assunto)
-    if not escopo_do_assunto:                  # 31.200: sem assunto, a lição iria a todo texto do app
-        return None
     execucoes = list[JsonValue](f.execucoes[:20])
     dominios = list[JsonValue](f.dominios[:10])
     return NovoItem(kind=LivroKind.LICAO, escopo=Escopo(app=f.pacote, role=Papel.WRITER.value, subject=escopo_do_assunto),

@@ -2329,6 +2329,25 @@ pela proveniência, pela interação ou inferida) está no topo de `infrastructu
 A confiança fica numa régua só (`confirmado`/`hipotese`) e o valor original aparece ao lado, em `estado`. O que a rota
 não responde aparece em `nao_coberto`. Contrato: adendo v1.96. O relatório da operação da Portal (31.162) lê esta rota.
 
+## A curadoria por operação encerrada (31.217)
+
+O passo do 31.190 (o fato confirmado da pesquisa vira candidata do escritor) rodava só na volta periódica da curadoria
+(`aprendizado.curadoria_s`, 15 min de fábrica), e ninguém via o que ele tinha promovido ou recusado.
+
+- **Na hora:** o laço da curadoria (`state.py::_curadoria_loop`) ouve `operacao.encerrada` no barramento e roda, só no
+  líder da trava `curadoria`, os passos que sabem rodar por operação (`PassoPorOperacao`; hoje, o dos fatos). Entre um
+  evento e outro, a volta periódica segue no mesmo prazo. O evento perdido (assinatura descartada, processo fora) é
+  coberto por ela: a volta olha as operações encerradas da janela de 7 dias.
+- **O relatório** (`FatosDaOperacaoParaOLivro.da_operacao`) é publicado como `aprendizado.curadoria_da_operacao`:
+  - `nascidas`: os ids das candidatas novas;
+  - `ja_no_livro`: os fatos que já tinham item vivo;
+  - `recusadas`: a contagem por motivo fechado (`MotivoDaRecusa`: `nao_e_fato`, `hipotese`, `vencido`, `sem_app`,
+    `longo`, `identificador`, `sem_assunto`), a mesma régua da `candidata`;
+  - `vetadas`: o que o Livro recusou (veto de uma pessoa ou texto com cara de credencial);
+  - `vencidas_no_livro`: os itens vivos do mesmo app que nasceram de um fato cujo frescor passou. Só relata: o item
+    não muda de estado.
+- Só ids e contagens: o texto do fato fica no Livro.
+
 ## O plano de ensino guiado do Instagram (31.201)
 
 Só documento e leitura: nada aqui foi executado. O plano diz o que ensinar no Instagram, em que ordem, em que aparelho

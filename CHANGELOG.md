@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.217: curadoria por operação encerrada (branch feat/31-217-curadoria-por-operacao)
+
+- O passo do 31.190 rodava só na volta de 15 min, sem dizer o que promoveu. Agora o laço da curadoria ouve
+  `operacao.encerrada` e roda o passo para aquela operação na hora, só no líder.
+- O relatório sai no evento `aprendizado.curadoria_da_operacao`, só com ids e contagens: nascidas, já no Livro,
+  recusadas por motivo fechado, vetadas e vencidas no Livro. A volta periódica segue e cobre o evento perdido.
+- Prova `simulated`: `backend/tests/test_curadoria_por_operacao.py` (3), incluindo o laço que ouve o evento no harness.
+  `real`: `not_run`, pede o deploy e uma operação encerrada.
+
 ## 2026-10-07 — 31.190, complemento: a proveniência do fato no Livro (adendo v1.117, aprendizado/integ-60)
 
 - A Portal (31.214) mostra a origem, a evidência, a confiança e o frescor da lição que nasceu de um fato da pesquisa.
