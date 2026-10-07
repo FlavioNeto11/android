@@ -26,7 +26,7 @@ import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
 import {
-  acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, contarPorStatus, descricaoDaOperacao, filtrarOperacoes, isStatusDaOperacao, STATUS_DA_OPERACAO, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
+  acoesDaOperacao, acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, contarPorStatus, descricaoDaOperacao, filtrarOperacoes, isStatusDaOperacao, STATUS_DA_OPERACAO, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
   ROTULO_DA_VERIFICACAO, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, rotuloDaAcao, rotuloDoEstagio, verificacaoDoAlvo, type Alvo, type EstadoDoAlvo,
   type EstagioId, type Operacao, type ResumoDaOperacao, type StatusDaOperacao, type Verificacao,
 } from './modelo';
@@ -333,6 +333,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const alvos = op.alvos.filter((a) => (!estado || a.estado === estado) && (!parou || estagioDeParada(a) === parou));
   const encerrada = op.status !== null && op.status !== 'em_curso';
   const preparados = alvosPreparados(op.alvos);
+  const feitas = acoesDaOperacao(op.alvos);
   // Quantas contas ainda cabem no limite configurado (as que já executaram contam); sem o limite à mão, a lista inteira.
   const vagas = typeof limiteDeAcoes === 'number' ? Math.max(0, limiteDeAcoes - acoesJaExecutadas(op.alvos)) : preparados.length;
   const motivoSemLiberar = op.exemplo ? 'É um exemplo: não há o que liberar.'
@@ -381,6 +382,11 @@ function DetalheDaOperacao({ id }: { id: string }) {
         <a className={styles.link} href={hashDe('operacoes')}>← Todas as operações</a>
         {op.status ? <Badge tone={TOM_DO_STATUS[op.status]} size="sm">{ROTULO_DO_STATUS[op.status]}</Badge> : null}
         <span className={styles.mudo}>Ação final: {rotuloDaAcao(op.acao_final)}</span>
+        {feitas.executadas > 0 ? (
+          <span className={styles.mudo} data-acoes-feitas>
+            · {plural(feitas.executadas, 'ação executada', 'ações executadas')}, {plural(feitas.verificadas, 'verificada', 'verificadas')}
+          </span>
+        ) : null}
       </p>
       <CustoEAssunto op={op} />
       <FaixaDeCapacidade op={op} />

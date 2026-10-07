@@ -222,6 +222,16 @@ export function alvosPreparados(alvos: readonly Alvo[]): AlvoPreparado[] {
 export const acoesJaExecutadas = (alvos: readonly Alvo[]): number =>
   alvos.filter((a) => a.estado === 'concluido' && a.resultado?.acao_final !== null && a.resultado?.acao_final !== undefined).length;
 
+/**
+ * O que a operação JÁ fez de ação final, contado dos alvos (o cabeçalho diz o modo da operação, "Só preparar", e esse modo não muda
+ * quando uma pessoa libera: o comentário executado e comprovado depois da liberação ficava sem aparecer no topo).
+ * `verificadas` é parte das `executadas`: sem prova, a ação conta como executada e não como verificada.
+ */
+export function acoesDaOperacao(alvos: readonly Alvo[]): { executadas: number; verificadas: number } {
+  const feitas = alvos.filter((a) => a.estado === 'concluido' && a.resultado?.acao_final);
+  return { executadas: feitas.length, verificadas: feitas.filter((a) => a.resultado?.acao_final?.verificada === true).length };
+}
+
 /** `null` quando o corpo não é uma operação (sem id): a tela diz que não leu, não inventa. */
 export function lerResumo(v: unknown): ResumoDaOperacao | null {
   const o = registro(v);
