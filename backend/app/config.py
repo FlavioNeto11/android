@@ -842,6 +842,10 @@ class AiCfg(BaseModel):
     # caminho dela, vira ativa e passa a agir; uma divergência recomeça a contagem. Uma execução limpa só é um
     # caminho visto uma vez — aprender só com prova (pedido do dono). 0 = sem prova: nasce ativa (o modo anterior).
     recipes_promote_after: int = Field(2, ge=0, le=20)
+    # 31.233: a receita ATIVA que divergiu e caiu em quarentena nesta tentativa, com a IA completando a etapa: o caminho
+    # que de fato rodou (o trecho da receita e o da IA) vira candidata, em prova como qualquer outra. Medido na onda 2
+    # (07/10): a 111 divergiu nos 3 alvos, 39 % do custo, e nada se aprendeu. `false` = como antes.
+    candidata_da_ativa_que_divergiu: bool = True
     # RA-20: a etapa sem receita na chave atual herda, como CANDIDATA (em prova, nunca agindo), a receita provada da
     # mesma etapa noutra versão do app, noutra variante ou na legada. false = só mede a causa do "ausente". Só vale
     # com a prova (`recipes_promote_after > 0`): sem ela a receita aprendida já nasce ativa e não há o que herdar.
