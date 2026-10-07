@@ -317,6 +317,8 @@ ai:
     max_buscas: 3                 # (3) buscas por pesquisa
     teto_usd_por_operacao: 0.25   # (0.25) tokens + buscas, somados por operação
     frescor_h: 24                 # (24) quanto o fato pesquisado vale
+    reaproveitar_min_fatos: 2     # (2) 31.231: fatos confirmados e frescos do Livro, do mesmo assunto, que dispensam a
+                                  # pesquisa paga (todas as fontes indicadas cobertas); 0 desliga
   # Página de faturamento de cada conta de IA (ADR-051), a que o painel linka em "Abrir console". Sem o parâmetro
   # `billing`, o AI Studio abre a PRIMEIRA conta de faturamento, que pode não ser a pré-paga.
   # balance_consoles:

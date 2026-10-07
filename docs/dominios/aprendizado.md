@@ -2621,3 +2621,29 @@ A receita nascida assim é candidata como qualquer outra. A sombra a prova, ou a
 
 **Prova.** `simulated`: `backend/tests/test_receita_sem_voltar_inicial.py` (6, com o `telas.yaml` real do Instagram).
 `real`: `not_run`; a 1ª operação depois do deploy 61 com `open_profile` que comece por voltar.
+
+## A pesquisa reaproveita o Livro (31.231)
+
+Achado da onda 1 (07/10): a pesquisa da operação (31.158) custou US$ 0,043 no alvo. Os fatos confirmados que ela deixa
+viram itens do Livro com o assunto canônico no escopo (31.190, 31.200), mas a 2ª operação do MESMO assunto pagava de
+novo pelo que o Livro já sabia.
+
+Agora, depois da lacuna e antes do gasto, a pesquisa consulta o Livro:
+- **Leitura** (`learning/infrastructure/fatos_do_livro_sql.py`, lado do Aprendizado): os itens `operation_fact` do
+  assunto canônico, vivos (`candidate`, `validated`, `published`), com o texto do conteúdo e o frescor e os domínios da
+  proveniência v1.117. O rejeitado e o desligado ficam fora.
+- **Critério** (`learning/domain/reaproveitamento_da_pesquisa.py`, puro): cobre o pedido com pelo menos
+  `ai.pesquisa.reaproveitar_min_fatos` (padrão 2) fatos vivos e dentro do frescor (sem frescor não conta; só o fato
+  confirmado nasce no Livro). Havendo fontes indicadas, cada domínio indicado tem de estar entre os desses fatos. `0`
+  desliga.
+- **Registro** (`pedidos/infrastructure/pesquisa_da_operacao.py`, lado da Jev): cobrindo, os fatos entram na memória
+  da operação como `livro.<item>` (descoberta, confirmada, origem `pesquisa`, com o frescor do Livro), e a
+  `pesquisa.estado` diz "reaproveitado do Livro (31.231)" com os itens, o menor frescor e o critério por extenso. Nenhuma
+  chamada de IA; o log da operação diz "pesquisa reaproveitada do Livro". Não cobrindo, ou se a leitura falha, a
+  pesquisa paga roda como antes, com o motivo no log. Nunca é um pulo silencioso.
+
+A chave `livro.` não volta ao Livro: o minerador do 31.190 só lê `pesquisa.*`.
+
+**Prova.** `simulated`: `backend/tests/test_pesquisa_reaproveita_o_livro.py` (4: critério, serviço que não paga e
+registra, serviço que paga quando não cobre ou quando a leitura falha, leitor do Livro no harness). `real`: `not_run`;
+a 1ª operação de assunto repetido depois do deploy.

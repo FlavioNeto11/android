@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.231: a pesquisa reaproveita o Livro (branch feat/31-231-pesquisa-reaproveita-o-livro)
+
+- A 2ª operação do mesmo assunto pagava a pesquisa de novo (US$ 0,043 na onda 1) pelo que o Livro já sabia.
+- Agora, antes da chamada paga, a lacuna lê os fatos do Livro do mesmo assunto canônico. Cobrem o pedido quando há
+  pelo menos `ai.pesquisa.reaproveitar_min_fatos` (padrão 2) vivos, confirmados e dentro do frescor, e, havendo fontes
+  indicadas, cada domínio indicado entre os desses fatos. Cobrindo, os fatos entram na memória como `livro.<item>` e a
+  `pesquisa.estado` registra itens, frescor e critério; não cobrindo, a pesquisa paga roda como antes, com o motivo no log.
+- Prova `simulated`: `backend/tests/test_pesquisa_reaproveita_o_livro.py` (4). `real`: `not_run`.
+
 ## 2026-10-07 — 31.230: a receita sem o "voltar" inicial (branch feat/31-230-receita-sem-voltar-inicial)
 
 - A tentativa da IA que começava por `press_back` não virava receita: foi o que barrou o `open_profile` na onda 1.
