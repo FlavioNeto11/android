@@ -470,6 +470,20 @@ avisos depois da faxina"), e a trava cai no TTL.
   concluí-lo; central sem aparelho nenhum recusa. NUNCA comenta em cartão (entra como "do dono"): só a descrição. Testes:
   `.claude/trello/test_cartoes_de_aparelho.py` (simulated, Trello e central falsos). Prova `real`: `not_run` (o `--aplicar`
   nunca foi rodado).
+- **Critérios da prova no cartão-pai (28.70):** `python .claude/trello/pai_da_prova.py --operacao op-... | --arquivo
+  relatorio.json [--ler-cartao] [--aplicar]` escreve na DESCRIÇÃO do cartão-pai da prova de 07/10 (quadro Execução; nunca
+  em comentário, que pela API entra como "do dono") um bloco entre `<!-- criterios-da-prova:inicio -->` e `...:fim -->`
+  com os critérios lidos de `GET /api/operacoes/<id>/relatorio` (adendo v1.111, Jev 31.195), no lugar de copiados à mão.
+  O contrato lido é o FINAL do adendo (19 critérios: os 16 do dono mais 2b, 3b e 11b), isolado em `ler_relatorio`:
+  se o adendo mudar, o ajuste é só ali. Uma linha por critério (✅ provado real, ⚠️ implementado ou testado em simulação,
+  ⬜ o resto, com "nesta operação: sim/não/não medido"), mais hora do relatório (`gerado_em`, nunca a de agora), id curto
+  da operação, status, ambiente, capacidade, identidades e custo. **Não medido** (ausente, `null` ou `nao_medido`) sai
+  "não medido", nunca "sim" nem zero. A evidência em texto livre não vai ao Trello (só "com evidência" ou "sem
+  evidência"), e o corpo passa por `_sem_contato` e `redacao.redigir`. Só o trecho entre os marcadores muda (sem marcadores,
+  o bloco vai ao fim); marcadores quebrados, relatório sem `criterios` e cartão fora do quadro Execução são RECUSADOS sem
+  gravar. Repetir com o mesmo relatório é 0 ações. Sem `--aplicar` é ensaio (imprime o bloco; `--ler-cartao` só lê). Testes:
+  `.claude/trello/test_pai_da_prova.py` (simulated, relatório e Trello falsos). Prova `real`: `not_run` até a rota do
+  relatório estar implantada (corte 60) e o primeiro `--aplicar` autorizado.
 - **Hoje:** `.claude/trello/reconciliar.py` (testes em `.claude/trello/test_reconciliar.py`), a rotina da skill `trello` e o
   aviso no fim do `aplicar` do plano. As exceções acima (sem estado, "Espera você") ficam num relato para o dono ver.
 - **No produto:** nada ainda. A Central só tem o espelho dos avisos; levar a reconciliação para dentro dela é decisão a
