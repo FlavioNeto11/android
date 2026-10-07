@@ -7,6 +7,7 @@
  */
 
 import { formatUsd4 } from '../../lib/format';
+import { lerFila, type FilaDoAlvo } from './fila';
 
 /** Os estágios do pipeline, na ordem fixa do dono e do adendo. `acao_executada` e `acao_bloqueada` ocupam a mesma posição. */
 export const ESTAGIOS = [
@@ -81,6 +82,8 @@ export interface Alvo {
   estagios: { estagio: EstagioId; em: string | null; /** v1.108: ms desde o evento anterior NO TEMPO (0 = mesma hora; `null` = hora ilegível); ausente = o central não manda. */ etapa_ms?: number | null }[];
   /** v1.108: a duração do alvo (da criação da operação ao último estágio) e a espera pela aprovação (da ação preparada ao liberar); ausente = o central não manda. */
   latencia?: { duracao_ms: number | null; espera_do_liberar_ms: number | null } | null;
+  /** v1.114: a fila do aparelho e a previsão de início do alvo PENDENTE; `null` = não está pendente; ausente = o central não manda. */
+  fila?: FilaDoAlvo | null;
   estado: EstadoDoAlvo | null;
   /** O estágio em que o alvo parou (só em `bloqueado`/`cancelado`); o backend manda, o painel não calcula o seguinte. */
   parou_em: EstagioId | null;
@@ -171,7 +174,7 @@ export function lerAlvo(v: unknown, posicao: number): Alvo | null {
     id: texto(o.run_id) ?? texto(o.profile_id) ?? `alvo-${posicao + 1}`,
     profile_id: texto(o.profile_id), persona: texto(o.persona_nome), app_id: texto(o.app_id), account_id: texto(o.account_id),
     conta: texto(o.conta), instance_id: texto(o.instance_id), run_id: texto(o.run_id),
-    estagio: lerEstagio(o.estagio), estagios, ...(lat ? { latencia: { duracao_ms: inteiro(lat.duracao_ms), espera_do_liberar_ms: inteiro(lat.espera_do_liberar_ms) } } : {}), estado: isEstadoDoAlvo(o.estado) ? o.estado : null, parou_em: lerEstagio(o.parou_em), motivo: texto(o.motivo),
+    estagio: lerEstagio(o.estagio), estagios, ...(lat ? { latencia: { duracao_ms: inteiro(lat.duracao_ms), espera_do_liberar_ms: inteiro(lat.espera_do_liberar_ms) } } : {}), ...('fila' in o ? { fila: lerFila(o.fila) } : {}), estado: isEstadoDoAlvo(o.estado) ? o.estado : null, parou_em: lerEstagio(o.parou_em), motivo: texto(o.motivo),
     // `custo_usd` do alvo é o dado (existe mesmo antes do texto); o do `resultado` é só a reserva (resultado é null antes do texto).
     custo_usd: usdOuNulo(o.custo_usd) ?? usdOuNulo(registro(o.resultado)?.custo_usd), resultado: lerResultado(o.resultado),
   };

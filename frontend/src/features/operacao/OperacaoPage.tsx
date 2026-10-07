@@ -21,6 +21,7 @@ import { apiOperacoes, type ListaDeOperacoes } from './api';
 import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
 import { CriarOperacao } from './CriarOperacao';
 import { guardarRascunho, rascunhoDaOperacao } from './criar';
+import { filaEmPalavras, MOTIVO_DO_TETO } from './fila';
 import { latenciaDaOperacao, latenciaDoAlvo } from './latencia';
 import { CancelarAlvos } from './CancelarAlvos';
 import { CompararOperacoes } from './CompararOperacoes';
@@ -60,6 +61,7 @@ const numero = (n: number | null): string => (n === null ? 'não informado' : fo
 
 function FaixaDeCapacidade({ op }: { op: Operacao }) {
   const c = op.capacidade;
+  const teto = c.motivos.find((m) => m.motivo === MOTIVO_DO_TETO && m.n > 0) ?? null;
   const celulas: { rotulo: string; valor: number | null; tom?: Tone }[] = [
     { rotulo: 'solicitados', valor: c.solicitados ?? op.alvos.length },
     { rotulo: 'contas existentes', valor: c.contas_existentes },
@@ -80,11 +82,20 @@ function FaixaDeCapacidade({ op }: { op: Operacao }) {
           </div>
         ))}
       </dl>
+      {teto ? (
+        <div data-teto-da-operacao>
+          <Banner tone="warning" icon={ShieldQuestion} compact role="status" title={`${formatInt(teto.n)} ${teto.n === 1 ? 'agente cortado' : 'agentes cortados'} pelo teto da operação`}>
+            {op.max_usd !== null && op.custo?.total_usd != null
+              ? `O gasto de IA chegou a ${formatUsd4(op.custo.total_usd)} de um teto de ${formatUsd4(op.max_usd)}: o que passaria disso não foi planejado.`
+              : 'O gasto de IA bateu no teto de gasto da operação: o que passaria disso não foi planejado.'}
+          </Banner>
+        </div>
+      ) : null}
       {c.motivos.length ? (
         <div>
           <h3 className={styles.subtitulo}>Motivos dos bloqueios</h3>
           <ul className={styles.motivos}>
-            {c.motivos.map((m) => <li key={m.motivo}><strong>{formatInt(m.n)}</strong> {m.motivo}</li>)}
+            {c.motivos.map((m) => <li key={m.motivo} data-motivo-do-teto={m.motivo === MOTIVO_DO_TETO ? '' : undefined}><strong>{formatInt(m.n)}</strong> {m.motivo}</li>)}
           </ul>
         </div>
       ) : null}
@@ -231,6 +242,7 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
   const ver = VERIFICACAO[verificacao];
   const rotuloDaLinha = alvo.persona ?? 'Persona não informada';
   const total = latenciaDoAlvo(alvo).totalMs;
+  const fila = alvo.fila ? filaEmPalavras(alvo.fila) : null;
   return (
     <Fragment>
       <tr data-alvo={alvo.id}>
@@ -238,6 +250,7 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
         <td>{alvo.conta ?? <span className={styles.mudo}>sem conta</span>}</td>
         <td>{alvo.instance_id ?? <span className={styles.mudo}>sem aparelho</span>}</td>
         <td><Pipeline alvo={alvo} /></td>
+        <td data-fila>{fila ? <><strong>{fila.posicao}</strong>{fila.aFrente ? <span className={styles.mudo}> · {fila.aFrente}</span> : null}<br /><span className={styles.mudo}>{fila.previsao}</span></> : <span className={styles.mudo}>—</span>}</td>
         <td>
           {estado && Icone ? <Badge tone={TOM_DO_ESTADO[estado]} icon={Icone} size="sm">{ROTULO_DO_ESTADO[estado]}</Badge> : <span className={styles.mudo}>não informado</span>}
         </td>
@@ -258,7 +271,7 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
           </Button>
         </td>
       </tr>
-      {aberta ? <tr className={styles.linhaDoDetalhe}><td colSpan={10}><DetalheDoAlvo alvo={alvo} /></td></tr> : null}
+      {aberta ? <tr className={styles.linhaDoDetalhe}><td colSpan={11}><DetalheDoAlvo alvo={alvo} /></td></tr> : null}
     </Fragment>
   );
 }
@@ -433,7 +446,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
               <caption className="sr-only">Um agente por linha: persona, conta, aparelho, pipeline, estado, ação ou motivo e verificação.</caption>
               <thead>
                 <tr>
-                  <th scope="col">Persona</th><th scope="col">Conta</th><th scope="col">Aparelho</th><th scope="col">Pipeline</th>
+                  <th scope="col">Persona</th><th scope="col">Conta</th><th scope="col">Aparelho</th><th scope="col">Pipeline</th><th scope="col">Fila do aparelho</th>
                   <th scope="col">Estado</th><th scope="col">Ação final ou motivo</th><th scope="col">Resultado</th><th scope="col">Custo de IA</th><th scope="col">Duração</th><th scope="col"><span className="sr-only">Detalhe</span></th>
                 </tr>
               </thead>

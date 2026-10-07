@@ -252,7 +252,7 @@ describe('com a rota no central', () => {
     await ir(['op-1']);
     await waitFor(() => expect(linhas()).toHaveLength(3));
     expect(container.querySelector('thead')!.textContent).toContain('Custo de IA');
-    const celulas = linhas().map((l) => Array.from(l.querySelectorAll('td'))[6]!.textContent);
+    const celulas = linhas().map((l) => Array.from(l.querySelectorAll('td'))[7]!.textContent);
     expect(celulas).toEqual(['US$ 0,0123', 'US$ 0,5000', '—']);
   });
 
