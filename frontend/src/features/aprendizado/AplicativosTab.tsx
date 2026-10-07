@@ -8,6 +8,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { formatInt } from '../../lib/format';
 import { formatDateTime } from '../../lib/time';
 import { LoadErrorBanner, LoadErrorState } from '../../lib/loadError';
+import { hashDe } from '../../lib/rotas';
 import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import {
@@ -97,6 +98,12 @@ function CartaoDoApp({ app, balde, itens }: { app: ResumoDoApp; balde?: boolean;
       <div>
         <Button size="sm" variant="secondary" onClick={() => abrirApp(app.pacote)}>Ver {balde ? 'o balde' : 'o app'}</Button>
       </div>
+      {/* Atalhos do conhecimento deste app (31.266), todos dentro do Aprendizado: o Livro, só as receitas e o catálogo do app. */}
+      <nav className={styles.atalhosDoApp} aria-label={`Conhecimento de ${balde ? NOME_DO_APP_NAO_IDENTIFICADO : app.nome}`} data-atalhos-do-app>
+        <a className={styles.linkAlvo} href={hashDe('aprendizado', { query: { aba: 'aprendido', app: app.pacote } })}>Livro</a>
+        <a className={styles.linkAlvo} href={hashDe('aprendizado', { query: { aba: 'aprendido', app: app.pacote, tipo: 'receita' } })}>Receitas</a>
+        <a className={styles.linkAlvo} href={hashDe('aprendizado', { query: { aba: 'apps', app: app.pacote } })}>Catálogo</a>
+      </nav>
     </li>
   );
 }
@@ -150,6 +157,10 @@ function Global() {
           <Button size="sm" variant="ghost" icon={RefreshCw} loading={carregando || livro.carregando} onClick={recarregar}>Atualizar</Button>
         </div>
       </div>
+      <p className={styles.secaoLead} data-conhecimento-compartilhado>
+        O conhecimento é compartilhado: o acervo é por aplicativo e vale para todas as personas que o usam, não é de uma persona só.
+        Cada cartão leva ao Livro, às receitas e ao catálogo do app.
+      </p>
       {erro && visao ? <LoadErrorBanner error={erro} onRetry={() => void carregar()} /> : null}
       {livro.erro && visao ? <LoadErrorBanner error={livro.erro} onRetry={() => void livro.carregar()} /> : null}
       {!visao ? (

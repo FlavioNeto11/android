@@ -1,5 +1,5 @@
 import {
-  CalendarClock, Gauge, GraduationCap, Inbox, LayoutGrid, ListChecks, Package, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon,
+  BookOpen, CalendarClock, Gauge, GraduationCap, Inbox, LayoutGrid, ListChecks, Package, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon,
   Radio, Stethoscope, UserRound, Workflow, X, type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
@@ -21,7 +21,11 @@ import styles from './MenuLateral.module.css';
  * (744 px de seções em 701 px a 1440 px; 5 de 8 somiam a 390 px). Uma lista vertical não precisa medir largura: as
  * oito telas (e as que vierem) ficam sempre alcançáveis.
  */
-export const NAV: readonly { tela: Tela; label: string; icon: LucideIcon }[] = [
+export const NAV: readonly {
+  tela: Tela; label: string; icon: LucideIcon;
+  /** Um segundo atalho para a MESMA tela (sem rota nova): a chave o distingue do item padrão e `query` diz onde ele abre. */
+  chave?: string; query?: Record<string, string>;
+}[] = [
   { tela: 'painel', label: 'Painel', icon: LayoutGrid },
   { tela: 'personas', label: 'Personas', icon: UserRound },
   { tela: 'aplicativos', label: 'Aplicativos', icon: Package },
@@ -29,6 +33,9 @@ export const NAV: readonly { tela: Tela; label: string; icon: LucideIcon }[] = [
   { tela: 'pedidos', label: 'Pedidos', icon: CalendarClock },
   { tela: 'pendencias', label: 'Pendências', icon: Inbox },
   { tela: 'aprendizado', label: 'Aprendizado', icon: GraduationCap },
+  // 31.266: o conhecimento compartilhado (o acervo por aplicativo, que vale para todas as personas) achável pelo menu: abre a guia
+  // Aplicativos do Aprendizado, onde estão o Livro, as receitas e o catálogo de cada app.
+  { tela: 'aprendizado', chave: 'conhecimento', label: 'Conhecimento', icon: BookOpen, query: { aba: 'apps' } },
   { tela: 'infraestrutura', label: 'Infraestrutura', icon: Server },
   { tela: 'configuracao', label: 'Configuração', icon: SettingsIcon },
   { tela: 'diagnostico', label: 'Diagnóstico', icon: Stethoscope },
@@ -56,6 +63,7 @@ function usePendentesDoAprendizado(): number | null {
 export function MenuLateral() {
   const view = useUiStore((s) => s.view);
   const foco = useUiStore((s) => s.focusInstanceId);
+  const abaAtual = useUiStore((s) => s.rota.query.aba);
   const recolhido = useUiStore((s) => s.menuRecolhido);
   const aberto = useUiStore((s) => s.menuAberto);
   const setMenuRecolhido = useUiStore((s) => s.setMenuRecolhido);
@@ -147,20 +155,25 @@ export function MenuLateral() {
           </button>
         </div>
         <ul className={styles.lista}>
-          {NAV.map(({ tela, label, icon: Icon }) => {
-            const incompleto = tela === 'aprendizado' ? aprendizadoIncompleto : tela === 'pendencias' ? pendenciasIncompleto : false;
-            const n = tela === 'aprendizado' ? (paraAprovar ?? (incompleto ? 0 : null)) : tela === 'pendencias' ? pendencias
-              : tela === 'pedidos' ? avisosNaoLidos : null;
+          {NAV.map(({ tela, chave, query, label, icon: Icon }) => {
+            const item = chave ?? tela;
+            // O atalho "Conhecimento" é a mesma tela do Aprendizado numa guia: só ele marca a guia Aplicativos aberta por ele
+            // (`aba=apps` no endereço) e o Aprendizado fica com o resto; assim há um só item "página atual" e o selo não se repete.
+            const noConhecimento = view === 'aprendizado' && abaAtual === 'apps';
+            const atual = item === 'conhecimento' ? noConhecimento : item === 'aprendizado' ? view === 'aprendizado' && !noConhecimento : view === tela;
+            const incompleto = item === 'aprendizado' ? aprendizadoIncompleto : item === 'pendencias' ? pendenciasIncompleto : false;
+            const n = item === 'aprendizado' ? (paraAprovar ?? (incompleto ? 0 : null)) : item === 'pendencias' ? pendencias
+              : item === 'pedidos' ? avisosNaoLidos : null;
             // Zero só some se a leitura foi completa: com uma origem fora, "0" não é número, e o selo vira "?".
             const conta = n !== null && (n > 0 || incompleto) ? n : null;
-            const legenda = tela === 'pendencias' ? 'aguardando você' : tela === 'pedidos' ? 'avisos não lidos' : 'para aprovar';
+            const legenda = item === 'pendencias' ? 'aguardando você' : item === 'pedidos' ? 'avisos não lidos' : 'para aprovar';
             return (
-              <li key={tela}>
+              <li key={item}>
                 {/* O `foco` vai junto: trocar de tela não fecha o aparelho aberto no painel de Foco. */}
                 <a
-                  href={hashDe(tela, { query: foco ? { [PARAM_FOCO]: foco } : {} })}
+                  href={hashDe(tela, { query: { ...query, ...(foco ? { [PARAM_FOCO]: foco } : {}) } })}
                   className={styles.item}
-                  aria-current={view === tela ? 'page' : undefined}
+                  aria-current={atual ? 'page' : undefined}
                   // Nome explícito: recolhido, o rótulo só existe como texto fora da vista e o `title` não é nome confiável.
                   // O aria-label vale no lugar do conteúdo, então leva junto a contagem que o selo mostra. WCAG 2.5.3: o
                   // nome COMEÇA pelo que se vê ("Pendências 4"); o que vem depois ("aguardando você") só o explica. Por

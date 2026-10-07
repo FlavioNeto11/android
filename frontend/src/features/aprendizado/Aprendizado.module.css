@@ -385,6 +385,7 @@
 .cartaoLinha { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-2); }
 .cartaoRotulo { color: var(--text-3); font-size: var(--fs-xs); }
 .cartaoUso { font-size: var(--fs-sm); color: var(--text-3); }
+.atalhosDoApp { display: flex; flex-wrap: wrap; gap: var(--sp-3, 12px); font-size: var(--fs-sm); }
 
 /* Métricas (30.33): um cartão por bloco da tabela do §10; o orçamento acima de 80 % ganha a borda de aviso. */
 .blocoTitulo { font-size: var(--fs-md); color: var(--text-2); }

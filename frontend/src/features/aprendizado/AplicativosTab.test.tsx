@@ -131,6 +131,21 @@ describe('Aprendizado por aplicativo', () => {
     expect(cartao('fora_do_eixo')).toBeNull();
   });
 
+  it('31.266: diz que o conhecimento é compartilhado (por app, vale para todas as personas) e cada cartão leva ao Livro, às receitas e ao catálogo do app', async () => {
+    await montar();
+    await waitFor(() => expect(cartao('com.exemplo.cheio')).toBeTruthy());
+    const lead = container.querySelector('[data-conhecimento-compartilhado]') as HTMLElement;
+    expect(text(lead)).toContain('por aplicativo');
+    expect(text(lead)).toContain('todas as personas');
+    const atalhos = cartao('com.exemplo.cheio').querySelector('[data-atalhos-do-app]') as HTMLElement;
+    const href = (nome: string) => Array.from(atalhos.querySelectorAll('a')).find((a) => text(a) === nome)?.getAttribute('href');
+    expect(href('Livro')).toBe('#/aprendizado?aba=aprendido&app=com.exemplo.cheio');
+    expect(href('Receitas')).toBe('#/aprendizado?aba=aprendido&app=com.exemplo.cheio&tipo=receita');
+    expect(href('Catálogo')).toBe('#/aprendizado?aba=apps&app=com.exemplo.cheio');
+    // sem rota nova: todos os atalhos ficam no Aprendizado
+    expect(Array.from(atalhos.querySelectorAll('a')).every((a) => (a.getAttribute('href') ?? '').startsWith('#/aprendizado?'))).toBe(true);
+  });
+
   it('abre o detalhe do app pelo cartão, mostra declarado, aprendido e absorvido, e volta ao Global', async () => {
     await montar();
     await waitFor(() => expect(cartao('com.exemplo.cheio')).toBeTruthy());
