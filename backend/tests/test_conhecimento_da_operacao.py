@@ -36,7 +36,7 @@ from app.planning.prompts import SOCIAL_SYSTEM, social_user_text
 from app.planning.provider import SocialRequest
 from app.social.approvals import textos_irmaos
 
-from .test_capabilities import IG
+from .apoio_politica import IG
 from .test_pedidos_modelo import _banco, _pedido, _run
 from .test_porta_do_plano import _plano
 

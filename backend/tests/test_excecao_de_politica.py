@@ -12,6 +12,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -20,12 +21,15 @@ from app.planning.capabilities import capability_of
 from app.social.excecoes import ExcecaoInvalida, ExcecoesDePolitica
 from app.util import now, to_iso
 
-from .test_capabilities import IG, SENHA
-from .test_protecao_de_frota import ALVO as PESSOA_REAL
-from .test_protecao_de_frota import _execucao_em_duas_contas, _fez, _frota, _porta
+from .apoio_politica import IG, SENHA
+from .apoio_politica import ALVO as PESSOA_REAL
+from .apoio_politica import _execucao_em_duas_contas, _fez, _frota, _porta
 from .test_alvo_por_legenda import por_posicao  # noqa: F401 - fixture do Instagram falso (ponta a ponta)
 
 #: O alvo da exceção é uma conta NOSSA (a do 31.26 é a DM entre duas contas nossas). Perfil sem aparelho.
+
+# Testes que só cobriam regra removida pelo refactor do dono de 07/10 (31.272).
+SAIU_NO_ADR_083 = pytest.mark.skip(reason="ADR-083: sem a recusa por alvo, a exceção 30.65 não libera nada")
 ALVO = "@nossa.alvo40517"
 #: Hora sem segundos: "19:02:26Z" cai na triagem de nota (formato de par chave:valor) e a rota recusa com 409.
 AUTORIZACAO = "dono pelo Telegram em 04/10 às 19:02 UTC, entrada 1189"
@@ -49,6 +53,7 @@ def _criar(excecoes: ExcecoesDePolitica, pid: str, *, acao: str = "SEND_MESSAGE"
                           expira_em=to_iso(now() + timedelta(hours=horas))).id
 
 
+@SAIU_NO_ADR_083
 def test_sem_excecao_recusa_e_com_ela_pede_aprovacao_nunca_autonomo(tmp_path: Path) -> None:
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
     _fez(svc, contas["tadeu"], InteractionType.dm_sent, ALVO)
@@ -63,6 +68,7 @@ def test_sem_excecao_recusa_e_com_ela_pede_aprovacao_nunca_autonomo(tmp_path: Pa
     assert veredito.excecao == exc and "30.65" in veredito.reason and "30 dias" in veredito.reason
 
 
+@SAIU_NO_ADR_083
 def test_o_cartao_diz_quem_criou_e_so_atesta_o_dono_com_sessao(tmp_path: Path) -> None:
     """Revisão do #309, item 1: sem sessão (o loopback aceita), o cartão diz quem criou e quando e cita a autorização
     como texto; "autorizada pelo dono" só quando quem criou era operador com sessão."""
@@ -80,6 +86,7 @@ def test_o_cartao_diz_quem_criou_e_so_atesta_o_dono_com_sessao(tmp_path: Path) -
     assert "autorizada pelo dono (operador com sessão)" in motivo and "autorização citada:" in motivo
 
 
+@SAIU_NO_ADR_083
 def test_so_vale_entre_contas_nossas(tmp_path: Path) -> None:
     """Revisão do #309, item 3: o dono autorizou uma DM entre contas nossas; abrir para pessoa real é decisão dele."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
@@ -99,6 +106,7 @@ def test_so_vale_entre_contas_nossas(tmp_path: Path) -> None:
     assert not v.allowed and v.excecao is None and eventos == []
 
 
+@SAIU_NO_ADR_083
 def test_excecao_de_outro_perfil_alvo_ou_acao_nao_vale(tmp_path: Path) -> None:
     """A exceção da DM não libera comentário nem seguir para o mesmo alvo, nem a DM de outra conta ou a outro alvo."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
@@ -118,6 +126,7 @@ def test_excecao_de_outro_perfil_alvo_ou_acao_nao_vale(tmp_path: Path) -> None:
     assert not outro_alvo.allowed
 
 
+@SAIU_NO_ADR_083
 def test_presa_a_uma_etapa_nao_vale_para_outra_e_gasta_volta_a_recusar(tmp_path: Path) -> None:
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
     _fez(svc, contas["tadeu"], InteractionType.dm_sent, ALVO)
@@ -136,6 +145,7 @@ def test_presa_a_uma_etapa_nao_vale_para_outra_e_gasta_volta_a_recusar(tmp_path:
     assert not policies.check(contas["luciana"], dm, counterparty=ALVO, step_id="r-2:etapa-a").allowed
 
 
+@SAIU_NO_ADR_083
 def test_vencida_recusa_vira_evento_e_a_reserva_falha(tmp_path: Path) -> None:
     """Releitura do #309, O2: a exceção que vence depois da porta continua apontando a etapa, e a reserva no commit falha
     com o motivo próprio ("venceu antes do efeito"); o gesto não acontece."""
@@ -156,6 +166,7 @@ def test_vencida_recusa_vira_evento_e_a_reserva_falha(tmp_path: Path) -> None:
     assert excecoes.obter(exc).em_uso_em is None                                   # type: ignore[union-attr]
 
 
+@SAIU_NO_ADR_083
 def test_duplicata_em_aberto_recusada_revogar_encerra_e_o_gasto_nao_pega_encerrada(tmp_path: Path) -> None:
     """Revisão do #309, itens 4 e 5: uma em aberto por trio; revogada não volta a valer nem é gasta."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
@@ -228,6 +239,7 @@ def _corpo(pid: str, **over: object) -> dict[str, object]:
     return corpo
 
 
+@SAIU_NO_ADR_083
 async def test_pela_rota_e_pela_porta_do_despacho_ate_o_gasto(harness: Any) -> None:
     """Criada pela rota (loopback sem sessão: `autor_com_sessao` falso), a exceção faz a porta do despacho abrir PEDIDO
     em Pendências com o porquê, prende-se à etapa e se gasta no `open_effect`. Sem ela, a mesma etapa é recusada."""
@@ -265,6 +277,7 @@ async def test_pela_rota_e_pela_porta_do_despacho_ate_o_gasto(harness: Any) -> N
     assert tipos == ["politica.excecao_criada", "politica.excecao_usada"]
 
 
+@SAIU_NO_ADR_083
 async def test_recusar_o_cartao_encerra_a_excecao_e_a_rota_revoga(harness: Any) -> None:
     """Revisão do #309, item 4: a recusa do dono encerra a exceção presa (evento próprio); ela não volta a valer."""
     state = harness.state
@@ -289,6 +302,7 @@ async def test_recusar_o_cartao_encerra_a_excecao_e_a_rota_revoga(harness: Any) 
                      "politica.excecao_revogada"]
 
 
+@SAIU_NO_ADR_083
 async def test_com_a_excecao_o_aprovado_de_outra_versao_nao_e_reaproveitado(harness: Any, monkeypatch: Any) -> None:
     """Revisão do #309, item 2: com a exceção casada, a porta não procura o aprovado de uma versão anterior com o mesmo
     texto e alvo; sem isso a DM sairia sem o dono ver o cartão da exceção."""
@@ -329,6 +343,7 @@ async def test_falha_ao_gastar_nao_derruba_o_open_effect(harness: Any, monkeypat
 
 
 # ------------------------------------------------------------------ releitura do #309: revogar
+@SAIU_NO_ADR_083
 async def test_revogada_depois_da_porta_a_reserva_falha_e_a_rota_nao_revoga_em_uso(harness: Any) -> None:
     """Releitura do #309: a etapa já passou da porta (aprovada, antes do commit). Revogar antes da reserva faz a reserva
     falhar (nada sai); revogar depois da reserva devolve 409 e nunca grava "revogada" por cima de "em uso"."""
@@ -369,6 +384,7 @@ async def test_revogada_depois_da_porta_a_reserva_falha_e_a_rota_nao_revoga_em_u
     assert state.excecoes.obter(nova["id"]).estado == "usada"
 
 
+@SAIU_NO_ADR_083
 def test_duas_reservas_so_uma_ganha_e_sem_efeito_fecha_fechado(tmp_path: Path) -> None:
     """Releitura do #309: a reserva é um UPDATE condicional; a segunda perde. O gesto sem efeito encerra a exceção
     `sem_efeito`, que não volta a aberta (uso único fecha fechado)."""
@@ -403,6 +419,7 @@ async def test_reserva_que_levanta_nao_deixa_o_efeito_sair(harness: Any, monkeyp
     assert motivo is not None and "não foi disparado" in motivo
 
 
+@SAIU_NO_ADR_083
 async def test_revogar_com_o_cartao_pendente_expira_o_cartao(harness: Any) -> None:
     """Releitura do #309, item 2: o cartão não fica órfão em Pendências (nem no Telegram, que recusa o vencido)."""
     state = harness.state
@@ -419,6 +436,7 @@ async def test_revogar_com_o_cartao_pendente_expira_o_cartao(harness: Any) -> No
     assert recusa is not None and not recusa.allowed and recusa.retry_at is None
 
 
+@SAIU_NO_ADR_083
 async def test_decisao_da_propria_etapa_anterior_a_excecao_nao_vale(harness: Any) -> None:
     """Releitura do #309, R1: o `for_step` da mesma etapa só vale se o pedido nasceu depois de a exceção ser presa."""
     state = harness.state
@@ -436,6 +454,7 @@ async def test_decisao_da_propria_etapa_anterior_a_excecao_nao_vale(harness: Any
     assert novo["id"] != antigo.id and "30.65" in novo["summary"]
 
 
+@SAIU_NO_ADR_083
 def test_o_cartao_cita_no_maximo_80_caracteres_da_autorizacao(tmp_path: Path) -> None:
     """Releitura do #309, R2: o aviso do Telegram corta em 500; "Alvo" e "Texto" não podem sair do corte."""
     svc, repo, policies, contas = _frota_com_alvo_nosso(tmp_path)
@@ -502,6 +521,7 @@ async def test_ponta_a_ponta_vencida_no_commit_o_gesto_nao_acontece(por_posicao:
 
 
 # ------------------------------------------------------------------ releitura 6c do #309
+@SAIU_NO_ADR_083
 async def test_reservada_sem_interacao_nao_vale_para_a_etapa_revisada_e_fecha_incerta(harness: Any) -> None:
     """Releitura 6c, itens 1 e 2: a etapa S reserva a exceção e o `open_effect` não grava interação (queda, ação sem
     `interaction_type`); S termina `failed`. A revisada S′ não casa a exceção (ela está `em_uso`): a porta recusa, e a
@@ -522,6 +542,7 @@ async def test_reservada_sem_interacao_nao_vale_para_a_etapa_revisada_e_fecha_in
     assert cliente.post(f"/api/politica/excecoes/{exc['id']}/revogar").status_code == 409
 
 
+@SAIU_NO_ADR_083
 async def test_prender_que_perde_a_corrida_faz_a_porta_recusar(harness: Any, monkeypatch: Any) -> None:
     state = harness.state
     pids, cliente = _cenario(harness)
@@ -561,6 +582,7 @@ def test_eventos_levam_so_ids_e_estado(tmp_path: Path) -> None:
         assert ALVO not in str(dados) and AUTORIZACAO not in str(dados) and "prova do 31.26" not in str(dados)
 
 
+@SAIU_NO_ADR_083
 async def test_a_trilha_guarda_para_sempre_a_etapa_e_a_execucao_do_uso(harness: Any) -> None:
     """A exceção a uma regra de ADR diz para sempre qual etapa e execução a usaram, mesmo se a mesma etapa voltar à porta
     sem exceção (que solta a ligação viva `step_id`)."""

@@ -250,6 +250,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   de 07/10 encerrada.
 
 
+## 2026-10-07 — 31.272: a suíte volta a coletar depois do refactor do dono (ADR-083; branch fix/31-272-coleta-da-suite)
+
+- O refactor de 07/10 (`76672bea..ac2f6bba`) renomeou dez arquivos para `_skip_test_*.py`. Dezesseis módulos importavam
+  deles constantes e montagens, e outros sete em cascata. `pytest --collect-only` parava com 23 erros.
+- O apoio compartilhado foi para `backend/tests/apoio_politica.py`, que não é coletado, com os mesmos nomes. Os
+  `_skip_` ficaram como o dono deixou.
+- 41 testes que só cobriam regra removida ficaram marcados com skip citando o ADR-083: a exceção de política (30.65),
+  a mesma DM repetida, o mesmo objeto entre personas do pedido (31.53), o texto que cita outra conta do pedido e o teto
+  por hora no leque do for_each.
+- As rotas da política por perfil, dos grupos e do `retire` só tinham chamada HTTP nos arquivos renomeados. Elas ganharam
+  `backend/tests/test_rotas_da_politica_por_perfil.py`, já sem limites. A base de `Any` de `app.social` desceu de 91
+  para 90, que o refactor tinha tirado.
+- Prova `simulated`: coleta com 0 erros; os 23 módulos dão 213 passed e 43 skipped; os 31 arquivos que tocam a política
+  dão 547 passed e 41 skipped; arquitetura e catracas verdes; mypy 257 (teto). `real`: not_run.
+
 ## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
 
 - Medido no percurso real da Portal no 57 (06/10 23:20Z): o resumo do fluxo na aba Aprendizado da operação mostrava o

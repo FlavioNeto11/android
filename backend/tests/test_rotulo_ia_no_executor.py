@@ -33,7 +33,7 @@ from app.taskqueue.repository import Repository
 
 from .conftest import CountingProvider, Harness
 from .fake_instagram import PKG, AtorDoInstagram, FakeInstagram, Node
-from .test_capabilities import SENHA
+from .apoio_politica import SENHA
 
 IID = "android-01"
 LEGENDA = "Fim de tarde na praia"
