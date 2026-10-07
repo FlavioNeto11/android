@@ -211,7 +211,7 @@ export const SESSION_STATUS = {
   auth_required: { label: 'Precisa entrar', tone: 'warning', icon: LogIn,
                    description: 'O app está deslogado neste aparelho.' },
   auth_challenge: { label: 'Ação necessária', tone: 'warning', icon: ShieldAlert,
-                    description: 'O Instagram pediu confirmação adicional; só uma pessoa resolve.' },
+                    description: 'O Instagram pediu confirmação adicional.' },
   wrong_account: { label: 'Conta errada', tone: 'danger', icon: UserX,
                    description: 'O aparelho está logado em outra conta; nada é executado assim.' },
   session_ready: { label: 'Conectado', tone: 'success', icon: CheckCircle2,

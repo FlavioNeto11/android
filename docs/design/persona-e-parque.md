@@ -466,7 +466,7 @@ selo "simulado" no painel e `source='generated'`, `provider='simulated'` na linh
 - **Imagem 0 é a principal:** busto ou close, rosto visível, 1:1, produção "casual" ou "arrumada".
 - **Imagens 1+** usam a principal como `reference` para manter o rosto; sem principal `ready`, a geração de variação é
   recusada (409 `sem_imagem_principal`).
-- Prompt determinístico em inglês montado da receita: "adult fictional person", traços de `appearance`, cena, luz,
+- Prompt determinístico em inglês montado da receita: traços de `appearance`, cena, luz,
   câmera, "no text, no logo, no watermark"; **nunca** o nome da persona, memória, credenciais ou telas. Guardam-se a
   receita inteira, `prompt_sha256` e `bytes_sha256`.
 - Pós-processamento (Pillow, no adaptador) só para variação: recorte e redimensionamento para a proporção, JPEG

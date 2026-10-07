@@ -42,7 +42,7 @@ MAX_ESCOLHIDAS = 30
 
 ADERENCIAS = ("alta", "media", "baixa")
 
-_SISTEMA = """Você é o orquestrador de um parque de aparelhos Android operados por personas fictícias. Recebe um
+_SISTEMA = """Você é o orquestrador de um parque de aparelhos Android operados por personas. Recebe um
 pedido em português e os cartões das personas candidatas (perfil, interesses, voz, crenças e disponibilidade) e
 decide QUEM faz: quais personas e quantas. Aparelho e servidor NÃO são com você — o sistema escolhe depois, pela
 carga e pelas sessões prontas.
@@ -51,22 +51,18 @@ Como decidir:
 - `quantidade`: quantas pessoas o pedido pede. Número explícito ("três personas", "2 contas") manda; "todas" é o
   total das adequadas; sem dizer, 1.
 - Escolha pela ADERÊNCIA ao pedido: quem, pelo perfil, faria isso de forma natural e coerente (profissão,
-  interesses, cidade, idade, jeito de falar, crenças). Nunca escolha quem teria de dizer ou fazer o contrário do
-  que acredita ou do jeito que é (ex.: pedir a uma persona ateia que fale como fiel; pedir a quem é apolítica que
-  opine com paixão). Intensidade conta: quem "se importa pouco" com um tema é pior escolha para falar dele com
-  convicção do que quem se envolve muito.
+  interesses, cidade, idade, jeito de falar, crenças). Intensidade conta: quem "se importa pouco" com um tema é
+  pior escolha para falar dele com convicção do que quem se envolve muito.
 - Entre duas igualmente adequadas, prefira a de aparelho SAUDÁVEL (sem `atenção do aparelho`: convidado sob
   pressão faz a tarefa demorar e falhar) e a LIVRE (sem tarefa na fila, com sessão pronta, aparelho ligado).
 - `aderencia` de cada escolhida: "alta", "media" ou "baixa", e `motivo` curto em português (o que no perfil a faz
   servir). Escolha "baixa" só se não houver melhor e diga isso no motivo.
-- `descartadas`: as que você viu e não serviram, cada uma com o motivo curto (ex.: "ateia: o pedido exige falar
-  como fiel"; "ocupada: 3 tarefas na fila e outra igualmente adequada está livre"). Não precisa listar todas —
-  só as que a pessoa esperaria ver e não vê.
+- `descartadas`: as que você viu e não serviram, cada uma com o motivo curto (ex.: "ocupada: 3 tarefas na fila e
+  outra igualmente adequada está livre"). Não precisa listar todas — só as que a pessoa esperaria ver e não vê.
 - `nao_avaliaveis`: quando o pedido depende de algo que o cartão não tem (ex.: crença não registrada num pedido
   que depende dela), NÃO adivinhe: liste a persona com `falta` dizendo o quê.
 - `perguntas`: só se o pedido for ambíguo a ponto de mudar QUEM faz (ex.: "a persona de sempre" sem pista).
 - `resumo`: uma frase dizendo a escolha e o porquê.
-- `alerta_conduta`: sempre "".
 """
 
 
@@ -129,12 +125,11 @@ class NaoAvaliavelOut(BaseModel):
 
 
 class OrquestracaoOut(BaseModel):
-    """O que o modelo devolve (esquema estrito: todos os campos obrigatórios, sem união; "" = sem alerta)."""
+    """O que o modelo devolve (esquema estrito: todos os campos obrigatórios, sem união)."""
     quantidade: int
     escolhidas: list[EscolhaOut]
     descartadas: list[DescarteOut]
     nao_avaliaveis: list[NaoAvaliavelOut]
-    alerta_conduta: str
     perguntas: list[str]
     resumo: str
 
@@ -167,14 +162,13 @@ def orquestracao_from_json(raw: str) -> OrquestracaoOut:
 
 
 def normalizar(out: OrquestracaoOut, req: PedidoDeOrquestracao) -> OrquestracaoOut:
-    """A garantia não é o modelo: id que não é candidata some, a mesma persona não aparece em duas listas, a
-    quantidade respeita o teto e o que foi escolhido, e alerta de conduta zera a escolha."""
+    """A garantia não é o modelo: id que não é candidata some, a mesma persona não aparece em duas listas e a
+    quantidade respeita o teto e o que foi escolhido."""
     validos = {c.profile_id for c in req.cartoes}
-    alerta = out.alerta_conduta.strip()
     vistos: set[str] = set()
     escolhidas: list[EscolhaOut] = []
     for e in out.escolhidas:
-        if e.profile_id in validos and e.profile_id not in vistos and not alerta:
+        if e.profile_id in validos and e.profile_id not in vistos:
             vistos.add(e.profile_id)
             aderencia = e.aderencia.strip().lower().replace("é", "e")
             escolhidas.append(EscolhaOut(profile_id=e.profile_id, motivo=e.motivo.strip()[:300],
@@ -192,8 +186,8 @@ def normalizar(out: OrquestracaoOut, req: PedidoDeOrquestracao) -> OrquestracaoO
         if d.profile_id in validos and d.profile_id not in vistos:
             vistos.add(d.profile_id)
             descartadas.append(DescarteOut(profile_id=d.profile_id, motivo=d.motivo.strip()[:300]))
-    return OrquestracaoOut(quantidade=0 if alerta else len(escolhidas), escolhidas=escolhidas, descartadas=descartadas,
-                           nao_avaliaveis=nao_avaliaveis, alerta_conduta=alerta[:400],
+    return OrquestracaoOut(quantidade=len(escolhidas), escolhidas=escolhidas, descartadas=descartadas,
+                           nao_avaliaveis=nao_avaliaveis,
                            perguntas=[p.strip()[:300] for p in out.perguntas if p.strip()][:3],
                            resumo=out.resumo.strip()[:400])
 
@@ -203,33 +197,24 @@ def _sem_acento(texto: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFD", texto.lower()) if unicodedata.category(ch) != "Mn")
 
 
-_RELIGIOSO = re.compile(r"\b(crist\w*|igreja|deus|fe|evangel\w*|catolic\w*|missa|culto|biblia|oracao|religi\w*)\b")
-_POLITICO = re.compile(r"\b(politic\w*|esquerda|direita|governo|conservador\w*|progressist\w*)\b")
-_DESCRENTE = re.compile(r"\b(ateia|ateu|sem religiao|agnostic\w*)\b")
 _NUMEROS = {"uma": 1, "um": 1, "duas": 2, "dois": 2, "tres": 3, "quatro": 4, "cinco": 5}
 _QUANTIDADE = re.compile(r"\b(\d+|uma|um|duas|dois|tres|quatro|cinco)\s+(?:personas?|pessoas?|contas?|perfis)\b")
 _PALAVRA = re.compile(r"[a-z]{4,}")
 
 
 def orquestracao_simulada(req: PedidoDeOrquestracao) -> OrquestracaoOut:
-    """Sem IA, determinístico: contradição religiosa simples, "não avaliável" quando o pedido
-    é de crença e o cartão não tem crença, e o resto por palavras em comum com o perfil, desempatado pela saúde do
-    aparelho e pela disponibilidade. Serve aos testes e ao modo simulado — não mede a qualidade da escolha real."""
+    """Sem IA, determinístico: por palavras em comum com o perfil, desempatado pela saúde do aparelho e pela
+    disponibilidade. Serve aos testes e ao modo simulado — não mede a qualidade da escolha real."""
     pedido = _sem_acento(req.command)
     m = _QUANTIDADE.search(pedido)
     quantidade = (int(m.group(1)) if m.group(1).isdigit() else _NUMEROS[m.group(1)]) if m else 1
-    de_crenca = bool(_RELIGIOSO.search(pedido) or _POLITICO.search(pedido))
     palavras = set(_PALAVRA.findall(pedido))
     avaliadas: list[tuple[int, CartaoDePersona]] = []
-    descartadas: list[DescarteOut] = []
     nao_avaliaveis: list[NaoAvaliavelOut] = []
     for c in req.cartoes:
         perfil = _sem_acento(" ".join(c.perfil))
-        if de_crenca and c.sem_crencas:
+        if c.sem_crencas:
             nao_avaliaveis.append(NaoAvaliavelOut(profile_id=c.profile_id, falta="crenças não registradas"))
-            continue
-        if _RELIGIOSO.search(pedido) and _DESCRENTE.search(perfil):
-            descartadas.append(DescarteOut(profile_id=c.profile_id, motivo="[simulado] sem religião: o pedido é de fé"))
             continue
         avaliadas.append((len(palavras & set(_PALAVRA.findall(perfil))), c))
     avaliadas.sort(key=lambda x: (-x[0], not x[1].aparelho_saudavel, not x[1].livre, not x[1].sessao_pronta,
@@ -238,6 +223,6 @@ def orquestracao_simulada(req: PedidoDeOrquestracao) -> OrquestracaoOut:
                              motivo=f"[simulado] {n} termo(s) do pedido no perfil; {c.disponibilidade or 'livre'}")
                   for n, c in avaliadas[:quantidade]]
     return normalizar(OrquestracaoOut(
-        quantidade=len(escolhidas), escolhidas=escolhidas, descartadas=descartadas, nao_avaliaveis=nao_avaliaveis,
-        alerta_conduta="", perguntas=[],
+        quantidade=len(escolhidas), escolhidas=escolhidas, descartadas=[], nao_avaliaveis=nao_avaliaveis,
+        perguntas=[],
         resumo=f"[simulado] {len(escolhidas)} persona(s) pelo perfil e pela disponibilidade"), req)

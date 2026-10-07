@@ -366,7 +366,7 @@ def test_prompt_entre_apps_traz_os_dois_tipos_de_app_e_as_regras_de_sempre() -> 
     assert prompts._REGRAS_DO_CATALOGO in prompts.PLANNER_CAPABILITY_SYSTEM  # noqa: SLF001
     # o exemplo vedado do plano livre (código lido no Outlook, 24.8) não vem para cá; a vedação vem
     assert "ler um código no Outlook" not in sistema and "Código de verificação, senha ou token" in sistema
-    assert prompts.UNTRUSTED_RULE in sistema and prompts.CONDUCT_RULE in sistema
+    assert prompts.UNTRUSTED_RULE in sistema
 
 
 def test_planejador_livre_nao_ensina_mais_a_levar_codigo_de_um_app_a_outro() -> None:

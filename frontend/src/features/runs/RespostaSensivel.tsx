@@ -1,7 +1,6 @@
 /**
  * 29.52: a pergunta que pede senha ou código não tem caixa de resposta. A resposta viraria comando: iria ao provedor de
- * IA e ficaria no histórico. No lugar da caixa, o caminho certo: a senha mora na conta da persona e a automação a
- * digita de lá (ADR-040); o código de verificação a pessoa digita no aparelho, pelo controle manual (ADR-009).
+ * IA e ficaria no histórico.
  */
 import { KeyRound, Smartphone } from 'lucide-react';
 import { Button } from '../../components/Button';

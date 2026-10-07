@@ -47,7 +47,7 @@ from .social.approvals import (
     textos_irmaos,
 )
 from .social.chave_da_aprovacao import chave_da_aprovacao, midia_da_etapa, texto_exato
-from .social.policy import UMA_CONTA_POR_ALVO, Verdict
+from .social.policy import Verdict
 from .social.service import SocialError, thread_de_dm
 from .util import now, parse_iso
 
@@ -288,16 +288,14 @@ class Portoes:
             contas = len({profile_id, *(dono for _o, _a, dono in irmaos)})
             escolhido_id, escolhido_aparelho = min([(obj["id"], obj["instance_id"]),
                                                     *((o, a) for o, a, _d in irmaos)])
-            if cap.limit_bucket in UMA_CONTA_POR_ALVO and escolhido_id != obj["id"]:
+            if escolhido_id != obj["id"]:
                 return PortaDaEtapa.fim(Verdict(
                     allowed=False, policy=cap.default_policy,
-                    reason=(f"esta execução manda o mesmo pedido ({cap.key}) a {contas} contas sobre {alvo}; em "
-                            "seguir, mensagem e comentário vale uma conta por alvo (ADR-055) — segue só a de "
-                            f"{escolhido_aparelho}, e esta foi recusada"),
+                    reason=(f"esta execução manda o mesmo pedido ({cap.key}) a {contas} contas sobre {alvo}; "
+                            f"segue só a de {escolhido_aparelho}, e esta foi recusada"),
                     hint="Nada foi feito por esta conta. Para outro alvo, faça um pedido separado."))
             confirmacao = (f"confirmação exigida: esta execução manda o mesmo pedido ({cap.key}) a {contas} contas "
-                           f"sobre {alvo}" + (" — só esta conta segue; as outras foram recusadas"
-                                              if cap.limit_bucket in UMA_CONTA_POR_ALVO else ""))
+                           f"sobre {alvo}")
             registrar_confirmacao = self._st.approvals.for_step(srow["id"]) is None
         # `package`: a política é do APP desta etapa (23.10) — SEND_MESSAGE do Instagram e o de outro catálogo são
         # escolhas diferentes do perfil.
