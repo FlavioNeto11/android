@@ -18,6 +18,8 @@ import { abrirApp, dicaDoApp, nomeDoApp } from './apps';
 import { AppsDoItem, eMultiApp } from './AppsDoItem';
 import { lerOrigemDoTreino, linkDaSessaoDeTreino, type OrigemDoTreino } from './origemDoTreino';
 import { EscopoDoFluxo } from './EscopoDoFluxo';
+import { DecisaoInline } from './DecisaoInline';
+import { SOURCE_KIND_DO_FATO, acaoDePublicarOFato, confiancaEmPalavras, fatoDaOperacaoDe, frescorEmPalavras, type FatoDaOperacao } from './fatoDaOperacao';
 import { SecaoDoParecer } from './ParecerDaIA';
 import {
   SEM_DADO, destinoDaRelacao, metaDeSaude, metaDeVersao, rotuloDaDimensao, rotuloDaFerramenta, rotuloDaRelacao,
@@ -611,6 +613,61 @@ function Reaprendimento({ item }: { item: EntradaDoLivro }) {
 }
 
 /**
+ * 31.214: o fato da pesquisa de uma operação que virou lição candidata: de onde veio (a operação, o assunto, os domínios das fontes e
+ * as execuções), a confiança, o frescor, quanto já foi usado e a evidência. Só uma pessoa publica: o Publicar abre a confirmação com o
+ * motivo, que fica na trilha, e leva a candidata a publicada num gesto só.
+ */
+function FatoDaOperacaoSecao({ item, fato, detalhe, onMudou }: { item: EntradaDoLivro; fato: FatoDaOperacao; detalhe: DetalheDoLivro; onMudou?: () => void }) {
+  const [abrindo, setAbrindo] = useState(false);
+  // Com o `source_kind` na entrada, o Publicar já está na linha do item (um botão só); aqui ele vale quando só o detalhe reconhece o fato.
+  const publicar = item.source_kind === SOURCE_KIND_DO_FATO ? null : acaoDePublicarOFato(item, detalhe);
+  const frescor = frescorEmPalavras(fato, Date.now(), formatQuando);
+  const evid = item.evidence ?? { for: 0, against: 0 };
+  return (
+    <Secao slug="fato-da-operacao" titulo="De onde veio este fato">
+      <p className={styles.secaoLead}>
+        Fato confirmado pela pesquisa de uma operação já encerrada. O texto vem de fonte externa e, publicado, vale para todo texto do app: por isso só uma pessoa o publica.
+      </p>
+      <dl className={styles.fatos} data-fato-da-operacao>
+        <Fato rotulo="Origem">
+          {fato.operacaoId ? <a className={styles.linkAlvo} href={hashDe('operacoes', { segmentos: [fato.operacaoId] })}>operação {fato.operacaoId}</a> : <span className={styles.semDado}>operação não informada</span>}
+        </Fato>
+        {fato.assunto ? <Fato rotulo="Assunto">{fato.assunto}</Fato> : null}
+        <Fato rotulo="Fontes">{fato.fontes.length ? fato.fontes.join(', ') : <span className={styles.semDado}>não informadas</span>}</Fato>
+        <Fato rotulo="Confiança">{confiancaEmPalavras(fato.confianca)}</Fato>
+        <Fato rotulo="Frescor"><span data-frescor data-vencido={frescor.vencido ? 'sim' : 'nao'}>{frescor.texto}</span></Fato>
+        <Fato rotulo="Usado em">{fato.usadoEm === null ? <span className={styles.semDado}>não informado</span> : `${formatInt(fato.usadoEm)} ${fato.usadoEm === 1 ? 'alvo' : 'alvos'} da operação`}</Fato>
+        <Fato rotulo="Evidência">
+          {evid.for} a favor · {evid.against} contra
+          {fato.execucoes.length ? <> · saiu de {fato.execucoes.length} {fato.execucoes.length === 1 ? 'execução' : 'execuções'}: {fato.execucoes.slice(0, 5).map((r, i) => (
+            <span key={r}>{i > 0 ? ', ' : ''}<a className={styles.linkAlvo} href={hrefDaExecucao(r)}>{rotuloDaExecucao(r)}</a></span>
+          ))}</> : null}
+        </Fato>
+      </dl>
+      {frescor.vencido ? <p className={styles.avisoDoItem}>O prazo deste fato passou: confira se ainda vale antes de publicar.</p> : null}
+      {publicar && !abrindo ? (
+        <div className={styles.itemAcoes}>
+          <Button size="sm" variant="primary" title={publicar.efeito} onClick={() => setAbrindo(true)}>{publicar.label}</Button>
+        </div>
+      ) : null}
+      {publicar && abrindo ? (
+        <DecisaoInline acao={publicar} resumo={publicar.efeito} onCancelar={() => setAbrindo(false)}
+          onConfirmar={async (motivo) => {
+            try {
+              await apiAprendizado.mudarEstado(item.kind, item.ref, publicar.to, motivo);
+              setAbrindo(false);
+              onMudou?.();
+              return null;
+            } catch (e) {
+              return toApiError(e).message;
+            }
+          }} />
+      ) : null}
+    </Secao>
+  );
+}
+
+/**
  * 30.23: marcar a execução de origem como evidência inválida. Sem motivo livre (o backend grava o tipo estruturado) e
  * sem modal: a confirmação abre no lugar do botão e diz o que acontece com o item.
  */
@@ -694,11 +751,13 @@ export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onM
   const trilha = Array.isArray(detalhe.trilha) ? detalhe.trilha : [];
   const relacoes = Array.isArray(detalhe.relacoes) ? detalhe.relacoes : [];
   const prefixo = useId();
+  const fatoDoItem = fatoDaOperacaoDe(item, detalhe);
   return (
     <PrefixoDeIds.Provider value={prefixo}>
       <div className={styles.detalhe}>
         <Identidade item={item} conteudo={conteudo} />
         <Reaprendimento item={item} />
+        {fatoDoItem ? <FatoDaOperacaoSecao item={item} fato={fatoDoItem} detalhe={detalhe} onMudou={onMudou} /> : null}
         {conteudo ? (
           <Secao slug="conteudo" titulo="Conteúdo"><Conteudo c={conteudo} nomeDe={nomeDaCapabilityDo(item)} appsNaIdentidade={eMultiApp(item.apps)} /></Secao>
         ) : null}

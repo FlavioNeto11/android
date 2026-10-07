@@ -26,6 +26,7 @@ import {
   ORIGEM_LABEL, porQuemDecidiu, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind, tituloDoItem,
 } from './model';
 import { assuntoDoItem } from './assunto';
+import { acaoDePublicarOFato, fatoDaOperacaoDe } from './fatoDaOperacao';
 import { ParecerNaLinha } from './ParecerDaIA';
 import styles from './Aprendizado.module.css';
 
@@ -135,8 +136,12 @@ interface ItemDoLivroProps {
 }
 
 /** Uma linha do livro: o que é, em que estado, por que espera o dono e o que a pessoa pode fazer. */
-export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso, titulo: tituloDaLista, onFiltrarAssunto, avisoNoCabecalho = null }: ItemDoLivroProps) {
+export function ItemDoLivro({ entrada: e, acoes: acoesDaLista, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso, titulo: tituloDaLista, onFiltrarAssunto, avisoNoCabecalho = null }: ItemDoLivroProps) {
   const assunto = assuntoDoItem(e);
+  // 31.214: a candidata que veio de fato de operação (o `source_kind` na entrada) tem o Publicar na linha; sem ele, o detalhe a reconhece pelo conteúdo.
+  const fato = fatoDaOperacaoDe(e);
+  const publicarOFato = acaoDePublicarOFato(e);
+  const acoes = publicarOFato ? [...acoesDaLista, publicarOFato] : acoesDaLista;
   const [aberta, setAberta] = useState<AcaoDoItem | null>(null);
   const titulo = tituloDaLista ?? tituloDoItem(e);
   const porQue = porQueOSistemaNaoPublica(e);
@@ -193,6 +198,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
             ) : assunto}
           </span>
         ) : null}
+        {fato ? <span data-fato-da-operacao>Fato da pesquisa de uma operação · só uma pessoa publica</span> : null}
         <span>{ORIGEM_LABEL[e.origin] ?? e.origin}</span>
         {/* Na receita os números são as reproduções; "Evidência" ficava contra a seção "Evidência registrada" do detalhe. */}
         {memoria ? null : e.kind === 'receita'
