@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.192: o script que marca a prova da onda do aprendizado pelo commit no ar (branch feat/31-192-marcacao-da-onda)
+
+- A medida da onda 2 de 07/10 depende do commit no ar. No central lido em 06/10 23:10Z (`42cba3cd`), os cortes 58 e 59
+  estavam fora.
+- `scripts/prova-onda-aprendizado.py --operacao OP` lê o commit pela saúde (ou `--commit`) e o banco em `mode=ro`. Para
+  o 31.165, o 31.178 e o 31.179, confere pelo git se o commit do item está no central e o que a operação exercitou:
+  - 31.165: etapa conduzida por receita do ensino;
+  - 31.178: evidência a favor com a execução aberta;
+  - 31.179: fato de pesquisa confirmado pela leitura do alvo.
+- Sai o formato do plano-100 só com as linhas `real`. As `not_run` vão a `pendentes`, com o motivo, e não entram no
+  `aplicar`, que apagaria a prova simulada.
+- Prova `simulated`: `scripts/tests/test_prova_onda_aprendizado.py` (2 testes; banco migrado, ancestral do git trocado).
+  `real` só de leitura, em 07/10 00:05Z no central `42cba3cd`, com a operação da onda 1 (`op-20261006194323-0a1540`):
+  as três saíram `not_run`, "o commit … do item não está no central".
 ## 2026-10-07 — 31.191: o rendimento de uma receita, com o custo de IA evitado (branch feat/31-191-rendimento-por-receita)
 
 - O rendimento do ensino (31.177) era por sessão. A tela do Livro (31.196, Portal) mostra cada receita, também as de
