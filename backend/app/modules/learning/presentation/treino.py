@@ -18,6 +18,7 @@ from app.modules.learning.domain.ensino_da_falha import intencao_sugerida, pergu
 from app.modules.learning.infrastructure.rendimento_sql import LeitorDoRendimento
 from app.modules.skills.presentation.schemas import TrainingDeFalhaBody, TrainingStopBody, TrainingUndoBody
 from app.planning.provider import AIError
+from app.training import exibicao
 from app.training.recorder import TrainingError
 
 if TYPE_CHECKING:
@@ -104,16 +105,39 @@ async def ensino_sugerido(request: Request, run_id: str, step_id: str) -> dict[s
             "causa": diagnostico.get("causa") if diagnostico else None}
 
 
+def _exibir(request: Request, resposta: object) -> object:
+    """31.183: toda resposta que traz a sessão (ou `{"session": ...}`) ganha `proposal_exibicao`, a cópia da proposta
+    só para exibir, com o dado da persona mascarado; a `proposal` (que o painel devolve na prévia e no salvar) não
+    muda."""
+    if isinstance(resposta, dict) and isinstance(resposta.get("session"), dict):
+        return {**resposta, "session": _exibir(request, resposta["session"])}
+    if not isinstance(resposta, dict) or "proposal" not in resposta:
+        return resposta
+    persona = _st(request).repo.variaveis_da_persona(resposta.get("profile_id"))
+    return {**resposta, "proposal_exibicao": exibicao.proposta(resposta.get("proposal"), persona)}
+
+
+def _relatorio_exibido(request: Request, session_id: str, resposta: object) -> object:
+    """31.183 (achado da Portal no 31.189): o `steps[]` da prévia, do salvar e do refazer receitas com o título e o
+    motivo mascarados; o relatório só é exibido."""
+    if not isinstance(resposta, dict) or not isinstance(resposta.get("steps"), list):
+        return resposta
+    perfil = _st(request).db.scalar("SELECT profile_id FROM training_sessions WHERE id=?", (session_id,))
+    persona = _st(request).repo.variaveis_da_persona(str(perfil) if perfil else None)
+    return {**resposta, "steps": exibicao.relatorio(resposta["steps"], persona)}
+
+
 @router.get("/training", response_model=None)
 async def list_training(request: Request, instance_id: str | None = None, limit: int = Query(30, ge=1, le=200),
                         nascido_de_prova: bool | None = None) -> object:
-    return _st(request).training.list(instance_id=instance_id, limit=limit, nascido_de_prova=nascido_de_prova)
+    return [_exibir(request, s) for s in
+            _st(request).training.list(instance_id=instance_id, limit=limit, nascido_de_prova=nascido_de_prova)]
 
 
 @router.get("/training/{session_id}", response_model=None)
 async def get_training(request: Request, session_id: str) -> object:
     try:
-        return _st(request).training.get(session_id)
+        return _exibir(request, _st(request).training.get(session_id))
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -135,7 +159,7 @@ async def rendimento_do_treino(request: Request, session_id: str) -> object:
 @router.post("/training/{session_id}/stop", response_model=None)
 async def stop_training(request: Request, session_id: str, body: TrainingStopBody | None = None) -> object:
     try:
-        return _st(request).training.stop(session_id, lease_id=body.lease_id if body else None)
+        return _exibir(request, _st(request).training.stop(session_id, lease_id=body.lease_id if body else None))
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -154,7 +178,7 @@ async def propose_training(request: Request, session_id: str) -> object:
         except ValueError:
             raise _err(400, "invalid_answers", "O corpo tem de ser um JSON {\"answers\": [...]}.") from None
     try:
-        return await _st(request).skills.propose(session_id, corpo)
+        return _exibir(request, await _st(request).skills.propose(session_id, corpo))
     except TrainingError as exc:
         raise _training_error(exc) from exc
     except AIError as exc:
@@ -164,8 +188,9 @@ async def propose_training(request: Request, session_id: str) -> object:
 @router.post("/training/{session_id}/save", response_model=None)
 async def save_training(request: Request, session_id: str, body: TrainingSaveBody) -> object:
     try:
-        return await _st(request).skills.save(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
-                                             group_ids=body.group_ids, scope_on_proof=body.scope_on_proof)
+        return _relatorio_exibido(request, session_id, _exibir(request, await _st(request).skills.save(
+            session_id, proposal=body.proposal, profile_ids=body.profile_ids, group_ids=body.group_ids,
+            scope_on_proof=body.scope_on_proof)))
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -176,8 +201,10 @@ async def preview_training(request: Request, session_id: str, body: TrainingSave
     por que não. A pessoa corrige a proposta ANTES de salvar, em vez de descobrir o motivo depois. O comando repetido
     vem no corpo (`code: duplicate_command`, 31.142, adendo v1.91), junto do resto; o 409 dele é só do `save`."""
     try:
-        return await _st(request).skills.preview(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
-                                                group_ids=body.group_ids, scope_on_proof=body.scope_on_proof)
+        previa = await _st(request).skills.preview(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
+                                                   group_ids=body.group_ids, scope_on_proof=body.scope_on_proof)
+        exibida = _relatorio_exibido(request, session_id, previa)
+        return exibida if isinstance(exibida, dict) else previa
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -187,7 +214,9 @@ async def redo_training_recipes(request: Request, session_id: str) -> dict[str, 
     """Refaz a destilação de uma habilidade JÁ salva e grava a receita das etapas que ficaram sem (31.86): o reparo do
     que foi salvo com o aparelho fora do ar. Idempotente; sessão não salva: 409 `sessao_nao_salva`."""
     try:
-        return await _st(request).skills.refazer_receitas(session_id)
+        resposta = _relatorio_exibido(request, session_id,
+                                      _exibir(request, await _st(request).skills.refazer_receitas(session_id)))
+        return resposta if isinstance(resposta, dict) else {}
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -195,7 +224,8 @@ async def redo_training_recipes(request: Request, session_id: str) -> dict[str, 
 @router.post("/training/{session_id}/discard", response_model=None)
 async def discard_training(request: Request, session_id: str, body: TrainingStopBody | None = None) -> object:
     try:
-        return _st(request).training.stop(session_id, discard=True, lease_id=body.lease_id if body else None)
+        return _exibir(request, _st(request).training.stop(session_id, discard=True,
+                                                           lease_id=body.lease_id if body else None))
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -205,6 +235,8 @@ async def undo_training_input(request: Request, session_id: str, body: TrainingU
     """31.90-D: tira a ÚLTIMA entrada da gravação VIVA (o toque errado) sem descartar a sessão. Exige o controle do
     aparelho (`lease_id`); `seq` opcional confere que a última ainda é a que a pessoa viu. O aparelho não volta."""
     try:
-        return _st(request).training.desfazer_a_ultima(session_id, lease_id=body.lease_id, seq=body.seq)
+        resposta = _exibir(request, _st(request).training.desfazer_a_ultima(session_id, lease_id=body.lease_id,
+                                                                             seq=body.seq))
+        return resposta if isinstance(resposta, dict) else {}
     except TrainingError as exc:
         raise _training_error(exc) from exc

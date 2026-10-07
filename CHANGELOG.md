@@ -282,6 +282,53 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   genérica, que não usa a pós-condição, então não há backfill (sem migração e sem script).
 - Prova `simulated`: `backend/tests/test_empate_para_hash.py` (3 testes; reprova no código anterior), incluindo um
   `plan` simulado em que a etapa ganha o hash do ensino e a loja de receitas acha a receita gravada nele.
+## 2026-10-07 — 31.183: a proposta do ensino para exibir, com o dado da persona mascarado (branch feat/31-183-proposta-exibicao)
+
+- Este item fecha o médio que a revisão de segredos do K-107 deixou. O título, o objetivo e o resumo da proposta só
+  trocavam o dado que a pessoa DIGITOU inteiro. Um @ ou um nome visto na tela e citado pela IA saía em claro no
+  `GET /api/training/{id}`.
+- A leitura da sessão ganha `proposal_exibicao` (`training/exibicao.py`), uma cópia da proposta com todo dado da
+  persona trocado pelo marcador:
+  - sem diferença de caixa, também depois do @ e com qualquer espaço;
+  - em título, objetivo, resumo, comando, perguntas e conferência;
+  - os identificadores (`capability`, `app_id`) ficam; a `key` da etapa é mascarada também, com o `_` como separador;
+  - vale em toda resposta do treino que traz a sessão (lista, GET, parar, descartar, desfazer, proposta, salvar e
+    refazer receitas), achado médio da revisão de segredos.
+  - o relatório por etapa (`steps[]`) da prévia, do salvar e do refazer receitas sai com o título e o motivo
+    mascarados (achado da Portal no 31.189); a `key` fica.
+- A `proposal` não muda: o painel a devolve na prévia e no salvar. Limite: casa o valor inteiro. O painel passa a
+  exibir a cópia no 31.189 (Portal). Adendo v1.109.
+- Prova `simulated`: `backend/tests/test_proposta_para_exibir.py` (2 testes). Ensino, personas, alcance, arquitetura e
+  rotas: 720 passaram; mypy 257. `real`: `not_run`, pede o deploy.
+
+## 2026-10-07 — 31.182: o ensino avisa quando a etapa mira a conta da própria persona (branch feat/31-182-aviso-propria-conta)
+
+- Medido em 06/10, no 31.160: a pessoa ensinou a abrir o perfil da persona que ensinava. O 31.87 trocou o @ por
+  `{conta_instagram_usuario}`, e a receita 221 virou "abrir o PRÓPRIO perfil", que não serve ao alvo de uma operação.
+  Nada avisou.
+- A prévia e o salvar dizem, por etapa, quando o título, o objetivo, a digitação, a pré-condição ou a conferência citam
+  o marcador da conta da persona (`conta_<app>[_<host>]_usuario`, `training/conta_propria.py`): "a
+  receita dela abre a conta de quem roda, em cada aparelho". O aviso traz a posição da etapa e o marcador, sem valor
+  nem a `key` (que a IA escolhe e pode ter o nome; revisão de segredos). É só aviso:
+  o salvar não recusa.
+- Prova `simulated`: `backend/tests/test_aviso_da_propria_conta.py` (2 testes) e `test_treino_dado_da_persona.py`.
+  `real`: `not_run`, pede o deploy (a prévia de um ensino com o próprio perfil).
+
+## 2026-10-07 — 31.181: quem pode usar o quê num app, por persona (branch feat/31-181-alcance-por-persona)
+
+- Medido em 06/10, na leitura da onda 2, sobre as 19 receitas ativas do Instagram:
+  - 18 nasceram de execução e valiam para as três personas com conta;
+  - a do ensino valia só para quem ensinou, e o fluxo ensinado tinha escopo de uma persona.
+
+  O Livro e a Portal não diziam isso.
+- `GET /api/aprendizado/alcance?app=<app_id>` (adendo v1.107) responde por persona vinculada ao app. Para cada receita
+  ativa e cada fluxo (ligado ou candidato), diz `pode` e o motivo do não: `presa_a_quem_ensinou`, `fora_do_escopo` ou
+  `fluxo_nao_ligado`. Traz também o resumo por persona. O fluxo sai pela `ref_publico`, nunca pelo id interno (30.83;
+  achado médio da revisão de segredos).
+- As regras são as do executor, injetadas (`RecipeStore._restrita_ao_ensino`, `FlowStore._no_escopo`): domínio puro em
+  `learning/domain/alcance.py` e leitura em `learning/infrastructure/alcance_sql.py`.
+- Prova `simulated`: `backend/tests/test_alcance_por_persona.py` (2 testes; o "Confirmar que fica" solta a receita
+  para a outra persona). Arquitetura e rotas: 26 passaram. `real`: `not_run`, pede o deploy.
 
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 

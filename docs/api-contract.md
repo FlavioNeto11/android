@@ -7592,6 +7592,47 @@ percurso real da Portal no 57.
 - **Prova:** `simulated` (`backend/tests/test_aprendizado_da_operacao.py`). `real`: `not_run`, pede o deploy do corte
   59.
 
+## Adendo v1.107 (07/10/2026; número da orquestradora; item 31.181) — quem pode usar o quê num app, por persona
+
+`GET /api/aprendizado/alcance?app=<app_id>`: só leitura, sem IA. Diz, por persona vinculada ao app (vínculo ativo em
+`device_profile_bindings`), cada receita ativa do pacote do app e cada fluxo ligado ou candidato do app, com `pode` e o
+motivo do não.
+
+- `200 {app_id, pacote, gerado_em, personas: [{profile_id, aparelhos}], resumo: {profile_id: {receita: n, fluxo: n}},
+  itens: [...]}`.
+- O item é `{tipo, id, chave, origem, estado, ..., por_persona: {profile_id: {pode, motivo}}}`:
+  - `tipo` é `receita` ou `fluxo`;
+  - `id` é o id da receita, ou a `ref_publico` do fluxo: o id interno do fluxo nunca sai (30.83), e a ref que faltar
+    é preenchida na hora;
+  - `chave` é a etapa da receita (vazia no fluxo);
+  - `origem` é `ensino` ou `execucao`;
+  - na receita, também `reproducoes_ok` e `reproducoes_falha`;
+  - no fluxo, também `usos` e `nascido_de_prova`.
+- O `motivo` (nulo quando `pode`) vem de um vocabulário fechado:
+  - `presa_a_quem_ensinou`: a receita do ensino sem "Confirmar que fica" nem prova real do fluxo (30.81);
+  - `fora_do_escopo`: o escopo do fluxo (personas ou grupos) não inclui a persona;
+  - `fluxo_nao_ligado`: o fluxo é candidato.
+- As regras são as do executor (`RecipeStore._restrita_ao_ensino` e `FlowStore._no_escopo`), não uma cópia.
+- `404 app_desconhecido`: o app não está cadastrado. `422`: `app` ausente.
+- **Prova:** `simulated` (`backend/tests/test_alcance_por_persona.py`). `real`: `not_run`, pede o deploy.
+
+## Adendo v1.109 (07/10/2026; número da orquestradora; item 31.183) — a proposta do ensino para exibir
+
+`GET /api/training/{id}` ganha `proposal_exibicao`, uma cópia da `proposal` só para exibir:
+
+- todo dado da persona vira o marcador `{nome}`, sem diferença de caixa, também depois do @ e com qualquer espaço;
+- vale em título, objetivo, resumo, comando, perguntas e conferência;
+- os identificadores ficam como estão: `capability`, `app_id`, `kind`, `name`, `inputs`, `seq` e as marcas de etapa;
+- sem proposta, ou sem persona, a cópia é igual à `proposal`.
+
+Toda resposta do treino que traz a sessão leva o campo: a lista, o GET, parar, descartar, desfazer, a proposta e,
+dentro de `session`, salvar e refazer receitas. Na cópia, a `key` da etapa também é mascarada: o `_` conta como
+separador. O relatório por etapa (`steps[]`) da prévia, do salvar e do refazer receitas sai
+com `title` e `reason` mascarados; a `key` fica (achado da Portal no 31.189). A `proposal` não muda, porque é ela que o painel devolve na prévia e no salvar. Limite: o valor só é trocado
+inteiro. O painel passa a exibir a cópia no 31.189 (Portal).
+
+**Prova:** `simulated` (`backend/tests/test_proposta_para_exibir.py`). `real`: `not_run`, pede o deploy.
+
 ## Adendo v1.110 (07/10/2026; número da orquestradora; item 31.191) — o rendimento de uma receita
 
 `GET /api/aprendizado/receitas/{id}/rendimento`: só leitura, sem IA. Usa o leitor e a régua do uso real do
