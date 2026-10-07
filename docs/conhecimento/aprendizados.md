@@ -2842,3 +2842,20 @@ fica, e o telefone em outro formato também. Para ensinar navegação até um pe
 que ensina. Quem ensina com o próprio perfil é avisado na prévia. A identidade da etapa foi alinhada pelo 31.165
 (`para_hash` prefere o marcador da persona no empate): com ele, a receita ensinada para o próprio perfil casa com a
 execução que mira o próprio perfil.
+
+### K-108 — Parar a tarefa `farm-central` derruba só o supervisor; o backend filho segue vivo e não relê o config
+
+**Contexto.** 07/10, janela de validação de um provedor de IA novo (§ 31 de `docs/relatorio-validacao.md`): a sessão
+trocou o bloco `ai` do `config/config.yaml` e parou a tarefa agendada `farm-central` esperando que o backend subisse
+com o config novo.
+
+**O que aconteceu.** `Stop-ScheduledTask farm-central` encerra o processo do supervisor (`app.supervisor`); o backend
+(`app.main`), filho dele, continua respondendo na porta 8000 com o config antigo, porque o config só é lido na
+subida. O que recarregou foi `scripts/stop.ps1` (parada graciosa, os emuladores ficam) com o supervisor já de volta.
+Além disso, o `commit` em `GET /api/health` é o HEAD do checkout no momento da subida, não o commit do último
+`deploy.ps1`: depois de um reinício manual ele pode mostrar um commit só de docs posterior ao deploy.
+
+**Aplicabilidade.** Vigente. Para o backend reler o `config.yaml`: `scripts/stop.ps1` e subida pela tarefa (ou
+`deploy.ps1`, que já faz isso), nunca só parar a tarefa. Para saber qual código está no ar, use a última linha de
+`data/deploys.jsonl` (ou a tag `deploy-*`), não o `commit` da saúde. Validação de provedor com bateria exige um
+aparelho de QA preparado (`scripts/provision-qa.ps1`, conta de teste), nunca um aparelho com conta real.
