@@ -20,8 +20,11 @@ from app.planning.capabilities import capability_of
 from app.social.approvals import ApprovalStore
 from app.social.policy import MOTIVO_CITA_A_FAMILIA, ContextoDoPedido, PolicyEngine
 
-from .test_capabilities import IG, SENHA, perfil
-from .test_repetido_entre_execucoes import _SERVICOS, _conta, _etapa
+from .apoio_politica import IG, SENHA, perfil
+from .apoio_politica import _SERVICOS, _conta, _etapa
+
+# Testes que só cobriam regra removida pelo refactor do dono de 07/10 (31.272).
+SAIU_NO_ADR_083 = pytest.mark.skip(reason="ADR-083: saiu a regra do mesmo objeto entre personas do pedido (31.53)")
 
 POST_A = {"image_id": "img-1", "content": "Fim de tarde"}
 
@@ -42,6 +45,7 @@ def _pedido_aberto(db: Any, pid: str, argumentos: dict[str, str]) -> str:
 
 
 # ------------------------------------------------------------------------------------------- (1) pelo objeto
+@SAIU_NO_ADR_083
 def test_a_mesma_imagem_de_outra_persona_do_pedido_e_recusada_nao_adiada(tmp_path: Path) -> None:
     _repo, policies, db, a, b = _familia(tmp_path)
     _pedido_aberto(db, a, POST_A)
@@ -52,6 +56,7 @@ def test_a_mesma_imagem_de_outra_persona_do_pedido_e_recusada_nao_adiada(tmp_pat
     assert "31.53" in veredito.reason and "recusado, não adiado" in veredito.reason
 
 
+@SAIU_NO_ADR_083
 def test_a_mesma_imagem_ja_publicada_por_outra_persona_do_pedido_tambem(tmp_path: Path) -> None:
     repo, policies, db, a, b = _familia(tmp_path)
     publicar = capability_of(IG, "CREATE_POST")
@@ -64,6 +69,7 @@ def test_a_mesma_imagem_ja_publicada_por_outra_persona_do_pedido_tambem(tmp_path
     assert not veredito.allowed and "31.53" in veredito.reason
 
 
+@SAIU_NO_ADR_083
 def test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem(tmp_path: Path) -> None:
     """31.64: com `publicar_sem_aprovacao` a etapa da irmã passa a porta sem pedido e sem saída até o commit; enquanto
     ela roda ou verifica, a mesma imagem é recusada. Pronta (ainda não passou a porta) ou já falha, não conta."""
@@ -90,6 +96,7 @@ def _etapa_tomada(db: Any, run: str, pid: str, quando: str, aparelho: str) -> st
     return sid
 
 
+@SAIU_NO_ADR_083
 def test_irmas_tomadas_juntas_com_a_mesma_imagem_exatamente_uma_passa(tmp_path: Path) -> None:
     """F1 da revisão do #350: a etapa vira `running` na tomada, antes da porta. Duas irmãs em `running` com a mesma
     imagem: a mais antiga passa e a outra é recusada (antes do conserto, as duas eram recusadas). Mesmo `started_at`:
@@ -108,6 +115,7 @@ def test_irmas_tomadas_juntas_com_a_mesma_imagem_exatamente_uma_passa(tmp_path: 
         assert recusadas == [sb], (quando_a, quando_b, recusadas)       # "r-a…" < "r-b…" no desempate
 
 
+@SAIU_NO_ADR_083
 def test_tres_irmas_tomadas_juntas_so_a_mais_antiga_passa(tmp_path: Path) -> None:
     repo, policies, db, a, b = _familia(tmp_path)
     c = _SERVICOS[a].create_profile(ProfileCreate(username="carla.dias7781", password=SENHA)).id   # sem aparelho
@@ -125,6 +133,7 @@ def test_tres_irmas_tomadas_juntas_so_a_mais_antiga_passa(tmp_path: Path) -> Non
 
 
 @pytest.mark.parametrize("parada", ["retry_wait", "waiting_user"])
+@SAIU_NO_ADR_083
 def test_s1_a_que_volta_com_a_tomada_antiga_nao_passa_a_irma_que_ja_passou(tmp_path: Path, parada: str) -> None:
     """S1 da revisão do #350: A é tomada primeiro e para (`retry_wait` ou `waiting_user`) antes da porta; B é tomada
     depois, PASSA a porta e publica; A volta a `ready`, é retomada com o `started_at` da primeira tomada e chega à porta.
@@ -153,6 +162,7 @@ def test_s1_a_irma_que_passou_e_falhou_nao_conta_mais(tmp_path: Path) -> None:
     assert "31.53" not in policies.check(a, publicar, step_id=sa, pedido=pedido, bindings={"image_id": "img-1"}).reason
 
 
+@SAIU_NO_ADR_083
 def test_s2_marcas_antigas_concluidas_nao_tiram_a_irma_em_curso_do_lote(tmp_path: Path) -> None:
     """S2 da revisão do #350: 201 etapas da irmã já concluídas (`succeeded`) e marcadas, com outras imagens, e 1 em curso
     marcada com a mesma imagem. Antes, as marcas concluídas entravam sem janela e o lote (`ORDER BY id LIMIT 200`) trazia
@@ -191,6 +201,7 @@ def test_persona_fora_da_familia_nao_conta(tmp_path: Path) -> None:
                                          bindings={"image_id": "img-1"}).reason
 
 
+@SAIU_NO_ADR_083
 def test_objeto_ambiguo_passa_por_aprovacao_e_nao_recusa(tmp_path: Path) -> None:
     _repo, policies, db, a, b = _familia(tmp_path)
     _pedido_aberto(db, a, {"image_id": "", "content": "Fim de tarde"})
@@ -202,6 +213,7 @@ def test_objeto_ambiguo_passa_por_aprovacao_e_nao_recusa(tmp_path: Path) -> None
 
 
 # ------------------------------------------------------------------------------------------- (2) pelo texto
+@SAIU_NO_ADR_083
 def test_texto_que_cita_outra_persona_do_pedido_pede_aprovacao_sem_o_arroba_no_motivo(tmp_path: Path) -> None:
     _repo, policies, _db, a, b = _familia(tmp_path)
     comentar = capability_of(IG, "CREATE_COMMENT")
@@ -215,6 +227,7 @@ def test_texto_que_cita_outra_persona_do_pedido_pede_aprovacao_sem_o_arroba_no_m
     assert policies.cita_a_familia(b, comentar, {"content": "@tadeu.quintela48215 e @xtadeu.quintela4821"}, pedido) is None
 
 
+@SAIU_NO_ADR_083
 def test_o_check_ja_pede_aprovacao_pelo_texto_literal_e_a_previa_ve_o_mesmo(tmp_path: Path) -> None:
     """A prévia do plano só chama o `check`: o texto literal que cita outra conta do pedido tem de aparecer nela com o
     mesmo selo da execução (31.53, revisão; a regra da aprovação no planejamento)."""
