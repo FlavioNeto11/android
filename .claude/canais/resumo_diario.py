@@ -20,6 +20,14 @@ Quatro leituras (mais a auditoria opcional dos quadros, abaixo), cada uma indepe
    perguntas e aparelhos em lista incoerente...), lida só por GET. Import protegido: se a auditoria falhar ou não existir,
    a linha diz "não consegui ler" e o resto do resumo sai igual; não entra em `Crítico`.
 
+6. (28.74, opcional) Custo do dia: o gasto das últimas 24 h, em DUAS medidas que a linha nunca mistura. (a) Por operação e
+   no total: `GET /api/operacoes` (as operações em curso ou criadas/encerradas na janela) e, de cada uma, `GET
+   /api/operacoes/<id>`, campo `custo.total_usd` (o gasto da própria execução, `planning.costs.spent_usd`, tokens x preços;
+   NUNCA `ai_calls.usd`); é o custo ACUMULADO da operação. Campo ausente = "não medido", nunca zero. (b) As chamadas de IA:
+   `GET /api/ai/balances` (livro-caixa), `spent_since_usd` + `external_usd` das contas em uso cuja âncora tem até 26 h; é o
+   consumo TOTAL de IA da conta desde a âncora (fechamento diário), de qualquer origem. Sem âncora recente = "não medido".
+   Só GET, no loopback do central; só o id curto `op-xxxxxx` e números em US$ saem no texto.
+
 O corpo inteiro passa por `_sem_contato` e por `redacao.redigir` (o filtro do Trello, com os nomes relidos do banco do
 central), como o `resumo_laco.py` e o `resumo_rodada.py`. O envio é o `telegram_status.py`, que lê token e chat do `.env`
 e nunca imprime nada deles.
@@ -40,6 +48,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -63,8 +72,17 @@ LISTA_PERGUNTAS = "6ac3c209ab485e2957580b09"
 #: Execução, Programa, Histórico (os mesmos do `espelho_do_deploy.py`)
 QUADROS = ("6ac13aeda5570365d020f8e2", "6ac13aeffc0ac80f9dc4edb3", "6ac13af1b3229189f1741536")
 BACKEND_CENTRAL = RAIZ / "backend"
+#: o central, só para GET (28.74: custo do dia)
+CENTRAL = "http://127.0.0.1:8000"
+#: operações listadas no texto (as demais viram "e mais N")
+MAX_OPERACOES = 3
+#: quantas operações se leem uma a uma (cada leitura é um GET); as que passam disso saem como "não medido"
+MAX_LEITURAS_DE_OPERACAO = 40
+#: âncora do livro-caixa mais velha que isto não mede "o dia" (o fechamento diário renova a cada 24 h)
+ANCORA_MAX = timedelta(hours=26)
 
 _ID_PERGUNTA = re.compile(r"\bP-\d{1,4}\b")
+_ID_OPERACAO = re.compile(r"^op-[A-Za-z0-9-]{1,60}$")
 _DEPLOY = re.compile(r"^## \d{4}-\d{2}-\d{2} — Deploy (\d+)\b", re.M)
 
 sys.path.insert(0, str(SCRIPTS.parent / "trello"))
@@ -218,7 +236,82 @@ def ler_coerencia(cliente: Any, raiz: Path, agora: datetime) -> dict | None:
     return resultado if isinstance(resultado, dict) and resultado.get("ok") is True else None
 
 
-def ler_situacao(agora: datetime, raiz: Path = RAIZ, cliente: Any = None) -> dict:
+def _get_json(url: str) -> Any:
+    """GET no loopback do central. Levanta em qualquer falha (rede, status, JSON): quem chama decide o que dizer."""
+    with urllib.request.urlopen(url, timeout=20) as r:  # noqa: S310 - loopback do central, só GET
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _usd(valor: object) -> float | None:
+    """Um número de US$ válido (não negativo, finito) ou `None`; bool, texto e nulo NÃO viram zero."""
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)) or not 0 <= valor < 1e9:
+        return None
+    return float(valor)
+
+
+def _custo_das_operacoes(base: str, agora: datetime, pegar: Any) -> list[dict] | None:
+    """As operações em curso ou criadas/encerradas nas últimas 24 h, com o `custo.total_usd` de cada uma. Custo ausente ou
+    inválido = `usd: None` (não medido). `None` = a LISTA não foi lida."""
+    desde = agora - JANELA
+    try:
+        itens = pegar(f"{base}/api/operacoes?limite=200")["items"]
+        if not isinstance(itens, list):
+            return None
+    except Exception:  # noqa: BLE001 - rede, status ou formato
+        return None
+    na_janela = []
+    for o in itens:
+        if not isinstance(o, dict) or not _ID_OPERACAO.match(str(o.get("id") or "")):
+            continue
+        criada, fim = _hora(o.get("created_at")), _hora(o.get("finished_at"))
+        if o.get("status") == "em_curso" or (criada and criada >= desde) or (fim and fim >= desde):
+            na_janela.append(str(o["id"]))
+    saida = []
+    for i, op_id in enumerate(na_janela):
+        usd = None
+        if i < MAX_LEITURAS_DE_OPERACAO:
+            try:
+                custo = pegar(f"{base}/api/operacoes/{op_id}").get("custo")
+                usd = _usd(custo.get("total_usd")) if isinstance(custo, dict) else None
+            except Exception:  # noqa: BLE001 - uma operação ilegível é "não medida"; as outras seguem
+                usd = None
+        saida.append({"id": "op-" + op_id.rsplit("-", 1)[-1], "usd": usd})
+    return saida
+
+
+def _consumo_de_ia(base: str, agora: datetime, pegar: Any) -> dict | None:
+    """O consumo de IA pelo livro-caixa: soma de `spent_since_usd` + `external_usd` das contas em uso com âncora de até
+    26 h. `{"usd": None, ...}` = nenhuma conta com âncora recente (não medido); `fora` = contas em uso sem âncora recente.
+    `None` = a leitura falhou. Não é custo de execução (esse vem de `planning.costs`), é o gasto total de IA."""
+    try:
+        contas = pegar(f"{base}/api/ai/balances")["accounts"]
+        if not isinstance(contas, list):
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+    total, medidas, fora = 0.0, 0, 0
+    for c in contas:
+        if not isinstance(c, dict) or not c.get("in_use"):
+            continue
+        ancora = _hora(c.get("anchor_at"))
+        gasto, externo = _usd(c.get("spent_since_usd")), _usd(c.get("external_usd") or 0)
+        if ancora is None or agora - ancora > ANCORA_MAX or gasto is None or externo is None:
+            fora += 1
+            continue
+        total += gasto + externo
+        medidas += 1
+    return {"usd": round(total, 6) if medidas else None, "fora": fora}
+
+
+def ler_custo(agora: datetime, base: str = CENTRAL, pegar: Any = None) -> dict | None:
+    """28.74: `{"operacoes": [{"id": "op-xxxxxx", "usd": 0.12 | None}] | None, "ia": {"usd": 1.2 | None, "fora": 0} | None}`.
+    Cada metade que falha vira `None` ("não consegui ler"); só se AS DUAS falham o resultado inteiro é `None`."""
+    pegar = pegar or _get_json
+    operacoes, ia = _custo_das_operacoes(base, agora, pegar), _consumo_de_ia(base, agora, pegar)
+    return None if operacoes is None and ia is None else {"operacoes": operacoes, "ia": ia}
+
+
+def ler_situacao(agora: datetime, raiz: Path = RAIZ, cliente: Any = None, base: str = CENTRAL) -> dict:
     """O retrato de agora, medido na hora. É a única parte com leitura de fora; `montar` é pura."""
     try:
         cliente = cliente or _novo_cliente()
@@ -232,7 +325,7 @@ def ler_situacao(agora: datetime, raiz: Path = RAIZ, cliente: Any = None) -> dic
 
     perguntas, movidos = asyncio.run(_trello())
     return {"plano": ler_plano(raiz), "deploys": deploys_do_dia(agora, raiz), "perguntas": perguntas, "movidos": movidos,
-            "coerencia": ler_coerencia(cliente, raiz, agora)}
+            "coerencia": ler_coerencia(cliente, raiz, agora), "custo": ler_custo(agora, base)}
 
 
 # --------------------------------------------------------------------------------------------------------- texto
@@ -301,6 +394,53 @@ def _linha_coerencia(situacao: dict) -> str | None:
         return "• <b>Coerência dos quadros:</b> não consegui ler o Trello."
 
 
+def _brl(valor: float) -> str:
+    return f"{valor:.2f}".replace(".", ",")
+
+
+def _linha_custo(situacao: dict) -> str | None:
+    """A linha do custo do dia (28.74). Chave AUSENTE = sem linha; `null` = "não consegui ler". Sem medida = "não medido",
+    nunca zero. Diz qual é qual: o custo das execuções (por operação) e o consumo de IA do livro-caixa são medidas
+    diferentes e não se somam. Nunca entra em `Crítico`."""
+    if "custo" not in situacao:
+        return None
+    rotulo = "• <b>Custo do dia:</b> "
+    c = situacao["custo"]
+    if not isinstance(c, dict):
+        return rotulo + "não consegui ler a central."
+    ops, ia = c.get("operacoes"), c.get("ia")
+    if not isinstance(ops, list):
+        parte_ops = "operações: não consegui ler"
+    else:
+        itens = [(str(o.get("id") or ""), _usd(o.get("usd"))) for o in ops if isinstance(o, dict)]
+        itens = [(i, u) for i, u in itens if _ID_OPERACAO.match(i)]
+        if not itens:
+            parte_ops = "nenhuma operação"
+        else:
+            medidas = [u for _, u in itens if u is not None]
+            n = len(itens)
+            nome = f"{n} {'operação' if n == 1 else 'operações'}"
+            if not medidas:
+                total = "custo não medido"
+            else:
+                total = f"US$ {_brl(sum(medidas))} no total"
+                if len(medidas) < n:
+                    total += f" das {len(medidas)} medidas"
+            ordem = sorted(itens, key=lambda x: (x[1] is None, -(x[1] or 0), x[0]))
+            listadas = [f"{i} " + (f"US$ {_brl(u)}" if u is not None else "não medido") for i, u in ordem[:MAX_OPERACOES]]
+            if n > MAX_OPERACOES:
+                listadas.append(f"e mais {n - MAX_OPERACOES}")
+            parte_ops = f"{nome}, {total} ({', '.join(listadas)})"
+    if not isinstance(ia, dict):
+        parte_ia = "não consegui ler"
+    else:
+        usd, fora = _usd(ia.get("usd")), _num(ia.get("fora"))
+        parte_ia = "não medido" if usd is None else f"US$ {_brl(usd)}"
+        if fora and usd is not None:
+            parte_ia += f" ({fora} {'conta' if fora == 1 else 'contas'} sem âncora do dia)"
+    return rotulo + _e(f"{parte_ops}; chamadas de IA (livro-caixa, não é custo de execução): {parte_ia}") + "."
+
+
 def montar(situacao: dict, agora: datetime) -> str:
     """O HTML do Telegram. Pura. `situacao` (o mesmo formato do `--arquivo`):
 
@@ -308,7 +448,9 @@ def montar(situacao: dict, agora: datetime) -> str:
          "deploys": [{"n": 57, "hora": "2026-10-06T21:00:00Z"}] | null,
          "perguntas": {"n": 3, "ids": ["P-026"]} | null,
          "movidos": {"Concluído": 5} | null,
-         "coerencia": <resultado de `auditoria_dos_quadros`> | null}   (opcional; ausente = sem a linha)
+         "coerencia": <resultado de `auditoria_dos_quadros`> | null,   (opcional; ausente = sem a linha)
+         "custo": {"operacoes": [{"id": "op-a1b2c3", "usd": 0.12 | null}] | null,
+                   "ia": {"usd": 1.2 | null, "fora": 0} | null} | null}   (28.74, opcional; ausente = sem a linha)
 
     `null` (ou a chave ausente, nas quatro primeiras) é leitura que falhou: sai "não consegui ler", nunca zero."""
     if not isinstance(situacao, dict):
@@ -331,8 +473,10 @@ def montar(situacao: dict, agora: datetime) -> str:
         criticos.append("sem leitura de " + ", ".join(falhas))
     quando = agora.astimezone(BRASILIA)
     coerencia = _linha_coerencia(situacao)
+    custo = _linha_custo(situacao)
     linhas = [f"<b>Resumo diário da Central</b> ({quando:%d/%m}, {quando:%H:%M} de Brasília)", plano, deploys, perguntas,
-              movidos, *([coerencia] if coerencia else []), "• <b>Crítico:</b> " + ("; ".join(criticos) if criticos else "nada") + ".",
+              movidos, *([coerencia] if coerencia else []),
+              *([custo] if custo else []), "• <b>Crítico:</b> " + ("; ".join(criticos) if criticos else "nada") + ".",
               "• <b>Espera você:</b> " + espera + "."]
     corpo = redigir(_sem_contato("\n".join(linhas)))  # defesa em profundidade, sobre o corpo inteiro
     if len(corpo.splitlines()) > MAX_LINHAS or len(corpo) > LIMITE:

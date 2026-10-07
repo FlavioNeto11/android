@@ -26,6 +26,15 @@ HANDLE = "zoraide.benevides.ig"
 AGORA = datetime(2026, 10, 6, 10, 0, tzinfo=timezone.utc)  # 07:00 de Brasília
 
 
+@pytest.fixture(autouse=True)
+def _sem_rede_da_central(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nenhum teste fala com o central: o GET padrão falha (a leitura do custo vira "não consegui ler")."""
+    def fora(_url: str) -> object:
+        raise OSError("sem rede nos testes")
+
+    monkeypatch.setattr(d, "_get_json", fora)
+
+
 def _situacao(**kw: object) -> dict:
     s: dict = {"plano": {"total": 714, "implementados": 680, "parciais": 32, "bloqueados": 2},
                "deploys": [{"n": 57, "hora": "2026-10-06T00:30:00Z"}],
@@ -258,7 +267,7 @@ def test_ler_situacao_sem_credencial_do_trello_marca_as_duas_leituras_como_falha
 
     monkeypatch.setattr(d, "_novo_cliente", sem_chave)
     s = d.ler_situacao(AGORA, tmp_path)
-    assert s == {"plano": None, "deploys": None, "perguntas": None, "movidos": None, "coerencia": None}
+    assert s == {"plano": None, "deploys": None, "perguntas": None, "movidos": None, "coerencia": None, "custo": None}
 
 
 def test_plano_conta_pelo_estado_e_pelo_check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -356,3 +365,153 @@ def test_envio_que_falha_nao_conta_como_enviado(monkeypatch: pytest.MonkeyPatch,
     assert d.main(["--enviar"]) == 1
     saida = capsys.readouterr().out
     assert "falhou: Telegram recusou (400)" in saida and "enviado message_id" not in saida
+
+
+# ----------------------------------------------------------------------------------- 28.74: custo do dia (fakes)
+def _op(sufixo: str, horas: float = 2, status: str = "concluida", fim: float | None = 1) -> dict:
+    return {"id": f"op-20261006090000-{sufixo}", "status": status, "command": f"comando secreto de {HANDLE}",
+            "created_at": (AGORA - timedelta(hours=horas)).isoformat(),
+            "finished_at": (AGORA - timedelta(hours=fim)).isoformat() if fim is not None else None}
+
+
+def _conta(nome: str, gasto: float, horas: float = 5, externo: float = 0.0, em_uso: bool = True) -> dict:
+    return {"account": nome, "in_use": em_uso, "spent_since_usd": gasto, "external_usd": externo,
+            "anchor_at": (AGORA - timedelta(hours=horas)).isoformat()}
+
+
+class FakeCentral:
+    """Só GET, em memória: respostas por caminho; `Exception` levanta. Registra as URLs pedidas."""
+
+    def __init__(self, respostas: dict[str, object]) -> None:
+        self.respostas, self.urls = respostas, []
+
+    def __call__(self, url: str) -> object:
+        self.urls.append(url)
+        r = self.respostas[url.removeprefix("http://central")]
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
+def _detalhe(total: object) -> dict:
+    return {"id": "x", "custo": {"pesquisa_usd": 0, "alvos_usd": total, "total_usd": total}}
+
+
+def _central(operacoes: list[dict], custos: dict[str, object], contas: object) -> FakeCentral:
+    r: dict[str, object] = {"/api/operacoes?limite=200": {"items": operacoes}, "/api/ai/balances": {"accounts": contas}}
+    for o in operacoes:
+        r[f"/api/operacoes/{o['id']}"] = custos.get(o["id"], _detalhe(None))
+    return FakeCentral(r)
+
+
+def test_ler_custo_por_operacao_e_total_so_com_o_custo_da_propria_operacao() -> None:
+    a, b, velha = _op("aaaaaa"), _op("bbbbbb", status="em_curso", fim=None), _op("cccccc", horas=60, fim=50)
+    fake = _central([a, b, velha], {a["id"]: _detalhe(0.2), b["id"]: _detalhe(0.1234), velha["id"]: _detalhe(9.0)},
+                    [_conta("anthropic", 1.5, externo=0.25), _conta("gemini", 0.0, em_uso=False)])
+    c = d.ler_custo(AGORA, "http://central", fake)
+    assert c == {"operacoes": [{"id": "op-aaaaaa", "usd": 0.2}, {"id": "op-bbbbbb", "usd": 0.1234}],
+                 "ia": {"usd": 1.75, "fora": 0}}  # a operação de 60 h, já encerrada, fica fora; a em curso entra
+    assert not any(u.endswith(velha["id"]) for u in fake.urls)  # nem se lê a que está fora da janela
+    texto = _sem_tags(d.montar(_situacao(custo=c), AGORA))
+    assert ("Custo do dia: 2 operações, US$ 0,32 no total (op-aaaaaa US$ 0,20, op-bbbbbb US$ 0,12); "
+            "chamadas de IA (livro-caixa, não é custo de execução): US$ 1,75.") in texto
+
+
+def test_operacao_sem_custo_e_nao_medida_e_nunca_zero() -> None:
+    a, b, c_ = _op("aaaaaa"), _op("bbbbbb"), _op("cccccc")
+    fake = _central([a, b, c_], {a["id"]: _detalhe(0.5), b["id"]: {"id": "x"},  # sem o campo `custo`
+                                 c_["id"]: _detalhe("0,3")}, [])  # custo de tipo errado também não é número
+    c = d.ler_custo(AGORA, "http://central", fake)
+    assert [o["usd"] for o in c["operacoes"]] == [0.5, None, None] and c["ia"] == {"usd": None, "fora": 0}
+    texto = _sem_tags(d.montar(_situacao(custo=c), AGORA))
+    assert "3 operações, US$ 0,50 no total das 1 medidas (op-aaaaaa US$ 0,50, op-bbbbbb não medido, op-cccccc não medido)" in texto
+    assert "chamadas de IA (livro-caixa, não é custo de execução): não medido." in texto
+    todas = _sem_tags(d.montar(_situacao(custo={"operacoes": [{"id": "op-1abc", "usd": None}], "ia": None}), AGORA))
+    assert "1 operação, custo não medido (op-1abc não medido); chamadas de IA" in todas and "US$ 0,00" not in todas
+    assert "chamadas de IA (livro-caixa, não é custo de execução): não consegui ler." in todas
+
+
+def test_nenhuma_operacao_no_dia_diz_nenhuma_e_zero_medido_aparece_como_zero() -> None:
+    fake = _central([_op("aaaaaa", horas=70, fim=60)], {}, [_conta("openai", 0.0)])
+    c = d.ler_custo(AGORA, "http://central", fake)
+    assert c == {"operacoes": [], "ia": {"usd": 0.0, "fora": 0}}
+    texto = _sem_tags(d.montar(_situacao(custo=c), AGORA))
+    assert "Custo do dia: nenhuma operação; chamadas de IA (livro-caixa, não é custo de execução): US$ 0,00." in texto
+
+
+def test_ia_so_conta_ancora_do_dia_e_conta_em_uso_e_avisa_as_que_ficaram_fora() -> None:
+    contas = [_conta("anthropic", 2.0), _conta("openai", 7.0, horas=40),  # âncora velha demais: não mede o dia
+              {"account": "typesafe", "in_use": True, "spent_since_usd": 0.0, "anchor_at": None},  # sem âncora
+              _conta("gemini", 5.0, em_uso=False)]
+    c = d.ler_custo(AGORA, "http://central", _central([], {}, contas))
+    assert c["ia"] == {"usd": 2.0, "fora": 2}
+    assert "US$ 2,00 (2 contas sem âncora do dia)." in _sem_tags(d.montar(_situacao(custo=c), AGORA))
+    sem_nenhuma = d.ler_custo(AGORA, "http://central", _central([], {}, [_conta("openai", 7.0, horas=40)]))
+    assert sem_nenhuma["ia"] == {"usd": None, "fora": 1}  # nada medido: "não medido", nunca US$ 0,00
+
+
+def test_leitura_falhando_diz_nao_consegui_ler_e_nao_derruba_o_resumo() -> None:
+    fake = _central([], {}, [_conta("anthropic", 1.0)])
+    fake.respostas["/api/operacoes?limite=200"] = OSError("fora")  # só a lista cai: a IA segue
+    c = d.ler_custo(AGORA, "http://central", fake)
+    assert c == {"operacoes": None, "ia": {"usd": 1.0, "fora": 0}}
+    texto = d.montar(_situacao(custo=c), AGORA)
+    assert "operações: não consegui ler; chamadas de IA (livro-caixa, não é custo de execução): US$ 1,00." in _sem_tags(texto)
+    assert "Plano: 714 itens" in _sem_tags(texto) and "Espera você: 3 perguntas" in _sem_tags(texto)
+    # as duas caem: o resultado é None e a linha diz que não leu
+    assert d.ler_custo(AGORA, "http://central", FakeCentral({"/api/operacoes?limite=200": OSError("x"),
+                                                             "/api/ai/balances": ValueError("y")})) is None
+    assert d.ler_custo(AGORA) is None  # sem rede (o GET padrão falha): nada de zero
+    assert "• <b>Custo do dia:</b> não consegui ler a central." in d.montar(_situacao(custo=None), AGORA)
+    assert d.montar(_situacao(custo="lixo"), AGORA).count("Custo do dia") == 1  # formato estranho: também "não consegui ler"
+    # uma operação ilegível é só "não medida"
+    a = _op("aaaaaa")
+    f2 = _central([a], {}, [])
+    f2.respostas[f"/api/operacoes/{a['id']}"] = OSError("fora")
+    assert d.ler_custo(AGORA, "http://central", f2)["operacoes"] == [{"id": "op-aaaaaa", "usd": None}]
+
+
+def test_situacao_sem_a_chave_custo_sai_sem_a_linha() -> None:
+    texto = d.montar(_situacao(), AGORA)
+    assert "Custo do dia" not in texto and len(texto.splitlines()) == 7
+
+
+def test_so_tres_operacoes_listadas_as_mais_caras_primeiro_e_o_resto_vira_e_mais_n() -> None:
+    ops = [{"id": f"op-{i}", "usd": u} for i, u in enumerate([0.1, 0.9, None, 0.5, 0.3])]
+    texto = _sem_tags(d.montar(_situacao(custo={"operacoes": ops, "ia": {"usd": 1.0, "fora": 0}}), AGORA))
+    assert "5 operações, US$ 1,80 no total das 4 medidas (op-1 US$ 0,90, op-3 US$ 0,50, op-4 US$ 0,30, e mais 2)" in texto
+
+
+def test_o_limite_de_leituras_de_operacao_marca_o_excedente_como_nao_medido(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(d, "MAX_LEITURAS_DE_OPERACAO", 2)
+    ops = [_op(f"a{i:05d}") for i in range(4)]
+    fake = _central(ops, {o["id"]: _detalhe(0.1) for o in ops}, [])
+    c = d.ler_custo(AGORA, "http://central", fake)
+    assert [o["usd"] for o in c["operacoes"]] == [0.1, 0.1, None, None]
+    assert sum(1 for u in fake.urls if "/api/operacoes/op-" in u) == 2
+
+
+def test_a_linha_do_custo_nao_vaza_comando_nome_nem_handle_e_cabe_nas_12_linhas() -> None:
+    ops = [_op("aaaaaa"), {**_op("bbbbbb"), "assunto": HANDLE, "persona_nome": "Zoraide Benevides"}]
+    fake = _central(ops, {o["id"]: _detalhe(0.4) for o in ops}, [_conta("anthropic", 1.0)])
+    c = d.ler_custo(AGORA, "http://central", fake)
+    # o que a leitura guarda é só id curto e número: comando, assunto e persona nunca passam
+    assert set(c["operacoes"][0]) == {"id", "usd"}
+    # e mesmo um id/valor hostil vindo de um arquivo de situação não vira texto livre
+    hostil = {"operacoes": [{"id": f"op-1 {HANDLE}", "usd": 0.1}, {"id": "op-x9", "usd": f"{HANDLE}"}], "ia": None}
+    texto = d.montar(_situacao(custo=c, coerencia=_coerencia(duplicados=1)), AGORA)
+    com_hostil = d.montar(_situacao(custo=hostil, coerencia=_coerencia(duplicados=1)), AGORA)
+    for t in (texto, com_hostil):
+        assert HANDLE not in t and "comando secreto" not in t and "Zoraide" not in t
+        assert len(t.splitlines()) <= d.MAX_LINHAS and len(t) < d.LIMITE and t.count("<b>") == t.count("</b>")
+    assert len(texto.splitlines()) == 9  # as 8 de sempre (com a coerência) mais a do custo
+    assert "1 operação, custo não medido (op-x9 não medido)" in _sem_tags(com_hostil)  # só a de id válido entra
+
+
+def test_ler_situacao_inclui_o_custo_lido_pela_base_dada(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(d, "ler_plano", lambda raiz: None)
+    monkeypatch.setattr(d, "deploys_do_dia", lambda agora, raiz: None)
+    visto: list[str] = []
+    monkeypatch.setattr(d, "ler_custo", lambda agora, base: visto.append(base) or {"operacoes": [], "ia": None})
+    s = d.ler_situacao(AGORA, tmp_path, cliente=FakeTrello([], {}), base="http://central")
+    assert s["custo"] == {"operacoes": [], "ia": None} and visto == ["http://central"]

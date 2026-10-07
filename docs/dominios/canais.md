@@ -1058,6 +1058,16 @@ Os scripts da operação provisória ficam versionados em `.claude/canais/`, e o
   - cartões movidos em 24 h, por lista de destino, nos 3 quadros: pelas actions `updateCard:idList` do Trello (`listAfter`),
     contando cada cartão pelo último movimento. Escolhida no lugar do `dateLastActivity`, que também muda por comentário
     e etiqueta e não diz a lista de destino;
+  - custo do dia (28.74, linha opcional, só GET no loopback do central), em DUAS medidas que a linha rotula e não soma:
+    (a) por operação e no total das execuções, o `custo.total_usd` que `GET /api/operacoes/<id>` já devolve (vem de
+    `planning.costs.spent_usd`, tokens x preços, nunca de `ai_calls.usd`) das operações em curso ou criadas/encerradas em
+    24 h; é o custo acumulado da operação, não só o das 24 h; no máximo 3 listadas (as mais caras, id curto `op-xxxxxx`) e
+    "e mais N"; campo ausente = "não medido", nunca zero; (b) "chamadas de IA (livro-caixa)": `GET /api/ai/balances`,
+    soma de `spent_since_usd` + `external_usd` das contas em uso com âncora de até 26 h (consumo total de IA desde a
+    âncora diária, de qualquer origem; sem âncora recente = "não medido"). Metade que falha diz "não consegui ler"; só se as
+    duas falham a linha diz "não consegui ler a central"; nunca entra em `Crítico:`. Trade-off: `GET /api/operacoes/<id>`
+    é uma leitura por operação (teto de 40; o excedente sai "não medido"), e o relatório do servidor (`custo.por_peca_usd`)
+    ainda não existe (corte 60);
   - o corpo passa por `_sem_contato` e `redacao.redigir`, como os outros resumos. O modo padrão só imprime (ensaio);
     `--arquivo situacao.json` ensaia offline; `--enviar` usa o `telegram_status.py`, só com o sinal da orquestradora. Prova
     `simulated` (`.claude/canais/test_resumo_diario.py`); a `real` e o agendamento das 07:00 ficam `not_run`;
