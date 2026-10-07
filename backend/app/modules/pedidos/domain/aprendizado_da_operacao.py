@@ -67,7 +67,10 @@ class Item:
     confianca: str                            # confirmado | hipotese
     estado: str = ""                          # o valor original (estado do Livro, situação da observação, confiança 0–1)
     evidencia: tuple[str, ...] = ()           # run ids, ids de observação, urls
-    persona: str | None = None                # profile_id; None = da operação inteira
+    persona: str | None = None                # profile_id; None com `personas` vazio = da operação inteira
+    #: As personas a que o item se liga quando são mais de uma (a lição citada por execuções de duas personas). Revisão
+    #: do Codex no PR 482: sem isto, a lição de duas personas virava "da operação inteira" e aparecia para uma terceira.
+    personas: tuple[str, ...] = ()
     observado_em: str | None = None
     frescor_ate: str | None = None
     a_favor: int = 0
@@ -80,7 +83,15 @@ class Item:
     def como_dict(self) -> dict[str, object]:
         d = asdict(self)
         d["evidencia"] = list(self.evidencia)
+        d["personas"] = list(self.personas)
         return d
+
+
+def da_persona(item: Item, persona: str) -> bool:
+    """O item é dela (`persona` ou uma das `personas`) ou da operação inteira (nenhuma das duas)."""
+    if item.persona is None and not item.personas:
+        return True
+    return item.persona == persona or persona in item.personas
 
 
 def confianca_do_livro(estado: str) -> str:
@@ -111,7 +122,9 @@ def a_revisar(item: Item, agora: str) -> str | None:
     if item.escopo in ("app", "processo") and item.estado in REVISAR_NO_LIVRO:
         return f"no Livro em {item.estado}"
     if item.confianca == "hipotese" and item.tipo in ("fato", "memoria"):
-        return "hipótese: não confirmada"
+        # 31.179: a da pesquisa diz por quê (uma fonte, e a leitura do alvo não trouxe as âncoras dela)
+        return ("hipótese: uma fonte só, e a leitura do alvo não a confirmou" if item.origem == "pesquisa"
+                else "hipótese: não confirmada")
     return None
 
 
@@ -119,13 +132,20 @@ def _sustentacao(itens: Sequence[Item]) -> list[dict[str, object]]:
     """Cada conhecimento (fato da operação, item do Livro, memória da persona) com o que o sustenta. A evidência de um
     fato é o id da observação; a fonte que cita essa mesma observação dá o título e a URL."""
     fonte_da_obs = {e: f for f in itens if f.tipo == "fonte" for e in f.evidencia}
+    # 31.179: a hipótese da pesquisa confirmada pela leitura do alvo cita a observação da leitura: ela aparece como o
+    # fato da leitura (a fonte é a tela do alvo), não como um id solto
+    for f in itens:
+        if f.origem == "leitura" and f.tipo != "observacao":
+            for e in f.evidencia:
+                fonte_da_obs.setdefault(e, f)
     saida: list[dict[str, object]] = []
     for i in itens:
         if i.tipo in NAO_E_CONHECIMENTO or i.tipo == "fonte" or not i.evidencia:
             continue
         saida.append({"ref": i.ref, "confianca": i.confianca,
                       "fontes": [{"ref": fonte_da_obs[e].ref, "resumo": fonte_da_obs[e].resumo, "observacao": e}
-                                 if e in fonte_da_obs else {"ref": e} for e in i.evidencia]})
+                                 if e in fonte_da_obs and fonte_da_obs[e] is not i else {"ref": e}
+                                 for e in i.evidencia]})
     return saida
 
 
@@ -134,7 +154,7 @@ def responder(itens: Sequence[Item], *, agora: str, persona: str | None = None) 
     for i in itens:
         if i.confianca not in CONFIANCAS or i.escopo not in ESCOPOS:
             raise ValueError(f"item fora do vocabulário: {i.ref}")
-    vistos = [i for i in itens if persona is None or i.persona in (None, persona)]
+    vistos = [i for i in itens if persona is None or da_persona(i, persona)]
 
     def lista(cond: Iterable[Item]) -> list[dict[str, object]]:
         return [i.como_dict() for i in cond]

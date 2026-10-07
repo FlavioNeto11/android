@@ -50,16 +50,24 @@ def medicoes_recentes(db: Database, limite: int = 60) -> list[dict[str, Any]]:
                               " LIMIT ?", (limite,))]
 
 
+def ler_disco(pasta: Path) -> tuple[float, float] | None:
+    """`(livre_gb, total_gb)` do volume da pasta, ou `None` se o sistema não responde. É O leitor do disco da saúde: o
+    Diagnóstico e o aviso de disco baixo do central (28.58) leem pelo mesmo caminho, para o número do aviso ser o que o
+    painel mostra."""
+    try:
+        du = shutil.disk_usage(pasta)
+    except OSError:
+        return None
+    return du.free / 2**30, du.total / 2**30
+
+
 def collect(cfg: Config, tools: SdkTools, db: Database) -> dict[str, Any]:
     vm = psutil.virtual_memory()
     sw = psutil.swap_memory()
     disks = {}          # valores simples (texto) para o painel exibir em tabela chave/valor
     for label, p in (("disk_project", cfg.root), ("disk_sdk", cfg.sdk_root if cfg.sdk_root.exists() else cfg.root)):
-        try:
-            du = shutil.disk_usage(p)
-            disks[label] = f"{p} — {du.free / 2**30:.0f} GB livres de {du.total / 2**30:.0f} GB"
-        except OSError:
-            disks[label] = f"{p} — indisponível"
+        du = ler_disco(p)
+        disks[label] = f"{p} — {du[0]:.0f} GB livres de {du[1]:.0f} GB" if du else f"{p} — indisponível"
     cpu_name = platform.processor()
     hypervisor_present = None
     if os.name == "nt":

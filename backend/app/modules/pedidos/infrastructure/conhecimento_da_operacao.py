@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 from app.db import Database, loads
 from app.modules.pedidos.domain import conhecimento_da_operacao as dominio
+from app.modules.pedidos.domain import hipoteses
 from app.modules.pedidos.domain import memoria as dominio_memoria
 from app.modules.pedidos.infrastructure.relatorios import parece_segredo
 from app.modules.pedidos.infrastructure.repositorio_memoria import NovaObservacao, RepositorioDeMemoria
@@ -27,6 +28,8 @@ log = logging.getLogger(__name__)
 #: Quanto tempo a leitura do alvo vale para as outras execuções da mesma operação. Uma operação de 30 agentes em ondas
 #: dura menos que isso; depois, a próxima execução relê (o post pode ter mudado) e a leitura nova vira a da operação.
 FRESCOR_DA_LEITURA_S = 6 * 3600
+#: O aviso no `draft_meta.fatos_da_operacao.conhecimento_ids` da etapa quando a lista não foi gravada (revisão do PR 480).
+NAO_GRAVADOS = "nao_gravados"
 DIVERGENTE = "a leitura deste agente difere da leitura da operação (o alvo mudou ou é outro); a execução seguiu com a própria tela"
 
 
@@ -36,6 +39,7 @@ class Fatos:
     quantos: int                                  # o que o texto recebeu da operação: o bloco e a leitura igual na tela
     refs: tuple[str, ...] = ()                    # o mesmo, como referência (`fato:<chave>`, 31.163): conhecimento_ids
     assunto: str = ""                             # `operacoes.assunto` (124): vai ao escritor junto da intenção
+    ids_gravados: bool = True                     # False: `conhecimento_ids` não foi gravado (aviso no `draft_meta`)
 
 
 class ConhecimentoDaOperacao:
@@ -86,12 +90,43 @@ class ConhecimentoDaOperacao:
                 nova = self.repo.observacao_da_operacao(operacao_id, dominio.NOME_DA_LEITURA)
                 if nova is not None and nova["sha256"] == leitura.sha256 and nova["run_id"] == run_id:
                     self._gravar_fato(operacao_id, leitura.texto, evidencia=str(nova["id"]), agora=agora, run_id=run_id)
+                    self.confirmar_hipoteses(operacao_id, run_id=run_id)          # 31.179
                     return dominio.PRIMEIRA
                 da_operacao = nova                               # outro agente gravou primeiro: confere com a dele
             resultado = dominio.conferir(da_operacao["sha256"] if da_operacao is not None else None, leitura.sha256)
             if resultado == dominio.DIFERENTE:
                 self.repo.inserir_observacoes([observacao(agente, "incerto", DIVERGENTE)])
             return resultado
+
+    def confirmar_hipoteses(self, operacao_id: str, *, run_id: str) -> int:
+        """31.179: cada hipótese da pesquisa (`pesquisa.*`, uma fonte só) que a leitura DA OPERAÇÃO confirma pelas
+        âncoras (`domain/hipoteses.py`) passa a `confirmado`, com a observação da leitura somada à evidência. Origem e
+        frescor ficam os da pesquisa (a leitura vale 6 h, o fato da web vale o dele). A leitura `incerto` de um agente
+        não confirma nada. Devolve quantas promoveu; falha de escrita não derruba quem chamou."""
+        obs = self.repo.observacao_da_operacao(operacao_id, dominio.NOME_DA_LEITURA)
+        if obs is None or obs["situacao"] != "observado" or not obs["valor"]:
+            return 0
+        agora = self.db.agora_iso()
+        promovidas = 0
+        for e in self.repo.entradas_da_operacao(operacao_id):
+            if not (e.chave.startswith("pesquisa.") and e.tipo == "descoberta" and e.origem == "pesquisa"
+                    and e.confianca == "hipotese" and e.vale(agora)
+                    and hipoteses.confirmada_pela_leitura(e.valor, str(obs["valor"]))):
+                continue
+            try:
+                escrita = dominio_memoria.escrever(
+                    e, chave=e.chave, tipo=e.tipo, valor=e.valor, agora=agora, ocorrencia_id=run_id,
+                    parece_segredo=parece_segredo, origem="pesquisa", confianca="confirmado",
+                    evidencia=(*e.evidencia, str(obs["id"])), frescor_ate=e.frescor_ate)
+            except dominio_memoria.MemoriaInvalida as exc:
+                log.info("operação %s: a hipótese '%s' não foi promovida (%s)", operacao_id, e.chave, exc)
+                continue
+            if escrita.mudou and self.repo.gravar_entrada_da_operacao(operacao_id, e, escrita.entrada):
+                promovidas += 1
+        if promovidas:
+            log.info("operação %s: %d hipótese(s) da pesquisa confirmada(s) pela leitura do alvo", operacao_id,
+                     promovidas)
+        return promovidas
 
     def _fato_vencido(self, operacao_id: str, agora: str) -> bool:
         fato = self.repo.entrada_da_operacao(operacao_id, dominio.CHAVE_DO_CONTEUDO)

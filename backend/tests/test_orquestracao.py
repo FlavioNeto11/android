@@ -2,8 +2,8 @@
 Nível de prova: `simulated` (orquestrador simulado contado pelo `CountingProvider`; aparelhos falsos na porta 5640).
 
 O que se prova:
-- pedido de propaganda, voto ou campanha volta com `alerta_conduta` e ninguém é escolhido;
-- persona cujas crenças contradizem o pedido nunca é escolhida (vai para as descartadas, com motivo);
+- o orquestrador não recusa pedido pelo conteúdo (a regra de conteúdo vai para o serviço externo, 06/10): uma
+  palavra como "campanha" não barra mais o pedido;
 - persona sem crenças mínimas num pedido que depende delas vai para `nao_avaliaveis`, sem adivinhar;
 - entre duas igualmente adequadas, a livre vence a que tem tarefa na fila; fila é execução em andamento ou
   pausada — a planejada e nunca iniciada não conta;
@@ -63,27 +63,16 @@ def _chamadas(h: Harness) -> int:
     return sum(1 for c in h.ai.calls if c.get("kind") == "orquestracao")
 
 
-async def test_propaganda_ou_voto_nao_e_roteado(harness: Harness) -> None:
+async def test_o_orquestrador_nao_recusa_pelo_conteudo(harness: Harness) -> None:
     _persona(harness, "Marina", "android-01", CATOLICA)
     _persona(harness, "Nelson", "android-02", ATEIA)
-    s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="comente nos posts pedindo voto no candidato X"))
-    assert s.modo == "ia" and s.alerta_conduta
-    assert s.targets == [] and s.escolhidas == []
+    s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="divulgue a campanha de lançamento da loja"))
+    assert s.modo == "ia"
+    assert len(s.escolhidas) == 1 and s.targets
     assert _chamadas(harness) == 1
 
 
-async def test_quem_contradiz_o_pedido_nunca_e_escolhida(harness: Harness) -> None:
-    marina = _persona(harness, "Marina", "android-01", CATOLICA)
-    nelson = _persona(harness, "Nelson", "android-02", ATEIA)
-    s = await _orq(harness).sugerir(RunTargetsSuggestBody(
-        command="responda à tia no direct contando como foi a missa de domingo, com a sua fé"))
-    assert [e.profile_id for e in s.escolhidas] == [marina]
-    assert s.escolhidas[0].instance_id == "android-01" and s.escolhidas[0].motivo
-    assert [d.profile_id for d in s.descartadas] == [nelson] and s.descartadas[0].motivo
-    assert [(t.instance_id, t.profile_id) for t in s.targets] == [("android-01", marina)]
-
-
-async def test_sem_crencas_num_pedido_de_crenca_e_nao_avaliavel(harness: Harness) -> None:
+async def test_persona_sem_crenca_e_nao_avaliavel(harness: Harness) -> None:
     marina = _persona(harness, "Marina", "android-01", CATOLICA)
     bia = _persona(harness, "Sueli", "android-02")                 # sem crença registrada
     s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="fale sobre a sua igreja com a prima"))
@@ -195,7 +184,7 @@ async def test_normalizar_tira_estranhas_repetidas_e_respeita_o_teto() -> None:
         quantidade=5, escolhidas=[EscolhaOut(profile_id="zzz", motivo="?", aderencia="alta"),
                                   EscolhaOut(profile_id="a", motivo="ok", aderencia="Média"),
                                   EscolhaOut(profile_id="b", motivo="ok", aderencia="alta")],
-        descartadas=[], nao_avaliaveis=[], alerta_conduta="", perguntas=[], resumo=""), req)
+        descartadas=[], nao_avaliaveis=[], perguntas=[], resumo=""), req)
     assert [e.profile_id for e in out.escolhidas] == ["a"] and out.escolhidas[0].aderencia == "media"
     assert out.quantidade == 1
 
@@ -235,5 +224,5 @@ async def test_o_pedido_de_30_cabe_no_formato_e_no_padrao() -> None:
     req = PedidoDeOrquestracao(command="x", cartoes=[CartaoDePersona(f"p{i}", f"P{i}") for i in range(40)], max_personas=30)
     out = normalizar(OrquestracaoOut(
         quantidade=30, escolhidas=[EscolhaOut(profile_id=f"p{i}", motivo="ok", aderencia="alta") for i in range(35)],
-        descartadas=[], nao_avaliaveis=[], alerta_conduta="", perguntas=[], resumo=""), req)
+        descartadas=[], nao_avaliaveis=[], perguntas=[], resumo=""), req)
     assert len(out.escolhidas) == 30

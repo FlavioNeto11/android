@@ -32,7 +32,7 @@ from app.main import create_app
 from app.models import (PersonaBiography, PersonaCreate, PersonaPatch, PersonaTraits, PersonaVisual, ProfileCreate,
                         ProfilePatch)
 from app.modules.identity.domain.persona import (BIOGRAPHY_SCHEMA_VERSION, idade_em, lacunas_da_biografia,
-                                                 mesclar_secao, nome_ficticio_plausivel, separar_nome)
+                                                 mesclar_secao, separar_nome)
 from app.social.service import SocialError
 
 from .conftest import Harness, make_config
@@ -56,8 +56,6 @@ def test_regras_puras_da_pessoa() -> None:
     assert idade_em("1995-03-10", date(2026, 3, 9)) == 30 and idade_em("1995-03-10", date(2026, 3, 10)) == 31
     assert idade_em("10/03/1995", date(2026, 1, 1)) is None and idade_em("2099-01-01", date(2026, 1, 1)) is None
     assert separar_nome("Renata Vieira Lima") == ("Renata", "Vieira Lima") and separar_nome("Otávio") == ("Otávio", None)
-    assert nome_ficticio_plausivel("Ana Souza") and nome_ficticio_plausivel("Jean-Luc D'Ávila")
-    assert not nome_ficticio_plausivel("@lucas_99") and not nome_ficticio_plausivel("Ana") and not nome_ficticio_plausivel("Ana 2")
     base = {"home": {"city": "SP", "state": "SP"}, "tastes": {"hobbies": ["trilha"]}, "schema_version": 1}
     mesclado = mesclar_secao(base, {"home": {"city": "Rio", "state": None}, "tastes": {"hobbies": ["surfe", "yoga"]}})
     assert mesclado == {"home": {"city": "Rio"}, "tastes": {"hobbies": ["surfe", "yoga"]}, "schema_version": 1}
@@ -243,7 +241,7 @@ def test_bloco_da_persona_traz_biografia_escapada_e_o_handle_do_app(tmp_path: Pa
         # ADR-048 inverteu o ADR-041 aqui: crenças VÃO ao modelo. As frases v1 ("x", "y") viram o resumo de cada
         # crença na leitura e entram como seção, com a linha de conduta; as chaves em inglês nunca aparecem.
         assert "religião:\n  afiliação: x\n" in texto and "política:\n  resumo: y\n" in texto
-        assert "conduta sobre crenças: " in texto and "não faz propaganda política nem religiosa" in texto
+        assert "uso das crenças: " in texto and "propaganda" not in texto
         assert "politics" not in texto and "religion" not in texto
         # `SocialContextDTO.persona` é só voz e biografia: nada de credencial, sessão ou aparelho.
         assert not {"credential", "session", "instance_id", "username"} & set(ctx.persona.model_dump())

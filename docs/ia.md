@@ -612,7 +612,7 @@ por prazo, 12 delas com os 60 s que o modelo pedia, 8 com a chamada de IA passan
 
 **Crenças no bloco `<persona>` (28/09, ADR-048).** Depois da biografia curta vêm as crenças, quando existem: uma
 seção para religião e outra para política, um campo por linha, valores fechados em português, tudo por
-`sem_marcacao`; em seguida a linha fixa "conduta sobre crenças" (`CONDUTA_DAS_CRENCAS`: coerência de valores e tom). `SOCIAL_SYSTEM` manda usar as crenças
+`sem_marcacao`; em seguida a linha fixa "uso das crenças" (`USO_DAS_CRENCAS`: coerência de valores e tom; a regra de conteúdo saiu em 06/10). `SOCIAL_SYSTEM` manda usar as crenças
 como coerência, não como assunto. A geração de persona pede crenças ricas e variadas, com teto de 10000 tokens.
 
 ## 13. Provedores em nuvem por papel (Fase 17)

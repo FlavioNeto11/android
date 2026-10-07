@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.models import TrainingSaveBody, TrainingStartBody
 from app.modules.learning.domain.ensino_da_falha import intencao_sugerida, pergunta_da_etapa
+from app.modules.learning.infrastructure.rendimento_sql import LeitorDoRendimento
 from app.modules.skills.presentation.schemas import TrainingDeFalhaBody, TrainingStopBody, TrainingUndoBody
 from app.planning.provider import AIError
 from app.training.recorder import TrainingError
@@ -115,6 +116,20 @@ async def get_training(request: Request, session_id: str) -> object:
         return _st(request).training.get(session_id)
     except TrainingError as exc:
         raise _training_error(exc) from exc
+
+
+@router.get("/training/{session_id}/rendimento", response_model=None)
+async def rendimento_do_treino(request: Request, session_id: str) -> object:
+    """O que esta sessão de ensino gerou e quanto disso foi usado (receitas, fluxo, lições, vizinhos), com a régua do
+    uso real de 06/10. Só leitura; nenhuma IA."""
+    st = _st(request)
+    leitor = LeitorDoRendimento(st.db, liberada=st.scheduler.executor.recipes.liberada_fora_do_ensino,
+                                em_uso_real_desde=st.scheduler.flows.em_uso_real_desde,
+                                precos=lambda: st.cfg.file.ai.prices)
+    rendimento = leitor.ler(session_id)
+    if rendimento is None:
+        raise _err(404, "not_found", f"Sessão de treino {session_id} não existe.")
+    return rendimento.como_dict()
 
 
 @router.post("/training/{session_id}/stop", response_model=None)

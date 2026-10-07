@@ -483,12 +483,14 @@ class Repository:
         """`molde` (31.113 F2): as variáveis da persona, que ficam como MARCADOR no texto que descreve e confere a etapa
         (título, objetivo, pré e pós-condição, guardas); o executor as resolve em memória (`resolver_persona`). Os
         `bindings` saem resolvidos: a porta e a chave da aprovação os leem da linha, e argumento com `{` não fecha.
-        A identidade (`template_hash`) é calculada antes, com todas as variáveis, como sempre."""
+        A identidade (`template_hash`) é calculada antes, com todas as variáveis, como sempre; no empate de valor entre
+        um parâmetro e um dado da persona, fica o marcador da persona (31.165, `recipes.para_hash`)."""
         resolved: list[PlanStep] = []
         # Identidade da etapa ANTES de resolver variáveis — e com os valores que o planejador escreveu por extenso
         # devolvidos ao nome do parâmetro, senão a receita de "@nasa" nunca serve para "@outro". A referência a uma
         # saída de item (`{{saida:x_i2}}`) volta ao nome do bloco: as cópias seguem com a receita da etapa-modelo.
-        hashes = {s.key: step_template_hash(para_hash(sem_sufixo_de_item(s), variables)) for s in steps}
+        hashes = {s.key: step_template_hash(para_hash(sem_sufixo_de_item(s), variables, persona=tuple(molde or {})))
+                  for s in steps}
         steps = _dependencias_das_saidas(steps)
         # Item 24.4: `{account_label}` numa etapa que declara OUTRO app é a conta da persona naquele app, não o rótulo
         # do aparelho — "Conta: {account_label}" no Outlook conferia a tela contra o @ do Instagram. Sem UMA conta
@@ -1224,6 +1226,8 @@ class Repository:
         tentativa que a receita resolveu ficava indistinguível da que a IA pagou.
         """
         if not usage.calls and not usage.input_tokens:
+            if usage.soltar_reserva is not None:
+                usage.soltar_reserva()
             return None
         chamada: int | None = None
         if usage.role:        # uma linha por chamada: função, modelo e cache — base do relatório de custo
@@ -1274,6 +1278,8 @@ class Repository:
                 "UPDATE objectives SET ai_calls=ai_calls+?, ai_input_tokens=ai_input_tokens+?,"
                 " ai_output_tokens=ai_output_tokens+? WHERE id=?",
                 (usage.calls, usage.input_tokens, usage.output_tokens, objective_id))
+        if usage.soltar_reserva is not None:    # o gasto já está no banco: a reserva do teto da operação sai (31.154)
+            usage.soltar_reserva()
         return int(chamada) if chamada is not None else None
 
     def decision(self, text: str, *, run_id: str, instance_id: str | None = None, step_id: str | None = None) -> None:

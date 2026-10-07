@@ -1,0 +1,159 @@
+{
+  "gerado_em": "2026-10-06T19:36:37.156Z",
+  "operacao": {
+    "id": "op-20261006193306-7e8b5f",
+    "comando": "No Instagram, abra pela busca o seu próprio perfil, abra a publicação cuja legenda contém \"Primeira foto por aqui.\" e comente nela com a sua leitura sobre o que a publicação mostra.",
+    "app_id": "instagram",
+    "acao_final": "preparar",
+    "status": "Concluída com bloqueios",
+    "criada_em": "2026-10-06T19:33:06.941Z",
+    "encerrada_em": "2026-10-06T19:33:41.767Z",
+    "assunto": null,
+    "fontes": []
+  },
+  "capacidade": {
+    "solicitados": 1,
+    "contas_existentes": 1,
+    "sessoes_validas": 1,
+    "contas_disponiveis": 1,
+    "concluidas": 0,
+    "bloqueadas": 1,
+    "em_curso": 0,
+    "motivos": [
+      {
+        "motivo": "1 outra(s) conta(s) da frota já mexeram com @[omitido] nos últimos 30 dias ou têm pedido em aberto para ele; em…",
+        "n": 1
+      }
+    ]
+  },
+  "custo": {
+    "pesquisa_usd": 0,
+    "alvos_usd": 0.0228,
+    "total_usd": 0.0228,
+    "teto_usd": 0.75
+  },
+  "falhas_por_motivo": [
+    {
+      "motivo": "1 outra(s) conta(s) da frota já mexeram com @[omitido] nos últimos 30 dias ou têm pedido em aberto para ele; em…",
+      "parou_em": "Ação preparada",
+      "agentes": 1
+    }
+  ],
+  "textos": {
+    "total": 0,
+    "distintos": 0,
+    "repetidos": [],
+    "lista": []
+  },
+  "agentes": [
+    {
+      "agente": "Lucas Almeida",
+      "aparelho": "android-01",
+      "estado": "Bloqueado",
+      "parou_em": "Ação preparada",
+      "motivo": "1 outra(s) conta(s) da frota já mexeram com @[omitido] nos últimos 30 dias ou têm pedido em aberto para ele; em…",
+      "estagios": [
+        {
+          "estagio": "persona",
+          "rotulo": "Persona",
+          "em": "2026-10-06T19:33:06.941Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "conta",
+          "rotulo": "Conta",
+          "em": "2026-10-06T19:33:06.941Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "sessao",
+          "rotulo": "Sessão",
+          "em": "2026-10-06T19:33:06.941Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "aparelho",
+          "rotulo": "Aparelho",
+          "em": "2026-10-06T19:33:12.759Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "instagram_aberto",
+          "rotulo": "Instagram aberto",
+          "em": "2026-10-06T19:33:12.757Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "target_localizado",
+          "rotulo": "Perfil-alvo localizado",
+          "em": "2026-10-06T19:33:18.882Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "post_localizado",
+          "rotulo": "Post localizado",
+          "em": "2026-10-06T19:33:29.311Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "conteudo_lido",
+          "rotulo": "Conteúdo lido",
+          "em": null,
+          "alcancado": false
+        },
+        {
+          "estagio": "conhecimento_recuperado",
+          "rotulo": "Conhecimento recuperado",
+          "em": null,
+          "alcancado": false
+        },
+        {
+          "estagio": "resposta_gerada",
+          "rotulo": "Resposta gerada",
+          "em": null,
+          "alcancado": false
+        },
+        {
+          "estagio": "interface_de_comentario_alcancada",
+          "rotulo": "Interface de comentário alcançada",
+          "em": "2026-10-06T19:33:37.806Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "acao_preparada",
+          "rotulo": "Ação preparada",
+          "em": null,
+          "alcancado": false
+        },
+        {
+          "estagio": "acao_executada",
+          "rotulo": "Ação executada",
+          "em": null,
+          "alcancado": false
+        },
+        {
+          "estagio": "resultado_verificado",
+          "rotulo": "Resultado verificado",
+          "em": null,
+          "alcancado": false
+        }
+      ],
+      "conhecimento_ids": [],
+      "texto": null,
+      "evidencia_id": null,
+      "acao_final": null,
+      "custo_usd": null
+    }
+  ],
+  "aprendizado": {
+    "disponivel": false,
+    "motivo": "O aprendizado da operação não foi lido para este relatório.",
+    "gerado_em": null,
+    "perguntas": [],
+    "nao_coberto": []
+  },
+  "limites": [
+    "Custo por agente \"não informado\": o alvo ainda não tinha execução (ou o central é anterior ao custo por alvo).",
+    "O relatório vem do estado da operação no momento em que foi gerado; uma operação em curso muda depois."
+  ]
+}

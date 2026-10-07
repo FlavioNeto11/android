@@ -33,6 +33,8 @@ const REAL = entrada({ ref: 'f-real', title: 'Abra o Wi-Fi', state: 'published',
 const DESLIGADO_POR_FALHA = entrada({ ref: 'f-falha', title: 'Abra o Bluetooth', nascido_de_prova: false,
   por_que_nao_publica: { codigo: 'vetado', espera_o_dono: false, detalhe: 'desligado depois de 3 falhas seguidas' } });
 const RECEITA_COM_A_MARCA = entrada({ kind: 'receita', ref: '9', title: 'Tocar no Wi-Fi', nascido_de_prova: true });
+const RELIGADO = entrada({ ref: 'f-religado', title: 'Abra a busca', state: 'published', native_status: 'active', nascido_de_prova: true, em_uso_real_desde: '2026-10-07T10:00:00Z' });
+const RELIGADO_E_DESLIGADO = entrada({ ref: 'f-desligou', title: 'Abra o menu', nascido_de_prova: true, em_uso_real_desde: '2026-10-07T10:00:00Z' });
 
 beforeEach(() => {
   installBrowserStubs();
@@ -181,5 +183,21 @@ describe('31.134: o efeito de cada botão do Livro', () => {
     expect(botoes).toHaveLength(7);
     for (const b of botoes) expect((b.getAttribute('title') ?? '').length).toBeGreaterThan(20);
     expect(new Set(botoes.map((b) => b.getAttribute('title'))).size).toBe(7);
+  });
+});
+
+describe('31.168: o selo "Em uso real desde" na linha do Livro', () => {
+  const emUsoReal = (el: HTMLElement) => Array.from(el.querySelectorAll('span')).filter((x) => /^Em uso real desde /.test(x.textContent ?? '') && !x.children.length);
+
+  it('o fluxo religado e ligado leva o selo com a data (a explicação no title); desligado de novo, sem a marca ou sem data, não', async () => {
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [DE_PROVA, REAL, RELIGADO, RELIGADO_E_DESLIGADO], total: 4, contagem: {} }));
+    await montar();
+    await waitFor(() => expect(item('fluxo:f-religado')).toBeTruthy());
+    expect(emUsoReal(item('fluxo:f-religado')!)).toHaveLength(1);
+    expect(item('fluxo:f-religado')!.querySelector('[title^="Nasceu de uma prova e uma pessoa o religou"]')).toBeTruthy();
+    expect(selos(item('fluxo:f-religado')!)).toHaveLength(1);                  // a marca de origem não se apaga
+    expect(emUsoReal(item('fluxo:f-desligou')!)).toHaveLength(0);              // voltou a desligado: o backend zera, e a tela não insiste
+    expect(emUsoReal(item('fluxo:f-prova')!)).toHaveLength(0);
+    expect(emUsoReal(item('fluxo:f-real')!)).toHaveLength(0);
   });
 });

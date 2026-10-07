@@ -47,31 +47,12 @@ SNAPSHOT = {
     "verifier": "c7cca9087d0ee629df2e821fc22f641de8518c246dd6c598f27891536115e6ca",
 }
 SISTEMAS = {
-    # Item 24.3: o ator aprende quando usar read_value (ler antes de concluir e antes do efeito; código, senha e
-    # token nunca são valor) — o hash muda de propósito, como no 24.8 abaixo.
-    # Item 31.38: a regra de leitura ganhou `step_blocked(kind="dado_ausente")` — o hash muda de propósito.
-    # Item 31.72: a regra de aviso e cookies diz "recuse; NUNCA aceite" (a trava é do executor) — muda de propósito.
-    "ACTOR_SYSTEM": "8ba92d2e7fb3d830a127ac5c70a809c0e475c4a53d340e5c333254d98b84954f",
-    # Item 24.8: o exemplo vedado (código lido no Outlook) virou um exemplo permitido, e a regra de código/senha/
-    # token nunca atravessar etapas entrou no texto — o hash muda de propósito, não é enfraquecimento do teste.
-    # Item 24.3: a regra de `saidas` e `{{saida:<nome>}}` (valor lido numa etapa e usado nas seguintes).
-    # Item 29.57: os planejadores levam a regra de identidade (ANA, quando falam com a pessoa) — o hash muda de
-    # propósito; o ator e o verificador não a levam e ficam iguais.
-    "PLANNER_SYSTEM": "1065525d77b034b5ba13cfe48ccb71fb7058c07aed385e62c8f807b785f6dace",
-    # Item 31.98: o exemplo de nome de usuário com @ virou fictício (era o de uma conta) — o hash dos três que o
-    # trazem (capability e multiapp, inteiro e curto) muda de propósito.
-    "PLANNER_CAPABILITY_SYSTEM": "4d9ccea49ad80675cecee5e62215995ba0f16da2696ec5d8d6c0c882de8d0600",
-    # 29.57 (leitura da orquestradora): o multiapp e as variantes curtas não tinham hash congelado; passam a ter, já
-    # com a regra de identidade.
-    "PLANNER_MULTIAPP_SYSTEM": "c7a7ac398020540eda3b495b1f63d8591b3cd5c7d6569aea684cea10d8718bde",
-    "PLANNER_SYSTEM_CURTO": "697f5c68a8940b807ff878e1080af18c7d5ea9827b5121009d31dbbefe258111",
-    "PLANNER_MULTIAPP_SYSTEM_CURTO": "06f4bab8bcc83a24ee6c6688340e57a9c8212769b986bc77ad3d5e1f13f0696e",
-    # Item 29.58 (C): o verificador passa a contar as cópias do efeito desta execução (`copias`) — o hash muda de
-    # propósito, não é enfraquecimento do teste.
-    # Item 31.40: o verificador marca `sobreposicao` quando algo cobre o alvo — o hash muda de propósito.
-    # Item 31.40 b: e cita em `cobre` o id do elemento que cobre — o hash muda de propósito.
-    # Item 31.73: outra causa VISÍVEL fora do aviso (conteúdo errado, outra tela) é `sobreposicao` false; o que está só
-    # escondido pelo aviso não é outra causa — de propósito.
+    "ACTOR_SYSTEM": "44c48bffddef29e20fff4f61209f0bee4920d4ad9db8991c693a8abdf7ee949d",
+    "PLANNER_SYSTEM": "771a14295b562f3e982b76afd02a1664f0022735c2fda0090b7693deb6f97bb2",
+    "PLANNER_CAPABILITY_SYSTEM": "929408cbd8c304c02abc971381464c3f0833cda3ccddd00331636645a200df8d",
+    "PLANNER_MULTIAPP_SYSTEM": "8de984837b899f87005ba0ab610d81130f3c8bd6cfa67289194a19f4957c6340",
+    "PLANNER_SYSTEM_CURTO": "d1ce59ec0f365f4a3fdb9703d549694f9b31ed7a9a0ca82dfcb5a936880726b3",
+    "PLANNER_MULTIAPP_SYSTEM_CURTO": "36a437b66a216547863b7e80d2e3c36cdb9b23a0ecdba559aeb56b84027172fe",
     "VERIFIER_SYSTEM": "26a20a5c9efb73eaea09ae6361a7e34d92646d0209a8bcd392a25c89a5517d3c",
 }
 

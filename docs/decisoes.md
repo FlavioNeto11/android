@@ -1933,7 +1933,7 @@ dentro da segunda evolução ([design](design/persona-e-parque.md) §5 e §14 it
   `sha256(f"{persona_id}:{indice}:{SPEC_VERSION}")[:4] & 0x7FFFFFFF`; identidade fixa (aparência, estilo, cenário,
   paleta, interesses, idade, gênero, profissão, cidade) e eixos sorteados (câmera, época, luz, ambiente,
   enquadramento, pose, produção, proporção, pós-processamento); imagem 0 = principal, busto, 1:1; **o nome nunca
-  entra no prompt**; "fictional adult, no text, no logo, no watermark, not a real person" em toda receita; abaixo de
+  entra no prompt**; "no text, no logo, no watermark" em toda receita; abaixo de
   18 anos não há receita.
 - **Porta `ImageGenerator`** fora dos papéis de IA (`application/ports.py`), com dois adaptadores
   (`adapters/simulated_images.py`, `adapters/openai_images.py`) e o serviço de aplicação
@@ -2242,6 +2242,10 @@ da saída estruturada: este esquema é pequeno e sem união).
 
 ## ADR-048 — Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2)
 
+**Emenda (06/10/2026, decisão do dono):** a regra de conduta das crenças (`CONDUTA_DAS_CRENCAS`) e a regra de geração
+"sem partido, candidato nem figura pública pelo nome" saem; fica `USO_DAS_CRENCAS` (coerência de valores e de tom). A
+regra de conteúdo vai para o serviço externo de autorização.
+
 **Data:** 28/09/2026 · **Estado:** vigente na `main` · **Decisão do dono** (28/09): "sobre a religião e política eles
 devem ir para o modelo sim e de forma rica, não apenas uma flag simples, tanto a política quanto a religião, e mostrar
 isso visualmente de forma rica também, e isso deve inferir no contexto também". Substitui em parte o ADR-041. Código:
@@ -2384,6 +2388,10 @@ barato, o plano no Opus vira o maior custo (63% do braço).
 decisão 7 do plano-100 (base × configuração antes de adotar alavanca de custo).
 
 ## ADR-050 — Modo Automático: a IA escolhe quem faz, o código escolhe onde; crença é coerência, não alvo de persuasão
+
+**Emenda (06/10/2026, decisão do dono):** a regra de conduta do orquestrador (recusa por conteúdo do pedido com
+`alerta_conduta`) foi um acréscimo da IA, não requisito; sai do prompt e do simulado. A validação de conteúdo vai para o
+serviço externo de autorização; `alerta_conduta` fica no contrato como ponto de recusa.
 
 **Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`b0f2c07`) · **Decisão técnica** pedida pelo dono ("essa decisão sobre
 quais aparelhos, personas e em qual servidor vai ser orquestrado depende do pedido do usuário, da disponibilidade das
@@ -5775,3 +5783,63 @@ post nosso era recusado, e a rodada de 07/10 (três contas no mesmo post nosso) 
 alvo ("o perfil alvo"), e a recusa da porta vira o estágio `acao_bloqueada` (adendo v1.95, item 5). Prova `simulated`:
 `backend/tests/test_interacao_entre_contas_nossas.py` (`test_adr081_*`) e `backend/tests/test_excecao_de_politica.py`,
 com a regra antiga como precondição. `not_run`: o central, até o deploy 56.
+
+## ADR-083 — Tetos por hora e por dia, aquecimento e coordenação de frota saem do código
+
+**Data:** 07/10/2026 · **Estado:** aceito. Decisão do dono, executada por ele mesmo fora das sessões (commits `76672bea`,
+`31da065b`, `a5897880`, `eec4d6fd` e `ac2f6bba`, de 16:18Z a 17:26Z, mensagem "remove fleet coordination and rate limiting
+controls") e confirmada no chat da orquestradora às 18:0xZ, literal: "sim" à pergunta "o refactor dos tetos é definitivo e vai
+a ADR?". Substitui o ADR-081 e, no ADR-055, a parte de limites (uma conta por alvo, tetos por hora e por dia, aquecimento do
+achado #114). A proteção de conta que não é limite de taxa (conta travada sai, quarentena, nenhum reset com conta real) não
+muda por este ADR.
+
+**Contexto.** Desde 19/09 o sistema recusava ou represava ações por tetos por hora e por dia, aquecimento da conta nova,
+espaçamento entre contas e número de contas da frota sobre o mesmo alvo. Em 06/10 o ADR-081 já tinha afrouxado a regra da
+frota. Em 07/10 o dono decidiu tirar esses controles por inteiro: a conta age pelo que a pessoa pediu e pela política do
+perfil, sem contador de taxa.
+
+**Decisão.**
+- `backend/app/social/policy.py` fica só com a política por perfil (`AUTONOMOUS`, `APPROVAL_REQUIRED`, `MANUAL_ONLY`,
+  `DISABLED`): `DEFAULT_LIMITS`, `BUCKET_TYPES`, `TODOS_OS_BALDES`, `UMA_CONTA_POR_ALVO` e `UMA_VEZ_POR_ALVO` ficam vazios
+  (734 linhas removidas). `config.py`, `gates.py`, `config/config.example.yaml` e Configurações › Limites no painel
+  acompanham; a tela do comando deixa de mostrar o aviso de conduta das personas (`alerta_conduta`).
+- Dez arquivos de teste que cobriam esses controles foram renomeados para `_skip_test_*.py` (fora da coleta); o que neles
+  é apoio compartilhado (constantes e fixtures) passa a um módulo não coletado, e os 23 módulos que os importavam
+  voltam a coletar (item 31.272, Jev). Teste que só existia para a regra removida é apagado ou marcado com este ADR.
+- O diff completo é `e3e08afa..ac2f6bba` (74 arquivos): o que ficou ou saiu além do listado se confere nele, não neste
+  texto.
+
+**Consequências.** O central passou a servir `ac2f6bba` às 17:26:36Z por reinício direto do backend, sem `deploy.ps1`
+(sem backup, sem tag, sem linha em `data/deploys.jsonl`); o próximo deploy regulariza o registro. As pontas
+`integ/suite-60`, `integ/suite-61` e todas as `*/integ-62` remergeiam a `main` antes de qualquer funil; o veredito do
+funil 60 medido sobre `e3e08afa` perdeu a validade. Itens da fila da Jev que dependiam do espaçamento da frota (31.251 e
+31.258, `retomada_em`) são revistos contra este ADR. Prova `real`: `GET /api/health` do central respondendo
+`commit=ac2f6bba` em 07/10 17:5xZ. Prova `simulated`: `not_run` (a suíte da `main` não coleta até o 31.272).
+
+## ADR-084 — Pedido fora do catálogo do app: descobrir, não recusar
+
+**Data:** 07/10/2026 · **Estado:** aceito; implementação pendente (31.273, Jev, com a Aprendizado no ensino). Decisão do
+dono no chat da orquestradora às 18:0xZ, literal: "quando o correto seria seguir descobrindo isso de forma autonoma, é
+essa a base fundamental dos bots". Emenda o item 31.33 e o ADR-052 (app como dado).
+
+**Contexto.** Um pedido do dono no Outlook voltou com a recusa fechada do item 31.33 ("… não está disponível no Outlook: o
+catálogo dele só tem abrir a caixa de entrada do Outlook, levantar remetente e assunto das mensagens recentes e buscar '…'
+no Outlook. Faça essa parte você mesmo ou peça só o que está nessa lista."), gerada por `texto_fora_do_catalogo` em
+`backend/app/planning/parsing.py`. O catálogo de um app declarado é o que já foi ensinado; tratá-lo como lista fechada
+faz a IA parar justamente onde deveria aprender.
+
+**Decisão.**
+- Quando o pedido não está no catálogo do app, a resposta padrão deixa de ser a recusa: o planejador explora o app
+  (abre, lê a tela, navega e tenta), dentro das proteções que continuam valendo (telas sensíveis e de verificação nunca
+  vão ao provedor, segredo só por `type_secret`, política por perfil e aprovação), e comprova o resultado como em
+  qualquer etapa.
+- O que a exploração descobre vira conhecimento do app (ADR-052: pasta YAML em `conhecimento/apps/<pacote>/`), pela
+  esteira de ensino e revisão já existente, para a próxima vez entrar pelo catálogo.
+- A recusa fica só para o que é impossível naquele app ou naquela conta (sem sessão, sem app instalado, ação proibida
+  pela política), e diz o motivo.
+- O desenho (quando explorar, quantos passos e qual teto de custo por exploração, como registrar o aprendido, o que
+  mostrar no painel e no Telegram enquanto explora) é da Jev no 31.273, com a Aprendizado na parte de ensino; a
+  orquestradora lê o desenho antes do código.
+
+**Consequências.** O catálogo passa de lista fechada a ponto de partida. A exploração gasta chamadas de IA: latência e
+custo por exploração entram na medição por etapa. Prova: `not_run` até o 31.273.

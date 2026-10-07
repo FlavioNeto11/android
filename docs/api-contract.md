@@ -2252,7 +2252,7 @@ Pedido do dono de 28/09: o "gerar por prompt" também completa o que falta numa 
   falta, siga estas instruções… sem reescrever o que já está preenchido"), passando por `sem_marcacao`.
 - A regra não muda: completa **só o vazio** (`preencher_vazios`); sem lacuna, devolve a persona sem chamar o modelo.
 - Instrução com formato de credencial → **422 `instructions_with_secret`**, antes de qualquer chamada (o texto iria
-  ao provedor e à proveniência). A regra de conduta do ADR-048 vale para o que a instrução pedir.
+  ao provedor e à proveniência).
 - Painel: cartão "Completar com IA" no topo da guia Persona, com uma linha de instrução opcional e o aviso de chamada
   paga; `api.enrichPersona(id, instructions?)`.
 
@@ -2272,7 +2272,8 @@ Corpos em `backend/app/taskqueue/orquestrador.py`.
   - `modo=texto`: o comando cita destinos; é a prévia de `/runs/targets/resolve`, sem IA.
   - `modo=distribuir`: app sem conta; aparelhos pela carga (`N aparelhos` no texto, senão 1), sem IA.
   - `modo=ia`: uma chamada do papel `plan` (`ai_calls.role = "plan"`, sem `run_id`); com `alerta_conduta`,
-    `targets` e `escolhidas` vêm vazios.
+    `targets` e `escolhidas` vêm vazios. Desde 06/10 o orquestrador não preenche `alerta_conduta` (a regra de
+    conteúdo do pedido vai para o serviço externo de autorização); o campo fica como ponto de recusa.
   - `modo=nenhuma`: sem app identificado e sem persona disponível, ou app com conta sem persona vinculada livre.
   - 409 `credencial_no_comando` (nada vai à IA); 503 `ai_not_configured`; 503 `ai_error`; 422 corpo inválido.
   - Declarada antes de `/runs/{run_id}/{op}`.
@@ -7252,7 +7253,8 @@ O déficit aparece aqui, não é escondido.
 Eventos novos:
 - `operacao.criada` com `{operacao_id, solicitados}`;
 - `operacao.alvo` com `{operacao_id, profile_id, estagio, estado, motivo}`, a cada mudança de estágio ou de estado;
-- `operacao.encerrada` com `{operacao_id, status, capacidade}`.
+- `operacao.encerrada` com `{operacao_id, status, capacidade, custo}`. O `custo` (`{pesquisa_usd, alvos_usd, total_usd}`, o
+  mesmo da leitura da operação) entra no 28.62, para o aviso do fim da operação; consumidor que o ignora segue valendo.
 
 ## Adendo v1.95 (06/10/2026; número da orquestradora; item 31.154, migração 127) — custo por alvo, vínculo principal e parâmetros fixos da operação
 
@@ -7328,6 +7330,19 @@ nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal`
   motivo, e o nome fica o do planejador.
 - O teto `max_usd` também reserva o POST do Jev (`conferir_gasto(reservar=True)`, segurado até a linha de custo). A
   média da reserva conta só as chamadas cobradas.
+- A ação final aprovada POR FORA do liberar (Pendências, Telegram) vale como liberação: a operação passa a `executar`
+  e reabre. Em todo fechamento, o `finished_at` é a hora do último estágio alcançado, não a da leitura. Na onda 1 de
+  06/10, ele ficava em 19:44:58, antes da ação verificada às 19:48:05.
+- A reabertura pela aprovação por fora vem antes da leitura dos alvos. O mesmo GET não fecha a operação de novo. Ela
+  é condicional (`status<>'cancelada'`): o cancelar concorrente vence.
+- A recusa de `parametros` (`credencial_no_comando`, `pedido_invalido`) diz a POSIÇÃO do parâmetro ("o 2º
+  parâmetro"), nunca o nome nem o valor.
+- Alvo cuja execução foi recusada no planejamento (sem objetivo): `estado=bloqueado`, `estagio=parou_em=acao_bloqueada`,
+  com o motivo da recusa. Inclui o nome fixo em conflito: o plano usa um nome de `parametros` com outro valor, o
+  `plan.refused` sai com `{"motivo": "parametro_em_conflito", "parametros": [<nomes>]}`, e o motivo do alvo começa por
+  "parâmetro em conflito:". Os valores não entram.
+- `OperacaoDetalhe.fontes_da_pesquisa: string[]`: as URLs que a pesquisa externa achou (`pedido_observacoes`,
+  `tipo='url'`, sem repetição, na ordem da captura). `fontes` continua sendo só a entrada do pedido.
 
 Migração `127_operacoes_parametros` (`operacoes.parametros`, só `ADD COLUMN`). Código: `backend/app/taskqueue/plano_da_operacao.py`,
 `RunService._plano_da_operacao`, `backend/app/modules/operacoes/`. Testes: `backend/tests/test_plano_da_operacao.py`,
@@ -7352,6 +7367,7 @@ estava na tela de partida. O 31.122 e o 31.142 só pegavam o erro depois, no `pr
   - `simulated`: `backend/tests/test_treino_pos_condicao_na_proposta.py`;
   - `real`: `not_run` até o deploy. São 3 gravações do Configurações (~US$ 0,04), e uma sessão fica em `proposed`
     para a Portal.
+
 
 ## Adendo v1.96 (06/10/2026; prova30 A3, extensão do 31.157) — o aprendizado de uma operação nas 10 perguntas do dono
 
@@ -7405,5 +7421,235 @@ operação (`fato:alvo.conteudo`), quando ela é igual à tela do agente. Quais 
 depois de `<intencao>`, com o pedido de relacionar o texto ao assunto só quando fizer sentido com a publicação. O
 `draft_meta.fatos_da_operacao` da etapa ganha `assunto: true`. Sem assunto, nada muda.
 
+**Revisão do PR 480 (corte 57).**
+- A evidência de uma lição, voz, preferência ou tela é lida pelo id cru do item (`li-…`, como o Livro a grava). A lição
+  reforçada por uma execução da operação aparece mesmo sem `provenance` que a cite.
+- `a_favor` e `contra` seguem a regra de todo leitor do Livro (`promocao.efetivas`/`contrarias`): a linha neutralizada
+  por `forma` ou `invalida` da mesma origem não conta, e `conflict` conta contra. A reprodução da receita conta, porque é
+  o registro do uso nesta operação.
+- Voz e preferência com `scope_profile_id` saem com `escopo: persona` e `persona` = a dona.
+- Campo novo por item, `personas: [profile_id]` (revisão do Codex no PR 482): a lição citada por execuções de duas ou
+  mais personas sai com `persona: null` e o conjunto em `personas`. No filtro `?persona=`, ela aparece só para elas;
+  `persona: null` com `personas: []` continua querendo dizer "da operação inteira".
+- Campo novo `avisos: [{run_id, step_id, aviso}]`: a etapa cujo `conhecimento_ids` não foi gravado. O texto sai, e o
+  `draft_meta.fatos_da_operacao.conhecimento_ids` da etapa fica `nao_gravados`.
+
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.
+
+## Adendo v1.102 (06/10/2026; número da orquestradora; item 31.180) — as amostras do host
+
+`GET /api/host/amostras?horas=N` (só leitura, atrás do login; `N` de 1 a 168, padrão 24). Ela lê o CSV diário do
+amostrador permanente do host (29.156, `scripts/amostrador-host.ps1`, um arquivo por dia UTC em
+`<data_dir>/observabilidade/host/AAAAMMDD.csv`) e devolve as amostras das últimas `N` horas, da mais antiga à mais nova. O formato é o contrato do painel do Portal
+(`frontend/src/features/host/contratoDoHost.ts`):
+
+```json
+{"items": [{"ts_utc": "2026-10-06T22:39:00Z", "cpu_host_pct": 41.5, "vm_convidado_nucleos": 2.25, "vmmem_ws_mb": 5120,
+            "qemu_host_pct": 30.2, "ram_livre_mb": 8192, "disco_livre_gb": 120.5,
+            "processos_top": [{"nome": "python", "pct": 12.3}],
+            "avisos_pressao": [{"instance_id": "android-05", "n": 3}]},
+           {"ts_utc": "2026-10-06T22:40:00Z", "erro": "IOException"}]}
+```
+
+- Uma medida vazia no CSV vira `null`. Um par malformado em `processos_top` ou em `avisos_pressao` fica de fora.
+- A linha de falha do amostrador (`ts,erro,<tipo>`) vira `{ts_utc, erro}`, com o tipo da exceção.
+- Sem CSV dos dias da janela: 404 `{"code": "sem_amostras"}`. Com o arquivo e sem linha na janela: 200 com
+  `items: []`.
+- A resposta não leva nome de máquina nem caminho. Os nomes de processo são só o nome, como o amostrador os grava.
+
+Código: `backend/app/modules/fleet/infrastructure/amostras_do_host.py`,
+`backend/app/modules/fleet/presentation/host.py`. Teste: `backend/tests/test_amostras_do_host.py`. A tela é do Portal.
+
+## Adendo v1.104 (06/10/2026; número da orquestradora; item 31.173) — a sessão na operação
+
+- `AlvoDaOperacao.sessao_verificada_em` (string ou `null`): a última verificação, na tela, da sessão da conta do alvo
+  naquele aparelho (`account_sessions.verified_at`).
+- O alvo `pendente` (objetivo esperando antes do aparelho) leva no `motivo` o porquê da espera, por exemplo a porta de
+  sessão relendo a sessão vencida. Antes ele vinha sem motivo.
+- A porta de sessão do despacho para no teto de 3 releituras seguidas da sessão vencida que falham, por conta e
+  aparelho (`TETO_DE_RELEITURAS_DA_SESSAO`). O objetivo fica bloqueado com o motivo "a sessão não pôde ser relida em N
+  tentativas seguidas em <aparelho>", e retomar tenta de novo. Uma releitura boa zera a contagem.
+
+Código: `backend/app/modules/operacoes/` e `backend/app/state.py::_releitura_da_sessao`. Testes:
+`backend/tests/test_operacoes.py` e `backend/tests/test_operacoes_estagios.py`.
+
+## Adendo v1.105 (06/10/2026; número da orquestradora; item 31.174) — o pool elegível para operação
+
+`GET /api/operacoes/elegiveis?app_id=<app>` (só leitura, atrás do login; vem antes de `/operacoes/{operacao_id}`):
+
+```json
+{"app_id": "instagram",
+ "itens": [{"profile_id": "ig-…", "persona_nome": "…", "account_id": "acc-…", "instance_id": "android-01",
+            "elegivel": true, "parou_em": null, "motivo": null,
+            "sessao_verificada_em": "2026-10-06T19:31:59.290Z", "sessao_vencida": false}],
+ "contagem": {"personas": 16, "elegiveis": 3, "com_sessao_vencida": 1, "motivos": {"sem conta": 11}}}
+```
+
+- A conferência é a mesma da criação (persona → conta → sessão → aparelho, com os motivos do v1.94) mais o aparelho
+  apto (online, fora da loja, sem conta travada). O motivo do aparelho inapto é "aparelho fora do ar ou com conta
+  travada".
+- A sessão vencida continua elegível, porque a porta relê a tela antes da tarefa, e vem com `sessao_vencida: true`.
+- Um app inexistente dá 404 `app_inexistente`, e um pedido sem `app_id` dá 422.
+
+Código: `ServicoDeOperacoes.elegiveis` e `backend/app/modules/operacoes/presentation/router.py`. Testes:
+`backend/tests/test_operacoes.py`.
+
+
+## Adendo v1.97 (06/10/2026; número da orquestradora; item 31.150, K-106) — o fluxo de prova religado para uso real
+
+Todo fluxo de prova (`nascido_de_prova`, 31.130) termina desligado. A volta era o `PUT /api/flows/{id}` genérico, com o
+motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esquecido ligado".
+
+- **`PUT /api/flows/{id}` com `status: "active"` num fluxo `nascido_de_prova`:**
+  - `motivo` passa a ser obrigatório: sem ele, `400 motivo_obrigatorio`. O fluxo de uso real segue como antes.
+  - A trilha grava `religado para uso real: <motivo>`.
+  - `escopo: {profile_ids: [...], group_ids: [...]}` (opcional) troca a quem o fluxo vale no mesmo gesto e na mesma
+    transação, com as recusas do `/scope` (`400 unknown_profile`, `400 unknown_group`). O evento `log` "Escopo da
+    habilidade mudou" sai como no `/scope`.
+  - Fora desse caso (desligar, ou ligar um fluxo de uso real), `escopo` no corpo dá `400 invalid`; o caminho é o `/scope`.
+  - A marca `nascido_de_prova` nunca se apaga.
+- **`POST /api/aprendizado/fluxo/{id}/status` com `to: "published"` num fluxo de prova desligado** (o "Ligar" do Livro;
+  achado da Portal): a mesma regra. Motivo só com espaços dá `400 motivo_obrigatorio`, e a trilha grava "religado para
+  uso real: <reason>", que acende `em_uso_real_desde`. O escopo continua sendo pelo `PUT` ou pelo `/scope`.
+- **`em_uso_real_desde`** (texto ISO ou `null`): sai em cada fluxo de `GET /api/flows` e na resposta do `PUT`. Sai também
+  em cada `Entrada` do Livro (`GET /api/aprendizado`, `/pendentes`, `/revisar` e o `item` do detalhe) e em
+  `conteudo.origem` do detalhe do fluxo. É a data da linha "religado para uso real" enquanto ela for a última da trilha
+  e o fluxo estiver ligado. Desligar de novo, pela pessoa ou pelo sistema, volta a `null`.
+- **Prova:** `simulated`
+  (`backend/tests/test_fluxo_nascido_de_prova.py::test_religar_fluxo_de_prova_exige_motivo_troca_o_escopo_e_sela_o_uso_real`,
+  que reprova no código anterior). `real`: `not_run` (religar um fluxo de prova para uma persona real só com o sim do
+  dono).
+
+## Adendo v1.98 (06/10/2026; número da orquestradora; item 31.149, P-014 b) — a correção ensinada volta ao comando que falhou
+
+- **`POST /api/training/{id}/save` de uma sessão de correção** (`origin`, 31.111) ganha `correcao`. Além das receitas de
+  sempre, a demonstração é gravada na chave da etapa que FALHOU (`steps.template_hash` e a chave dela). Assim, a próxima
+  execução do mesmo comando a acha nessa etapa.
+  - Ligada: `{ligada: true, step_key, recipe_id, reason, comando, texto}`. `texto` = "esta correção vale para o comando
+    “<molde>”", e o molde é o comando da execução que falhou com os valores trocados pelos nomes (parâmetros e dados
+    da persona).
+  - Não ligada: `{ligada: false, step_key?, motivo}`. Os motivos:
+    - a etapa que falhou foi apagada, ou não tem identidade de receita;
+    - há efeito (na etapa que falhou ou numa ensinada);
+    - uma etapa ensinada não virou ação;
+    - a correção é de outro app;
+    - a receita usaria `{nome}` que a execução não tem (só o nome vai na resposta);
+    - a versão do app é desconhecida no aparelho.
+  - Sessão sem `origin`: sem `correcao`.
+- **Quais etapas ensinadas são a correção:** a de mesma chave da que falhou; senão, todas, em sequência.
+- **Parâmetros:** os da proposta são renomeados para os do objetivo que falhou pelo valor (sem o @ e sem caixa).
+- **Receita:** segue o 30.81 (vale para quem ensinou até o "Confirmar que fica") e a regra de uma viva por chave (30.79).
+- **Evento `log` do salvar:** ganha `correcao_ligada` e `recipe_id`.
+- **Não feito aqui:** a "lição do planejador" como caminho alternativo quando a receita não liga; veio no adendo v1.100.
+- **Prova:** `simulated` (`backend/tests/test_correcao_volta_ao_comando.py`, 2 testes, que reprovam no código anterior).
+  `real`: `not_run`. As 2 sessões reais salvas não teriam receita: uma sem app, outra em Configurações, sem versão
+  conhecida no catálogo.
+
+## Adendo v1.99 (06/10/2026; número da orquestradora; item 31.169) — a pesquisa externa na criação da operação
+
+- **`POST /api/operacoes`** agenda a pesquisa externa da operação (31.158). Ela roda UMA vez, logo depois da criação e
+  antes de qualquer alvo: a tarefa pega a trava da operação, a mesma da porta de escrita. A resposta da rota não muda e
+  não espera a pesquisa.
+- **Os alvos não pesquisam mais:** a porta de escrita só reusa a memória da operação. Sem a pesquisa da criação (por
+  exemplo, desligada naquela hora), o texto sai sem os fatos da pesquisa.
+- **Custo:**
+  - paga na execução do 1º alvo com execução (`operacao_alvos` por `seq`), pelo caminho de IA dela (tetos e vaga);
+  - aparece em `custo.pesquisa_usd` da operação;
+  - o teto por operação (`ai.pesquisa.teto_usd_por_operacao`) segue valendo;
+  - sem alvo com execução, não pesquisa.
+- **Sem lacuna** (o assunto já tem fato de pesquisa válido), ou na repetição idempotente: não pesquisa.
+- **Consulta:** leva só o assunto e as fontes indicadas. A leitura do alvo, que antes ia de contexto, ainda não existe
+  na criação.
+- **Prova:** `simulated`, em `backend/tests/test_pesquisa_da_operacao.py`:
+  - `::test_criar_a_operacao_pela_rota_pesquisa_uma_vez_antes_dos_alvos`;
+  - `::test_os_alvos_nao_pesquisam_so_reusam`, que reprova no código anterior;
+  - `::test_duas_execucoes_uma_pesquisa_e_os_fatos_chegam_ao_texto`.
+
+  `real`: a operação de 07/10.
+
+## Adendo v1.100 (06/10/2026; número da orquestradora; item 31.149, caminho alternativo) — a correção não ligada ensina o planejador
+
+- **`POST /api/training/{id}/save` de uma sessão de correção:** quando `correcao.ligada` é `false` (adendo v1.98),
+  `correcao` ganha `licao`.
+  - Lição proposta: `{id, estado, texto}`, com `estado` = `candidate`. `texto` = "Em <pacote>: quando a etapa <chave>
+    falhar, o caminho que uma pessoa ensinou foi <chave> → <chave>."
+  - Lição não proposta: `{id: null, motivo}`. Os motivos:
+    - a etapa que falhou foi apagada;
+    - a lição foi recusada, com o motivo do vocabulário das lições (`simulada`, `app_invalido`, `acao_invalida`,
+      `acao_de_sessao`, `valor_de_parametro`, `longa`);
+    - o Livro não a aceitou (veto ou cara de credencial).
+  - Correção ligada: sem `licao`.
+- **No Livro:** item `licao` no escopo do planejador do app (`scope_role = planner`), com `source_kind` =
+  `teaching_correction`.
+  - É de origem humana: só o dono a publica.
+  - Só publicada, e com `aprendizado.licoes.modo: on` (global ou `por_app`), ela vai ao prompt do planejador.
+  - `provenance.sessao` = `training:<sessão>`.
+- **O que entra no texto:** só chaves de etapa que passam pela régua da chave livre. Título, comando e valor nunca
+  entram. A chave que contém um valor do objetivo, do exemplo ou da persona é recusada, seja o valor inteiro ou
+  qualquer palavra dele de 3 letras ou mais.
+- **Evento `log` do salvar:** ganha `licao_id`, que é `null` sem lição.
+- **Prova:** `simulated`, em `backend/tests/test_correcao_vira_licao_do_planejador.py` (3 testes; a lição publicada
+  cabe no bloco do planejador do app). `real`: `not_run`.
+
+## Adendo v1.101 (06/10/2026; número da orquestradora; item 31.177) — o rendimento de uma sessão de ensino
+
+- **`GET /api/training/{id}/rendimento`** (nova, só leitura, nenhuma IA): o que a sessão de ensino gerou e quanto
+  disso foi usado. Sessão desconhecida: 404 `not_found`.
+- **Corpo:** `{sessao, resumo, fluxo, execucoes_do_fluxo, receitas, licoes, vizinhos}`.
+  - `resumo`: `{receitas, receitas_liberadas, etapas_sem_ia, execucoes_do_fluxo, licoes, vizinhos, usado_de_verdade}`.
+  - `fluxo`: `{id, status, uses, nascido_de_prova, em_uso_real_desde}` ou `null`.
+  - `receitas[]`: `{id, step_key, app, status, liberada, sem_ia, caiu_na_ia, outras, usd_da_ia_na_retencao}`.
+  - `licoes[]`: `{id, estado, papel, texto}`.
+  - `vizinhos[]`: `{app, pacote, etapas_em_planos_livres}`.
+- **Contagens por uso** (`{real, prova, simulada}`), com a régua da medida de 06/10:
+  - `simulada`: a execução simulada;
+  - `prova`: a prova de fluxo (`prova_fluxo_id`) ou a chave `lote:`;
+  - `real`: o resto.
+- **Por receita:**
+  - `sem_ia`: a tentativa só `recipe` que comprovou;
+  - `caiu_na_ia`: a cadeia `recipe>…`;
+  - `outras`: o resto;
+  - `usd_da_ia_na_retencao`: o US$ das chamadas ainda em `ai_calls`, pela regra de preço de `spent_usd`;
+  - `liberada`: vale fora da persona que ensinou (30.81).
+- **Vizinhos:** contam as etapas de planos LIVRES (sem fluxo e sem prova de fluxo) que aceitaram o pacote.
+- **Prova:** `simulated` (`backend/tests/test_rendimento_do_ensino.py`, 2 testes). `real`: `not_run`.
+
+## Adendo v1.103 (06/10/2026; número da orquestradora; item 31.151) — o pedido parecido chega ao fluxo pelo planejador
+
+- **`POST /api/runs` com planejamento livre:** os fluxos ativos e no escopo que o comando PARECE (até 3, nota mínima
+  0,3) vão ao planejador como habilidades conhecidas.
+  - Vão a referência pública, o molde, os nomes dos parâmetros (sem os reservados) e os apps.
+  - O molde com literal de alvo (um @, um endereço, um número longo) não vai.
+  - Nunca vão o valor demonstrado nem o nome do fluxo.
+- **Escolha:** o planejador pode devolver, com o plano, a habilidade e os valores tirados do comando. O código confere
+  a referência oferecida, os parâmetros exatos e que cada valor está no comando.
+  - Valendo, o plano gravado é o do fluxo: `plan.planner.model = "fluxo:<id>"` e `runs.flow_id` = o fluxo. A trilha
+    (`decision`) diz "Plano do fluxo <ref> “<molde>” por semelhança, nota N".
+  - Recusada, fica o plano livre, com o motivo na trilha.
+  - Sem escolha, a trilha lista as oferecidas.
+- **Mudança de comportamento:** a execução pedida com `mode: "execute"` cujo plano veio por semelhança termina o
+  planejamento em `planned`, não em `running`. Ela espera o início por uma pessoa (a prévia aprovada) até a decisão do
+  dono (P-032). `flows.uses` só sobe quando ela é aprovada.
+- **O plano gravado não muda de forma:** a escolha não é gravada nele.
+- **Prova:** `simulated` (`backend/tests/test_fluxo_por_semelhanca.py`, 5 testes). `real`: `not_run` (pede o deploy
+  que leve o 31.151).
+
+## Adendo v1.106 (06/10/2026; número da orquestradora; item 31.157) — as personas e o valor no resumo do fluxo
+
+Este adendo estende o `GET /api/operacoes/{operacao_id}/aprendizado` do adendo v1.96. Ele corrige dois achados do
+percurso real da Portal no 57.
+
+- **`personas`:** campo novo no topo da resposta, com a lista dos `profile_id` das execuções da operação, ordenados e
+  sem repetição. É o filtro `persona` do painel. Sem execução, a lista vem vazia.
+- **O resumo do item `fluxo:<id>`:** passa a trazer o valor do parâmetro quando a operação tem UM valor só para ele em
+  todos os objetivos. Fica como marcador `{nome}` o parâmetro que:
+  - varia por alvo;
+  - a operação não tem;
+  - é da execução (`instance_id`, `run_id`, `account_label`).
+
+  O resumo continua redigido e com até 200 caracteres.
+- Nada mais muda na forma da resposta.
+- **Prova:** `simulated` (`backend/tests/test_aprendizado_da_operacao.py`). `real`: `not_run`, pede o deploy do corte
+  59.
+

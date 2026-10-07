@@ -38,15 +38,13 @@ CRENCAS_MINIMAS: tuple[str, ...] = ("beliefs.religion.affiliation", "beliefs.pol
 USO_DA_PERSONA = ("o pedido de quem opera manda no QUE fazer e dizer; esta persona só dá o jeito — a voz, as "
                   "palavras, as referências (de onde vem, onde mora, o que faz, do que gosta e do que não gosta) "
                   "e as reações coerentes com quem ela é. Não contrarie nem amplie o pedido por causa dela, não "
-                  "recite a biografia e não invente fato além dela; os limites de conduta continuam valendo.")
+                  "recite a biografia e não invente fato além dela.")
 
-#: A regra de CONDUTA sobre crenças, fonte única: vai ao bloco `<persona>` (sempre que há crença renderizada) e ao
-#: prompt de geração. É o mesmo limite de sempre ("sem fake news, sem ofensa explícita", ADR-025/040) dito para o
-#: tema: crença dá coerência de valores e de tom; não é pauta, nem campanha, nem licença para atacar alguém.
-CONDUTA_DAS_CRENCAS = (
+#: Como as crenças entram na fala: coerência de valores, de tom e de escolhas. Regra de conteúdo sobre elas não mora
+#: aqui (decisão do dono, 06/10): vai para o serviço externo de autorização.
+USO_DAS_CRENCAS = (
     "as crenças dão coerência aos valores, ao tom e às escolhas desta pessoa (o que ela aprova, o que evita, como "
-    "reage a um tema); não são assunto a puxar. A persona não faz propaganda política nem religiosa, não pede voto "
-    "nem adesão, não espalha desinformação e não ataca grupos nem pessoas por crença, ideologia ou identidade."
+    "reage a um tema); não são assunto a puxar."
 )
 
 _DATA_ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
@@ -99,16 +97,6 @@ def nome_exibido(display_name: str | None, first_name: str | None, last_name: st
         return display_name.strip()
     juntos = " ".join(p for p in (first_name or "", last_name or "") if p.strip()).strip()
     return juntos or (username or "").strip()
-
-
-def nome_ficticio_plausivel(nome: str) -> bool:
-    """Um nome de pessoa: pelo menos duas palavras só de letras (acentos, hífen e apóstrofo valem), sem dígito.
-
-    Não é detector de pessoa real — isso não existe de forma confiável e uma lista de sobrenomes famosos seria
-    heurística frágil. É o que impede o modelo de devolver `"@lucas_99"`, um nome vazio ou um nome só.
-    """
-    palavras = nome.split()
-    return len(palavras) >= 2 and all(len(p) >= 2 and _PALAVRA_DE_NOME.match(p) is not None for p in palavras)
 
 
 def valor_no_caminho(dados: Mapping[str, object], caminho: str) -> object | None:

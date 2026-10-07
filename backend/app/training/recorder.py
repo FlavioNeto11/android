@@ -521,7 +521,9 @@ class TrainingRecorder:
             "SELECT seq, screen_elements FROM training_inputs WHERE session_id=? AND screen_elements IS NOT NULL"
             " ORDER BY seq", (session_id,))}
 
-    def get(self, session_id: str) -> dict[str, Any]:
+    def get(self, session_id: str, *, crua: bool = False) -> dict[str, Any]:
+        """A sessão com as entradas. A leitura sai com o dado da persona mascarado nas entradas (K-pendente do 31.160,
+        `dado_da_persona.na_gravacao`); `crua=True` é só para o uso interno do ensino (a destilação precisa do valor)."""
         s = dict(self._row(session_id))
         s["nascido_de_prova"] = bool(s.get("nascido_de_prova"))          # 31.130: nulo = uso real
         s["origin"] = origin_da_linha(self.db, s)
@@ -540,6 +542,8 @@ class TrainingRecorder:
             s["origin"]["diagnostico"] = diagnostico
         s["inputs"] = self.inputs(session_id)
         s["proposal"] = self._proposta_mascarada(loads(s["proposal"]), s.get("profile_id"), s["inputs"])
+        if not crua and self._variaveis_da_persona is not None:
+            s["inputs"] = dado_da_persona.na_gravacao(s["inputs"], self._variaveis_da_persona(s.get("profile_id")))
         return s
 
     def _proposta_mascarada(self, proposta: object, profile_id: str | None,

@@ -38,7 +38,7 @@ function previa(itens: ItemDaPorta[], over: Partial<PreviaDaPorta> = {}): Previa
     run_id: 'run-p', hash_do_plano: 'h', vista_em: '2026-10-05T01:00:00.000Z', validade_ate: '2026-10-05T21:00:00.000Z',
     custo_rascunhos_usd: 0,
     estimativa: true, parcial: false, total: false, itens,
-    na_execucao: { textos_da_tela: 0, itens_for_each: 0, sempre: ['desafio', '2FA', 'CAPTCHA'] }, ...over,
+    na_execucao: { textos_da_tela: 0, itens_for_each: 0 }, ...over,
   };
 }
 
@@ -84,7 +84,6 @@ describe('PortaDoPlano (30.61)', () => {
     expect(t).toContain('4 ações em 1 aparelho: 1 liberada, 1 pede seu aval, 1 não será feita, 1 decide na execução');
     expect(t).toContain('não será feita');
     expect(t).toContain('Ainda vão pedir você na execução');
-    expect(t).toContain('Sempre com você: desafio, 2FA, CAPTCHA');
     expect(byRole('button', /Aprovar 1 e iniciar/)).toBeTruthy();
   });
 

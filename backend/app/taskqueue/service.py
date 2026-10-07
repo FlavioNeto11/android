@@ -50,6 +50,8 @@ from .projecao import HistoricoDeAcoes, projetar, resumo
 from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
 from .sombra_intencao import SombraDaIntencao
+from .vizinhos import aplicar as aplicar_vizinhos, linha_da_trilha as linha_vizinhos
+from ..planning import etapas_ensinadas, habilidades
 
 log = logging.getLogger("poc.runs")
 
@@ -175,6 +177,8 @@ class RunService:
         self.sombra_intencao: SombraDaIntencao | None = None
         #: Execuções cujo plano o provedor RECUSOU (`needs_input` por `refusal`): a sombra não as observa (31.9, revisão).
         self._sem_sombra: set[str] = set()
+        #: 31.151: as execuções planejadas por um fluxo escolhido por semelhança (até o despacho do `_plan`)
+        self._por_semelhanca: set[str] = set()
         #: Sorteio do canário de IA (item 17.7), em [0, 1). Injetável: o teste fixa o valor em vez de depender da sorte.
         self.sorteio: Callable[[], float] = random.random
 
@@ -1065,19 +1069,35 @@ class RunService:
         ofertados = [a for a in apps if a.id in catalogos or load_catalog(a.package) is None]
         return None, catalogos, ofertados, None
 
-    def _plano_da_operacao(self, run_id: str, plan: Plan) -> Plan:
+    def _plano_da_operacao(self, run_id: str, plan: Plan) -> tuple[Plan, list[str]]:
         """O plano da execução de um alvo de operação com os `parametros` dela fixados e as chaves das etapas que o app
-        declara no bloco `operacao` normalizadas (`plano_da_operacao`). Fora de operação, o plano volta o mesmo."""
+        declara no bloco `operacao` normalizadas (`plano_da_operacao`). Fora de operação, o plano volta o mesmo.
+
+        Devolve também os nomes fixos que o plano já usa com OUTRO valor (`plano_da_operacao.colisoes`): quem chama
+        recusa a execução do alvo (achado da revisão do PR 479)."""
         op = self.repo.db.one("SELECT o.parametros, a.package FROM runs r JOIN operacoes o ON o.id = r.operacao_id"
                               " LEFT JOIN apps a ON a.id = o.app_id WHERE r.id=?", (run_id,))
         if op is None:
-            return plan
+            return plan, []
         fixos = {str(k): str(v) for k, v in (loads(op["parametros"], {}) or {}).items()}
         capabilities = [cap for cap, _ in definition_of(op["package"]).operation_stages]
         novo, motivo = plano_da_operacao.ajustar(plan, fixos, capabilities)
         if motivo:
             self.repo.decision(f"Plano da operação: {motivo}.", run_id=run_id)
-        return novo
+        return novo, plano_da_operacao.colisoes(plan, fixos)
+
+    def _recusar_por_conflito(self, run_id: str, plan: Plan, nomes: list[str]) -> None:
+        """Achado da revisão do PR 479: o plano usa um nome fixo da operação com OUTRO valor (`username` = A no plano,
+        B na operação). Seguir mandaria a ação ao alvo do planejador; sobrescrever, ao do fixo com a referência dele
+        trocada. Nenhum dos dois é o que a operação pediu com certeza: a execução do alvo termina recusada, antes de
+        qualquer etapa, e a operação lê o alvo em `acao_bloqueada`. Só os NOMES vão ao texto, nunca os valores."""
+        texto = (f"parâmetro em conflito: {', '.join(nomes)} já tem outro valor no plano; a ação deste alvo não roda. "
+                 "Nada foi feito.")
+        self.repo.save_plan(run_id, plan)
+        self.repo.decision(f"Recusado no planejamento (31.154): {texto}", run_id=run_id)
+        self.repo.bus.emit("plan.refused", texto, level="warn", run_id=run_id,
+                           data={"motivo": "parametro_em_conflito", "parametros": nomes})
+        self.repo.set_run_status(run_id, RunStatus.failed, texto, level="warn", message=f"Execução {run_id}: {texto}")
 
     async def _plan(self, run_id: str) -> None:
         repo = self.repo
@@ -1135,6 +1155,12 @@ class RunService:
                 # Livre, por catálogo ou ENTRE APPS (item 24.1): quem decide é `_catalogos`, pelo app dos aparelhos e
                 # pelos apps que o comando cita.
                 catalog, catalogos, ofertados, alvo = self._catalogos(comando, apps, instances)
+                # 31.151: os fluxos que o comando parece vão ao planejador como habilidades conhecidas
+                conhecidas = self._habilidades_parecidas(comando, [i.get("profile_id") for i in instances])
+                # 31.153: as etapas ensinadas com receita estável dos apps que o plano pode usar
+                ensinadas = self._etapas_ensinadas(
+                    [str(x) for x in dict.fromkeys([*(i.get("app_id") for i in instances),
+                                                    *(a.id for a in apps_citados(comando, apps))]) if x])
                 # Lições medidas do planejador (ADR-054): só quando o planejador é de fato chamado (skill ou fluxo
                 # casados não pedem), uma vez por planejamento. Falha = nenhuma lição.
                 licoes = pedir_licoes(self.costuras, PedidoDeLicoes(
@@ -1151,12 +1177,20 @@ class RunService:
                         command=comando, run_id=run_id, instances=instances, apps=ofertados, catalog=catalog,
                         catalogs=catalogos,
                         available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
-                        lessons=list(licoes))),
+                        lessons=list(licoes), habilidades=list(conhecidas.values()),
+                        etapas_ensinadas=ensinadas)),
                     role="plan", marca=MarcaDaChamada(motivo="plano"))
                 # R6: todo plano do planejador declara os apps em que roda — os parsers já preenchem; isto cobre o
                 # provedor que não preenche (um dublê, um provedor novo). Plano de skill traz os dele do compilador.
                 if not plan.required_apps:
                     plan.required_apps = apps_do_plano(plan, instances)
+                plan = self._trocar_por_ensinadas(run_id, plan, ensinadas)
+                # 31.151: a habilidade escolhida por semelhança, conferida aqui, troca o plano pelo do fluxo
+                plan = self._escolha_por_semelhanca(run_id, plan, comando, conhecidas,
+                                                    [i.get("profile_id") for i in instances])
+                # 31.152: os pacotes vizinhos que o ensino descobriu valem também no plano livre (fluxo e skill casados
+                # já trazem os deles)
+                plan = self._vizinhos_do_ensino(run_id, plan, apps)
         except AIError as exc:
             if exc.kind == "refusal":
                 self._sem_sombra.add(run_id)
@@ -1176,7 +1210,10 @@ class RunService:
             return
         # 31.154 (adendo v1.95): na execução de uma operação, os parâmetros fixos e as chaves normalizadas, ANTES de
         # gravar o plano — recuperação e revisão releem `runs.plan`, e a identidade da etapa não pode mudar no meio.
-        plan = self._plano_da_operacao(run_id, plan)
+        plan, conflito = self._plano_da_operacao(run_id, plan)
+        if conflito:
+            self._recusar_por_conflito(run_id, plan, conflito)
+            return
         # RA-7: a porta do item 13.2 também no PLANEJAMENTO, para todo plano (planejador, fluxo, skill), antes de
         # qualquer etapa existir. No despacho ela só recusava ao chegar na etapa com efeito, depois que os preparativos
         # (abrir, preencher destinatário, assunto…) já tinham gastado decisões.
@@ -1221,7 +1258,13 @@ class RunService:
         if run and run["cancel_requested"]:
             repo.set_run_status(run_id, RunStatus.cancelled, "Cancelada durante o planejamento")
             return
-        if run and run["mode"] == "execute":
+        if run and run["mode"] == "execute" and run_id in self._por_semelhanca and not habilidades.SEM_CONFIRMACAO:
+            # 31.151: até a decisão do dono, o plano escolhido por semelhança só roda com a prévia aprovada
+            self._por_semelhanca.discard(run_id)
+            repo.set_run_status(run_id, RunStatus.planned, "Plano de um fluxo escolhido por semelhança: aguarda a "
+                                "prévia aprovada", message=f"Execução {run_id}: plano por semelhança pronto; aguardando "
+                                "início por uma pessoa")
+        elif run and run["mode"] == "execute":
             try:
                 self.start(run_id)
             except RunError as exc:
@@ -1255,6 +1298,94 @@ class RunService:
                                             "capability": passo.capability, "motivo": motivo}
                     break
         return list(recusadas.values())
+
+    def _etapas_ensinadas(self, apps: list[str]) -> list[etapas_ensinadas.EtapaEnsinada]:
+        """31.153: as etapas ensinadas oferecíveis dos `apps` do plano. Falha ao ler = nenhuma (o plano segue livre)."""
+        try:
+            return etapas_ensinadas.escolher(self.flows.etapas_ensinadas(), apps)
+        except Exception as exc:  # noqa: BLE001
+            log.info("etapas ensinadas não lidas (%s): o plano segue sem elas", exc)
+            return []
+
+    def _trocar_por_ensinadas(self, run_id: str, plan: Plan,
+                              ensinadas: list[etapas_ensinadas.EtapaEnsinada]) -> Plan:
+        """31.153: a etapa do plano livre com o nome de uma etapa ensinada vira a etapa-molde do ensino (o hash da
+        receita), e a trilha diz qual. Só ids, nomes e a receita: nenhum valor."""
+        if not ensinadas or not plan.steps:
+            return plan
+        passos, trocadas, recusas = etapas_ensinadas.trocar(plan.steps, plan.app_id, ensinadas, plan.parameters)
+        if trocadas:
+            plan = plan.model_copy(update={"steps": passos})
+            self.repo.decision("Etapas ensinadas no plano livre (31.153): " + "; ".join(
+                f"{k} pela etapa ensinada em {e.origem} (receita {e.receita}, {e.reproducoes} reprodução(ões) boa(s))"
+                for k, e in trocadas) + ".", run_id=run_id)
+        if recusas:
+            self.repo.decision("Etapa ensinada não usada (31.153): " + "; ".join(recusas) + ".", run_id=run_id)
+        return plan
+
+    def _habilidades_parecidas(self, comando: str,
+                               perfis: list[str | None]) -> dict[str, habilidades.HabilidadeConhecida]:
+        """31.151: `{ref: habilidade}` dos fluxos ativos e no escopo que o comando parece (nota mínima e teto de
+        `planning.habilidades`). Falha ao ler = nenhuma: a habilidade é contexto, o plano livre segue como antes."""
+        try:
+            achados = self.flows.semelhantes(comando, perfis, limiar=habilidades.NOTA_MINIMA,
+                                             maximo=habilidades.MAXIMO)
+        except Exception as exc:  # noqa: BLE001
+            log.info("habilidades parecidas não lidas (%s): o plano segue sem elas", exc)
+            return {}
+        return {str(r["ref_publico"]): habilidades.HabilidadeConhecida(
+                    ref=str(r["ref_publico"]), molde=str(r["command_template"]),
+                    parametros=habilidades.parametros_do_molde(str(r["command_template"])),
+                    apps=tuple(self.flows.required_apps(str(r["id"]))), nota=nota)
+                for r, nota in achados if habilidades.molde_oferecivel(str(r["command_template"]))}
+
+    def _escolha_por_semelhanca(self, run_id: str, plan: Plan, comando: str,
+                                conhecidas: Mapping[str, habilidades.HabilidadeConhecida],
+                                perfis: list[str | None]) -> Plan:
+        """31.151: o planejador escolheu uma habilidade conhecida? Valendo (`habilidades.escolha_valida`) e o fluxo ainda
+        no ar e no escopo, o plano é o do fluxo, como no `match`: a trilha diz "fluxo X por semelhança, nota N" e a
+        prévia o mostra. Recusada, fica o plano livre, com o motivo na trilha. Só ids, molde e nota: nenhum valor."""
+        bruta = plan.escolha_por_semelhanca
+        if not conhecidas:
+            return plan
+        oferecidas = ", ".join(f"{h.ref} ({h.nota:.2f})" for h in conhecidas.values())
+        if not bruta:
+            self.repo.decision(f"Habilidades parecidas oferecidas ao planejador (31.151): {oferecidas}; nenhuma "
+                               "escolhida, segue o plano livre.", run_id=run_id)
+            return plan
+        escolha = habilidades.Escolha(str(bruta.get("ref") or ""), {str(k): str(v) for k, v in
+                                                                    dict(bruta.get("valores") or {}).items()})
+        motivo = habilidades.escolha_valida(escolha, conhecidas, comando)
+        achado = None if motivo else self.flows.plano_por_semelhanca(escolha.ref, escolha.valores, perfis)
+        if achado is None:
+            ref = escolha.ref if escolha.ref in conhecidas else "?"         # texto do modelo só se foi oferecido
+            self.repo.decision(f"Habilidade {ref} escolhida por semelhança e recusada (31.151): "
+                               f"{motivo or 'o fluxo saiu do ar, do escopo ou faltou valor'}; segue o plano livre.",
+                               run_id=run_id)
+            return plan
+        row, do_fluxo = achado
+        h = conhecidas[escolha.ref]
+        self.repo.db.execute("UPDATE runs SET flow_id=? WHERE id=?", (row["id"], run_id))
+        if habilidades.SEM_CONFIRMACAO:                # com a prévia, o uso só conta quando uma pessoa a aprova
+            self.flows.used(str(row["id"]))
+        self._pos_do_catalogo(run_id, do_fluxo)
+        self._por_semelhanca.add(run_id)
+        self.repo.decision(f"Plano do fluxo {h.ref} “{h.molde}” por semelhança, nota {h.nota:.2f} (31.151): o planejador "
+                           "o escolheu e o código conferiu os valores no comando.", run_id=run_id)
+        return do_fluxo
+
+    def _vizinhos_do_ensino(self, run_id: str, plan: Plan, apps: list[AppContext]) -> Plan:
+        """31.152: cada etapa sem efeito do plano livre aceita os pacotes vizinhos que o ensino descobriu para o app
+        dela (`taskqueue.vizinhos`). Falha ao ler = o plano como veio: o vizinho é ganho, não condição."""
+        try:
+            conhecidos = self.flows.vizinhos_conhecidos()
+        except Exception as exc:  # noqa: BLE001 - sem o conhecimento, o plano livre segue como antes do 31.152
+            log.info("vizinhos conhecidos não lidos (%s): o plano segue sem eles", exc)
+            return plan
+        novo, mudou = aplicar_vizinhos(plan, conhecidos, [str(a.package) for a in apps if a.package])
+        if mudou:
+            self.repo.decision(linha_vizinhos(mudou), run_id=run_id)
+        return novo
 
     def _teto_observar(self, run_id: str) -> bool:
         """28.23: a execução nasceu com o teto `observar` (o pedido persistente que só observa)."""
