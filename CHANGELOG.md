@@ -254,6 +254,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Sem mudança de código: a fila por vaga já existe, e `max_ai_concurrency` é relido ao vivo.
 - Prova `simulated`; a leitura real fica para a onda 2.
 
+## 2026-10-06 — 28.62 (Canais): aviso do fim da operação com custo e motivos de parada (branch canais/aviso-operacao)
+
+- Novo tipo de aviso de rotina `operacao.encerrada` (nível 3, na janela, sem cartão no Trello): um aviso por operação com N agentes (chave `operacao:<id>`), com o placar, as contagens, os motivos de parada em palavras (até 3), o custo em US$ com a quebra pesquisa externa x agentes, o que é crítico e "Nada a fazer.". A operação cancelada também avisa. Sem comando, handle nem nome de persona.
+- Mudança mínima no módulo de operações (de outra frente): `_fechar` passa a levar o `custo` (`_custo`) no `data` de `operacao.encerrada`; `docs/api-contract.md` anota o campo. Notas em `docs/dominios/canais.md`.
+- Prova `simulated`: `backend/tests/test_aviso_operacao_encerrada.py` (23 testes). `real`: `not_run` (rodada de 07/10).
+
+## 2026-10-06 — 28.60 e 28.58 (Canais): avisos de rotina do host, ensaio de restauração e disco baixo (branch canais/28-60-e-28-58)
+
+- Dois tipos de aviso de rotina (nível 3, na janela junto dos demais, sem cartão no Trello): `host.restore_ensaio` e `host.disco_baixo`, lidos por um vigia do backend (`VigiaDoHost`, no líder da trava `avisos`) sem rota nova.
+- 28.60: lê `data/restore-ensaio/ultimo.json` e avisa `falhou`, `pulado`, veredito ilegível ou veredito velho (`avisos.restore_ensaio.idade_max_h`, 192 h: o ensaio é semanal, 48 h alarmaria toda terça). Uma mensagem por veredito (ou por dia UTC no velho/ilegível); arquivo ausente não avisa.
+- 28.58: o livre do disco, pelo mesmo leitor da saúde (`devices/diagnostics.ler_disco`), abaixo de `avisos.disco.piso_gb` (100) e a cada degrau de 20 GB abaixo; rearma ao voltar ao piso; diz o que ocupa (backups, AVDs, capturas medidos em thread de fundo com cache; Docker "não medido") e nunca apaga nada.
+- Prova `simulated`: `backend/tests/test_aviso_restore_ensaio.py` e `backend/tests/test_aviso_disco_baixo.py`. `real`: `not_run` (falha forçada numa cópia de teste; primeira leitura do disco no central).
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.

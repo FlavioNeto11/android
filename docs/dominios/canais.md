@@ -757,6 +757,43 @@ avisos depois da faxina"), e a trava cai no TTL.
   `infrastructure/servico.py::avisar_contato_do_portal`, `avisar_resumo_do_portal` e `avisar_borda_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
   a tabela dos contatos, a taxa e a retenção são da frente Portal (29.77).
 
+**Rotina do host: ensaio de restauração (28.60) e disco baixo (28.58)** (sem número de contrato: a definir pela orquestradora).
+- Dois tipos, os dois no nível 3 (a janela da rotina os junta, uma linha por aviso, que é o título; sem cartão no Trello, não
+  agrupam por tipo): `host.restore_ensaio` e `host.disco_baixo`. Texto no molde do 28.31 (resultado, crítico, "Espera você" ou
+  "Nada a fazer"), sem caminho, usuário, nome de máquina nem valor de tabela. Quem monta é `domain/host.py`; quem lê o host é
+  `infrastructure/vigia_do_host.py` (`VigiaDoHost`, laço `vigia-do-host` no `AppState`, só no líder da trava `avisos` e com o
+  canal pronto). Não há rota nova: o script do host não enfileira nada, o backend lê o arquivo dele.
+- **Ensaio (28.60):** lê `avisos.restore_ensaio.ultimo_json` (padrão `data/restore-ensaio/ultimo.json`) a cada
+  `intervalo_min` (15). Avisa `falhou` e `pulado` (chave `restore-ensaio:<resultado>:<ts_utc>`: uma por veredito; o `pulado` usa
+  frase fixa e o `motivo` do `falhou` passa por lista branca de caracteres), `velho` (chave `restore-ensaio:velho:<dia UTC>`) e
+  `ilegível` (JSON quebrado ou sem resultado e carimbo, só na 2ª leitura ruim seguida; chave `...:ilegivel:<dia UTC>`).
+  **Arquivo ausente não avisa** (a tarefa ainda não rodou ou não foi instalada): é a regra mais simples, e por isso não há aviso
+  de "velho" antes do primeiro veredito. **Limite de idade:** `idade_max_h` padrão 192 h, e NÃO as 48 h do pedido literal: o
+  ensaio é semanal, e 48 h alarmaria toda terça. A cópia com mais de 48 h já vira `falhou` no próprio script.
+- **Disco (28.58):** o livre do volume da raiz do projeto, pelo MESMO leitor da saúde (`devices/diagnostics.ler_disco`,
+  injetado pelo `AppState`). Abaixo de `avisos.disco.piso_gb` (100) avisa, e de novo a cada `degrau_gb` (20) mais fundo; só
+  para baixo; voltar ao piso rearma. Abaixo de `critico_gb` (60) o texto diz "backups e criação de aparelho podem falhar";
+  acima, "Crítico: nada". Chave `disco-baixo:<degrau>:<dia UTC>:<episódio>` (o episódio sobe a cada rearme; um reinício do
+  processo no mesmo dia não repete o aviso). Diz o que ocupa: backups, AVDs e capturas (soma de arquivos, sem seguir junção nem
+  link, thread em modo de fundo, cache de 1 h, só com o disco abaixo do piso, 30 s por pasta e "não medido" se estourar) e
+  Docker ("não medido": sem leitura barata). Nunca apaga nada.
+- **Prova:** `simulated` em `backend/tests/test_aviso_restore_ensaio.py` e `test_aviso_disco_baixo.py`. `real`: `not_run` (forçar
+  uma falha numa cópia de teste e a primeira leitura do disco no central, pela orquestradora).
+
+**Aviso do fim da operação (28.62)** (sem número de contrato: a definir pela orquestradora).
+- Um tipo de rotina (nível 3, na janela junto dos demais, sem cartão no Trello): `operacao.encerrada`, montado por
+  `aviso_de_evento` a partir do evento do mesmo nome que a operação com N agentes emite ao fechar (`operacoes/infrastructure/
+  servico.py::_fechar`, que passou a levar o `custo` no `data`). Chave por FATO: `operacao:<operacao_id>` (o id só entra se tiver
+  o formato `op-<data><hora>-<6 hex>`), então nem as duas réplicas nem a reabertura que fecha de novo repetem a mensagem. A
+  operação cancelada pelo dono também avisa, com o assunto de cancelamento.
+- Texto: assunto com o placar ("N de M agentes concluídos"), contagens (solicitados, concluídos, bloqueados, em curso), os
+  motivos de parada em palavras (até 3, os mais comuns; o que o filtro de texto mudaria, ou o que não cabe, vira "outros"; sem
+  redator nenhum motivo sai), o custo em US$ com a quebra pesquisa externa x agentes (sem a linha quando o dado não traz o custo),
+  "Crítico: nada." ou o número de alvos bloqueados com a tela Operação, e "Nada a fazer.". Não sai comando, handle, nome de
+  persona nem o id da operação. Link: a tela Operações, quando há base pública.
+- **Prova:** `simulated` em `backend/tests/test_aviso_operacao_encerrada.py`. `real`: `not_run` (a orquestradora confere na
+  rodada de 07/10, com o fim de uma operação de verdade).
+
 **C-26 · O Executar do Telegram mostra as travas do plano antes de começar (28.27).**
 - **Origem:** dono (linha do 28.27: a prévia do comando no canal mostra o selo de cada item e o Executar vale como
   aprovação do plano); desenho e decisões P1, P2 e P3 da orquestradora, 04/10 21:58Z. Usa a porta do plano (30.61,

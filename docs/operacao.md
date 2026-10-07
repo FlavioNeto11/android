@@ -392,8 +392,8 @@ estado antigo, nunca uma edição retroativa.
   pasta de trabalho própria (apagada no fim), confere integridade, migração e nº de tabelas contra o manifesto e aplica a
   migração do código atual NA CÓPIA (`-SemMigrar` pula). Falha também se a cópia mais nova tiver mais de 48 h (o `farm-backup`
   parou). Veredito em `data/restore-ensaio/ultimo.json` e `historico.jsonl` (só fatos, nenhum valor de tabela); saída 0 ok,
-  1 falhou, 2 pulado. **Não manda Telegram**: o canal do § 15 só aceita os tipos de aviso montados no backend; ligar o `falhou`
-  ao aviso é trabalho de backend (ver o resultado do 29.167). PostgreSQL (`parque.dump`) não é ensaiado aqui.
+  1 falhou, 2 pulado. **Não manda Telegram**: quem avisa é o backend (28.60), que lê o `ultimo.json` a cada 15 min e manda `falhou`, `pulado`,
+  veredito ilegível ou veredito com mais de 192 h pela rotina do canal (`avisos.restore_ensaio.*`; `docs/dominios/canais.md`). PostgreSQL (`parque.dump`) não é ensaiado aqui.
 - **Restaurar o banco regride a cerca** (`commands.fence`, usada para invalidar comando obsoleto por aparelho):
   depois de restaurar, o agente recusa comandos com "cerca N é anterior à última executada (M)" e os `start`
   ficam `failed` sem reparo automático. Procedimento: subir manualmente o `fence` do último comando do aparelho
