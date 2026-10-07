@@ -77,6 +77,14 @@
   font-size: var(--fs-sm);
 }
 
+.preparo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
 .aviso {
   display: flex;
   align-items: flex-start;

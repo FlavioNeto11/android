@@ -1,4 +1,4 @@
-import { CircleAlert, ListChecks, Play, Server, Shuffle, Smartphone, Sparkles, UserRound, Wand2 } from 'lucide-react';
+import { CircleAlert, ListChecks, Play, Power, Server, Shuffle, Smartphone, Sparkles, UserRound, Wand2 } from 'lucide-react';
 import type { RunMode, RunTargetsSuggestion } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -64,6 +64,7 @@ export function SugestaoDeAlvos({ sugestao, carregando, erro, mode, enviando, im
                     ) : null}
                   </div>
                   <p className={styles.motivo}>{e.motivo}</p>
+                  {(e.preparo ?? []).map((p) => <p key={p} className={styles.preparo}><Power size={12} aria-hidden /> {p}</p>)}
                 </li>
               ))}
             </ul>
