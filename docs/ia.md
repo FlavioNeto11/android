@@ -331,6 +331,21 @@ achado não se confirmam nos dados.
     A métrica é a mesma, com `prova=marcador:<nivel>`, e o rejulgamento decide o nível que vale. Nenhum app declara
     marcador ainda: se a árvore real do Instagram expõe "Seen" ou "Delivered" debaixo da bolha não foi medido, e a
     declaração espera uma captura real, só leitura.
+    Desde o 31.239 (`ai.comentario_dispensa_primeiro_juiz`), o comentário tem prova local própria, declarada no
+    catálogo: `local_proof: comentario:{account_label}` no CREATE_COMMENT do Instagram (`proofs._comentario_publicado`).
+    A árvore comprova quando mostra o texto desta etapa (`content`, inteiro e normalizado) atribuído à conta conectada,
+    de um destes dois jeitos:
+    - a linha "autor said texto", a forma que a lista anuncia;
+    - o texto num elemento não editável, com o autor sozinho noutro elemento na mesma faixa.
+    O texto só no campo de escrita, o de outra pessoa ou o autor de outra linha não comprovam. Vale a linha de base do
+    31.59: só comprova se houver mais elementos com o texto igual do que no toque. Assim, o comentário igual e antigo
+    da própria conta (a nova tentativa depois de um efeito incerto) não prova o desta tentativa. A linha "autor said
+    texto" não entra nessa conta e, com linha de base, sozinha não comprova: o juiz decide. As travas e o efeito são
+    os do 31.26: dispensa só o primeiro julgamento, e o rejulgamento decide. Com a prova, o "sim" passa a valer para a
+    dispensa por app do 31.238 quando o Instagram atingir a régua. A prova nunca fecha o efeito sozinha: sem
+    rejulgamento, o juiz barato julga como antes. O CREATE_COMMENT também declara `pending_marks` ("Posting…",
+    "Publicando…"). Na onda 2 (evidências 2952 e 2955), o juiz dava por publicado com "Posting…" na linha; agora vale o
+    ADR-055: com a marca na tela, ninguém é consultado e, se ela não sair no prazo, o efeito fica incerto.
     Desde o 31.59, a prova `sent_text` (e o marcador por cima dela) exige a LINHA DE BASE: no toque do efeito, o
     executor guarda quantas bolhas com o texto IGUAL (normalizado; não mais "contém") a tela tinha, e a prova só vale
     se depois houver mais, e a bolha igual mais baixa tem de ser a última mensagem (nenhuma bolha do mesmo tipo abaixo;
