@@ -2561,3 +2561,18 @@ fica para o 31.223 ou para um item próprio.
 
 **Prova.** `simulated`: `backend/tests/test_ensino_da_execucao.py`. `real`: a segunda execução com
 `open_profile` `driven_by=recipe` depois do POST sobre uma execução real da onda 2; `not_run` até o deploy e a onda.
+
+## A semelhança não derruba a ação final (31.222)
+
+Achado do 31.219. A escolha por semelhança (31.151, que executa direto pelo 31.210) troca o plano INTEIRO pelo do
+fluxo e só confere se os valores estão no comando. Um fluxo de leitura escolhido para o comando de uma operação que
+também comenta deixaria o comentário de fora.
+
+Agora, antes de trocar, o código compara o plano livre (o planejador o produz junto da escolha) com o do fluxo
+(`habilidades.acoes_finais_fora`). Toda etapa do plano livre com efeito externo ou trava de commit tem de estar no
+fluxo, pela ação do catálogo ou, sem ela, pela chave. Faltando uma, a escolha é recusada e fica o plano livre, com a
+ação final. A trilha diz "recusada (31.222): o fluxo não cobre a ação final <ação>". `runs.flow_id` e o uso do fluxo
+não andam. Sem ação final no plano livre, nada muda.
+
+**Prova.** `simulated`: `backend/tests/test_semelhanca_sem_acao_final.py` (3). `real`: `not_run`; aparece na primeira
+operação com fluxo parecido depois do deploy.
