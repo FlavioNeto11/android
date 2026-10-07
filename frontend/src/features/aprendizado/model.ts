@@ -126,6 +126,11 @@ export interface EntradaDoLivro {
   ensinado_em_prova?: EnsinadoEmProva | null;
   /** 31.131 (adendo v1.87), só no fluxo: nasceu de uma prova (sessão de treino aberta como prova), não de uso real. Ausente em backend anterior. */
   nascido_de_prova?: boolean;
+  /**
+   * 31.270 (contrato proposto, aditivo), só na receita CANDIDATA: `{ concordancias, necessarias, ultima_consulta: { em, resultado }|null,
+   * substitui: { ref, versao, estado }|null }`. Lido por `lerProvaDaCandidata` (tolerante: ausente = o central não diz).
+   */
+  prova_da_candidata?: unknown;
   /** 31.168 (adendo v1.97), só no fluxo: a data (ISO) em que uma pessoa o religou para uso real, enquanto isso for o último passo da trilha e ele estiver ligado. `null`/ausente: não. */
   em_uso_real_desde?: string | null;
 }

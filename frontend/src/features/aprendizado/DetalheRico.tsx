@@ -238,6 +238,9 @@ function ConteudoReceita({ c, nomeDe }: { c: ConteudoDaReceita; nomeDe: NomeDaCa
         </Fato>
         {sombra.shadow_total > 0 ? (
           <Fato rotulo="Em sombra">concordou com a IA em {formatInt(sombra.shadow_agree)} de {formatInt(sombra.shadow_total)}</Fato>
+        ) : c.identidade.estado === 'candidate' ? (
+          // 31.270: a candidata sem nenhuma concordância ainda (ou zerada por uma divergência) diz isso, em vez de calar.
+          <Fato rotulo="Em sombra">nenhuma concordância seguida com a IA ainda; a divergência zera a prova</Fato>
         ) : null}
         <Vizinha rotulo="Substitui" v={c.substitui} />
         <Vizinha rotulo="Substituída por" v={c.substituida_por} />

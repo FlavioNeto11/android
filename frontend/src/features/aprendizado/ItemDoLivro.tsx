@@ -26,6 +26,7 @@ import {
   ORIGEM_LABEL, porQuemDecidiu, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind, tituloDoItem,
 } from './model';
 import { ParecerNaLinha } from './ParecerDaIA';
+import { lerProvaDaCandidata, rotuloDoResultado, textoDaProva, textoDaSubstituida } from './provaDaCandidata';
 import styles from './Aprendizado.module.css';
 
 export { DecisaoInline };
@@ -143,7 +144,10 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
   const esperaDoItem = e.por_que_nao_publica?.espera_o_dono && !(publicadoAntes && e.em_revisar === false) ? porQue : null;
   const espera = anterior && esperaDoItem !== null && esperaDoItem === avisoNoCabecalho ? null : esperaDoItem;
   const naoPublica = e.por_que_nao_publica?.espera_o_dono ? null : porQue;
-  const detalhe = rotuloDoDetalhe(e.detail);
+  // 31.270: a receita candidata diz a prova (concordâncias seguidas de N, última consulta, a ativa que ela quer substituir); a contagem
+  // "sombra a/b" do `detail` vira essa linha e não se repete como "na sombra, concordou…".
+  const prova = lerProvaDaCandidata(e);
+  const detalhe = prova && /^sombra /.test(e.detail ?? '') ? null : rotuloDoDetalhe(e.detail);
   const memoria = e.kind === 'memoria';
   // O rótulo vem pronto do backend (a mesma função na lista e no detalhe): aqui só se escolhe o tom e o texto.
   const saude = metaDeSaude(e.saude?.rotulo);
@@ -194,6 +198,18 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         {detalhe ? <span>{detalhe}</span> : null}
         {uso ? <span title={uso.porque ?? undefined}>Uso: {uso.rotulo}</span> : null}
       </div>
+      {prova ? (
+        <p className={styles.notaDoItem} data-prova-da-candidata>
+          <strong>Prova da candidata:</strong> {textoDaProva(prova)}.
+          {prova.consulta ? (
+            <span data-ultima-consulta>
+              {' '}Última consulta{prova.consulta.em ? <> <span title={formatDateTime(prova.consulta.em)}>{formatQuando(prova.consulta.em)}</span></> : null}
+              : {rotuloDoResultado(prova.consulta.resultado)}.
+            </span>
+          ) : null}
+          {prova.substitui ? <span data-substitui> {textoDaSubstituida(prova.substitui)}</span> : null}
+        </p>
+      ) : null}
       {espera ? (
         <p className={styles.avisoDoItem}>
           {anterior ? `Publicado antes da regra de aprovação (${espera}): vale revisar.` : `Espera o dono: ${espera}`}
