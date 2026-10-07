@@ -260,3 +260,14 @@ it('semArroba tira também o usuário de terceiro que o fato lido da tela traz s
   expect(semArroba('he said ok e a frota já mexeu com @fulano.x')).toBe('he said ok e a frota já mexeu com @[omitido]');
   expect(semArroba('o texto: a.b é um tipo said ninguém')).toBe('o texto: a.b é um tipo said ninguém');   // sem "said" logo depois do usuário, fica
 });
+
+it('no relatório, o motivo de falha também perde o perfil alvo e o dono do post: o mesmo mascarar da tela (31.254/31.252 unificados)', () => {
+  const motivo = 'Etapa \'Comentar\' falhou: o post de astro_jessica em foco (o de nasawebb …';
+  const bruta = { ...BRUTA, parametros: { username: 'nasawebb' }, capacidade: { ...BRUTA.capacidade, motivos: { [motivo]: 1 } },
+    alvos: [{ ...semConta(4), motivo }] };
+  const rel = montarRelatorio(lerOperacao(bruta)!);
+  const tudo = `${JSON.stringify(rel)}\n${relatorioEmMarkdown(rel)}`;
+  expect(tudo).not.toMatch(/astro_jessica|nasawebb/);
+  expect(tudo).toContain('o post de [usuário omitido] em foco (o de [usuário omitido] …');
+  expect(rel.capacidade.motivos[0]!.motivo).toContain('[usuário omitido]');
+});

@@ -11,18 +11,21 @@ import {
   ESTAGIOS, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, estagioDeParada, rotuloDaAcao, rotuloDoEstagio,
   type Alvo, type EstagioId, type Operacao,
 } from './modelo';
+import { mascararTerceiros, usuariosConhecidosDaOperacao } from './terceiros';
 
 /**
- * Os motivos e resumos que o BACKEND escreve podem citar o @ de uma conta ("conta(s) da frota já mexeram com @fulano"): no relatório
- * o @ sai (visto no central real, onda 1 de 06/10). Também sai o nome de usuário de TERCEIRO que o fato lido da tela traz sem arroba
- * ("space.girl.ma said Que lindo…", o comentário de outra pessoa no post alvo; visto na onda 2 de 07/10): só o padrão de usuário
- * (letras com ponto ou sublinhado) seguido de "said", para não mascarar uma palavra comum. O texto gerado pela persona não é metadado
- * e não passa por aqui.
+ * O que o BACKEND escreve nos motivos e resumos pode citar terceiros (o `@x` de uma conta da frota, o dono do post alvo, quem comentou, o
+ * perfil alvo): no relatório saem, pelo MESMO mascarar da tela (`terceiros.ts`, 31.254), que é o único lugar da regra. `semArroba` ficou como o
+ * nome antigo, sem a lista de usuários conhecidos da operação; dentro de `montarRelatorio` vale a versão com o perfil alvo. O texto gerado pela
+ * persona não é metadado e não passa por aqui.
  */
-export const semArroba = (s: string): string => s
-  .replace(/@[A-Za-z0-9._]+/g, '@[omitido]')
-  .replace(/\b[A-Za-z0-9]+(?:[._][A-Za-z0-9]+)+(?= said\b)/g, '[usuário omitido]');
-const semArrobaOuNulo = (s: string | null): string | null => (s === null ? null : semArroba(s));
+export const semArroba = (s: string): string => mascararTerceiros(s);
+type Mascara = (s: string) => string;
+const semArrobaOuNulo = (s: string | null, mascara: Mascara = semArroba): string | null => (s === null ? null : mascara(s));
+const mascaraDaOperacao = (op: Pick<Operacao, 'parametros'>): Mascara => {
+  const conhecidos = usuariosConhecidosDaOperacao(op.parametros);
+  return (s) => mascararTerceiros(s, conhecidos);
+};
 
 export type Conferencia = 'sim' | 'nao' | 'nao_conferida' | 'sem_acao';
 
@@ -96,7 +99,7 @@ const limitesDoRelatorio = (agentes: readonly { custo_usd: number | null }[]): s
 
 const normaliza = (t: string): string => t.replace(/\s+/g, ' ').trim().toLowerCase();
 
-function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
+function agenteDe(a: Alvo, posicao: number, mascara: Mascara): AgenteDoRelatorio {
   const alcancados = new Map(a.estagios.map((e) => [e.estagio, e.em]));
   // Sem a lista `estagios` (backend antigo), o último estágio alcançado e os anteriores contam, sem hora.
   const ate = a.estagios.length === 0 && a.estagio ? ESTAGIOS.findIndex((e) => e.id === a.estagio) : -1;
@@ -107,7 +110,7 @@ function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
     aparelho: a.instance_id,
     estado: a.estado ? ROTULO_DO_ESTADO[a.estado] : 'não informado',
     parou_em: parou ? rotuloDoEstagio(parou) : null,
-    motivo: semArrobaOuNulo(a.motivo),
+    motivo: semArrobaOuNulo(a.motivo, mascara),
     estagios: ESTAGIOS.map((e, i) => ({
       estagio: e.id, rotulo: e.rotulo, em: alcancados.get(e.id) ?? null, alcancado: alcancados.has(e.id) || i <= ate,
     })),
@@ -122,8 +125,9 @@ function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
 const SEM_LEITURA: LeituraDoAprendizado = { situacao: 'indisponivel', motivo: 'O aprendizado da operação não foi lido para este relatório.' };
 
 function aprendizadoDoRelatorio(op: Operacao, leitura: LeituraDoAprendizado): AprendizadoNoRelatorio {
+  const mascara = mascaraDaOperacao(op);
   if (leitura.situacao === 'indisponivel') {
-    return { disponivel: false, motivo: semArroba(leitura.motivo), gerado_em: null, perguntas: [], licoes: { reforcadas: [], contestadas: [] }, avisos: [], nao_coberto: [] };
+    return { disponivel: false, motivo: mascara(leitura.motivo), gerado_em: null, perguntas: [], licoes: { reforcadas: [], contestadas: [] }, avisos: [], nao_coberto: [] };
   }
   const rotulos = new Map(op.alvos.flatMap((a) => (a.profile_id && a.persona ? [[a.profile_id, a.persona] as const] : [])));
   const a = leitura.aprendizado;
@@ -132,18 +136,19 @@ function aprendizadoDoRelatorio(op: Operacao, leitura: LeituraDoAprendizado): Ap
       // Persona sem rótulo conhecido na operação vira "uma persona", nunca o id.
       itens: p.itens.map((i) => ({
         ...i, persona: i.persona === null ? null : rotulos.get(i.persona) ?? 'uma persona',
-        resumo: semArrobaOuNulo(i.resumo), motivo: semArrobaOuNulo(i.motivo), fontes: i.fontes.map((f) => ({ ...f, resumo: semArrobaOuNulo(f.resumo) })),
+        resumo: semArrobaOuNulo(i.resumo, mascara), motivo: semArrobaOuNulo(i.motivo, mascara), fontes: i.fontes.map((f) => ({ ...f, resumo: semArrobaOuNulo(f.resumo, mascara) })),
       })),
   }));
   return {
-    disponivel: true, motivo: null, gerado_em: a.gerado_em, nao_coberto: a.nao_coberto.map((n) => ({ ...n, motivo: semArroba(n.motivo) })),
+    disponivel: true, motivo: null, gerado_em: a.gerado_em, nao_coberto: a.nao_coberto.map((n) => ({ ...n, motivo: mascara(n.motivo) })),
     perguntas, licoes: licoesDaOperacao(perguntas),
-    avisos: a.avisos.map((v) => ({ ...v, aviso: semArroba(v.aviso) })),
+    avisos: a.avisos.map((v) => ({ ...v, aviso: mascara(v.aviso) })),
   };
 }
 
 export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendizado: LeituraDoAprendizado = SEM_LEITURA): RelatorioDaOperacao {
-  const agentes = op.alvos.map(agenteDe);
+  const mascara = mascaraDaOperacao(op);
+  const agentes = op.alvos.map((a, i) => agenteDe(a, i, mascara));
   const falhas = new Map<string, FalhaPorMotivo>();
   for (const a of agentes) {
     if (a.estado !== ROTULO_DO_ESTADO.bloqueado && a.estado !== ROTULO_DO_ESTADO.cancelado) continue;
@@ -167,7 +172,7 @@ export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendiz
       id: op.id, comando: op.command, app_id: op.app_id, acao_final: op.acao_final, status: op.status ? ROTULO_DO_STATUS[op.status] : null,
       criada_em: op.created_at, encerrada_em: op.finished_at, assunto: op.assunto, fontes: op.fontes,
     },
-    capacidade: { ...c, motivos: c.motivos.map((m) => ({ ...m, motivo: semArroba(m.motivo) })) },
+    capacidade: { ...c, motivos: c.motivos.map((m) => ({ ...m, motivo: mascara(m.motivo) })) },
     custo: {
       pesquisa_usd: op.custo?.pesquisa_usd ?? null, alvos_usd: op.custo?.alvos_usd ?? null, total_usd: op.custo?.total_usd ?? null, teto_usd: op.max_usd,
     },

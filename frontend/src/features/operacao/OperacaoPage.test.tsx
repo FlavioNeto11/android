@@ -586,7 +586,9 @@ describe('31.254: o motivo de falha sem usuário de terceiro e o rótulo da aç�
 
   it('o motivo, na linha e no bloco de motivos da capacidade, não traz o dono do post nem o perfil alvo', async () => {
     await abrir();
-    expect(container.textContent).not.toMatch(/astro_jessica|nasawebb/);
+    // O perfil alvo aparece no cabeçalho (31.246: foi o dono que o digitou); o que não pode citá-lo é o MOTIVO que o backend escreveu.
+    const motivos = [...container.querySelectorAll('[data-motivo-do-alvo]'), container.querySelector('#operacao-capacidade')!.parentElement!];
+    for (const m of motivos) expect(m.textContent).not.toMatch(/astro_jessica|nasawebb/);
     expect(text(container.querySelector('[data-motivo-do-alvo="falha"]')!)).toContain('o post de [usuário omitido] em foco (o de [usuário omitido] …');
     expect(text(container.querySelector('#operacao-capacidade')!.parentElement!)).toContain('com o post de [usuário omitido] em foco');
   });
