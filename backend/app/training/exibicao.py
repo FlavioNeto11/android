@@ -61,4 +61,15 @@ def proposta(p: object, persona: Mapping[str, str]) -> object:
     return _em(p, validos)
 
 
-__all__ = ["proposta"]
+def relatorio(etapas: object, persona: Mapping[str, str]) -> object:
+    """O relatório por etapa da prévia, do salvar e do refazer receitas (`steps[]`) com o título e o motivo mascarados
+    (achado da Portal no 31.189: o título vinha em claro). É só exibição: o painel não o devolve. A `key` e o resto
+    ficam."""
+    validos = {n: v for n, v in persona.items() if isinstance(v, str) and len(v.strip().lstrip("@")) >= MINIMO}
+    if not isinstance(etapas, list) or not validos:
+        return etapas
+    return [{**e, **{k: _mascarar(e[k], validos) for k in ("title", "reason") if isinstance(e.get(k), str)}}
+            if isinstance(e, dict) else e for e in etapas]
+
+
+__all__ = ["proposta", "relatorio"]

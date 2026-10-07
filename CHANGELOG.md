@@ -31,6 +31,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - os identificadores (`capability`, `app_id`) ficam; a `key` da etapa é mascarada também, com o `_` como separador;
   - vale em toda resposta do treino que traz a sessão (lista, GET, parar, descartar, desfazer, proposta, salvar e
     refazer receitas), achado médio da revisão de segredos.
+  - o relatório por etapa (`steps[]`) da prévia, do salvar e do refazer receitas sai com o título e o motivo
+    mascarados (achado da Portal no 31.189); a `key` fica.
 - A `proposal` não muda: o painel a devolve na prévia e no salvar. Limite: casa o valor inteiro. O painel passa a
   exibir a cópia no 31.189 (Portal). Adendo v1.109.
 - Prova `simulated`: `backend/tests/test_proposta_para_exibir.py` (2 testes). Ensino, personas, alcance, arquitetura e

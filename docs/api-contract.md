@@ -7470,7 +7470,8 @@ motivo do não.
 
 Toda resposta do treino que traz a sessão leva o campo: a lista, o GET, parar, descartar, desfazer, a proposta e,
 dentro de `session`, salvar e refazer receitas. Na cópia, a `key` da etapa também é mascarada: o `_` conta como
-separador. A `proposal` não muda, porque é ela que o painel devolve na prévia e no salvar. Limite: o valor só é trocado
+separador. O relatório por etapa (`steps[]`) da prévia, do salvar e do refazer receitas sai
+com `title` e `reason` mascarados; a `key` fica (achado da Portal no 31.189). A `proposal` não muda, porque é ela que o painel devolve na prévia e no salvar. Limite: o valor só é trocado
 inteiro. O painel passa a exibir a cópia no 31.189 (Portal).
 
 **Prova:** `simulated` (`backend/tests/test_proposta_para_exibir.py`). `real`: `not_run`, pede o deploy.

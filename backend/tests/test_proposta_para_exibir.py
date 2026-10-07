@@ -60,3 +60,21 @@ async def test_o_get_da_sessao_traz_a_copia_e_a_proposta_igual(harness: Harness)
         lista = (await c.get("/api/training")).json()
     (da_lista,) = [x for x in lista if x["id"] == sid]                       # a lista também leva a cópia
     assert da_lista["proposal_exibicao"]["summary"] == "falar com {perfil_sobrenome}"
+
+
+async def test_o_relatorio_da_previa_e_do_salvar_sai_com_o_titulo_mascarado(harness: Harness) -> None:
+    """Achado da Portal no 31.189: o `steps[].title` do resultado do salvar vinha em claro."""
+    from .test_treino_dado_da_persona import _proposta
+
+    st, sid = await _sessao_com_persona(harness)                             # persona "Ana" "Lopes"
+    p = _proposta()
+    p["steps"][0]["title"] = "escrever para Lopes"
+    app = create_app(harness.cfg, state=harness.state)
+    app.state.poc = harness.state
+    corpo = {"proposal": p, "profile_ids": [], "group_ids": []}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        previa = (await c.post(f"/api/training/{sid}/preview", json=corpo)).json()
+        salvo = (await c.post(f"/api/training/{sid}/save", json=corpo)).json()
+    assert [s["title"] for s in previa["steps"]] == ["escrever para {perfil_sobrenome}"], previa
+    assert [s["title"] for s in salvo["steps"]] == ["escrever para {perfil_sobrenome}"]
+    assert salvo["steps"][0]["key"] == p["steps"][0]["key"]                   # a chave do relatório fica

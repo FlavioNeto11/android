@@ -116,6 +116,16 @@ def _exibir(request: Request, resposta: object) -> object:
     return {**resposta, "proposal_exibicao": exibicao.proposta(resposta.get("proposal"), persona)}
 
 
+def _relatorio_exibido(request: Request, session_id: str, resposta: object) -> object:
+    """31.183 (achado da Portal no 31.189): o `steps[]` da prévia, do salvar e do refazer receitas com o título e o
+    motivo mascarados; o relatório só é exibido."""
+    if not isinstance(resposta, dict) or not isinstance(resposta.get("steps"), list):
+        return resposta
+    perfil = _st(request).db.scalar("SELECT profile_id FROM training_sessions WHERE id=?", (session_id,))
+    persona = _st(request).repo.variaveis_da_persona(str(perfil) if perfil else None)
+    return {**resposta, "steps": exibicao.relatorio(resposta["steps"], persona)}
+
+
 @router.get("/training", response_model=None)
 async def list_training(request: Request, instance_id: str | None = None, limit: int = Query(30, ge=1, le=200),
                         nascido_de_prova: bool | None = None) -> object:
@@ -163,9 +173,9 @@ async def propose_training(request: Request, session_id: str) -> object:
 @router.post("/training/{session_id}/save", response_model=None)
 async def save_training(request: Request, session_id: str, body: TrainingSaveBody) -> object:
     try:
-        return _exibir(request, await _st(request).skills.save(
+        return _relatorio_exibido(request, session_id, _exibir(request, await _st(request).skills.save(
             session_id, proposal=body.proposal, profile_ids=body.profile_ids, group_ids=body.group_ids,
-            scope_on_proof=body.scope_on_proof))
+            scope_on_proof=body.scope_on_proof)))
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -176,8 +186,10 @@ async def preview_training(request: Request, session_id: str, body: TrainingSave
     por que não. A pessoa corrige a proposta ANTES de salvar, em vez de descobrir o motivo depois. O comando repetido
     vem no corpo (`code: duplicate_command`, 31.142, adendo v1.91), junto do resto; o 409 dele é só do `save`."""
     try:
-        return await _st(request).skills.preview(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
-                                                group_ids=body.group_ids, scope_on_proof=body.scope_on_proof)
+        previa = await _st(request).skills.preview(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
+                                                   group_ids=body.group_ids, scope_on_proof=body.scope_on_proof)
+        exibida = _relatorio_exibido(request, session_id, previa)
+        return exibida if isinstance(exibida, dict) else previa
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -187,7 +199,8 @@ async def redo_training_recipes(request: Request, session_id: str) -> dict[str, 
     """Refaz a destilação de uma habilidade JÁ salva e grava a receita das etapas que ficaram sem (31.86): o reparo do
     que foi salvo com o aparelho fora do ar. Idempotente; sessão não salva: 409 `sessao_nao_salva`."""
     try:
-        resposta = _exibir(request, await _st(request).skills.refazer_receitas(session_id))
+        resposta = _relatorio_exibido(request, session_id,
+                                      _exibir(request, await _st(request).skills.refazer_receitas(session_id)))
         return resposta if isinstance(resposta, dict) else {}
     except TrainingError as exc:
         raise _training_error(exc) from exc
