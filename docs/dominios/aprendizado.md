@@ -2329,3 +2329,85 @@ pela proveniência, pela interação ou inferida) está no topo de `infrastructu
 A confiança fica numa régua só (`confirmado`/`hipotese`) e o valor original aparece ao lado, em `estado`. O que a rota
 não responde aparece em `nao_coberto`. Contrato: adendo v1.96. O relatório da operação da Portal (31.162) lê esta rota.
 
+## O plano de ensino guiado do Instagram (31.201)
+
+Só documento e leitura: nada aqui foi executado. O plano diz o que ensinar no Instagram, em que ordem, em que aparelho
+e como medir, a partir das contas novas do dono (29.168; o roteiro de cadastro e de primeiro login está em
+`.claude/handoffs/prova30/android.md` §11–§13). Cada passo com conta real pede o sim do dono na hora.
+
+**Ponto de partida.** Leitura só de leitura no central em 07/10, ~00:30Z, commit `42cba3cd`, banco aberto em `mode=ro`:
+- sessões de ensino: 26, das quais 12 salvas, 9 descartadas, 3 gravadas e 2 propostas. As salvas são de 3 personas;
+- receitas ensinadas ativas: 14 no Ajustes do Android, 7 no QA Messenger e **1 no Instagram** (a 221, `open_profile_1`,
+  abre o perfil de quem roda, com 0 reproduções);
+- etapas reais conduzidas por receita ensinada: 9 no Ajustes do Android, 12 no QA Messenger e **0 no Instagram**.
+
+No Instagram, o ensino ainda não rendeu uso real. O plano existe para mudar isso sem efeito fora da máquina.
+
+### As regras que valem durante todo o plano
+
+- **A conta nova só lê** (§13.6): nada de seguir, curtir, comentar, mandar mensagem ou publicar até o dono dizer.
+  - A etapa com efeito não se ensina por aqui: a troca do ensino a recusa (31.153).
+  - Uma ação com efeito continua no catálogo, com aprovação.
+- **Um login por vez, medido** (§13.2), fora das janelas de medida do notebook. Planejar 2 rodadas por conta (§11).
+- **A tela de bloqueio para tudo** ("Confirm you're human" e afins). Ninguém toca, e a conta sai (§11).
+- **Uma conta por aparelho**, e o aparelho com conta não tem o reinício de dados.
+- **Valor da persona no ensino.** O @ ou o nome da própria persona digitado durante o ensino é trocado por parâmetro e
+  mascarado na gravação, na proposta e no relatório (K-107, 31.183).
+  - A etapa que mira a conta da PRÓPRIA persona traz o aviso do 31.182.
+  - Essa etapa não serve a outra persona como foi gravada.
+- **A proposta do ensino é uma chamada paga de IA** (papel do planejador, `training/generalizer.py`), uma por sessão.
+  O custo de cada sessão é lido em `ai_calls`. Com o uso pago autorizado para operar, o teto é por sessão, e o gasto
+  vai na trilha.
+
+### O que ensinar, em ordem (tudo só leitura)
+
+| # | O que | Parâmetro | Por que nesta ordem |
+|---|---|---|---|
+| 1 | Abrir o Instagram até a tela inicial | nenhum | É a base de todas as outras. Se a abertura não fica estável, o resto cai na IA |
+| 2 | Abrir a busca e procurar um perfil pelo @ | `{username}` | É a etapa que a operação mais repete. O valor vira parâmetro: nunca o @ de quem ensina |
+| 3 | Abrir o perfil achado | `{username}` | É o alvo da operação (P-027: o post nosso mais recente) |
+| 4 | Abrir o post mais recente do perfil | nenhum | É a leitura do alvo (31.179) |
+| 5 | Voltar à tela inicial | nenhum | Fecha o caminho. Sem ela, a próxima etapa parte de uma tela desconhecida |
+| 6 | Abrir o próprio perfil | nenhum | Só para a persona que ensina (31.182). Fica por último porque não serve às outras |
+
+Uma persona ensina; as outras usam. Pela regra do 30.81, a receita ensinada vale só para quem ensinou, até o
+"Confirmar que fica" no Livro ou uma prova real. Ensinar a mesma etapa em várias personas gasta IA e não mede nada a
+mais.
+
+### Onde
+
+- **Primeira conta: o android-11 (central)**, depois de ligado e com o app verificado (§12).
+  - O central tem folga de CPU, e o ensino grava cada toque.
+  - A persona dessa conta ensina as etapas 1 a 6.
+- **Segunda conta: o android-09 (notebook).** Ela não ensina: executa as etapas 1 a 5 depois da liberação, para medir o
+  alcance noutra persona e noutro host.
+- **As outras contas novas** (10, 12, 05; §12) entram uma a uma, só para usar. Não há ensino novo, salvo onde a medida
+  mostrar uma tela diferente.
+
+### Como medir cada receita (rotas desta fase)
+
+1. **Depois de salvar**: o relatório do ensino diz o que virou receita e o que ficou na IA. A troca diz o que recusou
+   (efeito, dado da persona).
+2. **Uso na persona que ensinou**: 2 ou 3 operações só de leitura no mesmo app.
+   - `GET /api/aprendizado/receitas/{id}/rendimento` (31.191, adendo v1.110) dá `sem_ia.real`, `caiu_na_ia.real` e o
+     `custo_evitado_usd`.
+   - A régua proposta para o "liberaria" do 31.202: 3 usos reais sem IA, em 2 execuções distintas, e nenhuma falha nas
+     últimas 3.
+3. **Quem pode usar**: `GET /api/aprendizado/alcance?app=com.instagram.android` (31.181, adendo v1.107) diz, por
+   persona, se a receita vale e o motivo de não valer. Até a liberação, a resposta esperada para as outras personas é
+   `pode: false`, motivo `presa_a_quem_ensinou`.
+4. **Liberar**: o dono decide no Livro ("Confirmar que fica"), olhando o rendimento. Depois disso a segunda conta usa.
+   - O mesmo `rendimento` passa a contar o uso fora de quem ensinou.
+   - A sugestão do 31.202 (em sombra) fica ao lado, para comparar com a decisão do dono.
+5. **A prova da onda**: `scripts/prova-onda-aprendizado.py` (31.192) marca o 31.165 como `real` quando uma etapa da
+   operação foi conduzida por receita do ensino. É o primeiro uso real do ensino no Instagram.
+
+**Pronto** quando as etapas 1 a 5 tiverem `sem_ia.real ≥ 3` na persona que ensinou e pelo menos 1 uso real sem IA na
+segunda conta, sem falha nas últimas 3. **Parar** e chamar o dono na tela de bloqueio, no `auth_challenge`, na conta
+errada aberta ou com 2 falhas seguidas da mesma receita.
+
+### O que este plano não faz
+
+- Não cria conta, não digita senha e não resolve verificação: isso é do dono (§11).
+- Não ensina ação com efeito e não muda a regra do 30.81. A liberação sem pessoa é a pergunta do 31.202.
+- Não liga aparelho, não mexe em `max_online_devices` e não roda no meio da medida do notebook.

@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.201: o plano de ensino guiado do Instagram (branch feat/31-201-plano-de-ensino, só documento)
+
+- Seção nova em `docs/dominios/aprendizado.md`, com quatro partes:
+  - o que ensinar, em ordem e só leitura (6 etapas);
+  - onde: uma persona ensina no android-11, e a segunda conta, no android-09, só usa;
+  - como medir: rendimento (31.191), alcance (31.181), "Confirmar que fica" e a prova da onda (31.192);
+  - quando parar.
+- Parte das contas novas do dono (29.168). Nada executado.
+- Ponto de partida, lido no central em 07/10 ~00:30Z (`42cba3cd`, banco em `mode=ro`): 1 receita ensinada no
+  Instagram, com 0 uso real; 12 etapas reais no QA Messenger e 9 no Ajustes do Android.
+
 ## 2026-10-07 — 31.192: o script que marca a prova da onda do aprendizado pelo commit no ar (branch feat/31-192-marcacao-da-onda)
 
 - A medida da onda 2 de 07/10 depende do commit no ar. No central lido em 06/10 23:10Z (`42cba3cd`), os cortes 58 e 59
