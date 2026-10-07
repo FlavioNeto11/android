@@ -30,6 +30,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `operacao.encerrada` novo. A leitura repetida não grava nem avisa de novo.
 - Prova `simulated`: `backend/tests/test_operacao_reabre_apos_aprovacao.py` (3; o código de antes falha em 2).
   `real`: `not_run` até o deploy.
+## 2026-10-07 — 31.240: a reserva de frota por alvo faz o espaçamento valer na corrida (branch feat/31-240-reserva-de-frota)
+
+- Na onda 2 de 07/10 (op-20261007100755-096a28), três aprovações saíram juntas às 10:12:51Z. As três portas passaram
+  em 10:12:52–53Z, antes de qualquer efeito existir para o espaçamento entre contas contar, e dois comentários saíram a
+  0,4 s um do outro. O espaçamento só comparava com a última interação registrada, e cada alvo da operação é uma
+  execução própria.
+- Agora a porta, ao liberar o efeito (depois da aprovação, nunca no preparo), toma a reserva do alvo na frota: uma linha
+  de `travas` por (app, alvo), por compare-and-swap, sem migração (`app/social/reserva_da_frota.py`).
+  - A outra conta que chega com a reserva viva é adiada, não recusada, e confere de novo em 30 s. Daí vale o
+    espaçamento de sempre, contado do efeito do dono.
+  - A reserva cai no efeito do dono, quando a etapa dele termina sem efeito, ou em 600 s. Sem espaçamento configurado,
+    nada é reservado.
+- Prova `simulated`: `backend/tests/test_reserva_da_frota.py` (6). Nele, três contas aprovadas juntas saem com
+  ≥120 s entre os efeitos; sem a reserva, o mesmo roteiro sai em rajada. Também pela `_policy_gate` real: a segunda
+  aprovada é adiada com o motivo 31.240, e tirar o gancho da porta faz esse teste falhar. `real`: `not_run` até o deploy.
 
 ## 2026-10-07 — 31.236: os parâmetros fixos da operação chegam ao planejador (branch feat/31-236-parametros-no-planejador)
 

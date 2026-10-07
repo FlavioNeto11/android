@@ -219,6 +219,13 @@ class Portoes:
             if parada is not None:
                 return parada
         if cap.side_effect:
+            # 31.240: antes de liberar, a reserva do alvo na frota. Cada alvo de operação é uma execução, e as aprovadas
+            # juntas passavam a porta juntas, antes de qualquer efeito existir para o espaçamento contar (onda 2).
+            adiada = self._st.policies.reservar_frota(profile_id, cap, contraparte(cap, argumentos),
+                                                      app_id=app_da_etapa_id, step_id=srow["id"])
+            if adiada is not None:
+                return Verdict(allowed=False, policy=veredito.policy, counts=veredito.counts, reason=adiada[0],
+                               retry_at=adiada[1])
             # 31.64 S1 (migração 110): a porta liberou o efeito. Na mesma passada sem `await` da regra do objeto na família
             # (acima): a irmã que chegar depois vê esta marca e é recusada, qualquer que seja a ordem das tomadas.
             self._st.social_repo.marcar_passou_a_porta(srow["id"])
