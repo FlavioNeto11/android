@@ -236,6 +236,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   945f5043 + coletor da Frente GitHub 3a298541): 117 achados lidos, 82 com arquivo, 7 em PR aberto, 7 cartões criados; a segunda execução leu 7 cartões
   existentes e fez 0 ações. `not_run`: o fechamento por PR mesclado em dado real (o PR 487 ainda está aberto) e o coletor ainda não está na `main`.
 
+## 2026-10-06 — 31.175, correção: cada estágio do alvo guarda a sua hora (achado do percurso da Portal no deploy 57)
+
+- Na operação liberada, resposta gerada, ação preparada, ação executada e resultado verificado saíam com a mesma hora
+  (o fim da etapa, que vem depois do liberar). Agora o rascunho e a ação preparada ficam com a hora do pedido de
+  aprovação, ou com a do início da etapa que roda sem pedido; a executada e a verificada, com a do fim da etapa
+  (`modules/operacoes/domain/estagios.py::derivar`).
+- Prova `simulated`: `backend/tests/test_operacoes_estagios.py::test_depois_do_liberar_cada_estagio_guarda_a_sua_hora`
+  (falha no código anterior); dirigidos de operação 109 passed, 1 skipped; catracas 89; mypy 257; docs-check 0.
+
+## 2026-10-06 — 31.175, parte simulada: concorrência de IA por medida (branch feat/31-175-medida-sobre-main, corte 59)
+
+- `backend/tests/test_medida_concorrencia_31175.py` (opt-in, `MEDIR_31175=1`) mede uma operação de 6 alvos no harness
+  com 4 e com 6 vagas, com latência artificial fixa por chamada.
+- Com 2 s por chamada, a duração total foi de 11,1 s com 4 vagas e de 7,7 s com 6, e a espera pela vaga caiu de p95
+  2009 ms para 0. A tabela está em `.claude/handoffs/jev-31-175-medida.md`.
+- Sem mudança de código: a fila por vaga já existe, e `max_ai_concurrency` é relido ao vivo.
+- Prova `simulated`; a leitura real fica para a onda 2.
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.
