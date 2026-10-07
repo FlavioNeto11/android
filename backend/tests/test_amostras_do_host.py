@@ -79,3 +79,19 @@ async def test_rota_das_amostras_do_host(harness: Harness) -> None:
         assert str(st.cfg.data_dir) not in r.text and "observabilidade" not in r.text   # sem caminho
         for fora in (0, 169):
             assert (await c.get("/api/host/amostras", params={"horas": fora})).status_code == 422
+
+
+def test_o_csv_do_amostrador_v2_traz_as_tres_colunas_novas_e_o_v1_segue_valido(tmp_path: Path) -> None:
+    """Achado da Portal (31.211): o amostrador v2 acrescenta `cpu_media_pct`, `demais_processos_pct` e `nao_atribuido_pct`
+    ao fim da linha, e a leitura as descartava. São opcionais: o dia gravado pelo v1 (9 colunas) segue lido, com as três
+    em `None`, e o v2 as traz como número."""
+    v1 = ",".join(COLUNAS[:9])
+    (tmp_path / "20261006.csv").write_text(
+        "﻿" + v1 + "\n2026-10-06T23:59:00Z,10,0.5,2048,3,4096,50,python:2.0,\n", encoding="utf-8")
+    _csv(tmp_path, "20261007", ["2026-10-07T00:01:00Z,12.5,0.5,2048,3,4096,50,python:2.0,android-01:1,40.2,7.5,3.25"])
+    agora = datetime(2026, 10, 7, 0, 30, tzinfo=UTC)
+    antiga, nova = ler_amostras(tmp_path, 2, agora) or []
+    assert (antiga["cpu_media_pct"], antiga["demais_processos_pct"], antiga["nao_atribuido_pct"]) == (None, None, None)
+    assert antiga["cpu_host_pct"] == 10 and antiga["processos_top"] == [{"nome": "python", "pct": 2.0}]
+    assert (nova["cpu_media_pct"], nova["demais_processos_pct"], nova["nao_atribuido_pct"]) == (40.2, 7.5, 3.25)
+    assert nova["avisos_pressao"] == [{"instance_id": "android-01", "n": 1}]
