@@ -146,11 +146,15 @@ async def ler_perguntas(cliente: Any) -> dict | None:
     except Exception:  # noqa: BLE001 - rede, credencial ou formato: em qualquer caso o resumo diz que não leu
         return None
     ids: list[str] = []
+    n = 0
     for c in cartoes:
         achado = _ID_PERGUNTA.search(str(c.get("name") or "")) if isinstance(c, dict) else None
-        if achado and achado.group(0) not in ids:
-            ids.append(achado.group(0))
-    return {"n": len(cartoes), "ids": ids}
+        if achado:
+            n += 1
+            if achado.group(0) not in ids:
+                ids.append(achado.group(0))
+    # O cartão fixo de instruções da lista ("Como responder aqui") não é pergunta: só conta quem tem P-NNN no nome.
+    return {"n": n, "ids": ids}
 
 
 async def ler_movidos(cliente: Any, agora: datetime) -> dict[str, int] | None:

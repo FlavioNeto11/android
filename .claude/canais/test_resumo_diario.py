@@ -150,7 +150,7 @@ def test_perguntas_lidas_da_lista_certa_so_com_contagem_e_ids() -> None:
                        {"id": "2", "name": "Sem número nenhum", "desc": ""},
                        {"id": "3", "name": "P-027 outra"}, {"id": "4", "name": "repete P-026"}])
     q = asyncio.run(d.ler_perguntas(fake))
-    assert q == {"n": 4, "ids": ["P-026", "P-027"]}
+    assert q == {"n": 3, "ids": ["P-026", "P-027"]}  # o cartão sem P-NNN (instruções fixas da lista) não é pergunta
     assert fake.chamadas == [("cartoes", d.LISTA_PERGUNTAS)]
 
 
