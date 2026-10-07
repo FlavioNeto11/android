@@ -7,7 +7,8 @@ O que estes testes protegem:
 * o serviço: cobrindo, nenhuma chamada de IA, os fatos entram na memória como `livro.<item>` (descoberta confirmada,
   origem `pesquisa`, frescor do Livro) e a `pesquisa.estado` registra o reaproveitamento com os itens e o critério; a
   lacuna fecha; não cobrindo, a pesquisa paga roda como antes; a porta que falha não derruba a pesquisa;
-* o leitor do Livro (harness): só os fatos do MESMO assunto canônico, com texto, frescor e domínios da proveniência.
+* o leitor do Livro (harness): só os fatos do MESMO assunto canônico e do MESMO app da operação (aceite da Jev), com
+  texto, frescor e domínios da proveniência; o `candidate` conta porque só a descoberta confirmada vira candidata.
 
 Nível de prova: `simulated` (banco de teste, provedor falso; nenhuma chamada paga).
 """
@@ -17,7 +18,7 @@ import json
 from typing import Any
 
 from app.config import PesquisaCfg
-from app.db import Database
+from app.db import Database, now_iso
 from app.modules.learning.domain.fatos_da_operacao import FatoDaOperacao, candidata
 from app.modules.learning.domain.reaproveitamento_da_pesquisa import FatoDoLivro, cobertura
 from app.modules.learning.infrastructure.fatos_do_livro_sql import LeitorDeFatosDoLivro
@@ -63,16 +64,16 @@ async def test_cobrindo_nao_paga_e_registra(banco: Database) -> None:  # noqa: F
         pedidos.append(req.assunto)
         return _bruta(("tecido reciclado", ["https://loja.exemplo.com/outono", "https://www.jornal.exemplo.org/m"]))
 
-    assuntos: list[str] = []
+    operacoes: list[str] = []
 
-    def do_assunto(assunto: str) -> list[FatoDoLivro]:
-        assuntos.append(assunto)
+    def da_operacao(operacao_id: str) -> list[FatoDoLivro]:
+        operacoes.append(operacao_id)
         return [_f("11"), _f("12", frescor="2098-01-01T00:00:00.000Z")]
 
-    servico = PesquisaDaOperacao(banco, PesquisaCfg(enabled=True), PRECOS, fatos_do_livro=do_assunto)
+    servico = PesquisaDaOperacao(banco, PesquisaCfg(enabled=True), PRECOS, fatos_do_livro=da_operacao)
     feito = await servico.pesquisar_se_preciso("op-1", run_id="r-a", contexto="", chamar=chamar)
     assert feito is not None and (feito.reaproveitados, feito.buscas, feito.fontes) == (2, 0, 0)
-    assert pedidos == [] and assuntos == ["coleção de outono da loja"]
+    assert pedidos == [] and operacoes == ["op-1"]
     entradas = {e.chave: e for e in servico.repo.entradas_da_operacao("op-1")}
     livro = entradas["livro.11"]
     assert (livro.tipo, livro.origem, livro.confianca, livro.frescor_ate) == ("descoberta", "pesquisa", "confirmado",
@@ -93,7 +94,7 @@ async def test_nao_cobrindo_ou_falhando_a_pesquisa_paga_roda(banco: Database) ->
         pedidos.append(req.assunto)
         return _bruta(("tecido reciclado", ["https://loja.exemplo.com/outono", "https://www.jornal.exemplo.org/m"]))
 
-    def quebrado(assunto: str) -> list[FatoDoLivro]:
+    def quebrado(operacao_id: str) -> list[FatoDoLivro]:
         raise RuntimeError("banco")
 
     so_um = PesquisaDaOperacao(banco, PesquisaCfg(enabled=True), PRECOS, fatos_do_livro=lambda a: [_f("11")])
@@ -106,18 +107,29 @@ async def test_nao_cobrindo_ou_falhando_a_pesquisa_paga_roda(banco: Database) ->
     assert len(pedidos) == 2
 
 
-def test_o_leitor_do_livro_le_so_o_assunto(harness: Harness) -> None:
+def test_o_leitor_do_livro_le_so_o_assunto_e_o_app(harness: Harness) -> None:
     st = harness.state
+    pacote = "com.pocqa.messenger"                                   # o app `qa-messenger` do harness
 
-    def fato(chave: str, texto: str, assunto: str) -> Any:
+    def fato(chave: str, texto: str, assunto: str, *, app: str = pacote, confianca: str = "confirmado") -> Any:
         return candidata(FatoDaOperacao(operacao_id="op-0", chave=chave, tipo="descoberta", texto=texto,
-                                        confianca="confirmado", frescor_ate=FUTURO, pacote="com.instagram.android",
+                                        confianca=confianca, frescor_ate=FUTURO, pacote=app,
                                         assunto=assunto, dominios=("loja.exemplo.com",)), AGORA)
 
+    assert fato("pesquisa.h", "talvez em março", "semana de moda", confianca="hipotese") is None   # nunca candidata
     a = st.learning.propor(fato("pesquisa.a", "a coleção usa tecido reciclado", "Coleção de Outono da Loja"))
     st.learning.propor(fato("pesquisa.b", "o desfile é em março", "semana de moda"))
-    lidos = LeitorDeFatosDoLivro(st.db).do_assunto("coleção de outono da loja")
+    st.learning.propor(fato("pesquisa.c", "a coleção sai em setembro", "Coleção de Outono da Loja",
+                            app="com.instagram.android"))           # mesmo assunto, outro app: não cobre
+    agora = now_iso()
+    st.db.execute("INSERT INTO operacoes(id, command, app_id, acao_final, max_usd, assunto, fontes, status,"
+                  " idempotency_key, corpo_sha256, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                  ("op-9", "comente", "qa-messenger", "preparar", 1.0, "coleção de outono da loja", "[]", "em_curso",
+                   "k-op-9", "x", agora, agora))
+    lidos = LeitorDeFatosDoLivro(st.db).da_operacao("op-9")
     assert [(f.ref, f.texto, f.frescor_ate, f.dominios, f.operacao_de_origem) for f in lidos] == [
         (a.id, "a coleção usa tecido reciclado", FUTURO, ("loja.exemplo.com",), "op-0")]
-    assert LeitorDeFatosDoLivro(st.db).do_assunto("") == ()
+    assert LeitorDeFatosDoLivro(st.db).do_assunto("coleção de outono da loja", "") == ()
+    assert LeitorDeFatosDoLivro(st.db).do_assunto("", pacote) == ()
+    assert LeitorDeFatosDoLivro(st.db).da_operacao("op-inexistente") == ()
     assert json.dumps([f.texto for f in lidos])                                # só texto do fato, sem marca crua

@@ -141,7 +141,7 @@ class Portoes:
             ai = self._st.cfg.file.ai
             # 31.231: os fatos do Livro do mesmo assunto, antes da pesquisa paga
             self._pesquisa_cache = PesquisaDaOperacao(self._st.db, ai.pesquisa, ai.prices,
-                                                      fatos_do_livro=LeitorDeFatosDoLivro(self._st.db).do_assunto)
+                                                      fatos_do_livro=LeitorDeFatosDoLivro(self._st.db).da_operacao)
         return self._pesquisa_cache
 
     async def _policy_gate(self, obj: Any, srow: Any, run: Any) -> Any:

@@ -15,7 +15,8 @@ Regras:
     * a consulta nasce só do assunto, das fontes indicadas e da leitura do alvo; nunca de persona nem de tela sensível;
     * falhou ou não achou fonte: fica a marca `pesquisa.estado` (progresso) por uma hora, para 30 agentes não pagarem
       30 tentativas;
-    * 31.231: antes de pagar, os fatos do Livro do MESMO assunto (`fatos_do_livro`, a porta do aprendizado). Cobrindo o
+    * 31.231: antes de pagar, os fatos do Livro do MESMO assunto e app (`fatos_do_livro`, a porta do aprendizado, que
+      recebe o id da operação). Cobrindo o
       pedido pelo critério explícito (`reaproveitamento_da_pesquisa.cobertura`), eles entram na memória como
       `livro.<item>` (descoberta, confirmada, com o frescor do Livro) e a `pesquisa.estado` registra o reaproveitamento
       com o critério; nenhuma chamada de IA. Não cobrindo, a pesquisa paga roda como antes.
@@ -69,7 +70,8 @@ class PesquisaDaOperacao:
         self.cfg = cfg
         self.prices = prices
         self.repo = RepositorioDeMemoria(db)
-        #: 31.231: os fatos do Livro de um assunto (a porta do aprendizado); `None` = sem reaproveitamento
+        #: 31.231: os fatos do Livro do assunto e do app de uma operação, pelo id dela (a porta do aprendizado);
+        #: `None` = sem reaproveitamento
         self.fatos_do_livro = fatos_do_livro
 
     # ------------------------------------------------------------------ o que a operação pede
@@ -139,9 +141,9 @@ class PesquisaDaOperacao:
         A leitura do Livro que falha nunca derruba a pesquisa: ela segue paga, como antes."""
         if self.fatos_do_livro is None:
             return None
-        assunto, fontes = pedido
+        _, fontes = pedido
         try:
-            fatos = self.fatos_do_livro(assunto)
+            fatos = self.fatos_do_livro(operacao_id)
         except Exception:  # noqa: BLE001 - o Livro é atalho: sem ele, a pesquisa paga roda
             log.exception("operação %s: fatos do Livro não lidos; a pesquisa segue", operacao_id)
             return None

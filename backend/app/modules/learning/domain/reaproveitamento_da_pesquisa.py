@@ -5,8 +5,10 @@ viram itens do Livro com o assunto no escopo (31.190, 31.200) e a proveniência 
 A 2ª operação do MESMO assunto pagava de novo pelo que o Livro já sabia.
 
 "Cobrir o pedido" é um critério explícito, e a decisão sai com ele por extenso (nunca um pulo silencioso):
-    1. pelo menos `min_fatos` fatos do Livro do assunto (o canônico do 31.200), vivos (`candidate`, `validated` ou
-       `published`; o rejeitado e o desligado ficam fora);
+    1. pelo menos `min_fatos` fatos do Livro do assunto (o canônico do 31.200) e do app da operação, vivos
+       (`candidate`, `validated` ou `published`; o rejeitado e o desligado ficam fora). O `candidate` conta porque o
+       minerador do 31.190 só faz nascer item de descoberta `confirmado` (`fatos_da_operacao.recusa`: a hipótese e o
+       incerto não viram candidata), então até o não revisado veio confirmado;
     2. todos com confiança "confirmado" (só o fato confirmado nasce no Livro, `fatos_da_operacao.elegivel`) e dentro do
        frescor (`frescor_ate` > agora; sem frescor, não conta);
     3. se a operação indicou fontes, cada domínio indicado está entre os domínios das fontes desses fatos.
