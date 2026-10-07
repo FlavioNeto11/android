@@ -231,7 +231,10 @@ def _resumo_curto(resumo: str, limite: int = 110) -> str:
 
 def titulo_marco(d: Deploy) -> str:
     sha = f" ({d.commit})" if d.commit else ""
-    return f"📅 Deploy {d.numero} · {_data_hora(d)}{sha} · {_resumo_curto(d.resumo)} · {_migracoes_texto(d)}"
+    resumo, mig = _resumo_curto(d.resumo), _migracoes_texto(d)
+    # O cabeçalho do CHANGELOG já costuma dizer "sem migração"/"migração 126": não repetir no fim do título.
+    fim = "" if mig.lower() in resumo.lower() else f" · {mig}"
+    return f"📅 Deploy {d.numero} · {_data_hora(d)}{sha} · {resumo}{fim}"
 
 
 def _com_rotulo(rotulo: str, resto: str | None, vazio: str) -> str:
