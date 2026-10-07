@@ -73,9 +73,10 @@ from .projecao import HistoricoDeAcoes, app_da_etapa
 from .latencia import TemposDaTentativa, ms_desde
 from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_galeria
 from .dado_da_persona import resolver_persona, rotulo, sem_valor_na_etapa
-from .recipes import (NAO_APLICAVEL_CONTA_APOS, READ_ONLY, AlvoAusente, RecipeDiverged, RecipeStore, Replayer,
+from .recipes import (escopo_do_alvo, NAO_APLICAVEL_CONTA_APOS, READ_ONLY, AlvoAusente, RecipeDiverged, RecipeStore, Replayer,
                       contar_retorno_ia, distill, eh_generica, filhos_rotulados, hash_generico_da_linha,
                       unique_selectors)
+from ..security.mascara_da_persona import USUARIO_DA_CONTA
 from .repository import Repository
 from .dialogos import (FRACAO_DA_PAGINA, FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE,
                        MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha,
@@ -1450,6 +1451,11 @@ class StepExecutor:
                                            step_hash_generico=rr.step_hash_generico,
                                            # 30.81: a receita ensinada em espera de prova só vale para quem ensinou
                                            persona=self.repo.persona_do_objetivo(objective["profile_id"], rt.id),
+                                           # 31.249: o escopo do alvo desta etapa (conta da persona ou de terceiro)
+                                           escopo=escopo_do_alvo(step.bindings or {},
+                                                                 [v for n, v in persona.items()
+                                                                  if USUARIO_DA_CONTA.match(n)]
+                                                                 + ([account_label] if account_label else [])),
                                            prova_fluxo=run["prova_fluxo_id"])
                 if rr.row is not None:
                     # 31.87 F2: a receita ensinada digita `{perfil_email}`; os dados da persona do objetivo entram

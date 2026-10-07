@@ -2620,6 +2620,34 @@ Agora (`StepExecutor._after_step`, `ai.candidata_da_ativa_que_divergiu`, padrão
 **Prova.** `simulated`: `backend/tests/test_candidata_da_ativa_que_divergiu.py` (5). `real`: `not_run`; a 1ª receita
 ativa que divergir até a quarentena depois do deploy.
 
+## A receita só reproduz no escopo do alvo em que nasceu (31.249)
+
+Medido em 07/10 (só leitura): a receita 111 (`open_post_1`) foi aprendida em 03/10 num post da PRÓPRIA conta da
+persona. As etapas `open_post_1` da onda 2 e da rodada iam a post de terceiro, com o MESMO `template_hash`, porque a
+etapa não cita o autor na pós-condição. Na onda 2 a 111 divergiu nos 3 alvos e foi à quarentena: US$ 0,1415, 39 % da
+onda.
+
+Só uma receita viva cabe por chave. Se o escopo entrasse na identidade, as receitas de um dos lados ficariam órfãs, e a
+identidade é calculada em vários lugares. Por isso ele entra na CONSULTA (`RecipeStore.find(..., escopo=)`):
+- **Regra** (`recipes.escopo_do_alvo`): a conta-alvo da etapa (`post_author` ou `username`) pode ser uma conta da
+  persona, sem caixa nem arroba, ou o marcador dela (31.113 F3); nesse caso o escopo é `proprio`. Outra conta dá
+  `terceiro`. Sem conta-alvo, `None`.
+- **Receita**: o escopo sai da etapa em que ela foi aprendida (`learned_from_step`, com as contas da persona daquela
+  execução em `profile_accounts`) e fica em memória (não muda). Sem a etapa, ou vinda do treino, `None`.
+- **Consulta**: o executor passa o escopo da etapa da vez, pelas contas da persona e o `account_label`. A receita de
+  outro escopo não reproduz: `receita.consulta{resultado=outro_escopo}`, e a IA decide a etapa, sem herança nem chave
+  genérica. Com `None` de um dos lados, a consulta é a de sempre.
+
+No dado real de 07/10, a regra dá: 111 `proprio`; 222 e 223 (`open_profile` de terceiro) `terceiro`; 91
+(`open_comments`, sem conta-alvo) `None`.
+
+Limite: a chave segue com uma receita viva só. O escopo que perder a vaga vai à IA, e não diverge pagando.
+
+**Prova.** `simulated`: `backend/tests/test_escopo_da_receita.py` (5: a regra; o escopo da etapa aprendida; a consulta
+no mesmo escopo e no outro, com a métrica; sem escopo conhecido vale nos dois; o executor passa o escopo). `real`:
+`not_run`. A prova é a 1ª operação em post de terceiro depois do deploy, com `outro_escopo` no lugar da divergência da
+111.
+
 ## A receita sem o "voltar" inicial (31.230)
 
 Achado da onda 1 (07/10): a IA começou o `open_profile` por voltar (`press_back`). Como o voltar depende da tela de
