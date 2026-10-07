@@ -1221,6 +1221,23 @@ class RecipeStore:
         metricas.contar("receita.reproducao", resultado="divergiu")
         return True, self._falhou(recipe_id, zera_serie=False)
 
+    def nao_aplicavel_em_prova(self, recipe_id: int) -> bool:
+        """31.262: o 30.80 na SOMBRA. A candidata não se aplicou nesta execução (o alvo da ação 1 não estava na tela de
+        partida) e a IA comprovou a etapa: não é veredito sobre ela. Antes, contava como divergência, zerava a prova e
+        trocava a candidata pelo caminho da IA, que partia de outra tela (a chave genérica do `open_profile` passou por
+        118, 166, 222 e 223 sem nunca ficar ativa; a 222 virou a 223 por uma etapa que começou fora do app).
+
+        A série é a mesma `nao_aplicavel_seguidas` da reprodução; a concordância e a divergência a zeram. Devolve True a
+        partir da `NAO_APLICAVEL_CONTA_APOS`-ésima seguida: aí conta como divergência (o 1º seletor quebrado de vez não
+        prende a chave numa candidata que nunca se aplica)."""
+        with self.db.tx():
+            self.db.execute("UPDATE recipes SET nao_aplicavel_seguidas=nao_aplicavel_seguidas+1, last_used_at=?"
+                            " WHERE id=?", (now_iso(), recipe_id))
+            seguidas = int(self.db.scalar("SELECT nao_aplicavel_seguidas FROM recipes WHERE id=?", (recipe_id,)) or 0)
+        conta = seguidas >= NAO_APLICAVEL_CONTA_APOS
+        metricas.contar("receita.sombra", resultado="divergiu" if conta else "nao_aplicavel")
+        return conta
+
     def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int, simulada: bool = False) -> bool:
         """Veredito da sombra de UMA execução da etapa. Devolve True se a candidata foi promovida a ativa agora.
 
@@ -1247,10 +1264,11 @@ class RecipeStore:
             if agreed and simulada and row["status"] == "candidate":
                 return False
             if agreed:
-                self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1, shadow_agree=shadow_agree+1"
-                                " WHERE id=?", (recipe_id,))
+                self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1, shadow_agree=shadow_agree+1,"
+                                " nao_aplicavel_seguidas=0 WHERE id=?", (recipe_id,))
             elif row["status"] == "candidate":
-                self.db.execute("UPDATE recipes SET shadow_total=0, shadow_agree=0 WHERE id=?", (recipe_id,))
+                self.db.execute("UPDATE recipes SET shadow_total=0, shadow_agree=0, nao_aplicavel_seguidas=0 WHERE id=?",
+                                (recipe_id,))
             else:
                 self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1 WHERE id=?", (recipe_id,))
             seguidas = int(self.db.scalar("SELECT shadow_agree FROM recipes WHERE id=?", (recipe_id,)) or 0)

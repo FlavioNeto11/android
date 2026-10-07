@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.262: a candidata que não se aplica na partida segue em prova (branch feat/31-262-sombra-partida-diferente)
+
+- Diagnóstico (leitura do central): a 222 era candidata com 0 concordâncias e não podia reproduzir na rodada. A onda 2
+  também foi da IA (9 decisões). A rodada pagou 16 decisões: a folha de comentários da operação anterior estava aberta
+  nos 3 aparelhos, e o replanejamento do android-06 refez a etapa.
+- Correção na sombra (o 30.80 da reprodução): o alvo da ação 1 ausente na tela de partida não conta divergência, não
+  zera a prova e não troca a candidata; a série `nao_aplicavel_seguidas` sobe e a 3ª seguida conta como divergência.
+- Prova `simulated`: `backend/tests/test_sombra_partida_diferente.py` (3). `real`: `not_run`.
+
 ## 2026-10-07 — 31.250: as marcas de entrega do QA Messenger dispensam o juiz barato (branch feat/31-250-marcas-do-qa)
 
 - O 31.250 de origem (a discordância do rejulgamento vira lição do juiz barato) foi recusado: o ADR-024 deixa o

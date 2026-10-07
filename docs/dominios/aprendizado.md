@@ -2648,6 +2648,30 @@ no mesmo escopo e no outro, com a métrica; sem escopo conhecido vale nos dois; 
 `not_run`. A prova é a 1ª operação em post de terceiro depois do deploy, com `outro_escopo` no lugar da divergência da
 111.
 
+## A candidata que não se aplica na partida segue em prova (31.262)
+
+Medido em 07/10 (só leitura): a receita 222 (`open_profile` de perfil de terceiro, chave genérica) não reproduziu na
+rodada das 12:55, e não podia: era candidata, nascida às 10:08 na onda 2, com 0 concordâncias, e candidata não
+reproduz (são 2 seguidas para promover). A onda 2 também foi conduzida pela IA (9 decisões, 3 por aparelho). A rodada
+pagou 16 decisões e 1 julgamento: os 3 aparelhos começaram com a folha de comentários que a operação anterior deixou
+aberta (2 a 5 decisões para voltar ao perfil), e o replanejamento do android-06 refez a etapa (4 decisões).
+
+O defeito do aprendizado estava na sombra. A divergência por tela de partida diferente zerava a prova e trocava a
+candidata pelo caminho da IA: a 222 virou a 223 (o mesmo caminho com um `open_app` na frente) numa etapa que começou
+fora do app. A chave passou por 118, 166, 222 e 223 sem nunca ficar ativa. Agora, como o 30.80 na reprodução:
+- o alvo da AÇÃO 1 ausente na tela de partida (`AlvoAusente` antes de comparar qualquer ação) encerra a comparação, sem
+  veredito (`_RecipeRun.partida_diferente`);
+- com a etapa comprovada, a candidata segue em prova (a sequência não zera), o caminho da IA não a substitui, e a série
+  `nao_aplicavel_seguidas` sobe (`RecipeStore.nao_aplicavel_em_prova`, métrica `receita.sombra`); o evento é
+  `receita_nao_aplicavel` com `em_prova`;
+- a concordância e a divergência zeram a série; a 3ª seguida conta como divergência, como antes.
+
+A folha que ficou aberta entre operações não é do aprendizado: é do preparo da etapa (quem devolve o app ao estado
+conhecido antes do alvo).
+
+**Prova.** `simulated`: `backend/tests/test_sombra_partida_diferente.py` (3). `real`: o diagnóstico acima (leitura do
+central). A correção é `not_run` até a próxima etapa com candidata em prova que comece fora do estado dela.
+
 ## A receita sem o "voltar" inicial (31.230)
 
 Achado da onda 1 (07/10): a IA começou o `open_profile` por voltar (`press_back`). Como o voltar depende da tela de
