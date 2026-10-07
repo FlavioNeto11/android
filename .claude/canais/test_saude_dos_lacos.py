@@ -283,6 +283,88 @@ def test_vigia_ausente_com_recado_novo_pendente_nao_e_problema(mundo):
     assert mundo.consultas_ao_banco == 1
 
 
+def _vigia_saiu_com_recado(m: Mundo) -> None:
+    """O vigia vivo grava a base 100; depois some e chega o recado 101. Sem rodar a checagem com ele ausente ainda."""
+    m.rodar(avisar=True)
+    m.bruto = [_laco()]
+    m.ultima = 101
+
+
+def _rodar_em(m: Mundo, minutos: int, **kw) -> int:
+    m.carimbo = T0 + timedelta(minutes=minutos) - timedelta(minutes=1)     # o laço segue vivo: só o vigia é o assunto
+    return m.rodar(agora=T0 + timedelta(minutes=minutos), avisar=True, **kw)
+
+
+def test_vigia_com_recado_pendente_e_esperado_dentro_do_cooldown(mundo):
+    _vigia_saiu_com_recado(mundo)
+    _rodar_em(mundo, 0)                                # 1ª checagem com ele ausente: o instante é registrado
+    assert _estado(mundo)["vigia_saiu_em"] == "2026-10-07T10:00:00Z"
+    _rodar_em(mundo, 29)
+    assert any(s.startswith("vigia: saiu de propósito") for s in mundo.saida)
+    assert mundo.enviados == []
+
+
+def test_vigia_com_recado_pendente_vira_problema_depois_do_cooldown(mundo):
+    _vigia_saiu_com_recado(mundo)
+    _rodar_em(mundo, 0)
+    _rodar_em(mundo, 30)
+    assert "vigia: parado há mais de 30 min com recado do dono pendente" in mundo.saida
+    assert len(mundo.enviados) == 1
+    assert "o vigia das respostas do dono" in mundo.enviados[0] and "<b>Crítico:</b>" in mundo.enviados[0]
+    _limpo(mundo.enviados[0])
+
+
+def test_instante_do_saiu_persiste_entre_execucoes(mundo):
+    _vigia_saiu_com_recado(mundo)
+    _rodar_em(mundo, 0)
+    _rodar_em(mundo, 10)                               # a 2ª execução não renova o instante da 1ª
+    _rodar_em(mundo, 20)
+    assert _estado(mundo)["vigia_saiu_em"] == "2026-10-07T10:00:00Z"
+    assert mundo.enviados == []
+
+
+def test_instante_some_quando_o_vigia_volta_e_a_contagem_recomeca(mundo):
+    _vigia_saiu_com_recado(mundo)
+    _rodar_em(mundo, 0)
+    mundo.bruto = [_vigia(base=101), _laco()]          # a Canais leu e relançou
+    _rodar_em(mundo, 40)
+    assert "vigia_saiu_em" not in _estado(mundo) and _estado(mundo)["vigia_base"] == 101
+    mundo.bruto = [_laco()]
+    mundo.ultima = 102                                 # sai de novo, com outro recado
+    _rodar_em(mundo, 41)
+    assert _estado(mundo)["vigia_saiu_em"] == "2026-10-07T10:41:00Z"
+    assert any(s.startswith("vigia: saiu de propósito") for s in mundo.saida)
+
+
+def test_vigia_parado_com_recado_que_volta_manda_o_aviso_voltou(mundo):
+    _vigia_saiu_com_recado(mundo)
+    _rodar_em(mundo, 0)
+    _rodar_em(mundo, 31)
+    assert len(mundo.enviados) == 1
+    mundo.bruto = [_vigia(base=101), _laco()]
+    _rodar_em(mundo, 36)
+    assert len(mundo.enviados) == 2 and "voltou ao normal" in mundo.enviados[1]
+
+
+def test_listagem_que_falha_guarda_o_instante_do_saiu(mundo):
+    _vigia_saiu_com_recado(mundo)
+    _rodar_em(mundo, 0)
+    mundo.bruto = None
+    _rodar_em(mundo, 5)
+    assert _estado(mundo)["vigia_saiu_em"] == "2026-10-07T10:00:00Z"
+
+
+def test_religar_do_vigia_parado_com_recado_usa_a_base_antiga(mundo):
+    _vigia_saiu_com_recado(mundo)
+    _rodar_em(mundo, 0)
+    mundo.saida.clear()
+    mundo.ultima = 150
+    mundo.carimbo = T0 + timedelta(minutes=34)
+    mundo.rodar(agora=T0 + timedelta(minutes=35), religar=True)
+    vigia = next(s for s in mundo.saida if s.startswith("religar vigia:"))
+    assert vigia.split("#")[0].rstrip().endswith("vigia_dono.py 100")      # devolve o recado pendente, nada se perde
+
+
 def test_vigia_ausente_sem_pendente_e_problema(mundo):
     mundo.rodar(avisar=True)
     mundo.bruto = [_laco()]

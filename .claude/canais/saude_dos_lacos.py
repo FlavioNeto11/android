@@ -6,8 +6,10 @@ central e, só com `--avisar`, manda UM aviso ao Telegram do dono quando algo pa
 
 O que confere:
   - vigia: existe processo `vigia_dono.py`? O vigia SAI de propósito quando chega recado novo do dono; "ausente" só é
-    problema se não houver recado novo pendente (id mais novo de `canal_entradas` do_dono=1 > a base do último vigia visto);
-    sem saber a base ou sem conseguir ler o banco, é "não verificado" (incerteza nunca conta como saudável);
+    problema se não houver recado novo pendente (id mais novo de `canal_entradas` do_dono=1 > a base do último vigia visto)
+    e, havendo, só até o cooldown: o estado guarda `vigia_saiu_em` (a 1ª checagem com ele ausente; some quando ele volta) e,
+    passado o cooldown, "parado há mais de 30 min com recado do dono pendente" vira problema; sem saber a base ou sem
+    conseguir ler o banco, é "não verificado" (incerteza nunca conta como saudável);
   - laço de aparelhos: o carimbo `atualizado_em` do arquivo de estado do laço (o `avisos_de_aparelho.py` o regrava a cada
     ciclo, até quando a leitura da central falha) mais novo que 3 x o intervalo = ativo; senão "parado ou preso";
   - central: `GET /api/health` com estado 200; qualquer outra coisa é "não respondeu".
@@ -207,24 +209,35 @@ def _plural(n: int) -> str:
 
 
 def avaliar_vigia(procs: list[Processo] | None, base_salva: int | None, base_arg: int | None,
-                  ler_ultima: Callable[[], int | None]) -> tuple[Item, int | None]:
-    """(item, a base do vigia visto vivo, para o estado). `ler_ultima` só é chamada com o vigia ausente."""
+                  ler_ultima: Callable[[], int | None], *, saiu_em: datetime | None = None,
+                  agora: datetime | None = None, cooldown: timedelta = timedelta(minutes=COOLDOWN_PADRAO_MIN),
+                  ) -> tuple[Item, int | None, datetime | None]:
+    """(item, a base do vigia visto vivo, o instante em que o vigia foi visto ausente pela 1ª vez; None = presente).
+
+    `ler_ultima` só é chamada com o vigia ausente. Ausente COM recado pendente é esperado só até `cooldown` desde a 1ª
+    checagem em que sumiu (`saiu_em`, guardado no estado); passado isso o recado ficou sem ninguém relançar o vigia."""
     curto, rotulo = "vigia", "o vigia das respostas do dono"
-    if procs is None:
-        return Item("vigia", curto, rotulo, "desconhecido", "não verificado (não consegui listar os processos)", True), None
+    if procs is None:                       # sem lista não se sabe se voltou: o instante guardado fica como está
+        return (Item("vigia", curto, rotulo, "desconhecido", "não verificado (não consegui listar os processos)", True),
+                None, saiu_em)
     vivos = [p for p in procs if p.script == VIGIA]
     if vivos:
         bases = [p.base for p in vivos if p.base is not None]
-        return Item("vigia", curto, rotulo, "ativo", f"ativo ({_plural(len(vivos))})", False), (max(bases) if bases else None)
+        return Item("vigia", curto, rotulo, "ativo", f"ativo ({_plural(len(vivos))})", False), (max(bases) if bases else None), None
+    desde = saiu_em or agora
     ref = base_arg if base_arg is not None else base_salva
     ultima = ler_ultima() if ref is not None else None
     if ref is None or ultima is None:
         return Item("vigia", curto, rotulo, "desconhecido",
-                    "ausente, e não sei se há recado novo do dono (sem base conhecida ou sem ler o banco)", True), None
+                    "ausente, e não sei se há recado novo do dono (sem base conhecida ou sem ler o banco)", True), None, desde
     if ultima > ref:
+        if desde is not None and agora is not None and agora - desde >= cooldown:
+            minutos = int(cooldown.total_seconds() // 60)
+            return Item("vigia", curto, rotulo, "parado_com_recado",
+                        f"parado há mais de {minutos} min com recado do dono pendente", True), None, desde
         return Item("vigia", curto, rotulo, "saiu",
-                    "saiu de propósito: há recado novo do dono esperando leitura (a Canais lê e relança)", False), None
-    return Item("vigia", curto, rotulo, "parado", "parado: não há processo e não há recado novo pendente", True), None
+                    "saiu de propósito: há recado novo do dono esperando leitura (a Canais lê e relança)", False), None, desde
+    return Item("vigia", curto, rotulo, "parado", "parado: não há processo e não há recado novo pendente", True), None, desde
 
 
 def avaliar_laco(procs: list[Processo] | None, carimbo: datetime | None, agora: datetime,
@@ -322,17 +335,19 @@ def decidir(salvo: dict, problemas: list[Item], agora: datetime, cooldown: timed
 # ------------------------------------------------------------------------------------------------ uma checagem
 def checar(*, listar: Callable[[], list[Processo]], carimbo: Callable[[], datetime | None], central: Callable[[], int | None],
            ultima_entrada: Callable[[], int | None], salvo: dict, agora: datetime, intervalo_s: float,
-           base_arg: int | None) -> tuple[list[Item], list[Processo] | None, int | None, str | None]:
-    """(itens, processos, base do vigia visto, causa da falha de listagem). Só leituras."""
+           base_arg: int | None, cooldown: timedelta = timedelta(minutes=COOLDOWN_PADRAO_MIN),
+           ) -> tuple[list[Item], list[Processo] | None, int | None, datetime | None, str | None]:
+    """(itens, processos, base do vigia visto, instante em que o vigia sumiu, causa da falha de listagem). Só leituras."""
     causa: str | None = None
     try:
         procs: list[Processo] | None = listar()
     except FalhaDeLeitura as erro:
         procs, causa = None, str(erro)
-    vigia, base_vista = avaliar_vigia(procs, salvo.get("vigia_base"), base_arg, ultima_entrada)
+    vigia, base_vista, saiu_em = avaliar_vigia(procs, salvo.get("vigia_base"), base_arg, ultima_entrada,
+                                               saiu_em=_hora(salvo.get("vigia_saiu_em")), agora=agora, cooldown=cooldown)
     laco = avaliar_laco(procs, carimbo(), agora, intervalo_s)
     cen = avaliar_central(central())
-    return [vigia, laco, cen], procs, base_vista, causa
+    return [vigia, laco, cen], procs, base_vista, saiu_em, causa
 
 
 def rodar(*, listar: Callable[[], list[Processo]], carimbo: Callable[[], datetime | None], central: Callable[[], int | None],
@@ -343,8 +358,9 @@ def rodar(*, listar: Callable[[], list[Processo]], carimbo: Callable[[], datetim
     salvo, nota = ler_estado(estado_arq)
     if nota:
         imprimir(nota)
-    itens, procs, base_vista, causa = checar(listar=listar, carimbo=carimbo, central=central, ultima_entrada=ultima_entrada,
-                                             salvo=salvo, agora=agora, intervalo_s=intervalo_s, base_arg=base_arg)
+    itens, procs, base_vista, saiu_em, causa = checar(
+        listar=listar, carimbo=carimbo, central=central, ultima_entrada=ultima_entrada, salvo=salvo, agora=agora,
+        intervalo_s=intervalo_s, base_arg=base_arg, cooldown=cooldown)
     problemas = [i for i in itens if i.problema]
     if como_json:
         imprimir(json.dumps({
@@ -365,7 +381,10 @@ def rodar(*, listar: Callable[[], list[Processo]], carimbo: Callable[[], datetim
 
     if religar:
         base = base_arg
-        if base is None and any(i.chave == "vigia" and i.problema for i in itens):
+        vigia_item = next(i for i in itens if i.chave == "vigia")
+        if base is None and vigia_item.estado == "parado_com_recado":
+            base = salvo.get("vigia_base")    # a base antiga devolve o recado pendente na hora: nada se perde
+        elif base is None and vigia_item.problema:
             base = ultima_entrada()           # o último id lido (como o vigia); sem o banco, a nota pede o --base
         for rotulo, argv, nota_cmd in comandos_de_religar(itens, intervalo_s=intervalo_s, base_vigia=base):
             imprimir(f"religar {rotulo}: " + (subprocess.list2cmdline(argv) if argv else "(sem comando)") + f"  # {nota_cmd}")
@@ -378,6 +397,10 @@ def rodar(*, listar: Callable[[], list[Processo]], carimbo: Callable[[], datetim
     novo["atualizado_em"] = _iso(agora)
     if base_vista is not None:
         novo["vigia_base"] = base_vista
+    if saiu_em is None:
+        novo.pop("vigia_saiu_em", None)       # o vigia voltou: o instante some
+    else:
+        novo["vigia_saiu_em"] = _iso(saiu_em)
     if acao is None:
         if problemas:
             imprimir(f"aviso: em cooldown (último aviso há {_min(agora - (_hora(salvo.get('ultimo_aviso_em')) or agora))} min)")
