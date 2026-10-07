@@ -421,7 +421,7 @@ class AnthropicProvider:
     async def refine_command(self, req: RefineRequest) -> tuple[CommandRefinement, Usage]:
         """Comando da pessoa → texto estruturado + o que falta. Modelo do planejador, só texto, sem tela."""
         resp, usage = await self._create(role="plan", model=self.models["plan"],
-                                         system=refine_system(prompts.UNTRUSTED_RULE, prompts.CONDUCT_RULE),
+                                         system=refine_system(prompts.UNTRUSTED_RULE),
                                          content=[{"type": "text", "text": refine_user(req)}],
                                          effort=self.cfg.env.ai_effort_planner, max_tokens=4000,
                                          schema=strict_schema(RefineOut))

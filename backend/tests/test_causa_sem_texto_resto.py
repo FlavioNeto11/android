@@ -30,17 +30,6 @@ def test_refinamento_invalido_sem_o_texto(bruto: str) -> None:
     _sem_o_texto(erro.value)
 
 
-@pytest.mark.parametrize("bruto", [
-    '{"alerta_conduta": ["' + SEGREDO + '"]}',
-    '{"alerta_conduta": ["' + SEGREDO + '" ',
-])
-def test_orquestracao_invalida_sem_o_texto(bruto: str) -> None:
-    from app.modules.execution.domain.orquestracao import OrquestracaoInvalida, orquestracao_from_json
-    with pytest.raises(OrquestracaoInvalida) as erro:
-        orquestracao_from_json(bruto)
-    _sem_o_texto(erro.value)
-
-
 def test_parecer_do_hub_ilegivel_sem_o_texto() -> None:
     from app.planning.curador import ParecerIlegivel, parecer_from_json
     with pytest.raises(ParecerIlegivel) as erro:

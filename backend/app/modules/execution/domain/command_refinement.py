@@ -71,11 +71,11 @@ Regras:
 """
 
 
-def refine_system(untrusted_rule: str, conduct_rule: str) -> str:
-    """O prompt de sistema com as MESMAS regras de dado não confiável e de conduta dos demais papéis — recebidas de
-    `planning.prompts`, que é quem as mantém (daqui não se importa `app.planning`). A de identidade (ANA, item 29.57)
+def refine_system(untrusted_rule: str) -> str:
+    """O prompt de sistema com a regra de dado não confiável dos demais papéis — recebida de
+    `planning.prompts`, que é quem a mantém (daqui não se importa `app.planning`). A de identidade (ANA, item 29.57)
     vem do contrato: o assistente fala com a pessoa, pergunta e avisa."""
-    return f"{_REFINE_SYSTEM}\n{untrusted_rule}\n{conduct_rule}\n{REGRA_DE_IDENTIDADE}"
+    return f"{_REFINE_SYSTEM}\n{untrusted_rule}\n{REGRA_DE_IDENTIDADE}"
 
 
 class RefinamentoInvalido(ValueError):

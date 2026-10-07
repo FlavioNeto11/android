@@ -3013,7 +3013,6 @@ export interface RunTargetsSuggestion {
   escolhidas: PersonaEscolhida[];
   descartadas: PersonaDescartada[];
   nao_avaliaveis: PersonaNaoAvaliavel[];
-  alerta_conduta: string | null;
   perguntas: string[];
   questions: TargetQuestion[];
   command_sem_destinos: string;
@@ -3195,7 +3194,7 @@ export interface PreviaDaPorta {
   parcial: boolean;
   total: boolean;
   itens: ItemDaPorta[];
-  na_execucao: { textos_da_tela: number; itens_for_each: number; sempre: string[] };
+  na_execucao: { textos_da_tela: number; itens_for_each: number };
 }
 
 export interface AprovarPlanoItem {

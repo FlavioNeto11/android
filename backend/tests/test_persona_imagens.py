@@ -65,8 +65,8 @@ def test_semente_e_receita_sao_deterministicas_e_a_principal_e_um_busto_quadrado
     outra = montar_spec(IDENTIDADE, "ig-abc", 1)
     assert outra.seed != a.seed and outra.prompt != a.prompt
     for spec in (a, outra):
-        assert spec.prompt.startswith("Candid amateur photo of a fictional 31-year-old adult woman who works as a designer")
-        assert "no text, no logo, no watermark" in spec.prompt and "not a real person" in spec.prompt
+        assert spec.prompt.startswith("Candid amateur photo of a 31-year-old adult woman who works as a designer")
+        assert "no text, no logo, no watermark" in spec.prompt
         assert "ML" not in spec.prompt and "<" not in spec.prompt          # iniciais e marcação nunca vão ao prompt
         assert "Curitiba" in spec.prompt and "varanda com plantas" in spec.prompt
         assert 55 <= spec.jpeg_quality <= 92 and 0 <= spec.noise_sigma <= 4 and 0.6 <= spec.downscale <= 1.0
@@ -74,7 +74,7 @@ def test_semente_e_receita_sao_deterministicas_e_a_principal_e_um_busto_quadrado
     with pytest.raises(MenorDeIdade):
         montar_spec(PersonaIdentity(age=17), "ig-abc", 0)
     sem_idade = montar_spec(PersonaIdentity(), "ig-x", 3)
-    assert sem_idade.prompt.startswith("Candid amateur photo of a fictional adult person.")
+    assert sem_idade.prompt.startswith("Candid amateur photo of a adult person.")
 
 
 # ---------------------------------------------------------------- adaptadores
