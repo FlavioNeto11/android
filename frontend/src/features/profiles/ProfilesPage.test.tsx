@@ -1204,7 +1204,7 @@ describe('capacidade por persona (31.255)', () => {
   const SEM_SENHA = () => pessoa({ id: 'ig-7', name: 'Marta Sem Senha', username: 'marta.s', instance_id: 'android-07',
     credential: { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null, updated_at: null, last_used_at: null } });
   const PRONTA = () => pessoa({ id: 'ig-8', name: 'Paulo Pronto', username: 'paulo.p', instance_id: 'android-08',
-    credential: { configured: true, login_identifier: 'paulo@exemplo.com', status: 'active', failed_attempts: 0, blocked_until: null, updated_at: null, last_used_at: '2026-10-07T10:00:00Z', consent_at: '2026-10-06T09:00:00Z' },
+    credential: { configured: true, login_identifier: 'persona-b@exemplo.com', status: 'active', failed_attempts: 0, blocked_until: null, updated_at: null, last_used_at: '2026-10-07T10:00:00Z', consent_at: '2026-10-06T09:00:00Z' },
     session: { status: 'session_ready', instance_id: 'android-08', observed_username: 'paulo.p', verified_at: '2026-10-07T09:00:00Z', detail: null, stale: false } });
 
   it('o cartão diz se a pessoa está pronta ou o que falta, com o atalho para a guia certa, sem o identificador de login', async () => {
@@ -1216,7 +1216,7 @@ describe('capacidade por persona (31.255)', () => {
     expect(text()).toContain('Pronta para operar');
     expect(text()).toContain('Falta guardar a senha');
     expect(() => byRole('button', /^Guardar senha: abrir Marta Sem Senha/)).not.toThrow();
-    expect(text()).not.toMatch(/paulo@exemplo\.com|luciana@exemplo\.com/);
+    expect(text()).not.toMatch(/persona-b@exemplo.com|luciana@exemplo\.com/);
   });
 
   it('o filtro Capacidade mostra só quem falta resolver aquilo, com a contagem no chip; sem conta, sem senha e prontas somam a lista', async () => {

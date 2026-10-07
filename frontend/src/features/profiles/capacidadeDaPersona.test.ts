@@ -9,7 +9,7 @@ function pronta(over: Partial<PersonaDTO> = {}): PersonaDTO {
     id: 'ig-1', name: 'Pessoa Um', summary: null, username: 'pessoa.um', display_name: 'Pessoa Um', first_name: 'Pessoa', last_name: 'Um',
     birth_date: null, email: null, persona_id: 'ig-1', persona_name: 'Pessoa Um', status: 'active', instance_id: 'android-01', accounts_count: 1,
     locality: null, offline_policy: 'wait', policy_group_name: 'Liberado', policy_group_id: 'g1',
-    credential: { configured: true, login_identifier: 'segredo@exemplo.com', status: 'active', failed_attempts: 0, blocked_until: null, updated_at: null,
+    credential: { configured: true, login_identifier: 'persona-a@exemplo.com', status: 'active', failed_attempts: 0, blocked_until: null, updated_at: null,
                   last_used_at: '2026-10-07T10:00:00Z', consent_at: '2026-10-06T09:00:00Z' },
     session: { status: 'session_ready', instance_id: 'android-01', observed_username: 'pessoa.um', verified_at: '2026-10-07T09:00:00Z', detail: null, stale: false },
     last_verified_at: null, last_activity_at: '2026-10-07T08:00:00Z', created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-01T10:00:00Z',
@@ -54,7 +54,7 @@ describe('a capacidade da persona (31.255)', () => {
   });
 
   it('o resultado não carrega o identificador de login nem a senha', () => {
-    expect(JSON.stringify(capacidadeDe(pronta()))).not.toMatch(/segredo|exemplo\.com|password|senha"/i);
+    expect(JSON.stringify(capacidadeDe(pronta()))).not.toMatch(/persona-a|exemplo\.com|password|senha"/i);
   });
 
   it('o filtro "capacidade": cada recorte pega só quem tem aquele primeiro bloqueio; vem e vai pelo link e conta com os outros filtros', () => {
