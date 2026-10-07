@@ -128,6 +128,8 @@ async def test_entrega_de_app_nao_tira_a_vaga_de_aparelho_com_conta(harness: Har
 
 
 async def test_sem_rodizio_aparelho_parado_bloqueia_como_antes(harness: Harness) -> None:
+    # ADR-085: o religamento automático é padrão `true`; "sem rodízio" é a chave desligada de propósito.
+    harness.state.settings.update({"auto_start_devices": False})   # type: ignore[union-attr]
     harness.pular_o_tempo()
     devs = harness.state.devices                        # type: ignore[union-attr]
     await devs.stop_instance(devs.get("android-02"))
