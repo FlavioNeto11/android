@@ -129,6 +129,8 @@ def itens_de(texto: str) -> list[str]:
     """IDs citados (do plano, ADR e C-número), sem repetir, na ordem em que aparecem. Se há "Itens:" só vale o que vem depois."""
     i = texto.find("Itens:")
     trecho = texto[i + len("Itens:"):] if i >= 0 else texto
+    # "(28.62, 28.60 e 28.58 ficaram fora ... vão no 59)": o que a frase diz que NÃO entrou não é item do deploy.
+    trecho = re.sub(r"\([^()]*ficaram fora[^()]*\)", "", trecho)
     vistos: list[str] = []
     for m in _ITEM.finditer(trecho):
         item = next(g for g in m.groups() if g)
