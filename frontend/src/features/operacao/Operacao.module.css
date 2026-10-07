@@ -232,3 +232,6 @@
 .formulario section > ul {
   margin-top: var(--sp-3);
 }
+.previaDoRelatorio { margin: 8px 0; border: 1px solid var(--border-1); border-radius: var(--radius-lg); background: var(--surface-1); }
+.previaDoRelatorio > summary { cursor: pointer; padding: 8px 12px; font-weight: 600; }
+.previaTexto { margin: 0; padding: 8px 12px 12px; max-height: 18rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-sm); }

@@ -48,6 +48,13 @@ export function RelatorioDaOperacao({ op, onFechar }: { op: Operacao; onFechar: 
       </p>
       <p className={styles.mudo}>{agentes} {agentes === 1 ? 'agente' : 'agentes'} · estado de agora: o relatório não se atualiza sozinho.</p>
       {relatorio && !relatorio.aprendizado.disponivel ? <p className={styles.mudo}>Aprendizado não disponível: {relatorio.aprendizado.motivo}</p> : null}
+      {/* A prévia é o MESMO texto do arquivo em Markdown: dá para conferir o que sai (e que a conta e o @ não saem) sem baixar nada. */}
+      {relatorio ? (
+        <details className={styles.previaDoRelatorio} data-previa-do-relatorio>
+          <summary>Prévia do relatório (o que o arquivo Markdown contém)</summary>
+          <pre className={styles.previaTexto}>{relatorioEmMarkdown(relatorio)}</pre>
+        </details>
+      ) : null}
       <div className={styles.acoesDoRelatorio}>
         <Button variant="primary" icon={Download} disabledReason={aviso}
                 onClick={() => { if (!relatorio) return; baixar(nomeDoArquivo(op.id, 'md'), relatorioEmMarkdown(relatorio), 'text/markdown'); toast({ tone: 'success', title: 'Relatório em Markdown baixado' }); }}>
