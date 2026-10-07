@@ -139,7 +139,8 @@ def relatorio_resumos(por: dict[str, dict[str, int]], com_resumo: int, lidos: in
     for job in sorted(por):
         d = por[job]
         testes = " · ".join(f"{k.split('_')[1]} {v}" for k, v in sorted(d.items()) if k.startswith("testes_")) or "-"
-        linhas.append(f"| {job.replace('|', '/')} | {d['corridas']} | {d['soma_s'] // d['corridas']} | {d['cobrados_min']} | {testes} |")
+        nome = re.sub(r"[^\w .\-/·()+]", " ", job)  # o nome vem do log: sem #N, link, imagem, HTML, menção nem barra de tabela
+        linhas.append(f"| {nome} | {d['corridas']} | {d['soma_s'] // d['corridas']} | {d['cobrados_min']} | {testes} |")
     return "\n".join(linhas) + "\n"
 
 

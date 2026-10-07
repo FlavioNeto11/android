@@ -359,7 +359,7 @@ jobs:
       # backend/requirements.txt (a mesma trava do backend), sem pip install a mais do que o docs-check usa e sem depender de shell.
       - run: pip install -c backend/requirements.txt pytest pyyaml pydantic pydantic-settings
       - run: python scripts/docs-check.py
-      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py scripts/tests/test_github_rotulos.py scripts/tests/test_github_rotina.py scripts/tests/test_workflows_pins.py scripts/tests/test_secret_scan_resumo.py scripts/tests/test_ci_gatilhos.py scripts/tests/test_issue_do_pacote.py scripts/tests/test_github_custo.py scripts/tests/test_pr_leve_resumo.py
+      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py scripts/tests/test_github_rotulos.py scripts/tests/test_github_rotina.py scripts/tests/test_workflows_pins.py scripts/tests/test_secret_scan_resumo.py scripts/tests/test_ci_gatilhos.py scripts/tests/test_issue_do_pacote.py scripts/tests/test_github_custo.py scripts/tests/test_pr_leve_resumo.py scripts/tests/test_custo_semanal_issue.py
       # 29.184: uma linha por job (tempo por etapa, soma, minutos cobrados estimados) no job summary e no log; só leitura, nunca
       # derruba o job (continue-on-error; o script sai com 0 mesmo se o `gh` faltar). Sem contagem de testes aqui: o pytest deste
       # job não passa por `tee` para não mexer no comando da rede da noite.

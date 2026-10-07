@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 29.188: medida semanal de custo automática, em artifact e numa issue única (branch ci/29-188-custo-semanal)
+
+- `.github/workflows/custo-semanal.yml` (hospedado, `ubuntu-latest`; `schedule` toda segunda 06:00Z e `workflow_dispatch`; token do workflow com `actions: read` e `issues: write`): roda `scripts/github_custo.py --dias 7 --resumos`, grava o relatório no job summary e como artifact `relatorio-custo` (90 dias) e, por `scripts/custo_semanal_issue.py`, o publica como comentário na issue ABERTA com o rótulo `custo` e o título fixo (abre na primeira vez; rótulo criado só ali). Sem atribuir ninguém nem rótulo de agente. O artifact sobe ANTES da publicação: se a issue falhar, o relatório fica no run.
+- O publicador recusa (código 1, nada escrito) relatório vazio ou com formato de e-mail, IPv4, serial de aparelho, arroba de conta, credencial ou chave conhecida; corpo cortado em 60.000 caracteres. O billing da conta segue "NÃO lido" (o token do workflow não alcança); o número real de créditos continua sendo lido na página de uso da conta.
+- Prova `simulated`: `scripts/tests/test_custo_semanal_issue.py` (`gh` falso e saída gravada do `github_custo`; testes com os de gatilhos e pins) e o job `docs` do `ci.yml` passa a rodá-lo. `not_run`: o primeiro disparo real (segunda 12/10 06:00Z, ou `gh workflow run custo-semanal.yml` depois do arquivo na `main`), que a frente confere e registra.
+
 ## 2026-10-07 — 29.187: issue única do cron do CI, com o resumo dos jobs, fechada quando o cron volta a verde (branch ci/29-187-aviso-unico)
 
 - `scripts/ci_issue_falha.py` e `.github/workflows/ci-aviso-de-falha.yml`: em vez de uma issue por noite, há UMA issue aberta do cron (rótulo `ci`, título começando por "CI noturno"; as antigas por noite entram na mesma regra). Cron vermelho com issue aberta: comenta nela (a mais antiga); sem issue aberta: abre. O corpo ganha "Jobs da corrida" (TODOS os jobs do run, com resultado e duração) e as linhas de "Resumo do job" do 29.184 lidas do log inteiro (`gh run view --log`, limpas por formato, sem repetir, até 20); se o log inteiro não puder ser lido, a issue diz o motivo e o aviso segue (só o log dos passos que falharam continua derrubando o script).
