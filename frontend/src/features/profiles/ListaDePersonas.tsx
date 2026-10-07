@@ -1,4 +1,4 @@
-import { AtSign, Ban, MoreHorizontal, RotateCcw, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react';
+import { AtSign, Ban, Gauge, MoreHorizontal, RotateCcw, Server, ShieldCheck, Smartphone, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api, profileAvatarUrl } from '../../api/client';
 import type { PersonaDTO } from '../../api/types';
@@ -10,8 +10,10 @@ import { confirm } from '../../components/Confirm';
 import { Checkbox } from '../../components/Field';
 import { Popover } from '../../components/Popover';
 import { Tooltip } from '../../components/Tooltip';
+import { formatDateTime } from '../../lib/time';
 import { toast, toastError } from '../../store/toasts';
 import { abaDoPedido, type Aba } from './abas';
+import { capacidadeDe, ROTULO_DA_SESSAO, ROTULO_DO_BLOQUEIO, ROTULO_DO_COFRE, type CapacidadeDaPersona } from './capacidadeDaPersona';
 import { estadoComposto, type EstadoComposto } from './filtroPersonas';
 import { compartilhadoEmPalavras, handleDe, idsDosAparelhos, nomeDe, resumoDe } from './pessoa';
 import styles from './Profiles.module.css';
@@ -125,6 +127,28 @@ function textoAparelhos(pessoa: PersonaDTO, compartilhado: readonly number[] = [
   return compartilhado.length ? `${base} · ${compartilhadoEmPalavras(compartilhado)}` : base;
 }
 
+/**
+ * O selo de capacidade (31.255): "Pronta para operar" ou o que falta, com o resumo no tooltip (conta, sessão, cofre, grupo, último uso).
+ * Nunca o identificador de login nem a senha: só o estado do cofre.
+ */
+function resumoDaCapacidade(c: CapacidadeDaPersona): string {
+  return [
+    `Conta: ${c.conta ? 'sim' : 'não'}`, `Aparelho: ${c.aparelho ? 'sim' : 'não'}`, `Sessão: ${ROTULO_DA_SESSAO[c.sessao].toLowerCase()}`,
+    `Cofre: ${ROTULO_DO_COFRE[c.cofre].toLowerCase()}`, `Grupo: ${c.grupo ?? 'nenhum'}`, `Último uso: ${c.ultimoUso ? formatDateTime(c.ultimoUso) : 'nunca'}`,
+  ].join(' · ');
+}
+
+function SeloDeCapacidade({ cap }: { cap: CapacidadeDaPersona }) {
+  const texto = cap.bloqueio === null ? 'Pronta para operar' : ROTULO_DO_BLOQUEIO[cap.bloqueio];
+  return (
+    <Tooltip content={resumoDaCapacidade(cap)}>
+      <span tabIndex={0} className={styles.seloEstado} aria-label={`${texto}. ${resumoDaCapacidade(cap)}`} data-capacidade={cap.bloqueio ?? 'pronta'}>
+        <Badge tone={cap.bloqueio === null ? 'success' : cap.bloqueio === 'inativa' ? 'neutral' : 'warning'}>{texto}</Badge>
+      </span>
+    </Tooltip>
+  );
+}
+
 /** O Nº por ordem de criação (31.245): o rótulo curto para falar da persona; sem número (lista sem data), não aparece. */
 function NumeroDaPersona({ numero }: { numero: number | undefined }) {
   if (numero === undefined) return null;
@@ -153,6 +177,7 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
   const loc = pessoa.locality;
   const aparelhos = idsDosAparelhos(pessoa);
   const estado = estadoComposto(pessoa);
+  const capacidade = capacidadeDe(pessoa);
   // A linha de aviso: onde os dados vivem quando isso mudou (E9), senão o porquê de um estado que pede alguém.
   const aviso = loc?.detail && (loc.moved || !loc.available) ? loc.detail
     : estado.tom === 'warning' || estado.tom === 'danger' ? estado.explicacao : '';
@@ -198,6 +223,10 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
             <dd className={styles.linhaUnica}><SeloDeEstado estado={estado} /></dd>
           </div>
           <div className={styles.row}>
+            <dt><Gauge size={14} aria-hidden /> Capacidade</dt>
+            <dd className={styles.linhaUnica}><SeloDeCapacidade cap={capacidade} /></dd>
+          </div>
+          <div className={styles.row}>
             <dt><ShieldCheck size={14} aria-hidden /> Grupo</dt>
             <dd className={styles.linhaUnica}>{pessoa.policy_group_name
               ? <Badge tone="info">{pessoa.policy_group_name}</Badge>
@@ -213,6 +242,12 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
             <Button size="sm" variant="outline" onClick={() => onOpen(abaDoPedido(estado.acao!.guia))}
                     aria-label={`${estado.acao.rotulo}: abrir ${nome} na guia certa`}>
               {estado.acao.rotulo}
+            </Button>
+          ) : capacidade.passo ? (
+            /* O que falta para operar (senha, consentimento…) e o estado da conta não pediram nada: o atalho leva à guia que resolve (31.255). */
+            <Button size="sm" variant="outline" onClick={() => onOpen(abaDoPedido(capacidade.passo!.guia))}
+                    aria-label={`${capacidade.passo.rotulo}: abrir ${nome} na guia certa`}>
+              {capacidade.passo.rotulo}
             </Button>
           ) : null}
           <span className={styles.actionsFim}><MenuAcoesPersona pessoa={pessoa} onChanged={onChanged} /></span>
@@ -249,6 +284,10 @@ export function TabelaPersonas({ pessoas, selecionadas, onSelecionar, onOpen, on
             <th scope="col" className={styles.num}>Contas</th>
             <th scope="col">Aparelho</th>
             <th scope="col">Situação</th>
+            <th scope="col">Capacidade</th>
+            <th scope="col">Sessão</th>
+            <th scope="col">Cofre</th>
+            <th scope="col">Último uso</th>
             <th scope="col">Grupo</th>
             <th scope="col"><span className="sr-only">Ações</span></th>
           </tr>
@@ -258,6 +297,7 @@ export function TabelaPersonas({ pessoas, selecionadas, onSelecionar, onOpen, on
             const nome = nomeDe(p);
             const handle = handleDe(p);
             const estado = estadoComposto(p);
+            const cap = capacidadeDe(p);
             return (
               <tr key={p.id} className={selecionadas.has(p.id) ? styles.linhaSelecionada : undefined}>
                 <td><Checkbox aria-label={`Selecionar ${nome}`} checked={selecionadas.has(p.id)} onChange={() => onSelecionar(p.id)} /></td>
@@ -272,10 +312,19 @@ export function TabelaPersonas({ pessoas, selecionadas, onSelecionar, onOpen, on
                 <td className={styles.num}>{p.accounts_count ?? 0}</td>
                 <td>{idsDosAparelhos(p).length ? <Truncado texto={textoAparelhos(p, compartilhadoDe?.(p))} /> : <span className={styles.muted}>—</span>}</td>
                 <td><SeloDeEstado estado={estado} /></td>
+                <td><SeloDeCapacidade cap={cap} /></td>
+                <td data-sessao-da-persona={cap.sessao}>{ROTULO_DA_SESSAO[cap.sessao]}</td>
+                <td data-cofre-da-persona={cap.cofre}>{ROTULO_DO_COFRE[cap.cofre]}</td>
+                <td>{cap.ultimoUso ? formatDateTime(cap.ultimoUso) : <span className={styles.muted}>nunca</span>}</td>
                 <td>{p.policy_group_name ? <Truncado texto={p.policy_group_name} /> : <span className={styles.muted}>—</span>}</td>
                 <td>
                   <span className={styles.tabelaAcoes}>
                     <Button size="sm" variant="outline" onClick={() => onOpen(p.id)} aria-label={`Abrir ${nome}`}>Abrir</Button>
+                    {cap.passo ? (
+                      <Button size="sm" variant="outline" onClick={() => onOpen(p.id, abaDoPedido(cap.passo!.guia))} aria-label={`${cap.passo.rotulo}: abrir ${nome} na guia certa`}>
+                        {cap.passo.rotulo}
+                      </Button>
+                    ) : null}
                     <MenuAcoesPersona pessoa={p} onChanged={onChanged} />
                   </span>
                 </td>
