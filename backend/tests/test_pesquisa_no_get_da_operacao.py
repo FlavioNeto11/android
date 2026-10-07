@@ -114,7 +114,7 @@ async def test_o_get_le_o_que_a_pesquisa_da_operacao_escreveu(harness: Harness) 
     limpar()
     livro = [FatoDoLivro(ref=f"li-000{i}", texto=f"fato do livro {i}", estado="published", frescor_ate=FUTURO,
                          dominios=("loja.exemplo.com",), operacao_de_origem="op-0") for i in (1, 2)]
-    assert await PesquisaDaOperacao(st.db, cfg, PRECOS, fatos_do_livro=lambda _op: livro).pesquisar_se_preciso(
+    assert await PesquisaDaOperacao(st.db, cfg, PRECOS, fatos_do_livro=lambda _op, _assunto: livro).pesquisar_se_preciso(
         op["id"], run_id=run_id, contexto="", chamar=quebra) is not None
     reaproveitada: Any = s.ler(op["id"])["pesquisa"]
     assert reaproveitada["estado"] == "reaproveitada_do_livro"
@@ -123,7 +123,7 @@ async def test_o_get_le_o_que_a_pesquisa_da_operacao_escreveu(harness: Harness) 
     assert reaproveitada["criterio"] and "fato do livro" not in json.dumps(reaproveitada, ensure_ascii=False)
     # 3. o Livro não cobre: a pesquisa paga roda e o GET diz `paga`, sem URL nem texto de fato
     limpar()
-    assert await PesquisaDaOperacao(st.db, cfg, PRECOS, fatos_do_livro=lambda _op: []).pesquisar_se_preciso(
+    assert await PesquisaDaOperacao(st.db, cfg, PRECOS, fatos_do_livro=lambda _op, _assunto: []).pesquisar_se_preciso(
         op["id"], run_id=run_id, contexto="", chamar=paga) is not None
     pago: Any = s.ler(op["id"])["pesquisa"]
     assert pago["estado"] == "paga" and pago["fatos"] == [] and pago["frescor_ate"]
