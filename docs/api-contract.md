@@ -7612,3 +7612,26 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
   - `liberada`: vale fora da persona que ensinou (30.81).
 - **Vizinhos:** contam as etapas de planos LIVRES (sem fluxo e sem prova de fluxo) que aceitaram o pacote.
 - **Prova:** `simulated` (`backend/tests/test_rendimento_do_ensino.py`, 2 testes). `real`: `not_run`.
+
+## Nota do 31.224 (07/10/2026; sem número; o número fica com a orquestradora) — `parametros` conferidos com o app
+
+`POST /api/operacoes` confere cada parâmetro fixo com o app ANTES de gravar a operação e de criar qualquer execução,
+para que um erro de digitação não custe chamada paga. Vale depois das recusas que já existiam (credencial, formato do
+nome, tamanho do valor, até 10 parâmetros):
+
+- `username` vai sem arroba e sem espaço, porque a prova local compara o texto da tela, que não traz o `@`;
+- no app com catálogo de ações (hoje o Instagram e o Outlook), a chave tem de ser uma das que as ações do catálogo usam
+  (`bindings`, `optional_bindings` e `inherited_bindings`). O app sem catálogo (o QA Messenger) segue com a chave livre.
+
+A recusa é 422, e o corpo para no primeiro problema:
+
+`{"detail": {"code": "pedido_invalido", "message": "...", "motivo": "username_com_arroba" | "username_com_espaco" |
+"parametro_desconhecido", "posicao": N, "campo": "username" (só nos dois motivos de username), "aceitos": [...] (só em
+parametro_desconhecido)}}`
+
+`posicao` conta de 1, na ordem de `parametros`. O nome que veio nunca volta no corpo (convenção do PR 487: a credencial
+pode estar no próprio nome); `aceitos` vem do catálogo do app, não do pedido.
+
+Código: `_conferir_contra_o_app` em `modules/operacoes/infrastructure/servico.py`. Testes em
+`backend/tests/test_plano_da_operacao.py`: a recusa sem gravar nem criar execução, o caminho aceito, o app sem catálogo
+e o 422 pela rota.

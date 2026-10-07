@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from app.contracts.origem import PREFIXO_OPERACAO
 from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
+from app.modules.applications.infrastructure import registry as apps_registrados
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
@@ -128,6 +129,45 @@ def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
         raise OperacaoError("pedido_invalido", "Dois parâmetros com o mesmo valor.", 422)
 
 
+def _parametros_do_catalogo(pacote: str) -> list[str] | None:
+    """Os nomes de parâmetro que as ações do catálogo do app usam (obrigatórios, opcionais e herdados). `None` quando o
+    app não tem catálogo: o planejamento livre segue livre, e só a conferência genérica vale."""
+    catalogo = apps_registrados.get(pacote)
+    if catalogo is None:
+        return None
+    nomes: set[str] = set()
+    for cap in catalogo.capabilities:
+        nomes.update(cap.bindings, cap.optional_bindings, cap.inherited_bindings)
+    return sorted(nomes)
+
+
+def _conferir_contra_o_app(parametros: Mapping[str, str] | None, pacote: str) -> None:
+    """31.224: o parâmetro fixo que não casa com o app é recusado ANTES de qualquer execução, para que um erro de
+    digitação na prova não custe chamada paga. `username` vai sem arroba e sem espaço: a prova local compara o texto da
+    tela, que não traz o @. Chave fora do catálogo do app é recusada com a lista dos aceitos (que vem do catálogo, não do
+    pedido). Como em `_conferir_parametros`, a recusa diz a POSIÇÃO (`posicao`, 1 = o primeiro de `parametros`), nunca o
+    nome que veio; `campo` só sai quando o nome é o nosso (`username`)."""
+    if not parametros:
+        return
+    for posicao, (nome, valor) in enumerate(parametros.items(), start=1):
+        if nome != "username":
+            continue
+        if "@" in valor:
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro (username) vai sem arroba.", 422,
+                                motivo="username_com_arroba", posicao=posicao, campo="username")
+        if any(c.isspace() for c in valor):
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro (username) vai sem espaço.", 422,
+                                motivo="username_com_espaco", posicao=posicao, campo="username")
+    aceitos = _parametros_do_catalogo(pacote)
+    if aceitos is None:
+        return
+    for posicao, nome in enumerate(parametros, start=1):
+        if nome not in aceitos:
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro não é aceito por este app; aceitos: "
+                                f"{', '.join(aceitos)}.", 422, motivo="parametro_desconhecido", posicao=posicao,
+                                aceitos=aceitos)
+
+
 def _sha(pedido: PedidoDeOperacao) -> str:
     corpo = {"command": pedido.command.strip(), "app_id": pedido.app_id, "acao_final": pedido.acao_final,
              "max_usd": pedido.max_usd, "assunto": pedido.assunto, "fontes": list(pedido.fontes),
@@ -156,6 +196,7 @@ class ServicoDeOperacoes:
         app = self.db.one("SELECT id, package FROM apps WHERE id=?", (pedido.app_id,))
         if app is None:
             raise OperacaoError("app_inexistente", f"O app {pedido.app_id!r} não está registrado.", 404)
+        _conferir_contra_o_app(pedido.parametros, str(app["package"] or ""))
         sha = _sha(pedido)
         existente = self.db.one("SELECT id, corpo_sha256 FROM operacoes WHERE idempotency_key=?",
                                 (pedido.idempotency_key,))
