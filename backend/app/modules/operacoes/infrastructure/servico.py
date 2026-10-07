@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 from app.contracts.origem import PREFIXO_OPERACAO
 from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
+from app.modules.applications.infrastructure import registry as apps_registrados
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain import fila as filas, latencia, relatorio as rel
 from app.modules.operacoes.domain.estagios import ESTADOS, EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
@@ -169,6 +170,42 @@ def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
         raise OperacaoError("pedido_invalido", "Dois parâmetros com o mesmo valor.", 422)
 
 
+def _conferir_contra_o_app(parametros: Mapping[str, str] | None, pacote: str) -> None:
+    """31.224 (adendo v1.121) e 31.227: o parâmetro fixo que não casa com o app é recusado ANTES de qualquer execução,
+    para que um erro de digitação na prova não custe chamada paga. Sem catálogo, só a conferência genérica (o teto de
+    300). Com catálogo, a chave tem de ser uma que as ações usam (a recusa traz a lista dos aceitos, que vem do catálogo,
+    não do pedido), e o parâmetro que o catálogo declara (`parametros` no YAML) segue a forma e o tamanho dele: `handle`
+    vai sem arroba e sem espaço. Como em `_conferir_parametros`, a recusa diz a POSIÇÃO (`posicao`, 1 = o primeiro de
+    `parametros`), nunca o nome que veio; `campo` só sai quando o nome é um declarado pelo app."""
+    if not parametros:
+        return
+    catalogo = apps_registrados.get(pacote)
+    if catalogo is None:
+        return
+    usados: set[str] = set()
+    for cap in catalogo.capabilities:
+        usados.update(cap.bindings, cap.optional_bindings, cap.inherited_bindings)
+    aceitos = sorted(usados)
+    for posicao, (nome, valor) in enumerate(parametros.items(), start=1):
+        if nome not in usados:
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro não é aceito por este app; aceitos: "
+                                f"{', '.join(aceitos)}.", 422, motivo="parametro_desconhecido", posicao=posicao,
+                                aceitos=aceitos)
+        decl = catalogo.parametros.get(nome)
+        if decl is None:
+            continue
+        if decl.forma == "handle" and "@" in valor:
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro ({nome}) vai sem arroba.", 422,
+                                motivo=f"{nome}_com_arroba", posicao=posicao, campo=nome)
+        if decl.forma == "handle" and any(c.isspace() for c in valor):
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro ({nome}) vai sem espaço.", 422,
+                                motivo=f"{nome}_com_espaco", posicao=posicao, campo=nome)
+        if len(valor) > decl.max:
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro ({nome}) tem no máximo {decl.max} "
+                                "caracteres neste app.", 422, motivo=f"{nome}_longo", posicao=posicao, campo=nome,
+                                max=decl.max)
+
+
 def _sha(pedido: PedidoDeOperacao) -> str:
     corpo = {"command": pedido.command.strip(), "app_id": pedido.app_id, "acao_final": pedido.acao_final,
              "max_usd": pedido.max_usd, "assunto": pedido.assunto, "fontes": list(pedido.fontes),
@@ -211,6 +248,9 @@ class ServicoDeOperacoes:
                 raise OperacaoError("chave_em_uso", "Esta chave de idempotência já criou outra operação.", 409,
                                     operacao_id=existente["id"])
             return self.ler(str(existente["id"]))
+        # Depois da repetição (achados do Codex nos PRs 495 e 503): a operação aceita antes desta regra, ou antes de o
+        # catálogo mudar, mandada de novo com o mesmo corpo e a mesma chave, devolve a que existe, e não um 422.
+        _conferir_contra_o_app(pedido.parametros, str(app["package"] or ""))
         op_id = f"op-{now_iso()[:19].replace('-', '').replace(':', '').replace('T', '')}-{secrets.token_hex(3)}"
         agora = now_iso()
         self.db.execute(

@@ -413,6 +413,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   reprovam no código anterior. Real: not_run (a operação de 07/10 fechando sem leitura externa, depois da prova e com
   o laço ligado).
 
+## 2026-10-07 — 31.227: a forma e o tamanho do parâmetro declarados no catálogo do app (branch feat/31-227-forma-dos-parametros, corte 61)
+
+- `catalogo.yaml` ganha `parametros: {nome: {forma: handle|texto, max}}` (adendo v1.123), conferido na carga. O Instagram declara
+  `username` e `post_author` como handle de até 30 caracteres. A conferência do 31.224 lê a declaração; sem ela, vale o
+  teto genérico de 300. O app sem catálogo deixa de ter a regra do `username`.
+- Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (os casos novos e a carga recusando declaração errada). A
+  mutação que desliga o tamanho é pega. Real: not_run.
+
+## 2026-10-07 — 31.224: `parametros` da operação conferidos com o app antes de qualquer execução (branch feat/31-224-valida-parametros, corte 61)
+
+- `POST /api/operacoes` (adendo v1.121) recusa com 422 o `username` com arroba ou com espaço, e a chave fora do catálogo do app
+  (com a lista dos aceitos), antes de gravar e de criar execução. O corpo traz `motivo` e `posicao`, nunca o nome que
+  veio. O app sem catálogo segue com a chave livre.
+- Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (3 testes novos, um parametrizado). A mutação que desliga
+  a regra do username é pega. Real: not_run.
+
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 
 - Na onda 1 (06/10), a pesquisa da operação deixou 6 de 8 fatos como `hipotese` (uma fonte só), e nada os

@@ -8059,3 +8059,44 @@ Código: `backend/app/modules/operacoes/infrastructure/laco.py` (`LacoDasOperaco
 iniciado em `state.py` (tarefa `operacoes`). Testes: `backend/tests/test_operacoes_laco.py` (relógio falso: desligado
 não lê; ligado fecha sem GET e não repete; duas leituras ou dois fechamentos com a mesma linha velha avisam uma vez; a
 falha numa operação não para as outras).
+## Adendo v1.121 (07/10/2026; número da orquestradora; item 31.224) — `parametros` conferidos com o app
+
+`POST /api/operacoes` confere cada parâmetro fixo com o app ANTES de gravar a operação e de criar qualquer execução,
+para que um erro de digitação não custe chamada paga. Vale depois das recusas que já existiam (credencial, formato do
+nome, tamanho do valor, até 10 parâmetros):
+
+- `username` vai sem arroba e sem espaço, porque a prova local compara o texto da tela, que não traz o `@`;
+- no app com catálogo de ações (hoje o Instagram e o Outlook), a chave tem de ser uma das que as ações do catálogo usam
+  (`bindings`, `optional_bindings` e `inherited_bindings`). O app sem catálogo (o QA Messenger) segue com a chave livre.
+
+A conferência vem DEPOIS da repetição: o mesmo corpo com a mesma `idempotency_key` de uma operação já criada (antes
+desta regra, ou antes de o catálogo mudar) devolve a operação que existe, e não um 422.
+
+A recusa é 422, e o corpo para no primeiro problema:
+
+`{"detail": {"code": "pedido_invalido", "message": "...", "motivo": "username_com_arroba" | "username_com_espaco" |
+"parametro_desconhecido", "posicao": N, "campo": "username" (só nos dois motivos de username), "aceitos": [...] (só em
+parametro_desconhecido)}}`
+
+`posicao` conta de 1, na ordem de `parametros`. O nome que veio nunca volta no corpo (convenção do PR 487: a credencial
+pode estar no próprio nome); `aceitos` vem do catálogo do app, não do pedido.
+
+Código: `_conferir_contra_o_app` em `modules/operacoes/infrastructure/servico.py`. Testes em
+`backend/tests/test_plano_da_operacao.py`: a recusa sem gravar nem criar execução, o caminho aceito, o app sem catálogo
+e o 422 pela rota.
+
+## Adendo v1.123 (07/10/2026; número da orquestradora; item 31.227) — a forma do parâmetro vem do catálogo
+
+O `catalogo.yaml` do app ganha a seção opcional `parametros: {nome: {forma, max}}`. `forma` é `handle` (sem arroba
+nem espaço) ou `texto`, e `max` vai de 1 a 300. A carga recusa nome que nenhuma ação usa, forma fora do vocabulário e
+máximo fora da faixa. O Instagram declara `username` e `post_author` como `handle` de até 30 caracteres.
+
+A conferência do v1.121 passa a ler essa declaração: o parâmetro declarado segue a forma e o tamanho dele, e o que não
+está declarado vale o teto genérico de 300. O app sem catálogo não tem conferência de chave nem de forma; isso muda o
+v1.121, onde a regra do `username` valia em qualquer app. Os motivos do 422 são `<nome>_com_arroba`,
+`<nome>_com_espaco` e `<nome>_longo` (este último com `max`), todos com `posicao` e `campo` = o nome declarado, além de
+`parametro_desconhecido`. Para `username`, os dois primeiros têm o mesmo valor do v1.121.
+
+Código: `FormaDoParametro` e `_parametros` em `planning/capabilities.py`, e `_conferir_contra_o_app` em
+`modules/operacoes/infrastructure/servico.py`. Testes em `backend/tests/test_plano_da_operacao.py` (recusa por
+`post_author` com arroba e por `username` acima de 30; os 30 exatos passam; declaração errada recusada na carga).

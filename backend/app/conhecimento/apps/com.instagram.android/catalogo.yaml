@@ -28,6 +28,13 @@ app: com.instagram.android
 # (`modules/capabilities/infrastructure/catalog_registry.py`) comparar com a constante em vez de ler daqui.
 contract_version: 1
 
+# A forma e o tamanho dos parâmetros fixos de uma operação (31.227): o pedido que não casa é recusado antes de
+# qualquer execução. `handle` = sem arroba nem espaço (a prova local compara o texto da tela, que não traz o @); o
+# nome de usuário do Instagram tem no máximo 30 caracteres. O que não está aqui vale o teto genérico de 300.
+parametros:
+  username: {forma: handle, max: 30}
+  post_author: {forma: handle, max: 30}
+
 acoes:
 
   # ---------------------------------------------------------------------------------- sessão (resolvidas por código)
