@@ -95,6 +95,9 @@ class SecretResolution:
     refusal: str | None = None
     #: Existe a senha, mas a pessoa ainda não consentiu (`consent_at` nulo): a pendência é dela, não do modelo.
     pending_consent: bool = False
+    #: 31.278: a persona NÃO tem credencial nenhuma para este app (sem conta ou conta sem senha, e nenhuma conta de login
+    #: gerenciado, nem senha recusada). É o único caso em que o aviso diz "não há senha guardada".
+    sem_senha_guardada: bool = False
 
 
 #: Colunas do perfil que viram variável, na ordem em que aparecem ao modelo: (nome, coluna, rótulo, tipo).
@@ -360,7 +363,10 @@ def typable_secret_for(accounts: Sequence[AccountRecord], package: str | None) -
     if not package:
         return SecretResolution(refusal="sem app")
     pendente = None
+    com_credencial = False
     for c in accounts:
+        if c.package == package and (c.managed or c.has_credential):
+            com_credencial = True
         if c.package != package or c.managed or not c.has_credential:
             continue
         if c.consent_at and c.credential_status != "invalid":
@@ -370,7 +376,7 @@ def typable_secret_for(accounts: Sequence[AccountRecord], package: str | None) -
     if pendente is not None:
         return SecretResolution(refusal=f"a senha da conta em {_rotulo_da_conta(pendente)} está guardada sem "
                                         "consentimento", pending_consent=True)
-    return SecretResolution(refusal="nenhuma senha de conta deste app")
+    return SecretResolution(refusal="nenhuma senha de conta deste app", sem_senha_guardada=not com_credencial)
 
 
 def account_hosts(accounts: Sequence[AccountRecord]) -> frozenset[str]:

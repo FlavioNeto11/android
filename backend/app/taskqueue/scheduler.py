@@ -1847,7 +1847,8 @@ class Scheduler:
             repo.set_objective(oid, ObjectiveStatus.waiting_user, detail=detail, blocked_reason=detail, needs=out.needs,
                                level="warn", message=f"{rt.id}: bloqueado — {detail}",
                                blocked_kind="ai" if out.ai_blocked else None,
-                               dados={"failure_kind": repo.step_row(step.id)["failure_kind"]})
+                               dados={"failure_kind": repo.step_row(step.id)["failure_kind"],
+                                      **({"sem_senha_guardada": True} if out.sem_senha_guardada else {})})
             rt.attention = f"Bloqueado: {detail}"
             return False
         if o == Outcome.uncertain:
