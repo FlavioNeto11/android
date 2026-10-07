@@ -163,9 +163,9 @@ def _da_prova(e: EntradaDoLivro) -> JsonObject:
     p = e.prova_da_candidata
     if p is None:
         return {}
-    consulta = None if p.ultima_consulta_resultado is None else {
+    consulta: JsonObject | None = None if p.ultima_consulta_resultado is None else {
         "em": p.ultima_consulta_em, "resultado": p.ultima_consulta_resultado}
-    substitui = None if p.substitui_ref is None else {
+    substitui: JsonObject | None = None if p.substitui_ref is None else {
         "ref": p.substitui_ref, "versao": p.substitui_versao, "estado": "active"}
     return {"prova_da_candidata": {"concordancias": p.concordancias, "necessarias": p.necessarias,
                                    "ultima_consulta": consulta, "substitui": substitui}}
