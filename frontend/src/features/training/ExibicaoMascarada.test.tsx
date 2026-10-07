@@ -26,7 +26,7 @@ const CRUA: TrainingProposal = {
   app_id: 'qa-messenger',
   parameters: [{ name: 'contato', example: 'Marina Souza', description: 'quem receberá' }],
   steps: [
-    passo('abrir', [1], 'Abrir o perfil de Marina Souza', 'chegar em Marina Souza', 'Marina Souza', 'o perfil de Marina Souza aberto'),
+    passo('abrir_marina_souza', [1], 'Abrir o perfil de Marina Souza', 'chegar em Marina Souza', 'Marina Souza', 'o perfil de Marina Souza aberto'),
     passo('curtir', [2], 'Curtir a primeira foto', 'curtir', 'Curtido', 'a foto curtida'),
   ],
   discarded: [{ seq: 3, why: 'toque fora do perfil de Marina Souza' }],
@@ -38,7 +38,7 @@ const MASCARADA: TrainingProposal = {
   app_id: 'qa-messenger',
   parameters: [{ name: 'contato', example: '{contato}', description: 'quem receberá' }],
   steps: [
-    passo('abrir', [1], 'Abrir o perfil de {contato}', 'chegar em {contato}', '{contato}', 'o perfil de {contato} aberto'),
+    passo('abrir_{contato}', [1], 'Abrir o perfil de {contato}', 'chegar em {contato}', '{contato}', 'o perfil de {contato} aberto'),
     passo('curtir', [2], 'Curtir a primeira foto', 'curtir', 'Curtido', 'a foto curtida'),
   ],
   discarded: [{ seq: 3, why: 'toque fora do perfil de {contato}' }],
@@ -68,7 +68,7 @@ describe('exibicao.ts: qual texto aparece', () => {
     expect(v.command_template).toBe('abra o perfil de {contato} e curta');
     expect(v.parameters).toEqual([{ name: 'contato', example: '{contato}', description: 'quem receberá' }]);
     expect(v.steps.map((s) => [s.key, s.title, s.goal, s.postcondition.value, s.postcondition.description, s.inputs])).toEqual([
-      ['abrir', 'Abrir o perfil de {contato}', 'chegar em {contato}', '{contato}', 'o perfil de {contato} aberto', [1]],
+      ['abrir_marina_souza', 'Abrir o perfil de {contato}', 'chegar em {contato}', '{contato}', 'o perfil de {contato} aberto', [1]],
       ['curtir', 'Curtir a primeira foto', 'curtir', 'Curtido', 'a foto curtida', [2]],
     ]);
     expect(v.discarded).toEqual([{ seq: 3, why: 'toque fora do perfil de {contato}' }]);
@@ -77,7 +77,7 @@ describe('exibicao.ts: qual texto aparece', () => {
     expect(JSON.stringify(CRUA)).toContain('Marina Souza');                                      // a original não foi tocada
   });
 
-  it('o que a pessoa editou aparece como ela escreveu; casa a etapa pela chave, não pela posição', () => {
+  it('o que a pessoa editou aparece como ela escreveu; a etapa da cópia é achada pela posição da original (a chave da cópia vem mascarada)', () => {
     const editada: TrainingProposal = { ...CRUA, steps: [CRUA.steps[1]!, { ...CRUA.steps[0]!, title: 'Entrar no perfil' }] };
     const v = paraExibir(editada, EXIBICAO);
     expect(v.steps.map((s) => s.title)).toEqual(['Curtir a primeira foto', 'Entrar no perfil']);
@@ -219,15 +219,16 @@ describe('a tela do ensino', () => {
     expect(corpo.answers).toEqual([{ question: 'A Marina Souza muda a cada vez?', answer: 'sim' }]);
   });
 
-  it('proposta pedida agora (a resposta não traz a cópia): relê a sessão e passa a exibir a cópia', async () => {
+  it('proposta pedida agora: a resposta do pedido já traz a cópia (v1.109 em toda resposta com a sessão), sem reler a sessão', async () => {
     let lidas = 0;
-    backend.on('GET', /\/training\/trn-1$/, () => { lidas += 1; return json(lidas === 1 ? { ...SESSAO, proposal: null, proposal_exibicao: null, status: 'recorded' } : SESSAO); });
-    backend.on('POST', /\/training\/trn-1\/propose$/, () => json({ ...SESSAO, proposal: CRUA, proposal_exibicao: undefined }));
+    backend.on('GET', /\/training\/trn-1$/, () => { lidas += 1; return json({ ...SESSAO, proposal: null, proposal_exibicao: null, status: 'recorded' }); });
+    backend.on('POST', /\/training\/trn-1\/propose$/, () => json({ ...SESSAO, proposal: CRUA, proposal_exibicao: MASCARADA }));
     await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
     await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
     await waitFor(() => expect(valorDe(/^Comando/)).toBe('abra o perfil de {contato} e curta'));
+    expect(valorDe(/Título da etapa 1/)).toBe('Abrir o perfil de {contato}');                      // a etapa da cópia, de chave mascarada
     expect(text()).not.toContain('Marina');
-    expect(lidas).toBe(2);
+    expect(lidas).toBe(1);
   });
 
   it('backend anterior, sem a cópia: mostra a proposta como veio, sem botão de revelar', async () => {

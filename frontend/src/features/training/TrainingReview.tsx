@@ -433,17 +433,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       setErroResposta(null);
       setProposta(s.proposal);
       setOriginal(s.proposal);
-      // 31.189: a cópia para exibir pode não vir na resposta do pedido; a releitura traz a da proposta que valeu (e, se falhar, a tela
-      // fica com a proposta como veio, sem a máscara, e o salvar segue mandando a proposta original).
+      // 31.189: toda resposta do treino que traz a sessão leva a cópia para exibir (v1.109); sem ela (backend anterior), a proposta como veio.
       setCopia(s.proposal_exibicao);
-      if (s.proposal_exibicao === undefined) {
-        try {
-          const lida = await api.getTraining(sessionId);
-          if (JSON.stringify(lida.proposal) === JSON.stringify(s.proposal)) setCopia(lida.proposal_exibicao);
-        } catch {
-          /* sem a cópia: a tela mostra a proposta como veio */
-        }
-      }
       setDestino({});
       setAviso('');
     } catch (e) {
