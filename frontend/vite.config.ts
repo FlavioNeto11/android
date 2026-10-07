@@ -38,6 +38,11 @@ export default defineConfig(({ mode }) => ({
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}'],
     restoreMocks: true,
+    // O central de desenvolvimento divide a máquina com a suíte do backend, o PostgreSQL e os emuladores: com o padrão de 5 s, testes que
+    // passam em 0,1 s sozinhos estouram o tempo quando a CPU está disputada (funil 60: 16 falhas, todas passam isoladas). O tempo maior só
+    // custa quando o teste de fato falha; a asserção não muda.
+    testTimeout: 30000,
+    hookTimeout: 30000,
     // 29.150: `DESLOCAMENTO_DIAS=40 npm test` roda a suíte com o relógio 40 dias à frente (acha o teste com data fixa que
     // vence); sem a variável, nada muda. Ver src/test/relogioDeslocado.ts.
     setupFiles: process.env.DESLOCAMENTO_DIAS ? ['./src/test/relogioDeslocado.ts'] : [],

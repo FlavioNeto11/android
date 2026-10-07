@@ -224,7 +224,7 @@ const CREDITO_MAXIMO_MS = 60_000;
  * muito depois do que pediu; o excesso volta para o prazo. Uma condição que NUNCA vale continua estourando: o timer
  * dela chega em dia, e nada é creditado.
  */
-export async function waitFor<T>(check: () => T, timeoutMs = 4000): Promise<T> {
+export async function waitFor<T>(check: () => T, timeoutMs = 12000): Promise<T> {
   const start = Date.now();
   let credito = 0;
   let lastError: unknown;
@@ -257,7 +257,7 @@ export async function waitFor<T>(check: () => T, timeoutMs = 4000): Promise<T> {
 export async function esperarElemento<E extends Element = HTMLElement>(
   seletor: string,
   raiz?: ParentNode,
-  timeoutMs = 4000,
+  timeoutMs = 12000,
 ): Promise<E> {
   // Só a raiz OMITIDA vale `document`; `arguments` separa a omitida da passada como `undefined`.
   if (arguments.length >= 2 && raiz == null) {
