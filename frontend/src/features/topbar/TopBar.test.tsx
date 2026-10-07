@@ -79,17 +79,43 @@ describe('Menu lateral — as nove seções sempre alcançáveis', () => {
 
   const menu = (el: HTMLElement) => el.querySelector('nav[aria-label="Seções"]') as HTMLElement;
 
-  it('lista as treze seções como links canônicos, com aria-current só na atual', async () => {
+  it('lista as catorze entradas do menu como links canônicos, com aria-current só na atual', async () => {
     const el = await renderBar([]);
     const links = Array.from(menu(el).querySelectorAll('a'));
     expect(links.map((a) => a.getAttribute('href'))).toEqual([
-      '#/painel', '#/personas', '#/aplicativos', '#/execucoes', '#/pedidos', '#/pendencias', '#/aprendizado', '#/infraestrutura', '#/configuracao',
-      '#/diagnostico', '#/canais', '#/operacoes', '#/host',
+      '#/painel', '#/personas', '#/aplicativos', '#/execucoes', '#/pedidos', '#/pendencias', '#/aprendizado', '#/aprendizado?aba=apps', '#/infraestrutura',
+      '#/configuracao', '#/diagnostico', '#/canais', '#/operacoes', '#/host',
     ]);
     expect(links.map((a) => text(a))).toContain('Personas');
     expect(links.filter((a) => a.getAttribute('aria-current') === 'page').map((a) => text(a))).toEqual(['Painel']);
     await act(async () => useUiStore.getState().setView('personas'));
     expect(links.filter((a) => a.getAttribute('aria-current') === 'page').map((a) => text(a))).toEqual(['Personas']);
+  });
+
+  it('31.266: "Conhecimento" abre a guia Aplicativos do Aprendizado, sem rota nova; só um dos dois é a página atual e o selo não se repete', async () => {
+    const el = await renderBar([]);
+    const links = () => Array.from(menu(el).querySelectorAll('a'));
+    const atuais = () => links().filter((a) => a.getAttribute('aria-current') === 'page').map((a) => text(a));
+    const conhecimento = () => links().find((a) => text(a) === 'Conhecimento')!;
+    expect(conhecimento().getAttribute('href')).toBe('#/aprendizado?aba=apps');
+    await act(async () => useUiStore.getState().navegar({ tela: 'aprendizado', query: { aba: 'apps' } }, 'replace'));
+    expect(atuais()).toEqual(['Conhecimento']);
+    await act(async () => useUiStore.getState().navegar({ tela: 'aprendizado', query: { aba: 'falhas' } }, 'replace'));
+    expect(atuais()).toEqual(['Aprendizado']);
+    await act(async () => useUiStore.getState().navegar({ tela: 'aprendizado', query: {} }, 'replace'));
+    expect(atuais()).toEqual(['Aprendizado']);
+  });
+
+  it('31.266: o aparelho em Foco acompanha o atalho Conhecimento e a contagem "Para aprovar" fica só no Aprendizado', async () => {
+    useContagemDoAprendizado.setState({ pendentes: 4 });
+    const el = await renderBar([]);
+    await act(async () => useUiStore.getState().navegar({ tela: 'painel', query: { foco: 'android-01' } }, 'replace'));
+    const links = Array.from(menu(el).querySelectorAll('a'));
+    const conhecimento = links.find((a) => text(a).startsWith('Conhecimento'))!;
+    expect(conhecimento.getAttribute('href')).toBe('#/aprendizado?aba=apps&foco=android-01');
+    expect(conhecimento.getAttribute('aria-label')).toBe('Conhecimento');
+    expect(text(conhecimento)).toBe('Conhecimento');
+    useContagemDoAprendizado.setState({ pendentes: null });
   });
 
   it('tarefa 13: cada item tem nome explícito (aria-label), recolhido ou não, e a contagem vai junto no nome', async () => {
