@@ -121,6 +121,8 @@ export interface Operacao extends ResumoDaOperacao {
   assunto: string | null;
   /** As fontes públicas que o operador indicou. */
   fontes: string[];
+  /** Os parâmetros fixos do pedido (adendo v1.95, `username`, `caption_contains`…); `null` quando ausentes. */
+  parametros: Record<string, string> | null;
   /** Os dados vêm do exemplo fixo (a rota ainda não existe no backend), não do parque. */
   exemplo: boolean;
 }
@@ -221,6 +223,13 @@ export function lerResumo(v: unknown): ResumoDaOperacao | null {
   };
 }
 
+/** Só pares texto → texto; vazio ou outro formato = `null` (não informado). */
+function lerParametros(v: unknown): Record<string, string> | null {
+  const o = registro(v);
+  const pares = o ? Object.entries(o).filter((p): p is [string, string] => typeof p[1] === 'string' && p[1].trim() !== '') : [];
+  return pares.length ? Object.fromEntries(pares) : null;
+}
+
 export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
   const resumo = lerResumo(v);
   const o = registro(v);
@@ -232,7 +241,8 @@ export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
   const custo = partes && Object.values(partes).some((x) => x !== null) ? partes : null;
   return {
     ...resumo, alvos, custo, max_usd: usd(o.max_usd), assunto: texto(o.assunto),
-    fontes: (Array.isArray(o.fontes) ? o.fontes : []).filter((f): f is string => typeof f === 'string' && f.trim() !== ''), exemplo,
+    fontes: (Array.isArray(o.fontes) ? o.fontes : []).filter((f): f is string => typeof f === 'string' && f.trim() !== ''),
+    parametros: lerParametros(o.parametros), exemplo,
   };
 }
 
