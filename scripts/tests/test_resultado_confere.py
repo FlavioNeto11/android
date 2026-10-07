@@ -86,6 +86,19 @@ class Regras(unittest.TestCase):
         sem_motivo = mod.problemas(resultado(item(status="partial", proof="not_run", evidence="", blocker="")), IDS)
         self.assertTrue(any("not_run" in a for a in sem_motivo))
 
+    def test_simulated_com_py_qualquer_nao_conta_como_teste(self) -> None:
+        """Achado do Codex (PR 498): `scripts/x.py passou` não cita teste nenhum."""
+        self.assertTrue(mod.problemas(resultado(item(evidence="scripts/resultado_confere.py passou")), IDS))
+        for bom in ("scripts/tests/test_x.py passou", "frontend/src/a.test.ts passou", "arq::teste", "backend/tests/x.py passou"):
+            self.assertEqual(mod.problemas(resultado(item(evidence=bom)), IDS), [], bom)
+
+    def test_real_e_simulated_nao_se_provam_pelo_blocker(self) -> None:
+        """Achado do Codex (PR 498): o blocker é o motivo do bloqueio; só completa o not_run."""
+        so_no_blocker = "07/10/2026 runner hospedado commit abcdef1 scripts/tests/test_x.py::test_a"
+        self.assertTrue(mod.problemas(resultado(item(proof="real", evidence="feito", blocker=so_no_blocker)), IDS))
+        self.assertTrue(mod.problemas(resultado(item(evidence="feito", blocker=so_no_blocker)), IDS))
+        self.assertEqual(mod.problemas(resultado(item(status="partial", proof="not_run", evidence="", blocker="falta o disparo real")), IDS), [])
+
     def test_implemented_sem_evidencia_e_blocked_sem_motivo(self) -> None:
         self.assertTrue(mod.problemas(resultado(item(evidence="")), IDS))
         self.assertTrue(mod.problemas(resultado(item(status="blocked", proof="not_run", evidence="", blocker="")), IDS))

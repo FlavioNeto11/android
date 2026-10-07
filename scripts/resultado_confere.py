@@ -31,7 +31,8 @@ _DATA = re.compile(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{2}/\d{2}(?:/\d{2,4})?\b")
 _COMMIT = re.compile(r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b")
 _ID_EXECUCAO = re.compile(r"\b(?:run|id|execu[cç][aã]o)\D{0,12}\d{6,}\b", re.IGNORECASE)
 _MAQUINA = re.compile(r"m[aá]quina|ubuntu|runner|hospedad|notebook|\bhost\b", re.IGNORECASE)
-_TESTE = re.compile(r"::|\btest_\w+|\.(?:py|tsx?|js)\b")
+# arquivo de teste de verdade (test_x.py, x.test.ts, pasta tests/) ou arquivo::teste; um .py qualquer não prova nada
+_TESTE = re.compile(r"\w::\w|\btest_\w+|\w\.test\.[jt]sx?\b|\w_test\.py\b|\btests?/")
 
 
 def _plano():
@@ -51,8 +52,11 @@ def ids_do_plano(plano) -> set[str]:
 
 def _do_nivel(item: dict) -> list[str]:
     """O que a prova de cada nível tem de dizer na evidência (o `validar` só exige que haja evidência)."""
-    texto = f"{item.get('evidence') or ''} {item.get('blocker') or ''}"
     nivel = item.get("proof")
+    # `blocker` é o motivo do bloqueio: só completa o not_run; real e simulated se provam na evidência
+    texto = str(item.get("evidence") or "")
+    if nivel == "not_run":
+        texto += f" {item.get('blocker') or ''}"
     if nivel == "real":
         faltas = []
         if not _DATA.search(texto):

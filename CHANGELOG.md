@@ -26,6 +26,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Os JSONs já gravados da frente (29-169 a 29-189) passaram pela conferência: status `implemented` e `proof` só no vocabulário do plano; os textos descritivos de prova de 29.187, 29.188 e 29.169 foram para `evidence`. Sobra só "29.189: ID que não existe no plano" até a orquestradora registrar o ID na tabela.
 - Prova `simulated`: `scripts/tests/test_resultado_confere.py` (17 testes; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, esta máquina, `date -u`): a ferramenta rodada sobre os 16 JSONs de resultado da frente: 15 ok e 1 com o aviso esperado do ID 29.189.
 
+- Achados do Codex no PR 498 (29.195 d), conferidos e corrigidos na própria branch: `simulated` só vale com `arquivo::teste`, `test_*`, `*.test.ts`, `*_test.py` ou pasta `tests/` (um `.py` qualquer não conta); `blocker` só completa `not_run`, nunca prova `real` ou `simulated`. Prova `simulated`: `scripts/tests/test_resultado_confere.py` (19 testes).
+
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 
 - Na onda 1 (06/10), a pesquisa da operação deixou 6 de 8 fatos como `hipotese` (uma fonte só), e nada os
