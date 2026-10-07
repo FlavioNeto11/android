@@ -429,6 +429,23 @@ estado antigo, nunca uma edição retroativa.
   parou). Veredito em `data/restore-ensaio/ultimo.json` e `historico.jsonl` (só fatos, nenhum valor de tabela); saída 0 ok,
   1 falhou, 2 pulado. **Não manda Telegram**: o canal do § 15 só aceita os tipos de aviso montados no backend; ligar o `falhou`
   ao aviso é trabalho de backend (ver o resultado do 29.167). PostgreSQL (`parque.dump`) não é ensaiado aqui.
+
+  1 falhou, 2 pulado. **Não manda Telegram**: quem avisa é o backend (28.60), que lê o `ultimo.json` a cada 15 min e manda `falhou`, `pulado`,
+  veredito ilegível ou veredito com mais de 192 h pela rotina do canal (`avisos.restore_ensaio.*`; `docs/dominios/canais.md`). PostgreSQL (`parque.dump`) não é ensaiado aqui.
+- **`scripts/funil.ps1`** (29.196) — o funil de um corte num comando só, em **Windows PowerShell 5.1** e sob o teto de CPU. Etapas: 1 `scripts/tests -n 4`,
+  2 SQLite inteiro `-n 6`, 3 frontend (typecheck, vitest, build), 4 catracas + docs-check, 5 mypy, 6 PG dirigido em partes (`pg-rapido.py`; sem
+  `-ListaPg` a etapa é PULADA e pulada nunca conta como verde). Sem `-SemTeto` o funil se relança sob `com-teto-de-cpu.ps1` (`-Teto 25` por padrão,
+  batimento de 30 s) e o encadeamento roda dentro do job; `-TetoPorEtapa "pg=40,sqlite=25"` escreve o percentual de cada etapa no arquivo de teto
+  antes dela. Grava um **run.txt padronizado** (`FUNIL`/`ETAPA` com `ini`, `fim`, `dur_s`, `rc`, `status` ok|falhou|pulado|nao_rodou, `teto`,
+  `passed`, `failed`, `skipped`, `errors`; datas em UTC; detalhe de cada etapa em `<run>.<id>-<chave>.txt`, batimento do wrapper em
+  `<run>.wrapper.txt`). Saída 0 só com tudo verde, 1 se alguma etapa falhou, 2 se nenhuma falhou mas alguma foi pulada ou não rodou. Uso:
+  `powershell -NoProfile -File scripts\funil.ps1 -Raiz <checkout> -ListaPg <lista> -Saida <run.txt>`; `-Simular` mostra o plano; `-ParaNoErro` para na
+  primeira falha. A comparação entre cortes lê o run.txt direto (`devops-29-180-comparar.py run.txt=<corte>`). Teste:
+  `scripts/tests/test_funil.py` (comandos falsos pelo gancho `-ComandosDeTeste`). O run.txt guarda os **nomes** dos testes que falharam por etapa (`nomes_falhos="a;b"`, até 40; pytest `FAILED`, vitest `FAIL`, tsc `error TS`; no PG, lê as saídas em `<run>.pg`). `-ParalelosPg N` e `-WorkersPg N` repassam `--paralelo`/`--workers` ao `pg-rapido.py` (29.197). **Trava do funil:** enquanto roda, o funil mantém `data/funil-ativo.json`
+  (`pid`, `run`, `inicio`, `raiz`) no checkout central (`git rev-parse --git-common-dir`; `FARM_FUNIL_TRAVA` troca o caminho) e exporta `FARM_FUNIL_RODANDO=1`.
+  Os testes de script que queimam CPU ou sobem subprocessos (`test_com_teto_de_cpu.py`, `test_funil.py`, `test_amostrador_host.py`) levam
+  `pytestmark = pytest.mark.carga` e `scripts/tests/conftest.py` os **pula** quando a trava existe com o processo vivo (e menos de 12 h); o próprio funil
+  os roda (`FARM_FUNIL_RODANDO`), e `FARM_FUNIL_CARGA=1` força de propósito. Teste novo que gera carga entra com o marcador. **Nunca verde por engano** (achados do Codex no PR 506): lista do PG sem teste elegível = etapa PULADA; `-Saida` reaproveitado guarda o anterior em `<run>.anterior` e o run.txt é de uma execução só; commit não identificado reprova o funil (`commit=desconhecido`, rc 1); se o wrapper não consegue trocar o teto da etapa ele sai 124 (`REPROVADO`) e o funil grava `FUNIL wrapper rc=124 status=reprovado`.
 - **`scripts/canais-agendadas.ps1`** (29.186) — as tarefas do host para os scripts da Canais, no molde da `farm-restore-ensaio`
   (Idle, `-Instalar` / `-Remover`, `-Instalar -Simular` só mostra o plano). `-Tarefa resumo-diario`: `farm-canais-resumo-diario`, todo
   dia às 07:03 do horário local do host (Brasília) desde 08/10; a ação registrada leva `-Enviar` (manda o `.claude\canais\resumo_diario.py`
@@ -447,6 +464,7 @@ estado antigo, nunca uma edição retroativa.
 
   1 falhou, 2 pulado. **Não manda Telegram**: quem avisa é o backend (28.60), que lê o `ultimo.json` a cada 15 min e manda `falhou`, `pulado`,
   veredito ilegível ou veredito com mais de 192 h pela rotina do canal (`avisos.restore_ensaio.*`; `docs/dominios/canais.md`). PostgreSQL (`parque.dump`) não é ensaiado aqui.
+
 - **Restaurar o banco regride a cerca** (`commands.fence`, usada para invalidar comando obsoleto por aparelho):
   depois de restaurar, o agente recusa comandos com "cerca N é anterior à última executada (M)" e os `start`
   ficam `failed` sem reparo automático. Procedimento: subir manualmente o `fence` do último comando do aparelho
@@ -538,7 +556,8 @@ Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06
   morre junto. `-Linha` passa pelo `cmd.exe /d /c`. **O `pwsh` (PowerShell 7) deste host é um app MSIX e o Windows o ativa FORA do job: o
   teto não vale para ele nem para nada que ele inicie** (o funil 58 rodou assim, sem teto, com a árvore em 0,0 s de CPU no
   contador do wrapper). Use `powershell` (5.1) como hospedeiro do script do funil, ou chame o python/pytest direto; o wrapper
-  avisa quando o comando usa `pwsh` e quando a árvore quase não usa CPU. `-BatimentoS N` (padrão 60; 0 desliga) imprime a cada N s a
+  RECUSA (código 125) o comando que usa `pwsh` (`-PermitirPwsh` ignora, só para teste) e avisa quando a árvore quase não usa CPU.
+  `-ArquivoDeTeto <arquivo>` (uma linha com o percentual) troca o teto do job que já roda, lido a cada 2 s: é o teto por etapa do `funil.ps1`. `-BatimentoS N` (padrão 60; 0 desliga) imprime a cada N s a
   CPU que a árvore já usou e acusa árvore com 0 s depois de `-ZeroAposS` s (padrão 20): dá para conferir no primeiro minuto, pelo
   arquivo de saída, que o funil está dentro do job. Imprime a CPU usada pela árvore (% do total) e propaga o código de saída. Não toca `.wslconfig`, WSL, túnel nem relógio e não
   mata processo alheio. Teste: `scripts/tests/test_com_teto_de_cpu.py`. O custo do teto é tempo de funil: compare a duração da
@@ -850,11 +869,12 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `start.ps1` / `stop.ps1` | P | Sobe/derruba o backend, Appium e (opcional) emuladores do projeto; o `stop.ps1` também encerra o Appium órfão deste projeto (K-039) e tem `-Simular` |
 | `backup.ps1` | S | Cópia consistente do banco+config, sem parar nada |
 | `testes-afetados.py` | S | Lista (e com `--run` roda) só os testes que o diff atinge; `--ocioso` roda em prioridade ociosa |
-| `pg-rapido.py` | P | PG dirigido da suíte no contêiner descartável `farm-pg-rapido` (29.99): recria o contêiner com WAL mínimo, roda a lista em `--partes`, amostra o disco a cada 30 s e aborta a parte com uma linha em 85 % do tmpfs; `--simular` só lista as partes, `--amostrar` lê o contêiner de pé. Só com a vez da orquestradora |
+| `pg-rapido.py` | P | PG dirigido da suíte no contêiner descartável `farm-pg-rapido` (29.99): recria o contêiner com WAL mínimo, roda a lista em `--partes`, amostra o disco a cada 30 s e aborta a parte com uma linha em 85 % do tmpfs; `--simular` só lista as partes, `--amostrar` lê o contêiner de pé. `--paralelo N` (1 a 4; 29.197, **medido em 07/10 e SEM ganho: não é o padrão** — numa fatia de 64 arquivos, série `-n 8` 234 s, `-n 12` 268 s e 2 x `-n 6` 236 s de relógio; o contêiner do PG já usa 400–500 % dos 6 vCPUs da VM do Docker, então mais workers ou mais contêineres na mesma VM não aceleram; o que acelera o PG é CPU da VM ou menos DDL por teste) sobe N contêineres (`farm-pg-rapido`, `-2`…, portas 55434, 55435…, o tmpfs de 4 GB dividido entre eles) com um fio cada e as partes numa fila; `--workers` troca o `-n` do pytest (padrão 8; 6 por contêiner com mais de um). Parte vermelha não mata a do outro fio (termina e é relatada). Só com a vez da orquestradora |
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
 | `amostrador-host.ps1` | S | Amostrador permanente do host (CPU, RAM, disco, VM do WSL, processos que mais usam CPU, avisos de pressão por aparelho), 1 linha/min em `data\observabilidade\host`, retenção 7 dias; `-Instalar` [P] registra a tarefa `farm-amostrador-host` |
 | `com-teto-de-cpu.ps1` | S | Roda um comando sob teto rígido de CPU (Job Object) e, opcional, nos núcleos E; só limita a árvore do próprio comando |
+| `funil.ps1` | P | O funil de um corte (scripts, SQLite, frontend, catracas, mypy, PG dirigido) em PowerShell 5.1 sob `com-teto-de-cpu.ps1`; run.txt padronizado; mexe só no contêiner `farm-pg-rapido` e em CPU/disco da máquina |
 | `rollback-ensaio.ps1` | S | Ensaio do rollback com migração: backup da última linha de `deploys.jsonl` aberto pelo código do `commit_antes`, em pasta própria (Idle, sem tocar o checkout nem `data\poc.sqlite3`) |
 | `restore-ensaio.ps1` | S | Ensaio semanal sobre a cópia mais nova (pasta própria, Idle, não toca `data\poc.sqlite3`); `-Instalar` [P] registra a tarefa `farm-restore-ensaio` |
 | `canais-agendadas.ps1` | S | Tarefas do host para a Canais: resumo diário 07:03 (`farm-canais-resumo-diario`) e espelho do deploy sob demanda (`farm-canais-espelho-deploy`, `-Pedir`); `-Instalar` [P] registra, `-Remover` tira; `-Enviar` manda ao Telegram do dono |
