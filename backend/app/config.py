@@ -776,6 +776,12 @@ class AiCfg(BaseModel):
     # ação e só sobe pelos controles acima. Escalar na divergência é decisão do dono pendente, com o custo medido
     # em `relatorio-desempenho.md` (22 etapas `recipe+ai` em 7 dias).
     strong_model_for_side_effect: bool | Literal["by_risk"] = "by_risk"
+    # 31.223: quando a etapa com efeito sobe ao modelo forte (acima), ele decide SÓ o commit. A etapa começa no modelo de
+    # ação (abrir o campo, digitar, focar), e a primeira decisão que dispararia o efeito (`is_commit_action`, o seletor
+    # ou o verbo) é descartada e refeita no modelo forte, que segue até o fim da tentativa (como o LT-12). Medido na
+    # onda 1 (07/10): o Opus decidia os 2 passos do comentário (US$ 0,112 de 0,279 do alvo). A trava de commit, a
+    # política de risco e o rejulgamento do "sim" com efeito não mudam. `false` = a etapa inteira no forte (o de antes).
+    strong_model_only_on_commit: bool = True
     # Item 17.10 (cascata para ator barato). `step_blocked` do tier 0 (kinds que um modelo mais forte ainda pode resolver:
     # tela inesperada, informação faltando, app incompatível, outro) sobe UMA vez ao tier 1 na mesma tela antes de pedir uma
     # pessoa. `challenge`, `auth_required` e `wrong_account` NUNCA sobem: dependem de pessoa ou do autenticador.
