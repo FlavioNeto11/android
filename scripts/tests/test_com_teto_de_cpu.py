@@ -111,6 +111,25 @@ class TestTetoDeCpu:
         m = re.search(r"usou (\d+),(\d) s de CPU", r.stdout)
         assert m and float(f"{m.group(1)}.{m.group(2)}") >= 2.0, r.stdout
 
+    def test_batimento_mostra_a_cpu_da_arvore_enquanto_o_comando_roda(self):
+        queima = "import time; t=time.time()\nwhile time.time()-t<4: pass"
+        r = _wrapper("-Teto", "50", "-BatimentoS", "1", "-ComandoJson", json.dumps([sys.executable, "-c", queima]))
+        assert r.returncode == 0, r.stdout + r.stderr
+        batidas = re.findall(r": (\d+) s: .+ (\d+),(\d) s de CPU", r.stdout)
+        assert len(batidas) >= 2, r.stdout
+        assert float(f"{batidas[-1][1]}.{batidas[-1][2]}") >= 1.5, "a CPU da árvore cresce durante a execução"
+        assert "AVISO" not in r.stdout
+
+    def test_batimento_acusa_arvore_com_zero_de_cpu_fora_do_job(self):
+        r = _wrapper("-Teto", "50", "-BatimentoS", "1", "-ZeroAposS", "1", "-Linha",
+                     'pwsh -NoProfile -Command "$s=Get-Date; while(((Get-Date)-$s).TotalSeconds -lt 3){}"')
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "FORA do job" in r.stdout
+
+    def test_batimento_zero_desliga(self):
+        r = _wrapper("-Teto", "50", "-BatimentoS", "0", "-ComandoJson", json.dumps([sys.executable, "-c", "print(1)"]))
+        assert r.returncode == 0 and not re.search(r": \d+ s: ", r.stdout)
+
     def test_afinidade_explicita_chega_ao_comando(self, tmp_path):
         r = _queimar(tmp_path, "-Teto", "100", "-Afinidade", "0xF", segundos=1.0)
         assert r["mascara"] == "0xf"

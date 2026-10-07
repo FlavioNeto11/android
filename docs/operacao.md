@@ -486,7 +486,9 @@ Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06
   morre junto. `-Linha` passa pelo `cmd.exe /d /c`. **O `pwsh` (PowerShell 7) deste host é um app MSIX e o Windows o ativa FORA do job: o
   teto não vale para ele nem para nada que ele inicie** (o funil 58 rodou assim, sem teto, com a árvore em 0,0 s de CPU no
   contador do wrapper). Use `powershell` (5.1) como hospedeiro do script do funil, ou chame o python/pytest direto; o wrapper
-  avisa quando o comando usa `pwsh` e quando a árvore quase não usa CPU. Imprime a CPU usada pela árvore (% do total) e propaga o código de saída. Não toca `.wslconfig`, WSL, túnel nem relógio e não
+  avisa quando o comando usa `pwsh` e quando a árvore quase não usa CPU. `-BatimentoS N` (padrão 60; 0 desliga) imprime a cada N s a
+  CPU que a árvore já usou e acusa árvore com 0 s depois de `-ZeroAposS` s (padrão 20): dá para conferir no primeiro minuto, pelo
+  arquivo de saída, que o funil está dentro do job. Imprime a CPU usada pela árvore (% do total) e propaga o código de saída. Não toca `.wslconfig`, WSL, túnel nem relógio e não
   mata processo alheio. Teste: `scripts/tests/test_com_teto_de_cpu.py`. O custo do teto é tempo de funil: compare a duração da
   suíte sem e com teto antes de adotar.
 
