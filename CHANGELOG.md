@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.249: a receita só reproduz no escopo do alvo em que nasceu (branch feat/31-249-escopo-da-receita)
+
+- A 111 (`open_post`, aprendida num post da própria conta) reproduziu em post de terceiro na onda 2, com o mesmo
+  `template_hash`. Divergiu nos 3 alvos: US$ 0,1415.
+- Agora a consulta (`RecipeStore.find(..., escopo=)`) compara o escopo da etapa com o da receita. O escopo é `proprio`
+  ou `terceiro`, pelo `post_author`/`username` contra as contas da persona; o da receita sai da etapa em que ela foi
+  aprendida. A receita de outro escopo não reproduz (`receita.consulta{resultado=outro_escopo}`), e a IA decide.
+- Sem migração e sem mudar a identidade da etapa.
+- Prova `simulated`: `backend/tests/test_escopo_da_receita.py` (5). `real`: `not_run` (a 1ª operação em post de
+  terceiro depois do deploy).
+
 ## 2026-10-07 — 31.248: o assunto da operação nasce da leitura do alvo quando o pedido não traz um (branch feat/31-248-assunto-da-leitura-do-alvo)
 
 - A onda 2 não pesquisou porque a operação não tinha assunto: a lacuna (critério 5) nem era consultada.
