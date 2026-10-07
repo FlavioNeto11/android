@@ -12,7 +12,7 @@ import { isRunTerminal } from '../../lib/status';
 import { toast } from '../../store/toasts';
 import { apiAprendizado } from '../aprendizado/api';
 import styles from './EnsinoDaExecucao.module.css';
-import { type EnsinoDaExecucao as Ensino, motivoEmPalavras, receitaEmPalavras, rotuloDaReceita } from './ensinoLido';
+import { type EnsinoDaExecucao as Ensino, etapasProntas, motivoEmPalavras, receitaEmPalavras, rotuloDaReceita } from './ensinoLido';
 
 type RunRef = Pick<RunSummary, 'id' | 'status'>;
 
@@ -50,7 +50,7 @@ export function EnsinoDaExecucao({ run }: { run: RunRef }) {
 
   const ensinar = useCallback(async () => {
     if (!ensino || ensinando) return;
-    const n = ensino.ensinaveis ?? 0;
+    const n = etapasProntas(ensino);
     const r = await confirm({
       title: 'Ensinar a partir desta execução?', confirmLabel: 'Ensinar', cancelLabel: 'Voltar',
       body: (
@@ -81,7 +81,7 @@ export function EnsinoDaExecucao({ run }: { run: RunRef }) {
   if (erro && !ensino) return <LoadErrorBanner error={erro} onRetry={() => setVez((v) => v + 1)} />;
   if (!ensino) return null;
 
-  const n = ensino.ensinaveis ?? ensino.etapas.filter((e) => e.ensinavel).length;
+  const n = etapasProntas(ensino);
   const semDados = ensino.etapas.length === 0;
   const motivoSemEnsinar = ensino.simulada === true ? 'A execução foi simulada: não há o que ensinar a partir dela.'
     : n === 0 ? 'Nenhuma etapa desta execução está pronta para ensinar.' : null;

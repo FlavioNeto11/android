@@ -10,7 +10,7 @@ import { useUiStore } from '../../store/ui';
 import { RUN_ID, makeRunDetail } from '../../test/fixtures';
 import { FakeBackend, apiError, byRole, click, esperarElemento, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { EnsinoDaExecucao } from './EnsinoDaExecucao';
-import { lerEnsinoDaExecucao, motivoEmPalavras, receitaEmPalavras, type EtapaDoEnsino } from './ensinoLido';
+import { etapasProntas, lerEnsinoDaExecucao, motivoEmPalavras, receitaEmPalavras, type EtapaDoEnsino } from './ensinoLido';
 import { RunView } from './RunView';
 
 /**
@@ -29,7 +29,6 @@ describe('lerEnsinoDaExecucao: tolerante, sem inventar', () => {
     const r = lerEnsinoDaExecucao(corpo([
       etapaBruta('open_profile', { receita: { id: 40, status: 'candidate', replay_ok: true }, ensinavel: true, motivo: null }),
       etapaBruta('x', { ensinavel: 'sim', motivo: 'inventado', receita: { id: '', status: 'candidate' }, ferramentas_nao_reproduziveis: ['press_back', 3, ''] }),
-      { key: 'sem_step_id' },
     ], { ensinaveis: -1, simulada: 'nao' }))!;
     expect(r.etapas).toHaveLength(2);
     expect(r.etapas[0]).toMatchObject({ chave: 'open_profile', ensinavel: true, motivo: null, receita: { id: '40', status: 'candidate', replayOk: true } });
@@ -37,6 +36,16 @@ describe('lerEnsinoDaExecucao: tolerante, sem inventar', () => {
     expect(r.ensinaveis).toBeNull();
     expect(r.simulada).toBeNull();
     expect(r.promovidas).toBeNull();
+  });
+  it('uma etapa sem step_id ou key invalida o corpo inteiro (nada de lista parcial com ensinaveis apontando para o que não se vê)', () => {
+    expect(lerEnsinoDaExecucao(corpo([etapaBruta('ok'), { key: 'sem_step_id' }]))).toBeNull();
+    expect(lerEnsinoDaExecucao(corpo([{ step_id: 's', ensinavel: true }], { ensinaveis: 1 }))).toBeNull();
+    expect(lerEnsinoDaExecucao(corpo([etapaBruta('ok'), 'lixo']))).toBeNull();
+  });
+  it('etapasProntas: o ensinaveis do corpo vale; sem ele, a contagem das etapas', () => {
+    const base = lerEnsinoDaExecucao(corpo([etapaBruta('a', { ensinavel: true, motivo: null }), etapaBruta('b')], { ensinaveis: 5 }))!;
+    expect(etapasProntas(base)).toBe(5);
+    expect(etapasProntas({ ...base, ensinaveis: null })).toBe(1);
   });
   it('sem run_id ou sem a lista de etapas não é o corpo do ensino', () => {
     expect(lerEnsinoDaExecucao({ etapas: [] })).toBeNull();
@@ -129,6 +138,18 @@ describe('a seção na tela da execução', () => {
     expect(text(r)).not.toContain('Nenhuma receita');
     expect(text(etapa('open_profile'))).toContain('Receita 40: publicada');                  // o corpo relido substitui o da leitura
     expect(useToastStore.getState().toasts.some((t) => t.title === 'Ensino feito')).toBe(true);
+  });
+
+  it('ensinaveis omitido: o botão e a confirmação usam a MESMA contagem das etapas (nunca "0 receitas" com o POST habilitado)', async () => {
+    const c = COM_CANDIDATA() as Record<string, unknown>;
+    delete c.ensinaveis;
+    backend.on('GET', ENSINO, () => json(c));
+    await montar();
+    await waitFor(() => expect(secao()).not.toBeNull());
+    await click(byRole('button', /^Ensinar a partir da execução/, container));
+    const d = await waitFor(() => byRole('dialog', /Ensinar a partir desta execução\?/));
+    expect(text(d)).toContain('1 receita candidata vai passar');
+    expect(text(d)).not.toContain('0 receitas');
   });
 
   it('"Voltar" na confirmação não promove nada', async () => {

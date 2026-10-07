@@ -81,12 +81,21 @@ export function lerEnsinoDaExecucao(v: unknown): EnsinoDaExecucao | null {
       const rid = r ? id(r.recipe_id) : null;
       return r && rid ? [{ receitaId: rid, etapa: texto(r.step_key) ?? '', codigo: texto(r.code), mensagem: texto(r.message) }] : [];
     }) : null;
+  // Uma etapa sem `step_id` ou `key` é formato inesperado do corpo inteiro: descartá-la em silêncio deixaria `ensinaveis` apontar para
+  // uma receita que a pessoa não consegue inspecionar, e o POST seguiria habilitado.
+  const etapas = o.etapas.map(lerEtapa);
+  if (etapas.some((e) => e === null)) return null;
   return {
     runId, status: texto(o.status), simulada: typeof o.simulada === 'boolean' ? o.simulada : null,
     ensinaveis: typeof o.ensinaveis === 'number' && Number.isFinite(o.ensinaveis) && o.ensinaveis >= 0 ? Math.trunc(o.ensinaveis) : null,
-    etapas: o.etapas.flatMap((e) => { const x = lerEtapa(e); return x ? [x] : []; }),
+    etapas: etapas as EtapaDoEnsino[],
     promovidas, recusadas,
   };
+}
+
+/** Quantas etapas estão prontas para ensinar: o `ensinaveis` do corpo quando ele vale; senão a contagem das etapas. A MESMA conta serve ao botão e à confirmação. */
+export function etapasProntas(e: Pick<EnsinoDaExecucao, 'ensinaveis' | 'etapas'>): number {
+  return e.ensinaveis ?? e.etapas.filter((x) => x.ensinavel).length;
 }
 
 const ROTULO_DA_FERRAMENTA: Record<string, string> = { press_back: 'Voltar (press_back)', commit_guard: 'trava de efeito (commit_guard)' };
