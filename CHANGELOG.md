@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.235: o GET da operação diz como a pesquisa rodou (branch feat/31-235-pesquisa-na-operacao)
+
+- `GET /api/operacoes/{id}` ganha `pesquisa`, aditivo, para a tela Operação do Portal (31.234). É `null` sem assunto.
+  O estado é `reaproveitada_do_livro`, `paga`, `falhou` ou `nao_rodou`, com o critério por extenso, o mínimo de
+  fatos, o menor frescor, o custo da pesquisa e as referências dos fatos do Livro usados.
+- Lê só a memória da operação (`pesquisa.estado` e `livro.<item>`); nem texto de fato nem URL saem no campo. Os
+  textos de estado da pesquisa passaram a constantes do domínio, para que a leitura e a escrita não se desencontrem.
+- Prova `simulated`: `backend/tests/test_pesquisa_no_get_da_operacao.py` (3; os quatro estados escritos pela própria
+  pesquisa da operação, e a rota). `real`: `not_run`, até o GET da primeira operação com assunto depois do deploy.
+
 ## 2026-10-07 — 31.229: o custo e o modelo por passo no GET da execução e no do alvo (adendo v1.124, branch feat/31-229-custo-por-passo, corte 61)
 
 - `custo_por_passo` em `GET /api/runs/{id}` e em `alvos[]` de `GET /api/operacoes/{id}`. Por passo: o modelo do último
