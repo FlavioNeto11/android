@@ -62,7 +62,9 @@ function New-RegistroDeDeploy {
     [string]$Motivo,
     [double]$DuracaoS = 0,
     [string[]]$Opcoes = @(),
-    [System.Collections.IDictionary]$EtapasS
+    [System.Collections.IDictionary]$EtapasS,
+    [ValidateSet('ok', 'falhou', 'pulado')][string]$EnsaioDeRollback,
+    [string]$EnsaioDeRollbackMotivo
   )
   # A mensagem de falha não pode virar canal de saída de comando: uma linha, no máximo 300 caracteres.
   $curto = if ($Motivo) { (($Motivo -replace '\s+', ' ').Trim()) } else { $null }
@@ -86,6 +88,13 @@ function New-RegistroDeDeploy {
     $etapas = [ordered]@{}
     foreach ($k in $EtapasS.Keys) { $etapas[[string]$k] = [math]::Round([double]$EtapasS[$k], 1) }
     $registro['etapas_s'] = $etapas
+  }
+  # 29.156, fatia 4: só em deploy que trouxe migração. `pulado` NUNCA é aprovação (backup podado, commit ausente).
+  if ($EnsaioDeRollback) {
+    $registro['ensaio_de_rollback'] = $EnsaioDeRollback
+    $m = if ($EnsaioDeRollbackMotivo) { (($EnsaioDeRollbackMotivo -replace '\s+', ' ').Trim()) } else { $null }
+    if ($m -and $m.Length -gt 200) { $m = $m.Substring(0, 200) }
+    $registro['ensaio_de_rollback_motivo'] = $m
   }
   return $registro
 }

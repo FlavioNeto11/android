@@ -54,7 +54,7 @@
   pwsh -File scripts\deploy.ps1              # a subida
 #>
 [CmdletBinding()]
-param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend, [switch]$PularDependencias, [switch]$SemTag, [switch]$PularDocsCheck)
+param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend, [switch]$PularDependencias, [switch]$SemTag, [switch]$PularDocsCheck, [switch]$SemEnsaioDeRollback)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $base = 'http://127.0.0.1:8000'
@@ -336,12 +336,49 @@ if (-not $SemTag) {
   }
 }
 Close-EtapaDoDeploy $estadoDeEtapas 'tag'
+# ------------------------------------------------------------------ 6b. ensaio do rollback (29.156, fatia 4)
+# Só quando este deploy TROUXE migração (é o caso em que o runbook manda restaurar o banco do backup e voltar o código).
+# Prova que o código do `commit_antes` abre o banco do backup desta subida, em pasta própria, em Idle, sem tocar nada que está
+# no ar. A subida já foi conferida: o resultado vai para a linha do histórico e NUNCA reverte nem derruba o deploy. `pulado`
+# (backup podado, commit ausente) não aprova nada: sai como aviso.
+# >>> ensaio do rollback (29.156)
+$ensaioDeRollback = $null
+$motivoDoEnsaioDeRollback = $null
+if (-not $SemEnsaioDeRollback -and $antes -and $antes.commit -and $antes.migration -and $depois -and $depois.migration `
+    -and $depois.migration -ne $antes.migration -and $pastaDoBackup) {
+  Write-Host '--- ensaio do rollback (o deploy trouxe migração: o código anterior ainda abre o backup?) ---'
+  try {
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'rollback-ensaio.ps1') -Raiz $root -CommitAntes $antes.commit `
+      -MigracaoAntes $antes.migration -Backup $pastaDoBackup 2>&1 | ForEach-Object { Write-Host "    $_" }
+    $codigoDoEnsaioDeRollback = $LASTEXITCODE
+    $ensaioDeRollback = switch ($codigoDoEnsaioDeRollback) { 0 { 'ok' } 2 { 'pulado' } default { 'falhou' } }
+    $arquivoDoVeredito = Join-Path $root 'data\rollback-ensaio\ultimo.json'
+    if ($ensaioDeRollback -ne 'ok' -and (Test-Path -LiteralPath $arquivoDoVeredito)) {
+      $motivoDoEnsaioDeRollback = [string](Get-Content -LiteralPath $arquivoDoVeredito -Raw -Encoding UTF8 | ConvertFrom-Json).motivo
+    }
+  } catch {
+    $ensaioDeRollback = 'falhou'
+    $motivoDoEnsaioDeRollback = 'o ensaio não rodou: ' + $_.Exception.GetType().Name
+  }
+  if ($ensaioDeRollback -ne 'ok') {
+    Write-Warning ("ensaio do rollback: $ensaioDeRollback" + $(if ($motivoDoEnsaioDeRollback) { " ($motivoDoEnsaioDeRollback)" } else { '' }) +
+                   '. O deploy segue; o rollback com migração NÃO está provado para esta subida.')
+  }
+}
+Close-EtapaDoDeploy $estadoDeEtapas 'ensaio_de_rollback'
+# Só vão à linha quando o ensaio rodou (o parâmetro valida ok/falhou/pulado e não aceita vazio).
+$argumentosDoEnsaioDeRollback = @{}
+if ($ensaioDeRollback) {
+  $argumentosDoEnsaioDeRollback['EnsaioDeRollback'] = $ensaioDeRollback
+  if ($motivoDoEnsaioDeRollback) { $argumentosDoEnsaioDeRollback['EnsaioDeRollbackMotivo'] = $motivoDoEnsaioDeRollback }
+}
+# <<< ensaio do rollback (29.156)
 $script:subidaRegistrada = $true
 try {
   Add-RegistroDeDeploy -Caminho $arquivoDeDeploys -Registro (New-RegistroDeDeploy -Resultado 'ok' `
     -CommitAntes $antes.commit -MigracaoAntes $antes.migration -CommitDepois $depois.commit -MigracaoDepois $depois.migration `
     -Backup $pastaDoBackup -BackupDoEnsaio $backupDoEnsaio -Tag $resultadoDaTag.tag -Motivo $resultadoDaTag.aviso `
-    -DuracaoS ((Get-Date) - $inicioDoDeploy).TotalSeconds -Opcoes $opcoesDoDeploy -EtapasS $estadoDeEtapas.etapas)
+    -DuracaoS ((Get-Date) - $inicioDoDeploy).TotalSeconds -Opcoes $opcoesDoDeploy -EtapasS $estadoDeEtapas.etapas @argumentosDoEnsaioDeRollback)
   Write-Host 'histórico: uma linha em data\deploys.jsonl'
   Write-Host ('tempo por etapa (s): ' + (($estadoDeEtapas.etapas.GetEnumerator() | ForEach-Object { '{0} {1:F1}' -f $_.Key, $_.Value }) -join ', '))
 } catch { Write-Warning "não consegui gravar a linha do histórico de deploys: $($_.Exception.Message)" }

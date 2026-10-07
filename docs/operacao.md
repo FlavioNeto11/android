@@ -319,7 +319,7 @@ instala na máquina dele.
 (fora do Git, como o resto de `data\`): `ts_utc`, `resultado` (`ok` ou `falhou`), `commit_antes`/`migracao_antes` (o que
 estava no ar), `commit_depois`/`migracao_depois`, `backup` (a pasta em `data\backups` que vale para voltar),
 `backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s`, `opcoes` e `etapas_s` (29.156: segundos de cada etapa na ordem do deploy, `backup`, `site`, `docs_check`,
-`painel`, `parada`, `dependencias`, `subida`, `conferencia`, `tag`; numa falha, `interrompida` é o tempo da etapa que quebrou;
+`painel`, `parada`, `dependencias`, `subida`, `conferencia`, `tag`, `ensaio_de_rollback`; numa falha, `interrompida` é o tempo da etapa que quebrou;
 linhas anteriores ao campo não têm; a mesma lista sai na tela como "tempo por etapa"). Ensaio, recusa
 do portão do `-PularBackup` e falha do build do painel (antes de parar) não entram: não mudaram nada no ar. Ler:
 `Get-Content data\deploys.jsonl | ConvertFrom-Json | Select-Object ts_utc, resultado, commit_antes, commit_depois, backup, tag`.
@@ -360,6 +360,13 @@ backup da linha numa pasta de trabalho (`restore.ps1` sem `-Confirmar`) e abre a
 integridade está ok, a migração da cópia é a `migracao_antes` da linha e o código antigo NÃO quer aplicar migração nenhuma. Veredito em
 `data\rollback-ensaio\ultimo.json`; saída 0 ok, 1 falhou, 2 pulado (backup podado ou commit ausente: aviso, não aprovação). Rode depois de
 um deploy que trouxe migração, antes de precisar do rollback.
+
+**O deploy já o chama** (29.156, fatia 4): depois da tag e antes de gravar a linha, só quando a migração de depois difere da de antes
+e há pasta de backup, o `deploy.ps1` roda `rollback-ensaio.ps1` para ESSE deploy (commit, migração e backup por parâmetro: a linha ainda não
+existe). O resultado vai à linha de `data\deploys.jsonl` em `ensaio_de_rollback` (`ok`, `falhou` ou `pulado`) e, quando não é `ok`,
+em `ensaio_de_rollback_motivo` (texto fixo, até 200 caracteres); a tela mostra um aviso. **Nunca reverte nada nem derruba o
+deploy**, e `pulado` (backup podado, commit ausente) nunca conta como aprovação. `-SemEnsaioDeRollback` pula o passo. A etapa
+aparece em `etapas_s` como `ensaio_de_rollback`.
 
 4. **Depois de qualquer rollback:** `GET /api/health` (commit e migração), a 8010 escutando, a prova de fora, e uma linha
    nova em `data\deploys.jsonl` (o rollback também é uma subida e fica no histórico).
