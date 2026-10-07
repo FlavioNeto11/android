@@ -35,6 +35,7 @@ from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro,
 from app.modules.learning.infrastructure.ensinado_sql import LeitorDoEnsinadoSql
 from app.modules.learning.infrastructure.eventos import (Barramento, EventosNoBarramento, RiscoDoRegistro,
                                                          TitulosDoRegistro)
+from app.modules.learning.infrastructure.fatos_da_operacao_sql import FatosDaOperacaoParaOLivro
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.metricas_sql import FontesDeMetricasSql
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, SqlBacklogRepository
@@ -158,6 +159,8 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     ligar_telas.ligar(servico, repo, db, config=lambda: config().telas, relogio=relogio)
     # 30.14: o rótulo `obsoleto_provavel` e o rebaixamento `catalogo_sem_efeito` (passo da curadoria, sem IA).
     ligar_obsolescencia.ligar(servico, repo, db, fontes=FontesSql(db, pacotes_do_registro=pacotes_do_registro))
+    # 31.190: o fato confirmado da pesquisa de uma operação encerrada vira candidata do escritor (passo, sem IA).
+    servico.registrar_passo(FatosDaOperacaoParaOLivro(servico, repo, db))
     # 30.35: o desfecho medido das revisões do curador 14 dias depois (o rótulo 2 do Jev; passo da curadoria, sem IA).
     servico.registrar_passo(GravadorDoResultadoPosterior(ResultadoPosteriorSql(db), lambda: servico.ajustes.saude))
     # 30.11: o curador por IA (laço próprio sob a trava de líder; `off` de fábrica; adaptador simulado até o 30.12).

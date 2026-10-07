@@ -43,6 +43,9 @@ class SourceKind(StrEnum):
     #: 31.149: a correção ensinada que não virou receita na etapa que falhou vira lição do planejador (o caminho é de
     #: uma pessoa: só o dono a publica)
     CORRECAO_ENSINADA = "teaching_correction"
+    #: 31.190: o fato da pesquisa de uma operação encerrada (2 domínios), candidato do escritor. Texto de máquina, mas
+    #: sem evidência de repetição: fica `candidate` até uma pessoa decidir no Livro.
+    FATO_DA_OPERACAO = "operation_fact"
 
 
 #: Origens em que o TEXTO veio de uma pessoa: o item nasce com `human_origin=1` e só o dono o publica (D1).

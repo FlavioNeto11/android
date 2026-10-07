@@ -1,0 +1,76 @@
+"""31.190: o fato confirmado da pesquisa de uma operação vira candidata do ESCRITOR no Livro. Puro: sem banco.
+
+A memória da operação (31.157/31.158, migração 125) já decide a confiança por código: dois domínios na pesquisa, ou a
+leitura do alvo (31.179), dão `confirmado`; o vencido sai do bloco pelo frescor. O que faltava era o fato sobreviver à
+operação: ele morria com ela, e a próxima operação sobre o mesmo assunto pagava a pesquisa de novo.
+
+Decisões (sem decisão do dono pendente; reversível):
+* nasce `candidate`, papel `writer`, escopo do app da operação. O Livro não tem escopo de assunto, e a lição ATIVA do
+  escritor iria a todo texto do app, sobre qualquer post. Por isso só uma pessoa a publica: o item não recebe evidência
+  de repetição (`learning_evidence`), então a esteira das lições não a valida sozinha;
+* só o fato de pesquisa (`pesquisa.*`, `descoberta`, `confirmado`, dentro do frescor) de operação ENCERRADA. Ficam fora:
+  a leitura do alvo (`alvo.conteudo`, é daquele post e vale 6 h), as fontes (`fonte.*`, URLs) e o estado da pesquisa;
+* o conteúdo é só o texto do fato, para o MESMO fato em outra operação cair no mesmo item (`content_hash`); assunto,
+  domínios das fontes, frescor e uso no texto vão à proveniência, que o Livro mostra.
+"""
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+
+from app.modules.learning.domain.licoes import LICAO_MAX_CARACTERES
+from app.modules.learning.domain.livro import Escopo, NovoItem
+from app.modules.learning.domain.tokens import estimar_tokens
+from app.modules.learning.domain.vocabulario import LivroKind, Papel, SourceKind
+from app.modules.skills.domain.document import JsonValue
+
+#: O prefixo da chave do fato de pesquisa na memória da operação (`pesquisa_da_operacao._gravar`).
+PREFIXO_DO_FATO = "pesquisa."
+#: A chave do estado da pesquisa (progresso), que também começa com o prefixo.
+CHAVE_DO_ESTADO = "pesquisa.estado"
+VERSAO_DA_REGRA = "31.190-v1"
+
+
+@dataclass(frozen=True, slots=True)
+class FatoDaOperacao:
+    operacao_id: str
+    chave: str
+    tipo: str
+    texto: str
+    confianca: str
+    frescor_ate: str | None
+    pacote: str
+    assunto: str = ""
+    dominios: tuple[str, ...] = ()
+    execucoes: tuple[str, ...] = ()
+    usado_em: int = 0                    # alvos que receberam o fato no texto (`conhecimento_ids`)
+
+
+def elegivel(f: FatoDaOperacao, agora: str) -> bool:
+    return (f.chave.startswith(PREFIXO_DO_FATO) and f.chave != CHAVE_DO_ESTADO and f.tipo == "descoberta"
+            and f.confianca == "confirmado" and bool(f.pacote) and bool(f.texto.strip())
+            and (f.frescor_ate is None or f.frescor_ate > agora))
+
+
+def candidata(f: FatoDaOperacao, agora: str) -> NovoItem | None:
+    """A candidata do escritor, ou None quando o fato não serve (inelegível ou maior que a lição cabe no prompt)."""
+    texto = " ".join(f.texto.split())
+    if not elegivel(f, agora) or len(texto) > LICAO_MAX_CARACTERES:
+        return None
+    execucoes = list[JsonValue](f.execucoes[:20])
+    dominios = list[JsonValue](f.dominios[:10])
+    return NovoItem(kind=LivroKind.LICAO, escopo=Escopo(app=f.pacote, role=Papel.WRITER.value),
+                    content={"modelo": "fato_da_operacao", "fato": texto}, summary=texto,
+                    source_kind=SourceKind.FATO_DA_OPERACAO, side_effect=False,
+                    provenance={"regra": VERSAO_DA_REGRA, "operacao": f.operacao_id, "chave": f.chave,
+                                "assunto": f.assunto[:200], "fontes": dominios, "frescor_ate": f.frescor_ate,
+                                "usado_em": f.usado_em, "execucoes": execucoes},
+                    tokens=estimar_tokens(texto))
+
+
+def candidatas(fatos: Sequence[FatoDaOperacao], agora: str) -> list[NovoItem]:
+    return [c for f in fatos if (c := candidata(f, agora)) is not None]
+
+
+__all__ = ["CHAVE_DO_ESTADO", "FatoDaOperacao", "PREFIXO_DO_FATO", "VERSAO_DA_REGRA", "candidata", "candidatas",
+           "elegivel"]

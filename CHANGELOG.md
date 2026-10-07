@@ -19,6 +19,33 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.190: o fato confirmado da pesquisa da operação vira candidata do escritor no Livro (branch feat/31-190-curadoria-memoria)
+
+- A memória da operação já decidia a confiança por código: dois domínios na pesquisa ou a leitura do alvo (31.179). O
+  vencido saía do bloco pelo frescor. Mas o fato morria com a operação, e a próxima sobre o mesmo assunto pagava a
+  pesquisa de novo.
+- Um passo novo da curadoria periódica, sem IA (`FatosDaOperacaoParaOLivro`, `learning/domain/fatos_da_operacao.py`),
+  leva ao Livro cada fato de pesquisa confirmado e dentro do frescor de uma operação encerrada nos últimos 7 dias:
+  - como lição do escritor no escopo do pacote do app, em `candidate`;
+  - com `source_kind` novo, `operation_fact`;
+  - a proveniência traz a operação, o assunto, os domínios das fontes, o frescor e em quantos textos o fato foi.
+- Ficam fora:
+  - a hipótese;
+  - o vencido;
+  - a leitura do alvo, que é daquele post e vale 6 h;
+  - as fontes;
+  - o estado da pesquisa;
+  - a operação aberta.
+- **Só uma pessoa publica.** O Livro não tem escopo de assunto, e a lição ativa do escritor iria a todo texto do app.
+  O item nasce sem evidência de repetição, então a esteira das lições não o valida nem o expõe ao prompt.
+- **Sem duplicata.** O conteúdo é só o texto do fato. O mesmo fato em outra operação cai no mesmo item, e o passo é
+  idempotente.
+- **Prova `simulated`:** `backend/tests/test_fatos_da_operacao_no_livro.py`, com 2 testes. As baterias de aprendizado,
+  Livro, lições, operação, pedidos, pesquisa e arquitetura passaram (2015 testes). A única falha,
+  `test_prompts_licoes.py::test_os_prompts_de_sistema_ficam_iguais_byte_a_byte`, já falha na main e2e4a9b8: as regras
+  de conteúdo (T1) mudaram os prompts de sistema. mypy fica em 257. **`real`:** `not_run`, pede o deploy e a operação
+  de 07/10 encerrada.
+
 ## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
 
 - Medido no percurso real da Portal no 57 (06/10 23:20Z): o resumo do fluxo na aba Aprendizado da operação mostrava o
