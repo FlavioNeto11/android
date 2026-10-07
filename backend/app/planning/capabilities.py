@@ -205,7 +205,7 @@ class CapabilityNode:
 
 
 #: Formas aceitas de `Capability.local_proof` (a semântica está em `taskqueue/proofs.py`).
-LOCAL_PROOFS = ("sent_text", "sent_text:", "selector:", "selector_band:", "count_gt:")
+LOCAL_PROOFS = ("sent_text", "sent_text:", "selector:", "selector_band:", "count_gt:", "comentario:")
 
 
 def local_proof_error(valor: str | None) -> str | None:
@@ -225,6 +225,10 @@ def local_proof_error(valor: str | None) -> str | None:
         if not all(p.strip() for p in seletor.split("&")):
             return "count_gt: guarda vazia depois de `&`"
         return None
+    if valor.startswith("comentario:"):
+        # 31.239: `comentario:<autor>` — o comentário desta etapa (`content`) publicado pelo autor (a conta da etapa).
+        autor = valor[len("comentario:"):].strip()
+        return None if autor and "&" not in autor and ":" not in autor else "comentario: um autor só, sem `&` nem `:`"
     for prefixo in ("sent_text:", "selector:", "selector_band:"):
         if valor.startswith(prefixo):
             corpo = valor[len(prefixo):]
