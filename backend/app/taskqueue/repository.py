@@ -58,8 +58,9 @@ TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 MOTIVO_REJEICAO = "rejeitado por quem aprova"
 #: Os desfechos de etapa que são FALHA e levam o tipo classificado (ADR-054); nos demais, `steps.failure_kind` é nulo.
 _ETAPA_EM_FALHA = frozenset({StepStatus.failed, StepStatus.uncertain, StepStatus.waiting_user})
-#: 31.242: os textos da etapa que o juiz repete na nota (o comentário, o alvo, a legenda) viram `{chave}` na nota.
-_TEXTOS_DA_ETAPA_NA_NOTA = ("content", "username", "post_author", "caption_contains", "target")
+#: 31.242: os textos da etapa que o juiz repete na nota (o comentário, o alvo) viram `{chave}` na nota. A legenda
+#: (`caption_contains`) fica: é o texto público da publicação alvo, e a evidência diz qual legenda foi conferida.
+_TEXTOS_DA_ETAPA_NA_NOTA = ("content", "username", "post_author", "target")
 
 
 #: Estados de antes do trabalho automático: a execução que sai deles direto para um estado final (o planejador recusou,
