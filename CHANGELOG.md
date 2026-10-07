@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.243: o usuário da conta da persona fora do registro inteiro e do contexto do treino (branch feat/31-243-usuario-da-conta-no-registro)
+
+- O mapa do registro (31.113 F1, `mascara_da_persona.mapa`) passa a levar o usuário de cada conta da persona
+  (`{conta_<app>_usuario}`), com e sem a arroba. O valor que está num parâmetro do comando fica, como sempre. Assim,
+  eventos, ações e detalhe da etapa saem sem ele.
+- O contexto da falha do treino (`training/origem.py`) mascara pelo barramento (`EventBus.mascara` e o novo
+  `mascara_da_nota`): a linha antiga, gravada em claro, sai mascarada.
+- O treino e as leituras seguem casando pela chave (`resolver_texto` volta o marcador ao valor).
+- Prova `simulated`: `backend/tests/test_usuario_da_conta_no_registro.py` (3). `real`: `not_run` (o registro da 1ª
+  operação depois do deploy).
+
 ## 2026-10-07 — 31.242: a nota do juiz na evidência sai sem o usuário da conta e sem o texto da etapa (branch feat/31-242-mascarar-notas-do-juiz)
 
 - A nota do juiz repetia o usuário da conta da persona ("@fulano said …") e o texto do comentário, que o mapa do

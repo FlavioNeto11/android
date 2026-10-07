@@ -6,9 +6,11 @@ gravação (controle da pessoa, aparelho que não é a loja) seguem em `Training
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from ..db import Database, loads
+from ..security.mascara_da_persona import no_texto
 from ..security.redaction import redact
 
 
@@ -80,30 +82,38 @@ def origin_da_linha(db: Database, linha: dict[str, object]) -> dict[str, object]
             "attempt_id": attempt_id, "motivo": motivo}
 
 
-def contexto_da_falha(db: Database, run_id: str, step_id: str, attempt_id: str | None) -> dict[str, object]:
+def contexto_da_falha(db: Database, run_id: str, step_id: str, attempt_id: str | None, *,
+                      trocas: Mapping[str, str] | None = None,
+                      trocas_da_nota: Mapping[str, str] | None = None) -> dict[str, object]:
     """31.111 F2: o que a pessoa precisa ver para corrigir: a trilha da execução naquele aparelho, o que a etapa esperava
     (a pós-condição), a tentativa que falhou e as evidências dela. SÓ LEITURA, sem IA, sem copiar nada: o que mudou ou foi
     apagado depois some daqui (a limpeza de execuções velhas), e `disponivel` fica falso. A tela em si não vai no JSON:
-    cada evidência traz o `id` que `GET /api/evidence/{id}` serve (e recusa quando a imagem foi redigida)."""
+    cada evidência traz o `id` que `GET /api/evidence/{id}` serve (e recusa quando a imagem foi redigida).
+
+    31.243: `trocas` (o mapa do registro, `EventBus.mascara`) e `trocas_da_nota` (`EventBus.mascara_da_nota`) mascaram o
+    texto lido do banco: a linha gravada antes do 31.113/31.242/31.243 sai sem o dado da persona e sem o usuário da
+    conta. Sem eles, como antes."""
+    def m(texto: str | None, mapa: Mapping[str, str] | None = trocas) -> str | None:
+        return no_texto(texto, mapa or {}) if texto else texto
     etapa = db.one("SELECT instance_id, plan_version, postcondition FROM steps WHERE id=? AND run_id=?", (step_id, run_id))
     if etapa is None:
         return {"disponivel": False}
-    trilha = [{"step_id": r["id"], "step_key": r["key"], "titulo": _limpo(r["title"], 200), "status": r["status"],
-               "motivo": _limpo(r["status_detail"]) if r["status"] in STATUS_ENSINAVEIS else None,
+    trilha = [{"step_id": r["id"], "step_key": r["key"], "titulo": m(_limpo(r["title"], 200)), "status": r["status"],
+               "motivo": m(_limpo(r["status_detail"])) if r["status"] in STATUS_ENSINAVEIS else None,
                "falhou": r["id"] == step_id}
               for r in db.query("SELECT id, key, title, status, status_detail FROM steps WHERE run_id=? AND instance_id=?"
                                 " AND plan_version=? ORDER BY seq LIMIT ?",
                                 (run_id, etapa["instance_id"], etapa["plan_version"], MAXIMO_DA_TRILHA))]
     pos = loads(etapa["postcondition"], {})
-    esperado = {k: _limpo(pos.get(k), 300) for k in ("kind", "value", "description")} if isinstance(pos, dict) else None
+    esperado = {k: m(_limpo(pos.get(k), 300)) for k in ("kind", "value", "description")} if isinstance(pos, dict) else None
     tentativa = db.one("SELECT number, status, error, failure_kind, failure_screen, strategy FROM attempts WHERE id=?",
                        (attempt_id,)) if attempt_id else None
-    evidencias = [{"id": r["id"], "kind": r["kind"], "nota": _limpo(r["note"], 200),
+    evidencias = [{"id": r["id"], "kind": r["kind"], "nota": m(_limpo(r["note"], 200), trocas_da_nota or trocas),
                    "disponivel": bool(r["path"]) and not r["redacted"]}
                   for r in db.query("SELECT id, kind, note, path, redacted FROM evidence WHERE attempt_id=? ORDER BY id LIMIT ?",
                                     (attempt_id, MAXIMO_DE_EVIDENCIAS))] if attempt_id else []
     return {"disponivel": True, "trilha": trilha, "esperado": esperado,
-            "tentativa": ({"number": tentativa["number"], "status": tentativa["status"], "erro": _limpo(tentativa["error"]),
+            "tentativa": ({"number": tentativa["number"], "status": tentativa["status"], "erro": m(_limpo(tentativa["error"])),
                            "failure_kind": tentativa["failure_kind"], "failure_screen": _limpo(tentativa["failure_screen"], 200),
                            "strategy": tentativa["strategy"]} if tentativa else None),
             "evidencias": evidencias}
