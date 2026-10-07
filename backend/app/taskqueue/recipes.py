@@ -482,14 +482,19 @@ ANCORA_ESTADO_CONHECIDO = "estado_conhecido"
 
 
 def distill(action_rows: list[Row], variables: dict[str, str], *,
-            em_casa_antes: Mapping[int, bool] | None = None) -> tuple[list[dict[str, Any]] | None, str]:
+            em_casa_antes: Mapping[int, bool] | None = None,
+            com_trecho_da_receita: bool = False) -> tuple[list[dict[str, Any]] | None, str]:
     """Ações executadas pela IA numa tentativa limpa → receita. Devolve (ações | None, motivo).
 
     31.230: o `press_back` ANTES da 1ª ação gravada é a IA voltando a um lugar conhecido (na onda 1, o `open_profile`
     começou por voltar, e nenhuma receita nascia). Esse prefixo é descartado quando a 1ª ação gravada partiu do
     estado conhecido do app (`em_casa_antes[id da ação]`, a tela anotada pelo executor antes da decisão); ela leva a
     âncora, e a reprodução a confere antes de agir. Sem a anotação, sem estado conhecido declarado, ou com `voltar` no
-    meio do caminho, a tentativa segue recusada como antes."""
+    meio do caminho, a tentativa segue recusada como antes.
+
+    31.233 (`com_trecho_da_receita`): a tentativa em que uma receita ATIVA rodou um trecho, divergiu e a IA completou. As
+    ações da receita feitas (`done`) entram como as da IA: são o caminho que de fato levou à tela de onde a IA seguiu. A
+    que não chegou ao aparelho (`rejected`) fica fora; qualquer outro estado recusa, como antes."""
     secret_values = {v for k, v in variables.items() if v and SENSITIVE_PARAM.search(k)}
     out: list[dict[str, Any]] = []
     pending_scrolls: list[str] = []
@@ -498,7 +503,10 @@ def distill(action_rows: list[Row], variables: dict[str, str], *,
         tool, status = r["tool"], r["status"]
         if tool in READ_ONLY or tool in ("step_done", "step_blocked"):
             continue
-        if status != "done" or r["source"] != "ai":
+        if com_trecho_da_receita and r["source"] == "recipe" and status == "rejected":
+            continue                                # 31.233: o gesto da receita que não chegou ao aparelho
+        de_quem = r["source"] == "ai" or (com_trecho_da_receita and r["source"] == "recipe")
+        if status != "done" or not de_quem:
             return None, f"tentativa não foi limpa ({tool}: {status}/{r['source']})"
         if tool == "press_back" and not out and not pending_scrolls and em_casa_antes is not None:
             voltas += 1                             # 31.230: o voltar de recuperação, antes da 1ª ação gravada
