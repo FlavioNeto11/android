@@ -27,7 +27,7 @@ import { mascararTerceiros, usuariosConhecidosDaOperacao } from './terceiros';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
 import {
-  acoesDaOperacao, acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, esperasDaOperacao, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
+  acoesDaOperacao, acoesJaExecutadas, agregadoPorApp, alvosPreparados, adiadosDaOperacao, contarPorEstado, ESTADOS_DO_ALVO, esperasDaOperacao, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
   ROTULO_DA_VERIFICACAO, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, rotuloDaAcao, rotuloDoEstagio, verificacaoDoAlvo, type Alvo, type AlvoPreparado, type EstadoDoAlvo,
   type EstagioId, type Operacao, type ResumoDaOperacao, type StatusDaOperacao, type Verificacao,
 } from './modelo';
@@ -183,6 +183,7 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar, conhecidos, preparado, onLibera
         <td>
           {/* Execução parada numa pergunta não está "na fila" nem "em andamento": nada avança sem a resposta (31.246). */}
           {alvo.aguarda_resposta ? <span data-aguardando-resposta><Badge tone="warning" icon={MessageCircleQuestion} size="sm">Aguardando resposta</Badge></span>
+            : alvo.retomada_em ? <span data-adiado-pela-frota><Badge tone="info" icon={Hourglass} size="sm">Adiado pela frota</Badge></span>
             : estado && Icone ? <Badge tone={TOM_DO_ESTADO[estado]} icon={Icone} size="sm">{ROTULO_DO_ESTADO[estado]}</Badge> : <span className={styles.mudo}>não informado</span>}
         </td>
         <td className={styles.acao}>
@@ -197,13 +198,19 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar, conhecidos, preparado, onLibera
             </span>
           ) : null}
           {/* Ação barrada não "parou em Ação executada": ela falhou ao executar (31.254); e o motivo vem do backend, que pode citar terceiros. */}
-          {!alvo.aguarda_resposta && !espera && alvo.motivo ? (
+          {/* Adiado pelo espaçamento entre contas (31.258): não parou, espera a vez; diz quando retoma, em hora local. */}
+          {!alvo.aguarda_resposta && alvo.retomada_em ? (
+            <span data-retomada-em={alvo.retomada_em}>
+              <strong>Adiado pelo espaçamento entre contas da frota:</strong> retoma às {horaCurta(alvo.retomada_em)} (hora local).
+            </span>
+          ) : null}
+          {!alvo.aguarda_resposta && !espera && !alvo.retomada_em && alvo.motivo ? (
             <span data-motivo-do-alvo={alvo.acao_barrada ? 'falha' : 'parada'}>
               <strong>{alvo.acao_barrada ? 'Falhou ao executar' : `Parou em ${rotuloDoEstagio(estagioDeParada(alvo))}`}:</strong> {mascararTerceiros(alvo.motivo, conhecidos)}
             </span>
           ) : null}
-          {!alvo.aguarda_resposta && !espera && !alvo.motivo && alvo.resultado?.texto ? <span>{alvo.resultado.texto}</span> : null}
-          {!alvo.aguarda_resposta && !espera && !alvo.motivo && !alvo.resultado?.texto ? <span className={styles.mudo}>—</span> : null}
+          {!alvo.aguarda_resposta && !espera && !alvo.retomada_em && !alvo.motivo && alvo.resultado?.texto ? <span>{alvo.resultado.texto}</span> : null}
+          {!alvo.aguarda_resposta && !espera && !alvo.retomada_em && !alvo.motivo && !alvo.resultado?.texto ? <span className={styles.mudo}>—</span> : null}
           {alvo.resultado ? <span className={styles.mudo}> · {formatInt(alvo.resultado.conhecimento_ids.length)} itens de conhecimento</span> : null}
         </td>
         <td>
@@ -263,6 +270,23 @@ function EsperaDeResposta({ op }: { op: Operacao }) {
               title={quantos === 1 ? '1 agente aguarda resposta' : `${formatInt(quantos)} agentes aguardam resposta`}>
         {perguntas.length ? <>A execução parou e pergunta: {perguntas.map((p, i) => <span key={p}>{i > 0 ? ' · ' : ''}“{p}”</span>)}. </> : null}
         Nada avança sem a resposta.
+      </Banner>
+    </div>
+  );
+}
+
+/** HH:MM em hora local (o rótulo diz "hora local"; a rota está em UTC). */
+const horaCurta = (iso: string): string => formatClock(iso).slice(0, 5);
+
+/** O selo do cabeçalho: quantos alvos esperam a vez pelo espaçamento da frota e quando o primeiro retoma; nada quando o central não diz (31.264). */
+function AdiadosPelaFrota({ op }: { op: Operacao }) {
+  const { quantos, primeiraRetomada } = adiadosDaOperacao(op);
+  if (quantos === 0) return null;
+  return (
+    <div data-adiados-pela-frota>
+      <Banner tone="info" icon={Hourglass} role="status" compact
+              title={quantos === 1 ? '1 agente adiado pelo espaçamento da frota' : `${formatInt(quantos)} agentes adiados pelo espaçamento da frota`}>
+        Não é falha: contas diferentes não agem no mesmo alvo ao mesmo tempo.{primeiraRetomada ? <> O primeiro retoma às {horaCurta(primeiraRetomada)} (hora local).</> : null}
       </Banner>
     </div>
   );
@@ -386,6 +410,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
         ) : null}
       </p>
       <EsperaDeResposta op={op} />
+      <AdiadosPelaFrota op={op} />
       <CustoEAssunto op={op} />
       <FaixaDeCapacidade op={op} />
       <PorApp op={op} />

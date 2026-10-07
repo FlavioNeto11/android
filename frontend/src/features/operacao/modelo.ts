@@ -90,6 +90,11 @@ export interface Alvo {
    * campo (nada se afirma); `null` = ele manda e o alvo não espera resposta.
    */
   aguarda_resposta?: EsperaDeResposta | null;
+  /**
+   * 31.264 (adendo v1.126, 31.258): o alvo `em_curso` cuja execução espera o espaçamento entre contas da frota sobre o mesmo alvo: quando
+   * retoma (ISO). `null` = o central manda e o alvo não está adiado; `undefined` = o central não manda (nada se afirma).
+   */
+  retomada_em?: string | null;
 }
 
 export interface EsperaDeResposta {
@@ -181,7 +186,17 @@ export function lerAlvo(v: unknown, posicao: number): Alvo | null {
     acao_barrada: o.estagio === 'acao_bloqueada' || o.parou_em === 'acao_bloqueada',
     // Chave ausente (central anterior) não é `null` (o central sabe e o alvo não espera): a tela só afirma o que ele disse.
     ...('aguarda_resposta' in o ? { aguarda_resposta: lerEspera(o.aguarda_resposta) } : {}),
+    ...('retomada_em' in o ? { retomada_em: dataOuNula(o.retomada_em) } : {}),
   };
+}
+
+/** Uma data ISO que o JS lê; qualquer outra coisa vira `null` (não adia, não inventa hora). */
+const dataOuNula = (v: unknown): string | null => (typeof v === 'string' && v.trim() && Number.isFinite(Date.parse(v)) ? v : null);
+
+/** Os alvos adiados pelo espaçamento da frota e o primeiro a retomar (o ISO mais cedo); nada quando o central não diz. */
+export function adiadosDaOperacao(op: Pick<Operacao, 'alvos'>): { quantos: number; primeiraRetomada: string | null } {
+  const datas = op.alvos.flatMap((a) => (a.retomada_em ? [a.retomada_em] : []));
+  return { quantos: datas.length, primeiraRetomada: datas.length ? [...datas].sort((x, y) => Date.parse(x) - Date.parse(y))[0]! : null };
 }
 
 /** `aguarda_resposta` do alvo: um objeto = espera (mesmo sem a pergunta); qualquer outra coisa = não espera. */
