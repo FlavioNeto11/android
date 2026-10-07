@@ -6,6 +6,8 @@
  * entrada NÃO têm campo aqui, de propósito: a conta é só o rótulo (`conta`, o @).
  */
 
+import { lerFontesDaPesquisa, lerPesquisaDaOperacao, type PesquisaDaOperacao } from './pesquisaDaOperacao';
+
 /** Os estágios do pipeline, na ordem fixa do dono e do adendo. `acao_executada` e `acao_bloqueada` ocupam a mesma posição. */
 export const ESTAGIOS = [
   { id: 'persona', rotulo: 'Persona' },
@@ -113,6 +115,10 @@ export interface CustoDaOperacao { pesquisa_usd: number | null; alvos_usd: numbe
 
 export interface Operacao extends ResumoDaOperacao {
   alvos: Alvo[];
+  /** 31.234: a pesquisa da operação (reaproveitada do Livro ou paga). Campo PROPOSTO; ausente no central que não o manda. */
+  pesquisa?: PesquisaDaOperacao | null;
+  /** As URLs que a pesquisa externa achou (`OperacaoDetalhe.fontes_da_pesquisa`); ausente no central anterior. */
+  fontes_da_pesquisa?: string[] | null;
   /** O custo de IA da operação inteira: a pesquisa externa e os agentes, e o total que o teto compara. */
   custo: CustoDaOperacao | null;
   /** O teto em US$ da operação inteira. */
@@ -253,6 +259,8 @@ export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
     ...resumo, alvos, custo, max_usd: usd(o.max_usd), assunto: texto(o.assunto),
     fontes: (Array.isArray(o.fontes) ? o.fontes : []).filter((f): f is string => typeof f === 'string' && f.trim() !== ''),
     parametros: lerParametros(o.parametros), exemplo,
+    ...('pesquisa' in o ? { pesquisa: lerPesquisaDaOperacao(o.pesquisa) } : {}),
+    ...('fontes_da_pesquisa' in o ? { fontes_da_pesquisa: lerFontesDaPesquisa(o.fontes_da_pesquisa) } : {}),
   };
 }
 
