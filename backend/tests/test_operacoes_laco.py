@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import secrets as pysecrets
-from typing import Any
 
 import pytest
 
@@ -123,8 +122,25 @@ async def test_dois_fechamentos_com_a_mesma_operacao_velha_avisam_uma_vez(harnes
     velha = st.db.one("SELECT * FROM operacoes WHERE id=?", (op_id,))
     antes = _eventos(harness, "operacao.encerrada")
     fins = [s._fechar(velha, "concluida_com_bloqueios", {}) for s in (_servico(harness), _servico(harness))]  # noqa: SLF001
-    assert fins[0] and fins[1] is None
+    assert fins[0] and fins[1] == fins[0]      # quem perde a corrida devolve a hora gravada (achado do PR 494)
     assert _eventos(harness, "operacao.encerrada") == antes + 1
+
+
+async def test_o_fechamento_com_leitura_velha_nao_desfaz_o_cancelamento(harness: Harness) -> None:
+    """Achado do Codex no PR 494: o cancelar de outra réplica grava `cancelada` depois que esta leu a operação aberta;
+    o fechamento desta não pode trocá-lo por `concluida*`."""
+    st = harness.state
+    assert st is not None
+    op_id = _operacao_atrasada(harness, "teste-laco-cancelada")
+    velha = st.db.one("SELECT * FROM operacoes WHERE id=?", (op_id,))
+    st.db.execute("UPDATE operacoes SET status='cancelada' WHERE id=?", (op_id,))
+    antes = _eventos(harness, "operacao.encerrada")
+    assert _servico(harness)._fechar(velha, "concluida_com_bloqueios", {}) is None  # noqa: SLF001
+    assert st.db.one("SELECT status, finished_at FROM operacoes WHERE id=?", (op_id,))["status"] == "cancelada"
+    assert _eventos(harness, "operacao.encerrada") == antes
+    # a leitura seguinte vê o cancelamento e fecha como cancelada
+    assert _servico(harness).ler(op_id)["status"] == "cancelada"
+    assert st.db.one("SELECT finished_at FROM operacoes WHERE id=?", (op_id,))["finished_at"]
 
 
 async def test_a_falha_numa_operacao_nao_para_as_outras(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -134,7 +150,7 @@ async def test_a_falha_numa_operacao_nao_para_as_outras(harness: Harness, monkey
     boa = _operacao_atrasada(harness, "teste-laco-boa")
     original = ServicoDeOperacoes.ler
 
-    def ler(self: ServicoDeOperacoes, op_id: str) -> Any:
+    def ler(self: ServicoDeOperacoes, op_id: str) -> dict[str, object]:
         if op_id == ruim:
             raise RuntimeError("dado ruim")
         return original(self, op_id)

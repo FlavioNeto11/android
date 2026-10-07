@@ -465,10 +465,14 @@ class ServicoDeOperacoes:
             return str(op["finished_at"]) if op["finished_at"] else None
         agora = min(fim, now_iso()) if fim else now_iso()
         # `.rowcount` (31.220): `execute` devolve o cursor, e a comparação com 0 nunca era verdadeira; o laço e um GET
-        # que fecham juntos emitiam o `operacao.encerrada` duas vezes.
+        # que fecham juntos emitiam o `operacao.encerrada` duas vezes. O `status` na condição (achado do Codex no PR
+        # 494): o cancelar de outra réplica, gravado depois da leitura de `op`, não pode virar `concluida*` aqui.
         if self.db.execute("UPDATE operacoes SET status=?, finished_at=?, updated_at=? WHERE id=? AND finished_at IS"
-                           " NULL", (status, agora, agora, op["id"])).rowcount == 0:
-            return None
+                           " NULL AND (status<>'cancelada' OR ?='cancelada')",
+                           (status, agora, agora, op["id"], status)).rowcount == 0:
+            # Perdeu a corrida: devolve a hora que ficou gravada (ou nenhuma, se foi o cancelar), sem avisar de novo.
+            gravada = self.db.scalar("SELECT finished_at FROM operacoes WHERE id=?", (op["id"],))
+            return str(gravada) if gravada else None
         self.bus.emit("operacao.encerrada", f"Operação {op['id']} encerrada: {status}.",
                       data={"operacao_id": op["id"], "status": status, "capacidade": capacidade})
         return agora
