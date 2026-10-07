@@ -54,6 +54,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Parte das contas novas do dono (29.168). Nada executado.
 - Ponto de partida, lido no central em 07/10 ~00:30Z (`42cba3cd`, banco em `mode=ro`): 1 receita ensinada no
   Instagram, com 0 uso real; 12 etapas reais no QA Messenger e 9 no Ajustes do Android.
+## 2026-10-07 — 31.202: o rendimento da receita ensinada alimenta a quarentena em sombra (branch feat/31-202-sombra-da-quarentena)
+
+- Um passo da curadoria, sem IA, grava por receita ensinada ativa o que faria, sem fazer:
+  - "liberaria": 3 usos reais sem IA de quem ensinou, em 2 execuções, sem falha nas últimas 3;
+  - "prenderia de volta": a receita liberada falhou nas 2 últimas vezes fora de quem ensinou;
+  - "nenhuma", com o motivo.
+- Nunca "liberaria" para a receita com efeito externo nem para a que mira a conta da própria persona.
+- Nada se aplica. O sinal `sombra_da_quarentena` fica fora da aba Sinais, como as sombras do 30.34 e do 30.55; lê-se
+  por `GET /api/aprendizado/sinais?kind=sombra_da_quarentena` (adendo v1.115).
+- A pergunta ao dono está em `.claude/handoffs/aprendizado-pergunta-31-202.md`.
+- Prova `simulated`: `backend/tests/test_sombra_da_quarentena.py` (3 testes). `real`: `not_run`, pede o deploy.
 
 ## 2026-10-07 — 31.192: o script que marca a prova da onda do aprendizado pelo commit no ar (branch feat/31-192-marcacao-da-onda)
 

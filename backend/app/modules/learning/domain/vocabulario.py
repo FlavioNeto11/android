@@ -91,6 +91,9 @@ class SignalKind(StrEnum):
     #: 30.55: o caso da sombra da aprovação automática, a receita ou o fluxo que a plataforma decidiria (`source_ref` =
     #: `aprovaria:<item>`, `created_by` = sistema: um por item). Também não é gesto de pessoa.
     APROVARIA = "aprovaria"
+    #: 31.202: o parecer em sombra do rendimento sobre a receita ensinada (`source_ref` = `receita:<id>`, `created_by` =
+    #: sistema, sobrescrito a cada passo; `reason` = liberaria | prenderia_de_volta | nenhuma). Nada se aplica.
+    SOMBRA_DA_QUARENTENA = "sombra_da_quarentena"
 
 
 #: Sinais que contam como intervenção humana na régua diária (`learning_daily.interventions`).
