@@ -23,16 +23,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Literal
 
+from app.contracts.origem import PREFIXO_LOTE
+
 Uso = Literal["real", "prova", "simulada"]
-#: A chave de idempotência dos lotes de prova das frentes (`lote:<frente>:<id>`).
-PREFIXO_DO_LOTE = "lote:"
 
 
 def tipo_de_uso(*, simulated: object, prova_fluxo_id: object, idempotency_key: object) -> Uso:
     """A régua única do "uso real" do ensino (a mesma da medida de 06/10)."""
     if simulated:
         return "simulada"
-    if prova_fluxo_id or str(idempotency_key or "").startswith(PREFIXO_DO_LOTE):
+    if prova_fluxo_id or str(idempotency_key or "").startswith(PREFIXO_LOTE):
         return "prova"
     return "real"
 
