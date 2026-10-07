@@ -89,6 +89,16 @@ describe('Modo Automático', () => {
     expect(JSON.parse(window.localStorage.getItem('cda.commandPersonas') ?? '[]')).toEqual(['p-marina']);
   });
 
+  it('ADR-085: o que a automação vai preparar (preparo) aparece como aviso do que vai acontecer; sem o campo, nada', async () => {
+    backend.on('POST', /^\/api\/runs\/targets\/suggest$/, () => json({
+      ...SUGESTAO, escolhidas: [{ ...SUGESTAO.escolhidas[0]!, preparo: ['vou ligar o aparelho android-02', 'vou conferir a sessão'] }],
+    }));
+    await setValue(campo(), 'responda à tia sobre a missa de domingo');
+    await click(byRole('button', /^Executar/));
+    await waitFor(() => expect(text(container)).toContain('vou ligar o aparelho android-02'));
+    expect(text(container)).toContain('vou conferir a sessão');
+  });
+
   it('31.274: persona descartada pela IA pode ser incluída pelo dono e vai marcada, junto das escolhidas, ao modo por persona', async () => {
     await setValue(campo(), 'responda à tia sobre a missa de domingo');
     await click(byRole('button', /^Executar/));

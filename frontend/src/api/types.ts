@@ -2984,6 +2984,9 @@ export interface PersonaEscolhida {
   aderencia: 'alta' | 'media' | 'baixa';
   instance_id: string | null;
   servidor: string | null;
+  /** ADR-085 (31.274): o que a automação vai preparar antes de agir (ligar o aparelho, conferir a sessão). Opcional: o
+   *  central que ainda não manda não mostra nada. */
+  preparo?: string[];
 }
 
 export interface PersonaDescartada {
