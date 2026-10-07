@@ -42,8 +42,13 @@ class Rotulo(unittest.TestCase):
         self.assertEqual(mod.rotulo_da_branch("ci/29-171-modelo-pr"), "frente:github")
         self.assertEqual(mod.rotulo_da_branch("copilot/fix-x"), "agente")
 
+    def test_prefixos_das_outras_frentes_29_203(self) -> None:
+        for branch, rotulo in (("devops/29-196-funil", "frente:devops"), ("jev/integ-61", "frente:jev"),
+                               ("aprendizado/integ-61", "frente:aprendizado"), ("portal/x", "frente:portal"), ("canais/28-77", "frente:canais")):
+            self.assertEqual(mod.rotulo_da_branch(branch), rotulo, branch)
+
     def test_outros_prefixos_nao_ganham_rotulo(self) -> None:
-        for b in ("feat/31-146-x", "fix/y", "revisao/z", "main", "devops/29-160"):
+        for b in ("feat/31-146-x", "fix/y", "revisao/z", "main", "devopsx/29-160", "jevs/a"):
             self.assertIsNone(mod.rotulo_da_branch(b), b)
 
     def test_nome_estranho_e_ignorado(self) -> None:
