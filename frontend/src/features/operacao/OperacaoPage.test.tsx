@@ -514,6 +514,11 @@ describe('31.234: a pesquisa da operação (reaproveitada do Livro ou paga) e os
     expect(text(s)).toContain('sem custo de pesquisa registrado');
     expect(text(s)).not.toMatch(/[Rr]eaproveitada/);
     await act(async () => { root.unmount(); root = createRoot(container); });
+    await abrir({ ...BASE, pesquisa: null });                                                  // central novo, operação sem pesquisa: ele SABE
+    s = secao()!;
+    expect(text(s)).toContain('não houve pesquisa nesta operação');
+    expect(s.querySelector('[data-sem-estado-da-pesquisa]')).toBeNull();
+    await act(async () => { root.unmount(); root = createRoot(container); });
     const { assunto: _a, ...semAssunto } = BASE;
     await abrir({ ...semAssunto, custo: null });                                               // nada a dizer: a seção não aparece
     expect(secao()).toBeNull();

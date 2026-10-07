@@ -18,6 +18,8 @@ export function PesquisaDaOperacaoSecao({ op }: { op: Operacao }) {
   const temEstado = p?.estado != null;
   if (!temEstado && fontes.length === 0 && custoPago === null && !op.assunto) return null;
   const reaproveitada = p?.estado === 'reaproveitada_do_livro';
+  // `pesquisa: null` no corpo (v do 31.235) = o central SABE e a operação não teve pesquisa; sem a chave, é o central anterior.
+  const centralSabe = op.pesquisa !== undefined;
 
   return (
     <section aria-label="Pesquisa da operação" className={styles.faixa} data-pesquisa-da-operacao={p?.estado ?? 'sem_estado'}>
@@ -26,12 +28,13 @@ export function PesquisaDaOperacaoSecao({ op }: { op: Operacao }) {
         {temEstado ? ROTULO_DO_ESTADO_DA_PESQUISA[p!.estado!]
           : custoPago !== null && custoPago > 0 ? `paga, ${formatUsd4(custoPago)}`
             : fontes.length > 0 ? 'fontes achadas'
-              : 'sem custo de pesquisa registrado'}
+              : centralSabe ? 'não houve pesquisa nesta operação'
+                : 'sem custo de pesquisa registrado'}
         {temEstado && !reaproveitada && custoPago !== null ? <span className={styles.mudo}> ({formatUsd4(custoPago)})</span> : null}
         {reaproveitada ? <span className={styles.mudo}> (custo da pesquisa: {formatUsd4(custoPago ?? 0)})</span> : null}
         .
       </p>
-      {!temEstado ? (
+      {!temEstado && !centralSabe ? (
         <p className={styles.mudo} data-sem-estado-da-pesquisa>O central ainda não diz se o Livro bastou ou se a pesquisa foi paga; o que aparece aqui é só o que ele registra.</p>
       ) : null}
       {reaproveitada ? (
