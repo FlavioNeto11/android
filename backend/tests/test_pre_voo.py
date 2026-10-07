@@ -94,6 +94,8 @@ async def test_remoto_com_servidor_que_sabe_ligar_manda_para_a_infraestrutura(pa
     """Aparelho de worker: existe QUEM o ligue, e a ação diz onde — sem prometer que o rodízio daqui o fará."""
     h = parque
     assert h.state is not None
+    # ADR-085: o religamento automático é padrão `true`; o caso "sem rodízio" liga a chave para `false` de propósito.
+    h.state.settings.update({"auto_start_devices": False})
     rt = desligar(h, EXTERNO)
     rt.worker_id = "worker-lan-01"
     recusa = h.state.runs.pre_voo([EXTERNO])[EXTERNO]
@@ -117,6 +119,8 @@ async def test_aparelho_local_parado_nao_impede_criar_mas_para_o_item_no_inicio(
     """
     h = parque
     assert h.state is not None
+    # ADR-085: o religamento automático é padrão `true`; este caso desliga a chave de propósito.
+    h.state.settings.update({"auto_start_devices": False})
     assert not h.state.scheduler.get_settings().auto_start_devices
     desligar(h, "android-01")
     assert h.state.runs.pre_voo(["android-01"]) == {}                      # criar continua valendo

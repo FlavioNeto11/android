@@ -23,6 +23,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - A variável local `$exigirCommit` (linha 281) era a mesma variável do parâmetro `$ExigirCommit` (o PowerShell não distingue caixa) e o `test_nenhum_ps1_atribui_a_um_parametro_com_outra_caixa` reprovava no funil 61. Renomeada para `$exigeCommit` nas três linhas que a usam; o comportamento não muda. Prova `simulated`: `scripts/tests/test_deploy_portao_do_ensaio.py`.
 
+## 2026-10-07 — 31.274: três testes assumiam `auto_start_devices=false` (branch fix/31-274-testes-do-auto-start)
+
+- O padrão de `auto_start_devices` passou a `true` (ADR-085, 31.274 parte 2). Os testes `test_pre_voo` (dois) e
+  `test_rotation::test_sem_rodizio_aparelho_parado_bloqueia_como_antes` descrevem o caso "sem rodízio" e dependiam do padrão
+  antigo; agora desligam a chave de propósito. Nenhum código de produção mudou.
+- Prova `simulated`: os 115 arquivos que citam `device_off`, `auto_start`, `remote_off`, `waiting_user` ou aparelho parado:
+  2057 passed, 31 skipped. `real`: `not_run`.
+
 ## 2026-10-07 — código morto removido pelo ADR-083 na jev/integ-62 (remerge sobre a main do refactor dos tetos)
 
 - O refactor do dono (`76672bea..ac2f6bba`, ADR-083) tirou o espaçamento entre contas, os tetos por hora e por dia, o
