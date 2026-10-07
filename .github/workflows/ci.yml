@@ -161,15 +161,37 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/pr_leve_resumo.py --nome "backend · pytest (SQLite)" --repo $env:GITHUB_REPOSITORY --run $env:GITHUB_RUN_ID --tentativa $env:GITHUB_RUN_ATTEMPT --runner $env:RUNNER_NAME | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
+  # 29.193: o job do PostgreSQL custa ~42 min hospedados por noite. Este porteiro (hospedado, ~1 min) lê pela API a última corrida
+  # em que ele PASSOU e só deixa rodar se algo que ele testa (backend/, .github/actions/, este arquivo) mudou desde então; sem corrida
+  # verde recente, com erro de API, comparação truncada ou disparo manual, roda sempre. Código e regra: scripts/pg_necessario.py.
+  pg-necessario:
+    name: pg · precisa rodar hoje?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    outputs:
+      rodar: ${{ steps.decidir.outputs.rodar }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - id: decidir
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/pg_necessario.py --repo "$GITHUB_REPOSITORY" --evento "$GITHUB_EVENT_NAME" --head "$GITHUB_SHA" --run "$GITHUB_RUN_ID"
+
   backend-postgres:
     name: backend · pytest (PostgreSQL)
     runs-on: ubuntu-latest
+    needs: pg-necessario
     # 90 min (era 60, e 25 antes): o cron de 01/10/2026 (run 36819958569) foi CANCELADO pelo limite de 25 min com o runner
     # hospedado de 2 núcleos, e o de 06/10 (run 37418749690) pelo de 60: a suíte cresceu de 6,2 mil testes (40 min, 03/10) para
     # 10,7 mil (55 min, 05/10) e o cancelamento escondia o resultado da noite. Só este job é hospedado; o teto do SQLite no
     # runner do central (60 min) NÃO mudou. `workflow_dispatch` com `somente_postgres` roda só este job.
     timeout-minutes: 90
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # `!cancelled()` e `!= 'false'`: se o porteiro falhar ou não devolver nada, o PostgreSQL RODA (erro nunca vira "pulou").
+    if: ${{ !cancelled() && needs.pg-necessario.outputs.rodar != 'false' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     defaults:
       run:
         working-directory: backend
@@ -359,7 +381,7 @@ jobs:
       # backend/requirements.txt (a mesma trava do backend), sem pip install a mais do que o docs-check usa e sem depender de shell.
       - run: pip install -c backend/requirements.txt pytest pyyaml pydantic pydantic-settings
       - run: python scripts/docs-check.py
-      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py scripts/tests/test_github_rotulos.py scripts/tests/test_github_rotina.py scripts/tests/test_workflows_pins.py scripts/tests/test_secret_scan_resumo.py scripts/tests/test_ci_gatilhos.py scripts/tests/test_issue_do_pacote.py scripts/tests/test_github_custo.py scripts/tests/test_pr_leve_resumo.py scripts/tests/test_custo_semanal_issue.py scripts/tests/test_agente_nuvem.py
+      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py scripts/tests/test_github_rotulos.py scripts/tests/test_github_rotina.py scripts/tests/test_workflows_pins.py scripts/tests/test_secret_scan_resumo.py scripts/tests/test_ci_gatilhos.py scripts/tests/test_issue_do_pacote.py scripts/tests/test_github_custo.py scripts/tests/test_pr_leve_resumo.py scripts/tests/test_custo_semanal_issue.py scripts/tests/test_agente_nuvem.py scripts/tests/test_pg_necessario.py
       # 29.184: uma linha por job (tempo por etapa, soma, minutos cobrados estimados) no job summary e no log; só leitura, nunca
       # derruba o job (continue-on-error; o script sai com 0 mesmo se o `gh` faltar). Sem contagem de testes aqui: o pytest deste
       # job não passa por `tee` para não mexer no comando da rede da noite.
