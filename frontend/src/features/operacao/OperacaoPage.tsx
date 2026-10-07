@@ -22,6 +22,7 @@ import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
 import { CriarOperacao } from './CriarOperacao';
 import { guardarRascunho, rascunhoDaOperacao } from './criar';
 import { LiberarAcoes } from './LiberarAcoes';
+import { mascararTerceiros, usuariosConhecidosDaOperacao } from './terceiros';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
 import {
@@ -79,7 +80,7 @@ function FaixaDeCapacidade({ op }: { op: Operacao }) {
         <div>
           <h3 className={styles.subtitulo}>Motivos dos bloqueios</h3>
           <ul className={styles.motivos}>
-            {c.motivos.map((m) => <li key={m.motivo}><strong>{formatInt(m.n)}</strong> {m.motivo}</li>)}
+            {c.motivos.map((m) => <li key={m.motivo}><strong>{formatInt(m.n)}</strong> {mascararTerceiros(m.motivo, usuariosConhecidosDaOperacao(op.parametros))}</li>)}
           </ul>
         </div>
       ) : null}
@@ -158,7 +159,7 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
   );
 }
 
-function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean; onAlternar: () => void }) {
+function LinhaDoAlvo({ alvo, aberta, onAlternar, conhecidos }: { alvo: Alvo; aberta: boolean; onAlternar: () => void; conhecidos: readonly string[] }) {
   const estado = alvo.estado;
   const Icone = estado ? ICONE_DO_ESTADO[estado] : null;
   const verificacao = verificacaoDoAlvo(alvo);
@@ -175,7 +176,12 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
           {estado && Icone ? <Badge tone={TOM_DO_ESTADO[estado]} icon={Icone} size="sm">{ROTULO_DO_ESTADO[estado]}</Badge> : <span className={styles.mudo}>não informado</span>}
         </td>
         <td className={styles.acao}>
-          {alvo.motivo ? <span><strong>Parou em {rotuloDoEstagio(estagioDeParada(alvo))}:</strong> {alvo.motivo}</span> : null}
+          {/* Ação barrada não "parou em Ação executada": ela falhou ao executar (31.254); e o motivo vem do backend, que pode citar terceiros. */}
+          {alvo.motivo ? (
+            <span data-motivo-do-alvo={alvo.acao_barrada ? 'falha' : 'parada'}>
+              <strong>{alvo.acao_barrada ? 'Falhou ao executar' : `Parou em ${rotuloDoEstagio(estagioDeParada(alvo))}`}:</strong> {mascararTerceiros(alvo.motivo, conhecidos)}
+            </span>
+          ) : null}
           {!alvo.motivo && alvo.resultado?.texto ? <span>{alvo.resultado.texto}</span> : null}
           {!alvo.motivo && !alvo.resultado?.texto ? <span className={styles.mudo}>—</span> : null}
           {alvo.resultado ? <span className={styles.mudo}> · {formatInt(alvo.resultado.conhecimento_ids.length)} itens de conhecimento</span> : null}
@@ -364,7 +370,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
               </thead>
               <tbody>
                 {alvos.map((a) => (
-                  <LinhaDoAlvo key={a.id} alvo={a} aberta={abertas.has(a.id)}
+                  <LinhaDoAlvo key={a.id} alvo={a} aberta={abertas.has(a.id)} conhecidos={usuariosConhecidosDaOperacao(op.parametros)}
                                onAlternar={() => setAbertas((s) => { const n = new Set(s); if (n.has(a.id)) n.delete(a.id); else n.add(a.id); return n; })} />
                 ))}
               </tbody>
