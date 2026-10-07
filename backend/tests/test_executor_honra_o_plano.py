@@ -22,11 +22,16 @@ from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app.porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano, previa_da_porta
 
 from app.util import now, now_iso, to_iso
 
 from .test_porta_do_plano import ALVO, DM, _gate, _plano, _por_chave, _sem_iniciar
+
+# Testes que só cobriam regra removida pelo refactor do dono de 07/10 (31.272).
+SAIU_NO_ADR_083 = pytest.mark.skip(reason="ADR-083: a trava da mesma DM repetida (mensagem_repetida) saiu da política")
 
 
 def _aprovado_no_plano(state: Any, bindings: dict[str, Any]) -> dict[str, Any]:
@@ -102,6 +107,7 @@ async def test_briefing_com_sim_do_plano_escreve_o_texto_e_pergunta_com_ele(harn
     assert linhas["execucao"]["status"] == "pending" and linhas["execucao"]["generated_content"] == escrito
 
 
+@SAIU_NO_ADR_083
 async def test_a_mesma_dm_mandada_depois_do_sim_faz_a_execucao_perguntar_de_novo(harness: Any,
                                                                                  monkeypatch: Any) -> None:
     """F1: sim dado no plano; depois dele, outra execução manda a MESMA DM ao mesmo alvo. A chave do item é a mesma, mas
@@ -123,6 +129,7 @@ async def test_a_mesma_dm_mandada_depois_do_sim_faz_a_execucao_perguntar_de_novo
     assert "o sim dado no plano não vale: a repetição surgiu depois do sim" in linhas["execucao"]["summary"]
 
 
+@SAIU_NO_ADR_083
 async def test_pendente_de_outra_execucao_aprovado_depois_do_sim_faz_perguntar_de_novo(harness: Any,
                                                                                     monkeypatch: Any) -> None:
     """G1: o pedido PENDENTE de outra execução, com a mesma DM ao mesmo alvo, foi criado ANTES do sim. A prévia só conta
@@ -172,6 +179,7 @@ async def test_excecao_presa_depois_do_sim_tira_o_sim_de_aprovado(harness: Any, 
     assert plano["status"] == "expired" and "exceção 30.65" in plano["decided_note"]
 
 
+@SAIU_NO_ADR_083
 async def test_a_mesma_dm_mandada_antes_do_sim_segue_coberta_por_ele(harness: Any, monkeypatch: Any) -> None:
     """Controle do F1: a repetição que já existia antes do sim estava no motivo da prévia; o sim a cobre."""
     state = harness.state

@@ -27,11 +27,14 @@ from app.taskqueue.dado_da_persona import resolver_argumentos, resolver_texto
 from app.util import now, now_iso, to_iso
 
 from .test_executor_honra_o_plano import _aprovado_no_plano
-from .test_capabilities import IG
+from .apoio_politica import IG
 from .test_perfil_bloqueado_e_capacidades import _cliente
 from .test_porta_do_plano import ALVO, DM, _gate, _plano, _por_chave, _sem_iniciar
 
 NOME, OUTRO = "Zelda", "Odete"
+
+# Testes que só cobriam regra removida pelo refactor do dono de 07/10 (31.272).
+SAIU_NO_ADR_083 = pytest.mark.skip(reason="ADR-083: a trava do mesmo objeto repetido (30.64) saiu da política")
 MOLDE = "Oi, aqui é {perfil_nome}!"
 DM_MOLDE = {**DM, "content": MOLDE}
 
@@ -133,6 +136,7 @@ async def test_o_mesmo_marcador_em_duas_personas_nao_e_o_mesmo_alvo(harness: Any
 
 
 @pytest.mark.parametrize("gravado", [MOLDE, f"Oi, aqui é {NOME}!"], ids=["pedido_com_marcador", "pedido_antigo"])
+@SAIU_NO_ADR_083
 async def test_a_repeticao_se_acha_com_o_marcador_e_com_o_valor_antigo(harness: Any, monkeypatch: Any,
                                                                        gravado: str) -> None:
     """O pedido de outra execução, aprovado depois do sim, com a mesma DM: gravado com o marcador (F3) ou com o valor

@@ -16,7 +16,7 @@ from app.social.chave_da_aprovacao import (
     texto_exato,
 )
 
-from .test_capabilities import IG, build
+from .apoio_politica import IG, build
 
 ESCOPO = {"perfil": "p-1", "aparelho": "android-01", "pacote": IG, "run_id": "r-1", "objective_id": "r-1:android-01"}
 DM = {"username": "@Fulana", "content": "oi, tudo bem?", "content_verbatim": "true"}
