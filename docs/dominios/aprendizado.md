@@ -2669,3 +2669,38 @@ A chave `livro.` não volta ao Livro: o minerador do 31.190 só lê `pesquisa.*`
 registra, serviço que paga quando não cobre ou quando a leitura falha, leitor do Livro no harness). `real`: `not_run`;
 a 1ª operação de assunto repetido depois do deploy. Contrato com a Jev aceito em 07/10 com dois pontos (filtro por app;
 o `candidate` só por ter vindo confirmado), os dois aplicados.
+
+## O assunto da operação nasce da leitura do alvo (31.248)
+
+Medido na onda 2 (07/10): a operação não tinha `assunto` nem `fontes`. `pesquisar_se_preciso` voltava `None` sem
+assunto, e a lacuna (o critério 5 do dono, que existe desde o 31.158) nem era consultada. A pesquisa (critério 6) e o
+reaproveitamento do 31.231 não tinham onde agir.
+
+Agora, sem assunto guardado (`ai.pesquisa.assunto_da_leitura`, padrão `true`), o assunto vem da leitura do alvo:
+- **Regra** (`learning/domain/reaproveitamento_da_pesquisa.assunto_da_leitura`, pura): o recorte PÚBLICO da
+  publicação (`alvo.conteudo`, gravado pelo primeiro agente que a leu, com frescor de 6 h), em uma linha, com três
+  limpezas:
+  - sem menção a conta, porque o nome de um terceiro não vai à busca externa;
+  - sem endereço;
+  - a hashtag vira palavra.
+
+  O resultado é cortado na palavra (160). Com menos de 3 palavras, não há assunto.
+- **Quando**: a pesquisa da criação (31.169) não acha assunto nem leitura e não roda. Ela também não deixa marca, então
+  a lacuna fica aberta. A 1ª leitura de uma operação sem assunto, na porta de escrita, agenda a pesquisa com a mesma
+  trava: o 1º agente escreve sem os fatos, e os seguintes já os leem. Dois alvos pagam uma vez.
+- **Livro**: o 31.231 é consultado com esse assunto antes de pagar (`fatos_do_livro(operacao, assunto)`).
+- **Minerador**: o fato que a operação deixa leva o MESMO assunto ao Livro (a mesma regra sobre a mesma leitura, em
+  `fatos_da_operacao_sql._operacoes`), para a próxima operação da mesma publicação o reusar. A coluna
+  `operacoes.assunto` (da Jev) não é escrita.
+
+O log diz "pesquisa com o assunto da leitura do alvo".
+
+Limites:
+- o assunto é o texto da publicação, sem resumo por IA;
+- duas publicações diferentes dão assuntos diferentes, e o Livro só cobre a mesma publicação (ou o mesmo texto).
+
+**Prova.** `simulated`: `backend/tests/test_assunto_da_leitura_do_alvo.py` (6: a regra; o serviço sem assunto, sem
+marca antes da leitura e com o Livro consultado pelo assunto da leitura; o assunto guardado vence e o desligado é o de
+antes; o Livro cobrindo não paga; o minerador; a porta com dois alvos e uma pesquisa). `real`: `not_run`. A 1ª
+operação sem assunto depois do deploy faz uma chamada paga, até o teto de US$ 0,25 por operação; ela pede o sim do
+dono para a validação.
