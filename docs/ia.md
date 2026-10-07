@@ -331,6 +331,12 @@ achado não se confirmam nos dados.
     A métrica é a mesma, com `prova=marcador:<nivel>`, e o rejulgamento decide o nível que vale. Nenhum app declara
     marcador ainda: se a árvore real do Instagram expõe "Seen" ou "Delivered" debaixo da bolha não foi medido, e a
     declaração espera uma captura real, só leitura.
+    Desde o 31.250, o app SEM catálogo declara as marcas como dado em `conhecimento/apps/<pacote>/entrega.yaml`
+    (`planning/entrega_declarada.py`), lido pelo executor só na etapa sem capability. O QA Messenger é o primeiro:
+    "Enviada ✓" (`sent`), "Entregue ✓✓" (`delivered`) e "Lida ✓✓" (`read`), mais a pendente "Enviando…" e a falha
+    "Falha no envio ✕", do `message_status` do app. A pasta não tem `app.yaml` nem `catalogo.yaml`: a porta do 13.2 e a
+    oferta ao planejador não mudam. A etapa livre não tem `content`; o texto é o do último `type_text` dela, só em
+    memória. A lição no juiz barato (o 31.250 de origem) foi recusada pelo ADR-024.
     Desde o 31.239 (`ai.comentario_dispensa_primeiro_juiz`), o comentário tem prova local própria, declarada no
     catálogo: `local_proof: comentario:{account_label}` no CREATE_COMMENT do Instagram (`proofs._comentario_publicado`).
     A árvore comprova quando mostra o texto desta etapa (`content`, inteiro e normalizado) atribuído à conta conectada,

@@ -54,6 +54,7 @@ from ..modules.learning.infrastructure.segredo import TriagemDeCredencial
 from ..planning.capabilities import (CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao,
                                      load_catalog, marcas_de_entrega)
 from ..planning.catalog import session_provider_of
+from ..planning.entrega_declarada import entrega_do_pacote
 from ..planning.provider import (AIError, AIProvider, AppContext, Decision, DecisionRequest, LeituraRequest,
                                  MarcaDaChamada, MotivoDaChamada, MotivoDaImagem, MotivoDeEscalonamento,
                                  PreparoDaDecisao, ScreenInput, StepContext, Transcricao, Usage, Verdict, VerifyRequest)
@@ -806,6 +807,9 @@ class StepExecutor:
         self._ultima_acao_da_etapa: dict[str, tuple[str, str]] = {}
         #: 31.59: por etapa, quantas mensagens com o texto IGUAL ao `content` a tela tinha no toque do efeito.
         self._mensagens_antes: dict[str, int] = {}
+        #: 31.250: por etapa SEM capability (plano livre, o QA Messenger), o texto do último `type_text`: é o `content` que
+        #: a etapa livre não tem nos argumentos. Só memória: nunca vai a log, evento nem prompt; `type_secret` não entra.
+        self._textos_digitados: dict[str, str] = {}
         # Item 31.24 (C-4): o juiz e a evidência de cada tentativa EM CURSO, somados enquanto ela roda e gravados uma
         # vez no fim (`_registrar_estrategia`). Some no fim da tentativa, saia ela como sair.
         self._tempos_da_tentativa: dict[str, TemposDaTentativa] = {}
@@ -1484,6 +1488,7 @@ class StepExecutor:
         if outcome.outcome in (Outcome.succeeded, Outcome.failed, Outcome.uncertain, Outcome.cancelled):
             self._reabertas_por_anr.discard(step.id)     # desfecho final: a etapa não volta a rodar com este id
             self._ultima_acao_da_etapa.pop(step.id, None)
+            self._digitados().pop(step.id, None)
         try:
             self._after_step(rr, outcome, run["id"], rt.id, step, attempt_id, app)
         except Exception:  # noqa: BLE001
@@ -3580,6 +3585,8 @@ class StepExecutor:
                 return await falhar_sem_nova_tentativa(sem_reserva, obs)
             aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=is_commit,
                            source="recipe" if from_recipe else ("regra" if pela_regra else "ai"))
+            if decision.tool == "type_text" and not step.capability:
+                self._digitados()[step.id] = str(getattr(args, "text", "") or "")   # 31.250: o texto da etapa livre
             if is_commit:
                 self._guardar_linha_de_base(step, obs.tree)      # 31.59: a tela de ANTES do toque
                 efeito_alvo_fora = not alvo_na_arvore(args, obs.tree)
@@ -4452,10 +4459,25 @@ class StepExecutor:
             self._mensagens_antes = {}
         return self._mensagens_antes
 
+    def _digitados(self) -> dict[str, str]:
+        """31.250: o mapa dos textos digitados nas etapas livres (mesmo cuidado de `_linha_de_base` com o executor de
+        teste montado sem `__init__`)."""
+        if not hasattr(self, "_textos_digitados"):
+            self._textos_digitados = {}
+        return self._textos_digitados
+
+    def _conteudo_da_etapa(self, step: StepDTO) -> str | None:
+        """O `content` da etapa; na etapa SEM capability (plano livre), o texto do último `type_text` dela (31.250)."""
+        conteudo = (step.bindings or {}).get("content")
+        if conteudo is None and not step.capability:
+            conteudo = self._digitados().get(step.id) or None
+        return None if conteudo is None else str(conteudo)
+
     def _guardar_linha_de_base(self, step: StepDTO, tree: UiTree) -> None:
         """31.59: no toque do efeito, quantas bolhas com o texto IGUAL ao `content` a tela tem AGORA. A prova `sent_text`
-        e o marcador do 31.57 só contam envio se depois houver mais do que isso. Etapa sem `content` não guarda nada."""
-        conteudo = (step.bindings or {}).get("content")
+        e o marcador do 31.57 só contam envio se depois houver mais do que isso. Etapa sem `content` não guarda nada.
+        31.250: na etapa livre, o `content` é o texto digitado nela (`_conteudo_da_etapa`)."""
+        conteudo = self._conteudo_da_etapa(step)
         if conteudo is not None:
             self._linha_de_base()[step.id] = tree.mensagens_iguais(str(conteudo))
 
@@ -4464,18 +4486,31 @@ class StepExecutor:
         """31.57: o nível que o marcador declarado no catálogo afirma nesta tela, quando ele dispensa o PRIMEIRO
         julgamento; `None` senão. As mesmas travas do 31.26: há nível exigido e o marcado o atende, é o primeiro
         julgamento, e o rejulgamento do 17.10 vai acontecer (ligado e com modelo diferente). Sem rejulgamento, o
-        marcador sozinho fecharia o efeito, e isso o desenho não aceita."""
+        marcador sozinho fecharia o efeito, e isso o desenho não aceita.
+
+        31.250: na etapa SEM capability, as marcas vêm do `entrega.yaml` do app da tela (o QA Messenger, que não tem
+        catálogo), e o texto da mensagem é o digitado na etapa; o resto (linha de base, travas) é o mesmo."""
         ai = self.cfg.file.ai
-        if not (ai.marcador_de_entrega_dispensa_primeiro_juiz and need is not None and capability is not None
+        if not (ai.marcador_de_entrega_dispensa_primeiro_juiz and need is not None
                 and not ja_julgou and not escalou and ai.rejudge_yes_on_side_effect
                 and self.cfg.ai_role("verify").model != self.cfg.ai_role("escalation").model):
             return None
-        cap = capability_of(capability.app, capability.key)
-        if cap is None or not cap.delivery_marks:
-            return None
-        nivel = nivel_pelo_marcador(marcas_de_entrega(cap.delivery_marks), (step.bindings or {}).get("content"),
-                                    obs.tree, antes=self._linha_de_base().get(step.id), pendentes=cap.pending_marks,
-                                    falhas=cap.failure_marks)
+        if capability is not None:
+            cap = capability_of(capability.app, capability.key)
+            if cap is None or not cap.delivery_marks:
+                return None
+            marcas, pendentes, falhas = cap.delivery_marks, cap.pending_marks, cap.failure_marks
+        else:
+            try:
+                declarada = entrega_do_pacote(obs.package)
+            except ValueError:  # arquivo inválido: o juiz julga, como antes
+                log.exception("entrega.yaml de %s não carregou", obs.package)
+                return None
+            if declarada is None:
+                return None
+            marcas, pendentes, falhas = declarada.delivery_marks, declarada.pending_marks, declarada.failure_marks
+        nivel = nivel_pelo_marcador(marcas_de_entrega(marcas), self._conteudo_da_etapa(step), obs.tree,
+                                    antes=self._linha_de_base().get(step.id), pendentes=pendentes, falhas=falhas)
         if nivel is None or DELIVERY_ORDER[DeliveryLevel(nivel)] < DELIVERY_ORDER[need]:
             return None
         return DeliveryLevel(nivel)

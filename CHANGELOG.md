@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.250: as marcas de entrega do QA Messenger dispensam o juiz barato (branch feat/31-250-marcas-do-qa)
+
+- O 31.250 de origem (a discordância do rejulgamento vira lição do juiz barato) foi recusado: o ADR-024 deixa o
+  verificador fora das lições. A troca fecha o erro medido com prova local.
+- Medido em 07/10: as 12 discordâncias do rejulgamento por nível eram todas do QA Messenger, em etapas com nível `sent`.
+- Agora `conhecimento/apps/com.pocqa.messenger/entrega.yaml` declara as marcas do `message_status` ("Enviada ✓",
+  "Entregue ✓✓", "Lida ✓✓"; pendente "Enviando…"; falha "Falha no envio ✕"). Na etapa sem capability, a marca casada
+  debaixo da bolha desta execução dispensa o primeiro julgamento (travas do 31.57; o 31.238 vale como para toda prova
+  local). O texto é o do último `type_text` da etapa, só em memória.
+- O QA Messenger continua sem catálogo: a porta do 13.2 e a oferta ao planejador não mudam (teste compara).
+- Prova `simulated`: `backend/tests/test_marcas_do_qa_messenger.py` (11). `real`: `not_run` (a 1ª execução do QA
+  Messenger com nível `sent` depois do deploy em que `verificacao.primeiro_juiz_dispensado{prova=marcador:sent}` contar).
+
 ## 2026-10-07 — 31.249: a receita só reproduz no escopo do alvo em que nasceu (branch feat/31-249-escopo-da-receita)
 
 - A 111 (`open_post`, aprendida num post da própria conta) reproduziu em post de terceiro na onda 2, com o mesmo
