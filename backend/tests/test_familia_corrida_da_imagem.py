@@ -12,10 +12,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app import gates as gates_mod
 from app.social.policy import ContextoDoPedido
 
 from .test_porta_do_plano import _plano, _sem_iniciar
+
+pytestmark = pytest.mark.skip(reason="ADR-083: saiu a regra do mesmo objeto entre personas do pedido (31.53)")
 
 POST = {"key": "post", "cap": "CREATE_POST", "bindings": {"image_id": "img-1", "content_brief": "um fim de tarde"}}
 

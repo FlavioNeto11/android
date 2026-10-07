@@ -12,12 +12,17 @@ import json
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app import gates as gates_mod
 from app.models import ProfileCreate
 from app.social.policy import MOTIVO_CITA_A_FAMILIA, ContextoDoPedido
 
-from .test_capabilities import SENHA
+from .apoio_politica import SENHA
 from .test_porta_do_plano import DM, _gate, _plano, _sem_iniciar
+
+# Testes que só cobriam regra removida pelo refactor do dono de 07/10 (31.272).
+SAIU_NO_ADR_083 = pytest.mark.skip(reason="ADR-083: saiu a regra do texto que cita outra conta do pedido")
 
 
 def _irma(state: Any, *, conta_noutro_app: str | None = None) -> str:
@@ -46,6 +51,7 @@ def _rascunho(monkeypatch: Any, state: Any, texto: str) -> None:
     monkeypatch.setattr(state.social, "draft_response", draft_response)
 
 
+@SAIU_NO_ADR_083
 async def test_rascunho_que_cita_outra_conta_do_pedido_pede_aprovacao_com_o_motivo_uma_vez(harness: Any,
                                                                                           monkeypatch: Any) -> None:
     state = harness.state
@@ -76,6 +82,7 @@ async def test_conta_da_irma_noutro_app_tambem_conta_e_sem_citar_nao_ha_motivo(h
     assert veredito is not None and MOTIVO_CITA_A_FAMILIA in (veredito.reason or "")
 
 
+@SAIU_NO_ADR_083
 async def test_piso_do_handle_de_outro_app_curto_desligado_ou_com_espaco_nao_conta(harness: Any,
                                                                                     monkeypatch: Any) -> None:
     """Revisão do #344: handle de `profile_accounts` só conta ATIVO, com 3+ caracteres e sem espaço. O de 4 (`cris`) conta."""
@@ -92,7 +99,7 @@ async def test_piso_do_handle_de_outro_app_curto_desligado_ou_com_espaco_nao_con
                          (f"pa-{i}", irma, f"app-{i}", handle, estado))
     from app.planning.capabilities import capability_of
 
-    from .test_capabilities import IG
+    from .apoio_politica import IG
     dm = capability_of(IG, "SEND_MESSAGE")
     dono = state.db.scalar("SELECT profile_id FROM objectives")
     pedido = ContextoDoPedido(raiz="ped-1", familia=frozenset({dono, irma}))
@@ -101,6 +108,7 @@ async def test_piso_do_handle_de_outro_app_curto_desligado_ou_com_espaco_nao_con
     assert state.policies.cita_a_familia(dono, dm, {"content": "a cris mandou um oi"}, pedido) == MOTIVO_CITA_A_FAMILIA
 
 
+@SAIU_NO_ADR_083
 async def test_rascunho_sem_citar_a_familia_nao_ganha_o_motivo(harness: Any, monkeypatch: Any) -> None:
     state = harness.state
     _sem_iniciar(state, monkeypatch)

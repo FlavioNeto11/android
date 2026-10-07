@@ -18,7 +18,7 @@ from app.social.chave_da_aprovacao import (chave_da_aprovacao, imagem_de_outra_p
 from app.taskqueue.executor import (interruptor_ligado, marca_junto_da_conta, marcas_exigidas,
                                     rejeicao_do_interruptor)
 
-from .test_capabilities import IG
+from .apoio_politica import IG
 from .test_porta_do_plano import _plano, _por_chave
 
 SWITCH = ("rotulo_ia:text==Add AI label",)

@@ -15,9 +15,9 @@ from typing import Any
 
 import pytest
 
-from .test_capabilities import build, perfil
+from .apoio_politica import build, perfil
 from .test_porta_do_plano import DM, _gate, _plano, _sem_iniciar
-from .test_protecao_de_frota import ALVO, _ProvedorQueAtribui
+from .apoio_politica import ALVO, _ProvedorQueAtribui
 
 ESCRITO = "Oi! Passando pra desejar uma ótima semana r3163"
 
