@@ -985,6 +985,20 @@ Os scripts da operação provisória ficam versionados em `.claude/canais/`, e o
     painel, posto depois da redação;
   - o modo padrão só imprime o HTML (ensaio); `--enviar` usa o `telegram_status.py` e imprime o `message_id`, só com o sinal
     da orquestradora. Prova `simulated` (`.claude/canais/test_resumo_rodada.py`); a `real` espera uma operação encerrada;
+- `resumo_diario.py`: UM resumo por dia ao dono (para as 07:00 de Brasília), em até 12 linhas no mesmo molde (assunto,
+  resultado com números, `Crítico:` e `Espera você:`). Quatro leituras independentes; a que falha sai como "não consegui
+  ler" (nunca zero) e entra no `Crítico:`, e "Espera você: nada" só sai com as perguntas lidas e nenhuma aberta:
+  - plano: `claude-plan-100.py check` (total) e `estado.json` (implementados, parciais, bloqueados);
+  - deploys em 24 h: as entradas `## <data> — Deploy NN` mais recentes do CHANGELOG, com a hora do commit do Git que as
+    escreveu; só número e hora;
+  - perguntas abertas: contagem e ids `P-NNN` dos cartões da lista "Perguntas para você" (nada de nome inteiro nem
+    descrição);
+  - cartões movidos em 24 h, por lista de destino, nos 3 quadros: pelas actions `updateCard:idList` do Trello (`listAfter`),
+    contando cada cartão pelo último movimento. Escolhida no lugar do `dateLastActivity`, que também muda por comentário
+    e etiqueta e não diz a lista de destino;
+  - o corpo passa por `_sem_contato` e `redacao.redigir`, como os outros resumos. O modo padrão só imprime (ensaio);
+    `--arquivo situacao.json` ensaia offline; `--enviar` usa o `telegram_status.py`, só com o sinal da orquestradora. Prova
+    `simulated` (`.claude/canais/test_resumo_diario.py`); a `real` e o agendamento das 07:00 ficam `not_run`;
 - `url_painel.py`: grava ou recua o `avisos.url_painel` do `config.yaml`, com backup.
 
 As ferramentas do Trello ficam em `.claude/trello/`.
