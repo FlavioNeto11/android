@@ -6,6 +6,7 @@
 import { ApiError, apiRequest, toApiError } from '../../api/client';
 import { lerLiberacao, lerLista, lerOperacao, type Operacao, type ResultadoDaLiberacao, type ResumoDaOperacao } from './modelo';
 import { lerAprendizado, type LeituraDoAprendizado } from './aprendizadoDaOperacao';
+import { corpoDoCancelamento, lerResultadoDoCancelamento, type FiltroDeCancelamento, type ResultadoDoCancelamento } from './filtroDeCancelamento';
 import type { CorpoDaOperacao } from './criar';
 import { OPERACAO_DE_EXEMPLO } from './operacaoDeExemplo';
 import type { RelatorioDaOperacao } from './relatorio';
@@ -93,6 +94,15 @@ export const apiOperacoes = {
       if (rotaAusente(e)) return { situacao: 'indisponivel', motivo: 'O central ainda não oferece o relatório da operação.' };
       return { situacao: 'indisponivel', motivo: `Não foi possível ler o relatório do central: ${err.message}` };
     }
+  },
+  /**
+   * Cancela só os alvos que casam com o filtro, sem fechar a operação (adendo v1.112; 31.199). O filtro vazio nem sai daqui: o central o
+   * recusa com 422 `filtro_vazio` (a operação inteira é `cancelar`).
+   */
+  async cancelarAlvos(id: string, filtro: FiltroDeCancelamento): Promise<ResultadoDoCancelamento> {
+    const r = lerResultadoDoCancelamento(await apiRequest<unknown>('POST', `/operacoes/${enc(id)}/cancelar-alvos`, { body: corpoDoCancelamento(filtro) }));
+    if (!r) throw new ApiError(502, 'resposta_invalida', 'A resposta do cancelamento por filtro veio em formato inesperado.');
+    return r;
   },
   async cancelar(id: string): Promise<Operacao> {
     const op = lerOperacao(await apiRequest<unknown>('POST', `/operacoes/${enc(id)}/cancelar`, { body: {} }));
