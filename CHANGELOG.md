@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.230: a receita sem o "voltar" inicial (branch feat/31-230-receita-sem-voltar-inicial)
+
+- A tentativa da IA que começava por `press_back` não virava receita: foi o que barrou o `open_profile` na onda 1.
+- Agora o voltar inicial é descartado quando a 1ª ação gravada partiu do estado conhecido declarado do app. A ação
+  leva a âncora, e a reprodução confere a tela antes de agir. O voltar no meio do caminho segue recusado.
+- Prova `simulated`: `backend/tests/test_receita_sem_voltar_inicial.py` (6). `real`: `not_run`.
+
 ## 2026-10-07 — 31.223: o modelo forte só no commit (branch feat/31-223-forte-so-no-commit, adendo v1.122)
 
 - Na etapa com efeito, o Opus decidia todos os passos: na onda 1, US$ 0,112 de 0,279 do alvo.
