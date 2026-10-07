@@ -5896,3 +5896,25 @@ estava pronto, em vez de preparar o que falta.
 
 **Consequências.** Ligar aparelhos sob demanda entra no custo e na latência da execução (métrica de primeira classe) e
 respeita o teto de emuladores por host (29.33). Prova: `not_run` até o 31.274 parte 2.
+
+## ADR-086 — Pergunta de execução vai a quem mandou o comando; validação nunca pergunta ao dono
+
+**Data:** 07/10/2026 · **Estado:** aceito; implementação pendente (31.279, Jev). Decisão do dono pelo Telegram, literal:
+21:13Z "isso não deveria ter parado comigo" e 22:54Z "esse tipo de pergunta não é pra chegar pra mim", as duas em
+resposta a avisos de execuções da bateria de validação de provedor (§ 31 de `docs/relatorio-validacao.md`) no
+aparelho de QA.
+
+**Contexto.** O aviso `run.needs_input` e o `objective.waiting_user` vão ao Telegram do dono seja qual for a origem
+do comando. Numa bateria de avaliação, casos que perguntam de propósito ("para qual contato?") viraram perguntas ao
+dono, e a resposta dele no Telegram ainda criou uma execução sucessora.
+
+**Decisão.**
+- A pergunta de uma execução e o aviso de parada esperando pessoa vão só ao canal de origem do comando: comando pelo
+  painel, pergunta no painel; comando pelo Telegram, pergunta no Telegram. Aprovação de política continua indo ao
+  canal de aprovação configurado.
+- Execução de validação ou avaliação (`idempotency_key` `eval-*`, `validacao:*` e sucessoras delas) nunca avisa o
+  dono, nunca cria sucessora a partir de resposta dele, e quem a dispara responde ou cancela na hora.
+- Complementa o ADR-085: o que a automação pode resolver sozinha não para com ninguém.
+
+**Consequências.** O harness de avaliação responde ou pula os casos que pedem entrada. Prova: `not_run` até o
+31.279.
