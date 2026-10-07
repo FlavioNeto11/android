@@ -3,12 +3,12 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useUiStore } from '../../store/ui';
-import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor, esperarElemento } from '../../test/harness';
 import { formatClock, formatDateTime } from '../../lib/time';
 import { ESTAGIOS, lerOperacao } from './modelo';
 import { OperacaoPage } from './OperacaoPage';
 import { nomeDoArquivo } from './RelatorioDaOperacao';
-import { conferenciaDaAcao, montarRelatorio, relatorioEmMarkdown } from './relatorio';
+import { conferenciaDaAcao, montarRelatorio, relatorioEmMarkdown, semArroba } from './relatorio';
 
 /**
  * 31.162: o relatório da operação (formato do § 8 do cenário da prova de 07/10) montado só do `GET /api/operacoes/{id}` (adendo
@@ -201,6 +201,20 @@ describe('o botão Relatório', () => {
     expect(blobs[1]!.type).toContain('application/json');
   });
 
+  it('a prévia recolhível mostra o MESMO Markdown do arquivo, sem a conta, sem o @ e sem o usuário de terceiro (31.252)', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...BRUTA, id: 'op-1' }));
+    await ir('op-1');
+    await click(await waitFor(() => byRole('button', /^Relatório$/, container)));
+    const d = await waitFor(() => byRole('dialog', /Relatório da operação/));
+    const previa = await esperarElemento('details[data-previa-do-relatorio]', d);
+    expect((previa as HTMLDetailsElement).open).toBe(false);          // recolhida por padrão
+    const md = previa.querySelector('pre')!.textContent!;
+    expect(md).toContain('# Relatório da operação op-1');
+    expect(md).toContain('## Agentes');
+    expect(md).not.toMatch(/@exemplo|acc-0|account_id|login/i);
+    expect(baixados).toEqual([]);                                     // olhar a prévia não baixa nada
+  });
+
   it('o nome do arquivo não leva barra nem caractere estranho do id', () => {
     expect(nomeDoArquivo('op/1 ..\\x', 'md')).toBe('operacao-op_1_x.md');
   });
@@ -238,4 +252,11 @@ describe('o relatório em Markdown traz a hora do painel ao lado do UTC', () => 
     expect(js).not.toContain('no painel');
     expect(js).toContain('2026-10-07T18:00:01Z');
   });
+});
+
+it('semArroba tira também o usuário de terceiro que o fato lido da tela traz sem arroba, sem tocar em palavra comum (31.252)', () => {
+  expect(semArroba('space.girl.ma said The future of space looks so good 🚀 View 10 more replies')).toBe('[usuário omitido] said The future of space looks so good 🚀 View 10 more replies');
+  expect(semArroba('ana_souza99 said Lindo!')).toBe('[usuário omitido] said Lindo!');
+  expect(semArroba('he said ok e a frota já mexeu com @fulano.x')).toBe('he said ok e a frota já mexeu com @[omitido]');
+  expect(semArroba('o texto: a.b é um tipo said ninguém')).toBe('o texto: a.b é um tipo said ninguém');   // sem "said" logo depois do usuário, fica
 });

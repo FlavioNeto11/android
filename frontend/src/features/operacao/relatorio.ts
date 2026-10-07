@@ -14,9 +14,14 @@ import {
 
 /**
  * Os motivos e resumos que o BACKEND escreve podem citar o @ de uma conta ("conta(s) da frota já mexeram com @fulano"): no relatório
- * o @ sai (visto no central real, onda 1 de 06/10). O texto gerado pela persona não é metadado e não passa por aqui.
+ * o @ sai (visto no central real, onda 1 de 06/10). Também sai o nome de usuário de TERCEIRO que o fato lido da tela traz sem arroba
+ * ("space.girl.ma said Que lindo…", o comentário de outra pessoa no post alvo; visto na onda 2 de 07/10): só o padrão de usuário
+ * (letras com ponto ou sublinhado) seguido de "said", para não mascarar uma palavra comum. O texto gerado pela persona não é metadado
+ * e não passa por aqui.
  */
-export const semArroba = (s: string): string => s.replace(/@[A-Za-z0-9._]+/g, '@[omitido]');
+export const semArroba = (s: string): string => s
+  .replace(/@[A-Za-z0-9._]+/g, '@[omitido]')
+  .replace(/\b[A-Za-z0-9]+(?:[._][A-Za-z0-9]+)+(?= said\b)/g, '[usuário omitido]');
 const semArrobaOuNulo = (s: string | null): string | null => (s === null ? null : semArroba(s));
 
 export type Conferencia = 'sim' | 'nao' | 'nao_conferida' | 'sem_acao';
