@@ -26,6 +26,7 @@ from .devices.manager import DeviceRuntime
 from .modules.pedidos.domain import conhecimento_da_operacao as conhecimento_dominio
 from .modules.pedidos.infrastructure.conhecimento_da_operacao import NAO_GRAVADOS, ConhecimentoDaOperacao, Fatos
 from .modules.pedidos.infrastructure.contexto import contexto_do_pedido
+from .modules.learning.infrastructure.fatos_do_livro_sql import LeitorDeFatosDoLivro
 from .modules.pedidos.infrastructure.pesquisa_da_operacao import PesquisaDaOperacao
 from .planning.capabilities import (
     Capability,
@@ -138,7 +139,9 @@ class Portoes:
         """prova30 A2: a pesquisa externa da operação, com a configuração `ai.pesquisa` (desligada de fábrica)."""
         if self._pesquisa_cache is None:
             ai = self._st.cfg.file.ai
-            self._pesquisa_cache = PesquisaDaOperacao(self._st.db, ai.pesquisa, ai.prices)
+            # 31.231: os fatos do Livro do mesmo assunto, antes da pesquisa paga
+            self._pesquisa_cache = PesquisaDaOperacao(self._st.db, ai.pesquisa, ai.prices,
+                                                      fatos_do_livro=LeitorDeFatosDoLivro(self._st.db).da_operacao)
         return self._pesquisa_cache
 
     async def _policy_gate(self, obj: Any, srow: Any, run: Any) -> Any:
@@ -624,6 +627,10 @@ class Portoes:
                 return
             if feito is not None:
                 # Só contagens: os fatos e as fontes moram na memória da operação.
+                if feito.reaproveitados:                 # 31.231: o Livro cobriu o pedido; nenhuma chamada paga
+                    self._st.bus.emit("log", f"operação {operacao_id}: pesquisa reaproveitada do Livro: "
+                                             f"{feito.reaproveitados} fato(s), sem chamada paga", run_id=str(run_id))
+                    return
                 self._st.bus.emit("log", f"operação {operacao_id}: pesquisa na criação: {feito.fatos} fato(s) "
                                          f"({feito.confirmados} confirmado(s)), {feito.fontes} fonte(s), "
                                          f"{feito.buscas} busca(s)", run_id=str(run_id))

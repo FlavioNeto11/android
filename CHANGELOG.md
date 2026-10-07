@@ -119,6 +119,58 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   2009 ms para 0. A tabela está em `.claude/handoffs/jev-31-175-medida.md`.
 - Sem mudança de código: a fila por vaga já existe, e `max_ai_concurrency` é relido ao vivo.
 - Prova `simulated`; a leitura real fica para a onda 2.
+## 2026-10-07 — 31.232: o forte confere o efeito com a imagem quando o alvo está fora da árvore (branch feat/31-232-commit-sem-imagem)
+
+- Na onda 1, o commit refeito no forte (31.223) e o rejulgamento do "sim" com efeito saíram sem imagem (`arvore_rica`).
+  Com o alvo escolhido na árvore, isso basta; num toque por coordenada, o forte conferia às cegas.
+- Agora a mesma regra vale para os dois juízes: com o alvo fora da árvore (coordenada, elemento ausente ou ferramenta
+  sem elemento), a imagem vai junto, com `image_reason = alvo_fora_da_arvore`. Com o alvo na árvore, decide a régua de
+  sempre. A regra só acrescenta a imagem; a tela sensível e a política `never` continuam mandando, e o juiz barato
+  não muda. `ai.imagem_quando_alvo_fora_da_arvore: false` volta ao de antes.
+- Prova `simulated`: `backend/tests/test_imagem_do_alvo_fora_da_arvore.py` (6). `real`: `not_run`.
+
+## 2026-10-07 — 31.231: a pesquisa reaproveita o Livro (branch feat/31-231-pesquisa-reaproveita-o-livro)
+
+- A 2ª operação do mesmo assunto pagava a pesquisa de novo (US$ 0,043 na onda 1) pelo que o Livro já sabia.
+- Agora, antes da chamada paga, a lacuna lê os fatos do Livro do mesmo assunto canônico e do mesmo app. Cobrem o pedido quando há
+  pelo menos `ai.pesquisa.reaproveitar_min_fatos` (padrão 2) vivos, confirmados e dentro do frescor, e, havendo fontes
+  indicadas, cada domínio indicado entre os desses fatos. Cobrindo, os fatos entram na memória como `livro.<item>` e a
+  `pesquisa.estado` registra itens, frescor e critério; não cobrindo, a pesquisa paga roda como antes, com o motivo no log.
+- Prova `simulated`: `backend/tests/test_pesquisa_reaproveita_o_livro.py` (4). `real`: `not_run`.
+
+## 2026-10-07 — 31.230: a receita sem o "voltar" inicial (branch feat/31-230-receita-sem-voltar-inicial)
+
+- A tentativa da IA que começava por `press_back` não virava receita: foi o que barrou o `open_profile` na onda 1.
+- Agora o voltar inicial é descartado quando a 1ª ação gravada partiu do estado conhecido declarado do app. A ação
+  leva a âncora, e a reprodução confere a tela antes de agir. O voltar no meio do caminho segue recusado.
+- Prova `simulated`: `backend/tests/test_receita_sem_voltar_inicial.py` (6). `real`: `not_run`.
+
+## 2026-10-07 — 31.223: o modelo forte só no commit (branch feat/31-223-forte-so-no-commit, adendo v1.122)
+
+- Na etapa com efeito, o Opus decidia todos os passos: na onda 1, US$ 0,112 de 0,279 do alvo.
+- Agora, com `ai.strong_model_only_on_commit` (padrão `true`), o modelo de ação navega, e só a decisão que dispararia o
+  efeito é refeita no forte. A trava de commit, a política de risco e o rejulgamento do efeito não mudam.
+- Dois testes antigos que medem o modo de antes ficam com a chave em `false`.
+- Prova `simulated`: `backend/tests/test_forte_so_no_commit.py` (2). `real`: `not_run`.
+
+## 2026-10-07 — 31.222: a semelhança não derruba a ação final (branch feat/31-222-semelhanca-sem-acao-final)
+
+- A escolha por semelhança trocava o plano inteiro pelo do fluxo. Um fluxo de leitura escolhido para um comando com
+  comentário derrubava o comentário.
+- Agora, se o plano livre tem etapa com efeito ou trava que o fluxo não cobre, a escolha é recusada e fica o plano
+  livre, com o motivo na trilha.
+- Prova `simulated`: `backend/tests/test_semelhanca_sem_acao_final.py` (3). `real`: `not_run`.
+
+## 2026-10-07 — 31.221: o ensino a partir da execução (branch feat/31-221-ensino-da-execucao, adendo v1.120)
+
+- A operação do Instagram planeja com ações do catálogo, que as etapas ensinadas do 31.153 não cobrem. O que as
+  reaproveita é a receita, que nasce candidata e só vira ativa após 2 execuções que concordem.
+- Agora `GET /api/aprendizado/execucao/{run}/ensino` diz, por etapa, a candidata ou o motivo fechado (inclusive
+  `caminho_nao_reproduzivel` com `press_back`, o achado da onda 1). O `POST` na mesma rota deixa a pessoa promover as
+  candidatas num gesto, pelo Livro, com `ensino_da_execucao:<run> persona:<id>` na trilha.
+- Corrigida a ressalva do 31.219: as etapas do 31.153 também não servem à operação.
+- Prova `simulated`: `backend/tests/test_ensino_da_execucao.py` (2). `real`: `not_run`, pede o deploy e uma execução
+  real da onda 2.
 
 ## 2026-10-07 — 31.219: o ensino do fluxo para alvo de terceiro, preparado (branch feat/31-219-ensino-alvo-de-terceiro)
 

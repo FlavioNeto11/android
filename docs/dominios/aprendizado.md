@@ -2515,7 +2515,138 @@ deve salvar:
 **Na operação (onda 2), o fluxo não substitui o plano.** A escolha por semelhança (31.151, que executa direto pelo
 31.210) troca o plano INTEIRO pelo do fluxo e só confere se `{username}` está no comando (`habilidades.escolha_valida`).
 Não confere se o fluxo cobre o comando todo. Este fluxo só lê; a ação final da operação (o comentário com aprovação)
-ficaria de fora. Na operação, o que serve são as ETAPAS ensinadas (31.153): o planejador livre monta o plano com a
-ação final, e cada etapa de leitura que tiver receita estável troca o ator pela receita. Sem ensino feito antes da
-onda, o planejador vai livre nos alvos.
+ficaria de fora (a guarda é o 31.222). Sem ensino feito antes da onda, o planejador vai livre nos alvos.
 
+Correção (31.221): as etapas ensinadas do 31.153 também NÃO servem à operação. A operação planeja com ações do catálogo
+(`OPEN_PROFILE`, `OPEN_POST`, `OPEN_COMMENTS`), e o 31.153 exclui de propósito a etapa com ação do catálogo. O que
+reaproveita a etapa do catálogo é a receita pela identidade da etapa, e o caminho para ensiná-la a partir de uma
+execução que deu certo é o da seção seguinte.
+
+## O ensino a partir da execução (31.221)
+
+P-014, para a execução que deu CERTO. Medido em 07/10 na onda 1, lido em `mode=ro`:
+- a operação do Instagram planeja com ações do catálogo;
+- `open_post` e `open_comments` já rodaram sem IA (`driven_by=recipe`), pelas receitas que a IA aprendeu em execuções
+  anteriores;
+- só `open_profile` e o comentário foram pela IA. No `open_profile`, a IA começou por voltar (`press_back`), que a
+  receita não reproduz, e nenhuma receita nasceu.
+
+A receita que a IA aprende numa execução real nasce candidata e só vira ativa depois de `ai.recipes_promote_after`
+execuções que concordem (2 no central; fica assim nesta prova). Agora a pessoa olha a execução que deu certo e promove
+num gesto as candidatas das etapas de leitura dela, sem tempo de aparelho:
+
+- `GET /api/aprendizado/execucao/{run_id}/ensino` (adendo v1.120): por etapa, a candidata ou o motivo fechado
+  (`domain/ensino_da_execucao.Motivo`):
+  - `execucao_simulada`: a simulada não publica;
+  - `com_efeito`: efeito externo ou trava de commit, que seguem pela aprovação;
+  - `nao_concluida`;
+  - `ja_por_receita`;
+  - `sem_ator`;
+  - `caminho_nao_reproduzivel`, com `ferramentas_nao_reproduziveis` (`press_back`, `press_home`, `drag`,
+    `type_secret`, `open_url`, a lista do executor);
+  - `sem_receita`: a IA conduziu e a loja não gravou, por outro motivo;
+  - `receita_ja_vale`;
+  - `receita_fora_de_circulacao`.
+- `POST` na mesma rota: a pessoa promove as candidatas pelo caminho do Livro (candidate → validated → published, com a
+  trilha), com o motivo `ensino_da_execucao:<run> persona:<id>`. O que o Livro recusar volta em `recusadas`; o resto
+  segue.
+
+**Escopo.** A receita não tem escopo por persona, então a persona que executou fica na trilha como proveniência, não
+como trava: a receita promovida vale para o app, como as que já rodam no catálogo. Uma trava por persona pediria
+migração.
+
+**Achado para a onda 2.** Se a IA começar o `open_profile` por voltar, de novo não nasce candidata, e o GET mostra
+`caminho_nao_reproduzivel` com `press_back`. O primeiro gesto do ator numa tela já certa não deveria ser voltar; isso
+fica para o 31.223 ou para um item próprio.
+
+**Prova.** `simulated`: `backend/tests/test_ensino_da_execucao.py`. `real`: a segunda execução com
+`open_profile` `driven_by=recipe` depois do POST sobre uma execução real da onda 2; `not_run` até o deploy e a onda.
+
+## A semelhança não derruba a ação final (31.222)
+
+Achado do 31.219. A escolha por semelhança (31.151, que executa direto pelo 31.210) troca o plano INTEIRO pelo do
+fluxo e só confere se os valores estão no comando. Um fluxo de leitura escolhido para o comando de uma operação que
+também comenta deixaria o comentário de fora.
+
+Agora, antes de trocar, o código compara o plano livre (o planejador o produz junto da escolha) com o do fluxo
+(`habilidades.acoes_finais_fora`). Toda etapa do plano livre com efeito externo ou trava de commit tem de estar no
+fluxo, pela ação do catálogo ou, sem ela, pela chave. Faltando uma, a escolha é recusada e fica o plano livre, com a
+ação final. A trilha diz "recusada (31.222): o fluxo não cobre a ação final <ação>". `runs.flow_id` e o uso do fluxo
+não andam. Sem ação final no plano livre, nada muda.
+
+**Prova.** `simulated`: `backend/tests/test_semelhanca_sem_acao_final.py` (3). `real`: `not_run`; aparece na primeira
+operação com fluxo parecido depois do deploy.
+
+## O modelo forte só no commit (31.223)
+
+Custo por alvo, medido na onda 1 (07/10, lido em `mode=ro`, custo por `planning.costs`):
+- as leituras já decidiam no Sonnet;
+- o Opus decidia os 2 passos da etapa de comentário: US$ 0,081 com imagem e 0,031, ou 0,112 de 0,279 do alvo;
+- a causa é que `strong_model_for_side_effect=by_risk` sobe a etapa INTEIRA.
+
+Com `ai.strong_model_only_on_commit` (padrão `true`, adendo v1.122), a etapa com efeito começa no modelo de ação, que
+abre o campo e digita. A primeira decisão que dispararia o efeito (`is_commit_action`, o seletor ou o verbo) é
+descartada antes de agir e refeita no forte, que segue até o fim da tentativa, como no LT-12 da nova tentativa. A
+refeita não é a primeira decisão, então vai sem imagem quando a árvore basta.
+
+Não mudam: a trava de commit, a política de risco por app e o rejulgamento do "sim" com efeito.
+
+**Estimativa.** A etapa de comentário cai de cerca de 0,112 para cerca de 0,084: Sonnet com imagem 0,040, Sonnet 0,013 (o
+commit descartado) e Opus 0,031. O alvo executado vai de cerca de 0,28 para cerca de 0,25.
+
+**Registro.** Sem campo novo; é o que a Jev lê no 31.229. A decisão descartada é `decide` tier 0 sem ação ligada
+(`actions.ai_call_id`). A refeita é tier 1 com `escalate=efeito`, e a ação dela tem `side_effect`.
+
+**Prova.** `simulated`: `backend/tests/test_forte_so_no_commit.py` (2). A navegação fica no tier 0; o commit do tier 0
+não age e é refeito no tier 1; desligado, a etapa inteira vai ao tier 1. `real`: `not_run`; o custo por alvo da
+primeira operação depois do deploy 61, contra a onda 2.
+
+## A receita sem o "voltar" inicial (31.230)
+
+Achado da onda 1 (07/10): a IA começou o `open_profile` por voltar (`press_back`). Como o voltar depende da tela de
+quem aprendeu, o destilador recusava a tentativa inteira, e nenhuma receita nascia. Na onda 2, sem isto, o POST do
+31.221 podia não ter candidata para promover.
+
+Agora:
+- **Anotação.** Para cada ação da IA, o executor anota se a tela de onde ela partiu era o estado conhecido DECLARADO do
+  app (`conhecimento/apps/<pacote>/telas.yaml`, `estado_conhecido.telas`; no Instagram, `feed` e `profile`). Só a
+  anotação fica em memória, nunca a tela. As telas aprendidas ficam de fora.
+- **Destilação.** O prefixo de `press_back` antes da 1ª ação gravada é descartado quando essa ação partiu do estado
+  conhecido. Ela leva a marca `ancora: estado_conhecido`. Fora do estado conhecido, sem conhecimento do app ou com
+  `press_back` no meio do caminho, a tentativa segue recusada como antes.
+- **Reprodução.** Antes da 1ª ação, a receita ancorada confere a tela. Fora do estado conhecido, ou sem quem confira,
+  é "alvo ausente": não se aplicou (30.80), e a IA assume. Nunca reproduz às cegas a partir de uma tela errada.
+
+A receita nascida assim é candidata como qualquer outra. A sombra a prova, ou a pessoa a promove pelo 31.221.
+
+**Prova.** `simulated`: `backend/tests/test_receita_sem_voltar_inicial.py` (6, com o `telas.yaml` real do Instagram).
+`real`: `not_run`; a 1ª operação depois do deploy 61 com `open_profile` que comece por voltar.
+
+## A pesquisa reaproveita o Livro (31.231)
+
+Achado da onda 1 (07/10): a pesquisa da operação (31.158) custou US$ 0,043 no alvo. Os fatos confirmados que ela deixa
+viram itens do Livro com o assunto canônico no escopo (31.190, 31.200), mas a 2ª operação do MESMO assunto pagava de
+novo pelo que o Livro já sabia.
+
+Agora, depois da lacuna e antes do gasto, a pesquisa consulta o Livro:
+- **Leitura** (`learning/infrastructure/fatos_do_livro_sql.py`, lado do Aprendizado): pelo id da operação, os itens
+  `operation_fact` do assunto canônico E do pacote do app dela (`scope_app`; o mesmo assunto em outro app não cobre),
+  vivos (`candidate`, `validated`, `published`), com o texto do conteúdo e o frescor e os domínios da proveniência
+  v1.117. O rejeitado e o desligado ficam fora. O `candidate` conta porque o minerador do 31.190 só faz nascer item de
+  descoberta confirmada.
+- **Critério** (`learning/domain/reaproveitamento_da_pesquisa.py`, puro): cobre o pedido com pelo menos
+  `ai.pesquisa.reaproveitar_min_fatos` (padrão 2) fatos vivos e dentro do frescor (sem frescor não conta; só o fato
+  confirmado nasce no Livro). Havendo fontes indicadas, cada domínio indicado tem de estar entre os desses fatos. `0`
+  desliga.
+- **Registro** (`pedidos/infrastructure/pesquisa_da_operacao.py`, lado da Jev): cobrindo, os fatos entram na memória
+  da operação como `livro.<item>` (descoberta, confirmada, origem `pesquisa`, com o frescor do Livro), e a
+  `pesquisa.estado` diz "reaproveitado do Livro (31.231)" com os itens, o menor frescor e o critério por extenso. Nenhuma
+  chamada de IA; o log da operação diz "pesquisa reaproveitada do Livro". Não cobrindo, ou se a leitura falha, a
+  pesquisa paga roda como antes, com o motivo no log. Nunca é um pulo silencioso.
+
+A chave `livro.` não volta ao Livro: o minerador do 31.190 só lê `pesquisa.*`.
+
+**Prova.** `simulated`: `backend/tests/test_pesquisa_reaproveita_o_livro.py` (4: critério, serviço que não paga e
+registra, serviço que paga quando não cobre ou quando a leitura falha, leitor do Livro no harness). `real`: `not_run`;
+a 1ª operação de assunto repetido depois do deploy. Contrato com a Jev aceito em 07/10 com dois pontos (filtro por app;
+o `candidate` só por ter vindo confirmado), os dois aplicados.

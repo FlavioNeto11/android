@@ -24,6 +24,7 @@ from .conftest import Harness
 async def test_commit_vai_direto_a_verificacao_e_usa_modelo_forte(harness: Harness) -> None:
     # `true` = todo efeito sobe: com o `by_risk` padrão o QA Messenger (app de prova) fica no tier 0 (item 29.31, abaixo).
     harness.cfg.file.ai.strong_model_for_side_effect = True
+    harness.cfg.file.ai.strong_model_only_on_commit = False     # 31.223: a etapa inteira no forte (o modo de antes)
     run = harness.run(["android-01"])
     detail = await harness.wait_run(run.id)
     assert detail.status == "completed" and len(harness.fakes["android-01"].messages) == 1
@@ -334,6 +335,7 @@ async def test_executor_category_qa_sem_builtin_segue_no_tier_1(harness: Harness
 
 async def test_executor_app_de_prova_com_modo_true_continua_no_tier_1(harness: Harness) -> None:
     harness.cfg.file.ai.strong_model_for_side_effect = True
+    harness.cfg.file.ai.strong_model_only_on_commit = False     # 31.223: a etapa inteira no forte (o modo de antes)
     run = harness.run(["android-01"])
     assert (await harness.wait_run(run.id)).status == "completed"
     assert harness.state.db.scalar("SELECT category FROM apps WHERE id='qa-messenger'") == "qa"

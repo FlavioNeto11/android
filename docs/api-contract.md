@@ -7977,3 +7977,44 @@ amostrador v2, `cpu_media_pct`, `demais_processos_pct` e `nao_atribuido_pct`: n�
 (9 colunas), que segue válida. Antes, a leitura as descartava (achado da Portal no percurso do 31.211). Código:
 `COLUNAS` em `modules/fleet/infrastructure/amostras_do_host.py`. Teste:
 `backend/tests/test_amostras_do_host.py::test_o_csv_do_amostrador_v2_traz_as_tres_colunas_novas_e_o_v1_segue_valido`.
+## Adendo v1.120 (07/10/2026; próximo livre da reserva; item 31.221) — o ensino a partir da execução
+
+- **`GET /api/aprendizado/execucao/{run_id}/ensino`**: `{run_id, status, simulada, ensinaveis, etapas}`. Cada etapa traz:
+  - `step_id`, `key`, `capability`, `status`, `driven_by`;
+  - `persona`: o id, nunca o nome;
+  - `receita`: `{id, status, replay_ok}` da mais nova nascida dela, ou `null`;
+  - `ensinavel`;
+  - `motivo`: `null` ou um destes: `execucao_simulada`, `com_efeito`, `nao_concluida`, `ja_por_receita`, `sem_ator`,
+    `caminho_nao_reproduzivel`, `sem_receita`, `receita_ja_vale`, `receita_fora_de_circulacao`;
+  - `ferramentas_nao_reproduziveis`: só com ferramenta da tentativa que a receita não reproduz.
+
+  Nenhum argumento de ação nem texto de trava sai. 404 `execucao_desconhecida`.
+- **`POST /api/aprendizado/execucao/{run_id}/ensino`** (sem corpo; decide o operador da sessão): promove as candidatas
+  ensináveis a `active` pelo Livro (candidate → validated → published), com o motivo
+  `ensino_da_execucao:<run> persona:<id>`. Responde o mesmo corpo do GET, relido depois, mais:
+  - `promovidas`: `[{recipe_id, step_key}]`;
+  - `recusadas`: `[{recipe_id, step_key, code, message}]`.
+
+  Sem candidata: 200 com `promovidas` vazio.
+- **Prova:** `simulated` (`backend/tests/test_ensino_da_execucao.py`). `real`: `not_run`, pede o deploy e uma execução
+  real da onda 2.
+
+## Adendo v1.122 (07/10/2026; número da orquestradora; item 31.223) — o modelo forte só no commit
+
+Sem rota nova (só dois campos de leitura no `GET /api/ai`). A exposição por passo (modelo que decidiu, custo, commit) é da Jev, no 31.229 (v1.124).
+
+- **`ai.strong_model_only_on_commit`** (`config.yaml`, padrão `true`; vale na subida): quando a etapa com efeito sobe
+  ao modelo de escalonamento (`ai.strong_model_for_side_effect`), ele decide SÓ o commit. A etapa começa no modelo de
+  ação. A primeira decisão que dispararia o efeito é descartada e refeita no forte, que segue até o fim da tentativa.
+  `false` = a etapa inteira no forte, o modo de antes.
+- **`GET /api/ai`** (`AiStatus`, aditivo e só leitura) ganha dois campos opcionais, com os valores em vigor na subida:
+  - `strong_model_for_side_effect`: `by_risk`, `true` ou `false`;
+  - `strong_model_only_on_commit`: booleano.
+
+  Os dois mudam no `config.yaml` e valem na subida da farm-central. Nada muda em `PUT /api/settings`.
+- **O que muda no registro, sem campo novo:**
+  - a decisão de commit descartada fica em `ai_calls` como `decide` tier 0, sem ação ligada (`actions.ai_call_id`);
+  - a refeita é `decide` tier 1 com `escalate=efeito`, e a ação dela leva `side_effect`;
+  - a linha de escalonamento da execução ganha "; só a decisão do commit (31.223)".
+- **Prova:** `simulated` (`backend/tests/test_forte_so_no_commit.py`). `real`: `not_run`; o custo por alvo da primeira
+  operação depois do deploy 61, contra a onda 2.

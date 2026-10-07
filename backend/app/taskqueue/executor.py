@@ -693,8 +693,15 @@ def _proxima_encadeada(fila: list[Decision], antes: UiTree | None, agora: UiTree
     return Decision(tool=d.tool, args={**d.args, "element_id": iguais[0].id}, raw_text=d.raw_text)
 
 
-_IMAGEM_VAI: frozenset[str] = frozenset({"politica_sempre", "pedida", "problema", "primeira_julgada",
-                                         "primeira_da_leitura", "leitura_pendente", "arvore_pobre"})
+_IMAGEM_VAI: frozenset[str] = frozenset({"politica_sempre", "alvo_fora_da_arvore", "pedida", "problema",
+                                         "primeira_julgada", "primeira_da_leitura", "leitura_pendente", "arvore_pobre"})
+
+
+def alvo_na_arvore(args: object, tree: UiTree) -> bool:
+    """31.232: o alvo do efeito foi escolhido na árvore (um `element_id` que existe nela). Toque por coordenada, elemento
+    ausente ou ferramenta sem elemento: fora, e quem confere o efeito no modelo forte recebe a imagem."""
+    element_id = getattr(args, "element_id", None)
+    return bool(element_id) and tree.by_id(str(element_id)) is not None
 #: Item 31.37: ferramentas que só LEEM a tela. Repeti-las não é ciclo sem progresso: na leitura do Outlook (d62546,
 #: e7df7c) `observe_screen` duas vezes contou como ciclo e escalou 2 ou 3 decisões para o Opus. A contagem segue
 #: valendo para toda ferramenta que age na tela.
@@ -799,6 +806,9 @@ class StepExecutor:
         # Item 31.24 (C-4): o juiz e a evidência de cada tentativa EM CURSO, somados enquanto ela roda e gravados uma
         # vez no fim (`_registrar_estrategia`). Some no fim da tentativa, saia ela como sair.
         self._tempos_da_tentativa: dict[str, TemposDaTentativa] = {}
+        #: 31.230: por tentativa, a ação da IA (id) → a tela antes dela era o estado conhecido do app? Lida pela
+        #: destilação no fim da tentativa; só a anotação, nunca a tela.
+        self._em_casa_antes: dict[str, dict[int, bool]] = {}
         # Disjuntor de conta de IA (achado #90): por execução, a PRIMEIRA falha de cobrança/credencial represa
         # as etapas seguintes sem gastar tentativa — os aparelhos seguintes nem chegam a chamar o provedor.
         self._tripped_runs: dict[str, AiBreakerTrip] = {}
@@ -1219,15 +1229,16 @@ class StepExecutor:
         return getattr(self.provider, "model", "") or ""
 
     def _want_image(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool, requested: bool,
-                    ai: AiCfg | None = None, le_valor: bool = False, falta_saida: bool = False) -> bool:
+                    ai: AiCfg | None = None, le_valor: bool = False, falta_saida: bool = False,
+                    alvo_fora: bool = False) -> bool:
         """Política `ai.image_policy`: se a imagem vai junto. O porquê é `_motivo_da_imagem`, a única régua."""
         return self._motivo_da_imagem(tree, judged_step=judged_step, first=first, trouble=trouble,
                                       requested=requested, ai=ai, le_valor=le_valor,
-                                      falta_saida=falta_saida) in _IMAGEM_VAI
+                                      falta_saida=falta_saida, alvo_fora=alvo_fora) in _IMAGEM_VAI
 
     def _motivo_da_imagem(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool,
                           requested: bool, ai: AiCfg | None = None, le_valor: bool = False,
-                          falta_saida: bool = False) -> MotivoDaImagem:
+                          falta_saida: bool = False, alvo_fora: bool = False) -> MotivoDaImagem:
         """Política `ai.image_policy`. A imagem custa ~1/3 dos tokens novos de cada chamada; a hierarquia quase sempre
         basta. Em `auto` a imagem vai quando a árvore é pobre (WebView/canvas), na 1ª decisão de etapa julgada por
         visão, depois de erro/ciclo, ou quando o próprio modelo pede (observe_screen.need_image).
@@ -1235,7 +1246,8 @@ class StepExecutor:
         Decide pela ÁRVORE, antes de a imagem existir (adendo v0.20, C1): o resto do que pesa aqui já se sabe antes
         de observar, então a imagem só é adquirida quando vai ser mandada. RA-10: devolve o MOTIVO (`ai_calls.
         image_reason`), na ordem em que a regra decide; vai junto quando ele está em `_IMAGEM_VAI`.
-        `ai`: o bloco da execução (17.14, `_ai_da_execucao`); vazio = o global."""
+        `ai`: o bloco da execução (17.14, `_ai_da_execucao`); vazio = o global. `alvo_fora` (31.232): esta chamada é do
+        modelo forte que confere um efeito cujo alvo não está na árvore (`alvo_na_arvore`)."""
         ai = ai or self.cfg.file.ai
         if tree.sensitive:
             return "sensivel"
@@ -1243,6 +1255,9 @@ class StepExecutor:
             return "politica_nunca"
         if ai.image_policy == "always":
             return "politica_sempre"
+        if alvo_fora and ai.imagem_quando_alvo_fora_da_arvore:
+            # 31.232: o toque por coordenada que o forte confere sem a imagem é às cegas: a árvore não diz o que há ali.
+            return "alvo_fora_da_arvore"
         if requested:
             return "pedida"
         if trouble:
@@ -1435,6 +1450,7 @@ class StepExecutor:
                     # 31.87 F2: a receita ensinada digita `{perfil_email}`; os dados da persona do objetivo entram
                     # só na REPRODUÇÃO (os do objetivo vencem). A destilação na execução segue com `rr.variables`.
                     rr.replayer = self.recipes.replayer(rr.row, {**persona, **rr.variables})
+                    rr.replayer.em_casa = self._conferidor_de_casa(app.package)       # 31.230: a âncora
                     if rr.row["status"] == "candidate":
                         rr.mode = "shadow"      # em prova: a IA decide a etapa e a receita só é comparada
             except Exception as exc:  # noqa: BLE001 - receita é otimização: nunca derruba a etapa
@@ -1691,7 +1707,7 @@ class StepExecutor:
         if not ok or (rr.row is not None and substitui is None) or not (app.package and rr.app_version and rr.step_hash):
             return
         rows = repo.db.query("SELECT * FROM actions WHERE attempt_id=? ORDER BY seq", (attempt_id,))
-        actions, why = distill(rows, rr.variables)
+        actions, why = distill(rows, rr.variables, em_casa_antes=self._em_casa_antes.pop(attempt_id, None))
         if actions is None:
             log.info("%s: etapa %s não virou receita: %s", iid, step.key, why)
             return
@@ -1762,6 +1778,35 @@ class StepExecutor:
             self.repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} promovida a ativa — a IA fez "
                                "exatamente o caminho dela em execuções seguidas; as próximas execuções desta etapa "
                                "dispensam a IA enquanto a tela casar", run_id=run_id, instance_id=iid, step_id=step.id)
+
+    def _em_casa(self, pacote: str | None, arvore: UiTree) -> bool | None:
+        """31.230: a tela é o estado conhecido DECLARADO do app (`telas.yaml`, `estado_conhecido.telas`)? `None` sem
+        conhecimento do app. As telas aprendidas ficam de fora de propósito (dependem do modo do livro)."""
+        if not pacote:
+            return None
+        k = telas_do_app.da_pasta(CONHECIMENTO_DE_APPS / pacote)
+        if k is None:
+            return None
+        frente = next((p for p in arvore.packages if p != "com.android.systemui"), None)
+        return k.em_casa(telas_do_app.classificar(k, arvore, package=frente).tela)
+
+    def _anotar_casa(self, attempt_id: str, aid: int, pacote: str | None, arvore: UiTree) -> None:
+        """31.230: anota, para a destilação, se a ação `aid` da IA partiu do estado conhecido. Anotação nunca derruba
+        a etapa; sem conhecimento do app, nada é anotado (e o voltar inicial segue recusado)."""
+        try:
+            casa = self._em_casa(pacote, arvore)
+        except Exception:  # noqa: BLE001 - a anotação é otimização da receita
+            log.exception("estado conhecido não conferido para a receita (%s)", pacote)
+            return
+        if casa is None:
+            return
+        if len(self._em_casa_antes) > 256 and attempt_id not in self._em_casa_antes:   # a tentativa que não destilou
+            self._em_casa_antes.pop(next(iter(self._em_casa_antes)))
+        self._em_casa_antes.setdefault(attempt_id, {})[aid] = casa
+
+    def _conferidor_de_casa(self, pacote: str | None) -> Callable[[UiTree], bool]:
+        """31.230: o que a reprodução usa para conferir a âncora: só `True` quando o app declara e a tela é ele."""
+        return lambda arvore: bool(self._em_casa(pacote, arvore))
 
     def _installed_signature(self, instance_id: str, package: str) -> str:
         """Assinatura do APK que está NESTE aparelho, quando ele veio de uma release catalogada.
@@ -2029,10 +2074,16 @@ class StepExecutor:
         # C-1 (31.24): a linha de `ai_calls` do decide desta volta; `None` quando quem decide é a receita ou o executor.
         chamada_do_ator: int | None = None
 
+        #: 31.230: a árvore da última observação de decisão (a tela de onde parte a próxima ação da IA)
+        arvore_da_decisao: list[UiTree | None] = [None]
+
         def intencao(tool: str, args: dict[str, object], rationale: str | None, *, side_effect: bool,
                      source: str = "ai") -> int:
-            return repo.log_intent(attempt_id, tool, args, rationale, side_effect=side_effect, source=source,
-                                   ai_call_id=chamada_do_ator)
+            aid = repo.log_intent(attempt_id, tool, args, rationale, side_effect=side_effect, source=source,
+                                  ai_call_id=chamada_do_ator)
+            if source == "ai" and arvore_da_decisao[0] is not None:
+                self._anotar_casa(attempt_id, aid, app.package, arvore_da_decisao[0])     # 31.230
+            return aid
 
         async def evidence(obs: Observation | None, note: str, kind: str = "screenshot") -> None:
             # C-4 (31.24): o tempo das capturas e gravações de evidência da tentativa (`attempts.evidencia_ms`).
@@ -2189,7 +2240,12 @@ class StepExecutor:
         # tentativa — a ação em que a anterior parou, e o efeito.
         tier_efeito, motivo_efeito = side_effect_tier(step, cap, ai_cfg.strong_model_for_side_effect,
                                                       app.builtin and app.category == CATEGORIA_APP_DE_PROVA)
-        base_tier = 1 if tier_efeito else 0
+        # 31.223: com `strong_model_only_on_commit`, a etapa com efeito começa no modelo de ação e só o commit sobe
+        so_no_commit = bool(tier_efeito) and ai_cfg.strong_model_only_on_commit
+        base_tier = 1 if tier_efeito and not so_no_commit else 0
+        commit_subiu = False
+        commit_alvo_fora = False           # 31.232: a decisão do commit refeita no forte confere um alvo fora da árvore
+        efeito_alvo_fora = False           # 31.232: o efeito disparado tinha o alvo fora da árvore (vai ao rejulgamento)
         # LT-12: a nova tentativa inteira subia ao modelo forte (76 decides de tentativa 2 no tier 1 em 7 d, +1,9 s cada),
         # mas ela recomeça quase sempre pelo prefixo que a anterior já acertou. Agora começa no tier 0 e sobe — até o fim
         # da tentativa — na 1ª decisão que repetir, na mesma tela estrutural, a última ação da anterior (onde ela
@@ -2341,9 +2397,12 @@ class StepExecutor:
         ultima_cobertura = ""
         # Um texto só para as duas saídas do teto: `falhas.py` o classifica como ciclo sem progresso.
         motivo_do_teto = f"Limite de {max_actions} ações por etapa atingido sem concluir."
+        # 31.223: o commit do modelo de ação descartado e refeito no forte tem uma volta reservada (não conta como
+        # ação): no limite de ações, o commit ainda chega ao forte (achado da revisão do PR 505)
         for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0) + LIMITE_DE_FOLHAS
-                           + LIMITE_DE_ROLAGENS_ATE_O_INTERRUPTOR):
-            if volta - fechados_pela_regra - folhas_fechadas - rolagens_ate_o_interruptor > max_actions:
+                           + LIMITE_DE_ROLAGENS_ATE_O_INTERRUPTOR + int(so_no_commit)):
+            if (volta - fechados_pela_regra - folhas_fechadas - rolagens_ate_o_interruptor - int(commit_subiu)
+                    > max_actions):
                 # E1 da revisão do 29.87: o teto do ator, não o fim do laço. Sair com `break` pularia o `else` e levaria
                 # a etapa à verificação como se ela tivesse dito `step_done`.
                 return await fail_or_retry(motivo_do_teto, last_obs)
@@ -2363,7 +2422,7 @@ class StepExecutor:
             receita_decide = rr.mode == "replay" and not rr.diverged and not fired and rr.replayer is not None
             pede = dict(judged_step=judged_step, first=decisions == 0, trouble=errors_in_row >= 1 or same_count >= 1,
                         requested=image_requested, ai=ai_cfg, le_valor=bool(saidas_declaradas),
-                        falta_saida=bool(faltam_saidas()))
+                        falta_saida=bool(faltam_saidas()), alvo_fora=commit_alvo_fora)
             t_observacao = time.monotonic()
             try:
                 obs = last_obs = await reler_se_ocupada(
@@ -2371,6 +2430,7 @@ class StepExecutor:
                                                  imagem=lambda t: not receita_decide and self._want_image(t, **pede),
                                                  tolerar_falha_da_imagem=True),
                     prazo=deadline, quem=iid)
+                arvore_da_decisao[0] = obs.tree                  # 31.230: a tela de onde parte a próxima ação
                 if obs.image_omitted == "capture_failed":
                     # 31.76: a falha foi SÓ da imagem (a árvore saiu e o tamanho da tela se sabe): nada de `_stuck`,
                     # de erro seguido nem de sessão recriada. A decisão segue pela árvore; a captura nunca vira prova.
@@ -2711,7 +2771,8 @@ class StepExecutor:
                     # controles abaixo. Escalar aqui é decisão do dono, com o custo medido no relatório.
                     rr.retorno_contado = True
                     contar_retorno_ia(rr.diverged)
-                tier = 1 if (base_tier or retentativa_subiu or errors_in_row >= 2 or same_count >= 1 or piso_forcou) else 0
+                tier = 1 if (base_tier or commit_subiu or retentativa_subiu or errors_in_row >= 2 or same_count >= 1
+                             or piso_forcou) else 0
                 if opcional:                   # item 31.36: a limpeza opcional nunca sobe para o modelo caro
                     tier = 0
                 # RA-10: o porquê do modelo forte NESTA decisão, em vocabulário fechado (`ai_calls.escalate`); a frase
@@ -2725,8 +2786,8 @@ class StepExecutor:
                     # strong_model_for_side_effect) e já aparecia no cartão de custo — o que faltava era a linha
                     # na execução dizendo POR QUE esta etapa passou a decidir no modelo caro (achado #92, item 5).
                     escalated = True
-                    motivo = (motivo_efeito if escalonamento == "efeito"
-                              else _FRASE_DO_ESCALONAMENTO.get(escalonamento or "", ""))
+                    motivo = (motivo_efeito + ("; só a decisão do commit (31.223)" if commit_subiu else "")
+                              if escalonamento == "efeito" else _FRASE_DO_ESCALONAMENTO.get(escalonamento or "", ""))
                     repo.decision(f"{iid} · {step.title}: decisão escalonada para o modelo de escalonamento "
                                   f"({motivo})", run_id=run_id, instance_id=iid, step_id=step.id)
                 t_prompt = time.monotonic()                     # C-2 (31.24): daqui até `_ai` é a montagem do pedido
@@ -2734,7 +2795,8 @@ class StepExecutor:
                 motivo_imagem = self._motivo_da_imagem(obs.tree, judged_step=judged_step, first=decisions == 0,
                                                        trouble=trouble, requested=image_requested, ai=ai_cfg,
                                                        le_valor=bool(saidas_declaradas),
-                                                       falta_saida=bool(faltam_saidas()))
+                                                       falta_saida=bool(faltam_saidas()), alvo_fora=commit_alvo_fora)
+                commit_alvo_fora = False       # 31.232: vale só para a decisão refeita, a primeira depois da subida
                 quer_imagem = motivo_imagem in _IMAGEM_VAI
                 if quer_imagem and obs.jpeg is None and obs.image_omitted == "policy":
                     # A receita divergiu depois da observação só de árvore: a imagem vem agora, da mesma árvore,
@@ -3354,6 +3416,13 @@ class StepExecutor:
                 if errors_in_row >= 4:
                     return await fail_or_retry("Um efeito externo foi tentado numa etapa que não o declara.", obs)
                 continue
+            # ---------- 31.223: na etapa com efeito, o modelo de ação navega e o commit é decidido pelo forte
+            if so_no_commit and not commit_subiu and not from_recipe and tier == 0 and is_commit:
+                commit_subiu = True
+                commit_alvo_fora = not alvo_na_arvore(args, obs.tree)
+                history.append(f"(executor) {decision.tool} dispararia o efeito desta etapa: a decisão sobe ao modelo "
+                               "de escalonamento antes de agir.")
+                continue
             # ---------- LT-12: na nova tentativa, o modelo barato não repete onde a anterior parou nem dispara o efeito
             if retentativa and not retentativa_subiu and not from_recipe and tier == 0:
                 repete = acao_onde_parou == (obs.tree.signature(estrutural=True), f"{decision.tool}:{_target_key(args)}")
@@ -3490,6 +3559,7 @@ class StepExecutor:
                            source="recipe" if from_recipe else ("regra" if pela_regra else "ai"))
             if is_commit:
                 self._guardar_linha_de_base(step, obs.tree)      # 31.59: a tela de ANTES do toque
+                efeito_alvo_fora = not alvo_na_arvore(args, obs.tree)
                 fired = True           # a partir daqui o efeito pode ter ocorrido, aconteça o que acontecer
                 self._open_effect(objective, step, rt, cap, app.id)   # o histórico registra a INTENÇÃO, não o sucesso
             t0 = time.monotonic()
@@ -3662,6 +3732,7 @@ class StepExecutor:
                                                                                   if cap and app.package else None),
                                                                       attempt_id=attempt_id, cartao=cartao,
                                                                       pacote=app.package, imagem_forcada=bool(visuais),
+                                                                      alvo_do_efeito_fora=fired and efeito_alvo_fora,
                                                                       copias_vistas=copias_vistas,
                                                                       sobreposicoes=sobreposicoes,
                                                                       coberturas=coberturas)
@@ -3904,7 +3975,8 @@ class StepExecutor:
                       attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                       imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
                       proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None,
-                      sobreposicoes: list[bool] | None = None, coberturas: list[Cobertura] | None = None
+                      sobreposicoes: list[bool] | None = None, coberturas: list[Cobertura] | None = None,
+                      alvo_do_efeito_fora: bool = False
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """A verificação (`_verificar`), com o tempo inteiro dela somado na tentativa (31.24, C-4:
         `attempts.verificacao_ms`). Só mede: os argumentos passam como vieram."""
@@ -3932,7 +4004,7 @@ class StepExecutor:
                                          cartao=cartao, pacote=pacote, imagem_forcada=imagem_forcada,
                                          uma_rodada=uma_rodada, so_prova_local=so_prova_local, proposito=proposito,
                                          copias_vistas=copias_vistas, sobreposicoes=sobreposicoes,
-                                         coberturas=coberturas)
+                                         coberturas=coberturas, alvo_do_efeito_fora=alvo_do_efeito_fora)
         finally:
             if (tempos := self._tempos(attempt_id)) is not None:
                 tempos.verificacao_ms += ms_desde(inicio)
@@ -3944,7 +4016,8 @@ class StepExecutor:
                          attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                          imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
                          proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None,
-                         sobreposicoes: list[bool] | None = None, coberturas: list[Cobertura] | None = None
+                         sobreposicoes: list[bool] | None = None, coberturas: list[Cobertura] | None = None,
+                         alvo_do_efeito_fora: bool = False
                          ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """`uma_rodada`: uma só leitura e, se a pós-condição a exigir, um só julgamento — devolve o veredito mesmo
         negativo, sem esperar a tela mudar até o fim do orçamento. É o modo dos atalhos que conferem ANTES do ator
@@ -4167,15 +4240,33 @@ class StepExecutor:
                             f"{rt.id} · {step.title}: o verificador aprovou uma etapa com efeito externo; "
                             "conferindo com o modelo de escalonamento",
                             run_id=run_id, instance_id=rt.id, step_id=step.id)
+                        # 31.232: o efeito disparado por um alvo fora da árvore é conferido COM a imagem, a mesma
+                        # régua do commit refeito; com o alvo na árvore, a tela do 1º juiz, como antes.
+                        motivo_rejulgamento = motivo_imagem
+                        tela_rejulgamento = screen
+                        if alvo_do_efeito_fora and motivo_imagem not in _IMAGEM_VAI:
+                            motivo_rejulgamento = self._motivo_da_imagem(obs.tree, judged_step=False, first=False,
+                                                                         trouble=False, requested=False, ai=ai_cfg,
+                                                                         alvo_fora=True)
+                            if motivo_rejulgamento in _IMAGEM_VAI:
+                                try:
+                                    obs = await self.devices.completar_imagem(rt, obs, timeout=call_timeout,
+                                                                              lado_max=lado_max)
+                                    tela_rejulgamento, _ = self._screen(obs, with_image=True,
+                                                                        protect=tuple(step.commit_guard), ai=ai_cfg)
+                                except DriverTimeout:
+                                    raise
+                                except DriverError as exc:   # sem a imagem, o rejulgamento segue pela árvore (o de antes)
+                                    log.info("%s: imagem do rejulgamento indisponível (%s)", rt.id, exc)
                         verdict = await self._ai(
                             run_id, objective_id,
-                            lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
+                            lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=tela_rejulgamento,
                                                                        facts=list(facts or []), escalate=True)),
                             # 31.50 (d): SEM a dica da tela. O rejulgamento do "sim" com efeito é a segunda opinião
                             # independente; com a mesma orientação do primeiro juiz, deixava de ser.
                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="sim_com_efeito",
-                                                 image_reason=motivo_imagem))
+                                                 image_reason=motivo_rejulgamento))
                         level = verdict.delivery_level
                     if copias_vistas is not None and verdict.copias is not None:
                         copias_vistas.append(verdict.copias)
