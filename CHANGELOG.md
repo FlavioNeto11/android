@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.183, correção: os avisos do ensino saem mascarados (achado da Portal, aprendizado/integ-60)
+
+- A prévia, o salvar e o refazer receitas devolviam `warnings` em claro. Vários citam a etapa pelo título ou, sem
+  título, pela `key`, e a IA escolhe os dois a partir da tela. O aviso do 31.182 já usava a posição da etapa.
+- `exibicao.avisos` mascara o texto e a forma de chave (`abrir_perfil_{perfil_nome}`). A proposta guardada não muda.
+- Prova `simulated`: `backend/tests/test_proposta_para_exibir.py` (4). Ensino, arquitetura e rotas: 502 passaram.
+
 ## 2026-10-07 — 31.192: o script que marca a prova da onda do aprendizado pelo commit no ar (branch feat/31-192-marcacao-da-onda)
 
 - A medida da onda 2 de 07/10 depende do commit no ar. No central lido em 06/10 23:10Z (`42cba3cd`), os cortes 58 e 59

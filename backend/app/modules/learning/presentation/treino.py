@@ -119,12 +119,16 @@ def _exibir(request: Request, resposta: object) -> object:
 
 def _relatorio_exibido(request: Request, session_id: str, resposta: object) -> object:
     """31.183 (achado da Portal no 31.189): o `steps[]` da prévia, do salvar e do refazer receitas com o título e o
-    motivo mascarados; o relatório só é exibido."""
-    if not isinstance(resposta, dict) or not isinstance(resposta.get("steps"), list):
+    motivo mascarados; o relatório só é exibido. E os `warnings` também (achado da Portal no 31.182: o aviso cita a
+    etapa pelo título ou pela `key`)."""
+    if not isinstance(resposta, dict) or not any(isinstance(resposta.get(k), list) for k in ("steps", "warnings")):
         return resposta
     perfil = _st(request).db.scalar("SELECT profile_id FROM training_sessions WHERE id=?", (session_id,))
     persona = _st(request).repo.variaveis_da_persona(str(perfil) if perfil else None)
-    return {**resposta, "steps": exibicao.relatorio(resposta["steps"], persona)}
+    return {**resposta, **({"steps": exibicao.relatorio(resposta["steps"], persona)}
+                           if isinstance(resposta.get("steps"), list) else {}),
+            **({"warnings": exibicao.avisos(resposta["warnings"], persona)}
+               if isinstance(resposta.get("warnings"), list) else {})}
 
 
 @router.get("/training", response_model=None)

@@ -72,4 +72,14 @@ def relatorio(etapas: object, persona: Mapping[str, str]) -> object:
             if isinstance(e, dict) else e for e in etapas]
 
 
-__all__ = ["proposta", "relatorio"]
+def avisos(lista: object, persona: Mapping[str, str]) -> object:
+    """Os `warnings` da prévia, do salvar e do refazer receitas, mascarados (achado da Portal no 31.182): vários citam a
+    etapa pelo título ou, sem título, pela `key` ("A etapa “abrir_perfil_ana_lopes” …"), e a IA escolhe os dois a partir
+    da tela. O texto e a forma de chave são mascarados; o que não é texto fica."""
+    validos = {n: v for n, v in persona.items() if isinstance(v, str) and len(v.strip().lstrip("@")) >= MINIMO}
+    if not isinstance(lista, list) or not validos:
+        return lista
+    return [_na_chave(_mascarar(a, validos), validos) if isinstance(a, str) else a for a in lista]
+
+
+__all__ = ["avisos", "proposta", "relatorio"]

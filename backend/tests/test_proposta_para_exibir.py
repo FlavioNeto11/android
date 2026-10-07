@@ -69,6 +69,7 @@ async def test_o_relatorio_da_previa_e_do_salvar_sai_com_o_titulo_mascarado(harn
     st, sid = await _sessao_com_persona(harness)                             # persona "Ana" "Lopes"
     p = _proposta()
     p["steps"][0]["title"] = "escrever para Lopes"
+    p["steps"][0].pop("postcondition", None)              # o aviso "não descreve a pós-condição" cita o título
     app = create_app(harness.cfg, state=harness.state)
     app.state.poc = harness.state
     corpo = {"proposal": p, "profile_ids": [], "group_ids": []}
@@ -77,4 +78,17 @@ async def test_o_relatorio_da_previa_e_do_salvar_sai_com_o_titulo_mascarado(harn
         salvo = (await c.post(f"/api/training/{sid}/save", json=corpo)).json()
     assert [s["title"] for s in previa["steps"]] == ["escrever para {perfil_sobrenome}"], previa
     assert [s["title"] for s in salvo["steps"]] == ["escrever para {perfil_sobrenome}"]
+    assert "Lopes" not in json.dumps([previa.get("warnings"), salvo.get("warnings")], ensure_ascii=False)
+    assert any("{perfil_sobrenome}" in a for a in previa["warnings"]), previa["warnings"]
     assert salvo["steps"][0]["key"] == p["steps"][0]["key"]                   # a chave do relatório fica
+
+
+def test_os_avisos_saem_mascarados_no_texto_e_na_forma_de_chave() -> None:
+    """Achado da Portal no 31.182: o aviso cita a etapa pelo título ou, sem título, pela `key` em snake_case."""
+    persona = {"perfil_nome": "Ana Lopes", "perfil_sobrenome": "Lopes", "curto": "Al"}
+    avisos = ["A etapa “abrir_perfil_ana_lopes” não descreve a pós-condição: o objetivo dela serve de critério.",
+              "A etapa 2 (“escrever para Ana Lopes”) tem ação do catálogo.", 3]
+    assert exibicao.avisos(avisos, persona) == [
+        "A etapa “abrir_perfil_{perfil_nome}” não descreve a pós-condição: o objetivo dela serve de critério.",
+        "A etapa 2 (“escrever para {perfil_nome}”) tem ação do catálogo.", 3]
+    assert exibicao.avisos(avisos, {}) is avisos
