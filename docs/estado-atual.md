@@ -6,7 +6,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 ## Onde estamos
 
 - **Deploy 58 no ar (07/10/2026, 01:12Z, central `0c8683e8b8549d`, sem migração; reposição do ensino, operação pela tela, observabilidade e canais).** 19 pontas: Aprendizado 31.165,
-  31.150, 31.149, 31.169, 31.152; Portal 31.168, 31.170 a 31.172, 31.176; GitHub 29.169 a 29.171 e 29.166a; DevOps 29.160 e 29.156 fatia 1; Canais 28.62, 28.60, 28.58; Jev 15.15 F5c B. Correções feitas durante o funil 58, só teste e uma importação: `fix/31-177-prefixo-do-lote` 6f21669a (`rendimento.py` importa `PREFIXO_LOTE` de `app/contracts/origem.py`, achado da Jev no dirigido do vigia) e os seis hashes de `test_prompts_licoes` recalculados após o dfaeb216 (regras de conteúdo T1, decisão do dono; lição: quem muda `prompts.py` roda `test_prompts_licoes`).
+  31.150, 31.149, 31.169, 31.152; Portal 31.168, 31.170 a 31.172, 31.176; GitHub 29.169 a 29.171 e 29.166a; DevOps 29.160 e 29.156 fatia 1; Canais 28.63 e 28.64 (28.62, 28.60 e 28.58 vão no 59); Jev 15.15 F5c B. Correções feitas durante o funil 58, só teste e uma importação: `fix/31-177-prefixo-do-lote` 6f21669a (`rendimento.py` importa `PREFIXO_LOTE` de `app/contracts/origem.py`, achado da Jev no dirigido do vigia) e os seis hashes de `test_prompts_licoes` recalculados após o dfaeb216 (regras de conteúdo T1, decisão do dono; lição: quem muda `prompts.py` roda `test_prompts_licoes`).
   - `real` (central WIN-7S2UASNLFOP): deploy com backup `20261006-221038`; saúde ok, migração 127; prova de fora; agente `0.1.0+0.1.0+0c8683e`; A10 ok. Hardware 29.161 real.
   - `simulated` (suíte 58): números do CHANGELOG.
   - `not_run`: tarefas agendadas novas; percursos reais do Portal; religar fluxo para persona real.
