@@ -10,6 +10,8 @@ O que estes testes protegem:
 * a navegação dentro da etapa com efeito (o toque no campo) decide no tier 0; a decisão de commit do tier 0 NÃO age
   (a mensagem sai uma vez só) e é refeita no tier 1, com a linha "só a decisão do commit (31.223)";
 * com a chave em `false`, a etapa inteira decide no tier 1, como antes;
+* no limite de ações (`max_actions_per_step: 1`), o commit descartado ainda chega ao forte na MESMA tentativa (a volta
+  é reservada; achado da revisão do PR 505);
 * `GET /api/ai` mostra a política em vigor (só leitura): `strong_model_for_side_effect` e
   `strong_model_only_on_commit`;
 * o registro que a Jev lê por passo (31.229, sem campo novo): na etapa de envio, `ai_calls` tem a navegação no tier 0
@@ -90,3 +92,17 @@ async def test_o_get_da_ia_mostra_a_politica_em_vigor(harness: Harness) -> None:
         mudado = (await c.get("/api/ai")).json()
     assert (padrao["strong_model_for_side_effect"], padrao["strong_model_only_on_commit"]) == ("by_risk", True)
     assert (mudado["strong_model_for_side_effect"], mudado["strong_model_only_on_commit"]) == ("true", False)
+
+
+async def test_no_limite_de_acoes_o_commit_ainda_chega_ao_forte(harness: Harness) -> None:
+    harness.cfg.file.ai.strong_model_for_side_effect = True
+    _navega_antes_do_commit(harness)
+    async with _cliente(harness) as c:
+        assert (await c.put("/api/settings", json={"max_actions_per_step": 1})).status_code == 200
+    run = harness.run(["android-01"])
+    assert (await harness.wait_run(run.id)).status == "completed"
+    decisoes = [(c["step"], c.get("tier")) for c in harness.ai.calls if c["role"] == "decide"]
+    # sem a volta reservada, o commit descartado estourava o limite e a execução recomeçava da conversa
+    assert decisoes[:5] == [("open_conversation", 0), ("compose_message", 0), ("send_message", 0),
+                            ("send_message", 0), ("send_message", 1)], decisoes
+    assert len(harness.fakes["android-01"].messages) == 1

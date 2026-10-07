@@ -237,7 +237,9 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   `category='qa'` sozinho não basta, porque `POST/PUT /apps` o aceitam em qualquer app.
   Sem catálogo, "risco desconhecido" mandava toda etapa de envio ao modelo forte: 64 a 66 escalonamentos em 7 dias,
   43 % das chamadas do Opus no tier 1, cerca de US$ 0,20 por dia, e uma bateria de prova distorcida. A regra lê o dado
-  do app, nunca o nome (ADR-052). `strong_model_for_side_effect: true` continua subindo tudo (escolha explícita), etapa com
+  do app, nunca o nome (ADR-052). `strong_model_for_side_effect: true` continua subindo toda etapa com efeito (escolha explícita; com
+  `strong_model_only_on_commit: true`, o padrão desde o 31.223, sobe só a decisão do commit, e com `false` a etapa
+  inteira), etapa com
   capability segue o risco do catálogo, e app real sem catálogo continua no tier 1. Retentativa, erros seguidos e ciclo
   escalam em qualquer app.
 - **Desbravador** (`ai.pathfinder_wait_s`): visível (`wait_reason: pathfinder`), medido, agrupado por

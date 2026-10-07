@@ -2344,9 +2344,12 @@ class StepExecutor:
         ultima_cobertura = ""
         # Um texto só para as duas saídas do teto: `falhas.py` o classifica como ciclo sem progresso.
         motivo_do_teto = f"Limite de {max_actions} ações por etapa atingido sem concluir."
+        # 31.223: o commit do modelo de ação descartado e refeito no forte tem uma volta reservada (não conta como
+        # ação): no limite de ações, o commit ainda chega ao forte (achado da revisão do PR 505)
         for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0) + LIMITE_DE_FOLHAS
-                           + LIMITE_DE_ROLAGENS_ATE_O_INTERRUPTOR):
-            if volta - fechados_pela_regra - folhas_fechadas - rolagens_ate_o_interruptor > max_actions:
+                           + LIMITE_DE_ROLAGENS_ATE_O_INTERRUPTOR + int(so_no_commit)):
+            if (volta - fechados_pela_regra - folhas_fechadas - rolagens_ate_o_interruptor - int(commit_subiu)
+                    > max_actions):
                 # E1 da revisão do 29.87: o teto do ator, não o fim do laço. Sair com `break` pularia o `else` e levaria
                 # a etapa à verificação como se ela tivesse dito `step_done`.
                 return await fail_or_retry(motivo_do_teto, last_obs)
