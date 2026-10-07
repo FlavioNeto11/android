@@ -25,6 +25,7 @@ import {
   type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, ONDE_FICAM_AS_HABILIDADES,
   ORIGEM_LABEL, porQuemDecidiu, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind, tituloDoItem,
 } from './model';
+import { assuntoDoItem } from './assunto';
 import { ParecerNaLinha } from './ParecerDaIA';
 import styles from './Aprendizado.module.css';
 
@@ -124,6 +125,8 @@ interface ItemDoLivroProps {
   uso?: { rotulo: string; porque?: string | null };
   /** O título já sem repetição na lista (`titulosDaLista`); sem ele, o do item (`tituloDoItem`). */
   titulo?: string;
+  /** 31.209: com ele, o assunto da lição vira botão que filtra o Livro por esse assunto; sem ele, o assunto aparece só como texto. */
+  onFiltrarAssunto?: (assunto: string) => void;
   /**
    * 30.66: o motivo de "publicado antes da regra de aprovação" que o cabeçalho da lista já disse uma vez (em Revisar,
    * "tem efeito externo"). O item com esse mesmo motivo não repete a frase; o que tiver outro motivo segue com a dele.
@@ -132,7 +135,8 @@ interface ItemDoLivroProps {
 }
 
 /** Uma linha do livro: o que é, em que estado, por que espera o dono e o que a pessoa pode fazer. */
-export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso, titulo: tituloDaLista, avisoNoCabecalho = null }: ItemDoLivroProps) {
+export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso, titulo: tituloDaLista, onFiltrarAssunto, avisoNoCabecalho = null }: ItemDoLivroProps) {
+  const assunto = assuntoDoItem(e);
   const [aberta, setAberta] = useState<AcaoDoItem | null>(null);
   const titulo = tituloDaLista ?? tituloDoItem(e);
   const porQue = porQueOSistemaNaoPublica(e);
@@ -180,6 +184,13 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
             <button type="button" className={styles.linkBtn} title={dicaDoApp(e.app)} onClick={() => abrirApp(e.app as string)}>
               {nomeDoApp(e.app, e.app_nome) !== e.app ? nomeDoApp(e.app, e.app_nome) : <span className={styles.mono}>{e.app}</span>}
             </button>
+          </span>
+        ) : null}
+        {assunto ? (
+          <span data-assunto>Assunto:{' '}
+            {onFiltrarAssunto ? (
+              <button type="button" className={styles.linkBtn} title="Mostrar só as lições deste assunto" onClick={() => onFiltrarAssunto(assunto)}>{assunto}</button>
+            ) : assunto}
           </span>
         ) : null}
         <span>{ORIGEM_LABEL[e.origin] ?? e.origin}</span>

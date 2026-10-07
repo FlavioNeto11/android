@@ -28,6 +28,8 @@ export interface FiltroDoLivro {
   rotulo?: Rotulo;
   /** 31.131: `so_prova` só os fluxos nascidos de uma prova; `sem_prova` o que sobra (uso real). Sem o campo, tudo. */
   prova?: 'so_prova' | 'sem_prova';
+  /** 31.209 (v1.113): o assunto das lições; o servidor canoniza e compara por igualdade (até 200 caracteres). */
+  assunto?: string;
 }
 
 export const PROVAS_DO_LIVRO: readonly NonNullable<FiltroDoLivro['prova']>[] = ['so_prova', 'sem_prova'];
@@ -73,7 +75,7 @@ export const apiAprendizado = {
     return (Array.isArray(fluxos) ? fluxos : []).filter((f) => f?.nascido_de_prova === true).length;
   },
   livro: (f: FiltroDoLivro = {}, signal?: AbortSignal) =>
-    apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem, rotulo: f.rotulo,
+    apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem, rotulo: f.rotulo, assunto: f.assunto || undefined,
                                            nascido_de_prova: f.prova === 'so_prova' ? 'true' : f.prova === 'sem_prova' ? 'false' : undefined }, signal }),
   /** A visão por aplicativo (Global): um resumo por app, o balde `nao_resolvido` e o que não tem eixo de app. */
   apps: async (signal?: AbortSignal): Promise<VisaoDeApps> =>

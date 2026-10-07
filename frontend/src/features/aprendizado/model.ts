@@ -84,6 +84,8 @@ export interface EntradaDoLivro {
    *  (`OPEN_PROFILE` → "Abrir o perfil"). Ausentes no backend anterior; `null` quando não se sabe. */
   capability?: string | null;
   capability_nome?: string | null;
+  /** 31.209 (v1.113): o assunto da lição, UM só, já canônico (minúsculas, sem acento, sem pontuação); `null` sem assunto. Ausente no backend anterior. */
+  assunto?: string | null;
   origin: Origem;
   side_effect: boolean;
   human_origin: boolean;
