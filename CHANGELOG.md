@@ -31,7 +31,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - O estado de base nunca baixa.
 - Prova `simulated`: `backend/tests/test_pesquisa_no_relatorio.py` (4). `real`: `not_run` até o deploy.
 
-## 2026-10-07 — o alvo adiado pela frota e o que espera resposta aparecem no GET da operação (ID a reservar pela orquestradora; branch feat/frota-adiada-no-get)
+## 2026-10-07 — o alvo adiado pela frota e o que espera resposta aparecem no GET da operação (31.251 para aguarda_resposta; a parte da frota sem ID próprio, a reservar; branch feat/frota-adiada-no-get)
 
 - Com a reserva de frota (31.240), as contas aprovadas juntas sobre o mesmo alvo saem em série, e o painel via o alvo
   só "em curso" durante a espera. Agora o alvo em curso com etapa em `retry_wait` pelo espaçamento traz
