@@ -2579,6 +2579,21 @@ braço (c) mede o ator. `not_run`: bateria `eval-run.ps1` com perfil `venice-ato
 da orquestradora: depois do deploy 60 no ar e antes do funil 61, com backup do `config.yaml`, reinício só pela tarefa
 `farm-central`, restauração e conferência do `/api/health` ao fim.
 
+**Tentativa do item (c) em 07/10 (`real`, `decide`: `not_run`).** Janela da orquestradora depois do deploy 61 (`9df65300`,
+`venice_api_key` em `EnvSettings` já no ar). Backup do `config.yaml`, bloco `ai` com `providers.venice`,
+`ai.models`, `ai.prices` e `ai.profiles.venice-ator` (decide → `venice/qwen-3-6-plus`), reinício e fumaça de 1 caso
+(`msg-qa001`, `eval_run.py --profile venice-ator`, `recipes 'off'`, `flows false`). O perfil carregou (`GET /api/ai`),
+mas o caso parou em `open_app` com "O app pede autenticação (campo de senha)" → `waiting_user` (run
+`r-20261007211254-430bc5`, `android-01`, cancelada pelo harness aos 602 s), antes de qualquer decisão do ator:
+**zero chamadas à Venice** (nem 401), 3 chamadas do plano no Sonnet 5.5, **US$ 0,0486 no hub, 0 fora**. O bot avisou
+o dono no Telegram (aviso 84). Causa: o ambiente mudou desde 03/10 — todas as instâncias têm o app `instagram` e o
+`android-01`, padrão do `eval-set`, carrega conta real; o QA Messenger dele estava sem sessão. A bateria só roda em
+aparelho de QA provisionado (`provision-qa.ps1`), nunca em conta real. Config restaurado (sha idêntico) e central
+conferido (`/api/health` ok, `recipes replay`, `flows true`). Aprendizado: parar a tarefa `farm-central` só derruba o
+supervisor e não recarrega o config (K-108); recarrega `scripts\stop.ps1` com o supervisor rodando. Decisão da
+orquestradora: repetir (c) só na conta que renova no sábado, com um `qa-user` parado provisionado pela Android e
+`--instances` nele. **Sem veredito do `decide`**; a chave da Venice no `.env` também não foi exercitada pelo central.
+
 **Pré-requisito de código para (c) e para qualquer adoção:** `EnvSettings` tem `extra="ignore"` e `chave()` só lê do
 `.env` os nomes declarados; `VENICE_API_KEY` escrito no `.env` sem campo declarado cai em `os.environ` e dá 401 (o
 mesmo achado da Fase 17). Falta um campo `venice_api_key` em `EnvSettings` (padrão do `DEEPSEEK_API_KEY`), com teste,
