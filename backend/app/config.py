@@ -56,6 +56,9 @@ class EnvSettings(BaseSettings):
                                              validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY"))
     deepseek_api_key: SecretStr | None = Field(default=None, alias="DEEPSEEK_API_KEY")
     dashscope_api_key: SecretStr | None = Field(default=None, alias="DASHSCOPE_API_KEY")
+    #: Venice (api.venice.ai, compatível com OpenAI; validação de 07/10/2026 em relatorio-validacao.md §31). Sem este
+    #: campo, `VENICE_API_KEY` escrito no `.env` cairia em `os.environ` e a primeira chamada voltaria 401.
+    venice_api_key: SecretStr | None = Field(default=None, alias="VENICE_API_KEY")
     #: Chave do provedor semântico de retrieval de contexto (`context_retrieval.semantic.provider: jev`). Só do ambiente
     #: ou do `.env`, nunca do `config.yaml`; ausente = provedor indisponível e o retrieval cai no local (ADR-063).
     typesafe_api_key: SecretStr | None = Field(default=None, alias="TYPESAFE_API_KEY")

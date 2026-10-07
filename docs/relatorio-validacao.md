@@ -2523,8 +2523,10 @@ condicionado à janela da orquestradora, para o item (c). Nenhum arquivo do repo
 **Gasto medido (`GET /api/usage?days=7`, 07/10): US$ 28,57**, 99 % na Anthropic — `decide` nível 0 (Sonnet 5) 13,17;
 escalonamento (Opus 5.5) 4,79; `plan` 6,32; `verify` (Haiku) 1,48; rejulgamento (Opus) 2,41; imagem, leitura, Jev e
 `social` 0,39. Em `ai_calls` desde 23/09: **4.110 chamadas, 0 com `error_kind=refusal`**, 0 trocas de modelo por recusa
-no servidor da Anthropic, 0 recusas da persona no `social`. Logo, "sem censura" não é necessidade comprovada; o que a
-Venice oferece é custo e retenção zero (tier "Private", contratual segundo a documentação dela; jurisdição da
+no servidor da Anthropic, 0 recusas da persona no `social`. **Decisão do dono (07/10, em chat): modelo sem censura é
+requisito do parque, independentemente desse histórico.** Os números de recusa ficam como contexto; a escolha se
+restringe aos modelos sem censura da Venice, e os dois com censura abaixo são só controle de preço. O que a Venice
+oferece além disso é custo e retenção zero (tier "Private", contratual segundo a documentação dela; jurisdição da
 inferência não informada — decisão do dono).
 
 **Sondagem da API (`real`, ~US$ 0,01).** Os candidatos aceitam o corpo que `openai_provider.py` já monta. Três
