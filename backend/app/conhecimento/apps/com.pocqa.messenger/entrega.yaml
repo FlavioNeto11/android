@@ -1,0 +1,23 @@
+# Marcas de entrega do QA Messenger, como DADO (item 31.250, ADR-052). Lidas por `planning/entrega_declarada.py`.
+#
+# NÃO é catálogo nem app declarado: a pasta não tem `app.yaml` nem `catalogo.yaml`, e assim continua. Um catálogo faria
+# a porta do item 13.2 recusar toda etapa com efeito sem ação dele (as do QA Messenger são de plano livre, sem
+# capability) e mudaria o que se oferece ao planejador. Este arquivo só diz ao executor como o app mostra o estado da
+# mensagem debaixo da bolha, para a etapa SEM capability: o marcador do 31.57 casado logo abaixo da mensagem DESTA
+# execução dispensa o PRIMEIRO julgamento (o barato), com as mesmas travas (linha de base do 31.59, nada pendente nem
+# com falha na tela, rejulgamento ligado e com outro modelo).
+#
+# Os textos são os do app (`qa-app/.../Contract.java`, `StatusEngine.java`), no `TextView` `message_status` que fica
+# na linha logo abaixo de `message_text`, ao lado da hora:
+#   Enviando… → (0,7 s) Enviada ✓ → (+2 s) Entregue ✓✓ → (+3 s, só QA-003) Lida ✓✓; QA-002 fica em Enviada.
+# `sent` entra porque toda etapa com nível do QA Messenger medida até 07/10 exige `sent` (as 12 discordâncias do
+# rejulgamento por nível eram dessas etapas). A comparação é do texto inteiro normalizado: o ✓ faz parte da marca.
+app: com.pocqa.messenger
+delivery_marks:
+  - sent=Enviada ✓
+  - delivered=Entregue ✓✓
+  - read=Lida ✓✓
+pending_marks:
+  - Enviando…
+failure_marks:
+  - Falha no envio ✕
