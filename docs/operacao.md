@@ -404,7 +404,7 @@ estado antigo, nunca uma edição retroativa.
   `<run>.wrapper.txt`). Saída 0 só com tudo verde, 1 se alguma etapa falhou, 2 se nenhuma falhou mas alguma foi pulada ou não rodou. Uso:
   `powershell -NoProfile -File scripts\funil.ps1 -Raiz <checkout> -ListaPg <lista> -Saida <run.txt>`; `-Simular` mostra o plano; `-ParaNoErro` para na
   primeira falha. A comparação entre cortes lê o run.txt direto (`devops-29-180-comparar.py run.txt=<corte>`). Teste:
-  `scripts/tests/test_funil.py` (comandos falsos pelo gancho `-ComandosDeTeste`). **Trava do funil:** enquanto roda, o funil mantém `data/funil-ativo.json`
+  `scripts/tests/test_funil.py` (comandos falsos pelo gancho `-ComandosDeTeste`). O run.txt guarda os **nomes** dos testes que falharam por etapa (`nomes_falhos="a;b"`, até 40; pytest `FAILED`, vitest `FAIL`, tsc `error TS`; no PG, lê as saídas em `<run>.pg`). `-ParalelosPg N` e `-WorkersPg N` repassam `--paralelo`/`--workers` ao `pg-rapido.py` (29.197). **Trava do funil:** enquanto roda, o funil mantém `data/funil-ativo.json`
   (`pid`, `run`, `inicio`, `raiz`) no checkout central (`git rev-parse --git-common-dir`; `FARM_FUNIL_TRAVA` troca o caminho) e exporta `FARM_FUNIL_RODANDO=1`.
   Os testes de script que queimam CPU ou sobem subprocessos (`test_com_teto_de_cpu.py`, `test_funil.py`, `test_amostrador_host.py`) levam
   `pytestmark = pytest.mark.carga` e `scripts/tests/conftest.py` os **pula** quando a trava existe com o processo vivo (e menos de 12 h); o próprio funil
@@ -828,7 +828,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `start.ps1` / `stop.ps1` | P | Sobe/derruba o backend, Appium e (opcional) emuladores do projeto; o `stop.ps1` também encerra o Appium órfão deste projeto (K-039) e tem `-Simular` |
 | `backup.ps1` | S | Cópia consistente do banco+config, sem parar nada |
 | `testes-afetados.py` | S | Lista (e com `--run` roda) só os testes que o diff atinge; `--ocioso` roda em prioridade ociosa |
-| `pg-rapido.py` | P | PG dirigido da suíte no contêiner descartável `farm-pg-rapido` (29.99): recria o contêiner com WAL mínimo, roda a lista em `--partes`, amostra o disco a cada 30 s e aborta a parte com uma linha em 85 % do tmpfs; `--simular` só lista as partes, `--amostrar` lê o contêiner de pé. Só com a vez da orquestradora |
+| `pg-rapido.py` | P | PG dirigido da suíte no contêiner descartável `farm-pg-rapido` (29.99): recria o contêiner com WAL mínimo, roda a lista em `--partes`, amostra o disco a cada 30 s e aborta a parte com uma linha em 85 % do tmpfs; `--simular` só lista as partes, `--amostrar` lê o contêiner de pé. `--paralelo N` (1 a 4; 29.197, **em medida, não é o padrão**) sobe N contêineres (`farm-pg-rapido`, `-2`…, portas 55434, 55435…, o tmpfs de 4 GB dividido entre eles) com um fio cada e as partes numa fila; `--workers` troca o `-n` do pytest (padrão 8; 6 por contêiner com mais de um). Parte vermelha não mata a do outro fio (termina e é relatada). Só com a vez da orquestradora |
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
 | `amostrador-host.ps1` | S | Amostrador permanente do host (CPU, RAM, disco, VM do WSL, processos que mais usam CPU, avisos de pressão por aparelho), 1 linha/min em `data\observabilidade\host`, retenção 7 dias; `-Instalar` [P] registra a tarefa `farm-amostrador-host` |

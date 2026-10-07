@@ -75,6 +75,8 @@ class TestPlano:
 
     def test_com_lista_do_pg_o_comando_real_aparece(self, tmp_path):
         lista = tmp_path / "pg.txt"
+        (tmp_path / "backend" / "tests").mkdir(parents=True)   # a lista so conta com teste que existe em backend/ (achado do Codex)
+        (tmp_path / "backend" / "tests" / "test_x.py").write_text("", encoding="utf-8")
         lista.write_text("tests/test_x.py\n", encoding="utf-8")
         plano = json.loads(_funil(tmp_path, None, "-Simular", "-ListaPg", str(lista), "-PartesPg", "3").stdout)
         pg = [e for e in plano["etapas"] if e["chave"] == "pg"][0]
@@ -229,3 +231,38 @@ class TestAchadosDoCodex:
         # Nao da para fazer o SetInformationJobObject falhar de proposito: confere a regra no codigo (a trava de saida 124 e o aviso REPROVADO).
         src = (Path(__file__).resolve().parents[1] / "com-teto-de-cpu.ps1").read_text(encoding="utf-8-sig")
         assert "falhaDeTeto" in src and "$codigo = 124" in src and "REPROVADO" in src
+
+
+@precisa_ps51
+class TestNomesFalhos:
+    """O run.txt guarda os NOMES dos testes que falharam em cada etapa (o funil 59 perdeu os 4 do vitest)."""
+
+    def test_nomes_do_pytest_do_vitest_e_do_pg_vao_na_linha_da_etapa(self, tmp_path):
+        comandos = dict(TODAS_OK)
+        comandos["frontend"] = [py("import sys; print('FAIL  src/a.test.tsx > suite > caso um'); print('FAILED scripts/tests/test_x.py::test_a - boom'); "
+                                   "print('FAIL  src/a.test.tsx > suite > caso um'); print('Tests  2 failed | 5 passed (7)'); sys.exit(1)")]
+        comandos["pg"] = [py("import sys; print('1 failed, 3 passed in 1s'); sys.exit(1)")]
+        pasta_pg = tmp_path / "run.txt.pg"
+        pasta_pg.mkdir()
+        (pasta_pg / "pg_parte1.txt").write_text("FAILED tests/test_pg.py::test_z - x" + chr(10), encoding="utf-8")
+        r = _funil(tmp_path, comandos, "-SemTeto")
+        assert r.returncode == 1, r.stdout + r.stderr
+        etapas = {x["chave"]: x for x in _registros(tmp_path) if x["tipo"] == "ETAPA"}
+        nomes = etapas["frontend"]["nomes_falhos"].split(";")
+        assert nomes == ["src/a.test.tsx > suite > caso um", "scripts/tests/test_x.py::test_a"], "sem repetir o mesmo nome"
+        assert etapas["pg"]["nomes_falhos"] == "tests/test_pg.py::test_z"
+        assert "nomes_falhos" not in etapas["scripts"] and etapas["scripts"]["status"] == "ok"
+
+
+@precisa_ps51
+def test_paralelo_e_workers_do_pg_chegam_ao_pg_rapido_e_a_linha_interna(tmp_path):
+    lista = tmp_path / "pg.txt"
+    (tmp_path / "backend" / "tests").mkdir(parents=True)
+    (tmp_path / "backend" / "tests" / "test_x.py").write_text("", encoding="utf-8")
+    lista.write_text("tests/test_x.py", encoding="utf-8")
+    plano = json.loads(_funil(tmp_path, None, "-Simular", "-ListaPg", str(lista), "-ParalelosPg", "2", "-WorkersPg", "6").stdout)
+    pg = [e for e in plano["etapas"] if e["chave"] == "pg"][0]
+    assert "--paralelo 2" in pg["comandos"][0] and "--workers 6" in pg["comandos"][0]
+    assert "-ParalelosPg 2" in plano["linha_interna"] and "-WorkersPg 6" in plano["linha_interna"]
+    sem = json.loads(_funil(tmp_path, None, "-Simular", "-ListaPg", str(lista)).stdout)
+    assert "--paralelo" not in [e for e in sem["etapas"] if e["chave"] == "pg"][0]["comandos"][0]

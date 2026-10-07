@@ -29,6 +29,7 @@ import math
 import os
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -56,7 +57,38 @@ CATALOGO_SQL = ("select (select count(*) from pg_namespace where nspname ~ '^t[0
                 " pg_total_relation_size('pg_class')/1048576, pg_total_relation_size('pg_attribute')/1048576,"
                 " pg_total_relation_size('pg_depend')/1048576")
 
+WORKERS_PADRAO = 8            # `-n` do pytest da rodada serial; a paralela divide (ver `workers_por_instancia`)
+PARALELO_MAXIMO = 4          # 29.197: acima disso a RAM (tmpfs somado) e o disco do host deixam de ser folga
+
 Executar = Callable[[Sequence[str]], "subprocess.CompletedProcess[str]"]
+
+
+@dataclass(frozen=True)
+class Instancia:
+    """Um contêiner do PG descartável: nome, porta e tmpfs próprios. A rodada serial usa só a de sempre (`PADRAO`); a
+    paralela (29.197) sobe uma por fila de partes, cada uma com a sua porta e o seu DSN."""
+    nome: str = NOME
+    porta: int = PORTA
+    tmpfs_mb: int = TMPFS_MB
+
+    @property
+    def dsn(self) -> str:
+        return f"postgresql://postgres:teste@127.0.0.1:{self.porta}/farm"
+
+
+PADRAO = Instancia()
+
+
+def instancias(n: int, tmpfs_total_mb: int = TMPFS_MB) -> list[Instancia]:
+    """`n` contêineres. Com 1 é a instância de sempre (4 GB). Com mais, o tmpfs TOTAL se divide entre eles (o orçamento
+    de RAM não cresce; o pico medido na suíte 59 foi 9 % de 4 GB por parte de 256 arquivos): o primeiro mantém nome e
+    porta de sempre e os outros levam `-2`, `-3`… e a porta seguinte."""
+    if n < 1 or n > PARALELO_MAXIMO:
+        raise ValueError(f"paralelo de 1 a {PARALELO_MAXIMO}")
+    if n == 1:
+        return [PADRAO]
+    cada = tmpfs_total_mb // n
+    return [Instancia(NOME if k == 1 else f"{NOME}-{k}", PORTA + k - 1, cada) for k in range(1, n + 1)]
 
 
 class Processo(Protocol):
@@ -71,10 +103,11 @@ def agora() -> str:
     return datetime.now(timezone.utc).strftime("%H:%M:%SZ")
 
 
-def comando_docker_run() -> list[str]:
+def comando_docker_run(inst: Instancia = PADRAO) -> list[str]:
     # `--pull=never`: imagem faltando é erro na hora, não um download no meio da vez do PG.
-    cmd = ["docker", "run", "-d", "--pull=never", "--name", NOME, "-e", "POSTGRES_PASSWORD=teste", "-e", "POSTGRES_DB=farm",
-           "-p", f"127.0.0.1:{PORTA}:5432", "--tmpfs", f"{DADOS}:rw,size={TMPFS_MB // 1024}g", IMAGEM]
+    tmpfs = f"{inst.tmpfs_mb // 1024}g" if inst.tmpfs_mb % 1024 == 0 else f"{inst.tmpfs_mb}m"
+    cmd = ["docker", "run", "-d", "--pull=never", "--name", inst.nome, "-e", "POSTGRES_PASSWORD=teste", "-e", "POSTGRES_DB=farm",
+           "-p", f"127.0.0.1:{inst.porta}:5432", "--tmpfs", f"{DADOS}:rw,size={tmpfs}", IMAGEM]
     for c in CONFIG:
         cmd += ["-c", c]
     return cmd
@@ -135,19 +168,19 @@ def ler_catalogo(saida: str) -> tuple[int, int, int, int] | None:
     return (int(campos[0]), int(campos[1]), int(campos[2]), int(campos[3])) if len(campos) == 4 else None
 
 
-def amostrar(executar: Executar, hora: Callable[[], str] = agora) -> Amostra | None:
+def amostrar(executar: Executar, hora: Callable[[], str] = agora, inst: Instancia = PADRAO) -> Amostra | None:
     """Uma amostra do contêiner de pé; `None` se a linha do `df` não veio (a amostra falha, a fase não).
 
     O rc NÃO decide (leitura do #385, A1): ele seria o do `du`, que sai com 1 quando um arquivo some no meio; com a base
     mexendo muito (a hipótese do estouro da 35), quase toda amostra viraria `None` e o aborto não dispararia. O erro
     do `du` vai para o `/dev/null` e o `exit 0` fecha; quem decide é a leitura do `df`."""
-    disco = executar(["docker", "exec", NOME, "sh", "-c",
+    disco = executar(["docker", "exec", inst.nome, "sh", "-c",
                       f"df -m {DADOS} | tail -1; du -sm {DADOS}/pg_wal {DADOS}/base 2>/dev/null; exit 0"])
     try:
         usado, total, wal, base = ler_disco(disco.stdout)
     except (IndexError, ValueError):
         return None
-    cat = executar(["docker", "exec", NOME, "psql", "-U", "postgres", "-d", "farm", "-tA", "-F", " ", "-c",
+    cat = executar(["docker", "exec", inst.nome, "psql", "-U", "postgres", "-d", "farm", "-tA", "-F", " ", "-c",
                     CATALOGO_SQL])
     valores = ler_catalogo(cat.stdout) if cat.returncode == 0 else None
     return Amostra(hora(), usado, total, wal, base, *(valores or (None, None, None, None)))
@@ -353,12 +386,12 @@ def fechar_job(proc: Processo) -> None:
         proc.job = None  # type: ignore[attr-defined]
 
 
-def _lancar_pytest(arquivos: Sequence[str], saida: Path) -> Processo:
+def _lancar_pytest(arquivos: Sequence[str], saida: Path, dsn: str = DSN, workers: int = WORKERS_PADRAO) -> Processo:
     flags = getattr(subprocess, "IDLE_PRIORITY_CLASS", 0)
     arq = saida.open("w", encoding="utf-8")
-    return lancar_em_job([str(python_do_pytest()), "-m", "pytest", "-q", "-n", "8", "-p", "no:cacheprovider",
+    return lancar_em_job([str(python_do_pytest()), "-m", "pytest", "-q", "-n", str(workers), "-p", "no:cacheprovider",
                           *arquivos],
-                         cwd=RAIZ / "backend", env={**os.environ, "TEST_DATABASE_URL": DSN},
+                         cwd=RAIZ / "backend", env={**os.environ, "TEST_DATABASE_URL": dsn},
                          stdout=arq, stderr=subprocess.STDOUT, creationflags=flags)
 
 
@@ -393,11 +426,11 @@ def matar_arvore(proc: Processo, executar: Executar) -> str | None:
 
 
 def recriar(executar: Executar, dormir: Callable[[float], None], prazo_s: float = 240,
-            relatar: Callable[[str], None] | None = None) -> float | None:
+            relatar: Callable[[str], None] | None = None, inst: Instancia = PADRAO) -> float | None:
     """Contêiner novo com a configuração do script; segundos até aceitar conexão TCP, ou `None` no prazo. O erro do
     `docker run` (a imagem que falta com o `--pull=never`, a porta ocupada) vai ao `relatar`, se houver."""
-    executar(["docker", "rm", "-f", NOME])
-    run = executar(comando_docker_run())
+    executar(["docker", "rm", "-f", inst.nome])
+    run = executar(comando_docker_run(inst))
     if run.returncode != 0:
         if relatar is not None:
             erro = " ".join((run.stderr or run.stdout or "").split())[:300]
@@ -407,7 +440,7 @@ def recriar(executar: Executar, dormir: Callable[[float], None], prazo_s: float 
     while time.monotonic() - inicio < prazo_s:
         # TCP de propósito: o servidor temporário do `initdb` só escuta o socket local, e aceitá-lo deu 1913 erros
         # "the database system is starting up" na suíte 18.
-        if executar(["docker", "exec", NOME, "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres",
+        if executar(["docker", "exec", inst.nome, "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "postgres",
                      "-d", "farm"]).returncode == 0:
             return round(time.monotonic() - inicio, 1)
         dormir(2)
@@ -425,7 +458,7 @@ def ultima_contagem(saida: Path) -> str:
 def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Callable[[str], None], *,
                 executar: Executar = _executar, lancar: Callable[[Sequence[str], Path], Processo] = _lancar_pytest,
                 dormir: Callable[[float], None] = time.sleep, intervalo_s: float = INTERVALO_S,
-                limite: float = LIMITE) -> int:
+                limite: float = LIMITE, inst: Instancia = PADRAO) -> int:
     """Uma parte: contêiner novo, pytest, amostras. 0 verde; o rc do pytest se vermelho; 3 abortada pelo disco;
     8 se o contêiner não aceitou conexão; 11 se o pytest não subiu (29.117: não retomou do suspenso).
 
@@ -433,11 +466,12 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
     `except`, que mata a árvore do pytest se ela ainda estiver viva. Sem isso, o pytest `-n 8` e os workers seguiam
     contra o contêiner, e no Windows o filho não morre com o pai (a contaminação do K-101). O pai morto DE FORA (o pwsh
     que o chamou fechado) não passa por aqui: isso pede um Job Object com KILL_ON_JOB_CLOSE, em item próprio."""
-    subida = recriar(executar, dormir, relatar=relatar)
+    subida = recriar(executar, dormir, relatar=relatar, inst=inst)
     if subida is None:
         relatar(f"{rotulo} o contêiner não aceitou conexão {agora()}")
         return 8
-    relatar(f"{rotulo} aceitou em {subida} s; inicio {agora()} arquivos={len(arquivos)} python={python_do_pytest()}")
+    onde = "" if inst == PADRAO else f" conteiner={inst.nome}:{inst.porta} tmpfs={inst.tmpfs_mb}MB"
+    relatar(f"{rotulo} aceitou em {subida} s; inicio {agora()} arquivos={len(arquivos)} python={python_do_pytest()}{onde}")
     try:
         proc = lancar(arquivos, saida)
     except OSError as exc:
@@ -448,7 +482,7 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
         relatar(f"{rotulo} ATENÇÃO: {aviso}")
     try:
         return _acompanhar(rotulo, proc, saida, relatar, executar=executar, dormir=dormir, intervalo_s=intervalo_s,
-                           limite=limite)
+                           limite=limite, inst=inst)
     except BaseException:
         # Só na interrupção: nas saídas normais o pytest já terminou (`wait`) ou a árvore já foi morta (o aborto).
         if proc.poll() is None:
@@ -463,13 +497,13 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
 
 
 def _acompanhar(rotulo: str, proc: Processo, saida: Path, relatar: Callable[[str], None], *, executar: Executar,
-                dormir: Callable[[float], None], intervalo_s: float, limite: float) -> int:
+                dormir: Callable[[float], None], intervalo_s: float, limite: float, inst: Instancia = PADRAO) -> int:
     """O laço das amostras de uma parte com o pytest já lançado (o `rodar_parte` cuida de matar a árvore)."""
     pico: Amostra | None = None
     sem_amostra = 0
     while proc.poll() is None:
         dormir(intervalo_s)
-        a = amostrar(executar)
+        a = amostrar(executar, inst=inst)
         if a is not None and (pico is None or a.usado_mb > pico.usado_mb):
             pico = a
         sem_amostra = 0 if a is not None else sem_amostra + 1
@@ -489,7 +523,7 @@ def _acompanhar(rotulo: str, proc: Processo, saida: Path, relatar: Callable[[str
     rc = proc.wait()
     fechar_job(proc)                                   # um worker que tenha sobrado morre com o job (29.117)
     relatar(f"{rotulo} rc={rc} fim {agora()} | {ultima_contagem(saida)}")
-    fim = amostrar(executar)
+    fim = amostrar(executar, inst=inst)
     relatar(f"{rotulo} pico: {pico.linha() if pico else 'sem amostra'}")
     relatar(f"{rotulo} no fim: {fim.linha() if fim else 'sem amostra'}")
     return rc
@@ -557,18 +591,96 @@ def soltar_trava() -> None:
             t.close()  # type: ignore[attr-defined]
 
 
-def parar(executar: Executar, relatar: Callable[[str], None]) -> bool:
+def parar(executar: Executar, relatar: Callable[[str], None], inst: Instancia = PADRAO) -> bool:
     """N1 do 29.113: o `docker stop` que falha (ou estoura o prazo) deixava o tmpfs de 4 GB de pé sem aviso. Só para e
     relata; o `docker rm -f` fica como sugestão na linha, para quem confere antes de apagar."""
-    r = executar(["docker", "stop", NOME])
+    r = executar(["docker", "stop", inst.nome])
     if r.returncode == 0:
         return True
     if "no such container" in (r.stderr or r.stdout or "").lower():
         return True                                    # o `docker run` nem subiu (rc 8): não há o que parar
     erro = " ".join((r.stderr or r.stdout or "").split())[:200]
-    relatar(f"ATENÇÃO: docker stop {NOME} saiu com rc={r.returncode} ({erro or 'sem mensagem'}); o tmpfs de "
-            f"{TMPFS_MB // 1024} GB pode seguir de pé: confira com `docker ps` e pare com `docker rm -f {NOME}`")
+    relatar(f"ATENÇÃO: docker stop {inst.nome} saiu com rc={r.returncode} ({erro or 'sem mensagem'}); o tmpfs de "
+            f"{inst.tmpfs_mb // 1024} GB pode seguir de pé: confira com `docker ps` e pare com `docker rm -f {inst.nome}`")
     return False
+
+
+def workers_por_instancia(paralelo: int, pedido: int = 0) -> int:
+    """`-n` de cada pytest: o pedido (`--workers`); sem pedido, 8 na rodada serial (a de sempre) e 6 por instância na
+    paralela (a proposta do 29.197: 2 x 6 = 12 workers contra os 8 de hoje, em dois servidores)."""
+    if pedido > 0:
+        return pedido
+    return WORKERS_PADRAO if paralelo == 1 else 6
+
+
+def rodar_partes(fatias: Sequence[Sequence[str]], insts: Sequence[Instancia], pasta: Path, relatar: Callable[[str], None],
+                 subiram: list[Instancia], *, workers: int = WORKERS_PADRAO, **opcoes: object) -> int:
+    """As partes numa fila, uma instância (contêiner) por vez em cada fio. 0 se todas verdes; senão o rc da parte vermelha
+    de MENOR número (9 = sem RAM). `subiram` recebe cada instância que chegou a ser usada, para o `main` parar todas.
+
+    - Uma instância: roda no próprio fio, byte a byte como antes do 29.197 (a exceção sobe ao `main`, que para o contêiner).
+    - Várias: um fio por instância, cada um com o seu contêiner, a sua porta e o seu DSN. Parte vermelha NÃO mata a parte
+      que o outro fio está rodando (ela termina e é relatada; é o que dá a medida limpa); só impede que saiam novas partes da
+      fila. Interrompido de fora, os fios são daemon e o Job Object de cada pytest (KILL_ON_JOB_CLOSE) leva a árvore junto.
+    - `opcoes` vai ao `rodar_parte` (executar, dormir, intervalo_s, limite, lancar)."""
+    fila = list(enumerate(fatias, 1))
+    trava = threading.Lock()
+    rcs: dict[int, int] = {}
+    vermelho = threading.Event()
+
+    def seguro(linha: str) -> None:
+        with trava:
+            relatar(linha)
+
+    def trabalhar(inst: Instancia) -> None:
+        extra: dict[str, object] = dict(opcoes)
+        if "lancar" not in extra and (inst != PADRAO or workers != WORKERS_PADRAO):
+            extra["lancar"] = lambda arquivos, saida: _lancar_pytest(arquivos, saida, inst.dsn, workers)
+        if inst != PADRAO:
+            extra["inst"] = inst
+        while not vermelho.is_set():
+            with trava:
+                if not fila:
+                    return
+                i, f = fila.pop(0)
+            rotulo = f"pg parte {i}/{len(fatias)}"
+            livre = ram_livre_gb()
+            if livre is not None and livre < RAM_MINIMA_GB:
+                seguro(f"{rotulo} NÃO RODOU: {livre} GB livres, abaixo de {RAM_MINIMA_GB} {agora()}")
+                rcs[i] = 9
+                vermelho.set()
+                return
+            with trava:
+                if inst not in subiram:
+                    subiram.append(inst)
+            try:
+                rc = rodar_parte(rotulo, f, pasta / f"pg_parte{i}.txt", seguro if len(insts) > 1 else relatar, **extra)  # type: ignore[arg-type]
+            except BaseException as exc:  # noqa: BLE001 — num fio, a exceção não pode virar verde por omissão
+                if len(insts) == 1:
+                    raise
+                seguro(f"{rotulo} ERRO no fio de {inst.nome}: {type(exc).__name__}: {exc} {agora()}")
+                rcs[i] = 13
+                vermelho.set()
+                return
+            rcs[i] = rc
+            if rc != 0:
+                seguro(f"{rotulo} PAROU (rc={rc}); as partes seguintes não rodaram")
+                vermelho.set()
+                return
+
+    if len(insts) == 1:
+        trabalhar(insts[0])
+    else:
+        fios = [threading.Thread(target=trabalhar, args=(inst,), daemon=True, name=f"pg-{inst.nome}") for inst in insts]
+        for fio in fios:
+            fio.start()
+        for fio in fios:
+            fio.join()
+    vermelha = next((rcs[i] for i in sorted(rcs) if rcs[i] != 0), 0)
+    if vermelha == 0 and len(rcs) < len(fatias):
+        seguro(f"pg: só {len(rcs)} de {len(fatias)} partes terminaram, sem nenhuma vermelha: resultado NÃO verde {agora()}")
+        return 13
+    return vermelha
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -577,6 +689,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--partes", type=int, default=2)
     ap.add_argument("--resumo", type=Path, help="acrescenta cada linha do resumo também a este arquivo")
     ap.add_argument("--saidas", type=Path, default=None, help="pasta das saídas do pytest (padrão: a do resumo)")
+    ap.add_argument("--paralelo", type=int, default=1,
+                    help=f"contêineres ao mesmo tempo (1 a {PARALELO_MAXIMO}; 1 = como sempre). O tmpfs total (4 GB) se divide entre eles "
+                         "e cada um leva um fio e uma porta; as partes saem da mesma fila (29.197)")
+    ap.add_argument("--workers", type=int, default=0,
+                    help="`-n` do pytest de cada contêiner (padrão: 8 com 1 contêiner, 6 por contêiner com mais)")
     ap.add_argument("--simular", action="store_true", help="só diz o que faria")
     ap.add_argument("--amostrar", action="store_true", help="uma amostra do contêiner de pé e sai")
     args = ap.parse_args(argv)
@@ -597,8 +714,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     todos = [ln.strip() for ln in args.lista.read_text(encoding="utf-8").splitlines()
              if ln.strip() and "conftest" not in ln and (backend / ln.strip()).exists()]
     fatias = partes(todos, args.partes)
+    try:
+        insts = instancias(args.paralelo)
+    except ValueError as exc:
+        ap.error(str(exc))
+    if args.workers < 0:
+        ap.error("--workers >= 0")
+    workers = workers_por_instancia(len(insts), args.workers)
     if args.simular:
-        relatar("docker: " + " ".join(comando_docker_run()))
+        for inst in insts:
+            relatar("docker: " + " ".join(comando_docker_run(inst)))
+        if len(insts) > 1 or workers != WORKERS_PADRAO:
+            relatar(f"rodada: paralelo={len(insts)} workers={workers} por contêiner "
+                    f"(tmpfs {', '.join(f'{i.nome}:{i.porta}={i.tmpfs_mb}MB' for i in insts)})")
         for i, f in enumerate(fatias, 1):
             relatar(f"parte {i}/{len(fatias)}: {len(f)} arquivos (de {len(todos)}), {f[0]} … {f[-1]}")
         return 0
@@ -615,31 +743,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         relatar(f"NÃO RODOU: outra rodada do pg-rapido está em curso (trava {NOME_DA_TRAVA}{detalhe}); nenhum "
                 f"contêiner foi tocado {agora()}")
         return 10
-    subiu = False
+    subiram: list[Instancia] = []
     try:
-        for i, f in enumerate(fatias, 1):
-            rotulo = f"pg parte {i}/{len(fatias)}"
-            livre = ram_livre_gb()
-            if livre is not None and livre < RAM_MINIMA_GB:
-                relatar(f"{rotulo} NÃO RODOU: {livre} GB livres, abaixo de {RAM_MINIMA_GB} {agora()}")
-                return 9
-            subiu = True
-            rc = rodar_parte(rotulo, f, pasta / f"pg_parte{i}.txt", relatar)
-            if rc != 0:
-                relatar(f"{rotulo} PAROU (rc={rc}); as partes seguintes não rodaram")
-                return rc
-        relatar(f"pg verde: {len(fatias)} partes, {len(todos)} arquivos {agora()}")
+        rc = rodar_partes(fatias, insts[:max(1, len(fatias))], pasta, relatar, subiram, workers=workers)
+        if rc != 0:
+            return rc
+        extra = "" if len(insts) == 1 and workers == WORKERS_PADRAO else f" (paralelo {len(insts)}, -n {workers} por contêiner)"
+        relatar(f"pg verde: {len(fatias)} partes, {len(todos)} arquivos{extra} {agora()}")
         return 0
     finally:
         # Q2 da leitura do 29.113: interrompido (Ctrl-C, exceção), o contêiner também para; antes, o tmpfs de 4 GB
-        # ficava preso na RAM até a próxima rodada. Sem parte iniciada, não há contêiner a parar.
-        if subiu:
+        # ficava preso na RAM até a próxima rodada. Sem parte iniciada, não há contêiner a parar. Com várias instâncias,
+        # para cada uma que subiu (29.197).
+        for inst in subiram:
             # N4 da leitura: o `parar` (ou o relato dele) que levanta aqui SUBSTITUIRIA a exceção original, que é o
             # motivo da interrupção. Cai no stderr, como no `rodar_parte`.
             try:
-                parar(_executar, relatar)
+                parar(_executar, relatar) if inst == PADRAO else parar(_executar, relatar, inst)
             except BaseException as exc:  # noqa: BLE001 — inclusive um segundo Ctrl-C durante o stop
-                print(f"ATENÇÃO: o docker stop {NOME} não terminou ({type(exc).__name__}: {exc}); confira com "
+                print(f"ATENÇÃO: o docker stop {inst.nome} não terminou ({type(exc).__name__}: {exc}); confira com "
                       f"`docker ps`", file=sys.stderr, flush=True)
 
 

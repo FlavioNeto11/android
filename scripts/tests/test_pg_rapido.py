@@ -717,3 +717,180 @@ def test_parar_sem_conteiner_nao_da_alarme_falso():
     linhas: list[str] = []
     resposta = subprocess.CompletedProcess([], 1, "", "Error response from daemon: No such container: farm-pg-rapido")
     assert pg.parar(lambda cmd: resposta, linhas.append) and linhas == []
+
+
+# --- 29.197: rodada em paralelo (dois contêineres), tudo com dublês: nada de docker nem de pytest de verdade ------------
+
+def _lista_de(tmp_path, monkeypatch, n=2):
+    backend = tmp_path / "backend" / "tests"
+    backend.mkdir(parents=True)
+    for i in range(n):
+        (backend / f"test_{i}.py").write_text("")
+    lista = tmp_path / "lista.txt"
+    lista.write_text("\n".join(f"tests/test_{i}.py" for i in range(n)), encoding="utf-8")
+    monkeypatch.setattr(pg, "RAIZ", tmp_path)
+    monkeypatch.setattr(pg, "ram_livre_gb", lambda: None)
+    paradas: list[list[str]] = []
+    monkeypatch.setattr(pg, "_executar", lambda cmd: paradas.append(list(cmd)) or _ok())
+    return lista, paradas
+
+
+def test_instancias_uma_e_a_de_sempre_e_varias_dividem_o_tmpfs_sem_crescer_a_ram():
+    assert pg.instancias(1) == [pg.PADRAO]
+    a, b = pg.instancias(2)
+    assert (a.nome, a.porta) == (pg.NOME, pg.PORTA) and (b.nome, b.porta) == (pg.NOME + "-2", pg.PORTA + 1)
+    assert a.tmpfs_mb + b.tmpfs_mb == pg.TMPFS_MB and a.dsn.endswith(f":{pg.PORTA}/farm") and b.dsn.endswith(f":{pg.PORTA + 1}/farm")
+    for ruim in (0, pg.PARALELO_MAXIMO + 1):
+        with pytest.raises(ValueError):
+            pg.instancias(ruim)
+
+
+def test_docker_run_da_segunda_instancia_tem_nome_porta_e_tmpfs_proprios():
+    assert pg.comando_docker_run() == pg.comando_docker_run(pg.PADRAO)
+    cmd = pg.comando_docker_run(pg.instancias(2)[1])
+    assert cmd[cmd.index("--name") + 1] == pg.NOME + "-2"
+    assert cmd[cmd.index("-p") + 1] == f"127.0.0.1:{pg.PORTA + 1}:5432"
+    assert cmd[cmd.index("--tmpfs") + 1].endswith("size=2g")
+    assert "wal_level=minimal" in cmd and cmd.count("--tmpfs") == 1
+
+
+def test_simular_paralelo_mostra_um_docker_run_por_instancia_e_os_workers(tmp_path, monkeypatch, capsys):
+    lista, _ = _lista_de(tmp_path, monkeypatch, n=4)
+    monkeypatch.setattr(pg, "_executar", lambda cmd: pytest.fail(f"docker chamado: {cmd}"))
+    assert pg.main(["--lista", str(lista), "--partes", "2", "--paralelo", "2", "--simular"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("docker: docker run") == 2 and f"--name {pg.NOME}-2" in out and f"127.0.0.1:{pg.PORTA + 1}:5432" in out
+    assert "rodada: paralelo=2 workers=6" in out
+    capsys.readouterr()
+    assert pg.main(["--lista", str(lista), "--partes", "2", "--paralelo", "1", "--workers", "12", "--simular"]) == 0
+    assert "rodada: paralelo=1 workers=12" in capsys.readouterr().out
+
+
+def test_simular_serial_continua_sem_a_linha_da_rodada(tmp_path, monkeypatch, capsys):
+    lista, _ = _lista_de(tmp_path, monkeypatch)
+    assert pg.main(["--lista", str(lista), "--partes", "2", "--simular"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("docker: docker run") == 1 and "rodada:" not in out
+
+
+def test_paralelo_fora_do_limite_e_recusado(tmp_path, monkeypatch):
+    lista, _ = _lista_de(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit):
+        pg.main(["--lista", str(lista), "--paralelo", "9", "--simular"])
+
+
+def test_workers_por_instancia():
+    assert pg.workers_por_instancia(1) == 8 and pg.workers_por_instancia(2) == 6
+    assert pg.workers_por_instancia(1, 12) == 12 and pg.workers_por_instancia(2, 4) == 4
+
+
+def test_o_pytest_leva_o_n_e_o_dsn_da_instancia(tmp_path, monkeypatch):
+    pegos = {}
+    monkeypatch.setattr(pg, "lancar_em_job", lambda cmd, **kw: pegos.update(cmd=list(cmd), env=kw["env"]) or object())
+    pg._lancar_pytest(["tests/test_0.py"], tmp_path / "saida.txt", pg.instancias(2)[1].dsn, 12)
+    assert pegos["cmd"][pegos["cmd"].index("-n") + 1] == "12"
+    assert pegos["env"]["TEST_DATABASE_URL"].endswith(f":{pg.PORTA + 1}/farm")
+    pg._lancar_pytest(["tests/test_0.py"], tmp_path / "saida.txt")
+    assert pegos["cmd"][pegos["cmd"].index("-n") + 1] == "8" and pegos["env"]["TEST_DATABASE_URL"] == pg.DSN
+
+
+def test_serial_chama_o_rodar_parte_como_antes_sem_inst_nem_lancar(tmp_path, monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(pg, "rodar_parte", lambda *a, **k: chamadas.append((a, k)) or 0)
+    subiram: list = []
+    assert pg.rodar_partes([["a"], ["b"]], [pg.PADRAO], tmp_path, lambda linha: None, subiram) == 0
+    assert [k for _, k in chamadas] == [{}, {}] and subiram == [pg.PADRAO]
+
+
+def test_paralelo_roda_as_duas_partes_ao_mesmo_tempo_cada_uma_no_seu_conteiner(tmp_path, monkeypatch):
+    barreira = pg.threading.Barrier(2, timeout=20)         # só passa se as DUAS partes estiverem dentro ao mesmo tempo
+    usadas = []
+
+    def rodar(rotulo, arquivos, saida, relatar, **k):
+        usadas.append((k["inst"].nome, k["inst"].porta))
+        barreira.wait()
+        return 0
+    monkeypatch.setattr(pg, "rodar_parte", rodar)
+    subiram: list = []
+    assert pg.rodar_partes([["a"], ["b"]], pg.instancias(2), tmp_path, lambda linha: None, subiram, workers=6) == 0
+    assert sorted(usadas) == [(pg.NOME, pg.PORTA), (pg.NOME + "-2", pg.PORTA + 1)]
+    assert {i.nome for i in subiram} == {pg.NOME, pg.NOME + "-2"}
+
+
+def test_paralelo_o_lancar_leva_o_dsn_e_o_n_da_instancia(tmp_path, monkeypatch):
+    pegos = {}
+    barreira = pg.threading.Barrier(2, timeout=20)
+    monkeypatch.setattr(pg, "_lancar_pytest", lambda arquivos, saida, dsn, workers: pegos.setdefault(dsn, workers))
+
+    def rodar(rotulo, arquivos, saida, relatar, **k):
+        barreira.wait()
+        k["lancar"](arquivos, saida)
+        return 0
+    monkeypatch.setattr(pg, "rodar_parte", rodar)
+    assert pg.rodar_partes([["a"], ["b"]], pg.instancias(2), tmp_path, lambda linha: None, [], workers=6) == 0
+    assert pegos == {pg.instancias(2)[0].dsn: 6, pg.instancias(2)[1].dsn: 6}
+
+
+def test_paralelo_parte_vermelha_vira_o_rc_e_nao_mata_a_do_irmao(tmp_path, monkeypatch):
+    barreira = pg.threading.Barrier(2, timeout=20)
+    terminou = []
+
+    def rodar(rotulo, arquivos, saida, relatar, **k):
+        barreira.wait()
+        if rotulo.startswith("pg parte 2"):
+            return 1
+        pg.time.sleep(0.2)               # a parte 1 ainda roda quando a 2 fica vermelha e termina verde
+        terminou.append(rotulo)
+        return 0
+    monkeypatch.setattr(pg, "rodar_parte", rodar)
+    linhas: list[str] = []
+    assert pg.rodar_partes([["a"], ["b"]], pg.instancias(2), tmp_path, linhas.append, []) == 1
+    assert terminou == ["pg parte 1/2"] and any("pg parte 2/2 PAROU (rc=1)" in ln for ln in linhas)
+
+
+def test_paralelo_excecao_no_fio_nunca_vira_verde(tmp_path, monkeypatch):
+    barreira = pg.threading.Barrier(2, timeout=20)
+
+    def rodar(rotulo, arquivos, saida, relatar, **k):
+        barreira.wait()
+        if rotulo.startswith("pg parte 1"):
+            raise RuntimeError("quebrou")
+        return 0
+    monkeypatch.setattr(pg, "rodar_parte", rodar)
+    linhas: list[str] = []
+    assert pg.rodar_partes([["a"], ["b"]], pg.instancias(2), tmp_path, linhas.append, []) == 13
+    assert any("ERRO no fio" in ln and "quebrou" in ln for ln in linhas)
+
+
+def test_paralelo_sem_ram_nao_sobe_nada(tmp_path, monkeypatch):
+    monkeypatch.setattr(pg, "ram_livre_gb", lambda: 0.5)
+    monkeypatch.setattr(pg, "rodar_parte", lambda *a, **k: pytest.fail("não roda parte sem RAM"))
+    subiram: list = []
+    assert pg.rodar_partes([["a"], ["b"]], pg.instancias(2), tmp_path, lambda linha: None, subiram) == 9 and subiram == []
+
+
+def test_paralelo_as_linhas_dos_dois_fios_chegam_inteiras_ao_resumo(tmp_path, monkeypatch):
+    barreira = pg.threading.Barrier(2, timeout=20)
+
+    def rodar(rotulo, arquivos, saida, relatar, **k):
+        barreira.wait()
+        for n in range(300):
+            relatar(f"{rotulo} linha {n}")
+        return 0
+    monkeypatch.setattr(pg, "rodar_parte", rodar)
+    linhas: list[str] = []
+    assert pg.rodar_partes([["a"], ["b"]], pg.instancias(2), tmp_path, linhas.append, []) == 0
+    assert len(linhas) == 600 and all(ln.startswith("pg parte ") and " linha " in ln for ln in linhas)
+
+
+def test_main_paralelo_para_cada_conteiner_que_subiu_e_diz_o_paralelo(tmp_path, monkeypatch, capsys):
+    lista, paradas = _lista_de(tmp_path, monkeypatch)
+    barreira = pg.threading.Barrier(2, timeout=20)
+
+    def rodar(*a, **k):
+        barreira.wait()
+        return 0
+    monkeypatch.setattr(pg, "rodar_parte", rodar)
+    assert pg.main(["--lista", str(lista), "--partes", "2", "--paralelo", "2", "--saidas", str(tmp_path)]) == 0
+    assert sorted(paradas) == sorted([["docker", "stop", pg.NOME], ["docker", "stop", pg.NOME + "-2"]])
+    assert "pg verde: 2 partes, 2 arquivos (paralelo 2, -n 6 por contêiner)" in capsys.readouterr().out

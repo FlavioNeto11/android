@@ -36,6 +36,10 @@
   Caminho do run.txt (padrao: data\funil\AAAAMMDD-HHMMSSZ-run.txt dentro da raiz).
 .PARAMETER ListaPg
   Arquivo com os testes afetados para o PG dirigido; sem ele a etapa 6 e pulada.
+.PARAMETER ParalelosPg
+  Contêineres do PG ao mesmo tempo (pg-rapido.py --paralelo; 1 = como sempre). 29.197: medida entre cortes antes de virar padrao.
+.PARAMETER WorkersPg
+  -n do pytest de cada contêiner do PG (0 = o padrao do pg-rapido: 8 com 1 contêiner, 6 por contêiner com mais).
 .PARAMETER PartesPg
   Em quantas partes o pg-rapido divide a lista (padrao 2).
 .PARAMETER ResumoPg
@@ -72,7 +76,7 @@
   powershell -NoProfile -File scripts\funil.ps1 -Raiz C:\git\android\.claude\worktrees\suite10 -ListaPg C:\tmp\pg-afetados.txt -Saida C:\tmp\funilcorte61-run.txt
 #>
 [CmdletBinding()]
-param([string]$Raiz = '', [string]$Saida = '', [string]$ListaPg = '', [int]$PartesPg = 2, [string]$ResumoPg = '',
+param([string]$Raiz = '', [string]$Saida = '', [string]$ListaPg = '', [int]$PartesPg = 2, [ValidateRange(1, 4)][int]$ParalelosPg = 1, [ValidateRange(0, 64)][int]$WorkersPg = 0, [string]$ResumoPg = '',
       [string]$Etapas = '1,2,3,4,5,6', [ValidateRange(1, 100)][int]$Teto = 25, [string]$TetoPorEtapa = '', [switch]$SemTeto,
       [switch]$ParaNoErro, [switch]$Simular, [switch]$Interno, [string]$ArquivoDeTeto = '', [string]$ComandosDeTeste = '', [switch]$ExigirCommit,
       [string]$Python = '', [string]$MypyPython = '', [ValidateRange(0, 3600)][int]$BatimentoS = 30)
@@ -146,6 +150,8 @@ if ($ListaPg -and (Test-Path -LiteralPath $ListaPg)) {
 }
 if ($ListaPg -and $pgElegiveis -ne 0) {
   $real['pg'] = @((New-Cmd $py @('scripts\pg-rapido.py', '--lista', $ListaPg, '--partes', [string]$PartesPg, '--saidas', ($Saida + '.pg'), '--resumo', $ResumoPg) $Raiz))
+  if ($ParalelosPg -gt 1) { $real['pg'][0].args += @('--paralelo', [string]$ParalelosPg) }
+  if ($WorkersPg -gt 0) { $real['pg'][0].args += @('--workers', [string]$WorkersPg) }
 }
 $comandos = $real
 if ($ComandosDeTeste) {
@@ -166,6 +172,8 @@ function Get-ArgumentosEncaminhados {
   $a = @('-Raiz', $Raiz, '-Saida', $Saida, '-PartesPg', [string]$PartesPg, '-ResumoPg', $ResumoPg, '-Etapas', $Etapas, '-Teto', [string]$Teto,
          '-ArquivoDeTeto', $ArquivoDeTeto, '-Python', $Python, '-MypyPython', $MypyPython)
   if ($ListaPg) { $a += @('-ListaPg', $ListaPg) }
+  if ($ParalelosPg -gt 1) { $a += @('-ParalelosPg', [string]$ParalelosPg) }
+  if ($WorkersPg -gt 0) { $a += @('-WorkersPg', [string]$WorkersPg) }
   if ($TetoPorEtapa) { $a += @('-TetoPorEtapa', $TetoPorEtapa) }
   if ($ComandosDeTeste) { $a += @('-ComandosDeTeste', $ComandosDeTeste) }
   if ($ParaNoErro) { $a += '-ParaNoErro' }
@@ -245,6 +253,18 @@ function Get-Contagens([string]$texto) {
   }
   return $c
 }
+# Nomes dos testes que falharam (pytest: FAILED/ERROR path::teste; vitest: FAIL arquivo > caso; tsc: arquivo(l,c): error TSnnnn). O run.txt guarda
+# ate 40 por etapa: sem eles a causa de uma etapa vermelha se perde (o funil 59 perdeu os 4 do vitest).
+function Get-NomesQueFalharam([string]$texto) {
+  $nomes = New-Object 'System.Collections.Generic.List[string]'
+  foreach ($linha in ($texto -split "`r?`n")) {
+    $m = [regex]::Match($linha, '^(?:FAILED|ERROR)\s+(\S+)')
+    if (-not $m.Success) { $m = [regex]::Match($linha, '^\s*FAIL\s+(\S.*?)\s*$') }
+    if (-not $m.Success) { $m = [regex]::Match($linha, '(\S+\(\d+,\d+\): error TS\d+)') }
+    if ($m.Success) { $n = ($m.Groups[1].Value -replace '"', "'") -replace ';', ','; if ($n.Length -gt 160) { $n = $n.Substring(0, 160) }; if (-not $nomes.Contains($n)) { $nomes.Add($n) } }
+  }
+  return ,$nomes
+}
 $commit = ''
 try { $commit = [string](& git -C $Raiz rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { $commit = '' } } catch { $commit = '' }
 $commit = $commit.Trim()
@@ -289,9 +309,20 @@ foreach ($d in $definicao) {
   $texto = ''
   if (Test-Path -LiteralPath $detalhe) { $texto = Get-Content -LiteralPath $detalhe -Raw }
   $cont = Get-Contagens $texto
+  $textoDosNomes = $texto
+  if ($d.chave -eq 'pg' -and (Test-Path -LiteralPath ($Saida + '.pg'))) {
+    foreach ($arqPg in (Get-ChildItem -LiteralPath ($Saida + '.pg') -Filter 'pg_parte*.txt' -ErrorAction SilentlyContinue)) { $textoDosNomes += "`n" + (Get-Content -LiteralPath $arqPg.FullName -Raw) }
+  }
+  $nomesFalhos = Get-NomesQueFalharam $textoDosNomes
   $status = if ($rc -eq 0 -and $cont.failed -eq 0 -and $cont.errors -eq 0) { 'ok' } else { 'falhou' }
-  Add-Run ('ETAPA {0} ini={1} fim={2} dur_s={3:F0} rc={4} status={5} teto={6} passed={7} failed={8} skipped={9} errors={10}' -f $rotulo, $ini, (Get-Agora),
-           $relogio.Elapsed.TotalSeconds, $rc, $status, $(if ($SemTeto) { 'sem' } else { $tetoDaEtapa }), $cont.passed, $cont.failed, $cont.skipped, $cont.errors)
+  $linhaEtapa = ('ETAPA {0} ini={1} fim={2} dur_s={3:F0} rc={4} status={5} teto={6} passed={7} failed={8} skipped={9} errors={10}' -f $rotulo, $ini, (Get-Agora),
+                 $relogio.Elapsed.TotalSeconds, $rc, $status, $(if ($SemTeto) { 'sem' } else { $tetoDaEtapa }), $cont.passed, $cont.failed, $cont.skipped, $cont.errors)
+  if ($nomesFalhos.Count -gt 0) {
+    $maisNomes = ''
+    if ($nomesFalhos.Count -gt 40) { $maisNomes = ';+' + ($nomesFalhos.Count - 40) }
+    $linhaEtapa += ' nomes_falhos="' + (@($nomesFalhos | Select-Object -First 40) -join ';') + $maisNomes + '"'
+  }
+  Add-Run $linhaEtapa
   if ($status -eq 'ok') { $ok++ } else { $falhas++; if ($ParaNoErro) { $parou = $true } }
 }
 if (-not $commit -and $exigirCommit) {
