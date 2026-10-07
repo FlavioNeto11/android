@@ -312,6 +312,12 @@ achado não se confirmam nos dados.
     Desde o 31.26 (opção A, `ai.sent_text_dispensa_primeiro_juiz`), na etapa com nível `sent` cuja ação declara a prova
     local `sent_text` (a SEND_MESSAGE do Instagram), a prova confirmada na árvore substitui o primeiro julgamento
     (o barato). Nesse caso a única linha `verify` da etapa é a do rejulgamento `sim_com_efeito`, e é ele quem decide.
+    Desde o 31.238 (`ai.rejulgamento_dispensado_por_app`), esse rejulgamento também sai quando o app GANHOU o direito:
+    pelo menos `rejulgamento_dispensa_minimo` (30) rejulgamentos `sim_com_efeito` em `rejulgamento_dispensa_janela_dias`
+    (7), sem nenhuma discordância, pela régua do `/api/usage`. Só vale para o "sim" da prova local (marcador do
+    catálogo ou `sent_text`), nunca para o do juiz barato. A dispensa fica na trilha (`kind = rejulgamento_dispensado`).
+    O app que perde o mínimo na janela volta a ser rejulgado e recupera o direito sozinho. Medido em 07/10: 0
+    discordâncias em 119.
     Fica a decisão "envio comprovado pela árvore local (sent_text)" e a métrica `verificacao.primeiro_juiz_dispensado`.
     O atalho só vale quando: o nível é `sent` (entregue e lida, a árvore não prova); é o primeiro julgamento da
     verificação; o rejulgamento vai acontecer (ligado e com modelo diferente). Sem isso, nada muda.
