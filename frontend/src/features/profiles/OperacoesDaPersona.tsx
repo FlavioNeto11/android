@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../../components/Badge';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { formatInt, formatUsd4, plural } from '../../lib/format';
+import { LIMITE_DA_LISTA_DA_PERSONA } from '../operacao/api';
 import { toLoadError, type LoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
 import { formatQuando } from '../../lib/time';
@@ -42,7 +43,9 @@ export function OperacoesDaPersona({ profileId, versao = 0 }: { profileId: strin
 
 function Corpo({ h }: { h: HistoricoDaPersona }) {
   const soma = somaDoHistorico(h.linhas);
-  const olhou = h.lidas < h.totalDeOperacoes ? `Olhei as ${h.lidas} operações mais recentes, de ${formatInt(h.totalDeOperacoes)}.` : `Olhei as ${plural(h.lidas, 'operação', 'operações')}.`;
+  const olhou = h.fonte === 'filtro'
+    ? (h.totalDeOperacoes >= LIMITE_DA_LISTA_DA_PERSONA ? `As ${formatInt(h.totalDeOperacoes)} operações mais recentes desta persona; pode haver mais antigas.` : `${plural(h.totalDeOperacoes, 'operação', 'operações')} com alvo desta persona.`)
+    : h.lidas < h.totalDeOperacoes ? `Olhei as ${h.lidas} operações mais recentes, de ${formatInt(h.totalDeOperacoes)}.` : `Olhei as ${plural(h.lidas, 'operação', 'operações')}.`;
   return (
     <>
       {h.linhas.length === 0 ? (
@@ -66,7 +69,7 @@ function Corpo({ h }: { h: HistoricoDaPersona }) {
                   <td>{l.criadaEm ? formatQuando(l.criadaEm) : '—'}</td>
                   <td>{l.estado ? <Badge tone={TOM[l.estado]} size="sm">{ROTULO_DO_ESTADO[l.estado]}</Badge> : 'não informado'}</td>
                   <td data-estagio-final>{l.estagioFinal}{l.motivo ? <><br /><span className={styles.muted}>{l.motivo}</span></> : null}</td>
-                  <td>{l.acao ? rotuloDaAcao(l.acao) : '—'}</td>
+                  <td>{l.acao ? rotuloDaAcao(l.acao) : l.temAcao ? 'Executada' : '—'}</td>
                   <td>{l.verificacao === 'sem_acao' ? '—' : ROTULO_DA_VERIFICACAO[l.verificacao]}</td>
                   <td data-custo>{l.custoUsd === null ? '—' : formatUsd4(l.custoUsd)}</td>
                 </tr>

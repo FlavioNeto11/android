@@ -147,4 +147,72 @@ describe('a tela', () => {
     const h = await lerHistoricoDaPersona('p1');
     expect(h).toMatchObject({ linhas: [], totalDeOperacoes: 1, lidas: 1, falhas: 0 });
   });
+
+  // ---- v1.116 (Jev 31.213): GET /api/operacoes?profile_id= ----------------------------------------------------------------------------
+
+  const filtrada = (itens: unknown[]) => backend.on('GET', /^\/api\/operacoes$/, () => json({ items: itens }));
+  const itemFiltrado = (id: string, alvos: unknown[], extra: Record<string, unknown> = {}) =>
+    ({ id, command: `Comentar na página ${id}`, status: 'concluida', created_at: '2026-10-07T10:00:00Z', capacidade: {}, alvos, ...extra });
+  const alvoFiltrado = (extra: Record<string, unknown> = {}) => ({ profile_id: 'p1', instance_id: 'android-01', estado: 'concluido', estagio: 'resultado_verificado', motivo: null, parou_em: null, acao_verificada: true, custo_usd: 0.05, duracao_ms: 90_000, ...extra });
+
+  it('com o filtro do central: uma leitura só (nenhum detalhe), mando profile_id e mostro o resumo do alvo', async () => {
+    filtrada([
+      itemFiltrado('op-3', [alvoFiltrado({ estado: 'bloqueado', estagio: 'conta', parou_em: 'sessao', motivo: 'sem sessão', acao_verificada: null, custo_usd: null })]),
+      itemFiltrado('op-2', [alvoFiltrado({ estagio: 'acao_preparada', acao_verificada: false, custo_usd: 0.1 }), alvoFiltrado()]),
+    ]);
+    await abrir();
+    await waitFor(() => expect(container.querySelector('tr[data-operacao]')).not.toBeNull());
+    expect(backend.callsTo('GET', /^\/api\/operacoes$/)[0]!.query.get('profile_id')).toBe('p1');
+    expect(backend.callsTo('GET', /^\/api\/operacoes\/op-/)).toHaveLength(0);                 // sem o detalhe das operações
+    const linhas = Array.from(container.querySelectorAll('tr[data-operacao]'));
+    expect(linhas.map((r) => r.getAttribute('data-operacao'))).toEqual(['op-3', 'op-2', 'op-2']);   // a persona com dois alvos numa operação
+    const bloqueado = text(linhas[0]!);
+    expect(bloqueado).toContain('Parou em Sessão');
+    expect(bloqueado).toContain('sem sessão');
+    expect(text(linhas[0]!.querySelector('[data-custo]')!)).toBe('—');
+    expect(text(linhas[1]!)).toContain('Não verificada');
+    expect(text(linhas[1]!)).toContain('Executada');                                            // o tipo da ação só vem do detalhe
+    expect(text(linhas[2]!)).toContain('Verificada');
+    expect(text(container.querySelector('[data-soma]')!)).toContain('3 alvos · 2 concluídos · 1 ação verificada');
+    expect(text(container)).toContain('2 operações com alvo desta persona.');
+  });
+
+  it('com o filtro e nenhuma operação: persona sem histórico, sem tentar o detalhe', async () => {
+    filtrada([]);
+    await abrir();
+    await waitFor(() => expect(container.querySelector('[data-sem-operacoes]')).not.toBeNull());
+    expect(text(container)).toContain('Esta persona não foi alvo de nenhuma operação. 0 operações com alvo desta persona.');
+    expect(backend.callsTo('GET', /^\/api\/operacoes$/)).toHaveLength(1);
+  });
+
+  it('no limite da lista avisa que pode haver operações mais antigas', async () => {
+    filtrada(Array.from({ length: 50 }, (_, i) => itemFiltrado(`o${i}`, [alvoFiltrado()])));
+    await abrir();
+    await waitFor(() => expect(container.querySelector('tr[data-operacao]')).not.toBeNull());
+    expect(text(container)).toContain('As 50 operações mais recentes desta persona; pode haver mais antigas.');
+  });
+
+  it('central anterior (ignora o filtro, lista sem alvos): cai na leitura do detalhe, como antes', async () => {
+    servir(OPS);
+    await abrir();
+    await waitFor(() => expect(container.querySelector('tr[data-operacao]')).not.toBeNull());
+    expect(backend.callsTo('GET', /^\/api\/operacoes\/op-/).length).toBe(3);
+    expect(text(container)).toContain('Olhei as 3 operações.');
+  });
+
+  it('o alvo do filtro lê tolerante: campo torto vira "não informado", nunca zero', async () => {
+    filtrada([itemFiltrado('op-9', [{ profile_id: 'p1', estado: 'estranho', estagio: 'inexistente', custo_usd: 'caro', acao_verificada: 'sim' }])]);
+    await abrir();
+    await waitFor(() => expect(container.querySelector('tr[data-operacao]')).not.toBeNull());
+    const linha = container.querySelector('tr[data-operacao="op-9"]')!;
+    expect(text(linha.querySelector('[data-custo]')!)).toBe('—');
+    expect(text(linha)).toContain('não informado');
+  });
+
+  it('sem o módulo (404) no filtro: diz isso, sem tentar o detalhe e sem exemplo', async () => {
+    backend.on('GET', /^\/api\/operacoes$/, () => apiError(404, 'nao_encontrado', 'sem rota'));
+    await abrir();
+    await waitFor(() => expect(text(container)).toContain('O central ainda não oferece o módulo de operações.'));
+    expect(container.querySelector('tr[data-operacao]')).toBeNull();
+  });
 });
