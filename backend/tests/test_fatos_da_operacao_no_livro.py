@@ -6,8 +6,9 @@ mesmo assunto pagava a pesquisa de novo.
 O que estes testes protegem:
 * só o fato de pesquisa confirmado, dentro do frescor, de operação ENCERRADA nasce no Livro: a hipótese, o vencido, a
   leitura do alvo, a fonte, o estado da pesquisa e o fato de operação aberta, não;
-* nasce `candidate`, papel `writer`, escopo do pacote do app, sem evidência de repetição: a esteira das lições não o
-  valida nem o expõe ao prompt; a proveniência diz operação, assunto, domínios, frescor e uso no texto;
+* nasce `candidate`, papel `writer`, escopo do pacote do app e do assunto (31.200), sem evidência de repetição: a
+  esteira das lições não o valida nem o expõe ao prompt; a proveniência diz operação, assunto, domínios, frescor e uso
+  no texto;
 * o passo é idempotente, e o MESMO fato em outra operação cai no mesmo item.
 
 Nível de prova: `simulated` (harness com aparelho falso; nenhuma IA).
@@ -55,14 +56,14 @@ def _fonte(db, op: str, oid: str, url: str) -> None:      # type: ignore[no-unty
 
 def test_so_o_fato_confirmado_de_pesquisa_dentro_do_frescor() -> None:
     base = dict(operacao_id="op", chave="pesquisa.a1", tipo="descoberta", texto=FATO, confianca="confirmado",
-                frescor_ate=FUTURO, pacote=PACOTE)
+                frescor_ate=FUTURO, pacote=PACOTE, assunto="festival de inverno")
     agora = "2026-10-07T00:00:00.000Z"
     item = candidata(FatoDaOperacao(**base), agora)                                   # type: ignore[arg-type]
     assert item is not None and item.escopo.role == "writer" and item.escopo.app == PACOTE
     assert item.content == {"modelo": "fato_da_operacao", "fato": FATO}
     assert item.human_origin                                       # trava do D1: só o dono publica (revisão de segredos)
     com_arroba = FatoDaOperacao(**{**base, "assunto": "o post de @fulano"})                # type: ignore[arg-type]
-    assert candidata(com_arroba, agora).provenance["assunto"] == ""                     # type: ignore[union-attr]
+    assert candidata(com_arroba, agora) is None                 # 31.200: sem assunto, a lição iria a todo texto do app
     for troca in ({"confianca": "hipotese"}, {"frescor_ate": "2026-10-06T00:00:00.000Z"},
                   {"chave": "alvo.conteudo"}, {"chave": "pesquisa.estado"}, {"tipo": "fonte"},
                   {"pacote": ""}, {"texto": "x" * 300}, {"texto": "A conta @fulano.oficial anunciou o festival."},

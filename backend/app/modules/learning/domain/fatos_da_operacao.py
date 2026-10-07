@@ -5,9 +5,11 @@ leitura do alvo (31.179), dão `confirmado`; o vencido sai do bloco pelo frescor
 operação: ele morria com ela, e a próxima operação sobre o mesmo assunto pagava a pesquisa de novo.
 
 Decisões (sem decisão do dono pendente; reversível):
-* nasce `candidate`, papel `writer`, escopo do app da operação. O Livro não tem escopo de assunto, e a lição ATIVA do
-  escritor iria a todo texto do app, sobre qualquer post. Por isso só uma pessoa a publica: a origem está em
-  `FONTES_HUMANAS` (trava do D1, `requires_owner`), e a esteira das lições não valida texto de origem humana;
+* nasce `candidate`, papel `writer`, escopo do app e do ASSUNTO da operação (31.200, `scope_subject`): publicada, ela
+  só vai ao texto que pede o mesmo assunto (`licoes.nivel`). O fato cujo assunto não sobra depois de canônico (ou tem
+  identificador) não nasce: sem assunto, a lição iria a todo texto do app, sobre qualquer post. E só uma pessoa a
+  publica: a origem está em `FONTES_HUMANAS` (trava do D1, `requires_owner`), e a esteira das lições não valida texto
+  de origem humana;
 * o fato com identificador de pessoa (um @, um e-mail) não vai: a pesquisa é de assunto, não de gente, e o Livro mostra
   o texto; o assunto com identificador sai da proveniência;
 * só o fato de pesquisa (`pesquisa.*`, `descoberta`, `confirmado`, dentro do frescor) de operação ENCERRADA. Ficam fora:
@@ -22,7 +24,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from app.modules.learning.domain.licoes import LICAO_MAX_CARACTERES
-from app.modules.learning.domain.livro import Escopo, NovoItem
+from app.modules.learning.domain.livro import Escopo, NovoItem, assunto_canonico
 from app.modules.learning.domain.tokens import estimar_tokens
 from app.modules.learning.domain.vocabulario import LivroKind, Papel, SourceKind
 from app.modules.skills.domain.document import JsonObject, JsonValue
@@ -63,9 +65,12 @@ def candidata(f: FatoDaOperacao, agora: str) -> NovoItem | None:
     if not elegivel(f, agora) or len(texto) > LICAO_MAX_CARACTERES or _IDENTIFICADOR.search(texto):
         return None
     assunto = "" if _IDENTIFICADOR.search(f.assunto) else f.assunto[:200]
+    escopo_do_assunto = assunto_canonico(assunto)
+    if not escopo_do_assunto:                  # 31.200: sem assunto, a lição iria a todo texto do app
+        return None
     execucoes = list[JsonValue](f.execucoes[:20])
     dominios = list[JsonValue](f.dominios[:10])
-    return NovoItem(kind=LivroKind.LICAO, escopo=Escopo(app=f.pacote, role=Papel.WRITER.value),
+    return NovoItem(kind=LivroKind.LICAO, escopo=Escopo(app=f.pacote, role=Papel.WRITER.value, subject=escopo_do_assunto),
                     content={"modelo": "fato_da_operacao", "fato": texto}, summary=texto,
                     source_kind=SourceKind.FATO_DA_OPERACAO, side_effect=False,
                     provenance={"regra": VERSAO_DA_REGRA, "operacao": f.operacao_id, "chave": f.chave,

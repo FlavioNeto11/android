@@ -32,6 +32,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   título, pela `key`, e a IA escolhe os dois a partir da tela. O aviso do 31.182 já usava a posição da etapa.
 - `exibicao.avisos` mascara o texto e a forma de chave (`abrir_perfil_{perfil_nome}`). A proposta guardada não muda.
 - Prova `simulated`: `backend/tests/test_proposta_para_exibir.py` (4). Ensino, arquitetura e rotas: 502 passaram.
+## 2026-10-07 — 31.200: o escopo de assunto no Livro (branch feat/31-200-escopo-de-assunto, migração 128)
+
+- O fato da pesquisa de uma operação (31.190) nascia no escopo do app inteiro. Publicado, iria a todo texto do
+  escritor no app, sobre qualquer post.
+- Migração 128: `learning_items.scope_subject`, e o índice `ux_learning_items_vivo` com o assunto. O item anterior
+  fica sem assunto, e a chave do veto dele não muda.
+- O fato nasce com o assunto canônico da operação. Sem assunto, ou com identificador no assunto, não nasce.
+- A lição com assunto só vai ao prompt de quem pede o mesmo assunto (`licoes.nivel`). Hoje nenhum pedido do escritor
+  leva assunto, então ela não vai a prompt nenhum.
+- `GET /api/aprendizado` ganha o campo `assunto` e o filtro `?assunto=` (adendo v1.113).
+- Prova `simulated`: `backend/tests/test_livro_escopo_de_assunto.py` e `backend/tests/test_migracao_128.py`, em SQLite.
+  PostgreSQL e `real`: `not_run`.
 
 ## 2026-10-07 — 31.192: o script que marca a prova da onda do aprendizado pelo commit no ar (branch feat/31-192-marcacao-da-onda)
 
