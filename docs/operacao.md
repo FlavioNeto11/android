@@ -404,7 +404,11 @@ estado antigo, nunca uma edição retroativa.
   `<run>.wrapper.txt`). Saída 0 só com tudo verde, 1 se alguma etapa falhou, 2 se nenhuma falhou mas alguma foi pulada ou não rodou. Uso:
   `powershell -NoProfile -File scripts\funil.ps1 -Raiz <checkout> -ListaPg <lista> -Saida <run.txt>`; `-Simular` mostra o plano; `-ParaNoErro` para na
   primeira falha. A comparação entre cortes lê o run.txt direto (`devops-29-180-comparar.py run.txt=<corte>`). Teste:
-  `scripts/tests/test_funil.py` (comandos falsos pelo gancho `-ComandosDeTeste`).
+  `scripts/tests/test_funil.py` (comandos falsos pelo gancho `-ComandosDeTeste`). **Trava do funil:** enquanto roda, o funil mantém `data/funil-ativo.json`
+  (`pid`, `run`, `inicio`, `raiz`) no checkout central (`git rev-parse --git-common-dir`; `FARM_FUNIL_TRAVA` troca o caminho) e exporta `FARM_FUNIL_RODANDO=1`.
+  Os testes de script que queimam CPU ou sobem subprocessos (`test_com_teto_de_cpu.py`, `test_funil.py`, `test_amostrador_host.py`) levam
+  `pytestmark = pytest.mark.carga` e `scripts/tests/conftest.py` os **pula** quando a trava existe com o processo vivo (e menos de 12 h); o próprio funil
+  os roda (`FARM_FUNIL_RODANDO`), e `FARM_FUNIL_CARGA=1` força de propósito. Teste novo que gera carga entra com o marcador.
 - **`scripts/canais-agendadas.ps1`** (29.186) — as tarefas do host para os scripts da Canais, no molde da `farm-restore-ensaio`
   (Idle, `-Instalar` / `-Remover`, `-Instalar -Simular` só mostra o plano). `-Tarefa resumo-diario`: `farm-canais-resumo-diario`, todo
   dia às 07:03 do horário local do host (Brasília) desde 08/10; a ação registrada leva `-Enviar` (manda o `.claude\canais\resumo_diario.py`

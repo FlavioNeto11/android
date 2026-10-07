@@ -20,6 +20,7 @@ FUNIL = SCRIPTS / "funil.ps1"
 PS51 = shutil.which("powershell")
 
 precisa_ps51 = pytest.mark.skipif(PS51 is None or sys.platform != "win32", reason="precisa do Windows PowerShell 5.1")
+pytestmark = pytest.mark.carga  # CPU/subprocessos: pula enquanto um funil roda (conftest.py, 29.196)
 
 
 def py(codigo: str) -> list[str]:
@@ -180,3 +181,20 @@ def test_o_script_e_5_1_compativel_e_nao_chama_pwsh_nem_mexe_em_wsl_tunel_relogi
     codigo = "\n".join(l for l in codigo.splitlines() if not l.lstrip().startswith("#"))
     for proibido in ("pwsh", "wslconfig", "wsl.exe", "Stop-Process", "taskkill", "w32tm", "Set-Date", " ?? ", "?.", "&&", "-AsUTC", ".env"):
         assert proibido not in codigo, proibido
+
+
+@precisa_ps51
+class TestTrava:
+    def test_trava_existe_durante_o_funil_com_o_pid_dele_e_some_no_fim(self, tmp_path, monkeypatch):
+        trava = tmp_path / "trava" / "funil-ativo.json"
+        monkeypatch.setenv("FARM_FUNIL_TRAVA", str(trava))
+        monkeypatch.delenv("FARM_FUNIL_RODANDO", raising=False)
+        sonda = py("import os, json, sys; d = json.load(open(sys.argv[1], encoding='utf-8-sig')); "
+                   "print(('%d passed' % 1) if d['pid'] and os.environ.get('FARM_FUNIL_RODANDO') == '1' else '1 failed')")
+        comandos = dict(TODAS_OK)
+        comandos["scripts"] = [sonda + [str(trava)]]
+        r = _funil(tmp_path, comandos, "-SemTeto", "-Etapas", "1")
+        assert r.returncode == 0, r.stdout + r.stderr
+        etapa = [x for x in _registros(tmp_path) if x["tipo"] == "ETAPA"][0]
+        assert etapa["status"] == "ok" and etapa["passed"] == "1", "a trava com pid existia e o ambiente trazia FARM_FUNIL_RODANDO"
+        assert not trava.exists(), "a trava some quando o funil acaba"

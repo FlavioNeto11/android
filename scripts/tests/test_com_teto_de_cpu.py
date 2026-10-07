@@ -21,6 +21,7 @@ WRAPPER = SCRIPTS / "com-teto-de-cpu.ps1"
 PWSH = shutil.which("pwsh")
 
 precisa_windows = pytest.mark.skipif(PWSH is None or sys.platform != "win32", reason="Job Object: só Windows com pwsh")
+pytestmark = pytest.mark.carga  # CPU/subprocessos: pula enquanto um funil roda (conftest.py, 29.196)
 
 QUEIMADOR = '''
 import ctypes, json, os, subprocess, sys, time

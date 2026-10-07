@@ -180,6 +180,28 @@ function Add-Run([string]$linha) { [IO.File]::AppendAllText($Saida, $linha + "`r
 function Get-Agora { return (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', $inv) }
 try { (Get-Process -Id $PID).PriorityClass = 'Idle' } catch { }
 
+# ---------------------------------------------------------------------------------------------- trava do funil (teste de carga pula)
+# Os testes marcados `carga` (scripts/tests/conftest.py) pulam enquanto esta trava existir com o processo vivo; o proprio funil os roda
+# (FARM_FUNIL_RODANDO=1 e herdado pelo encadeamento). Quem a escreve e o processo de fora (o que fica vivo ate o fim), nao o Interno.
+$env:FARM_FUNIL_RODANDO = '1'
+$trava = ''
+if (-not $Interno) {
+  $trava = [string]$env:FARM_FUNIL_TRAVA
+  if (-not $trava) {
+    try {
+      $comum = (& git -C $Raiz rev-parse --git-common-dir 2>$null)
+      if ($comum) { if (-not [IO.Path]::IsPathRooted($comum)) { $comum = Join-Path $Raiz $comum }; $trava = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($comum))) 'data\funil-ativo.json' }
+    } catch { }
+  }
+  if ($trava) {
+    try {
+      New-Item -ItemType Directory -Force (Split-Path -Parent $trava) | Out-Null
+      [IO.File]::WriteAllText($trava, (@{ pid = $PID; run = $Saida; inicio = (Get-Agora); raiz = $Raiz } | ConvertTo-Json -Compress), $utf8)
+    } catch { $trava = '' }
+  }
+}
+function Remove-Trava { if ($trava) { try { Remove-Item -LiteralPath $trava -Force -ErrorAction SilentlyContinue } catch { } } }
+
 # ---------------------------------------------------------------------------------------------- relancamento sob o teto
 if (-not $Interno -and -not $SemTeto) {
   if (-not (Test-Path -LiteralPath $wrapper)) { throw "faltou $wrapper" }
@@ -188,7 +210,9 @@ if (-not $Interno -and -not $SemTeto) {
   # Chamado como script (nao como exe nativo): no 5.1 as aspas dentro de -Linha se perderiam na passagem a um processo; o wrapper roda neste
   # mesmo processo (fora do job) e e ele quem cria o job e lanca o encadeamento dentro dele.
   & $wrapper -Teto $Teto -BatimentoS $BatimentoS -ArquivoDeTeto $ArquivoDeTeto -Linha $linhaInterna *>&1 | ForEach-Object { Add-Content -LiteralPath ($Saida + '.wrapper.txt') -Value ([string]$_) -Encoding UTF8 }
-  exit $LASTEXITCODE
+  $rcWrapper = $LASTEXITCODE
+  Remove-Trava
+  exit $rcWrapper
 }
 
 # ---------------------------------------------------------------------------------------------- encadeamento (dentro do job)
@@ -252,4 +276,5 @@ foreach ($d in $definicao) {
 }
 $rcFinal = if ($falhas -gt 0) { 1 } elseif ($puladas -gt 0 -or $naoRodou -gt 0) { 2 } else { 0 }
 Add-Run ('FUNIL fim={0} rc={1} ok={2} falhas={3} puladas={4} nao_rodou={5}' -f (Get-Agora), $rcFinal, $ok, $falhas, $puladas, $naoRodou)
+Remove-Trava
 exit $rcFinal

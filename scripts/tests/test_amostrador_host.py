@@ -25,6 +25,7 @@ CABECALHO = ("ts_utc,cpu_host_pct,vm_convidado_nucleos,vmmem_ws_mb,qemu_host_pct
              "processos_top,avisos_pressao,cpu_media_pct,demais_processos_pct,nao_atribuido_pct")
 
 precisa_pwsh = pytest.mark.skipif(PWSH is None or sys.platform != "win32", reason="precisa de pwsh no Windows")
+pytestmark = pytest.mark.carga  # CPU/subprocessos: pula enquanto um funil roda (conftest.py, 29.196)
 
 
 _mutex_do_teste = ""
