@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useUiStore } from '../../store/ui';
 import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { formatClock, formatDateTime } from '../../lib/time';
 import { ESTAGIOS, lerOperacao } from './modelo';
 import { OperacaoPage } from './OperacaoPage';
 import { nomeDoArquivo } from './RelatorioDaOperacao';
@@ -140,7 +141,7 @@ describe('relatorioEmMarkdown', () => {
     expect(md).toContain('verificada: não conferida');
     expect(md).toContain('- **Custo de IA:** US$ 0.1000');
     expect(md).toContain('- **Custo de IA:** não informado');
-    expect(md).toContain(`| ${ESTAGIOS[13]!.rotulo} | ${hora(13)} |`);
+    expect(md).toContain(`| ${ESTAGIOS[13]!.rotulo} | ${hora(13)} (${formatClock(hora(13))} no painel) |`);        // 31.169: UTC e a hora que a gaveta mostra
     expect(md).toContain(`| ${ESTAGIOS[13]!.rotulo} | não alcançado |`);
   });
 
@@ -208,5 +209,33 @@ describe('o botão Relatório', () => {
     await ir('op-exemplo');
     await waitFor(() => expect(container.querySelectorAll('tbody tr[data-alvo]').length).toBeGreaterThan(0));
     expect(byRole('button', /^Relatório — indisponível: É um exemplo/, container).getAttribute('aria-disabled')).toBe('true');
+  });
+});
+
+describe('o relatório em Markdown traz a hora do painel ao lado do UTC', () => {
+  const op = lerOperacao({
+    id: 'op-h', command: 'x', created_at: '2026-10-07T18:00:00Z', finished_at: '2026-10-07T19:00:00Z',
+    alvos: [{ profile_id: 'p1', persona_nome: 'Persona 01', run_id: 'r1', estagio: 'conta', estado: 'em_curso',
+              estagios: [{ estagio: 'persona', em: '2026-10-07T18:00:01Z' }, { estagio: 'conta', em: 'ontem' }, { estagio: 'sessao', em: null }], resultado: null }],
+  })!;
+  const md = relatorioEmMarkdown(montarRelatorio(op, new Date('2026-10-07T20:00:00Z')));
+
+  it('avisa o que são as horas, e cada hora de estágio vem em ISO UTC com a hora local do painel entre parênteses', () => {
+    expect(md).toContain('As horas estão em UTC (ISO); entre parênteses, o horário que o painel mostra (o fuso deste navegador).');
+    expect(md).toContain(`| Persona | 2026-10-07T18:00:01Z (${formatClock('2026-10-07T18:00:01Z')} no painel) |`);
+  });
+
+  it('criada e encerrada também levam a hora do painel; hora que não é data fica como veio e sem hora segue "sem hora"', () => {
+    expect(md).toContain(`**Criada em:** 2026-10-07T18:00:00Z (${formatDateTime('2026-10-07T18:00:00Z')} no painel)`);
+    expect(md).toContain(`**Encerrada em:** 2026-10-07T19:00:00Z (${formatDateTime('2026-10-07T19:00:00Z')} no painel)`);
+    expect(md).toContain('| Conta | ontem |');                                // valor que o painel não lê: nada de "— no painel"
+    expect(md).not.toContain('— no painel');
+    expect(md).toContain('| Sessão | alcançado, sem hora |');
+  });
+
+  it('o JSON segue só em UTC, sem a hora local', () => {
+    const js = JSON.stringify(montarRelatorio(op, new Date('2026-10-07T20:00:00Z')));
+    expect(js).not.toContain('no painel');
+    expect(js).toContain('2026-10-07T18:00:01Z');
   });
 });

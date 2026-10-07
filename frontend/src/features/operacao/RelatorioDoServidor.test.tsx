@@ -126,7 +126,7 @@ describe('relatorioDoServidor (o leitor do rascunho v1.111)', () => {
     expect(md).toContain('Por peça (o total dividido pelas ações executadas e verificadas): US$ 0.1850');
     expect(md).toContain('**Montado por:** o central');
     expect(md).toContain('- **Conhecimento usado:** não informado pelo relatório do central');
-    expect(md).toContain('| Conta | 2026-10-07T18:00:02Z (+2 s) |');
+    expect(md).toMatch(/\| Conta \| 2026-10-07T18:00:02Z \([^)]* no painel\) \(\+2 s\) \|/);   // a hora do 31.171 + a etapa do v1.111
     expect(md).toContain('- **Duração:** 1 min 30 s · **Espera pela aprovação:** 12 s');
     expect(md).not.toContain('@fulano');
     const painel = relatorioEmMarkdown({ ...r, fonte: 'painel', identidades: null, criterios: null, latencia: null });
