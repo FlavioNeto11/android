@@ -676,6 +676,9 @@ class PesquisaCfg(BaseModel):
     #: Quanto tempo o fato pesquisado vale; vencido, o assunto volta a ser lacuna.
     frescor_h: float = Field(24.0, gt=0, le=24 * 30)
     max_fatos: int = Field(8, ge=1, le=20)
+    #: 31.231: quantos fatos confirmados e frescos do Livro, do mesmo assunto, cobrem o pedido e dispensam a pesquisa
+    #: paga (critério em `learning/domain/reaproveitamento_da_pesquisa.py`). 0 desliga o reaproveitamento.
+    reaproveitar_min_fatos: int = Field(2, ge=0, le=20)
 
 
 class AiCfg(BaseModel):
