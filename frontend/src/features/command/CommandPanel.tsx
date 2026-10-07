@@ -528,6 +528,14 @@ export function CommandPanel() {
     }
     setSugestao(null);
   };
+  /** 31.274: a persona que a IA descartou (aparelho desligado, sem sessão) pode ser incluída pelo dono: vai para o
+   *  modo por persona junto das escolhidas, onde a prévia dos alvos diz o que falta para ela rodar. */
+  const incluirDescartada = (profileId: string) => {
+    const ids = dadosDaSugestao?.escolhidas.map((e) => e.profile_id) ?? [];
+    mudarPessoas([...new Set([...ids, profileId])]);
+    mudarModo('persona');
+    setSugestao(null);
+  };
   const confirmacaoImpede: string | null = !confirmacao ? null
     : confirmacao.carregando ? 'Carregando a prévia dos alvos…'
     : confirmacao.recusa ? confirmacao.recusa.passo
@@ -795,6 +803,7 @@ export function CommandPanel() {
             impede={sugestaoImpede}
             onConfirmar={() => { if (ecoDaSugestao?.eco) void submit(sugestao.mode, false, ecoDaSugestao.eco); }}
             onManual={escolherManualmente}
+            onIncluir={incluirDescartada}
             onFechar={() => setSugestao(null)}
           />
         ) : null}
