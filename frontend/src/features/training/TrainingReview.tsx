@@ -26,6 +26,7 @@ import { Field, Select, TextInput } from '../../components/Field';
 import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { AvisoDaPosCondicao, lerPosCondicoes, motivoDaPosCondicao } from './PosCondicaoQueJaVale';
 import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
+import { avisosPorEtapa } from './avisosDaEtapa';
 import { descartarSessaoConcluida } from './descartarSessao';
 import { temMarcadorDaPersona, textoComMarcadores } from '../../lib/marcadores';
 import { FluxoNoLivro } from './FluxoNoLivro';
@@ -586,7 +587,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   const duplicada = new Set(duplicadas);
   const previaPorEtapa = new Map((previa?.steps ?? []).map((x) => [x.key, x]));
   // A linha de `warnings` que a etapa já mostra por dentro (31.128) não se repete na lista de avisos da prévia.
-  const avisosDaPrevia = (previa?.warnings ?? []).filter((w) => !(previa?.code && w === previa.message)).filter((w) => !jaValem.some((j) => j.message && j.message === w && proposta?.steps.some((s) => s.key === j.etapa)));
+  const todosAvisosDaPrevia = (previa?.warnings ?? []).filter((w) => !(previa?.code && w === previa.message)).filter((w) => !jaValem.some((j) => j.message && j.message === w && proposta?.steps.some((s) => s.key === j.etapa)));
+  // 31.198: o aviso que fala de uma etapa vai junto dela; só o resto fica na lista geral. Nunca bloqueia.
+  const { porEtapa: avisosDasEtapas, soltos: avisosDaPrevia } = avisosPorEtapa(todosAvisosDaPrevia, proposta?.steps ?? []);
+  const doSalvar = avisosPorEtapa(resultado?.warnings ?? [], resultado?.steps ?? []);
   const linhaDaEntrada = (seq: number) => {
     const e = porSeq.get(seq);
     return (
@@ -679,11 +683,14 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                 <Badge size="sm" tone={s.recipe ? 'success' : 'neutral'}>{s.recipe ? 'sem IA' : 'com IA'}</Badge> {s.title}
                 <span className={styles.muted}> — {s.reason}</span>
                 <PacotesAceitos pacotes={s.pacotes_aceitos} />
+                {(doSalvar.porEtapa.get(s.key) ?? []).map((w) => (
+                  <span key={w} className={styles.avisoDaEtapa} role="note" data-aviso-da-etapa={s.key}><Badge size="sm" tone="warning">Aviso</Badge> {w}</span>
+                ))}
               </li>
             ))}
           </ul>
-          {resultado.warnings?.length ? (
-            <ul className={styles.questions} aria-label="Avisos do salvar">{resultado.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+          {doSalvar.soltos.length ? (
+            <ul className={styles.questions} aria-label="Avisos do salvar">{doSalvar.soltos.map((w) => <li key={w}>{w}</li>)}</ul>
           ) : null}
           {semReceitaAoSalvar ? (
             <RefazerReceitas sessionId={sessionId} onFeito={(r) => setResultado((x) => (x ? { ...x, steps: r.steps, ensinado_em_prova: r.ensinado_em_prova } : x))} />
@@ -826,6 +833,9 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                             : previaPorEtapa.get(s.key)!.reason}
                         </p>
                       ) : null}
+                      {(avisosDasEtapas.get(s.key) ?? []).map((w) => (
+                        <p key={w} className={styles.avisoDaEtapa} role="note" data-aviso-da-etapa={s.key}><Badge size="sm" tone="warning">Aviso</Badge> {w}</p>
+                      ))}
                       {acoes.length && (s.side_effect || s.capability) ? (
                         <Select aria-label={`Ação do catálogo da etapa ${i + 1}`} value={s.capability ?? ''}
                                 onChange={(e) => mudarEtapa(i, { capability: e.target.value || null })}>
