@@ -27,17 +27,20 @@ PRS = {
     473: {"created_at": "2026-10-06T18:47:00Z", "state": "closed", "merged_at": "2026-10-06T20:00:00Z"},
     474: {"created_at": "2026-10-06T18:47:00Z", "state": "closed", "merged_at": None},
     475: {"created_at": "2026-10-06T18:47:00Z", "state": "open", "merged_at": None},
+    476: {"created_at": "2026-10-06T18:47:00Z", "state": "open", "merged_at": None},
 }
 COMENTARIOS = {
     473: [comentario("**P1 Badge** Propague a falha", "2026-10-06T18:51:00Z"), comentario("**P2 Badge** Outro ponto", "2026-10-06T18:55:00Z")],
     474: [comentario("**P1 Badge** Remova alteração: regra explícita do repositório, um PR por tarefa (AGENTS.md)", "2026-10-06T18:53:00Z"),
           comentario("Comentário de gente", user={"login": "fulano"})],
     475: [],
+    476: [comentario("**P0 Badge** Crítico", "2026-10-06T18:51:00Z"), comentario("**P3 Badge** Detalhe", "2026-10-06T18:53:00Z")],
 }
 REVISOES = {
     473: [{"user": CODEX, "body": "Codex Review: resumo", "submitted_at": "2026-10-06T18:51:30Z"}],
     474: [{"user": CODEX, "body": "Codex Review: resumo", "submitted_at": "2026-10-06T18:53:30Z"}],
     475: [{"user": CODEX, "body": "Codex Review: Didn't find any major issues. Nice work!", "submitted_at": "2026-10-06T18:52:00Z"}],
+    476: [{"user": CODEX, "body": "Codex Review: resumo", "submitted_at": "2026-10-06T18:53:30Z"}],
 }
 COMMITS = [
     {"commit": {"message": "fix(sessao): achados do Codex: toque de saída (PR 473)"}},
@@ -84,6 +87,22 @@ class Medir(unittest.TestCase):
     def test_revisao_sem_achado_conta_como_limpa(self) -> None:
         l = mod.medir_pr(REPO, 475, Fake(), coletor)
         self.assertEqual((l["achados"], l["sem_achado"], l["revisada"]), (0, 1, True))
+
+    def test_revisao_limpa_nao_tem_tempo_ate_o_achado(self) -> None:
+        """Achado do Codex (PR 501): só o horário dos comentários de achado conta."""
+        self.assertIsNone(mod.medir_pr(REPO, 475, Fake(), coletor)["minutos_ate_o_achado"])
+
+    def test_conta_p0_e_p3_e_o_relatorio_mostra_as_quatro(self) -> None:
+        l = mod.medir_pr(REPO, 476, Fake(), coletor)
+        self.assertEqual((l["achados"], l["p0"], l["p1"], l["p2"], l["p3"]), (2, 1, 0, 0, 1))
+        texto = mod.relatorio([l], {}, {}, "janela")
+        self.assertIn("(P0 1, P1 0, P2 0, P3 1)", texto)
+        self.assertIn("2 (1/0/0/1)", texto)
+
+    def test_mediana_de_quantidade_par_e_a_media_dos_dois_centrais(self) -> None:
+        linhas = [mod.medir_pr(REPO, n, Fake(), coletor) for n in (473, 476)]  # 4 min e 4 min -> use tempos 4 e 4
+        linhas[1]["minutos_ate_o_achado"] = 6
+        self.assertIn("mediana): 5 min", mod.relatorio(linhas, {}, {}, "janela"))
 
     def test_correcoes_por_pr_leem_numero_unico_lista_e_hashtag(self) -> None:
         cont = mod.correcoes_por_pr(REPO, None, Fake(), coletor)
@@ -151,6 +170,14 @@ class LinhaDeComando(unittest.TestCase):
         self.assertEqual(codigo, 1)
         self.assertIn("e-mail", err)
         self.assertNotIn(("issue", "create"), [a[:2] for a, _ in gh.chamadas])
+
+    def test_janela_proibida_nao_imprime_nem_grava(self) -> None:
+        """Achado do Codex (PR 501): a validação vem antes de qualquer saída, não só da publicação."""
+        saida = Path(tempfile.mkdtemp()) / "r.md"
+        codigo, texto, err = self._main(Fake(), "--repo", REPO, "--prs", "473", "--janela", "contato fulano@exemplo.invalid", "--saida", str(saida))
+        self.assertEqual(codigo, 1)
+        self.assertNotIn("fulano@", texto + err)
+        self.assertFalse(saida.exists())
 
     def test_relatorio_mostra_as_revisoes_sem_achado(self) -> None:
         texto = mod.relatorio([mod.medir_pr(REPO, n, Fake(), coletor) for n in (473, 475)], {}, {}, "janela")

@@ -17,6 +17,7 @@ import argparse
 import importlib.util
 import json
 import re
+import statistics
 import subprocess
 import sys
 from collections.abc import Callable
@@ -65,11 +66,13 @@ def medir_pr(repo: str, n: int, gh: Gh, coletor) -> dict[str, object]:
     achados = [{"gravidade": coletor.gravidade(str(c.get("body") or "")), "artefato": bool(coletor._ARTEFATO.search(str(c.get("body") or ""))),
                 "hora": _hora(c.get("created_at"))} for c in comentarios]
     sem_achado = sum(1 for r in revisoes if SEM_ACHADO.search(str(r.get("body") or "")) and not comentarios)
-    horas = [a["hora"] for a in achados if a["hora"]] + [_hora(r.get("submitted_at")) for r in revisoes if _hora(r.get("submitted_at"))]
+    # só o horário dos achados: revisão limpa (sem comentário) não tem "tempo até o achado"
+    horas = [a["hora"] for a in achados if a["hora"]]
     aberto = _hora(pr.get("created_at"))
     minutos = round((min(horas) - aberto).total_seconds() / 60) if horas and aberto else None
     return {"pr": n, "estado": "merged" if pr.get("merged_at") else str(pr.get("state")), "revisada": bool(revisoes or comentarios),
-            "achados": len(achados), "p1": sum(a["gravidade"] == "P1" for a in achados), "p2": sum(a["gravidade"] == "P2" for a in achados),
+            "achados": len(achados), "p0": sum(a["gravidade"] == "P0" for a in achados), "p1": sum(a["gravidade"] == "P1" for a in achados),
+            "p2": sum(a["gravidade"] == "P2" for a in achados), "p3": sum(a["gravidade"] == "P3" for a in achados),
             "artefato": sum(bool(a["artefato"]) for a in achados), "sem_achado": sem_achado, "minutos_ate_o_achado": minutos}
 
 
@@ -104,7 +107,7 @@ def relatorio(linhas: list[dict[str, object]], corr: dict[int, int], ledger: dic
     total = sum(int(l["achados"]) for l in linhas)
     art_regex = sum(int(l["artefato"]) for l in linhas)
     confirmados = falsos = 0
-    tab = ["| PR | estado | revisada | achados (P1/P2) | artefato | tempo até o achado (min) | commits de correção que citam o PR | confirmados / falsos |",
+    tab = ["| PR | estado | revisada | achados (P0/P1/P2/P3) | artefato | tempo até o achado (min) | commits de correção que citam o PR | confirmados / falsos |",
            "|---|---|---|---|---|---|---|---|"]
     for l in linhas:
         n = int(l["pr"])
@@ -118,17 +121,17 @@ def relatorio(linhas: list[dict[str, object]], corr: dict[int, int], ledger: dic
             cel = f"{c} / {f} (indício; artefato por regex, impreciso)"
         confirmados += c
         falsos += f
-        tab.append(f"| {n} | {l['estado']} | {'sim' if l['revisada'] else 'não'} | {l['achados']} ({l['p1']}/{l['p2']}) | {l['artefato']} | "
+        tab.append(f"| {n} | {l['estado']} | {'sim' if l['revisada'] else 'não'} | {l['achados']} ({l['p0']}/{l['p1']}/{l['p2']}/{l['p3']}) | {l['artefato']} | "
                    f"{l['minutos_ate_o_achado'] if l['minutos_ate_o_achado'] is not None else '-'} | {corr.get(n, 0)} | {cel} |")
     revisadas = sum(1 for l in linhas if l["revisada"])
     art = art_regex if not ledger else falsos  # com a classificação da frente, o falso dela vale no lugar da regex
     rec, motivo = recomendar(total, art, confirmados)
     tempos = sorted(int(l["minutos_ate_o_achado"]) for l in linhas if l["minutos_ate_o_achado"] is not None)
-    mediana = f"{tempos[len(tempos) // 2]} min" if tempos else "sem dado"
+    mediana = f"{statistics.median(tempos):g} min" if tempos else "sem dado"
     return "\n".join([
         f"## Medida da revisão automática do Codex (29.194): {janela}", "",
         f"- PRs lidos: {len(linhas)}; com revisão do Codex: {revisadas} (sem achado nenhum: {sum(int(l['sem_achado']) for l in linhas)}); sem revisão nenhuma: {len(linhas) - revisadas}.",
-        f"- Achados: {total} (P1 {sum(int(l['p1']) for l in linhas)}, P2 {sum(int(l['p2']) for l in linhas)}); média {total / revisadas:.1f} por PR revisado." if revisadas else "- Achados: 0 (nenhum PR revisado).",
+        f"- Achados: {total} (P0 {sum(int(l['p0']) for l in linhas)}, P1 {sum(int(l['p1']) for l in linhas)}, P2 {sum(int(l['p2']) for l in linhas)}, P3 {sum(int(l['p3']) for l in linhas)}); média {total / revisadas:.1f} por PR revisado." if revisadas else "- Achados: 0 (nenhum PR revisado).",
         f"- Falsos / fora de escopo (artefato das listas do agente de nuvem aplicadas ao PR de sessão): {art} de {total}" + (f" (a regex do coletor marcou {art_regex}: impreciso nos dois sentidos)." if ledger else " (pela regex do coletor, impreciso)."),
         f"- Confirmados e corrigidos: {confirmados}; falsos: {falsos}; sem resposta registrada: {max(0, total - confirmados - falsos)}. "
         "O que vem de `(indício)` é commit da `main` citando o PR, não prova; `(frente)` é a classificação registrada pela frente GitHub, casando o título de cada achado com as mensagens dos commits de correção (lida, não executada).",
@@ -162,13 +165,16 @@ def main(argv: list[str] | None = None, gh: Gh | None = None) -> int:
         ledger = json.loads(a.classificacao.read_text(encoding="utf-8")) if a.classificacao else {}
         linhas = [medir_pr(a.repo, int(n), gh, coletor) for n in a.prs.split(",")]
         texto = relatorio(linhas, correcoes_por_pr(a.repo, a.desde, gh, coletor), ledger, a.janela)
+        spec = importlib.util.spec_from_file_location("custo_semanal_issue", Path(__file__).resolve().parent / "custo_semanal_issue.py")
+        issue = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(issue)  # type: ignore[union-attr]
+        proibido = issue.proibidos(texto)  # antes de qualquer saída: terminal, arquivo ou issue (--janela é texto livre)
+        if proibido:
+            raise ValueError(f"o relatório tem formato proibido ({', '.join(proibido)}); nada foi impresso nem gravado")
         if a.saida:
             a.saida.write_text(texto, encoding="utf-8")
         print(texto)
         if a.publicar:
-            spec = importlib.util.spec_from_file_location("custo_semanal_issue", Path(__file__).resolve().parent / "custo_semanal_issue.py")
-            issue = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(issue)  # type: ignore[union-attr]
             print(issue.publicar(a.repo, texto, ensaio=False, gh=gh))
     except (RuntimeError, ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as e:
         print(f"erro: {e}", file=sys.stderr)
