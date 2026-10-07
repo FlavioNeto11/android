@@ -276,6 +276,7 @@ $zeroAvisado = $false
 $tetoAtual = $Teto
 $ultimaBatida = 0.0
 $arquivoRuimAvisado = $false
+$falhaDeTeto = $false
 $batimento = [Action]{
   $tAgora = $relogio.Elapsed.TotalSeconds
   if ($ArquivoDeTeto -and (Test-Path -LiteralPath $ArquivoDeTeto)) {
@@ -289,7 +290,11 @@ $batimento = [Action]{
           [TetoDeCpu]::AjustarTeto($job, $novo)
           Write-Host ('com-teto-de-cpu: {0:F0} s: teto agora {1} % (era {2} %)' -f $tAgora, $novo, $script:tetoAtual)
           $script:tetoAtual = $novo
-        } catch { Write-Host ('com-teto-de-cpu: não consegui trocar o teto ({0})' -f $_.Exception.Message) }
+        } catch {
+          # O teto pedido NAO foi aplicado: o comando segue sob o teto anterior e a execução não pode sair verde.
+          $script:falhaDeTeto = $true
+          Write-Host ('com-teto-de-cpu: REPROVADO: não consegui trocar o teto para {0} % ({1}); o comando segue com {2} % e o código de saída será 124.' -f $novo, $_.Exception.Message, $script:tetoAtual)
+        }
       }
     } elseif (-not $script:arquivoRuimAvisado -and ([string]$lido).Trim()) {
       $script:arquivoRuimAvisado = $true
@@ -317,4 +322,5 @@ if ($cpuDaArvore -ge 0 -and $parede -gt 0) {
 if ($cpuDaArvore -ge 0 -and $parede -gt 10 -and $cpuDaArvore -lt 0.5) {
   Write-Host 'com-teto-de-cpu: AVISO: a árvore quase não usou CPU: o comando provavelmente escapou do job (pwsh 7?) e rodou SEM teto.'
 }
+if ($falhaDeTeto -and $codigo -eq 0) { $codigo = 124 }
 exit $codigo

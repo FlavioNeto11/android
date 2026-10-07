@@ -408,7 +408,7 @@ estado antigo, nunca uma edição retroativa.
   (`pid`, `run`, `inicio`, `raiz`) no checkout central (`git rev-parse --git-common-dir`; `FARM_FUNIL_TRAVA` troca o caminho) e exporta `FARM_FUNIL_RODANDO=1`.
   Os testes de script que queimam CPU ou sobem subprocessos (`test_com_teto_de_cpu.py`, `test_funil.py`, `test_amostrador_host.py`) levam
   `pytestmark = pytest.mark.carga` e `scripts/tests/conftest.py` os **pula** quando a trava existe com o processo vivo (e menos de 12 h); o próprio funil
-  os roda (`FARM_FUNIL_RODANDO`), e `FARM_FUNIL_CARGA=1` força de propósito. Teste novo que gera carga entra com o marcador.
+  os roda (`FARM_FUNIL_RODANDO`), e `FARM_FUNIL_CARGA=1` força de propósito. Teste novo que gera carga entra com o marcador. **Nunca verde por engano** (achados do Codex no PR 506): lista do PG sem teste elegível = etapa PULADA; `-Saida` reaproveitado guarda o anterior em `<run>.anterior` e o run.txt é de uma execução só; commit não identificado reprova o funil (`commit=desconhecido`, rc 1); se o wrapper não consegue trocar o teto da etapa ele sai 124 (`REPROVADO`) e o funil grava `FUNIL wrapper rc=124 status=reprovado`.
 - **`scripts/canais-agendadas.ps1`** (29.186) — as tarefas do host para os scripts da Canais, no molde da `farm-restore-ensaio`
   (Idle, `-Instalar` / `-Remover`, `-Instalar -Simular` só mostra o plano). `-Tarefa resumo-diario`: `farm-canais-resumo-diario`, todo
   dia às 07:03 do horário local do host (Brasília) desde 08/10; a ação registrada leva `-Enviar` (manda o `.claude\canais\resumo_diario.py`

@@ -198,3 +198,34 @@ class TestTrava:
         etapa = [x for x in _registros(tmp_path) if x["tipo"] == "ETAPA"][0]
         assert etapa["status"] == "ok" and etapa["passed"] == "1", "a trava com pid existia e o ambiente trazia FARM_FUNIL_RODANDO"
         assert not trava.exists(), "a trava some quando o funil acaba"
+
+
+@precisa_ps51
+class TestAchadosDoCodex:
+    """PR 506: lista do PG sem elegivel, run.txt reaproveitado, commit desconhecido e teto nao aplicado nao podem sair verdes."""
+
+    def test_lista_do_pg_sem_teste_elegivel_e_pulada_nunca_verde(self, tmp_path):
+        lista = tmp_path / "pg.txt"
+        lista.write_text("tests/nao_existe.py\n\n", encoding="utf-8")
+        r = _funil(tmp_path, TODAS_OK, "-SemTeto", "-ListaPg", str(lista))
+        pg = [x for x in _registros(tmp_path) if x["tipo"] == "ETAPA" and x["chave"] == "pg"][0]
+        assert pg["status"] == "pulado" and "sem teste elegivel" in pg["motivo"]
+        assert r.returncode == 2, "etapa pulada: saida 2, nunca 0"
+
+    def test_run_txt_reaproveitado_guarda_o_anterior_e_tem_um_funil_so(self, tmp_path):
+        _funil(tmp_path, TODAS_OK, "-SemTeto", "-Etapas", "1")
+        _funil(tmp_path, TODAS_OK, "-SemTeto", "-Etapas", "1")
+        atual = (tmp_path / "run.txt").read_text(encoding="utf-8-sig")
+        assert atual.count("FUNIL inicio=") == 1 and atual.count("FUNIL fim=") == 1
+        assert (tmp_path / "run.txt.anterior").exists()
+
+    def test_commit_desconhecido_reprova_quando_exigido(self, tmp_path):
+        r = _funil(tmp_path, TODAS_OK, "-SemTeto", "-Etapas", "1", "-ExigirCommit")
+        assert r.returncode == 1, r.stdout + r.stderr
+        texto = (tmp_path / "run.txt").read_text(encoding="utf-8-sig")
+        assert "commit=desconhecido" in texto and "commit nao identificado" in texto
+
+    def test_wrapper_reprova_com_124_se_o_teto_nao_for_aplicado(self):
+        # Nao da para fazer o SetInformationJobObject falhar de proposito: confere a regra no codigo (a trava de saida 124 e o aviso REPROVADO).
+        src = (Path(__file__).resolve().parents[1] / "com-teto-de-cpu.ps1").read_text(encoding="utf-8-sig")
+        assert "falhaDeTeto" in src and "$codigo = 124" in src and "REPROVADO" in src

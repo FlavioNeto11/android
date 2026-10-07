@@ -56,6 +56,9 @@
   Uso do proprio funil: o encadeamento ja esta dentro do job.
 .PARAMETER ArquivoDeTeto
   Uso do proprio funil: arquivo onde o percentual de cada etapa e escrito (padrao <Saida>.teto).
+.PARAMETER ExigirCommit
+  Reprova o funil (rc 1) quando o commit do checkout nao pode ser identificado. Ja e sempre assim nas etapas reais; este switch forca o mesmo
+  quando -ComandosDeTeste esta em uso (os testes usam pastas sem git).
 .PARAMETER ComandosDeTeste
   Gancho de teste: JSON {"chave": [["exe","arg",...], ...]} com os comandos que substituem os reais de cada etapa.
 .PARAMETER Python
@@ -71,7 +74,7 @@
 [CmdletBinding()]
 param([string]$Raiz = '', [string]$Saida = '', [string]$ListaPg = '', [int]$PartesPg = 2, [string]$ResumoPg = '',
       [string]$Etapas = '1,2,3,4,5,6', [ValidateRange(1, 100)][int]$Teto = 25, [string]$TetoPorEtapa = '', [switch]$SemTeto,
-      [switch]$ParaNoErro, [switch]$Simular, [switch]$Interno, [string]$ArquivoDeTeto = '', [string]$ComandosDeTeste = '',
+      [switch]$ParaNoErro, [switch]$Simular, [switch]$Interno, [string]$ArquivoDeTeto = '', [string]$ComandosDeTeste = '', [switch]$ExigirCommit,
       [string]$Python = '', [string]$MypyPython = '', [ValidateRange(0, 3600)][int]$BatimentoS = 30)
 $ErrorActionPreference = 'Stop'
 $inv = [Globalization.CultureInfo]::InvariantCulture
@@ -132,7 +135,16 @@ $real = @{
   mypy     = @((New-Cmd $py @('scripts\mypy-catraca.py') $Raiz @{ MYPY_PYTHON = $MypyPython }))
   pg       = @()
 }
-if ($ListaPg) {
+# pg-rapido filtra a lista (some o que nao existe em backend/ e conftest) e com zero testes sai 0 sem rodar nada: lista sem elegivel e PULADA.
+$pgElegiveis = -1
+if ($ListaPg -and (Test-Path -LiteralPath $ListaPg)) {
+  $pgElegiveis = 0
+  foreach ($ln in (Get-Content -LiteralPath $ListaPg)) {
+    $t = ([string]$ln).Trim()
+    if ($t -and $t -notmatch 'conftest' -and (Test-Path -LiteralPath (Join-Path (Join-Path $Raiz 'backend') $t))) { $pgElegiveis++ }
+  }
+}
+if ($ListaPg -and $pgElegiveis -ne 0) {
   $real['pg'] = @((New-Cmd $py @('scripts\pg-rapido.py', '--lista', $ListaPg, '--partes', [string]$PartesPg, '--saidas', ($Saida + '.pg'), '--resumo', $ResumoPg) $Raiz))
 }
 $comandos = $real
@@ -184,6 +196,11 @@ try { (Get-Process -Id $PID).PriorityClass = 'Idle' } catch { }
 # Os testes marcados `carga` (scripts/tests/conftest.py) pulam enquanto esta trava existir com o processo vivo; o proprio funil os roda
 # (FARM_FUNIL_RODANDO=1 e herdado pelo encadeamento). Quem a escreve e o processo de fora (o que fica vivo ate o fim), nao o Interno.
 $env:FARM_FUNIL_RODANDO = '1'
+if (-not $Interno) {
+  # Um run.txt e de UMA execucao: a anterior (mesmo -Saida) vira <Saida>.anterior e os detalhes velhos saem.
+  if (Test-Path -LiteralPath $Saida) { Move-Item -LiteralPath $Saida -Destination ($Saida + '.anterior') -Force }
+  Remove-Item -LiteralPath ($Saida + '.wrapper.txt') -Force -ErrorAction SilentlyContinue
+}
 $trava = ''
 if (-not $Interno) {
   $trava = [string]$env:FARM_FUNIL_TRAVA
@@ -211,6 +228,7 @@ if (-not $Interno -and -not $SemTeto) {
   # mesmo processo (fora do job) e e ele quem cria o job e lanca o encadeamento dentro dele.
   & $wrapper -Teto $Teto -BatimentoS $BatimentoS -ArquivoDeTeto $ArquivoDeTeto -Linha $linhaInterna *>&1 | ForEach-Object { Add-Content -LiteralPath ($Saida + '.wrapper.txt') -Value ([string]$_) -Encoding UTF8 }
   $rcWrapper = $LASTEXITCODE
+  if ($rcWrapper -ge 124) { Add-Run ('FUNIL wrapper rc={0} status=reprovado motivo="o wrapper de teto falhou (teto nao aplicado, recusado ou comando fora do job); ver .wrapper.txt"' -f $rcWrapper) }
   Remove-Trava
   exit $rcWrapper
 }
@@ -228,9 +246,11 @@ function Get-Contagens([string]$texto) {
   return $c
 }
 $commit = ''
-try { $commit = (& git -C $Raiz rev-parse --short HEAD 2>$null) } catch { }
+try { $commit = [string](& git -C $Raiz rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { $commit = '' } } catch { $commit = '' }
+$commit = $commit.Trim()
+$exigirCommit = if ($ComandosDeTeste) { [bool]$ExigirCommit } else { $true }
 $tetoDeclarado = if ($SemTeto) { 'sem' } else { [string]$Teto }
-Add-Run ('FUNIL inicio={0} raiz={1} commit={2} teto={3} teto_por_etapa={4} hospedeiro={5}' -f (Get-Agora), $Raiz, $commit, $tetoDeclarado, $(if ($TetoPorEtapa) { $TetoPorEtapa } else { 'nenhum' }), $PSVersionTable.PSVersion.ToString(2))
+Add-Run ('FUNIL inicio={0} raiz={1} commit={2} teto={3} teto_por_etapa={4} hospedeiro={5}' -f (Get-Agora), $Raiz, $(if ($commit) { $commit } else { 'desconhecido' }), $tetoDeclarado, $(if ($TetoPorEtapa) { $TetoPorEtapa } else { 'nenhum' }), $PSVersionTable.PSVersion.ToString(2))
 $ok = 0; $falhas = 0; $puladas = 0; $naoRodou = 0; $parou = $false
 foreach ($d in $definicao) {
   if ($ids -notcontains $d.id) { continue }
@@ -238,7 +258,7 @@ foreach ($d in $definicao) {
   if ($parou) { Add-Run ("ETAPA $rotulo status=nao_rodou motivo=`"parou na falha anterior`""); $naoRodou++; continue }
   $lista = @($comandos[$d.chave])
   if ($lista.Count -eq 0) {
-    $motivo = if ($d.chave -eq 'pg') { 'sem -ListaPg' } else { 'sem comando' }
+    $motivo = if ($d.chave -eq 'pg' -and $ListaPg -and $pgElegiveis -eq 0) { 'lista do PG sem teste elegivel' } elseif ($d.chave -eq 'pg') { 'sem -ListaPg' } else { 'sem comando' }
     Add-Run ("ETAPA $rotulo status=pulado motivo=`"$motivo`""); $puladas++; continue
   }
   $tetoDaEtapa = Get-TetoDaEtapa $d.id
@@ -273,6 +293,10 @@ foreach ($d in $definicao) {
   Add-Run ('ETAPA {0} ini={1} fim={2} dur_s={3:F0} rc={4} status={5} teto={6} passed={7} failed={8} skipped={9} errors={10}' -f $rotulo, $ini, (Get-Agora),
            $relogio.Elapsed.TotalSeconds, $rc, $status, $(if ($SemTeto) { 'sem' } else { $tetoDaEtapa }), $cont.passed, $cont.failed, $cont.skipped, $cont.errors)
   if ($status -eq 'ok') { $ok++ } else { $falhas++; if ($ParaNoErro) { $parou = $true } }
+}
+if (-not $commit -and $exigirCommit) {
+  Add-Run 'FUNIL status=reprovado motivo="commit nao identificado (git rev-parse falhou ou sem .git): o resultado nao tem vinculo verificavel com o corte"'
+  $falhas++
 }
 $rcFinal = if ($falhas -gt 0) { 1 } elseif ($puladas -gt 0 -or $naoRodou -gt 0) { 2 } else { 0 }
 Add-Run ('FUNIL fim={0} rc={1} ok={2} falhas={3} puladas={4} nao_rodou={5}' -f (Get-Agora), $rcFinal, $ok, $falhas, $puladas, $naoRodou)
