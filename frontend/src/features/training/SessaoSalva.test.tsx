@@ -54,6 +54,7 @@ beforeEach(() => {
   backend.install();
   backend.on('GET', /\/training$/, () => json([{ ...SALVA, inputs: undefined }]));
   backend.on('GET', /\/training\/trn-s$/, () => json(SALVA));
+  backend.on('GET', /\/training\/trn-s\/rendimento$/, () => json({ sessao: 'trn-s', receitas: [], resumo: { usado_de_verdade: false }, fluxo: null, execucoes_do_fluxo: { real: 0, prova: 0, simulada: 0 }, licoes: [], vizinhos: [] }));   // 31.203
   backend.on('GET', /\/instances\/android-01\/personas$/, () => json([persona]));
   container = document.createElement('div');
   document.body.append(container);
