@@ -7808,3 +7808,18 @@ A correção ensinada a partir de uma falha (31.149) vira lição do planejador 
   Sem candidata: 200 com `promovidas` vazio.
 - **Prova:** `simulated` (`backend/tests/test_ensino_da_execucao.py`). `real`: `not_run`, pede o deploy e uma execução
   real da onda 2.
+
+## Adendo v1.122 (07/10/2026; número da orquestradora; item 31.223) — o modelo forte só no commit
+
+Sem rota nova. A exposição por passo (modelo que decidiu, custo, commit) é da Jev, no 31.229 (v1.124).
+
+- **`ai.strong_model_only_on_commit`** (`config.yaml`, padrão `true`; vale na subida): quando a etapa com efeito sobe
+  ao modelo de escalonamento (`ai.strong_model_for_side_effect`), ele decide SÓ o commit. A etapa começa no modelo de
+  ação. A primeira decisão que dispararia o efeito é descartada e refeita no forte, que segue até o fim da tentativa.
+  `false` = a etapa inteira no forte, o modo de antes.
+- **O que muda no registro, sem campo novo:**
+  - a decisão de commit descartada fica em `ai_calls` como `decide` tier 0, sem ação ligada (`actions.ai_call_id`);
+  - a refeita é `decide` tier 1 com `escalate=efeito`, e a ação dela leva `side_effect`;
+  - a linha de escalonamento da execução ganha "; só a decisão do commit (31.223)".
+- **Prova:** `simulated` (`backend/tests/test_forte_so_no_commit.py`). `real`: `not_run`; o custo por alvo da primeira
+  operação depois do deploy 61, contra a onda 2.

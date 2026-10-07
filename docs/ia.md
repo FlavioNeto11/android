@@ -15,7 +15,7 @@ provedor, modelo, prazo e concorrência próprios, roteados por `RoutingProvider
 | `plan` | Interpreta o objetivo em uma chamada estruturada: app, parâmetros, critérios de sucesso, etapas com dependência e pós-condição | 1 chamada por comando |
 | `decide` | Observa a tela (screenshot + hierarquia) e escolhe UMA ferramenta tipada | ~90% das chamadas, junto com `verify` |
 | `verify` | Confere a pós-condição da etapa por visão, quando a checagem determinística não basta | idem |
-| `escalation` | Assume quando o modelo barato tropeça, em nova tentativa e em etapa com efeito externo (`strong_model_for_side_effect`) | minoria, mas mais caro por chamada |
+| `escalation` | Assume quando o modelo barato tropeça, em nova tentativa e em etapa com efeito externo (`strong_model_for_side_effect`; com `strong_model_only_on_commit`, 31.223, só a decisão do commit) | minoria, mas mais caro por chamada |
 | `social` | Escreve a mensagem na voz da persona; nunca recebe imagem nem credencial | 1 por interação social |
 | `persona` | Gera e completa a persona (rascunho em texto); sem `ai.roles.persona` é o `social` (item 17.8) | 1 por persona gerada ou completada |
 

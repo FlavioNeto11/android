@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.223: o modelo forte só no commit (branch feat/31-223-forte-so-no-commit, adendo v1.122)
+
+- Na etapa com efeito, o Opus decidia todos os passos: na onda 1, US$ 0,112 de 0,279 do alvo.
+- Agora, com `ai.strong_model_only_on_commit` (padrão `true`), o modelo de ação navega, e só a decisão que dispararia o
+  efeito é refeita no forte. A trava de commit, a política de risco e o rejulgamento do efeito não mudam.
+- Dois testes antigos que medem o modo de antes ficam com a chave em `false`.
+- Prova `simulated`: `backend/tests/test_forte_so_no_commit.py` (2). `real`: `not_run`.
+
 ## 2026-10-07 — 31.222: a semelhança não derruba a ação final (branch feat/31-222-semelhanca-sem-acao-final)
 
 - A escolha por semelhança trocava o plano inteiro pelo do fluxo. Um fluxo de leitura escolhido para um comando com

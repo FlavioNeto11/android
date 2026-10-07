@@ -2576,3 +2576,27 @@ não andam. Sem ação final no plano livre, nada muda.
 
 **Prova.** `simulated`: `backend/tests/test_semelhanca_sem_acao_final.py` (3). `real`: `not_run`; aparece na primeira
 operação com fluxo parecido depois do deploy.
+
+## O modelo forte só no commit (31.223)
+
+Custo por alvo, medido na onda 1 (07/10, lido em `mode=ro`, custo por `planning.costs`):
+- as leituras já decidiam no Sonnet;
+- o Opus decidia os 2 passos da etapa de comentário: US$ 0,081 com imagem e 0,031, ou 0,112 de 0,279 do alvo;
+- a causa é que `strong_model_for_side_effect=by_risk` sobe a etapa INTEIRA.
+
+Com `ai.strong_model_only_on_commit` (padrão `true`, adendo v1.122), a etapa com efeito começa no modelo de ação, que
+abre o campo e digita. A primeira decisão que dispararia o efeito (`is_commit_action`, o seletor ou o verbo) é
+descartada antes de agir e refeita no forte, que segue até o fim da tentativa, como no LT-12 da nova tentativa. A
+refeita não é a primeira decisão, então vai sem imagem quando a árvore basta.
+
+Não mudam: a trava de commit, a política de risco por app e o rejulgamento do "sim" com efeito.
+
+**Estimativa.** A etapa de comentário cai de cerca de 0,112 para cerca de 0,084: Sonnet com imagem 0,040, Sonnet 0,013 (o
+commit descartado) e Opus 0,031. O alvo executado vai de cerca de 0,28 para cerca de 0,25.
+
+**Registro.** Sem campo novo; é o que a Jev lê no 31.229. A decisão descartada é `decide` tier 0 sem ação ligada
+(`actions.ai_call_id`). A refeita é tier 1 com `escalate=efeito`, e a ação dela tem `side_effect`.
+
+**Prova.** `simulated`: `backend/tests/test_forte_so_no_commit.py` (2). A navegação fica no tier 0; o commit do tier 0
+não age e é refeito no tier 1; desligado, a etapa inteira vai ao tier 1. `real`: `not_run`; o custo por alvo da
+primeira operação depois do deploy 61, contra a onda 2.

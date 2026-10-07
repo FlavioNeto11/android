@@ -2189,7 +2189,10 @@ class StepExecutor:
         # tentativa — a ação em que a anterior parou, e o efeito.
         tier_efeito, motivo_efeito = side_effect_tier(step, cap, ai_cfg.strong_model_for_side_effect,
                                                       app.builtin and app.category == CATEGORIA_APP_DE_PROVA)
-        base_tier = 1 if tier_efeito else 0
+        # 31.223: com `strong_model_only_on_commit`, a etapa com efeito começa no modelo de ação e só o commit sobe
+        so_no_commit = bool(tier_efeito) and ai_cfg.strong_model_only_on_commit
+        base_tier = 1 if tier_efeito and not so_no_commit else 0
+        commit_subiu = False
         # LT-12: a nova tentativa inteira subia ao modelo forte (76 decides de tentativa 2 no tier 1 em 7 d, +1,9 s cada),
         # mas ela recomeça quase sempre pelo prefixo que a anterior já acertou. Agora começa no tier 0 e sobe — até o fim
         # da tentativa — na 1ª decisão que repetir, na mesma tela estrutural, a última ação da anterior (onde ela
@@ -2711,7 +2714,8 @@ class StepExecutor:
                     # controles abaixo. Escalar aqui é decisão do dono, com o custo medido no relatório.
                     rr.retorno_contado = True
                     contar_retorno_ia(rr.diverged)
-                tier = 1 if (base_tier or retentativa_subiu or errors_in_row >= 2 or same_count >= 1 or piso_forcou) else 0
+                tier = 1 if (base_tier or commit_subiu or retentativa_subiu or errors_in_row >= 2 or same_count >= 1
+                             or piso_forcou) else 0
                 if opcional:                   # item 31.36: a limpeza opcional nunca sobe para o modelo caro
                     tier = 0
                 # RA-10: o porquê do modelo forte NESTA decisão, em vocabulário fechado (`ai_calls.escalate`); a frase
@@ -2725,8 +2729,8 @@ class StepExecutor:
                     # strong_model_for_side_effect) e já aparecia no cartão de custo — o que faltava era a linha
                     # na execução dizendo POR QUE esta etapa passou a decidir no modelo caro (achado #92, item 5).
                     escalated = True
-                    motivo = (motivo_efeito if escalonamento == "efeito"
-                              else _FRASE_DO_ESCALONAMENTO.get(escalonamento or "", ""))
+                    motivo = (motivo_efeito + ("; só a decisão do commit (31.223)" if commit_subiu else "")
+                              if escalonamento == "efeito" else _FRASE_DO_ESCALONAMENTO.get(escalonamento or "", ""))
                     repo.decision(f"{iid} · {step.title}: decisão escalonada para o modelo de escalonamento "
                                   f"({motivo})", run_id=run_id, instance_id=iid, step_id=step.id)
                 t_prompt = time.monotonic()                     # C-2 (31.24): daqui até `_ai` é a montagem do pedido
@@ -3353,6 +3357,12 @@ class StepExecutor:
                 errors_in_row += 1
                 if errors_in_row >= 4:
                     return await fail_or_retry("Um efeito externo foi tentado numa etapa que não o declara.", obs)
+                continue
+            # ---------- 31.223: na etapa com efeito, o modelo de ação navega e o commit é decidido pelo forte
+            if so_no_commit and not commit_subiu and not from_recipe and tier == 0 and is_commit:
+                commit_subiu = True
+                history.append(f"(executor) {decision.tool} dispararia o efeito desta etapa: a decisão sobe ao modelo "
+                               "de escalonamento antes de agir.")
                 continue
             # ---------- LT-12: na nova tentativa, o modelo barato não repete onde a anterior parou nem dispara o efeito
             if retentativa and not retentativa_subiu and not from_recipe and tier == 0:
