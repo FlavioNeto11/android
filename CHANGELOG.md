@@ -26,6 +26,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `fato_da_operacao` e com chaves fechadas: operacao, assunto, fontes, frescor_ate, usado_em, execucoes e confianca.
 - Prova `simulated`: `backend/tests/test_fatos_da_operacao_no_livro.py` (3). `real`: `not_run`, pede o deploy.
 
+## 2026-10-07 — 31.210: o fluxo reconhecido por semelhança executa direto (branch feat/31-210-semelhanca-executa)
+
+- Decisão do dono (P-032, 07/10: "sim executa direto"). A execução `execute` cujo plano o planejador escolheu por
+  semelhança (31.151) não para mais em `planned` à espera da prévia: segue para `running`.
+- A trilha diz "seguiu por semelhança", e `flows.uses` sobe na escolha. Sai a constante `SEM_CONFIRMACAO`.
+- As portas de aprovação de efeito externo continuam: a etapa com efeito pede aprovação no despacho, como sempre.
+- Contrato v1.103 ajustado.
+- Prova `simulated`: `backend/tests/test_fluxo_por_semelhanca.py` (5). `real`: `not_run`, pede o deploy.
+
 ## 2026-10-07 — 31.183, correção: os avisos do ensino saem mascarados (achado da Portal, aprendizado/integ-60)
 
 - A prévia, o salvar e o refazer receitas devolviam `warnings` em claro. Vários citam a etapa pelo título ou, sem

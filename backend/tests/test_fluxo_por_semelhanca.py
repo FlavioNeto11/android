@@ -7,8 +7,8 @@ O que estes testes protegem:
 * o fluxo que o comando parece vai ao planejador como habilidade conhecida: referência, molde, nomes dos parâmetros e
   apps; o nome do fluxo (que pode trazer o valor demonstrado) não vai ao prompt;
 * escolhido e conferido (referência oferecida, parâmetros exatos, valor presente no comando), o plano é o do fluxo, a
-  trilha diz "por semelhança, nota N", `runs.flow_id` e `flows.uses` andam, e o `execute` para em `planned` (a prévia
-  aprovada, até a decisão do dono);
+  trilha diz "por semelhança, nota N", `runs.flow_id` e `flows.uses` andam, e o `execute` segue direto, sem parar em
+  `planned` (31.210, P-032: "sim executa direto"), e a trilha diz que seguiu por semelhança;
 * parece e é recusado (valor fora do comando): fica o plano livre, com o motivo na trilha;
 * parece e não é escolhido: o plano livre, e a trilha diz o que foi oferecido.
 
@@ -82,8 +82,8 @@ def _trilha(st: Any, run_id: str, trecho: str) -> int:
     return int(st.db.scalar("SELECT COUNT(*) FROM events WHERE run_id=? AND message LIKE ?", (run_id, f"%{trecho}%")))
 
 
-async def test_parece_e_escolhido_vira_o_plano_do_fluxo_e_espera_a_previa(harness: Harness,
-                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_parece_e_escolhido_vira_o_plano_do_fluxo_e_segue_direto(harness: Harness,
+                                                                       monkeypatch: pytest.MonkeyPatch) -> None:
     st = harness.state
     assert st is not None
     ref = _fluxo(st)
@@ -94,13 +94,14 @@ async def test_parece_e_escolhido_vira_o_plano_do_fluxo_e_espera_a_previa(harnes
     texto = planner_user(req, 10)
     assert MOLDE in texto and "rede-demonstrada-777" not in texto and NOME_DEMONSTRADO not in texto
     row = st.repo.run_row(run_id)
-    assert row["status"] == "planned"                                     # execute, mas a prévia espera uma pessoa
+    assert row["status"] != "planned"                                     # 31.210: segue direto, sem a prévia
     plano = Plan.model_validate_json(row["plan"])
     fid = st.db.scalar("SELECT id FROM flows WHERE ref_publico=?", (ref,))
     assert plano.planner.model == f"fluxo:{fid}" and [s.key for s in plano.steps] == ["pesquisar"]
     assert plano.parameters == {"termo": "wifi"} and "escolha_por_semelhanca" not in row["plan"]
-    assert row["flow_id"] == fid and st.db.scalar("SELECT uses FROM flows WHERE id=?", (fid,)) == 0   # só ao aprovar
+    assert row["flow_id"] == fid and st.db.scalar("SELECT uses FROM flows WHERE id=?", (fid,)) == 1
     assert _trilha(st, run_id, f"Plano do fluxo {ref}") == 1 and _trilha(st, run_id, "por semelhança, nota") == 1
+    assert _trilha(st, run_id, "seguiu por semelhança") == 1 and _trilha(st, run_id, "aguarda a prévia") == 0
 
 
 async def test_parece_e_recusado_fica_o_plano_livre(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:

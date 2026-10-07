@@ -177,7 +177,8 @@ class RunService:
         self.sombra_intencao: SombraDaIntencao | None = None
         #: Execuções cujo plano o provedor RECUSOU (`needs_input` por `refusal`): a sombra não as observa (31.9, revisão).
         self._sem_sombra: set[str] = set()
-        #: 31.151: as execuções planejadas por um fluxo escolhido por semelhança (até o despacho do `_plan`)
+        #: 31.151: as execuções planejadas por um fluxo escolhido por semelhança (até o despacho do `_plan`, que diz na
+        #: trilha que ela seguiu direto: 31.210)
         self._por_semelhanca: set[str] = set()
         #: Sorteio do canário de IA (item 17.7), em [0, 1). Injetável: o teste fixa o valor em vez de depender da sorte.
         self.sorteio: Callable[[], float] = random.random
@@ -1258,13 +1259,13 @@ class RunService:
         if run and run["cancel_requested"]:
             repo.set_run_status(run_id, RunStatus.cancelled, "Cancelada durante o planejamento")
             return
-        if run and run["mode"] == "execute" and run_id in self._por_semelhanca and not habilidades.SEM_CONFIRMACAO:
-            # 31.151: até a decisão do dono, o plano escolhido por semelhança só roda com a prévia aprovada
-            self._por_semelhanca.discard(run_id)
-            repo.set_run_status(run_id, RunStatus.planned, "Plano de um fluxo escolhido por semelhança: aguarda a "
-                                "prévia aprovada", message=f"Execução {run_id}: plano por semelhança pronto; aguardando "
-                                "início por uma pessoa")
-        elif run and run["mode"] == "execute":
+        por_semelhanca = run_id in self._por_semelhanca
+        self._por_semelhanca.discard(run_id)
+        if run and run["mode"] == "execute":
+            if por_semelhanca:
+                # 31.210 (P-032): o plano escolhido por semelhança segue direto; a etapa com efeito pede aprovação
+                repo.decision("Plano de um fluxo escolhido por semelhança: seguiu por semelhança, sem parar para a "
+                              "prévia (P-032); a etapa com efeito externo segue pela aprovação.", run_id=run_id)
             try:
                 self.start(run_id)
             except RunError as exc:
@@ -1366,8 +1367,7 @@ class RunService:
         row, do_fluxo = achado
         h = conhecidas[escolha.ref]
         self.repo.db.execute("UPDATE runs SET flow_id=? WHERE id=?", (row["id"], run_id))
-        if habilidades.SEM_CONFIRMACAO:                # com a prévia, o uso só conta quando uma pessoa a aprova
-            self.flows.used(str(row["id"]))
+        self.flows.used(str(row["id"]))               # 31.210: segue direto, então o uso conta já na escolha
         self._pos_do_catalogo(run_id, do_fluxo)
         self._por_semelhanca.add(run_id)
         self.repo.decision(f"Plano do fluxo {h.ref} “{h.molde}” por semelhança, nota {h.nota:.2f} (31.151): o planejador "

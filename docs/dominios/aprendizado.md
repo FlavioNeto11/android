@@ -2411,6 +2411,7 @@ errada aberta ou com 2 falhas seguidas da mesma receita.
 - Não cria conta, não digita senha e não resolve verificação: isso é do dono (§11).
 - Não ensina ação com efeito e não muda a regra do 30.81. A liberação sem pessoa é a pergunta do 31.202.
 - Não liga aparelho, não mexe em `max_online_devices` e não roda no meio da medida do notebook.
+
 ## A sombra da quarentena pelo rendimento (31.202)
 
 Um passo da curadoria, sem IA, lê o uso REAL de cada receita ensinada ativa e diz o que faria. **Nada se aplica**: a
