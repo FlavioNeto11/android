@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.241: a operação com executar reabre depois da aprovação feita fora do liberar (branch feat/31-241-reabre-apos-aprovacao)
+
+- Na onda 2 de 07/10 (op-20261007100755-096a28), a operação fechou às 10:09:29Z em "aguarda liberação". As aprovações
+  vieram pelas Pendências às 10:12:51Z, e os comentários foram verificados até 10:14:00Z. O banco ficou com
+  `concluida_com_bloqueios`, o `finished_at` do preparo e nenhum `operacao.encerrada` novo, porque a reabertura do
+  `ler` só cobria `preparar`.
+- Agora o alvo que volta a correr reabre a operação fechada (CAS, nunca a cancelada). A operação fechada cujos alvos
+  terminaram com outro resultado fecha de novo: o fim é o último estágio real, nunca antes do gravado, e sai um
+  `operacao.encerrada` novo. A leitura repetida não grava nem avisa de novo.
+- Prova `simulated`: `backend/tests/test_operacao_reabre_apos_aprovacao.py` (3; o código de antes falha em 2).
+  `real`: `not_run` até o deploy.
+
 ## 2026-10-07 — 31.236: os parâmetros fixos da operação chegam ao planejador (branch feat/31-236-parametros-no-planejador)
 
 - Na onda 2 de 07/10 (op-20261007100019-681b9b), as três execuções pararam em `needs_input` com "qual é o @ da página
