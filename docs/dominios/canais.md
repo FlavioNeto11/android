@@ -422,6 +422,19 @@ avisos depois da faxina"), e a trava cai no TTL.
   " · respondida em DD/MM" no nome) e cria "⚖️ <nome>" em Programa › Decisões do dono com o link da pergunta. É idempotente
   (descrição já registrada não se reescreve; decisão de mesmo nome não se duplica). O literal do dono vai como está e o
   redator só avisa se mudaria algo; leitura e confirmação passam por `redacao.redigir`.
+- **Regra, a resposta pronta (28.71):** resposta do dono por app só vale depois de UM "ok" dele no Telegram ou no chat, e esse
+  "ok" cobre todas as pendentes. Em vez do vigia e de um `registrar_resposta.py` por cartão, a Canais roda
+  `.claude/trello/resposta_pronta.py --base <id da última entrada vista> [--ok-no-chat "ok"] [--aplicar]` (sem `--aplicar` é
+  ensaio e só lê). Ele lê as entradas do dono em `canal_entradas`, liga cada `pergunta:P-NNN;autoria=app_do_dono` ao cartão
+  `P-NNN` ABERTO de "Perguntas para você" (a resposta mais recente por pergunta; `P-NNN` já em Perguntas respondidas é
+  ignorada; sem cartão aberto sai "sem cartão" e nada se inventa) e imprime, por pendente, o comando pronto do
+  `registrar_resposta.py` (o literal sai cortado em 80 caracteres e redigido, sem handle, e-mail nem telefone; o `--aplicar`
+  daqui usa o texto inteiro). A confirmação é uma mensagem solta do dono no Telegram (sem alvo, não botão), **posterior** à
+  resposta, com até 60 caracteres e só com estas frases: ok, já respondi, respondido, confirmo, sim, pode registrar (sem
+  acento nem pontuação, em qualquer combinação); `--ok-no-chat` traz o "ok" dado no chat da sessão, pela mesma regra. Sem
+  confirmação a linha diz "aguardando ok dele" e nada é escrito. Com `--aplicar`, só as confirmadas, uma por uma, pela função
+  `registrar` do `registrar_resposta.py` (idempotente; uma linha por pendente: registrada, já registrada ou faltou, sem a
+  mensagem do erro). Nunca comenta em cartão. Prova: `simulated` (fakes de banco e Trello); `real`: `not_run`.
 - **Regra, a reconciliação total:** a cada espelho de deploy e a cada `claude-plan-100.py aplicar`, a Canais roda
   `.claude/trello/reconciliar.py` (primeiro sem `--aplicar`, que só relata, depois com ele). O script confere **todos** os
   cartões do quadro Execução com o estado do plano e o deploy de cada item (commit "merge: ID na suíte N"; sem ele, o id

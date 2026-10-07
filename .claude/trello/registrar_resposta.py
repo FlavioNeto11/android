@@ -112,34 +112,30 @@ def decidir(cartao: dict[str, str], decisoes: list[str], registro: str, data: st
     return acoes
 
 
-async def _principal(args: argparse.Namespace) -> int:
-    # as chaves do Trello moram no checkout central (por instalação, fora do Git); o worktree não as tem
-    sys.path.insert(0, str(BACKEND_CENTRAL))
-    from app.config import EnvSettings  # noqa: PLC0415 - só no modo de rede
-    from app.modules.avisos.adapters.trello import ClienteTrello  # noqa: PLC0415
-    from redacao import redigir  # noqa: PLC0415
-    if redigir(args.literal) != args.literal:
-        print("AVISO: o redator mudaria o literal do dono (vai como está; confira se algum trecho deve ser mascarado):")
-        print("  ->", redigir(args.literal))
-    data = data_curta(args.quando)
-    registro = montar_registro(quando=args.quando, entrada=args.entrada, canal=args.canal, literal=args.literal,
-                               leitura=args.leitura, confirmacao=args.confirmacao, redigir=redigir)
-    e = EnvSettings()
-    cl = ClienteTrello(e.trello_api_key.get_secret_value().strip(), e.trello_token.get_secret_value().strip())
-    cartao = await cl._pedir("GET", f"/1/cards/{args.cartao}", params={"fields": "name,desc,idList,shortLink"})
+async def registrar(cl, *, cartao: str, entrada: int, canal: str, quando: str, literal: str, leitura: str = "",  # noqa: ANN001
+                    confirmacao: str = "", aplicar: bool = False, redigir=lambda t: t,  # noqa: ANN001
+                    falar=print) -> str:  # noqa: ANN001
+    """Os três passos para UM cartão, com o cliente do Trello já aberto (o `main` e o `resposta_pronta.py` o reusam).
+
+    Devolve `"ensaio"` (sem `aplicar`), `"ja_registrada"` (nada a fazer: tudo já estava no lugar) ou `"registrada"`
+    (escreveu algo). `falar` recebe as linhas de relato (o chamador pode silenciar)."""
+    data = data_curta(quando)
+    registro = montar_registro(quando=quando, entrada=entrada, canal=canal, literal=literal,
+                               leitura=leitura, confirmacao=confirmacao, redigir=redigir)
+    cartao_atual = await cl._pedir("GET", f"/1/cards/{cartao}", params={"fields": "name,desc,idList,shortLink"})
     existentes = await cl._pedir("GET", f"/1/lists/{LISTA_DECISOES}/cards", params={"fields": "name", "filter": "open"})
-    acoes = decidir(cartao, [c["name"] for c in existentes], registro, data)
-    print(f"cartão: {cartao['name'][:80]} ({cartao['shortLink']})")
-    if ja_registrada(cartao.get("desc", "")):
-        print("já registrada: a descrição já começa com a resposta do dono (não reescrevo)")
+    acoes = decidir(cartao_atual, [c["name"] for c in existentes], registro, data)
+    falar(f"cartão: {cartao_atual['name'][:80]} ({cartao_atual['shortLink']})")
+    if ja_registrada(cartao_atual.get("desc", "")):
+        falar("já registrada: a descrição já começa com a resposta do dono (não reescrevo)")
     if not acoes:
-        print("nada a fazer: tudo já está no lugar")
+        falar("nada a fazer: tudo já está no lugar")
     for a in acoes:
-        print(f"  {a.tipo:14} {(a.nome or a.desc)[:100]}")
-    if not args.aplicar:
-        print("(ensaio: nada foi escrito; use --aplicar)")
-        return 0
-    cid = cartao["id"]
+        falar(f"  {a.tipo:14} {(a.nome or a.desc)[:100]}")
+    if not aplicar:
+        falar("(ensaio: nada foi escrito; use --aplicar)")
+        return "ensaio"
+    cid = cartao_atual["id"]
     for a in acoes:
         if a.tipo == "descrever":
             await cl.atualizar_cartao(cid, desc=a.desc)
@@ -150,7 +146,24 @@ async def _principal(args: argparse.Namespace) -> int:
         else:
             r = await cl.criar_cartao(LISTA_DECISOES, a.nome, a.desc)
             await cl._pedir("PUT", f"/1/cards/{r['id']}", corpo={"pos": "top"})
-            print("  decisão:", r.get("shortUrl"))
+            falar(f"  decisão: {r.get('shortUrl')}")
+    return "registrada" if acoes else "ja_registrada"
+
+
+async def _principal(args: argparse.Namespace) -> int:
+    # as chaves do Trello moram no checkout central (por instalação, fora do Git); o worktree não as tem
+    sys.path.insert(0, str(BACKEND_CENTRAL))
+    from app.config import EnvSettings  # noqa: PLC0415 - só no modo de rede
+    from app.modules.avisos.adapters.trello import ClienteTrello  # noqa: PLC0415
+    from redacao import redigir  # noqa: PLC0415
+    if redigir(args.literal) != args.literal:
+        print("AVISO: o redator mudaria o literal do dono (vai como está; confira se algum trecho deve ser mascarado):")
+        print("  ->", redigir(args.literal))
+    e = EnvSettings()
+    cl = ClienteTrello(e.trello_api_key.get_secret_value().strip(), e.trello_token.get_secret_value().strip())
+    await registrar(cl, cartao=args.cartao, entrada=args.entrada, canal=args.canal, quando=args.quando,
+                    literal=args.literal, leitura=args.leitura, confirmacao=args.confirmacao, aplicar=args.aplicar,
+                    redigir=redigir)
     return 0
 
 
