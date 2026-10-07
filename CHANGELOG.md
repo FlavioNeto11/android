@@ -40,6 +40,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `scripts/tests/test_fecha_pr_revisao.py` (10 testes, `gh` falso; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, `date -u` 12:48Z, esta máquina,
   API, só ensaio): 33 PRs de revisão abertos classificados (21 fecham, 12 ficam: achados não lidos de 515 a 521 e PRs com menos de 2 h), nada fechado.
 
+## 2026-10-07 — 29.202: `custo_por_pr.py` mede o custo por PR (Copilot estimado, Codex contado) (branch ci/29-202-custo-por-pr)
+
+- `scripts/custo_por_pr.py --repo dono/nome [--dias 7] [--sem-codex] [--anexar arq.md]` lista, por PR criado na janela, o tipo (`revisão`, `agente`, `sessão`),
+  as execuções de Actions e os minutos aproximados, as revisões do Copilot e as tarefas do agente de nuvem (créditos ESTIMADOS: 146 e 31) e as revisões do
+  Codex recebidas; no fim, o pico de PRs de revisão em 5 h contra a regra de 20 (o plano do Codex, que é do dono, estourou em 07/10). A revisão do Copilot e o agente rodam
+  como `dynamic` com `pull_requests` vazio, então o elo com o PR é a branch (o PR mais recente criado antes da execução). Estimativa, não saldo; não imprime título,
+  branch, conta nem repositório; só leitura (`--anexar` acrescenta a arquivo local).
+- Prova `simulated`: `scripts/tests/test_custo_por_pr.py` (13 testes, `gh` falso; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, `date -u` 12:53Z, esta máquina, API, 2 dias): 98 PRs, ~885 créditos
+  estimados do Copilot, pico de 24 PRs de revisão em 5 h (acima da regra), 54 revisões do Codex contadas.
+
 ## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
 
 - Medido no percurso real da Portal no 57 (06/10 23:20Z): o resumo do fluxo na aba Aprendizado da operação mostrava o
