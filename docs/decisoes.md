@@ -5843,3 +5843,28 @@ faz a IA parar justamente onde deveria aprender.
 
 **Consequências.** O catálogo passa de lista fechada a ponto de partida. A exploração gasta chamadas de IA: latência e
 custo por exploração entram na medição por etapa. Prova: `not_run` até o 31.273.
+
+## ADR-085 — A automação resolve o que falta: liga o aparelho, prepara a sessão e só descarta o impossível
+
+**Data:** 07/10/2026 · **Estado:** aceito; implementação pendente (31.274 parte 2, Jev; painel pela Portal). Decisão do
+dono no chat da orquestradora às 18:2xZ, literal: "a questão é que a automação deve ligar o aparelho e tudo que é
+necessario para tudo funcionar corretamente". Emenda o ADR-050 (modo automático) e o ADR-084.
+
+**Contexto.** No comando em modo automático, uma persona apta (aparelho vinculado, app pronto, vínculo ativo) foi posta
+em "descartadas" porque o aparelho estava desligado e a sessão não tinha sido conferida; o painel só lista as descartadas,
+sem ação. Por nome no comando a mesma persona resolve normalmente. O automático estava escolhendo só entre o que já
+estava pronto, em vez de preparar o que falta.
+
+**Decisão.**
+- Aparelho desligado, sessão não conferida, app fechado ou qualquer outra condição que a própria automação sabe
+  resolver NÃO é motivo de descarte: a execução liga o aparelho (o rodízio de instâncias existe para isso), prepara e
+  confere a sessão no preparo do alvo, abre o app e segue. Isso vale para a sugestão automática de alvos, para o
+  planejamento e para a execução.
+- Descarte só pelo que a automação não pode resolver sozinha, dizendo o motivo: senha não guardada com consentimento
+  quando o login for exigido (ADR-040), conta bloqueada ou retirada (ADR-055, 29.23), app não instalado no aparelho,
+  ação proibida pela política do perfil.
+- No painel, o que falta e pode ser resolvido pela automação aparece como aviso do que ela vai fazer, não como pedido
+  para a pessoa fazer antes.
+
+**Consequências.** Ligar aparelhos sob demanda entra no custo e na latência da execução (métrica de primeira classe) e
+respeita o teto de emuladores por host (29.33). Prova: `not_run` até o 31.274 parte 2.
