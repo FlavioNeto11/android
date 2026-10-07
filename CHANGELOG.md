@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.232: o forte confere o efeito com a imagem quando o alvo está fora da árvore (branch feat/31-232-commit-sem-imagem)
+
+- Na onda 1, o commit refeito no forte (31.223) e o rejulgamento do "sim" com efeito saíram sem imagem (`arvore_rica`).
+  Com o alvo escolhido na árvore, isso basta; num toque por coordenada, o forte conferia às cegas.
+- Agora a mesma regra vale para os dois juízes: com o alvo fora da árvore (coordenada, elemento ausente ou ferramenta
+  sem elemento), a imagem vai junto, com `image_reason = alvo_fora_da_arvore`. Com o alvo na árvore, decide a régua de
+  sempre. A regra só acrescenta a imagem; a tela sensível e a política `never` continuam mandando, e o juiz barato
+  não muda. `ai.imagem_quando_alvo_fora_da_arvore: false` volta ao de antes.
+- Prova `simulated`: `backend/tests/test_imagem_do_alvo_fora_da_arvore.py` (6). `real`: `not_run`.
+
 ## 2026-10-07 — 31.231: a pesquisa reaproveita o Livro (branch feat/31-231-pesquisa-reaproveita-o-livro)
 
 - A 2ª operação do mesmo assunto pagava a pesquisa de novo (US$ 0,043 na onda 1) pelo que o Livro já sabia.
