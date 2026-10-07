@@ -18,6 +18,9 @@ MINIMO = 3
 #: Os dados que identificam a persona e entram sempre no mapa; os outros (cidade, idioma, gênero…) só quando o plano
 #: os cita, senão "Brasil" ou "feminino" sumiriam de todo texto da execução.
 IDENTIFICAM = ("perfil_nome", "perfil_sobrenome", "perfil_nome_exibicao", "perfil_email", "perfil_nascimento")
+#: 31.243: o usuário de cada conta da persona (`conta_<app>[_<host>]_usuario`, `_2` na colisão de host) também identifica
+#: e entra sempre, com e sem a arroba (a borda de `_palavra` não casa depois de `@`, de propósito: ver `no_alvo`).
+USUARIO_DA_CONTA = re.compile(r"^conta_\w+_usuario(?:_\d+)?$")
 
 
 def mapa(variaveis: Mapping[str, str], citados: Iterable[str], parametros: Mapping[str, object]) -> dict[str, str]:
@@ -25,12 +28,17 @@ def mapa(variaveis: Mapping[str, str], citados: Iterable[str], parametros: Mappi
     parâmetro do comando fica de fora: o parâmetro vence a persona no mesmo valor (regra do F2), e a receita aprendida
     da execução continua guardando `{param}`."""
     dos_parametros = [str(v) for v in parametros.values() if isinstance(v, str)]
+    contas = [n for n in variaveis if USUARIO_DA_CONTA.match(n)]
     saida: dict[str, str] = {}
-    for nome in dict.fromkeys((*IDENTIFICAM, *citados)):
+    for nome in dict.fromkeys((*IDENTIFICAM, *contas, *citados)):
+        conta = nome in contas
         valor = str(variaveis.get(nome) or "").strip()
+        valor = valor.lstrip("@") if conta else valor
         # Dentro do parâmetro também vence: "Zelda Sintetica" no parâmetro não vira "{perfil_nome} {perfil_sobrenome}"
-        if len(valor) >= MINIMO and not any(_palavra(valor).search(x) for x in dos_parametros):
+        if len(valor) >= MINIMO and not any(_palavra(valor).search(x.lstrip("@")) for x in dos_parametros):
             saida.setdefault(valor, "{" + nome + "}")
+            if conta:
+                saida.setdefault("@" + valor, "@{" + nome + "}")
     return saida
 
 
@@ -93,4 +101,4 @@ def no_objeto(obj: object, trocas: Mapping[str, str]) -> object:
     return obj
 
 
-__all__ = ["IDENTIFICAM", "MINIMO", "digitado", "mapa", "na_mesma_caixa", "no_alvo", "no_objeto", "no_texto"]
+__all__ = ["IDENTIFICAM", "MINIMO", "USUARIO_DA_CONTA", "digitado", "mapa", "na_mesma_caixa", "no_alvo", "no_objeto", "no_texto"]

@@ -58,9 +58,6 @@ TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 MOTIVO_REJEICAO = "rejeitado por quem aprova"
 #: Os desfechos de etapa que são FALHA e levam o tipo classificado (ADR-054); nos demais, `steps.failure_kind` é nulo.
 _ETAPA_EM_FALHA = frozenset({StepStatus.failed, StepStatus.uncertain, StepStatus.waiting_user})
-#: 31.242: o usuário de cada conta da persona (`conta_<app>[_<host>]_usuario`, `_2` na colisão de host) entra no mapa
-#: da NOTA da evidência, com e sem a arroba.
-_USUARIO_DA_CONTA = re.compile(r"^conta_\w+_usuario(?:_\d+)?$")
 #: 31.242: os textos da etapa que o juiz repete na nota (o comentário, o alvo, a legenda) viram `{chave}` na nota.
 _TEXTOS_DA_ETAPA_NA_NOTA = ("content", "username", "post_author", "caption_contains", "target")
 
@@ -211,6 +208,7 @@ class Repository:
         self._objetivo_de: dict[str, str] = {}
         self._objetivos_da_execucao: dict[str, list[str]] = {}
         bus.mascara = self.mascara_do_registro
+        bus.mascara_da_nota = self.trocas_da_nota      # 31.243: o contexto da falha do treino lê a nota pelo barramento
 
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None,
@@ -990,18 +988,12 @@ class Repository:
         return trocas
 
     def trocas_da_nota(self, run_id: str | None, step_id: str | None, attempt_id: str | None) -> dict[str, str]:
-        """31.242: o mapa da NOTA da evidência — a nota do juiz repete o usuário da conta ("@fulano said …") e o texto
-        do comentário, que o mapa do registro (31.113 F1) não leva. É o mapa do registro mais o usuário de cada conta
-        da persona (com e sem a arroba: a borda de `no_texto` não casa depois de `@`) e os textos da etapa
-        (`_TEXTOS_DA_ETAPA_NA_NOTA`). Só a nota: eventos, ações e detalhe seguem o mapa de sempre."""
+        """31.242: o mapa da NOTA da evidência — a nota do juiz repete o texto do comentário e o alvo, que o mapa do
+        registro não leva. É o mapa do registro (31.113 F1; desde o 31.243 com o usuário de cada conta da persona, com e
+        sem a arroba) mais os textos da etapa (`_TEXTOS_DA_ETAPA_NA_NOTA`). Só a nota: o resto segue o do registro."""
         trocas = dict(self.mascara_do_registro(run_id, None, step_id, attempt_id))
-        oid = self._objetivo_do_registro(step_id, attempt_id)
-        if not oid:
+        if not self._objetivo_do_registro(step_id, attempt_id):
             return trocas
-        _, variaveis, _ = self._mascara_do_objetivo(oid)
-        for nome, valor in variaveis.items():
-            if _USUARIO_DA_CONTA.match(nome):
-                _na_nota(trocas, valor, nome, arroba=True)
         sid = step_id or self.db.scalar("SELECT step_id FROM attempts WHERE id=?", (attempt_id,))
         linha = self.db.one("SELECT bindings FROM steps WHERE id=?", (sid,)) if sid else None
         bindings = (loads(linha["bindings"], {}) or {}) if linha is not None else {}
