@@ -9,11 +9,11 @@ import { Field, Select, TextInput } from '../../components/Field';
 import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
-import { cx, formatInt, formatUsd4 } from '../../lib/format';
+import { cx, formatInt, formatUsd4, plural } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
-import { formatClock, formatQuando } from '../../lib/time';
+import { formatClock, formatQuando, formatSpan } from '../../lib/time';
 import { toast, toastError } from '../../store/toasts';
 import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
@@ -21,6 +21,7 @@ import { apiOperacoes, type ListaDeOperacoes } from './api';
 import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
 import { CriarOperacao } from './CriarOperacao';
 import { guardarRascunho, rascunhoDaOperacao } from './criar';
+import { latenciaDaOperacao, latenciaDoAlvo } from './latencia';
 import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
@@ -87,6 +88,56 @@ function FaixaDeCapacidade({ op }: { op: Operacao }) {
   );
 }
 
+/**
+ * 31.185: quanto tempo cada estágio levou e quanto cada agente levou no total, dos carimbos que o central já manda. Só mostra o que
+ * há: o intervalo entre duas horas iguais (hoje, as da liberação) ou fora de ordem fica de fora da mediana, e a tela diz quantos.
+ */
+function Latencia({ op }: { op: Operacao }) {
+  const l = latenciaDaOperacao(op.alvos, op.latencia_por_estagio);
+  if (l.agentes === 0) return null;
+  return (
+    <section aria-labelledby="operacao-latencia" data-latencia>
+      <h2 id="operacao-latencia" className={styles.subtitulo}>Latência</h2>
+      {l.comTempo === 0 ? (
+        <p className={styles.mudo}>Nenhum agente tem hora em pelo menos dois estágios: não há tempo a mostrar.</p>
+      ) : (
+        <>
+          <p className={styles.objetivo}>
+            Mediana por agente <strong>{l.medianaDoTotalMs === null ? '—' : formatSpan(l.medianaDoTotalMs)}</strong> ({formatInt(l.comTempo)} de {formatInt(l.agentes)} com tempo medido).
+            {l.maisLento ? <> Estágio mais lento: <strong>{rotuloDoEstagio(l.maisLento.estagio)}</strong>, mediana {formatSpan(l.maisLento.medianaMs)}.</> : <> Nenhum intervalo entre estágios pôde ser medido.</>}
+          </p>
+          {l.porEstagio.length ? (
+            <div className={styles.rolagem}>
+              <table className={styles.tabela}>
+                <caption className="sr-only">{l.fonte === 'central' ? 'Tempo de cada estágio desde o evento anterior, calculado pelo central: mediana, p95, maior e quantos agentes entram na conta.' : 'Tempo até cada estágio, desde o estágio anterior com hora: mediana, maior e quantos agentes entram na conta.'}</caption>
+                <thead><tr><th scope="col">Estágio</th><th scope="col">Mediana</th>{l.fonte === 'central' ? <th scope="col">p95</th> : null}<th scope="col">Maior</th><th scope="col">Agentes</th></tr></thead>
+                <tbody>
+                  {l.porEstagio.map((e) => (
+                    <tr key={e.estagio} data-estagio={e.estagio}>
+                      <th scope="row" className={styles.persona}>{rotuloDoEstagio(e.estagio)}</th>
+                      <td className={styles.numero}>{formatSpan(e.medianaMs)}</td>
+                      {l.fonte === 'central' ? <td className={styles.numero} data-p95>{e.p95Ms == null ? '—' : formatSpan(e.p95Ms)}</td> : null}
+                      <td className={styles.numero}>{formatSpan(e.maiorMs)}</td>
+                      <td className={styles.numero}>{formatInt(e.agentes)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </>
+      )}
+      {l.fonte === 'local' && l.mesmaHora + l.foraDeOrdem > 0 ? (
+        <p className={styles.mudo} role="status" data-fora-da-conta>
+          Ficaram de fora da conta {l.mesmaHora > 0 ? `${plural(l.mesmaHora, 'intervalo com a mesma hora do anterior', 'intervalos com a mesma hora do anterior')}` : ''}
+          {l.mesmaHora > 0 && l.foraDeOrdem > 0 ? ' e ' : ''}
+          {l.foraDeOrdem > 0 ? `${plural(l.foraDeOrdem, 'intervalo com hora fora de ordem', 'intervalos com hora fora de ordem')}` : ''}: o central carimbou esses estágios juntos ou fora da sequência.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function PorApp({ op }: { op: Operacao }) {
   const grupos = agregadoPorApp(op.alvos, op.app_id);
   return (
@@ -123,6 +174,7 @@ function Pipeline({ alvo }: { alvo: Alvo }) {
 /** O que o alvo mostra ao abrir: o texto gerado, o conhecimento, as evidências e os estágios com a hora. Só leitura. */
 function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
   const r = alvo.resultado;
+  const latencia = latenciaDoAlvo(alvo);
   const aba = (nome: string) => (alvo.run_id ? hashDe('execucoes', { segmentos: [alvo.run_id], query: { aba: nome } }) : null);
   const evidencia = (id: number | null, rotulo: string) => {
     const link = aba('evidencias');
@@ -150,9 +202,19 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
         <h4 className={styles.subtitulo}>Estágios alcançados</h4>
         {alvo.estagios.length ? (
           <ol className={styles.motivos}>
-            {alvo.estagios.map((e) => <li key={e.estagio}>{rotuloDoEstagio(e.estagio)}{e.em ? <span className={styles.mudo}> · {formatClock(e.em)}</span> : null}</li>)}
+            {alvo.estagios.map((e) => {
+              const passo = latencia.passos.find((p) => p.estagio === e.estagio);
+              return (
+                <li key={e.estagio}>{rotuloDoEstagio(e.estagio)}{e.em ? <span className={styles.mudo}> · {formatClock(e.em)}</span> : null}
+                  {passo?.situacao === 'ok' ? <span className={styles.mudo} data-passo="ok"> · +{formatSpan(passo.ms!)}</span> : null}
+                  {passo?.situacao === 'mesma_hora' ? <span className={styles.mudo} data-passo="mesma_hora"> · mesma hora {passo.deEstagio ? <>que “{rotuloDoEstagio(passo.deEstagio)}”</> : 'do evento anterior'}</span> : null}
+                  {passo?.situacao === 'fora_de_ordem' ? <span className={styles.mudo} data-passo="fora_de_ordem"> · hora anterior à de “{rotuloDoEstagio(passo.deEstagio)}”: fora de ordem</span> : null}
+                </li>
+              );
+            })}
           </ol>
         ) : <p className={styles.mudo}>O backend não informou a hora de cada estágio.</p>}
+        {latencia.esperaDoLiberarMs !== null ? <p className={styles.mudo} data-espera-do-liberar>Esperou a aprovação {formatSpan(latencia.esperaDoLiberarMs)} (da ação preparada ao liberar; não entra no tempo da ação executada).</p> : null}
       </div>
     </div>
   );
@@ -164,6 +226,7 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
   const verificacao = verificacaoDoAlvo(alvo);
   const ver = VERIFICACAO[verificacao];
   const rotuloDaLinha = alvo.persona ?? 'Persona não informada';
+  const total = latenciaDoAlvo(alvo).totalMs;
   return (
     <Fragment>
       <tr data-alvo={alvo.id}>
@@ -184,13 +247,14 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
           {verificacao === 'sem_acao' ? <span className={styles.mudo}>—</span> : <Badge tone={ver.tom} icon={ver.icone} size="sm">{ROTULO_DA_VERIFICACAO[verificacao]}</Badge>}
         </td>
         <td className={styles.numero}>{alvo.custo_usd === null ? <span className={styles.mudo}>—</span> : formatUsd4(alvo.custo_usd)}</td>
+        <td className={styles.numero} data-duracao>{total === null ? <span className={styles.mudo}>—</span> : formatSpan(total)}</td>
         <td>
           <Button size="sm" variant="ghost" aria-expanded={aberta} onClick={onAlternar} label={`${aberta ? 'Fechar' : 'Abrir'} o detalhe de ${rotuloDaLinha}`}>
             {aberta ? 'Fechar' : 'Detalhe'}
           </Button>
         </td>
       </tr>
-      {aberta ? <tr className={styles.linhaDoDetalhe}><td colSpan={9}><DetalheDoAlvo alvo={alvo} /></td></tr> : null}
+      {aberta ? <tr className={styles.linhaDoDetalhe}><td colSpan={10}><DetalheDoAlvo alvo={alvo} /></td></tr> : null}
     </Fragment>
   );
 }
@@ -321,6 +385,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
       <CustoEAssunto op={op} />
       <FaixaDeCapacidade op={op} />
       <PorApp op={op} />
+      <Latencia op={op} />
       <Tabs tabs={ABAS} active={aba} onChange={setAba} idBase="operacao" label="Detalhe da operação" />
       <TabPanel idBase="operacao" id={aba}>
       {aba === 'aprendizado' ? <AprendizadoDaOperacaoTab op={op} /> : (
@@ -353,7 +418,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
               <thead>
                 <tr>
                   <th scope="col">Persona</th><th scope="col">Conta</th><th scope="col">Aparelho</th><th scope="col">Pipeline</th>
-                  <th scope="col">Estado</th><th scope="col">Ação final ou motivo</th><th scope="col">Resultado</th><th scope="col">Custo de IA</th><th scope="col"><span className="sr-only">Detalhe</span></th>
+                  <th scope="col">Estado</th><th scope="col">Ação final ou motivo</th><th scope="col">Resultado</th><th scope="col">Custo de IA</th><th scope="col">Duração</th><th scope="col"><span className="sr-only">Detalhe</span></th>
                 </tr>
               </thead>
               <tbody>
