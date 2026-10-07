@@ -7830,3 +7830,30 @@ Sem rota nova (só dois campos de leitura no `GET /api/ai`). A exposição por p
   - a linha de escalonamento da execução ganha "; só a decisão do commit (31.223)".
 - **Prova:** `simulated` (`backend/tests/test_forte_so_no_commit.py`). `real`: `not_run`; o custo por alvo da primeira
   operação depois do deploy 61, contra a onda 2.
+
+## Adendo v1.128 (07/10/2026; item 31.271) — a prova da receita candidata na linha do Livro
+
+Sem rota nova. Campo aditivo na linha do Livro (`GET /api/aprendizado` e o item aberto, que compartilham a mesma
+serialização), a forma proposta pelo Portal em `portal-para-jev-receita-candidata.md` e lida pelo 31.270.
+
+- **`prova_da_candidata`**, SÓ em receita com `state = candidate` (ausente em todo o resto):
+  - `concordancias`: `recipes.shadow_agree`, a sequência (a divergência zera);
+  - `necessarias`: `ai.recipes_promote_after`, lido a cada resposta;
+  - `ultima_consulta`: `{em, resultado}` ou `null` quando nunca foi consultada;
+  - `substitui`: `{ref, versao, estado: "active"}` ou `null`. É a ATIVA da mesma chave (pacote, versão do app,
+    assinatura, variante e etapa) que a candidata assume ao ser promovida; não é a versão anterior do detalhe.
+- **`ultima_consulta.resultado`** (a migração 129 grava `recipes.ultima_consulta_em` e `_resultado`):
+  - `concordou` e `divergiu`: o veredito da sombra (`RecipeStore.shadow`);
+  - `nao_aplicavel`: a candidata não se aplicou na tela de partida e não teve veredito (31.262). A 3ª seguida vira
+    `divergiu`, gravado pelo `shadow` que o executor chama em seguida. Este valor é ADITIVO ao contrato proposto
+    (`concordou | divergiu | outro_escopo | quarentena`): o leitor do Portal já mostra o código cru de um resultado novo;
+  - `outro_escopo`: a consulta achou a receita, mas o alvo é de outro escopo (31.249);
+  - `quarentena`: a consulta não achou receita viva e achou uma posta de lado. A gravação cai na receita em
+    quarentena, que a linha do Livro não mostra como candidata; **hoje o valor não aparece em `prova_da_candidata`**.
+    Fica gravado para o dossiê e para quem ler o banco.
+  - a concordância de execução SIMULADA que não conta para a candidata (RA-19 B) NÃO grava consulta.
+- **Compatibilidade:** `necessarias` sai `null` onde o leitor não conhece a configuração (os leitores de teste); o painel
+  trata `null` como "o central não diz", nunca zero. Receita ativa, fluxo, habilidade e memória não ganham o campo.
+- **Prova:** `simulated` (`backend/tests/test_prova_da_candidata.py`, 7; `backend/tests/test_migracao_129.py`, 2). `real`:
+  `not_run`; o `GET /api/aprendizado` de uma candidata depois da primeira operação pós-deploy.
+

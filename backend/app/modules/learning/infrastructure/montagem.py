@@ -117,17 +117,19 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
                        decidir: Decidir | None = None, relogio: Callable[[], datetime] = now,
                        commit: Callable[[], str | None] | None = None,
                        eventos: Barramento | None = None,
-                       curador_de_ia: CuradorDeIA | None = None) -> LearningService:
+                       curador_de_ia: CuradorDeIA | None = None,
+                       necessarias_da_receita: Callable[[], int] | None = None) -> LearningService:
     """`fluxos`/`receitas`: as lojas do scheduler, que passam a nascer e mudar de status com o D1 e a trilha.
     `decidir(texto, run_id)`: a linha do tempo da execução (cada transição do sistema vira uma decisão nela).
     `commit`: o commit que este processo carregou — o MESMO que o `/api/health` mostra; a prova da correção do
     backlog o registra ao começar. Sem ele, lido do `.git` da raiz do projeto (sem chamar `git`).
     `eventos`: o barramento do central (`EventBus`): com ele, o livro publica `learning.needs_person` (30.21). Sem ele,
-    nada é publicado. `curador_de_ia`: o adaptador do curador por IA (30.11); sem ele, o simulado (o do hub: 30.12)."""
+    nada é publicado. `curador_de_ia`: o adaptador do curador por IA (30.11); sem ele, o simulado (o do hub: 30.12).
+    `necessarias_da_receita` (31.271): `ai.recipes_promote_after`, o total da prova da candidata no Livro."""
     repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades) if habilidades else None,
                                  precos=precos)
     risco = RiscoDoRegistro()
-    fontes = FontesSql(db, pacotes_do_registro=pacotes_do_registro)
+    fontes = FontesSql(db, pacotes_do_registro=pacotes_do_registro, necessarias=necessarias_da_receita)
     # 30.33: o aviso `learning.needs_person` lê a receita e o fluxo pelo mesmo leitor do dossiê do curador.
     lido = RiscoDoConteudo(db, risco)
     # 30.83: o fluxo sai do central pela referência pública (o `ref` e o `href` do aviso de espera)
