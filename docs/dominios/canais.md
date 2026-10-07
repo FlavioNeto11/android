@@ -456,6 +456,20 @@ avisos depois da faxina"), e a trava cai no TTL.
   os três são idempotentes, então repetir o comando depois de uma queda só faz o que faltou. Testes:
   `.claude/trello/test_espelho_do_deploy.py` (simulated, dados fictícios). Prova `real`: o fechamento do primeiro deploy
   com este comando (`not_run` até lá).
+- **Um cartão por aparelho com conta real (28.69):** `python .claude/trello/cartoes_de_aparelho.py [--base URL | --arquivo
+  instancias.json] [--aplicar]` (sem `--aplicar` é ensaio: só lê e imprime as ações). Lê `GET /api/instances` (`locked_account`,
+  `repair_pause`, `state`) e `GET /api/instances/{id}/personas` (a `session` de cada vínculo); tem conta real o aparelho com
+  vínculo ativo ou conta travada (ADR-055). Um cartão por aparelho no quadro Execução, achado pela linha `Aparelho: <rótulo>`
+  da descrição (só nas listas Em execução, Em validação e Concluído; cartão de item do plano nunca casa). Texto: só o rótulo
+  (o id da API, `android-01`), o estado (pronta, vencida, com erro, em pausa de reparo), o motivo em vocabulário fixo, `Desde:`
+  (data de início, não idade: "há 3 h" mudaria a descrição a cada rodada) e o próximo passo. Nunca entram handle, nome de
+  persona, e-mail, telefone, IP, serial, o `reason` livre da pausa, `attention` nem `detail`; o texto ainda passa por
+  `_sem_contato` e `redacao.redigir`. Pronta → Em execução; vencida, com erro e em pausa → Em validação; o aparelho que
+  perde a conta real (ou some da central) → Concluído. Nome, descrição e lista só mudam quando mudam; a segunda rodada tem 0
+  ações; rótulo com mais de um cartão não é tocado (`duplicados`); leitura que falhou pula o aparelho (`falhas`) em vez de
+  concluí-lo; central sem aparelho nenhum recusa. NUNCA comenta em cartão (entra como "do dono"): só a descrição. Testes:
+  `.claude/trello/test_cartoes_de_aparelho.py` (simulated, Trello e central falsos). Prova `real`: `not_run` (o `--aplicar`
+  nunca foi rodado).
 - **Hoje:** `.claude/trello/reconciliar.py` (testes em `.claude/trello/test_reconciliar.py`), a rotina da skill `trello` e o
   aviso no fim do `aplicar` do plano. As exceções acima (sem estado, "Espera você") ficam num relato para o dono ver.
 - **No produto:** nada ainda. A Central só tem o espelho dos avisos; levar a reconciliação para dentro dela é decisão a
