@@ -2436,3 +2436,49 @@ loja de receitas, a quarentena (3 falhas seguidas) e o 30.81 seguem iguais. Liga
 - Código: `domain/sombra_da_quarentena.py` e `infrastructure/sombra_da_quarentena_sql.py`. A montagem só registra o
   passo quando há a loja de receitas.
 - A pergunta ao dono (o que muda com sim e com não) está em `.claude/handoffs/aprendizado-pergunta-31-202.md`.
+
+## O ensino do fluxo para alvo de terceiro (31.219)
+
+Preparado, não executado. O alvo da onda 2 passou a ser o primeiro post de uma página pública de terceiro (P-029). A
+única receita ensinada do Instagram (a 221) abre o PRÓPRIO perfil e não serve a esse alvo. Este é o roteiro para
+ensinar o caminho certo quando o dono der a conta de teste.
+
+**A proposta de referência** está em `backend/tests/fixtures/ensino/proposta_alvo_de_terceiro.json`. É o que a sessão
+deve salvar:
+- comando `abra o perfil de {username}, a primeira publicação e os comentários`, com um parâmetro só, `{username}`: o @
+  da página pública de terceiro, sem a arroba. Nunca a conta da persona;
+- três etapas, todas ações do catálogo do Instagram e sem efeito:
+  1. `abrir_perfil`: `OPEN_PROFILE`, com `username = {username}`;
+  2. `abrir_primeira_publicacao`: `OPEN_POST`, com `target` = "a primeira publicação da grade" e
+     `post_author = {username}` (a regra de uma conta por alvo, ADR-055, precisa do autor);
+  3. `abrir_comentarios`: `OPEN_COMMENTS`.
+- `test_ensino_alvo_de_terceiro.py` confere que ela só lê, que o único parâmetro é `{username}`, que cada etapa monta
+  pelo catálogo e que a prévia a aceita sem o aviso de conta própria (31.182).
+
+**O roteiro, com a conta de teste do dono** (cada passo com conta real pede o sim dele na hora):
+1. Antes: a conta logada no aparelho e verificada (`session_ready`), e uma página pública de terceiro escolhida pelo
+   dono. Fora da janela de medida do notebook. Nada de comentar, curtir, seguir nem mandar mensagem: o fluxo só lê.
+2. Abrir uma sessão de ensino no aparelho, com o app Instagram, e demonstrar à mão: tocar a busca, digitar o @ da
+   página, abrir o perfil, tocar a primeira publicação da grade e tocar o balão de comentários. Parar.
+3. Pedir a proposta à IA: é uma chamada paga, uma por sessão.
+4. Na prévia, comparar com a referência:
+   - o comando com `{username}`;
+   - as três etapas com as ações do catálogo;
+   - nenhum aviso de conta própria;
+   - nenhuma etapa com efeito;
+   - o @ digitado virou parâmetro, não literal.
+   Se a proposta divergir, corrigir na prévia antes de salvar. A IA atribui as entradas gravadas às etapas; descartar
+   só o que não é de etapa nenhuma.
+5. Salvar, com o escopo da persona que ensinou. Pela regra do 30.81, as receitas valem só para ela até o "Confirmar
+   que fica" ou a prova.
+6. Medir: 2 ou 3 execuções só de leitura com outro @ público. Depois `GET /api/aprendizado/receitas/{id}/rendimento`
+   (31.191) e `GET /api/aprendizado/alcance?app=instagram` (31.181).
+7. Parar na tela de bloqueio, no `auth_challenge` e na conta errada, como no plano de ensino guiado (31.201).
+
+**Na operação (onda 2), o fluxo não substitui o plano.** A escolha por semelhança (31.151, que executa direto pelo
+31.210) troca o plano INTEIRO pelo do fluxo e só confere se `{username}` está no comando (`habilidades.escolha_valida`).
+Não confere se o fluxo cobre o comando todo. Este fluxo só lê; a ação final da operação (o comentário com aprovação)
+ficaria de fora. Na operação, o que serve são as ETAPAS ensinadas (31.153): o planejador livre monta o plano com a
+ação final, e cada etapa de leitura que tiver receita estável troca o ator pela receita. Sem ensino feito antes da
+onda, o planejador vai livre nos alvos.
+

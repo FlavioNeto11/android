@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.219: o ensino do fluxo para alvo de terceiro, preparado (branch feat/31-219-ensino-alvo-de-terceiro)
+
+- O alvo da onda 2 é o primeiro post de uma página pública de terceiro (P-029), e a única receita ensinada do Instagram
+  abre o próprio perfil.
+- A proposta de referência fica em `backend/tests/fixtures/ensino/proposta_alvo_de_terceiro.json`: busca, perfil de
+  `{username}`, primeira publicação e comentários, só leitura e com as ações do catálogo.
+- O roteiro para a conta de teste do dono está em `docs/dominios/aprendizado.md`. Nada foi executado.
+- Prova `simulated`: `backend/tests/test_ensino_alvo_de_terceiro.py` (2). `real`: `not_run`, pede a conta de teste.
+
 ## 2026-10-07 — 31.190, complemento: a proveniência do fato no Livro (adendo v1.117, aprendizado/integ-60)
 
 - A Portal (31.214) mostra a origem, a evidência, a confiança e o frescor da lição que nasceu de um fato da pesquisa.
