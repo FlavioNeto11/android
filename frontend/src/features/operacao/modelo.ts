@@ -9,6 +9,7 @@
 import { formatUsd4 } from '../../lib/format';
 import { lerFila, type FilaDoAlvo } from './fila';
 import { lerCustoPorPasso, lerSomaPorEstagio, lerSomaPorModelo, type CustoPorPasso, type SomaPorEstagio, type SomaPorModelo } from './custoPorPasso';
+import { lerFontesDaPesquisa, lerPesquisaDaOperacao, type PesquisaDaOperacao } from './pesquisaDaOperacao';
 
 /** Os estágios do pipeline, na ordem fixa do dono e do adendo. `acao_executada` e `acao_bloqueada` ocupam a mesma posição. */
 export const ESTAGIOS = [
@@ -130,6 +131,10 @@ export interface Operacao extends ResumoDaOperacao {
   /** v1.124 (31.229): o custo da operação somado entre os alvos, por modelo e por estágio. Ausente no central anterior. */
   custo_por_modelo?: SomaPorModelo[] | null;
   custo_por_estagio?: SomaPorEstagio[] | null;
+  /** 31.234: a pesquisa da operação (reaproveitada do Livro ou paga). Campo PROPOSTO; ausente no central que não o manda. */
+  pesquisa?: PesquisaDaOperacao | null;
+  /** As URLs que a pesquisa externa achou (`OperacaoDetalhe.fontes_da_pesquisa`); ausente no central anterior. */
+  fontes_da_pesquisa?: string[] | null;
   /** O custo de IA da operação inteira: a pesquisa externa e os agentes, e o total que o teto compara. */
   custo: CustoDaOperacao | null;
   /** O teto em US$ da operação inteira. */
@@ -287,6 +292,8 @@ export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
     parametros: lerParametros(o.parametros), exemplo,
     ...('custo_por_modelo' in o ? { custo_por_modelo: lerSomaPorModelo(o.custo_por_modelo) } : {}),
     ...('custo_por_estagio' in o ? { custo_por_estagio: lerSomaPorEstagio(o.custo_por_estagio) } : {}),
+    ...('pesquisa' in o ? { pesquisa: lerPesquisaDaOperacao(o.pesquisa) } : {}),
+    ...('fontes_da_pesquisa' in o ? { fontes_da_pesquisa: lerFontesDaPesquisa(o.fontes_da_pesquisa) } : {}),
   };
 }
 

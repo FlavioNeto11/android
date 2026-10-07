@@ -16,6 +16,7 @@ import { commitEmPalavras, lerCustoPorPasso, rotuloDoModelo } from './custoPorPa
 import { modelosDoAlvo } from './modelosLidos';
 import { rotuloDoEstagioDoCusto } from './rotuloDoEstagioDoCusto';
 import { OperacaoPage } from './OperacaoPage';
+import { conhecimentoEmPalavras, lerFontesDaPesquisa, lerPesquisaDaOperacao } from './pesquisaDaOperacao';
 
 /**
  * Prova 07/10 (FULL INSTAGRAM): a tela Operação no formato do rascunho do adendo v1.94 (Jev, commit 9da5017d). Prova `simulated`:
@@ -659,5 +660,107 @@ describe('31.228 (parte 2): a linha do tempo do agente por passo (v1.124, 31.229
     await ir(['op-p']);
     await waitFor(() => expect(linhas()).toHaveLength(2));
     expect(container.querySelector('[data-somas-do-custo]')).toBeNull();
+  });
+});
+
+describe('31.234: a pesquisa da operação (reaproveitada do Livro ou paga) e os fatos por alvo', () => {
+  const FATOS = [
+    { item: 'operation_fact:12', origem: 'pesquisa', frescor_ate: '2026-10-14T12:00:00Z', confianca: 'confirmado' },
+    { item: 'operation_fact:15', origem: 'pesquisa', frescor_ate: '2026-10-10T08:30:00Z', confianca: 'hipotese' },
+  ];
+  const REAPROVEITADA = { estado: 'reaproveitada_do_livro', criterio: 'dois fatos vivos e dentro do frescor cobrem o pedido', minimo_fatos: 2, frescor_ate: '2026-10-10T08:30:00Z', custo_usd: 0, fatos: FATOS };
+  const BASE = {
+    id: 'op-q', command: 'Comentar no post', app_id: 'instagram', acao_final: 'executar', status: 'em_curso', created_at: '2026-10-07T10:00:00Z', finished_at: null,
+    capacidade: { solicitados: 1, contas_existentes: 1, sessoes_validas: 1, contas_disponiveis: 1, concluidas: 0, bloqueadas: 0, em_curso: 1, motivos: {} },
+    assunto: 'Lançamento de outubro', custo: { pesquisa_usd: 0, alvos_usd: 0.1, total_usd: 0.1 }, max_usd: 2,
+    alvos: [{ profile_id: 'p1', persona_nome: 'Ana', app_id: 'instagram', account_id: 'a1', conta: 'c1', instance_id: 'android-01', run_id: 'r-q1', estagio: 'resposta_gerada', estagios: [], estado: 'em_curso', motivo: null,
+      resultado: { texto: 'Ótimo post!', conhecimento_ids: ['fato:livro.operation_fact:12', 'fato:alvo.conteudo', 'fonte:https://exemplo.com.br/a', 'registro:conta', 'fluxo:comentar-no-post'] } }],
+  };
+  const abrir = async (op: unknown) => {
+    backend.on('GET', /^\/api\/operacoes\/op-q$/, () => json(op));
+    await ir(['op-q']);
+    await waitFor(() => expect(linhas()).toHaveLength(1));
+  };
+  const secao = () => container.querySelector('section[aria-label="Pesquisa da operação"]') as HTMLElement | null;
+
+  it('os leitores: estado conhecido, estado novo vira "não informado", fato sem item cai, fontes sem repetição; o conhecimento em palavras', () => {
+    const r = lerPesquisaDaOperacao({ ...REAPROVEITADA, fatos: [...FATOS, { origem: 'x' }, 'lixo'] })!;
+    expect(r).toMatchObject({ estado: 'reaproveitada_do_livro', minimoDeFatos: 2, custoUsd: 0, frescorAte: '2026-10-10T08:30:00Z' });
+    expect(r.fatos.map((f) => f.item)).toEqual(['operation_fact:12', 'operation_fact:15']);
+    expect(r.fatos[1]!.confianca).toBe('hipotese');
+    expect(lerPesquisaDaOperacao({ estado: 'estado_novo', custo_usd: -1 })).toMatchObject({ estado: null, custoUsd: null, fatos: [] });
+    expect(lerPesquisaDaOperacao(null)).toBeNull();
+    expect(lerPesquisaDaOperacao([])).toBeNull();
+    expect(lerFontesDaPesquisa(['https://a.com', 'https://a.com', '', 3])).toEqual(['https://a.com']);
+    expect(lerFontesDaPesquisa('x')).toBeNull();
+    expect('pesquisa' in lerOperacao({ id: 'o', command: 'c', alvos: [] })!).toBe(false);
+    expect(lerOperacao({ id: 'o', command: 'c', alvos: [], pesquisa: REAPROVEITADA, fontes_da_pesquisa: ['https://a.com'] })!.pesquisa!.estado).toBe('reaproveitada_do_livro');
+    expect(conhecimentoEmPalavras('fato:livro.operation_fact:12')).toEqual({ tipo: 'Fato do Livro', chave: 'operation_fact:12' });
+    expect(conhecimentoEmPalavras('fato:alvo.conteudo')).toEqual({ tipo: 'Fato da operação', chave: 'alvo.conteudo' });
+    expect(conhecimentoEmPalavras('fonte:k')).toEqual({ tipo: 'Fonte da pesquisa', chave: 'k' });
+    expect(conhecimentoEmPalavras('registro:k')).toEqual({ tipo: 'Registro da operação', chave: 'k' });
+    expect(conhecimentoEmPalavras('fluxo:comentar')).toEqual({ tipo: null, chave: 'fluxo:comentar' });
+  });
+
+  it('reaproveitada do Livro: diz que não houve chamada paga, o critério, até quando vale e cada fato com origem e frescor', async () => {
+    await abrir({ ...BASE, pesquisa: REAPROVEITADA, fontes_da_pesquisa: [] });
+    const s = secao()!;
+    expect(s.getAttribute('data-pesquisa-da-operacao')).toBe('reaproveitada_do_livro');
+    expect(text(s)).toContain('Pesquisa da operação: Reaproveitada do Livro, sem chamada paga');
+    expect(text(s)).toContain('custo da pesquisa: US$ 0,0000');
+    expect(text(s)).toContain('Critério: dois fatos vivos e dentro do frescor cobrem o pedido (mínimo de 2 fatos).');
+    expect(text(s.querySelector('[data-frescor]')!)).toContain('o primeiro fato que vence reabre a pesquisa paga');
+    const f12 = s.querySelector('[data-fato-do-livro="operation_fact:12"]') as HTMLElement;
+    expect(text(f12)).toContain('origem pesquisa');
+    expect(text(f12)).toContain('confirmado');
+    expect(text(f12)).toContain('vale até');
+    expect(text(s.querySelector('[data-fato-do-livro="operation_fact:15"]')!)).toContain('hipótese');
+    expect(s.textContent).not.toMatch(/reaproveitada_do_livro|hipotese/);                      // nenhum código cru
+    expect(s.querySelector('[data-sem-estado-da-pesquisa]')).toBeNull();
+  });
+
+  it('paga: o custo, o estado em palavras e as fontes que achou (link só se https sem parâmetros)', async () => {
+    await abrir({ ...BASE, custo: { pesquisa_usd: 0.043, alvos_usd: 0.1, total_usd: 0.143 },
+      pesquisa: { estado: 'paga', custo_usd: 0.043, fatos: [] }, fontes_da_pesquisa: ['https://exemplo.com.br/a', 'https://exemplo.com.br/b?x=1'] });
+    const s = secao()!;
+    expect(text(s)).toContain('Paga: o Livro não cobria o assunto');
+    expect(text(s)).toContain('US$ 0,0430');
+    const links = Array.from(s.querySelectorAll('[data-fontes-da-pesquisa] a')).map((a) => a.getAttribute('href'));
+    expect(links).toEqual(['https://exemplo.com.br/a']);                                         // o da query fica como texto
+    expect(text(s.querySelector('[data-fontes-da-pesquisa]')!)).toContain('exemplo.com.br · exemplo.com.br');
+    expect(s.querySelector('[data-pesquisa-reaproveitada]')).toBeNull();
+  });
+
+  it('central sem o campo: só o que ele registra (custo pago e fontes); nunca "reaproveitada" por dedução', async () => {
+    await abrir({ ...BASE, custo: { pesquisa_usd: 0.043, alvos_usd: 0.1, total_usd: 0.143 }, fontes_da_pesquisa: ['https://exemplo.com.br/a'] });
+    let s = secao()!;
+    expect(s.getAttribute('data-pesquisa-da-operacao')).toBe('sem_estado');
+    expect(text(s)).toContain('Pesquisa da operação: paga, US$ 0,0430');
+    expect(text(s.querySelector('[data-sem-estado-da-pesquisa]')!)).toContain('ainda não diz se o Livro bastou');
+    await act(async () => { root.unmount(); root = createRoot(container); });
+    await abrir(BASE);                                                                         // custo 0 e sem fontes, mas com assunto
+    s = secao()!;
+    expect(text(s)).toContain('sem custo de pesquisa registrado');
+    expect(text(s)).not.toMatch(/[Rr]eaproveitada/);
+    await act(async () => { root.unmount(); root = createRoot(container); });
+    await abrir({ ...BASE, pesquisa: null });                                                  // central novo, operação sem pesquisa: ele SABE
+    s = secao()!;
+    expect(text(s)).toContain('não houve pesquisa nesta operação');
+    expect(s.querySelector('[data-sem-estado-da-pesquisa]')).toBeNull();
+    await act(async () => { root.unmount(); root = createRoot(container); });
+    const { assunto: _a, ...semAssunto } = BASE;
+    await abrir({ ...semAssunto, custo: null });                                               // nada a dizer: a seção não aparece
+    expect(secao()).toBeNull();
+  });
+
+  it('os fatos da operação por alvo, em palavras (o do Livro, o da operação, a fonte, o registro; prefixo desconhecido como veio)', async () => {
+    await abrir({ ...BASE, pesquisa: REAPROVEITADA });
+    await click(byRole('button', /^Abrir o detalhe de Ana$/, container));
+    const lista = await esperarElemento('li[data-conhecimento="Fato do Livro"]', container);
+    expect(text(lista)).toBe('Fato do Livro: operation_fact:12');
+    expect(text(container.querySelector('li[data-conhecimento="Fato da operação"]')!)).toBe('Fato da operação: alvo.conteudo');
+    expect(text(container.querySelector('li[data-conhecimento="Fonte da pesquisa"]')!)).toBe('Fonte da pesquisa: https://exemplo.com.br/a');
+    expect(text(container.querySelector('li[data-conhecimento="Registro da operação"]')!)).toBe('Registro da operação: conta');
+    expect(text(container.querySelector('li[data-conhecimento="outro"]')!)).toBe('fluxo:comentar-no-post');
   });
 });

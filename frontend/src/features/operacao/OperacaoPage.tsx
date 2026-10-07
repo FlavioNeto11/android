@@ -29,7 +29,9 @@ import { estadoDoLaco, lacoEmPalavras, lacoExplica } from './laco';
 import { LiberarAcoes } from './LiberarAcoes';
 import { SomasDoCusto } from './LinhaDoTempoDoAlvo';
 import { ModelosDoAlvo } from './ModelosDoAlvo';
+import { PesquisaDaOperacaoSecao } from './PesquisaDaOperacaoSecao';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
+import { conhecimentoEmPalavras } from './pesquisaDaOperacao';
 import styles from './Operacao.module.css';
 import {
   acoesDaOperacao, acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, contarPorStatus, descricaoDaOperacao, filtrarOperacoes, isStatusDaOperacao, STATUS_DA_OPERACAO, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
@@ -214,7 +216,14 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
       </div>
       <div>
         <h4 className={styles.subtitulo}>Conhecimento usado ({formatInt(r?.conhecimento_ids.length ?? 0)})</h4>
-        {r?.conhecimento_ids.length ? <ul className={styles.motivos}>{r.conhecimento_ids.map((k) => <li key={k} className="mono">{k}</li>)}</ul> : <p className={styles.mudo}>Nenhum item informado.</p>}
+        {r?.conhecimento_ids.length ? (
+          <ul className={styles.motivos}>
+            {r.conhecimento_ids.map((k) => {
+              const c = conhecimentoEmPalavras(k);
+              return <li key={k} data-conhecimento={c.tipo ?? 'outro'}>{c.tipo ? <>{c.tipo}: </> : null}<span className="mono">{c.chave}</span></li>;
+            })}
+          </ul>
+        ) : <p className={styles.mudo}>Nenhum item informado.</p>}
       </div>
       <div>
         <h4 className={styles.subtitulo}>Estágios alcançados</h4>
@@ -421,6 +430,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
         ) : null}
       </p>
       <CustoEAssunto op={op} />
+      <PesquisaDaOperacaoSecao op={op} />
       <FaixaDeCapacidade op={op} />
       <PorApp op={op} />
       <Latencia op={op} />
