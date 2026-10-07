@@ -402,6 +402,8 @@ interface Settings {
   orquestracao_max_candidatas: number;
   /** Quantas contas executam a ação final no post nosso numa operação (as demais ficam paradas até serem liberadas). */
   operacao_max_acoes_executadas: number;
+  /** v1.119 (31.220): de quanto em quanto tempo o laço do sistema avança as operações abertas, em segundos; 0 = desligado. Backend anterior não manda. */
+  operacao_laco_s: number;
 }
 
 /** v0.20 (C2): `on_demand` só captura prévia de aparelho que alguém olha; `always` é o laço antigo. */

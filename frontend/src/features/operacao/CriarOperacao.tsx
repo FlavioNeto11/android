@@ -1,4 +1,4 @@
-import { Copy, Plus, Users } from 'lucide-react';
+import { Copy, Plus, TriangleAlert, Users } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client';
 import type { AppConfig, Instance, InstagramProfile, ProfileAccount } from '../../api/types';
@@ -16,10 +16,11 @@ import { toast } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { apiOperacoes } from './api';
 import {
-  ASSUNTO_MAX, ASSUNTO_MIN, MAX_ALVOS, MAX_FONTES, MAX_TETO_USD, PARAMETRO_MAX, contasDoApp, erroDoFormulario, lerRascunho, lerTeto, limparRascunho, montarCorpo,
+  ASSUNTO_MAX, ASSUNTO_MIN, MAX_ALVOS, MAX_FONTES, MAX_TETO_USD, PARAMETRO_MAX, contasDoApp, erroDoFormulario, lerRascunho, lerTeto, limparRascunho, montarCorpo, recusasDeParametros,
   previaDaCapacidade, resolverAlvo, type AcaoFinal, type Rascunho, type EscolhaDoAlvo, type FormularioDaOperacao,
 } from './criar';
 import styles from './Operacao.module.css';
+import type { RecusaDeParametro } from './criar';
 
 /**
  * 31.176: criar a operação pela tela (prova de 07/10). Objetivo, app, quem faz (personas que JÁ existem, com a conta e o aparelho
@@ -77,7 +78,12 @@ function Formulario({ listas, voltar, rascunho }: { listas: Listas; voltar: Reac
   const [contas, setContas] = useState<Record<string, ContasDaPersona>>({});
   const [enviando, setEnviando] = useState(false);
   const [recusa, setRecusa] = useState<LoadError | null>(null);
+  // 31.224: o servidor recusou um parâmetro (perfil alvo, trecho da legenda ou outra chave); o motivo dele aparece no campo.
+  const [recusadas, setRecusadas] = useState<RecusaDeParametro[]>([]);
   const chave = useRef<{ corpo: string; key: string } | null>(null);
+
+  const motivoDoCampo = (campo: string) => recusadas.find((r) => r.campo === campo)?.motivo;
+  const limparRecusa = (campo: string) => setRecusadas((x) => (x.some((r) => r.campo === campo) ? x.filter((r) => r.campo !== campo) : x));
 
   const idsDeAparelho = useMemo(() => new Set(aparelhos.map((a) => a.id)), [aparelhos]);
   const selecionados = Object.keys(escolhas);
@@ -139,12 +145,15 @@ function Formulario({ listas, voltar, rascunho }: { listas: Listas; voltar: Reac
     if (chave.current?.corpo !== texto) chave.current = { corpo: texto, key: uuid() };
     setEnviando(true);
     setRecusa(null);
+    setRecusadas([]);
     try {
       const op = await apiOperacoes.criar(corpo, chave.current.key);
       toast({ tone: 'success', title: 'Operação criada', message: `${plural(previa.aptos, 'agente começa', 'agentes começam')} agora.` });
       useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [op.id] });
     } catch (e) {
-      setRecusa(toLoadError(e));
+      const porParametro = recusasDeParametros(e);
+      if (porParametro.length > 0) setRecusadas(porParametro);
+      else setRecusa(toLoadError(e));
     } finally {
       setEnviando(false);
     }
@@ -193,13 +202,18 @@ function Formulario({ listas, voltar, rascunho }: { listas: Listas; voltar: Reac
           {({ id }) => <TextArea id={id} rows={2} mono value={fontes} placeholder="https://exemplo.com.br/lancamento" onChange={(e) => setFontes(e.target.value)} />}
         </Field>
         <div className={styles.filtros}>
-          <Field label="Perfil alvo (opcional)" hint="Fixa o alvo quando o comando não diz.">
-            {({ id }) => <TextInput id={id} maxLength={PARAMETRO_MAX} value={username} onChange={(e) => setUsername(e.target.value)} />}
+          <Field label="Perfil alvo (opcional)" hint="Fixa o alvo quando o comando não diz." error={motivoDoCampo('username')}>
+            {({ id, describedBy, invalid }) => <TextInput id={id} aria-describedby={describedBy} invalid={invalid} maxLength={PARAMETRO_MAX} value={username}
+                                                          onChange={(e) => { setUsername(e.target.value); limparRecusa('username'); }} />}
           </Field>
-          <Field label="Trecho da legenda (opcional)" hint="Fixa a publicação quando o comando não diz.">
-            {({ id }) => <TextInput id={id} maxLength={PARAMETRO_MAX} value={legenda} onChange={(e) => setLegenda(e.target.value)} />}
+          <Field label="Trecho da legenda (opcional)" hint="Fixa a publicação quando o comando não diz." error={motivoDoCampo('caption_contains')}>
+            {({ id, describedBy, invalid }) => <TextInput id={id} aria-describedby={describedBy} invalid={invalid} maxLength={PARAMETRO_MAX} value={legenda}
+                                                          onChange={(e) => { setLegenda(e.target.value); limparRecusa('caption_contains'); }} />}
           </Field>
         </div>
+        {recusadas.filter((r) => r.campo === null).map((r) => (
+          <Banner key={r.chave} tone="warning" icon={TriangleAlert} compact role="alert" title={`O servidor recusou o parâmetro “${r.chave}”`}>{r.motivo}</Banner>
+        ))}
 
         <section aria-labelledby="nova-operacao-personas">
           <h2 id="nova-operacao-personas" className={styles.subtitulo}>Personas ({plural(selecionados.length, 'escolhida', 'escolhidas')} de {perfis.length}; até {MAX_ALVOS})</h2>

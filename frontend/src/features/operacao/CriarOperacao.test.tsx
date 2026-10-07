@@ -2,13 +2,14 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ApiError } from '../../api/client';
 import type { ProfileAccount } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useUiStore } from '../../store/ui';
 import { APPS, makeInstance } from '../../test/fixtures';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import {
-  erroDoFormulario, fontesDoCampo, lerRascunho, lerTeto, limparRascunho, montarCorpo, previaDaCapacidade, rascunhoDaOperacao, resolverAlvo, type FormularioDaOperacao,
+  erroDoFormulario, fontesDoCampo, lerRascunho, lerTeto, limparRascunho, montarCorpo, previaDaCapacidade, rascunhoDaOperacao, recusasDeParametros, resolverAlvo, type FormularioDaOperacao,
 } from './criar';
 import { lerOperacao } from './modelo';
 import { OperacaoPage } from './OperacaoPage';
@@ -336,5 +337,72 @@ describe('a lista leva à criação', () => {
     await act(async () => { root.unmount(); root = createRoot(container); root.render(<><OperacaoPage /><ConfirmHost /></>); });
     const b = await waitFor(() => byRole('button', /^Nova operação — indisponível: O central ainda não oferece o módulo de operações/, container));
     expect(b.getAttribute('aria-disabled')).toBe('true');
+  });
+});
+
+describe('31.224/31.225: o motivo da recusa dos parâmetros vai no campo certo', () => {
+  const unico = (campo: string, motivo: string) => json({ detail: { code: 'parametro_invalido', message: motivo, campo } }, 422);
+  const enviar = async () => {
+    await click(botao());
+    const d = await waitFor(() => byRole('dialog', /Criar a operação\?/));
+    await click(byRole('button', /^Criar a operação$/, d));
+  };
+  const erroDe = (rotulo: RegExp) => {
+    const l = Array.from(container.querySelectorAll('label')).find((x) => rotulo.test(x.textContent ?? ''))!;
+    return l.closest('div[class]')?.parentElement?.querySelector('[role="alert"]') ?? null;
+  };
+
+  it('recusasDeParametros lê o formato por campo, a lista e o 422 de validação do FastAPI; o resto fica genérico', () => {
+    const e = (status: number, code: string, message: string, detail: Record<string, unknown> | null) => new ApiError(status, code, message, detail);
+    expect(recusasDeParametros(e(422, 'parametro_invalido', 'x', { campo: 'username', motivo: 'sem arroba' })))
+      .toEqual([{ chave: 'username', campo: 'username', motivo: 'sem arroba' }]);
+    expect(recusasDeParametros(e(422, 'parametro_invalido', 'sem espaço', { parametro: 'caption_contains' })))
+      .toEqual([{ chave: 'caption_contains', campo: 'caption_contains', motivo: 'sem espaço' }]);
+    expect(recusasDeParametros(e(422, 'parametros_invalidos', 'x', { erros: [{ campo: 'username', motivo: 'a' }, { campo: 'cor', motivo: 'chave desconhecida' }, { campo: '', motivo: 'sem chave' }] })))
+      .toEqual([{ chave: 'username', campo: 'username', motivo: 'a' }, { chave: 'cor', campo: null, motivo: 'chave desconhecida' }]);
+    expect(recusasDeParametros(e(422, 'validation', 'parametros.username: não leva @; command: obrigatório', null)))
+      .toEqual([{ chave: 'username', campo: 'username', motivo: 'não leva @' }]);
+    expect(recusasDeParametros(e(409, 'credencial_no_comando', 'x', { campo: 'username', motivo: 'm' }))).toEqual([]);   // outro status: erro geral
+    expect(recusasDeParametros(e(422, 'validation_error', 'sem dizer qual', { message: 'sem dizer qual' }))).toEqual([]);   // não diz o parâmetro
+    expect(recusasDeParametros(new Error('x'))).toEqual([]);
+  });
+
+  it('o 422 do username aparece no campo Perfil alvo (e não no aviso geral); mexer no campo limpa só ele', async () => {
+    backend.on('POST', /^\/api\/operacoes$/, () => unico('username', 'O perfil alvo não leva @ nem espaço.'));
+    await abrir();
+    await preencher();
+    await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'nasa');
+    await enviar();
+    await waitFor(() => expect(text(erroDe(/^Perfil alvo/)!)).toContain('O perfil alvo não leva @ nem espaço.'));
+    expect(campo<HTMLInputElement>(/^Perfil alvo/).getAttribute('aria-invalid')).toBe('true');
+    expect(erroDe(/^Trecho da legenda/)).toBeNull();
+    expect(text(container)).not.toContain('Revise os campos');          // o aviso geral não aparece
+    await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'nasa2');
+    await waitFor(() => expect(erroDe(/^Perfil alvo/)).toBeNull());
+  });
+
+  it('o 422 da legenda vai no campo da legenda; uma chave sem campo vira aviso com o nome e o motivo do servidor', async () => {
+    let n = 0;
+    backend.on('POST', /^\/api\/operacoes$/, () => (++n === 1
+      ? unico('caption_contains', 'O trecho da legenda não pode ser só espaços.')
+      : json({ detail: { code: 'parametros_invalidos', message: 'x', erros: [{ campo: 'cor', motivo: 'chave desconhecida' }] } }, 422)));
+    await abrir();
+    await preencher();
+    await setValue(campo<HTMLInputElement>(/^Trecho da legenda/), 'foto');
+    await enviar();
+    await waitFor(() => expect(text(erroDe(/^Trecho da legenda/)!)).toContain('só espaços'));
+    await enviar();
+    await waitFor(() => expect(text(container)).toContain('O servidor recusou o parâmetro “cor”'));
+    expect(text(container)).toContain('chave desconhecida');
+    expect(erroDe(/^Trecho da legenda/)).toBeNull();                    // a recusa nova substitui a antiga
+  });
+
+  it('um 422 que não diz o parâmetro segue como erro geral', async () => {
+    backend.on('POST', /^\/api\/operacoes$/, () => apiError(422, 'validation_error', 'O objetivo é obrigatório.'));
+    await abrir();
+    await preencher();
+    await enviar();
+    await waitFor(() => expect(text(container)).toContain('O objetivo é obrigatório.'));
+    expect(erroDe(/^Perfil alvo/)).toBeNull();
   });
 });

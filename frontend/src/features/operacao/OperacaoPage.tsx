@@ -21,6 +21,7 @@ import { apiOperacoes, type ListaDeOperacoes } from './api';
 import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
 import { CriarOperacao } from './CriarOperacao';
 import { guardarRascunho, rascunhoDaOperacao } from './criar';
+import { estadoDoLaco, lacoEmPalavras, lacoExplica } from './laco';
 import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
@@ -379,10 +380,12 @@ function DetalheDaOperacao({ id }: { id: string }) {
 }
 
 function ListaDeOperacoes() {
+  const lacoConfigurado = useAppStore((s) => s.settings?.operacao_laco_s);
   const { dado, erro, carregando, recarregar } = useCarga<ListaDeOperacoes>((s) => apiOperacoes.lista(s), 'lista');
   if (carregando && !dado) return <Page title="Operação"><LoadingRegion label="Lendo as operações"><Skeleton height={120} /></LoadingRegion></Page>;
   if (erro && !dado) return <Page title="Operação"><LoadErrorState what="as operações" error={erro} onRetry={recarregar} /></Page>;
   const itens: ResumoDaOperacao[] = dado?.itens ?? [];
+  const laco = estadoDoLaco(lacoConfigurado);
   return (
     <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim."
           actions={(
@@ -391,6 +394,11 @@ function ListaDeOperacoes() {
           )}>
       {erro && dado ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {dado?.exemplo ? AVISO_DE_EXEMPLO : null}
+      {laco ? (
+        <p className={styles.mudo} data-laco-do-sistema={laco.ligado ? 'ligado' : 'desligado'}>
+          <strong>Laço do sistema: {lacoEmPalavras(laco)}.</strong> {lacoExplica(laco)}
+        </p>
+      ) : null}
       {itens.length === 0 ? (
         <EmptyState icon={Workflow} title="Nenhuma operação ainda" hint="Quando uma operação for criada, ela aparece aqui, da mais nova para a mais antiga." />
       ) : (

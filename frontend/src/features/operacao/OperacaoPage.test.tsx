@@ -432,3 +432,37 @@ describe('o que a tela nunca mostra', () => {
     expect(t).not.toMatch(/\b(em_curso|pendente|acao_preparada|interface_de_comentario_alcancada|resultado_verificado|conhecimento_ids|evidencia_id)\b/);
   });
 });
+
+describe('31.225: o laço do sistema na lista de operações', () => {
+  const listaVazia = () => backend.on('GET', /^\/api\/operacoes$/, () => json({ items: [] }));
+  const indicador = () => container.querySelector('[data-laco-do-sistema]');
+
+  it('desligado (0): diz desligado e que a operação só anda com a tela aberta', async () => {
+    listaVazia();
+    useAppStore.setState({ settings: { ...SETTINGS, operacao_laco_s: 0 } });
+    await ir([]);
+    await waitFor(() => expect(indicador()).not.toBeNull());
+    expect(indicador()!.getAttribute('data-laco-do-sistema')).toBe('desligado');
+    expect(text(indicador()!)).toContain('Laço do sistema: desligado.');
+    expect(text(indicador()!)).toContain('só avança quando alguém abre a tela dela');
+  });
+
+  it('ligado: diz de quanto em quanto tempo e que anda sozinho', async () => {
+    listaVazia();
+    useAppStore.setState({ settings: { ...SETTINGS, operacao_laco_s: 15 } });
+    await ir([]);
+    await waitFor(() => expect(indicador()).not.toBeNull());
+    expect(indicador()!.getAttribute('data-laco-do-sistema')).toBe('ligado');
+    expect(text(indicador()!)).toContain('Laço do sistema: ligado, a cada 15 s.');
+  });
+
+  it('central anterior (sem o campo): não afirma ligado nem desligado', async () => {
+    listaVazia();
+    const sem = { ...SETTINGS } as Record<string, unknown>;
+    delete sem.operacao_laco_s;
+    useAppStore.setState({ settings: sem as unknown as typeof SETTINGS });
+    await ir([]);
+    await waitFor(() => expect(text(container)).toContain('Nenhuma operação ainda'));
+    expect(indicador()).toBeNull();
+  });
+});

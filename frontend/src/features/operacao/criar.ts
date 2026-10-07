@@ -3,6 +3,7 @@
  * (a conta da persona no app, a sessão dela, o aparelho), a prévia da capacidade que a pessoa vê ANTES de enviar e o corpo do
  * `POST /api/operacoes` (adendo v1.94/v1.95). A tela nunca cria conta nem persona: só escolhe entre as que já existem.
  */
+import { ApiError } from '../../api/client';
 import type { ProfileAccount } from '../../api/types';
 import { fonteComoLink, type Operacao } from './modelo';
 
@@ -204,4 +205,53 @@ export function montarCorpo(f: FormularioDaOperacao, alvos: readonly AlvoResolvi
     ...(fontes.length ? { fontes } : {}),
     ...(Object.keys(par).length ? { parametros: par } : {}),
   };
+}
+
+/** Os dois parâmetros fixos que o formulário oferece; qualquer outra chave que o servidor recuse não tem campo e vira aviso geral. */
+export type CampoDeParametro = 'username' | 'caption_contains';
+
+/** 31.224: um parâmetro que o servidor recusou, com o motivo dele (nunca um "erro genérico"). `campo` = onde mostrar; null = sem campo na tela. */
+export interface RecusaDeParametro { chave: string; campo: CampoDeParametro | null; motivo: string }
+
+const texto = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+const registro = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+
+function recusa(chave: string | null, motivo: string | null): RecusaDeParametro | null {
+  if (!chave || !motivo) return null;
+  const nome = chave.replace(/^.*\./, '').trim();
+  return { chave: nome, campo: nome === 'username' || nome === 'caption_contains' ? nome : null, motivo };
+}
+
+/**
+ * Lê a recusa de parâmetros do `POST /api/operacoes` (422 do 31.224: username com arroba ou espaço, chave desconhecida). Tolerante ao
+ * formato: `detail.campo|field|parametro` com `detail.motivo|message`, uma lista `detail.erros|parametros` de `{campo, motivo}`, ou o 422
+ * de validação do FastAPI (`parametros.username: mensagem`). Devolve `[]` quando o erro não é dessa classe ou não diz qual parâmetro:
+ * quem chama então mostra o aviso geral de sempre.
+ */
+export function recusasDeParametros(e: unknown): RecusaDeParametro[] {
+  if (!(e instanceof ApiError) || (e.status !== 422 && e.status !== 400)) return [];
+  const d = e.detail;
+  if (d) {
+    for (const nome of ['erros', 'parametros', 'errors']) {
+      const lista = d[nome];
+      if (Array.isArray(lista)) {
+        const itens = lista.flatMap((i) => {
+          const o = registro(i);
+          const r = o ? recusa(texto(o.campo) ?? texto(o.field) ?? texto(o.parametro) ?? texto(o.chave), texto(o.motivo) ?? texto(o.message)) : null;
+          return r ? [r] : [];
+        });
+        if (itens.length > 0) return itens;
+      }
+    }
+    const unica = recusa(texto(d.campo) ?? texto(d.field) ?? texto(d.parametro) ?? texto(d.chave), texto(d.motivo) ?? texto(d.message) ?? texto(e.message));
+    if (unica) return [unica];
+  }
+  if (e.code === 'validation') {
+    return e.message.split('; ').flatMap((parte) => {
+      const m = /^(?:.*\.)?parametros\.([^:\s]+):\s*(.+)$/.exec(parte);
+      const r = m ? recusa(m[1]!, m[2]!) : null;
+      return r ? [r] : [];
+    });
+  }
+  return [];
 }
