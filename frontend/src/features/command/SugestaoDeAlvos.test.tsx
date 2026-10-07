@@ -89,6 +89,16 @@ describe('Modo Automático', () => {
     expect(JSON.parse(window.localStorage.getItem('cda.commandPersonas') ?? '[]')).toEqual(['p-marina']);
   });
 
+  it('31.274: persona descartada pela IA pode ser incluída pelo dono e vai marcada, junto das escolhidas, ao modo por persona', async () => {
+    await setValue(campo(), 'responda à tia sobre a missa de domingo');
+    await click(byRole('button', /^Executar/));
+    await waitFor(() => expect(text(container)).toContain('1 persona descartada'));
+    await click(byRole('button', /^Incluir e escolher manualmente/));
+    expect(byRole('button', /Por persona/).getAttribute('aria-pressed')).toBe('true');
+    expect(JSON.parse(window.localStorage.getItem('cda.commandPersonas') ?? '[]')).toEqual(['p-marina', 'p-nelson']);
+    expect(text(container)).not.toContain('Quem faz e onde');
+  });
+
   it('persona sem dados abre a própria persona para completar (sem formulário novo aqui)', async () => {
     await setValue(campo(), 'responda à tia sobre a missa de domingo');
     await click(byRole('button', /^Executar/));
