@@ -83,6 +83,17 @@ export interface Alvo {
   /** O que a execução do alvo gastou em IA (US$); `null` sem execução ou com o backend anterior. */
   custo_usd: number | null;
   resultado: Resultado | null;
+  /**
+   * A execução do alvo parou numa PERGUNTA (`needs_input`) e nada avança sem a resposta (31.246). `undefined` = o central não manda o
+   * campo (nada se afirma); `null` = ele manda e o alvo não espera resposta.
+   */
+  aguarda_resposta?: EsperaDeResposta | null;
+}
+
+export interface EsperaDeResposta {
+  /** A pergunta literal da execução (texto da própria IA sobre o pedido); `null` quando o central diz que espera mas não a manda. */
+  pergunta: string | null;
+  desde: string | null;
 }
 
 export interface Capacidade {
@@ -93,6 +104,8 @@ export interface Capacidade {
   concluidas: number | null;
   bloqueadas: number | null;
   em_curso: number | null;
+  /** Quantos alvos esperam resposta (31.246); ausente no central que não manda. */
+  aguardando_resposta?: number | null;
   /** Os motivos agrupados dos bloqueios, com quantos alvos cada um. */
   motivos: { motivo: string; n: number }[];
 }
@@ -163,7 +176,22 @@ export function lerAlvo(v: unknown, posicao: number): Alvo | null {
     estagio: lerEstagio(o.estagio), estagios, estado: isEstadoDoAlvo(o.estado) ? o.estado : null, parou_em: lerEstagio(o.parou_em), motivo: texto(o.motivo),
     // `custo_usd` do alvo é o dado (existe mesmo antes do texto); o do `resultado` é só a reserva (resultado é null antes do texto).
     custo_usd: usdOuNulo(o.custo_usd) ?? usdOuNulo(registro(o.resultado)?.custo_usd), resultado: lerResultado(o.resultado),
+    // Chave ausente (central anterior) não é `null` (o central sabe e o alvo não espera): a tela só afirma o que ele disse.
+    ...('aguarda_resposta' in o ? { aguarda_resposta: lerEspera(o.aguarda_resposta) } : {}),
   };
+}
+
+/** `aguarda_resposta` do alvo: um objeto = espera (mesmo sem a pergunta); qualquer outra coisa = não espera. */
+export function lerEspera(v: unknown): EsperaDeResposta | null {
+  const o = registro(v);
+  return o ? { pergunta: texto(o.pergunta), desde: texto(o.desde) } : null;
+}
+
+/** Os alvos que esperam resposta e as perguntas distintas deles, na ordem em que aparecem. */
+export function esperasDaOperacao(op: Pick<Operacao, 'alvos' | 'capacidade'>): { quantos: number; perguntas: string[] } {
+  const esperam = op.alvos.filter((a) => a.aguarda_resposta);
+  const perguntas = [...new Set(esperam.flatMap((a) => (a.aguarda_resposta?.pergunta ? [a.aguarda_resposta.pergunta] : [])))];
+  return { quantos: esperam.length || (op.capacidade.aguardando_resposta ?? 0), perguntas };
 }
 
 export function lerCapacidade(v: unknown): Capacidade {
@@ -175,6 +203,7 @@ export function lerCapacidade(v: unknown): Capacidade {
     solicitados: inteiro(o.solicitados), contas_existentes: inteiro(o.contas_existentes), sessoes_validas: inteiro(o.sessoes_validas),
     contas_disponiveis: inteiro(o.contas_disponiveis), concluidas: inteiro(o.concluidas), bloqueadas: inteiro(o.bloqueadas),
     em_curso: inteiro(o.em_curso), motivos,
+    ...('aguardando_resposta' in o ? { aguardando_resposta: inteiro(o.aguardando_resposta) } : {}),
   };
 }
 
