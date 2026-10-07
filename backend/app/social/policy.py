@@ -39,6 +39,7 @@ from ..planning.catalog import pacote_ancora
 from ..util import now, parse_iso, to_iso
 from .contas_nossas import eh_conta_nossa, foi_retirada
 from .excecoes import Excecao, ExcecoesDePolitica
+from .reserva_da_frota import ReservaDaFrota
 from .repository import SocialRepository
 
 # Padrões conservadores. O perfil pode ENDURECER (nunca afrouxar sozinho os tetos de frota — esses moram em
@@ -433,6 +434,27 @@ class PolicyEngine:
         return (f"o alvo é uma conta nossa: ritmo baixo entre contas da frota, no mínimo {espera}s desde o último gesto com "
                 "efeito desta conta (ADR-050, emenda de 02/10)", to_iso(livre),
                 "Espere o horário indicado: uma interação por vez entre contas nossas, nada em lote nem em laço.")
+
+    def reservar_frota(self, profile_id: str, cap: Capability, counterparty: str | None, *, app_id: str | None,
+                       step_id: str) -> tuple[str, str] | None:
+        """31.240: a porta liberou o efeito; esta conta reserva o alvo antes de agir (`ReservaDaFrota`). `None` segue;
+        senão `(motivo, retry_at)`: outra conta da frota está agindo sobre o mesmo alvo agora, e o espaçamento entre
+        contas conta do efeito dela. Sem espaçamento configurado (os dois zerados), nada é reservado."""
+        if not cap.side_effect or not cap.limit_bucket or self._settings is None:
+            return None
+        alvo = normalizar_alvo(counterparty)
+        if alvo is None:
+            return None
+        s = self._settings()
+        if not (int(getattr(s, "fleet_min_spacing_between_accounts_s", 0) or 0)
+                or int(getattr(s, "fleet_spacing_jitter_s", 0) or 0)):
+            return None
+        retry_at = ReservaDaFrota(self.repo.db).tomar(app_id=app_id, alvo=alvo, profile_id=profile_id, step_id=step_id,
+                                                      statuses=CONTAM, agora=now())
+        if retry_at is None:
+            return None
+        return (f"outra conta da frota está agindo sobre {alvo} agora; espaçando ações entre contas sobre o mesmo alvo "
+                "(31.240)", retry_at)
 
     def _sem_aprovacao_pelo_grupo(self, profile_id: str, politica: str, nota: str) -> tuple[str, str]:
         """28.61: a persona do grupo de `LimitsCfg.grupo_sem_aprovacao` não passa pela aprovação de POLÍTICA. Só troca

@@ -832,8 +832,19 @@ class ServicoDeOperacoes:
         return max(horas) if horas else None
 
     def _fechar(self, op: Row, status: str, capacidade: dict[str, object], *, fim: str | None = None) -> str | None:
-        if status == "em_curso" or op["finished_at"]:
-            return str(op["finished_at"]) if op["finished_at"] else None
+        # 31.241 (onda 2 de 07/10): com `acao_final=executar`, a operação fechada em "aguarda liberação" e aprovada POR
+        # FORA do liberar (Pendências) não reabria: a reabertura do `ler` só cobre `preparar`. O fim ficava o do preparo,
+        # o status gravado o de antes e nenhum `operacao.encerrada` novo saía. Agora o alvo de novo em curso reabre a
+        # operação, e o fechamento com outro resultado fecha de novo com o fim real. Nunca a cancelada.
+        if status == "em_curso":
+            if op["finished_at"] and op["status"] != "cancelada":
+                self.db.execute("UPDATE operacoes SET status='em_curso', finished_at=NULL, updated_at=? WHERE id=? AND"
+                                " finished_at IS NOT NULL AND status<>'cancelada'", (now_iso(), op["id"]))
+            return None
+        if op["finished_at"]:
+            if status == op["status"] or "cancelada" in (status, op["status"]):
+                return str(op["finished_at"])
+            return self._fechar_de_novo(op, status, capacidade, fim=fim)
         agora = min(fim, now_iso()) if fim else now_iso()
         # `.rowcount` (31.220): `execute` devolve o cursor, e a comparação com 0 nunca era verdadeira; o laço e um GET
         # que fecham juntos emitiam o `operacao.encerrada` duas vezes. O `status` na condição (achado do Codex no PR
@@ -848,6 +859,20 @@ class ServicoDeOperacoes:
                       data={"operacao_id": op["id"], "status": status, "capacidade": capacidade,
                             "custo": self._custo(str(op["id"]))})
         return agora
+
+    def _fechar_de_novo(self, op: Row, status: str, capacidade: dict[str, object], *, fim: str | None) -> str:
+        """31.241: a operação já fechada cujos alvos terminaram com OUTRO resultado (a ação aprovada por fora rodou sem
+        uma leitura no meio que a reabrisse). O fim é o último estágio real, nunca antes do fim gravado; CAS no fim
+        lido, para duas leituras juntas avisarem uma vez só."""
+        antes = str(op["finished_at"])
+        novo = max(antes, min(fim, now_iso())) if fim else antes
+        if self.db.execute("UPDATE operacoes SET status=?, finished_at=?, updated_at=? WHERE id=? AND finished_at=? AND"
+                           " status<>'cancelada'", (status, novo, now_iso(), op["id"], antes)).rowcount == 0:
+            gravada = self.db.scalar("SELECT finished_at FROM operacoes WHERE id=?", (op["id"],))
+            return str(gravada) if gravada else antes
+        self.bus.emit("operacao.encerrada", f"Operação {op['id']} encerrada: {status}.",
+                      data={"operacao_id": op["id"], "status": status, "capacidade": capacidade})
+        return novo
 
     # ------------------------------------------------------------------ pool elegível (31.174)
     def elegiveis(self, app_id: str) -> dict[str, object]:
