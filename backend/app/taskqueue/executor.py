@@ -116,7 +116,7 @@ ENTRADA_JULGADA_SO_COM_PROVA_LOCAL = True
 #: `decide` era só o ator dizendo "pronto". `False` devolve o caminho de antes (a medida "antes" do teste).
 LEITURA_FECHA_SEM_STEP_DONE = True
 #: As provas locais que comprovam um EFEITO (publicar, enviar), não uma tela: etapa com uma delas não entra no 31.61.
-PROVAS_DE_EFEITO = ("count_gt", "sent_text")
+PROVAS_DE_EFEITO = ("count_gt", "sent_text", "comentario")
 #: Liga o atalho de ENTRADA do LT-1 (a pós-condição já vale na tela lida → sai para a comprovação sem o ator). Existe
 #: para os testes que provam regras do ator NUM CENÁRIO em que o atalho cortaria a decisão observada (o piso de tier, a
 #: política de imagem): eles desligam isto e reafirmam a prova antiga sem enfraquecê-la.
@@ -4125,7 +4125,8 @@ class StepExecutor:
             # texto ausente) devolve `None`/`False` e cai para o modelo — nunca vira reprovação por si só.
             # Fase G: a pergunta vai ao `CapabilityProvider` (a mesma `local_proof_holds`, embrulhada); só `proved`
             # vale como atalho, exatamente como o `True` de antes.
-            provada = (judged and need is None and bool(local_proof)
+            # 31.239: a prova do comentário publicado nunca fecha o efeito sozinha; ela dispensa o 1º juiz lá embaixo.
+            provada = (judged and need is None and bool(local_proof) and not local_proof.startswith("comentario")
                        and await self._prova_local(step, capability, obs, conta=getattr(ctx_for(), "account_label", None)))
             if provada and step.side_effect and local_proof.startswith("count_gt"):
                 # 30.60: a prova por CONTAGEM (publicar) não fecha o efeito sozinha. O contador do cabeçalho sobe de forma
@@ -4216,6 +4217,20 @@ class StepExecutor:
                         metricas.contar("verificacao.primeiro_juiz_dispensado", prova=str(local_proof))
                         self.repo.decision(f"{rt.id} · {step.title}: envio comprovado pela árvore local (sent_text); o "
                                            "primeiro julgamento foi dispensado e o rejulgamento confere",
+                                           run_id=run_id, instance_id=rt.id, step_id=step.id)
+                    elif await self._comentario_dispensa_o_juiz(step, capability, obs, local_proof=local_proof,
+                                                                ja_julgou=judged_polls > 0, escalou=escalou,
+                                                                conta=getattr(ctx_for(), "account_label", None)):
+                        # 31.239: o comentário desta execução está na lista, atribuído à conta conectada, sem marca de
+                        # pendente. Substitui SÓ o julgamento barato; o rejulgamento logo abaixo decide (ou o 31.238).
+                        verdict = Verdict(satisfied="yes", delivery_level=None,
+                                          evidence=f"prova local ({local_proof}) na árvore: o comentário aparece na "
+                                                   "lista, atribuído à conta conectada; o primeiro julgamento foi "
+                                                   "dispensado; o rejulgamento confere")
+                        pela_prova_local = True
+                        metricas.contar("verificacao.primeiro_juiz_dispensado", prova="comentario")
+                        self.repo.decision(f"{rt.id} · {step.title}: comentário comprovado pela árvore local; o primeiro "
+                                           "julgamento foi dispensado e o rejulgamento confere",
                                            run_id=run_id, instance_id=rt.id, step_id=step.id)
                     else:
                         verdict = await self._ai(run_id, objective_id,
@@ -4498,6 +4513,19 @@ class StepExecutor:
         # A porta não afirma nível de entrega (`catalog_provider`: "exige o verificador"), e está certa: aqui a pergunta
         # é só se o TEXTO saiu (`sent_text`). O nível `sent` já foi conferido acima, e o rejulgamento confere a tela.
         return await self._prova_local(step, capability, obs, sem_nivel=True)
+
+    async def _comentario_dispensa_o_juiz(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation, *,
+                                          local_proof: str | None, ja_julgou: bool, escalou: bool,
+                                          conta: str | None) -> bool:
+        """31.239: o primeiro julgamento desta verificação pode ser dispensado pela prova do comentário publicado? As
+        travas do 31.26: a ação declara `comentario:`, é o primeiro julgamento, e o rejulgamento do 17.10 vai acontecer
+        (ligado e com modelo diferente). A marca de pendente ("Posting…") a porta confere antes (`pending_marks`)."""
+        ai = self.cfg.file.ai
+        if not (ai.comentario_dispensa_primeiro_juiz and local_proof and local_proof.startswith("comentario")
+                and not ja_julgou and not escalou and ai.rejudge_yes_on_side_effect
+                and self.cfg.ai_role("verify").model != self.cfg.ai_role("escalation").model):
+            return False
+        return await self._prova_local(step, capability, obs, conta=conta)
 
     async def _prova_local(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation, *,
                            sem_nivel: bool = False, conta: str | None = None) -> bool:

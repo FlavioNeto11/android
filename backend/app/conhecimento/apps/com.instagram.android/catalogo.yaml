@@ -329,6 +329,12 @@ acoes:
     limit_bucket: comments
     default_policy: approval_required
     needs_draft: true
+    # 31.239: o comentário desta execução na lista, atribuído à conta conectada (o autor num elemento e o texto noutro,
+    # na mesma faixa; ou a linha "autor said texto"). Dispensa só o primeiro julgamento; o rejulgamento decide.
+    local_proof: comentario:{account_label}
+    # Medido na onda 2 (07/10, evidências 2952 e 2955): logo depois do toque, a linha mostra "Posting…" e o juiz já
+    # dava por publicado. Pendente não é publicado; depois some e aparece a hora ("1 second ago") e "Edit".
+    pending_marks: [Posting…, Posting..., Publicando…, Publicando...]
     reconciliation: O comentário precisa aparecer na lista; enviar de novo criaria dois comentários.
 
   - key: REPLY_COMMENT

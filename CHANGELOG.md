@@ -154,6 +154,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   2009 ms para 0. A tabela está em `.claude/handoffs/jev-31-175-medida.md`.
 - Sem mudança de código: a fila por vaga já existe, e `max_ai_concurrency` é relido ao vivo.
 - Prova `simulated`; a leitura real fica para a onda 2.
+
+## 2026-10-07 — 31.239: o comentário publicado do Instagram comprovado pela árvore, como dado no catálogo (branch feat/31-239-marcador-de-comentario)
+
+- O CREATE_COMMENT do Instagram declara `local_proof: comentario:{account_label}`. A prova (`proofs._comentario_publicado`)
+  reconhece na lista o texto desta etapa atribuído à conta conectada: a linha "autor said texto", ou o texto num
+  elemento não editável com o autor na mesma faixa. Só árvore, sem adb. Vale a linha de base do 31.59: o comentário
+  igual e antigo da própria conta, já na tela no toque, não prova a nova tentativa.
+- Com a prova, o primeiro julgamento sai e o rejulgamento decide (as travas do 31.26,
+  `ai.comentario_dispensa_primeiro_juiz`). Isso habilita a dispensa por app do 31.238 para o Instagram quando a régua
+  30/0 for atingida. Sem rejulgamento, nada muda.
+- O CREATE_COMMENT passa a declarar `pending_marks` ("Posting…", "Publicando…"). Na onda 2, o juiz dava por publicado
+  com "Posting…" na linha (evidências 2952 e 2955). Agora, com a marca na tela, ninguém é consultado e, se ela não sair
+  no prazo, o efeito fica incerto (ADR-055).
+- Prova `simulated`: `backend/tests/test_marcador_de_comentario.py` (8). `real`: `not_run` (a 1ª operação de comentário
+  depois do deploy).
+
 ## 2026-10-07 — 31.232: o forte confere o efeito com a imagem quando o alvo está fora da árvore (branch feat/31-232-commit-sem-imagem)
 
 - Na onda 1, o commit refeito no forte (31.223) e o rejulgamento do "sim" com efeito saíram sem imagem (`arvore_rica`).

@@ -812,6 +812,10 @@ class AiCfg(BaseModel):
     # nenhuma discordância. Medido em 07/10: 0 discordâncias em 119 (QA Messenger qualifica; Instagram, com 4, não).
     # O app que deixa de ter o mínimo na janela volta a ser rejulgado e recupera o direito sozinho. `false` desliga.
     rejulgamento_dispensado_por_app: bool = True
+    # 31.239: na etapa cuja ação declara a prova local `comentario:` (CREATE_COMMENT do Instagram), o comentário desta
+    # execução visível na lista, atribuído à conta conectada, dispensa o PRIMEIRO julgamento (o barato). O rejulgamento
+    # do 17.10 continua e decide, salvo o direito do app (31.238). Sem rejulgamento, a prova não fecha nada sozinha.
+    comentario_dispensa_primeiro_juiz: bool = True
     rejulgamento_dispensa_minimo: int = Field(30, ge=1, le=10_000)
     rejulgamento_dispensa_janela_dias: int = Field(7, ge=1, le=90)
     # Item 31.26 (opção A): na etapa com nível de entrega `sent` cuja ação declara a prova local `sent_text` (a SEND_MESSAGE
