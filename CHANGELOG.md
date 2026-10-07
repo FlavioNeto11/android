@@ -20,6 +20,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-07 — 31.274 parte 2 (ADR-085): a sugestão automática prepara o que falta e só descarta o impossível (branch feat/31-274-automacao-prepara)
+
+- Caso real do dono: persona apta (aparelho parado, sessão `unknown`) ia para "descartadas" por "aparelho desligado e sem
+  sessão pronta", enquanto por nome no comando ela resolvia. O cartão dizia "0 ligado(s), 0 com sessão pronta" e o prompt
+  mandava preferir a "livre" e de aparelho ligado; o modelo escrevia isso como descarte.
+- O cartão e o prompt do orquestrador agora dizem que ligar o aparelho e conferir a sessão são da automação: só desempate
+  entre personas igualmente aderentes. `normalizar` ignora descarte do modelo que cita aparelho desligado ou sessão.
+- O impossível sai por código, com o motivo dito: conta bloqueada; senha não guardada, sem consentimento ou recusada onde o
+  app tem login gerenciado e a sessão do par não está pronta. O painel lê `descartadas[].motivo` como antes.
+- Novo `escolhidas[].preparo` (adendo v1.129): "vai ligar o aparelho X", "vai esperar vaga…", "vai conferir a sessão no
+  preparo"; sem religamento automático o aviso diz o contrário. `auto_start_devices` passa a `true` por padrão.
+- Teste: `backend/tests/test_automacao_prepara_o_que_falta.py` (9). A contraprova de `test_automatico_app_sem_conta.py`
+  (já falhava na main por falta das crenças da persona) agora guarda a senha com consentimento.
+- Prova `simulated`; `real`: `not_run` até o deploy. Não coberto: política `disabled` do perfil (depende da ação, que o
+  comando livre não revela) e app ausente com motivo próprio (hoje o aparelho sem o app já fica fora dos aptos).
+
 ## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
 
 - Medido no percurso real da Portal no 57 (06/10 23:20Z): o resumo do fluxo na aba Aprendizado da operação mostrava o

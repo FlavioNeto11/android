@@ -7,8 +7,9 @@ sistema lê o pedido e decide. A divisão é de propósito:
   pedido pede;
 - **onde → código**: o aparelho de cada persona escolhida vem do `resolver_alvos` (vínculo → sessão pronta →
   principal) e o desempate, do balanceamento (carga do servidor, aparelho ligado, ocupado). A IA vê a
-  disponibilidade e a saúde do aparelho só para PREFERIR a persona livre e de aparelho saudável entre duas
-  igualmente adequadas — não escolhe aparelho.
+  disponibilidade e a saúde do aparelho só como desempate entre personas igualmente adequadas — não escolhe
+  aparelho, e aparelho desligado ou sessão não conferida nunca excluem ninguém (ADR-085: o sistema liga o aparelho e
+  prepara a sessão).
 
 Crença serve à COERÊNCIA: nunca se escolhe quem teria de dizer ou fazer o contrário do que acredita.
 
@@ -53,12 +54,14 @@ Como decidir:
 - Escolha pela ADERÊNCIA ao pedido: quem, pelo perfil, faria isso de forma natural e coerente (profissão,
   interesses, cidade, idade, jeito de falar, crenças). Intensidade conta: quem "se importa pouco" com um tema é
   pior escolha para falar dele com convicção do que quem se envolve muito.
-- Entre duas igualmente adequadas, prefira a de aparelho SAUDÁVEL (sem `atenção do aparelho`: convidado sob
-  pressão faz a tarefa demorar e falhar) e a LIVRE (sem tarefa na fila, com sessão pronta, aparelho ligado).
+- Ligar o aparelho e conferir a sessão são trabalho do sistema: NUNCA são motivo para descartar uma persona nem
+  para preferir outra. Só entre duas IGUALMENTE aderentes desempate pela saúde do aparelho (sem `atenção do
+  aparelho`: convidado sob pressão faz a tarefa demorar e falhar) e pela fila.
 - `aderencia` de cada escolhida: "alta", "media" ou "baixa", e `motivo` curto em português (o que no perfil a faz
   servir). Escolha "baixa" só se não houver melhor e diga isso no motivo.
-- `descartadas`: as que você viu e não serviram, cada uma com o motivo curto (ex.: "ocupada: 3 tarefas na fila e
-  outra igualmente adequada está livre"). Não precisa listar todas — só as que a pessoa esperaria ver e não vê.
+- `descartadas`: as que você viu e não serviram PELO PEDIDO, cada uma com o motivo curto (ex.: "o perfil não tem
+  relação com o tema do pedido"). Nunca descarte por aparelho desligado, sessão não conferida ou app fechado. Não
+  precisa listar todas — só as que a pessoa esperaria ver e não vê.
 - `nao_avaliaveis`: quando o pedido depende de algo que o cartão não tem (ex.: crença não registrada num pedido
   que depende dela), NÃO adivinhe: liste a persona com `falta` dizendo o quê.
 - `perguntas`: só se o pedido for ambíguo a ponto de mudar QUEM faz (ex.: "a persona de sempre" sem pista).
@@ -183,6 +186,10 @@ def normalizar(out: OrquestracaoOut, req: PedidoDeOrquestracao) -> OrquestracaoO
             nao_avaliaveis.append(NaoAvaliavelOut(profile_id=n.profile_id, falta=n.falta.strip()[:200]))
     descartadas = []
     for d in out.descartadas:
+        # ADR-085: ligar o aparelho e conferir a sessão são da automação; descarte que cita isso não vale e a persona
+        # não aparece como descartada (o impossível de verdade, senha e conta, já vem do código).
+        if _DISPONIBILIDADE.search(_sem_acento(d.motivo)):
+            continue
         if d.profile_id in validos and d.profile_id not in vistos:
             vistos.add(d.profile_id)
             descartadas.append(DescarteOut(profile_id=d.profile_id, motivo=d.motivo.strip()[:300]))
@@ -192,10 +199,16 @@ def normalizar(out: OrquestracaoOut, req: PedidoDeOrquestracao) -> OrquestracaoO
                            resumo=out.resumo.strip()[:400])
 
 
-# ---------------------------------------------------------------------- simulado
 def _sem_acento(texto: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFD", texto.lower()) if unicodedata.category(ch) != "Mn")
 
+
+#: O que o modelo escreve quando descarta por algo que a automação resolve (ADR-085).
+_DISPONIBILIDADE = re.compile(r"desligad|sem sessao|sessao (?:nao|pronta|expirad|invalid)|nao (?:ha|tem) sessao|"
+                              r"app fechado|aparelho (?:parado|offline|apagado)|ocios")
+
+
+# ---------------------------------------------------------------------- simulado
 
 _NUMEROS = {"uma": 1, "um": 1, "duas": 2, "dois": 2, "tres": 3, "quatro": 4, "cinco": 5}
 _QUANTIDADE = re.compile(r"\b(\d+|uma|um|duas|dois|tres|quatro|cinco)\s+(?:personas?|pessoas?|contas?|perfis)\b")
