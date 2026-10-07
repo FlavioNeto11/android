@@ -29,7 +29,7 @@ from app.modules.pedidos.infrastructure.pesquisa_da_operacao import CHAVE_DO_EST
 from app.planning.capabilities import capability_of
 from app.planning.pesquisa import PesquisaBruta, PesquisaRequest
 
-from .test_capabilities import IG
+from .apoio_politica import IG
 from .test_conhecimento_da_operacao import LEGENDA, _com_operacao
 from .test_pesquisa_da_operacao import PRECOS, _bruta, _operacoes, banco  # noqa: F401 - a fixture
 from .test_porta_do_plano import _plano
