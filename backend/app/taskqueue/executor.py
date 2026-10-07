@@ -1682,6 +1682,7 @@ class StepExecutor:
                 repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} em quarentena após falhas seguidas; "
                               "a etapa será reaprendida com a IA", run_id=run_id, instance_id=iid, step_id=step.id)
             return
+        da_divergencia = False             # 31.233: a ativa que divergiu agora ensina a candidata (abaixo)
         if na_receita:
             clean = ok and not rr.diverged
             quarantined = self.recipes.result(rr.row["id"], clean)
@@ -1694,20 +1695,29 @@ class StepExecutor:
             if quarantined:
                 repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} em quarentena após falhas seguidas; "
                               "a etapa será reaprendida com a IA", run_id=run_id, instance_id=iid, step_id=step.id)
-            return
-        if sem_ator:
+            # 31.233: a ativa divergiu, caiu em quarentena agora e a IA completou a etapa. A chave ficou livre (só a
+            # quarentena tira a ativa) e o caminho que rodou nesta tentativa vira candidata, em vez de se perder.
+            da_divergencia = (quarantined and ok and rr.diverged and not sem_ator
+                              and self.cfg.file.ai.candidata_da_ativa_que_divergiu)
+            if not da_divergencia:
+                return
+        if sem_ator and not da_divergencia:
             # Nenhuma ação foi feita: não há caminho a aprender (receita vazia) e quem conduziu não foi a IA.
             repo.db.execute("UPDATE steps SET driven_by='sem_ator' WHERE id=?", (step.id,))
             return
-        repo.db.execute("UPDATE steps SET driven_by='ai' WHERE id=?", (step.id,))
+        if not da_divergencia:
+            repo.db.execute("UPDATE steps SET driven_by='ai' WHERE id=?", (step.id,))
         # A candidata que divergiu é trocada pelo caminho que a IA acabou de comprovar: sem isto, uma IA que passou a
         # fazer outro caminho deixaria a etapa presa para sempre numa candidata que nunca concorda (e candidata não
         # reproduz, então nem a quarentena a tiraria dali).
-        substitui = rr.row["id"] if rr.row is not None and rr.row["status"] == "candidate" and rr.diverged else None
-        if not ok or (rr.row is not None and substitui is None) or not (app.package and rr.app_version and rr.step_hash):
+        substitui = (rr.row["id"] if rr.row is not None and rr.row["status"] == "candidate" and rr.diverged
+                     and not da_divergencia else None)
+        if (not ok or (rr.row is not None and substitui is None and not da_divergencia)
+                or not (app.package and rr.app_version and rr.step_hash)):
             return
         rows = repo.db.query("SELECT * FROM actions WHERE attempt_id=? ORDER BY seq", (attempt_id,))
-        actions, why = distill(rows, rr.variables, em_casa_antes=self._em_casa_antes.pop(attempt_id, None))
+        actions, why = distill(rows, rr.variables, em_casa_antes=self._em_casa_antes.pop(attempt_id, None),
+                               com_trecho_da_receita=da_divergencia)
         if actions is None:
             log.info("%s: etapa %s não virou receita: %s", iid, step.key, why)
             return
@@ -1732,7 +1742,9 @@ class StepExecutor:
             repo.decision(f"{iid} · {step.title}: o caminho não depende do valor desta etapa — a receita vale para "
                           "qualquer valor (chave genérica)", run_id=run_id, instance_id=iid, step_id=step.id)
         if rid and candidata:
-            no_lugar = f", no lugar da v{rr.row['version']}, que divergiu" if substitui else ""
+            no_lugar = (f", no lugar da v{rr.row['version']}, que divergiu" if substitui
+                        else f", a partir da v{rr.row['version']} ativa, que divergiu e foi à quarentena (31.233)"
+                        if da_divergencia and rr.row is not None else "")
             repo.decision(f"{iid} · {step.title}: receita aprendida como candidata ({len(actions)} ação(ões)){no_lugar}"
                           f" — a IA segue conduzindo esta etapa e a receita só é comparada; vira ativa depois de "
                           f"{max(1, n)} execução(ões) seguidas em que a IA fizer exatamente o caminho dela"

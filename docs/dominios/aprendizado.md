@@ -2601,6 +2601,25 @@ commit descartado) e Opus 0,031. O alvo executado vai de cerca de 0,28 para cerc
 não age e é refeito no tier 1; desligado, a etapa inteira vai ao tier 1. `real`: `not_run`; o custo por alvo da
 primeira operação depois do deploy 61, contra a onda 2.
 
+## A receita ativa que diverge ensina a candidata (31.233)
+
+Achado da onda 2 (07/10, leitura real, só leitura): a receita 111 (`open_post`, a 1ª publicação da grade, aprendida no
+perfil nosso) rolou no perfil de terceiro, não achou o alvo, e a IA terminou a etapa nos 3 alvos (US$ 0,1415). Na 3ª
+divergência seguida, ela foi à quarentena. O executor só aprendia de uma divergência quando a receita era CANDIDATA,
+então o caminho pago se perdia e a próxima operação pagava de novo.
+
+Agora (`StepExecutor._after_step`, `ai.candidata_da_ativa_que_divergiu`, padrão `true`):
+- **Quando nasce.** A receita ATIVA divergiu, caiu em quarentena NESTA tentativa e a IA completou a etapa comprovada.
+  Antes da quarentena, a ativa segura a chave (uma só receita viva por chave) e nada nasce.
+- **O que vira receita.** O caminho que rodou: as ações da receita feitas (`done`) e as da IA, destiladas juntas
+  (`distill(com_trecho_da_receita=True)`). O gesto da receita que não chegou ao aparelho (`rejected`) fica fora;
+  qualquer outro estado recusa, como antes. As regras de seletor, segredo e efeito não mudam.
+- **Como fica.** É candidata, em prova até `recipes_promote_after` execuções seguidas, como as outras; a trilha diz "a
+  partir da vN ativa, que divergiu e foi à quarentena (31.233)". A quarentenada vira `superseded`.
+
+**Prova.** `simulated`: `backend/tests/test_candidata_da_ativa_que_divergiu.py` (5). `real`: `not_run`; a 1ª receita
+ativa que divergir até a quarentena depois do deploy.
+
 ## A receita sem o "voltar" inicial (31.230)
 
 Achado da onda 1 (07/10): a IA começou o `open_profile` por voltar (`press_back`). Como o voltar depende da tela de

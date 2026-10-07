@@ -269,6 +269,8 @@ ai:
                                           # Opus, até curtir com seletor de commit); by_risk = só risco alto do
                                           # catálogo, risco médio sem seletor de commit, ou app sem catálogo (menos o app
                                           # de prova, builtin e category 'qa', que fica no modelo barato); false = nunca
+  espera_do_plano_irmao_s: 60       # (60) 31.237: o plano de um alvo de operação espera o 1º plano da mesma operação
+                                    # para ler o cache do prompt; vencido o teto, segue; 0 desliga
   strong_model_only_on_commit: true   # 31.223: quando a etapa com efeito sobe (acima), o modelo de ação navega e só a
                                       # decisão que dispararia o efeito é refeita no forte; false = a etapa inteira
   imagem_quando_alvo_fora_da_arvore: true  # (true) 31.232: o commit refeito no forte e o rejulgamento do efeito levam a
@@ -288,6 +290,8 @@ ai:
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
   recipes_heranca: true           # RA-20: sem receita na chave, herda da mesma etapa noutra versão/variante, como
                                   # candidata (só com recipes_promote_after > 0)
+  candidata_da_ativa_que_divergiu: true  # (true) 31.233: a ativa que diverge e cai em quarentena com a IA completando
+                                         # a etapa: o caminho que rodou vira candidata; false = como antes
   recipes_promote_after: 2        # receita aprendida nasce candidata (a IA decide, ela só é comparada) e vira ativa
                                   # depois de N execuções seguidas em que a IA fez o caminho dela; 0 = nasce ativa
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
