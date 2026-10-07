@@ -9,7 +9,7 @@ import { useUiStore } from '../../store/ui';
 import { APPS, makeInstance } from '../../test/fixtures';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import {
-  erroDoFormulario, fontesDoCampo, lerRascunho, lerTeto, limparRascunho, montarCorpo, previaDaCapacidade, rascunhoDaOperacao, recusasDeParametros, resolverAlvo, type FormularioDaOperacao,
+  erroDoFormulario, fontesDoCampo, lerRascunho, lerTeto, limparRascunho, montarCorpo, previaDaCapacidade, rascunhoDaOperacao, recusaDeParametros, resolverAlvo, type FormularioDaOperacao,
 } from './criar';
 import { lerOperacao } from './modelo';
 import { OperacaoPage } from './OperacaoPage';
@@ -341,7 +341,8 @@ describe('a lista leva à criação', () => {
 });
 
 describe('31.224/31.225: o motivo da recusa dos parâmetros vai no campo certo', () => {
-  const unico = (campo: string, motivo: string) => json({ detail: { code: 'parametro_invalido', message: motivo, campo } }, 422);
+  const recusa422 = (motivo: string, message: string, extra: Record<string, unknown> = {}) =>
+    json({ detail: { code: 'pedido_invalido', message, motivo, ...extra } }, 422);
   const enviar = async () => {
     await click(botao());
     const d = await waitFor(() => byRole('dialog', /Criar a operação\?/));
@@ -352,57 +353,63 @@ describe('31.224/31.225: o motivo da recusa dos parâmetros vai no campo certo',
     return l.closest('div[class]')?.parentElement?.querySelector('[role="alert"]') ?? null;
   };
 
-  it('recusasDeParametros lê o formato por campo, a lista e o 422 de validação do FastAPI; o resto fica genérico', () => {
-    const e = (status: number, code: string, message: string, detail: Record<string, unknown> | null) => new ApiError(status, code, message, detail);
-    expect(recusasDeParametros(e(422, 'parametro_invalido', 'x', { campo: 'username', motivo: 'sem arroba' })))
-      .toEqual([{ chave: 'username', campo: 'username', motivo: 'sem arroba' }]);
-    expect(recusasDeParametros(e(422, 'parametro_invalido', 'sem espaço', { parametro: 'caption_contains' })))
-      .toEqual([{ chave: 'caption_contains', campo: 'caption_contains', motivo: 'sem espaço' }]);
-    expect(recusasDeParametros(e(422, 'parametros_invalidos', 'x', { erros: [{ campo: 'username', motivo: 'a' }, { campo: 'cor', motivo: 'chave desconhecida' }, { campo: '', motivo: 'sem chave' }] })))
-      .toEqual([{ chave: 'username', campo: 'username', motivo: 'a' }, { chave: 'cor', campo: null, motivo: 'chave desconhecida' }]);
-    expect(recusasDeParametros(e(422, 'validation', 'parametros.username: não leva @; command: obrigatório', null)))
-      .toEqual([{ chave: 'username', campo: 'username', motivo: 'não leva @' }]);
-    expect(recusasDeParametros(e(409, 'credencial_no_comando', 'x', { campo: 'username', motivo: 'm' }))).toEqual([]);   // outro status: erro geral
-    expect(recusasDeParametros(e(422, 'validation_error', 'sem dizer qual', { message: 'sem dizer qual' }))).toEqual([]);   // não diz o parâmetro
-    expect(recusasDeParametros(new Error('x'))).toEqual([]);
+  it('recusaDeParametros acha o campo pela posicao (de 1, na ordem enviada) ou por campo; o resto é genérico', () => {
+    const e = (status: number, code: string, detail: Record<string, unknown>) => new ApiError(status, code, String(detail.message ?? 'x'), detail);
+    const ENVIADAS = ['username', 'caption_contains'];
+    expect(recusaDeParametros(e(422, 'pedido_invalido', { message: 'Sem arroba.', motivo: 'username_com_arroba', campo: 'username', posicao: 1 }), ENVIADAS))
+      .toEqual({ chave: 'username', campo: 'username', motivo: 'Sem arroba.' });
+    // o nome da chave desconhecida nunca volta: a posição aponta a do nosso corpo, e os aceitos entram na frase
+    expect(recusaDeParametros(e(422, 'pedido_invalido', { message: 'Parâmetro desconhecido.', motivo: 'parametro_desconhecido', posicao: 2, aceitos: ['username', 'post_id'] }), ENVIADAS))
+      .toEqual({ chave: 'caption_contains', campo: 'caption_contains', motivo: 'Parâmetro desconhecido. Este app aceita: username, post_id.' });
+    // sem campo e sem posição que case: aviso sem campo
+    expect(recusaDeParametros(e(422, 'pedido_invalido', { message: 'Parâmetro desconhecido.', motivo: 'parametro_desconhecido', posicao: 9 }), ENVIADAS))
+      .toEqual({ chave: null, campo: null, motivo: 'Parâmetro desconhecido.' });
+    expect(recusaDeParametros(e(422, 'pedido_invalido', { message: 'm', motivo: 'username_com_espaco', posicao: 0 }), ENVIADAS)).toMatchObject({ chave: null, campo: null });
+    // 422 genérico (só code e message), motivo de outra classe, outro status e erro qualquer: nada a mostrar por campo
+    expect(recusaDeParametros(e(422, 'validation_error', { message: 'Valor longo demais.' }), ENVIADAS)).toBeNull();
+    expect(recusaDeParametros(e(422, 'pedido_invalido', { message: 'm', motivo: 'outro' }), ENVIADAS)).toBeNull();
+    expect(recusaDeParametros(e(409, 'pedido_invalido', { message: 'm', motivo: 'username_com_arroba' }), ENVIADAS)).toBeNull();
+    expect(recusaDeParametros(new Error('x'), ENVIADAS)).toBeNull();
   });
 
-  it('o 422 do username aparece no campo Perfil alvo (e não no aviso geral); mexer no campo limpa só ele', async () => {
-    backend.on('POST', /^\/api\/operacoes$/, () => unico('username', 'O perfil alvo não leva @ nem espaço.'));
+  it('o 422 do username (posicao 1) aparece no campo Perfil alvo e não no aviso geral; mexer no campo limpa só ele', async () => {
+    backend.on('POST', /^\/api\/operacoes$/, () => recusa422('username_com_arroba', 'O perfil alvo não leva @.', { campo: 'username', posicao: 1 }));
     await abrir();
     await preencher();
     await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'nasa');
     await enviar();
-    await waitFor(() => expect(text(erroDe(/^Perfil alvo/)!)).toContain('O perfil alvo não leva @ nem espaço.'));
+    await waitFor(() => expect(text(erroDe(/^Perfil alvo/)!)).toContain('O perfil alvo não leva @.'));
     expect(campo<HTMLInputElement>(/^Perfil alvo/).getAttribute('aria-invalid')).toBe('true');
     expect(erroDe(/^Trecho da legenda/)).toBeNull();
-    expect(text(container)).not.toContain('Revise os campos');          // o aviso geral não aparece
+    expect(text(container)).not.toContain('Revise os campos');
+    expect((backend.callsTo('POST', /operacoes$/)[0]!.body as { parametros: Record<string, string> }).parametros).toEqual({ username: 'nasa' });
     await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'nasa2');
     await waitFor(() => expect(erroDe(/^Perfil alvo/)).toBeNull());
   });
 
-  it('o 422 da legenda vai no campo da legenda; uma chave sem campo vira aviso com o nome e o motivo do servidor', async () => {
+  it('parametro_desconhecido na posição 2 cai no Trecho da legenda, com os parâmetros aceitos; a nova recusa troca a antiga', async () => {
     let n = 0;
     backend.on('POST', /^\/api\/operacoes$/, () => (++n === 1
-      ? unico('caption_contains', 'O trecho da legenda não pode ser só espaços.')
-      : json({ detail: { code: 'parametros_invalidos', message: 'x', erros: [{ campo: 'cor', motivo: 'chave desconhecida' }] } }, 422)));
+      ? recusa422('parametro_desconhecido', 'Este app não conhece o parâmetro.', { posicao: 2, aceitos: ['username'] })
+      : recusa422('username_com_espaco', 'O perfil alvo não leva espaço.', { campo: 'username', posicao: 1 })));
     await abrir();
     await preencher();
+    await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'nasa');
     await setValue(campo<HTMLInputElement>(/^Trecho da legenda/), 'foto');
     await enviar();
-    await waitFor(() => expect(text(erroDe(/^Trecho da legenda/)!)).toContain('só espaços'));
+    await waitFor(() => expect(text(erroDe(/^Trecho da legenda/)!)).toContain('Este app aceita: username.'));
     await enviar();
-    await waitFor(() => expect(text(container)).toContain('O servidor recusou o parâmetro “cor”'));
-    expect(text(container)).toContain('chave desconhecida');
-    expect(erroDe(/^Trecho da legenda/)).toBeNull();                    // a recusa nova substitui a antiga
+    await waitFor(() => expect(text(erroDe(/^Perfil alvo/)!)).toContain('não leva espaço'));
+    expect(erroDe(/^Trecho da legenda/)).toBeNull();
   });
 
-  it('um 422 que não diz o parâmetro segue como erro geral', async () => {
-    backend.on('POST', /^\/api\/operacoes$/, () => apiError(422, 'validation_error', 'O objetivo é obrigatório.'));
+  it('um 422 genérico (sem motivo) mostra a frase do servidor no topo do formulário, sem marcar campo', async () => {
+    backend.on('POST', /^\/api\/operacoes$/, () => json({ detail: { code: 'validation_error', message: 'O valor do parâmetro é longo demais.' } }, 422));
     await abrir();
     await preencher();
     await enviar();
-    await waitFor(() => expect(text(container)).toContain('O objetivo é obrigatório.'));
+    await waitFor(() => expect(text(container)).toContain('O valor do parâmetro é longo demais.'));
     expect(erroDe(/^Perfil alvo/)).toBeNull();
+    expect(campo<HTMLInputElement>(/^Perfil alvo/).getAttribute('aria-invalid')).not.toBe('true');
   });
 });

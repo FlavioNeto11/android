@@ -210,48 +210,34 @@ export function montarCorpo(f: FormularioDaOperacao, alvos: readonly AlvoResolvi
 /** Os dois parâmetros fixos que o formulário oferece; qualquer outra chave que o servidor recuse não tem campo e vira aviso geral. */
 export type CampoDeParametro = 'username' | 'caption_contains';
 
-/** 31.224: um parâmetro que o servidor recusou, com o motivo dele (nunca um "erro genérico"). `campo` = onde mostrar; null = sem campo na tela. */
-export interface RecusaDeParametro { chave: string; campo: CampoDeParametro | null; motivo: string }
+/**
+ * 31.224: o parâmetro que o servidor recusou, com a frase dele (nunca um "erro genérico"). `campo` = onde mostrar; null = sem campo na tela.
+ * `chave` é a do NOSSO corpo (o servidor nunca devolve o nome da chave desconhecida: a credencial pode estar nele); null = não deu para saber qual.
+ */
+export interface RecusaDeParametro { chave: string | null; campo: CampoDeParametro | null; motivo: string }
 
 const texto = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
-const registro = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
-
-function recusa(chave: string | null, motivo: string | null): RecusaDeParametro | null {
-  if (!chave || !motivo) return null;
-  const nome = chave.replace(/^.*\./, '').trim();
-  return { chave: nome, campo: nome === 'username' || nome === 'caption_contains' ? nome : null, motivo };
-}
+const MOTIVOS_DO_SERVIDOR = new Set(['username_com_arroba', 'username_com_espaco', 'parametro_desconhecido']);
 
 /**
- * Lê a recusa de parâmetros do `POST /api/operacoes` (422 do 31.224: username com arroba ou espaço, chave desconhecida). Tolerante ao
- * formato: `detail.campo|field|parametro` com `detail.motivo|message`, uma lista `detail.erros|parametros` de `{campo, motivo}`, ou o 422
- * de validação do FastAPI (`parametros.username: mensagem`). Devolve `[]` quando o erro não é dessa classe ou não diz qual parâmetro:
- * quem chama então mostra o aviso geral de sempre.
+ * Lê a recusa de parâmetros do `POST /api/operacoes` (422 do 31.224, Jev): `detail = {code: "pedido_invalido", message, motivo, posicao}`,
+ * com `motivo` = `username_com_arroba` | `username_com_espaco` | `parametro_desconhecido` e `posicao` contada de 1 na ordem das chaves de
+ * `parametros` que o formulário mandou (`chavesEnviadas`); `campo: "username"` só vem nos dois motivos de username. Em
+ * `parametro_desconhecido` vem também `aceitos` (nomes do catálogo do app), que entram na frase para sugerir a correção. A recusa para no
+ * primeiro problema (não há lista). Os 422 genéricos (só `code` e `message`) e qualquer outro erro dão `null`: quem chama mostra a
+ * frase no topo do formulário, como sempre.
  */
-export function recusasDeParametros(e: unknown): RecusaDeParametro[] {
-  if (!(e instanceof ApiError) || (e.status !== 422 && e.status !== 400)) return [];
+export function recusaDeParametros(e: unknown, chavesEnviadas: readonly string[]): RecusaDeParametro | null {
+  if (!(e instanceof ApiError) || e.status !== 422 || e.code !== 'pedido_invalido' || !e.detail) return null;
   const d = e.detail;
-  if (d) {
-    for (const nome of ['erros', 'parametros', 'errors']) {
-      const lista = d[nome];
-      if (Array.isArray(lista)) {
-        const itens = lista.flatMap((i) => {
-          const o = registro(i);
-          const r = o ? recusa(texto(o.campo) ?? texto(o.field) ?? texto(o.parametro) ?? texto(o.chave), texto(o.motivo) ?? texto(o.message)) : null;
-          return r ? [r] : [];
-        });
-        if (itens.length > 0) return itens;
-      }
-    }
-    const unica = recusa(texto(d.campo) ?? texto(d.field) ?? texto(d.parametro) ?? texto(d.chave), texto(d.motivo) ?? texto(d.message) ?? texto(e.message));
-    if (unica) return [unica];
-  }
-  if (e.code === 'validation') {
-    return e.message.split('; ').flatMap((parte) => {
-      const m = /^(?:.*\.)?parametros\.([^:\s]+):\s*(.+)$/.exec(parte);
-      const r = m ? recusa(m[1]!, m[2]!) : null;
-      return r ? [r] : [];
-    });
-  }
-  return [];
+  const motivo = texto(d.motivo);
+  if (!motivo || !MOTIVOS_DO_SERVIDOR.has(motivo)) return null;
+  let frase = texto(d.message) ?? texto(e.message);
+  if (!frase) return null;
+  const aceitos = Array.isArray(d.aceitos) ? d.aceitos.filter((a): a is string => typeof a === 'string' && a.trim() !== '') : [];
+  if (motivo === 'parametro_desconhecido' && aceitos.length > 0) frase = `${frase} Este app aceita: ${aceitos.join(', ')}.`;
+  const posicao = typeof d.posicao === 'number' && Number.isInteger(d.posicao) && d.posicao >= 1 ? d.posicao : null;
+  const chave = texto(d.campo) ?? (posicao !== null ? chavesEnviadas[posicao - 1] ?? null : null);
+  const campo: CampoDeParametro | null = chave === 'username' || chave === 'caption_contains' ? chave : null;
+  return { chave, campo, motivo: frase };
 }
