@@ -1,9 +1,8 @@
-"""Pós-processamento HONESTO da foto (Pillow): recorte na proporção da receita, redução e reampliação, ruído e
+"""Pós-processamento da foto (Pillow): recorte na proporção da receita, redução e reampliação, ruído e
 desfoque leves, JPEG com qualidade variável — a variação que fotos de gente comum têm entre si.
 
-O que NÃO se faz aqui, de propósito: EXIF inventado, remoção deliberada de proveniência ou qualquer coisa que
-sirva para enganar detecção. O original do provedor é preservado pelo serviço (`original_key`); esta função
-produz só o arquivo servido, e a receita inteira (`spec`) diz o que foi aplicado.
+O original do provedor é preservado pelo serviço (`original_key`); esta função produz só o arquivo servido,
+e a receita inteira (`spec`) diz o que foi aplicado.
 """
 from __future__ import annotations
 

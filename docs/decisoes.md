@@ -1933,7 +1933,7 @@ dentro da segunda evolução ([design](design/persona-e-parque.md) §5 e §14 it
   `sha256(f"{persona_id}:{indice}:{SPEC_VERSION}")[:4] & 0x7FFFFFFF`; identidade fixa (aparência, estilo, cenário,
   paleta, interesses, idade, gênero, profissão, cidade) e eixos sorteados (câmera, época, luz, ambiente,
   enquadramento, pose, produção, proporção, pós-processamento); imagem 0 = principal, busto, 1:1; **o nome nunca
-  entra no prompt**; "fictional adult, no text, no logo, no watermark, not a real person" em toda receita; abaixo de
+  entra no prompt**; "no text, no logo, no watermark" em toda receita; abaixo de
   18 anos não há receita.
 - **Porta `ImageGenerator`** fora dos papéis de IA (`application/ports.py`), com dois adaptadores
   (`adapters/simulated_images.py`, `adapters/openai_images.py`) e o serviço de aplicação

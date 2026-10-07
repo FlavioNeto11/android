@@ -367,44 +367,9 @@ class LimitsCfg(BaseModel):
     # e só vale onde não há vínculo (hoje, nenhum caminho automático). Continua limitando o `unknown_streak`. Não
     # remova nem renomeie: o `config.yaml` de uma instalação pode ter a chave.
     session_unknown_retry_cap: int = Field(3, ge=1, le=20)
-    # Coordenação de frota sobre o mesmo alvo (achado #114, endurecida pelo ADR-055). Fica em LimitsCfg, não no
-    # `automation_policy` de cada perfil: é regra da OPERAÇÃO como um todo — um perfil não pode afrouxar sozinho o
-    # que protege a conta dos outros 7. Seguir, mandar mensagem e comentar são de UMA conta por alvo, e isso é
-    # regra do dono no código (`social/policy.py::UMA_CONTA_POR_ALVO`), não número daqui.
-    # `fleet_max_accounts_per_target`: desde o ADR-055, o teto de contas DIFERENTES por alvo só nas CURTIDAS; o
-    # excedente é recusado, não adiado. Conta-se qualquer ação das outras contas sobre o alvo (todos os baldes).
-    # `fleet_target_window_days`: a janela dessa contagem, em DIAS — a de 1 h deixava a segunda conta mandar DM à
-    # mesma pessoa uma hora depois (r-20260919220216-7cfa59: sete contas, oito minutos, uma pessoa).
-    # `fleet_min_spacing_between_accounts_s` + `fleet_spacing_jitter_s`: intervalo mínimo (mais aleatoriedade, para
-    # não virar um padrão regular por si só) entre a curtida de uma conta e a de outra sobre o MESMO alvo, abaixo do
-    # teto. `fleet_target_window_s` ficou sem uso (substituído pela janela em dias); continua aqui só porque o tipo
-    # `Settings` do painel e o valor gravado no banco o citam — sai quando o painel mudar.
-    # Prova de 07/10 (J1): a sugestão de alvos (`POST /api/runs/targets/suggest`) escolhe até `orquestracao_max_escolhidas`
-    # personas, entre as `orquestracao_max_candidatas` mais disponíveis que vão ao modelo. Eram as constantes 10 e 20 do
-    # domínio, e um pedido de 30 voltava com 10. Lidos a cada sugestão (sem reiniciar). Cada candidata é um cartão no prompt:
-    # subir a segunda sobe o custo da chamada.
     orquestracao_max_escolhidas: int = Field(30, ge=1, le=64)
     orquestracao_max_candidatas: int = Field(60, ge=1, le=120)
-    # 31.154: numa operação com N agentes, quantos alvos podem EXECUTAR a ação final (o comentário no post nosso); os
-    # demais param em `acao_preparada` com o motivo "limite de ações executadas". Pedido do dono (06/10): configurável
-    # aqui, junto dos outros limites, e lido a cada liberação.
     operacao_max_acoes_executadas: int = Field(3, ge=0, le=64)
-    fleet_max_accounts_per_target: int = Field(3, ge=1, le=50)
-    fleet_target_window_days: int = Field(30, ge=1, le=365)
-    fleet_target_window_s: int = Field(3600, ge=60, le=86400)
-    fleet_min_spacing_between_accounts_s: int = Field(120, ge=0, le=3600)
-    fleet_spacing_jitter_s: int = Field(180, ge=0, le=3600)
-    # Interação entre contas NOSSAS vivas (29.28, emenda do ADR-050): quando o alvo da ação com efeito é outra conta da frota
-    # (viva), esta conta espera ao menos isto, em segundos, desde o último gesto com efeito DELA (vale o maior entre este valor e
-    # `cooldown_between_external_actions_s` do perfil). Ritmo baixo de propósito; conta retirada por bloqueio segue recusada.
-    fleet_min_spacing_to_own_account_s: int = Field(600, ge=0, le=86400)
-    # ADR-081 (dono, P-030, 06/10: "deixar ela mais maleável permitindo muito mais vezes"), emenda ao ADR-055:
-    # `frota_max_contas_por_alvo` é quantas contas DIFERENTES da frota podem seguir, mandar mensagem ou comentar para o
-    # mesmo alvo dentro de `fleet_target_window_days` (era 1, fixo no código). As curtidas seguem em
-    # `fleet_max_accounts_per_target`. `frota_conta_nossa_fora_da_regra`: o alvo que é conta nossa VIVA não entra nessa
-    # contagem (três contas nossas no mesmo post nosso); pessoa real sempre entra. Os dois são lidos ao vivo.
-    frota_max_contas_por_alvo: int = Field(10, ge=1, le=64)
-    frota_conta_nossa_fora_da_regra: bool = True
     # 28.61 (dono, 06/10 19:46Z: "crie um grupo com tudo liberado para todas as personas … para que nao seja necessario
     # permissoes por enquanto"): o id do grupo de política cujas personas NÃO passam pela aprovação de POLÍTICA
     # (a escolha do perfil ou do grupo, a DM fria, a publicação no feed, a pessoa real num pedido, a citação da família e a

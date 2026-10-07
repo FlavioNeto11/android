@@ -329,7 +329,7 @@ class OpenAICompatProvider:
         modelo = self.models.get("plan", self.model)
         esquema = strict_schema(RefineOut)
         msg, usage = await self._create(role="plan", model=modelo,
-                                        system=refine_system(prompts.UNTRUSTED_RULE, prompts.CONDUCT_RULE),
+                                        system=refine_system(prompts.UNTRUSTED_RULE),
                                         content=[{"type": "text", "text": refine_user(req) + self._json_hint(modelo, esquema)}],
                                         max_tokens=4000, schema=esquema, schema_name="comando_refinado")
         try:

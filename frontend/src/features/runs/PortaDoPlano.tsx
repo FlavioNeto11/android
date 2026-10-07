@@ -380,7 +380,6 @@ export function PortaDoPlano({ runId }: { runId: string }) {
           {previa.na_execucao.itens_for_each > 0 ? (
             <li>{previa.na_execucao.itens_for_each} etapa(s) que se repetem por item de uma lista: os itens só existem na execução</li>
           ) : null}
-          <li>Sempre com você: {previa.na_execucao.sempre.join(', ')}</li>
         </ul>
       </Disclosure>
 

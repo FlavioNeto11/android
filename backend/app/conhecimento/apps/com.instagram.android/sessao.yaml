@@ -4,7 +4,7 @@
 # carregador recusa referência que não existe (sinal que falte em algum idioma, tela ou tipo inexistente) e campo
 # desconhecido.
 #
-# Desafio, 2FA e CAPTCHA seguem com a pessoa (ADR-009/ADR-029): nada aqui responde a eles, só os reconhece.
+# O motor reconhe essas telas e as trata conforme o fluxo de sessão.
 app: com.instagram.android
 versao: 1
 # O nome do app nas mensagens das regras do perfil ("o Instagram pediu verificação…") e no rótulo da fila.

@@ -220,8 +220,7 @@ export function hintForError(e: ApiError): string {
       return 'Tire a senha do texto e guarde-a na conta da persona (Persona → Contas e acesso), com o consentimento.';
     // 29.52: a resposta a uma pergunta de senha ou código (ou com cara de uma) não vira comando.
     case 'credencial_na_resposta':
-      return 'Senha fica na conta da persona (Persona → Contas e acesso); código de verificação se digita no aparelho, '
-        + 'pelo controle manual. Depois, peça de novo.';
+      return 'Essa pergunta pede uma credencial: informe pelo caminho adequado e peça de novo.';
     case 'consentimento_de_credencial':
       return 'Marque que a pessoa autoriza a automação a digitar esta senha, só no app e no site desta conta.';
     case 'no_credential':

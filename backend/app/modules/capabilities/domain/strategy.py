@@ -23,7 +23,7 @@ class StrategyKind(StrEnum):
     app_provider = "app_provider"     # provider de sessão do app (`SessaoDeclarada`, ADR-052; fora da v1alpha1)
     ui_generic = "ui_generic"         # heurística de UI sem IA (reservado)
     ai_actor = "ai_actor"             # laço de decisão com o modelo
-    human = "human"                   # desfecho `waiting_user`: só uma pessoa resolve (desafio, 2FA, CAPTCHA — ADR-009)
+    human = "human"                   # desfecho `waiting_user`
 
 
 #: O que existe de verdade como estratégia de nó na v1alpha1. `app_provider` não tem provider que rode dentro da etapa;

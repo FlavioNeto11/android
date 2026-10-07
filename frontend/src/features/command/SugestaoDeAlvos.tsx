@@ -45,11 +45,6 @@ export function SugestaoDeAlvos({ sugestao, carregando, erro, mode, enviando, im
       {s && !carregando ? (
         <>
           {s.resumo ? <p className={styles.resumo}>{s.resumo}</p> : null}
-          {s.alerta_conduta ? (
-            <p className={styles.erro} role="alert">
-              <CircleAlert size={14} aria-hidden /> Não roteado pela regra de conduta das personas: {s.alerta_conduta}
-            </p>
-          ) : null}
 
           {s.escolhidas.length > 0 ? (
             <ul className={styles.lista} aria-label="Personas escolhidas">

@@ -482,8 +482,7 @@ export function CommandPanel() {
     const eco = ecoDosAlvos(dados.targets);
     // A pergunta que o backend fez é o que a pessoa precisa responder: vai inteira, não resumida.
     const pergunta = dados.questions[0]?.question ?? dados.perguntas[0];
-    const impede = dados.alerta_conduta ? 'Pedido não roteado pela regra de conduta das personas.'
-      : pergunta ? `${NOME_DA_IA} não sabe quem deve fazer isto: «${pergunta}»`
+    const impede = pergunta ? `${NOME_DA_IA} não sabe quem deve fazer isto: «${pergunta}»`
       : dados.questions.length > 0 || dados.perguntas.length > 0 ? 'Há uma pergunta sobre quem faz.'
       : eco.erro;
     if (impede || !eco.eco) throw new ApiError(422, 'alvos_a_decidir', impede ?? 'Nenhum aparelho sugerido.');
@@ -514,7 +513,6 @@ export function CommandPanel() {
   const dadosDaSugestao = sugestao?.dados ?? null;
   const ecoDaSugestao = dadosDaSugestao && dadosDaSugestao.targets.length > 0 ? ecoDosAlvos(dadosDaSugestao.targets) : null;
   const sugestaoImpede: string | null = !dadosDaSugestao ? (sugestao?.erro ? 'Tente de novo ou escolha manualmente.' : null)
-    : dadosDaSugestao.alerta_conduta ? 'Pedido não roteado pela regra de conduta das personas.'
     : dadosDaSugestao.questions.length > 0 || dadosDaSugestao.perguntas.length > 0
       ? 'Há uma pergunta sobre quem faz: ajuste o comando ou escolha manualmente.'
     : dadosDaSugestao.targets.length === 0 ? 'Nenhum aparelho sugerido.'
