@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Literal
 
 from app.contracts.origem import PREFIXO_OPERACAO
 from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
-from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
+from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus, StepStatus
 from app.modules.applications.infrastructure import registry as apps_registrados
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain import fila as filas, latencia, relatorio as rel
@@ -38,6 +38,7 @@ from app.modules.pedidos.domain import resumo_da_pesquisa
 from app.modules.pedidos.infrastructure.repositorio_memoria import RepositorioDeMemoria
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs, custo_por_passo
+from app.social.policy import ESPACO_DA_FROTA
 from app.social.repository import sessao_vencida, troca_declarada
 from app.social.service import SocialError
 from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS, normal
@@ -68,6 +69,10 @@ LIMITE_DE_ACOES = "limite de ações executadas"
 #: 31.174: o aparelho da sessão existe, mas não recebe tarefa agora (fora do ar, na loja ou com conta travada).
 APARELHO_INAPTO = "aparelho fora do ar ou com conta travada"
 AGUARDA_LIBERACAO = "aguarda liberação"
+#: O alvo em curso cuja etapa está represada pelo espaçamento entre contas da frota (31.240): sai a hora da retomada.
+ESPACAMENTO_DA_FROTA = "espaçamento da frota"
+#: O tamanho da pergunta da execução em `needs_input` no GET da operação (`alvos[].aguarda_resposta.pergunta`).
+PERGUNTA_MAX = 300
 
 
 #: Um @ de conta no texto do motivo (o da regra da frota cita o alvo): o motivo da operação diz "o perfil alvo".
@@ -470,6 +475,8 @@ class ServicoDeOperacoes:
         # 31.229 (adendo v1.124): o custo e o modelo por passo de cada alvo, numa leitura só para todos.
         por_passo = custo_por_passo.por_execucao(self.db, self.precos, [str(a["run_id"]) for a in linhas
                                                                          if a["run_id"]], definicao[1])
+        adiadas = self._adiadas_pela_frota([str(a["run_id"]) for a in linhas if a["run_id"]])
+        perguntas = self._perguntas_abertas([str(a["run_id"]) for a in linhas if a["run_id"]])
         for a, lt, resultado in alvos:
             estado, motivo, parou = lt.estado, lt.motivo, lt.parou_em
             # Só o alvo SEM a ação aprovada aguarda liberação; o liberado segue o estado da execução dele (em curso
@@ -478,6 +485,11 @@ class ServicoDeOperacoes:
                     and a["run_id"] not in aprovados):
                 estado, motivo, parou = ("bloqueado", LIMITE_DE_ACOES if executadas >= limite else AGUARDA_LIBERACAO,
                                          "acao_executada")
+            # O alvo em curso represado pelo espaçamento da frota diz por que parou e quando volta (o painel o via só
+            # "em curso" por até minutos; com o 31.240, 30 alvos no mesmo post saem em série).
+            retomada = adiadas.get(str(a["run_id"])) if estado == "em_curso" and a["run_id"] else None
+            if retomada is not None:
+                motivo = ESPACAMENTO_DA_FROTA
             self._anotar(op_id, a, lt.estagio, estado, motivo)
             # O custo do alvo é o da execução DELE (com a pesquisa externa, se ela rodou ali); sem execução, nulo.
             custo = round(self._gasto_do_run(str(a["run_id"])), 4) if a["run_id"] else None
@@ -496,9 +508,13 @@ class ServicoDeOperacoes:
                           "latencia": {"duracao_ms": lat.duracao_ms, "espera_do_liberar_ms": lat.espera_do_liberar_ms},
                           "resultado": resultado, "custo_usd": custo,
                           "sessao_verificada_em": self._sessao_verificada_em(a),
-                          "custo_por_passo": por_passo.get(str(a["run_id"])) if a["run_id"] else None})
+                          "custo_por_passo": por_passo.get(str(a["run_id"])) if a["run_id"] else None,
+                          "retomada_em": retomada,
+                          "aguarda_resposta": perguntas.get(str(a["run_id"])) if a["run_id"] else None})
         self._anotar_filas(saida)
         capacidade = self._capacidade(saida)
+        # Pedido do Portal (onda 2 de 07/10): o selo "N agentes aguardam resposta" sem contar pelos alvos na tela.
+        capacidade["aguardando_resposta"] = sum(1 for a in saida if a["aguarda_resposta"] is not None)
         status = self._status(op, saida)
         custo_por_modelo, custo_por_estagio = custo_por_passo.somar(
             a["custo_por_passo"] for a in saida)
@@ -572,6 +588,9 @@ class ServicoDeOperacoes:
             "capacidade": {**cap, "motivos": [{"motivo": rel.sem_arroba(m), "n": n} for m, n in sorted(
                 (cap.get("motivos") or {}).items(), key=lambda kv: (-int(kv[1]), str(kv[0])))]},
             "identidades": rel.identidades(cap),
+            # O resumo da pesquisa do GET (31.235): sem texto de fato nem URL; o critério passa pelo sem_arroba.
+            "pesquisa": ({**pesquisa, "criterio": rel.sem_arroba(pesquisa.get("criterio"))}
+                         if isinstance(pesquisa := op.get("pesquisa"), dict) else None),
             "agentes": agentes,
             "falhas_por_motivo": rel.falhas_por_motivo(agentes),
             "textos": rel.textos(agentes),
@@ -585,6 +604,35 @@ class ServicoDeOperacoes:
                       "por_peca_usd": (round(float(total) / verificadas, 4)
                                        if verificadas and isinstance(total, (int, float)) else None)},
         }
+
+    def _perguntas_abertas(self, run_ids: Sequence[str]) -> dict[str, dict[str, object]]:
+        """{execução: {pergunta, desde}} das execuções de alvo em `needs_input` (pedido do Portal: na onda 2 de 07/10 as
+        três esperavam o @ da página e a tela dizia "Em andamento"). A pergunta é o texto da execução, redigido e
+        curto; `desde` é a última mudança de estado dela (a entrada em `needs_input`, como no vencimento do 29.50)."""
+        if not run_ids:
+            return {}
+        marcas = ",".join("?" * len(run_ids))
+        abertas = {str(r["id"]): str(r["status_detail"] or "") for r in self.db.query(
+            f"SELECT id, status_detail FROM runs WHERE id IN ({marcas}) AND status=?",
+            (*run_ids, RunStatus.needs_input.value))}
+        if not abertas:
+            return {}
+        quando = {str(r["run_id"]): r["desde"] for r in self.db.query(
+            f"SELECT run_id, MAX(ts) AS desde FROM events WHERE kind='run.updated' AND run_id IN"
+            f" ({','.join('?' * len(abertas))}) GROUP BY run_id", tuple(abertas))}
+        return {rid: {"pergunta": (redact(texto) or "")[:PERGUNTA_MAX].rstrip(),
+                      "desde": str(quando[rid]) if quando.get(rid) else None} for rid, texto in abertas.items()}
+
+    def _adiadas_pela_frota(self, run_ids: Sequence[str]) -> dict[str, str]:
+        """{execução: a retomada mais próxima} das etapas represadas pelo espaçamento entre contas (`ESPACO_DA_FROTA` no
+        motivo da etapa), numa consulta só para todos os alvos. O motivo da etapa traz o alvo: só a hora sai daqui."""
+        if not run_ids:
+            return {}
+        marcas = ",".join("?" * len(run_ids))
+        return {str(r["run_id"]): str(r["retomada"]) for r in self.db.query(
+            f"SELECT run_id, MIN(next_retry_at) AS retomada FROM steps WHERE run_id IN ({marcas}) AND status=?"
+            " AND next_retry_at IS NOT NULL AND status_detail LIKE ? GROUP BY run_id",
+            (*run_ids, StepStatus.retry_wait.value, f"%{ESPACO_DA_FROTA}%")) if r["retomada"]}
 
     def _sessao_verificada_em(self, a: Row) -> str | None:
         """31.173: quando a sessão da conta do alvo NESTE aparelho foi vista na tela pela última vez (`account_sessions`).

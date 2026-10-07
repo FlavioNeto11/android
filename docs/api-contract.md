@@ -8046,6 +8046,43 @@ Portal (31.234, `.claude/handoffs/jev-para-portal-31-234.md`).
 - **Código:** `backend/app/modules/pedidos/domain/resumo_da_pesquisa.py` e `ServicoDeOperacoes._pesquisa`.
 - **Prova:** `simulated` (`backend/tests/test_pesquisa_no_get_da_operacao.py`, os quatro estados escritos pela própria
   pesquisa da operação). `real`: `not_run`, até o GET da primeira operação com assunto depois do deploy.
+
+## Adendo v1.126 (07/10/2026; número da orquestradora; itens 31.258 e 31.251) — o alvo adiado pela frota e o que espera resposta
+
+Sem rota nova. O `GET /api/operacoes/{id}` ganha campos aditivos e só de leitura; ausentes no central anterior.
+
+- **`alvos[].retomada_em`**: ISO ou `null`. Preenchido só no alvo `em_curso` cuja execução tem etapa em `retry_wait`
+  pelo espaçamento entre contas sobre o mesmo alvo (31.240); é o `next_retry_at` mais cedo. Nesse caso
+  `alvos[].motivo = "espaçamento da frota"` (vocabulário fixo; o motivo da etapa, que cita o alvo, não sai).
+- **`alvos[].aguarda_resposta`**: `{pergunta, desde}` ou `null`. Preenchido quando a execução do alvo está em
+  `needs_input`: `pergunta` é o `status_detail` da execução, redigido e cortado em 300 caracteres; `desde` é o último
+  `run.updated` dela (`null` se não houver).
+- **`capacidade.aguardando_resposta`**: quantos alvos têm `aguarda_resposta` não nulo.
+- **Código:** `ServicoDeOperacoes._adiadas_pela_frota` e `_perguntas_abertas`
+  (`backend/app/modules/operacoes/infrastructure/servico.py`); o texto que casa a espera é
+  `app.social.policy.ESPACO_DA_FROTA`.
+- **Prova:** `simulated` (`backend/tests/test_frota_adiada_no_get.py`). `real`: `not_run` até o deploy.
+
+## Adendo v1.127 (07/10/2026; número da orquestradora; item 31.259) — a pesquisa no relatório consolidado (v1.111)
+
+Sem rota nova. O `GET /api/operacoes/{id}/relatorio` muda em dois pontos.
+
+- **`pesquisa`**: o mesmo objeto de `OperacaoDetalhe.pesquisa` (v1.125), com `criterio` passado pelo `sem_arroba`. É
+  `null` quando a operação não pediu pesquisa. Não traz texto de fato nem URL.
+- **Critérios 5 e 6**: o `nesta_operacao` lê `pesquisa.estado`.
+
+  | `pesquisa.estado` | 5 | 6 |
+  |---|---|---|
+  | `reaproveitada_do_livro` | `sim` | `sim` |
+  | `paga` | `sim` | `sim` só com `fontes_da_pesquisa` não vazio; senão `nao` |
+  | `falhou` | `sim` | `nao` |
+  | `nao_rodou` | `nao_medido` | `nao_medido` |
+
+  - Sem o campo, vale a regra anterior (fontes e custo).
+  - O `estado` do critério só sobe (`_ORDEM`). Numa operação já existente, o `nesta_operacao` de 5 e 6 pode mudar
+    na releitura; a Canais o exibe.
+- **Código:** `app/modules/operacoes/domain/relatorio.py` (`criterios`) e `ServicoDeOperacoes.relatorio`.
+- **Prova:** `simulated` (`backend/tests/test_pesquisa_no_relatorio.py`). `real`: `not_run` até o deploy.
 ## Adendo v1.119 (07/10/2026; número da orquestradora; item 31.220) — o laço que avança a operação
 
 `Settings.operacao_laco_s` (inteiro, 0 a 3600, padrão **0 = desligado**): de quanto em quanto tempo o laço do sistema lê

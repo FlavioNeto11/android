@@ -80,6 +80,9 @@ BUCKET_TYPES: dict[str, tuple[str, ...]] = {
 
 # Tentativa e efeito confirmado contam igual: uma ação que talvez tenha saído já mexeu com a conta.
 CONTAM = (InteractionStatus.pending.value, InteractionStatus.confirmed.value, InteractionStatus.uncertain.value)
+#: O trecho FIXO do motivo de toda espera pelo espaçamento entre contas sobre o mesmo alvo (a regra do `check` e a
+#: reserva do 31.240). A leitura da operação o procura na etapa represada para dizer "espaçamento da frota".
+ESPACO_DA_FROTA = "espaçando ações entre contas sobre o mesmo alvo"
 
 #: Toda ação de saída sobre uma pessoa, de qualquer balde: é o que diz que uma conta "já mexeu" com ela (ADR-055). Antes
 #: a coordenação contava só o balde da própria ação, e a conta que curtiu a publicação não contava para quem seguia.
@@ -412,8 +415,7 @@ class PolicyEngine:
             espera = espaco_s + (self._jitter(0, jitter_s) if jitter_s else 0)
             livre = parse_iso(ultima) + timedelta(seconds=espera)
             if livre > agora:
-                return (f"outra conta da frota mexeu com {alvo} há pouco; espaçando ações entre contas sobre o "
-                        "mesmo alvo", to_iso(livre), "")
+                return (f"outra conta da frota mexeu com {alvo} há pouco; {ESPACO_DA_FROTA}", to_iso(livre), "")
         if nossa_viva:
             return self._espaco_entre_contas_nossas(profile_id, s, agora)
         return None
@@ -453,8 +455,7 @@ class PolicyEngine:
                                                       statuses=CONTAM, agora=now())
         if retry_at is None:
             return None
-        return (f"outra conta da frota está agindo sobre {alvo} agora; espaçando ações entre contas sobre o mesmo alvo "
-                "(31.240)", retry_at)
+        return (f"outra conta da frota está agindo sobre {alvo} agora; {ESPACO_DA_FROTA} (31.240)", retry_at)
 
     def _sem_aprovacao_pelo_grupo(self, profile_id: str, politica: str, nota: str) -> tuple[str, str]:
         """28.61: a persona do grupo de `LimitsCfg.grupo_sem_aprovacao` não passa pela aprovação de POLÍTICA. Só troca

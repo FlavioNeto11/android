@@ -19,6 +19,29 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.259: a pesquisa no relatório consolidado e os critérios 5 e 6 pelo estado dela (adendo v1.127; branch feat/pesquisa-no-relatorio)
+
+- `GET /api/operacoes/{id}/relatorio` ganha `pesquisa`: o mesmo resumo do GET (31.235), com o critério passado pelo
+  `sem_arroba`.
+- Os critérios 5 ("Detectar necessidade de informação") e 6 ("Obter informação externa") agora leem o estado que a
+  pesquisa escreveu. Antes, só pelas fontes e pelo custo, o reaproveitamento do Livro ficava "não medido", e a
+  tentativa paga que falhou ou nada achou contava 6 como obtida.
+  - Agora: reaproveitada → 5 e 6 "sim"; paga → 6 "sim" só com fonte achada; falhou → 6 "não"; não rodou → "não
+    medido"; sem o campo, a regra antiga.
+  - O estado de base nunca baixa.
+- Prova `simulated`: `backend/tests/test_pesquisa_no_relatorio.py` (4). `real`: `not_run` até o deploy.
+
+## 2026-10-07 — 31.258 e 31.251: o alvo adiado pela frota e o que espera resposta aparecem no GET da operação (31.258 a frota, 31.251 o aguarda_resposta; adendo v1.126; branch feat/frota-adiada-no-get)
+
+- Com a reserva de frota (31.240), as contas aprovadas juntas sobre o mesmo alvo saem em série, e o painel via o alvo
+  só "em curso" durante a espera. Agora o alvo em curso com etapa em `retry_wait` pelo espaçamento traz
+  `motivo = "espaçamento da frota"` e `retomada_em` (a retomada mais cedo). A espera por outro limite não ganha esse
+  rótulo, e o @ que está no motivo da etapa não sai no GET.
+- Pedido do Portal (op-20261007100019-681b9b, três execuções em `needs_input` exibidas como "Em andamento"):
+  `alvos[].aguarda_resposta = {pergunta, desde}` (a pergunta da execução, redigida e cortada em 300 caracteres;
+  `desde` = o último `run.updated`) ou `null`, e `capacidade.aguardando_resposta` com a contagem.
+- Prova `simulated`: `backend/tests/test_frota_adiada_no_get.py` (3). `real`: `not_run` até o deploy.
+
 ## 2026-10-07 — 31.253 (ADR-082): na operação que executa, a persona do grupo sem aprovação age sem pedir aprovação (branch feat/31-253-grupo-liberado-executa)
 
 - Decisão do dono em 07/10: as personas ficam num grupo que libera tudo, sem pedir permissão. Até aqui o grupo do 28.61 só
