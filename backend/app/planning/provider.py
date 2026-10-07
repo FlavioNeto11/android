@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, TypeVar, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -20,6 +20,8 @@ from ..shared.validacao import erros_sem_valor
 if TYPE_CHECKING:
     from ..config import ResolvedRole
     from .capabilities import CapabilityCatalog
+    from .etapas_ensinadas import EtapaEnsinada
+    from .habilidades import HabilidadeConhecida
 
 
 #: O que o painel PROMETE ao operador sobre o que sai desta máquina. Uma frase só, usada por todo provedor —
@@ -148,6 +150,9 @@ class Usage:
     buscas: int = 0
     usd_das_buscas: float = 0.0
     preparo: "PreparoDaDecisao | None" = None
+    # 31.154 (achado do Copilot no PR 487): solta a chamada reservada no teto da operação. O hub (`_call`) a põe; quem
+    # grava o custo (`add_usage`) a chama logo depois do INSERT, e a reserva vale até o gasto estar no banco. Não é dado.
+    soltar_reserva: Callable[[], None] | None = field(default=None, repr=False, compare=False)
 
 
 #: RA-10 (migração 080): POR QUE a chamada foi ao modelo de escalonamento (`ai_calls.escalate`; NULO = não foi).
@@ -239,6 +244,12 @@ class PlanRequest:
     #: contexto, nunca ordem; sem lição, o pedido é o de antes. Quem monta é a costura `licoes_para` (A2); quem põe no
     #: prompt é o A7. O provedor que não as conhece as ignora.
     lessons: list[str] = field(default_factory=list)
+    #: 31.151: os fluxos ativos e no escopo que o comando PARECE (`habilidades.HabilidadeConhecida`): referência, molde,
+    #: nomes dos parâmetros e apps, nunca o valor demonstrado. Vazio = o pedido de antes.
+    habilidades: list[HabilidadeConhecida] = field(default_factory=list)
+    #: 31.153: as etapas ensinadas com receita estável dos apps do plano (`etapas_ensinadas.EtapaEnsinada`): nome,
+    #: app, o que faz e os nomes dos parâmetros. Vazio = o pedido de antes.
+    etapas_ensinadas: list[EtapaEnsinada] = field(default_factory=list)
 
 
 @dataclass(slots=True)

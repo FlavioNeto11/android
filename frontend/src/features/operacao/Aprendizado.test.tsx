@@ -72,8 +72,8 @@ describe('o relatório com as 10 perguntas', () => {
   it('o Markdown traz a seção com as 10 perguntas, confirmado × hipótese, inferida, motivo, fontes e o não coberto', () => {
     expect(md).toContain('## O que a operação ensinou (as 10 perguntas)');
     for (const t of ['### O que a plataforma aprendeu com esta operação', '### O que veio do app', '### Que fontes externas entraram']) expect(md).toContain(t);
-    expect(md).toContain('- [confirmado] Resumo de fluxo:f1 (fluxo, app, operação inteira; 2 evidências).');
-    expect(md).toContain('- [hipótese] Resumo de memoria:m1 (memoria, persona, Persona 01; inferida; 2 evidências).');
+    expect(md).toContain('- [confirmado] Resumo de fluxo:f1 (fluxo, app, operação inteira; 2 a favor, 0 contra; 2 evidências).');
+    expect(md).toContain('- [hipótese] Resumo de memoria:m1 (memoria, persona, Persona 01; inferida; 2 a favor, 0 contra; 2 evidências).');
     expect(md).toContain('motivo: evidência contra');
     expect(md).toContain('Fontes: Página da loja | fonte:b.');
     expect(md).toContain('Nada registrado nesta operação.');                       // do_app veio vazio
@@ -85,11 +85,52 @@ describe('o relatório com as 10 perguntas', () => {
 
   it('sem a leitura ou com a rota ausente o relatório diz "não disponível" com o motivo, e não "nada aprendido"', () => {
     const sem = montarRelatorio(OP, new Date(), { situacao: 'indisponivel', motivo: 'O central ainda não oferece o aprendizado da operação.' });
-    expect(sem.aprendizado).toEqual({ disponivel: false, motivo: 'O central ainda não oferece o aprendizado da operação.', gerado_em: null, perguntas: [], nao_coberto: [] });
+    expect(sem.aprendizado).toEqual({ disponivel: false, motivo: 'O central ainda não oferece o aprendizado da operação.', gerado_em: null, perguntas: [], licoes: { reforcadas: [], contestadas: [] }, avisos: [], nao_coberto: [] });
     const mdSem = relatorioEmMarkdown(sem);
     expect(mdSem).toContain('Não disponível: O central ainda não oferece o aprendizado da operação.');
     expect(mdSem).not.toContain('Nada registrado');
     expect(relatorioEmMarkdown(montarRelatorio(OP))).toContain('Não disponível: O aprendizado da operação não foi lido');
+  });
+});
+
+describe('31.167: avisos e lições reforçadas e contestadas no relatório', () => {
+  const resposta = {
+    ...RESPOSTA,
+    perguntas: [
+      { chave: 'plataforma_aprendeu', titulo: 'O que a plataforma aprendeu com esta operação', itens: [item('licao:forte', { a_favor: 4, contra: 0 }), item('licao:disputada', { a_favor: 3, contra: 2, resumo: 'falar com @alguem.real ajuda' })] },
+      { chave: 'revisar_ou_descartar', titulo: 'O que revisar ou descartar', itens: [item('licao:disputada', { a_favor: 3, contra: 2 }), item('licao:sem-contagem', { a_favor: null, contra: null })] },
+    ],
+    avisos: [{ run_id: 'r-1', step_id: 'resposta', aviso: 'conhecimento_ids não gravados; veja @alguem.real' }, { run_id: null, step_id: null, aviso: 'sem etapa' }],
+  };
+  const lido = { situacao: 'lido', aprendizado: lerAprendizado(resposta)! } as const;
+  const r = montarRelatorio(OP, new Date('2026-10-07T20:00:00Z'), lido);
+  const md = relatorioEmMarkdown(r);
+
+  it('o JSON separa as lições pela evidência efetiva, uma vez cada, e a lição sem contagem não entra em nenhuma das duas', () => {
+    expect(r.aprendizado.licoes.reforcadas.map((i) => [i.ref, i.a_favor, i.contra])).toEqual([['licao:forte', 4, 0]]);
+    expect(r.aprendizado.licoes.contestadas.map((i) => [i.ref, i.a_favor, i.contra])).toEqual([['licao:disputada', 3, 2]]);
+  });
+
+  it('o Markdown tem as duas listas com a contagem e os avisos com a execução e a etapa', () => {
+    expect(md).toContain('### Lições reforçadas');
+    expect(md).toContain('### Lições contestadas');
+    expect(md).toMatch(/### Lições reforçadas\n\n- \[confirmado\] Resumo de licao:forte \(fluxo, app, operação inteira; 4 a favor, 0 contra/);
+    expect(md).toMatch(/### Lições contestadas\n\n- \[confirmado\] falar com @\[omitido\] ajuda \(fluxo, app, operação inteira; 3 a favor, 2 contra/);
+    expect(md).toContain('### Avisos sobre o conhecimento que o texto recebeu');
+    expect(md).toContain('- execução r-1, etapa resposta: conhecimento_ids não gravados; veja @[omitido]');
+    expect(md).toContain('- etapa não informada: sem etapa');
+  });
+
+  it('nenhum @ de conta sai no JSON nem no Markdown', () => {
+    expect(`${JSON.stringify(r)}\n${md}`).not.toContain('@alguem.real');
+  });
+
+  it('sem avisos o Markdown não tem a seção; sem lição, as duas listas dizem "Nenhuma."', () => {
+    const vazio = montarRelatorio(OP, new Date('2026-10-07T20:00:00Z'), { situacao: 'lido', aprendizado: lerAprendizado({ perguntas: [] })! });
+    const mdVazio = relatorioEmMarkdown(vazio);
+    expect(mdVazio).not.toContain('### Avisos sobre o conhecimento');
+    expect(mdVazio).toMatch(/### Lições reforçadas\n\nNenhuma\.\n\n### Lições contestadas\n\nNenhuma\./);
+    expect(vazio.aprendizado.avisos).toEqual([]);
   });
 });
 

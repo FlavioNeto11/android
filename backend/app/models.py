@@ -276,6 +276,9 @@ class Plan(BaseModel):
     #: Item 31.33: não vazio = o comando pede o que o catálogo do app não faz; a execução é recusada no planejamento.
     fora_do_catalogo: list[ForaDoCatalogo] = []
     planner: PlannerInfo
+    #: 31.151: a habilidade conhecida que o planejador escolheu por semelhança (`{ref, valores}`), como ele a devolveu.
+    #: Só de passagem, do provedor ao `RunService._plan`, que confere e decide; nunca é gravada com o plano.
+    escolha_por_semelhanca: dict[str, object] | None = Field(default=None, exclude=True)
 
     @field_validator("steps")
     @classmethod
@@ -776,8 +779,7 @@ class BioIssue(BaseModel):
 
 class BioPolitics(BaseModel):
     """O jeito político da pessoa (ADR-048): orientação no espectro, quanto se envolve, pautas com posição e como
-    fala do assunto. Vai ao modelo para dar coerência — a regra de conduta (`CONDUTA_DAS_CRENCAS`) proíbe
-    propaganda, pedido de voto, desinformação e ataque a quem pensa diferente."""
+    fala do assunto. Vai ao modelo para dar coerência (`USO_DAS_CRENCAS`)."""
 
     model_config = ConfigDict(extra="forbid")
     orientation: OrientacaoPolitica | None = Field(default=None, description=(

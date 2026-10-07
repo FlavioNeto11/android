@@ -20,14 +20,17 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple, get_args
 
-from ..db import Row, dumps
+from ..db import Row, dumps, loads
+from ..modules.learning.domain.ciclo import ConflitoDeEstado, NotaComCaraDeSegredo, Vetado
+from ..modules.learning.domain.licoes import CorrecaoSemReceita, Recusa, licao_da_correcao
 from ..models import Plan, PlannerInfo, PlanStep, Postcondition
 from ..planning.capabilities import CapabilityCatalog, CapabilityNode, load_catalog
 from ..planning.training import TrainingRequest
 from ..taskqueue.flows import PLACEHOLDER, RESERVED, ensinado_em_prova
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
+from ..security.redaction import redact
 from ..util import now_iso
-from . import dado_da_persona, lancador, partida
+from . import correcao, dado_da_persona, lancador, partida
 from .reparo_da_gravacao import marcar_telas
 from .recorder import TrainingError
 from .arraste import arrastes_finais, confirmou, pode_ser_receita
@@ -339,7 +342,7 @@ class TrainingSkills:
         """`body`: o corpo opcional `{"answers": [...]}` já lido do JSON (31.91); sem ele, o comportamento de sempre.
         Sem corpo (ou com `answers` vazio) as respostas JÁ guardadas na proposta anterior são mantidas e reenviadas ao
         provedor. O UPDATE final só vale se a sessão não mudou desde a leitura (`proposta_concorrente`, 409)."""
-        sess = self.s.training.get(session_id)
+        sess = self.s.training.get(session_id, crua=True)
         if sess["status"] == "recording":
             raise TrainingError("still_recording", "Conclua a gravação antes de pedir a proposta.", 409)
         if sess["status"] in ("saved", "discarded"):
@@ -420,6 +423,7 @@ class TrainingSkills:
             raise TrainingError("no_proposal", "Peça a proposta da IA (ou monte as etapas) antes de salvar.", 400)
         # 31.87 F2: a mesma troca da proposta, para a que a pessoa editou à mão; antes de conferir o comando.
         persona = self._persona_demonstrada(sess)
+        sumidos = dado_da_persona.parametros_da_persona(p, persona)       # K-pendente do 31.160: avisa, não muda
         p, marcadores = dado_da_persona.na_proposta(p, persona)
         p = dado_da_persona.nas_perguntas(p, persona)   # 31.112: a proposta editada pelo cliente pode trazer a pergunta
         if not isinstance(p.get("command_template"), (str, type(None))):
@@ -504,13 +508,14 @@ class TrainingSkills:
         # A destilação troca o valor digitado pelo nome: os parâmetros da pessoa primeiro, a persona no que sobrar.
         variaveis = {**exemplos, **{k: v for k, v in persona.items() if k not in exemplos}}
         return _Preparo({**p, "app_id": app_id},
-                        [*avisos, *dado_da_persona.aviso(marcadores), *partida.aviso(ja_valem, dados),
+                        [*avisos, *dado_da_persona.aviso_dos_parametros(sumidos), *dado_da_persona.aviso(marcadores),
+                         *partida.aviso(ja_valem, dados),
                          *(dado_da_persona.com_marcador(linha, dados) for linha in partida.aviso_dos_vizinhos(vizinhos))],
                         comando, plano, variaveis, apps, app_id, profile_ids, group_ids, ja_valem, dados)
 
     async def save(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],
                    group_ids: list[str], scope_on_proof: str = ESCOPO_TODOS) -> dict[str, object]:
-        sess = self.s.training.get(session_id)
+        sess = self.s.training.get(session_id, crua=True)
         prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids, scope_on_proof)
         if prep.ja_valem:                     # 31.122: pede outra pós-condição ANTES da primeira escrita
             raise TrainingError("pos_condicao_ja_vale", " ".join(partida.aviso(prep.ja_valem, prep.persona)), 400,
@@ -522,8 +527,12 @@ class TrainingSkills:
         self.s.scheduler.flows.set_scope(flow_id, profile_ids=prep.profile_ids, group_ids=prep.group_ids)
         if sess.get("nascido_de_prova"):        # 31.130: o fluxo de uma sessão de prova leva a marca
             self.s.db.execute("UPDATE flows SET nascido_de_prova=1 WHERE id=?", (flow_id,))
-        relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
-                                          prep, session_id, gravar=True)
+        destiladas = _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps)
+        relatorio = await self._relatorio(sess, destiladas, prep, session_id, gravar=True)
+        # 31.149: a sessão de correção também grava a demonstração na chave da etapa que FALHOU
+        ligacao = await self._ligar_a_falha(sess, destiladas, prep, session_id) if sess.get("origin") else None
+        if ligacao is not None and not ligacao["ligada"]:       # o caminho alternativo: a lição do planejador
+            ligacao["licao"] = self._licao_da_correcao(sess, destiladas, prep, session_id)
         self.s.db.execute("UPDATE training_sessions SET status='saved', flow_id=?, proposal=?, updated_at=? WHERE id=?",
                           (flow_id, dumps(prep.p), now_iso(), session_id))
         # 31.118: o dado da persona que a habilidade usa sai da gravação salva; fica o marcador (quem precisa do valor
@@ -538,10 +547,97 @@ class TrainingSkills:
         self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento"
                                f"{' (correção de uma execução que falhou)' if origem else ''}",
                         data={"training_session_id": session_id, "flow_id": flow_id,
-                              **({"origin": origem} if origem else {})})       # 31.111 F3: a trilha do ensino liga à execução
+                              **({"origin": origem} if origem else {}),        # 31.111 F3: a trilha do ensino liga à execução
+                              **({"correcao_ligada": bool(ligacao["ligada"]), "recipe_id": ligacao.get("recipe_id"),
+                                  "licao_id": _id_da_licao(ligacao)} if ligacao is not None else {})})
         return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio,
                 "warnings": [*prep.avisos, *_aviso_sem_persona(sess)], "scope": _escopo_da_resposta(prep, scope_on_proof),
-                **self._em_prova(flow_id)}
+                **({"correcao": ligacao} if ligacao is not None else {}), **self._em_prova(flow_id)}
+
+    async def _ligar_a_falha(self, sess: Sessao, destiladas: list[_Destilada], prep: _Preparo,
+                             session_id: str) -> dict[str, object]:
+        """31.149: grava a correção na chave da etapa que falhou (`steps.template_hash` e a chave dela), para a próxima
+        execução do MESMO comando a achar ali. Regras em `correcao.py`; aqui só o banco, o aparelho e a loja. A resposta
+        diz se ligou e, se não, o porquê; a revisão diz "esta correção vale para o comando <molde>"."""
+        origem = sess.get("origin") or {}
+        etapa = self.s.db.one("SELECT s.key, s.template_hash, s.side_effect, s.app_id, o.parameters, o.profile_id,"
+                              " r.command FROM steps s JOIN objectives o ON o.id = s.objective_id"
+                              " JOIN runs r ON r.id = s.run_id WHERE s.id=?", (origem.get("step_id"),))
+        if etapa is None:
+            return {"ligada": False, "motivo": "a etapa que falhou não existe mais: a limpeza das execuções a apagou"}
+        chave = str(etapa["key"])
+        base: dict[str, object] = {"ligada": False, "step_key": chave}
+        if not etapa["template_hash"]:
+            return {**base, "motivo": "a etapa que falhou não tem identidade de receita: as receitas estavam desligadas "
+                                      "quando ela foi planejada"}
+        indices = correcao.escolhidas([d.passo.key for d in destiladas], chave)
+        if not indices:
+            return {**base, "motivo": "a proposta não tem etapa ensinada"}
+        if etapa["side_effect"] or any(destiladas[i].passo.side_effect for i in indices):
+            return {**base, "motivo": "a etapa tem efeito: a pós-condição confere o caminho, não o commit, e a correção "
+                                      "não é ligada à etapa que falhou"}
+        sem_acao = [destiladas[i].passo.key for i in indices if not destiladas[i].acoes]
+        if sem_acao:
+            return {**base, "motivo": f"a etapa ensinada {sem_acao[0]} não virou ação reproduzível"}
+        pacotes = {a["id"]: a["package"] for a in prep.apps.values()}
+        ensinados = {pacotes.get(destiladas[i].passo.app_id or prep.app_id or "") or "" for i in indices}
+        da_falha = self.s.db.scalar("SELECT package FROM apps WHERE id=?", (etapa["app_id"],)) if etapa["app_id"] else None
+        if len(ensinados) != 1 or "" in ensinados or (da_falha and da_falha not in ensinados):
+            return {**base, "motivo": "a correção não é do app da etapa que falhou (ou passa por mais de um app)"}
+        pacote = ensinados.pop()
+        parametros = {k: v for k, v in (loads(etapa["parameters"], {}) or {}).items() if isinstance(v, str)}
+        persona = self.s.repo.variaveis_da_persona(etapa["profile_id"])
+        acoes = correcao.renomear([a for i in indices for a in (destiladas[i].acoes or [])], prep.exemplos, parametros)
+        falta = correcao.faltam(acoes, set(parametros) | set(persona))
+        if falta:
+            return {**base, "motivo": "a receita usaria " + ", ".join("{" + n + "}" for n in falta)
+                                      + ", que a execução que falhou não tem"}
+        identidade = await self._identidade(sess, pacote)
+        if isinstance(identidade, str):
+            return {**base, "motivo": identidade}
+        versao, variante, assinatura = identidade
+        loja = self.s.scheduler.executor.recipes
+        hash_da_falha = str(etapa["template_hash"])
+        efeito, viva = loja.previa_do_treino(pacote, versao, hash_da_falha, acoes, signature=assinatura, variant=variante)
+        rid = loja.save(package=pacote, app_version=versao, step_hash=hash_da_falha, step_key=chave, actions=acoes,
+                        learned_from=f"training:{session_id}", signature=assinatura, variant=variante)
+        linha = _linha_da_receita(efeito, viva, gravada=rid if rid else 0)
+        molde = redact(correcao.molde_do_comando(str(etapa["command"] or ""), {**parametros, **persona})) or ""
+        return {"ligada": bool(linha["recipe"]) or linha["reason"] == JA_HAVIA_RECEITA, "step_key": chave,
+                "recipe_id": rid or (int(viva["id"]) if viva is not None else None), "reason": linha["reason"],
+                "comando": molde, "texto": f"esta correção vale para o comando “{molde}”"}
+
+    def _licao_da_correcao(self, sess: Sessao, destiladas: list[_Destilada], prep: _Preparo,
+                           session_id: str) -> dict[str, object]:
+        """31.149, caminho alternativo: a correção que não ligou à etapa que falhou vira lição do PLANEJADOR do app
+        (`licao_da_correcao`): "quando a etapa X falhar, o caminho que uma pessoa ensinou foi A → B". Nasce candidata
+        de origem humana: só o dono a publica no Livro, e só publicada ela vai ao prompt. Não depende do 31.151."""
+        origem = sess.get("origin") or {}
+        etapa = self.s.db.one("SELECT s.key, s.side_effect, s.app_id, s.run_id, o.parameters, o.profile_id,"
+                              " r.simulated FROM steps s JOIN objectives o ON o.id = s.objective_id"
+                              " JOIN runs r ON r.id = s.run_id WHERE s.id=?", (origem.get("step_id"),))
+        if etapa is None:
+            return {"id": None, "motivo": "a etapa que falhou não existe mais"}
+        chave = str(etapa["key"])
+        indices = correcao.escolhidas([d.passo.key for d in destiladas], chave)
+        pacote = (self.s.db.scalar("SELECT package FROM apps WHERE id=?", (etapa["app_id"],)) if etapa["app_id"]
+                  else None) or (prep.apps[prep.app_id]["package"] if prep.app_id in prep.apps else "")
+        do_objetivo = loads(etapa["parameters"], {}) or {}
+        da_persona = self.s.repo.variaveis_da_persona(etapa["profile_id"])
+        valores = [str(v) for fonte in (do_objetivo, prep.exemplos, da_persona) for v in fonte.values()
+                   if isinstance(v, str)]
+        proposta = licao_da_correcao(CorrecaoSemReceita(
+            app=str(pacote or ""), chave=chave, caminho=tuple(destiladas[i].passo.key for i in indices),
+            sessao=session_id, run_id=str(etapa["run_id"]), step_id=str(origem.get("step_id")),
+            side_effect=bool(etapa["side_effect"]) or any(destiladas[i].passo.side_effect for i in indices),
+            valores=tuple(valores), simulated=bool(etapa["simulated"])))
+        if isinstance(proposta, Recusa):
+            return {"id": None, "motivo": f"a lição foi recusada ({proposta.motivo.value})"}
+        try:
+            item = self.s.learning.propor(proposta)
+        except (Vetado, NotaComCaraDeSegredo, ConflitoDeEstado) as exc:
+            return {"id": None, "motivo": f"a lição não entrou no livro ({type(exc).__name__})"}
+        return {"id": item.id, "estado": item.state.value, "texto": item.summary}
 
     async def _tela_do_treino(self, sess: Sessao) -> tuple[int, int] | None:
         """31.114 F1: o tamanho da tela, lido SÓ se há arraste com coordenada na gravação (é o único uso). O aparelho fora do
@@ -558,7 +654,7 @@ class TrainingSkills:
         """O que o `save` faria com esta proposta, SEM escrever (31.86): a mesma conferência (mesmos códigos), a mesma
         destilação e o mesmo relatório por etapa. É para a pessoa ver por que uma etapa ficaria sem receita enquanto
         ainda dá para corrigir a proposta. Nada vai ao banco: nem fluxo, escopo, receita, status ou evento."""
-        sess = self.s.training.get(session_id)
+        sess = self.s.training.get(session_id, crua=True)
         prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids, scope_on_proof)
         # A única recusa do `save` que só aparece ao gravar (`learn_from_plan`): o comando repetido. Lida sem escrever,
         # pela MESMA regra do `save` (30.84: o ensinado que a prova desligou pode ser ensinado de novo). 31.142: vem no
@@ -578,7 +674,7 @@ class TrainingSkills:
         """Repara uma sessão JÁ salva: destila de novo (com a proposta guardada) e grava a receita das etapas que ainda
         não têm (31.86). Serve ao fluxo salvo com o aparelho fora do ar, ou antes de uma regra de destilação mudar.
         Idempotente: onde já há receita ativa o `recipes.save` não grava outra (a política é a de sempre)."""
-        sess = self.s.training.get(session_id)
+        sess = self.s.training.get(session_id, crua=True)
         # 31.118: a gravação salva guarda o marcador; a destilação precisa do que foi digitado (o valor, em memória)
         sess = {**sess, "inputs": dado_da_persona.com_valores(
             sess["inputs"], self.s.repo.variaveis_da_persona(sess.get("profile_id")))}
@@ -793,3 +889,9 @@ def _destilar(sess: Sessao, p: Proposta, passos: list[PlanStep], exemplos: dict[
                                          arraste_final=final)
         saida.append(_Destilada(passo, acoes, motivo))
     return saida
+
+
+def _id_da_licao(ligacao: Mapping[str, object]) -> object:
+    """31.149: o id da lição do planejador que a correção não ligada gerou (o evento leva só o id)."""
+    licao = ligacao.get("licao")
+    return licao.get("id") if isinstance(licao, dict) else None

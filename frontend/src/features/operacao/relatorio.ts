@@ -5,7 +5,8 @@
  * custo. Consolidado: a faixa de capacidade, os custos (pesquisa, agentes, total e o teto), as falhas agrupadas por motivo e os
  * textos irmãos. O agente aparece pelo RÓTULO da persona: nunca o @ da conta, o id da conta nem login ou e-mail.
  */
-import { type ItemAprendido, type LeituraDoAprendizado } from './aprendizadoDaOperacao';
+import { formatClock, formatDateTime } from '../../lib/time';
+import { type AvisoDaOperacao, type ItemAprendido, type LeituraDoAprendizado, licoesDaOperacao } from './aprendizadoDaOperacao';
 import {
   ESTAGIOS, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, estagioDeParada, rotuloDaAcao, rotuloDoEstagio,
   type Alvo, type EstagioId, type Operacao,
@@ -55,6 +56,10 @@ export interface AprendizadoNoRelatorio {
   motivo: string | null;
   gerado_em: string | null;
   perguntas: { chave: string; titulo: string; veio: boolean; itens: ItemDoRelatorio[] }[];
+  /** 31.167: as lições de qualquer pergunta, separadas pela evidência efetiva (a mesma regra da aba Aprendizado). */
+  licoes: { reforcadas: ItemDoRelatorio[]; contestadas: ItemDoRelatorio[] };
+  /** 31.167: as etapas cujo conhecimento recebido não foi gravado (campo `avisos` do central), sem @ de conta. */
+  avisos: AvisoDaOperacao[];
   nao_coberto: { chave: string; motivo: string }[];
 }
 
@@ -78,8 +83,9 @@ export interface RelatorioDaOperacao {
   limites: string[];
 }
 
-const LIMITES = [
-  'Custo por agente "não informado": o alvo ainda não tinha execução (ou o central é anterior ao custo por alvo).',
+/** Cada limite só aparece quando vale para ESTE relatório: a nota do custo sai quando todos os agentes têm custo (percurso real de 06/10). */
+const limitesDoRelatorio = (agentes: readonly { custo_usd: number | null }[]): string[] => [
+  ...(agentes.some((a) => a.custo_usd === null) ? ['Custo por agente "não informado": o alvo ainda não tinha execução (ou o central é anterior ao custo por alvo).'] : []),
   'O relatório vem do estado da operação no momento em que foi gerado; uma operação em curso muda depois.',
 ];
 
@@ -111,19 +117,23 @@ function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
 const SEM_LEITURA: LeituraDoAprendizado = { situacao: 'indisponivel', motivo: 'O aprendizado da operação não foi lido para este relatório.' };
 
 function aprendizadoDoRelatorio(op: Operacao, leitura: LeituraDoAprendizado): AprendizadoNoRelatorio {
-  if (leitura.situacao === 'indisponivel') return { disponivel: false, motivo: semArroba(leitura.motivo), gerado_em: null, perguntas: [], nao_coberto: [] };
+  if (leitura.situacao === 'indisponivel') {
+    return { disponivel: false, motivo: semArroba(leitura.motivo), gerado_em: null, perguntas: [], licoes: { reforcadas: [], contestadas: [] }, avisos: [], nao_coberto: [] };
+  }
   const rotulos = new Map(op.alvos.flatMap((a) => (a.profile_id && a.persona ? [[a.profile_id, a.persona] as const] : [])));
   const a = leitura.aprendizado;
-  return {
-    disponivel: true, motivo: null, gerado_em: a.gerado_em, nao_coberto: a.nao_coberto.map((n) => ({ ...n, motivo: semArroba(n.motivo) })),
-    perguntas: a.perguntas.map((p) => ({
+  const perguntas = a.perguntas.map((p) => ({
       chave: p.chave, titulo: p.titulo, veio: p.veio,
       // Persona sem rótulo conhecido na operação vira "uma persona", nunca o id.
       itens: p.itens.map((i) => ({
         ...i, persona: i.persona === null ? null : rotulos.get(i.persona) ?? 'uma persona',
         resumo: semArrobaOuNulo(i.resumo), motivo: semArrobaOuNulo(i.motivo), fontes: i.fontes.map((f) => ({ ...f, resumo: semArrobaOuNulo(f.resumo) })),
       })),
-    })),
+  }));
+  return {
+    disponivel: true, motivo: null, gerado_em: a.gerado_em, nao_coberto: a.nao_coberto.map((n) => ({ ...n, motivo: semArroba(n.motivo) })),
+    perguntas, licoes: licoesDaOperacao(perguntas),
+    avisos: a.avisos.map((v) => ({ ...v, aviso: semArroba(v.aviso) })),
   };
 }
 
@@ -160,9 +170,18 @@ export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendiz
     textos: { total: comTexto.length, distintos: grupos.size, repetidos: [...grupos.values()].filter((g) => g.agentes.length > 1), lista: comTexto },
     agentes,
     aprendizado: aprendizadoDoRelatorio(op, aprendizado),
-    limites: LIMITES,
+    limites: limitesDoRelatorio(agentes),
   };
 }
+
+/**
+ * A hora do arquivo é ISO em UTC; a tela mostra a hora local do painel (UTC-3 aqui). Quem confere o relatório com a gaveta via 3 h de
+ * diferença, então o Markdown traz as duas. O JSON segue só em UTC (é dado, não leitura).
+ */
+const comHoraDoPainel = (iso: string, formato: (iso: string) => string = formatClock): string => {
+  const local = formato(iso);
+  return local === '—' ? iso : `${iso} (${local} no painel)`;
+};
 
 const usd = (n: number | null): string => (n === null ? 'não informado' : `US$ ${n.toFixed(4)}`);
 const num = (n: number | null): string => (n === null ? 'não informado' : String(n));
@@ -172,7 +191,8 @@ const citacao = (t: string): string => t.split(/\r?\n/).map((l) => `> ${l}`).joi
 function itemEmMarkdown(i: ItemDoRelatorio): string {
   const marca = i.confianca === 'confirmado' ? 'confirmado' : i.confianca === 'hipotese' ? 'hipótese' : 'confiança não informada';
   const onde = [i.tipo, i.escopo, i.persona ?? 'operação inteira'].filter(Boolean).join(', ');
-  const extra = [i.inferida ? 'inferida' : null, i.evidencias ? `${i.evidencias} ${i.evidencias === 1 ? 'evidência' : 'evidências'}` : null, i.motivo ? `motivo: ${i.motivo}` : null]
+  const contagem = i.a_favor === null && i.contra === null ? null : `${num(i.a_favor)} a favor, ${num(i.contra)} contra`;
+  const extra = [i.inferida ? 'inferida' : null, contagem, i.evidencias ? `${i.evidencias} ${i.evidencias === 1 ? 'evidência' : 'evidências'}` : null, i.motivo ? `motivo: ${i.motivo}` : null]
     .filter(Boolean).join('; ');
   const fontes = i.fontes.length ? ` Fontes: ${i.fontes.map((f) => f.resumo ?? f.ref).join(' | ')}.` : '';
   return `- [${marca}] ${i.resumo ?? i.ref} (${onde}${extra ? `; ${extra}` : ''}).${fontes}`;
@@ -190,7 +210,13 @@ function aprendizadoEmMarkdown(a: AprendizadoNoRelatorio): string[] {
     linhas.push('');
   }
   if (a.nao_coberto.length) {
-    linhas.push('### O que o central não responde', '', ...a.nao_coberto.map((n) => `- ${n.chave}: ${n.motivo}`));
+    linhas.push('### O que o central não responde', '', ...a.nao_coberto.map((n) => `- ${n.chave}: ${n.motivo}`), '');
+  }
+  linhas.push('### Lições reforçadas', '', ...(a.licoes.reforcadas.length ? a.licoes.reforcadas.map(itemEmMarkdown) : ['Nenhuma.']), '');
+  linhas.push('### Lições contestadas', '', ...(a.licoes.contestadas.length ? a.licoes.contestadas.map(itemEmMarkdown) : ['Nenhuma.']), '');
+  if (a.avisos.length) {
+    linhas.push('### Avisos sobre o conhecimento que o texto recebeu', '',
+      ...a.avisos.map((v) => `- ${[v.run_id ? `execução ${v.run_id}` : null, v.step_id ? `etapa ${v.step_id}` : null].filter(Boolean).join(', ') || 'etapa não informada'}: ${v.aviso}`), '');
   }
   return linhas;
 }
@@ -202,11 +228,12 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
     `# Relatório da operação ${o.id}`,
     '',
     `Gerado em ${r.gerado_em}. Estado da operação: ${o.status ?? 'não informado'}.`,
+    'As horas estão em UTC (ISO); entre parênteses, o horário que o painel mostra (o fuso deste navegador).',
     '',
     `- **Comando:** ${o.comando}`,
     `- **App:** ${o.app_id ?? 'não informado'}`,
     `- **Ação final:** ${rotuloDaAcao(o.acao_final)}`,
-    `- **Criada em:** ${o.criada_em ?? 'não informado'} · **Encerrada em:** ${o.encerrada_em ?? 'em aberto'}`,
+    `- **Criada em:** ${o.criada_em ? comHoraDoPainel(o.criada_em, formatDateTime) : 'não informado'} · **Encerrada em:** ${o.encerrada_em ? comHoraDoPainel(o.encerrada_em, formatDateTime) : 'em aberto'}`,
   ];
   if (o.assunto) linhas.push(`- **Assunto:** ${o.assunto}`);
   if (o.fontes.length) linhas.push(`- **Fontes indicadas:** ${o.fontes.join(', ')}`);
@@ -239,7 +266,7 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
       : '- **Ação final:** sem ação final');
     linhas.push(`- **Evidência da tela lida:** ${a.evidencia_id ?? 'nenhuma'}`, `- **Custo de IA:** ${usd(a.custo_usd)}`);
     linhas.push('', '| estágio | hora |', '|---|---|');
-    for (const e of a.estagios) linhas.push(`| ${e.rotulo} | ${e.em ?? (e.alcancado ? 'alcançado, sem hora' : 'não alcançado')} |`);
+    for (const e of a.estagios) linhas.push(`| ${e.rotulo} | ${e.em ? comHoraDoPainel(e.em) : e.alcancado ? 'alcançado, sem hora' : 'não alcançado'} |`);
     if (a.texto) linhas.push('', 'Texto gerado:', '', citacao(a.texto));
   }
   linhas.push('', '## O que este relatório não tem', '', ...r.limites.map((l) => `- ${l}`), '');

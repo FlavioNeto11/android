@@ -300,6 +300,20 @@ describe('página Aprendizado', () => {
     expect(text(item('receita:41'))).not.toContain('Confirmado que fica');
   });
 
+  it('31.164: a confirmação automática da régua mostra o nome da regra e os fatos em palavras, com o texto cru só no title', async () => {
+    const cru = 'auto:qa_revisar v1 — classe B; app com.pocqa.messenger (qa); 3 a favor, 0 contra; 0 falhas de reprodução; saúde pouca_amostra; parecer pedir_evidencia (lr-fe4a3e84376de6ac)';
+    const auto = { ...LEGADO, em_revisar: false, confirmado: { por: 'sistema', em: '2026-10-03T05:00:00Z', motivo: cru } };
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [auto], total: 1, contagem: { receita: { published: 1 } } }));
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    await waitFor(() => expect(item('receita:40')).toBeTruthy());
+    const nota = text(item('receita:40'));
+    expect(nota).toContain('Confirmação automática do que estava em revisão — classe B');
+    expect(nota).toContain('saúde: Pouca amostra; parecer do curador: pedir mais evidência');
+    expect(nota).not.toMatch(/pouca_amostra|pedir_evidencia|auto:qa_revisar|lr-fe4a/);
+    expect(item('receita:40')!.querySelector(`[title="${cru}"]`)).not.toBeNull();
+  });
+
   it('31.145: a confirmação feita pelo painel diz "pelo painel", e a receita ensinada no treino mostra o nome, não a chave', async () => {
     const doPainel = { ...LEGADO, em_revisar: false, title: 'abrir_busca (v1)', capability: null, capability_nome: null, etapa: null,
                        confirmado: { por: 'panel', em: '2026-10-03T05:00:00Z', motivo: null } };

@@ -60,7 +60,9 @@ log = logging.getLogger("poc.avisos")
 KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_person", "pedido.aviso",
                               "learning.needs_person", "pendencia.vence_em", "objective.updated",
                               # 28.50 (30.80 B): o que a pessoa ensinou e o sistema rebaixou.
-                              "learning.ensinado_rebaixado", "learning.ensinado_sem_receita"})
+                              "learning.ensinado_rebaixado", "learning.ensinado_sem_receita",
+                              # 28.62: o fim da operação com N agentes (rotina, um aviso por operação).
+                              "operacao.encerrada"})
 #: De quanto em quanto tempo o laço varre incertos, vencidos e purga (a entrega roda a cada volta).
 FAXINA_S = 3600.0
 #: De quanto em quanto tempo, com o canal desligado, vencem os contatos do site pendentes (28.32).

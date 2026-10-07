@@ -68,6 +68,10 @@ class FatosDoAlvo:
     criado_em: str = ""
     #: `objectives.blocked_kind`: `policy` = uma porta (frota, conduta, teto) RECUSOU a etapa, antes de ela rodar.
     objetivo_bloqueio: str | None = None
+    #: A execução terminou SEM objetivo (recusada no planejamento: parâmetro em conflito, teto observar, fora do
+    #: catálogo): o motivo e a hora do fim. Sem isto o alvo ficava `pendente` para sempre e a operação não fechava.
+    recusa_no_plano: str | None = None
+    recusa_em: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +100,11 @@ def derivar(f: FatosDoAlvo) -> Leitura:
                        parou_em=f.parada_na_criacao)
     for conferido in ("conta", "sessao"):
         alcancados[conferido] = f.criado_em
+    if f.objetivo_status is None and f.recusa_no_plano:
+        # Nada rodou no aparelho: a ação final foi barrada antes de existir etapa.
+        alcancados["acao_bloqueada"] = f.recusa_em or f.criado_em
+        return Leitura(estagio="acao_bloqueada", estado="bloqueado", motivo=f.recusa_no_plano,
+                       estagios=_em_ordem(alcancados, f.abertura), parou_em="acao_bloqueada")
     if f.objetivo_status is None:
         return Leitura(estagio=_ultimo(alcancados, f.abertura), estado="pendente", motivo=None,
                        estagios=_em_ordem(alcancados, f.abertura))
@@ -112,15 +121,18 @@ def derivar(f: FatosDoAlvo) -> Leitura:
             alcancados[estagio] = e.terminou_em
         if not e.side_effect:
             continue
-        hora = e.terminou_em or e.comecou_em or e.pedido_em or f.objetivo_comecou_em or f.criado_em
+        # Cada estágio com a SUA hora (achado do percurso do 57: os quatro saíam com a hora do fim da etapa, que depois
+        # do liberar é a da liberação). O rascunho fecha antes do pedido de aprovação, ou dentro da etapa que roda sem
+        # pedido; o efeito e a verificação, no fim da etapa.
+        rascunho = e.pedido_em or e.comecou_em or e.terminou_em or f.objetivo_comecou_em or f.criado_em
         if e.tem_texto:
-            alcancados["resposta_gerada"] = hora
+            alcancados["resposta_gerada"] = rascunho
         if e.tem_texto and (e.pedido_de_aprovacao is not None or e.status in ("running", "succeeded", "failed")):
-            alcancados["acao_preparada"] = hora
+            alcancados["acao_preparada"] = rascunho
         if e.status == "succeeded":
-            alcancados["acao_executada"] = hora
+            alcancados["acao_executada"] = e.terminou_em or rascunho
             if e.verificada:
-                alcancados["resultado_verificado"] = hora
+                alcancados["resultado_verificado"] = e.terminou_em or rascunho
         elif e.status in ("failed", "skipped", "cancelled") or e.pedido_de_aprovacao == "rejected":
             efeito_bloqueado = e.status if e.pedido_de_aprovacao != "rejected" else "aprovação recusada"
     for estagio, hora in f.marcas.items():
@@ -162,7 +174,9 @@ def _estado(f: FatosDoAlvo, alcancados: Mapping[str, str], efeito_bloqueado: str
     if f.objetivo_status in _OBJETIVO_FECHADO or f.objetivo_status == "waiting_user":
         return "bloqueado", f.objetivo_motivo or f.objetivo_status
     if f.objetivo_status == "pending" and "aparelho" not in alcancados:
-        return "pendente", None
+        # 31.173: o motivo da ESPERA (a porta de sessão relendo o aparelho, a vaga), e não só "pendente": era o que a
+        # onda 2 precisava ver num alvo parado na sessão.
+        return "pendente", f.objetivo_motivo
     return "em_curso", None
 
 

@@ -1,0 +1,38 @@
+name: Rótulo do PR
+
+# 29.171: põe no PR o rótulo que o prefixo da branch indica (`ci/…` = frente:github, `copilot/…` = agente); outro prefixo não ganha
+# nada. O código e as regras estão em `scripts/rotulo_do_pr.py` (teste: `scripts/tests/test_rotulo_do_pr.py`).
+#
+# Por que `pull_request_target`: o `[skip ci]` que as sessões põem nos commits desliga os workflows de `pull_request`, e o rótulo
+# nunca sairia. Este evento roda o arquivo da `main` e o checkout abaixo é o da `main`, NUNCA o código do PR; o nome da branch entra
+# só por variável de ambiente (nunca interpolado no script) e o script o valida por formato antes de usar.
+# Onde roda: SEMPRE em runner hospedado (`ubuntu-latest`). NUNCA copie `fromJSON(vars.CI_RUNS_ON ...)`: o runner `central` é a
+# máquina do dono. O repositório é privado: um PR de fork com prefixo `ci/…` ganharia o rótulo, só cosmético. Permissão mínima: só escrever em PR. Não cria rótulo, não tira rótulo, não comenta.
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: rotula-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  rotular:
+    name: rotular · pelo prefixo da branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: rotula (só se o prefixo indicar uma frente)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: python3 scripts/rotulo_do_pr.py --repo "$GITHUB_REPOSITORY" --pr "$PR" --branch "$BRANCH" --aplicar

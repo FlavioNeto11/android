@@ -23,7 +23,7 @@ import pytest
 from app.main import create_app
 from app.models import ProfileCreate, SessionStatus
 from app.modules.operacoes.domain.estagios import Leitura
-from app.modules.operacoes.infrastructure.estagios import registrar_estagio
+from app.modules.operacoes.infrastructure.estagios import operacao_da_execucao, registrar_estagio
 from app.modules.operacoes.infrastructure.servico import (AlvoPedido, OperacaoError, PedidoDeOperacao,
                                                           ServicoDeOperacoes, _motivo)
 from app.planning.provider import AIError
@@ -183,6 +183,11 @@ async def test_o_teto_da_operacao_reserva_as_chamadas_em_voo_dos_alvos_paralelos
     roteador._saldo = lambda r: None  # type: ignore[method-assign,assignment]
     roteador._one = _one  # type: ignore[method-assign,assignment]
     assert await roteador._call("decide", run_id, lambda p: None) == ("ok", uso)  # noqa: SLF001
+    # Achado do Copilot no PR 487: a reserva da chamada que respondeu vale até o custo estar gravado (`add_usage`
+    # chama `soltar_reserva`), não só até a volta de `_call`.
+    assert roteador._em_voo_da_operacao == {op["id"]: 1}  # noqa: SLF001
+    uso.soltar_reserva()
+    assert roteador._em_voo_da_operacao == {}  # noqa: SLF001
     with pytest.raises(AIError):
         await roteador._call("decide", run_id, lambda p: None)  # noqa: SLF001
     assert vistos == [1, 1] and roteador._em_voo_da_operacao == {}  # noqa: SLF001
@@ -193,6 +198,116 @@ async def test_o_teto_da_operacao_reserva_as_chamadas_em_voo_dos_alvos_paralelos
     assert roteador._em_voo_da_operacao == {}  # noqa: SLF001
     roteador.conferir_gasto(run_id=run_id, origem="decisao_fechada", conta="typesafe")()    # sem reservar: nada
     assert roteador._em_voo_da_operacao == {}  # noqa: SLF001
+
+
+async def test_a_conferencia_e_a_reserva_do_teto_sao_uma_secao_critica_so(harness: Harness) -> None:
+    """Achado da revisão do PR 479: `_budget` conferia o número em voo, soltava a trava, e só depois `_reserva`
+    incrementava. Duas chamadas simultâneas liam o mesmo número e passavam juntas. Aqui cabe UMA chamada nova (1x
+    gravado + 1x em voo + 1x nova = 3x >= 2,5x para a segunda); as duas conferem ao mesmo tempo e uma é barrada."""
+    import threading
+
+    from app.planning import costs
+
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Helo", "android-03")
+    _conta(harness, pid, "qa-user-07", sessao_em="android-03")
+    op = _servico(harness).criar(_pedido([AlvoPedido(pid)], chave="teste-op-teto-secao", max_usd=100.0))
+    run_id = _alvo(op, pid)["run_id"]
+    modelo = next(iter(st.cfg.file.ai.prices))
+    st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, input_tokens, output_tokens, ok) VALUES (?,?,?,?,?,?,?)",
+                  (now_iso(), run_id, "decide", modelo, 10_000, 1_000, 1))
+    uma = costs.spent_usd(st.db, st.cfg.file.ai.prices, run_id=run_id)
+    st.db.execute("UPDATE operacoes SET max_usd=? WHERE id=?", (uma * 2.5, op["id"]))
+    roteador = RoutingProvider(harness.cfg)
+    roteador.attach(repo=st.repo, settings_getter=st.settings.get)
+    roteador._em_voo_da_operacao[op["id"]] = 1  # noqa: SLF001
+    barreira = threading.Barrier(2, timeout=10)
+    media = roteador._custo_medio_da_chamada  # noqa: SLF001
+
+    def _media_ao_mesmo_tempo(*args: Any) -> float:
+        barreira.wait()                                   # as duas leram o gasto e chegam juntas à conta em voo
+        return media(*args)
+
+    roteador._custo_medio_da_chamada = _media_ao_mesmo_tempo  # type: ignore[method-assign]
+    resultados: list[Any] = []
+
+    def _conferir() -> None:
+        try:
+            resultados.append(roteador.conferir_gasto(run_id=run_id, origem="decisao_fechada", conta="typesafe",
+                                                      reservar=True))
+        except AIError as exc:
+            resultados.append(exc)
+
+    linhas = [threading.Thread(target=_conferir) for _ in range(2)]
+    for t in linhas:
+        t.start()
+    for t in linhas:
+        t.join(15)
+    recusas = [r for r in resultados if isinstance(r, AIError)]
+    assert len(resultados) == 2 and len(recusas) == 1 and recusas[0].motivo == "operacao"
+    assert roteador._em_voo_da_operacao == {op["id"]: 2}  # noqa: SLF001
+    solta = next(r for r in resultados if not isinstance(r, AIError))
+    solta()
+    solta()                                               # soltar duas vezes não devolve a vaga de outra chamada
+    assert roteador._em_voo_da_operacao == {op["id"]: 1}  # noqa: SLF001
+    # Barrada por uma régua DEPOIS da operação (o teto da execução), a reserva feita na operação não fica.
+    roteador._custo_medio_da_chamada = media  # type: ignore[method-assign]
+    roteador._em_voo_da_operacao.clear()  # noqa: SLF001
+    st.settings.update({"ai_max_usd_per_run": uma / 2})
+    with pytest.raises(AIError) as exc:
+        roteador._budget(run_id, reservar=True)  # noqa: SLF001
+    assert exc.value.motivo == "execucao" and roteador._em_voo_da_operacao == {}  # noqa: SLF001
+
+
+async def test_a_reserva_da_chamada_que_respondeu_vale_ate_o_custo_gravado(harness: Harness) -> None:
+    """Achado do Copilot no PR 487: `_call` soltava a reserva na volta, e o custo só entra no banco depois, em
+    `Executor._ai` (`add_usage`). Nesse intervalo outra chamada passava pelo teto. A reserva vai com o `Usage` e sai no
+    `add_usage`."""
+    import types
+
+    from app.planning.provider import Usage
+
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Jana", "android-02")
+    _conta(harness, pid, "qa-user-08", sessao_em="android-02")
+    op = _servico(harness).criar(_pedido([AlvoPedido(pid)], chave="teste-op-reserva-ate-o-custo", max_usd=100.0))
+    run_id = _alvo(op, pid)["run_id"]
+    roteador = RoutingProvider(harness.cfg)
+    roteador.attach(repo=st.repo, settings_getter=st.settings.get)
+
+    async def _one(*_: Any) -> Any:
+        return "ok", Usage(calls=1, input_tokens=1000, output_tokens=100, role="decide",
+                           model=next(iter(st.cfg.file.ai.prices)))
+
+    roteador._funcao = lambda papel, rid: (types.SimpleNamespace(kind="anthropic", fallback_provider=None), None)  # type: ignore[method-assign,assignment,return-value]
+    roteador._saldo = lambda r: None  # type: ignore[method-assign,assignment]
+    roteador._one = _one  # type: ignore[method-assign,assignment]
+    _, uso = await roteador._call("decide", run_id, lambda p: None)  # noqa: SLF001
+    assert roteador._em_voo_da_operacao == {op["id"]: 1}, "o custo ainda não está no banco"  # noqa: SLF001
+    st.repo.add_usage(run_id, None, uso)
+    assert roteador._em_voo_da_operacao == {}  # noqa: SLF001
+    st.repo.add_usage(run_id, None, uso)                  # gravar de novo não devolve a vaga de outra chamada
+    assert roteador._em_voo_da_operacao == {}  # noqa: SLF001
+
+
+async def test_so_a_coluna_ausente_vira_execucao_sem_operacao() -> None:
+    """Achado do Copilot no PR 487: `OPERATIONAL_ERRORS` também pega o banco travado e o SQL inválido; engolir os dois
+    apagava em silêncio a marca de estágio de um alvo que É de operação."""
+    import sqlite3
+
+    class _Banco:
+        def __init__(self, erro: BaseException) -> None:
+            self.erro = erro
+
+        def one(self, *_: Any) -> Any:
+            raise self.erro
+
+    assert operacao_da_execucao(_Banco(sqlite3.OperationalError("no such column: operacao_id")), "r-1") is None  # type: ignore[arg-type]
+    for erro in (sqlite3.OperationalError("database is locked"), sqlite3.OperationalError('near "SELEC": syntax error')):
+        with pytest.raises(sqlite3.OperationalError):
+            operacao_da_execucao(_Banco(erro), "r-1")  # type: ignore[arg-type]
 
 
 async def test_registrar_estagio_marca_uma_vez_e_fora_de_operacao_nao_faz_nada(harness: Harness) -> None:
@@ -387,6 +502,81 @@ async def test_acao_aprovada_por_fora_do_liberar_reabre_e_fecha_na_hora_do_ultim
     assert (lida["status"], lida["finished_at"]) == ("concluida", ultimo)
 
 
+async def test_a_reabertura_le_os_alvos_ja_como_executar_e_o_mesmo_get_nao_fecha_de_novo(harness: Harness) -> None:
+    """Achado P1 do Codex no PR 483: os alvos eram lidos com `preparar` ANTES de a aprovação por fora reabrir a operação.
+    `acao_preparada` contava como concluído, `_status` fechava a operação de novo no mesmo GET e restaurava o
+    `finished_at`; o GET seguinte dizia `em_curso` e o cancelar devolvia `ja_encerrada`."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Iara", "android-01")
+    _conta(harness, pid, "qa-user-63", sessao_em="android-01")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-reabre-e-le"))
+    st.db.execute("UPDATE operacoes SET status='concluida', finished_at=? WHERE id=?", ("2026-10-06T19:44:58.051Z", op["id"]))
+    st.db.execute("INSERT INTO pending_approvals(id, profile_id, run_id, capability, status, created_at)"
+                  " VALUES (?,?,?,?,?,?)", ("apr-reabre", pid, _alvo(op, pid)["run_id"], "CREATE_COMMENT", "approved",
+                                            now_iso()))
+    preparada = (("acao_preparada", "2026-10-06T19:44:40.000Z"),)
+    # Como o domínio lê: com `preparar`, a ação preparada é o fim; com `executar`, o alvo segue em curso.
+    s._ler_alvo = lambda op_, a, d: ((Leitura("acao_preparada", "concluido", None, preparada)  # type: ignore[method-assign]
+                                      if op_["acao_final"] == "preparar"
+                                      else Leitura("acao_preparada", "em_curso", None, preparada)), None)
+    lida = s.ler(op["id"])
+    assert (lida["acao_final"], lida["status"], lida["finished_at"]) == ("executar", "em_curso", None)
+    assert st.db.one("SELECT status, finished_at FROM operacoes WHERE id=?", (op["id"],))["finished_at"] is None
+    assert s.ler(op["id"])["status"] == "em_curso"
+    cancelada = s.cancelar(op["id"])                       # em curso de verdade: cancela, não `ja_encerrada`
+    assert cancelada["status"] == "cancelada"
+
+
+async def test_a_reabertura_nao_ressuscita_a_operacao_cancelada_entre_a_leitura_e_o_update(harness: Harness) -> None:
+    """Achado do Copilot no PR 487: o `ler` lia a operação `concluida` e, antes do UPDATE que reabre, um cancelar
+    concorrente gravava `cancelada`; o UPDATE (só `acao_final='preparar'`) a sobrescrevia com `em_curso`."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Kaia", "android-01")
+    _conta(harness, pid, "qa-user-64", sessao_em="android-01")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-reabre-cancelada"))
+    st.db.execute("UPDATE operacoes SET status='concluida', finished_at=? WHERE id=?", ("2026-10-06T19:44:58.051Z", op["id"]))
+    run_id = _alvo(op, pid)["run_id"]
+    aprovados = s._runs_com_acao_aprovada  # noqa: SLF001
+
+    def _cancelada_no_meio(op_id: str) -> set[object]:
+        st.db.execute("UPDATE operacoes SET status='cancelada', finished_at=? WHERE id=?", (now_iso(), op_id))
+        return {run_id}
+
+    s._runs_com_acao_aprovada = _cancelada_no_meio  # type: ignore[method-assign]
+    s._ler_alvo = lambda op_, a, d: (Leitura("acao_preparada", "em_curso", None,  # type: ignore[method-assign]
+                                             (("acao_preparada", "2026-10-06T19:44:40.000Z"),)), None)
+    s.ler(op["id"])
+    linha = st.db.one("SELECT status, acao_final, finished_at FROM operacoes WHERE id=?", (op["id"],))
+    assert (linha["status"], linha["acao_final"]) == ("cancelada", "preparar") and linha["finished_at"]
+    s._runs_com_acao_aprovada = aprovados  # type: ignore[method-assign]
+
+
+async def test_o_get_traz_as_fontes_que_a_pesquisa_achou(harness: Harness) -> None:
+    """Achado do percurso da Portal (onda 1, 06/10): `pesquisa_usd` 0,0526 e 0 fontes no GET. A pesquisa grava as URLs em
+    `pedido_observacoes` (`tipo='url'`, migração 125); `fontes` é só a entrada do pedido."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Olivia", "android-02")
+    _conta(harness, pid, "qa-user-62", sessao_em="android-02")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-fontes-da-pesquisa"))
+    assert s.ler(op["id"])["fontes_da_pesquisa"] == []
+    colunas = {r["name"] for r in st.db.query("PRAGMA table_info(pedido_observacoes)")} if st.db.dialect == "sqlite" else {"operacao_id"}
+    if "operacao_id" not in colunas:
+        pytest.skip("a migração 125 (pedido_observacoes.operacao_id) vem da main; roda na integração do corte")
+    for i, url in enumerate(("https://exemplo.com.br/a", "https://exemplo.com.br/b", "https://exemplo.com.br/a")):
+        st.db.execute("INSERT INTO pedido_observacoes(id, operacao_id, ocorrencia_id, alvo, nome, tipo, situacao, valor,"
+                      " capturado_em) VALUES (?,?,?,?,?,?,?,?,?)",
+                      (f"obs-{i}", op["id"], f"oc-{i}", "", f"fonte.{i}", "url", "observado", url, f"2026-10-06T19:44:0{i}Z"))
+    lida = s.ler(op["id"])
+    assert lida["fontes_da_pesquisa"] == ["https://exemplo.com.br/a", "https://exemplo.com.br/b"]
+    assert lida["fontes"] == []
+
+
 # ------------------------------------------------------------------ a rota
 async def test_rota_http_criar_ler_listar_filtrar_cancelar_liberar(harness: Harness) -> None:
     st = harness.state
@@ -503,3 +693,112 @@ async def test_conta_com_sessao_em_dois_aparelhos_executa_so_no_vinculo_principa
     assert a["instance_id"] == "android-02" and a["run_id"]
     assert (b["estado"], b["motivo"], b["parou_em"], b["run_id"]) == (
         "bloqueado", "sessão fora do aparelho principal", "sessao", None)
+
+
+async def test_o_get_traz_a_hora_da_ultima_verificacao_da_sessao_do_alvo(harness: Harness) -> None:
+    """31.173: o que a pessoa olha antes da onda: quando a sessão da conta do alvo naquele aparelho foi vista na tela."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Lia", "android-02")
+    _conta(harness, pid, "qa-user-65", sessao_em="android-02")
+    sem_sessao = _persona(harness, "Mel", "android-03")
+    _conta(harness, sem_sessao, "qa-user-66")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid), AlvoPedido(sem_sessao)], chave="teste-op-sessao-verificada"))
+    lida = s.ler(op["id"])
+    assert _alvo(lida, pid)["sessao_verificada_em"]
+    assert _alvo(lida, sem_sessao)["sessao_verificada_em"] is None
+
+
+async def test_a_releitura_da_sessao_que_falha_sempre_para_no_teto_com_o_motivo(harness: Harness) -> None:
+    """31.173: a releitura da sessão vencida que falha sempre (o UiAutomator sem a árvore: android-03, 06/10) voltava a
+    cada volta do despacho. No teto, o objetivo para com o motivo, e a contagem zera para a retomada; sucesso zera."""
+    import types
+
+    from app.state import TETO_DE_RELEITURAS_DA_SESSAO
+
+    st = harness.state
+    assert st is not None
+    chamadas: list[bool] = []
+
+    class _Provedor:
+        falhar = True
+
+        async def ensure_session(self, rt: Any, profile_id: str, *, account_id: str | None = None,
+                                 observe_only: bool = False) -> None:
+            chamadas.append(observe_only)
+            if self.falhar:
+                raise RuntimeError("Timed out waiting for the root AccessibilityNodeInfo")
+
+    rt, provedor = types.SimpleNamespace(id="android-09"), _Provedor()
+    for i in range(TETO_DE_RELEITURAS_DA_SESSAO):
+        motivo, reler = st._releitura_da_sessao(rt, "p-1", "acc-1", provedor)  # type: ignore[arg-type]  # noqa: SLF001
+        assert reler is not None and ("tentativa" in motivo) == (i > 0)
+        with pytest.raises(RuntimeError):
+            await reler()
+    motivo, reler = st._releitura_da_sessao(rt, "p-1", "acc-1", provedor)  # type: ignore[arg-type]  # noqa: SLF001
+    assert reler is None and f"{TETO_DE_RELEITURAS_DA_SESSAO} tentativas seguidas" in motivo and "android-09" in motivo
+    assert all(chamadas) and len(chamadas) == TETO_DE_RELEITURAS_DA_SESSAO     # só observação, nunca login
+    # retomar: a contagem zerou no bloqueio; e a releitura boa zera também
+    motivo, reler = st._releitura_da_sessao(rt, "p-1", "acc-1", provedor)  # type: ignore[arg-type]  # noqa: SLF001
+    assert reler is not None and "tentativa" not in motivo
+    provedor.falhar = False
+    await reler()
+    assert st._releituras_falhas == {}  # noqa: SLF001
+
+
+async def test_o_pool_elegivel_e_a_conferencia_da_criacao_sem_criar_nada(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """31.174: quem pode ser alvo agora: a conferência da criação (persona, conta, sessão, aparelho) mais o aparelho
+    apto. A sessão vencida continua elegível (a porta relê a tela) e vem marcada. Só leitura: nada é criado."""
+    from app.models import SessionStatus as Sessao
+    from app.modules.operacoes.infrastructure.servico import APARELHO_INAPTO, SEM_CONTA, SEM_SESSAO
+
+    st = harness.state
+    assert st is not None
+    monkeypatch.setattr(st.social_repo, "session_max_age_s", 43_200)
+    pronta = _persona(harness, "Nara", "android-02")
+    _conta(harness, pronta, "qa-user-67", sessao_em="android-02")
+    sem_conta = _persona(harness, "Odete")
+    sem_sessao = _persona(harness, "Pia")
+    _conta(harness, sem_sessao, "qa-user-68")
+    velha = _persona(harness, "Rute", "android-01")
+    conta_velha = _conta(harness, velha, "qa-user-69")
+    st.social_repo.set_account_session(velha, conta_velha, "android-01", status=Sessao.session_ready,
+                                       verified_at="2026-01-01T00:00:00.000Z")
+    inapta = _persona(harness, "Sara", "android-03")
+    _conta(harness, inapta, "qa-user-70", sessao_em="android-03")
+    s = _servico(harness)
+    monkeypatch.setattr(s, "_aparelho_apto", lambda iid: iid in ("android-01", "android-02"))
+    antes = (st.db.scalar("SELECT COUNT(*) FROM operacoes"), st.db.scalar("SELECT COUNT(*) FROM runs"))
+    pool = s.elegiveis(APP)
+    por = {i["profile_id"]: i for i in pool["itens"]}  # type: ignore[union-attr,index]
+    assert (por[pronta]["elegivel"], por[pronta]["instance_id"], por[pronta]["sessao_vencida"]) == (True, "android-02",
+                                                                                                     False)
+    assert por[pronta]["sessao_verificada_em"]
+    assert (por[sem_conta]["elegivel"], por[sem_conta]["parou_em"], por[sem_conta]["motivo"]) == (False, "conta",
+                                                                                                   SEM_CONTA)
+    assert (por[sem_sessao]["parou_em"], por[sem_sessao]["motivo"]) == ("sessao", SEM_SESSAO)
+    assert (por[velha]["elegivel"], por[velha]["sessao_vencida"]) == (True, True)
+    assert (por[inapta]["elegivel"], por[inapta]["parou_em"], por[inapta]["motivo"]) == (False, "aparelho",
+                                                                                         APARELHO_INAPTO)
+    contagem = pool["contagem"]
+    assert contagem["elegiveis"] == sum(1 for i in por.values() if i["elegivel"])  # type: ignore[index]
+    assert contagem["com_sessao_vencida"] >= 1 and contagem["motivos"][SEM_CONTA] >= 1  # type: ignore[index]
+    assert (st.db.scalar("SELECT COUNT(*) FROM operacoes"), st.db.scalar("SELECT COUNT(*) FROM runs")) == antes
+    with pytest.raises(OperacaoError) as exc:
+        s.elegiveis("app-que-nao-existe")
+    assert (exc.value.code, exc.value.status) == ("app_inexistente", 404)
+
+
+async def test_rota_do_pool_elegivel_vem_antes_do_id_da_operacao(harness: Harness) -> None:
+    """31.174: `GET /api/operacoes/elegiveis?app_id=` não pode ser engolida por `/operacoes/{operacao_id}`."""
+    st = harness.state
+    assert st is not None
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/operacoes/elegiveis", params={"app_id": APP})
+        assert r.status_code == 200 and r.json()["app_id"] == APP and "contagem" in r.json()
+        assert (await c.get("/api/operacoes/elegiveis", params={"app_id": "nao-existe"})).status_code == 404
+        assert (await c.get("/api/operacoes/elegiveis")).status_code == 422

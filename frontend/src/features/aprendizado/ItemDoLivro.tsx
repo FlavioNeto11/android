@@ -6,7 +6,7 @@ import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { Checkbox } from '../../components/Field';
 import { SeloEmProva } from '../../components/SeloEmProva';
-import { SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
+import { SeloEmUsoReal, SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { StatusBadge } from '../../components/StatusBadge';
 import { explicacaoEmProva, textoDaEsperaDaPessoa } from '../../lib/emProva';
 import { cx, formatInt } from '../../lib/format';
@@ -17,6 +17,7 @@ import { useUiStore } from '../../store/ui';
 import { apiAprendizado } from './api';
 import { DecisaoInline } from './DecisaoInline';
 import { DetalheRico } from './DetalheRico';
+import { motivoEmPalavras } from './aprovacaoAutomatica';
 import { metaDeSaude } from './detalhe';
 import { abrirApp, dicaDoApp, nomeDoApp } from './apps';
 import { AppsDoItem, eMultiApp } from './AppsDoItem';
@@ -167,6 +168,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         {/* 30.85: o ensinado ainda em prova segue "Publicado", mas só vale para a persona que ensinou; o selo é o do 30.81. */}
         {e.kind === 'fluxo' ? <SeloEmProva ensinado={e.ensinado_em_prova} /> : null}
         {e.kind === 'fluxo' ? <SeloNascidoDeProva nascido={e.nascido_de_prova} /> : null}
+        {e.kind === 'fluxo' && e.state !== 'disabled' ? <SeloEmUsoReal desde={e.em_uso_real_desde} /> : null}
         {saude ? <Badge tone={saude.tone} size="sm" icon={saude.icon} title={saude.description} className={styles.seloDeSaude}><span className="sr-only">Saúde: </span>{saude.label}</Badge> : null}
       </div>
       <div className={styles.itemMeta}>
@@ -213,7 +215,7 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         <p className={styles.notaDoItem}>
           Confirmado que fica {porQuemDecidiu(e.confirmado.por)},{' '}
           <span title={formatDateTime(e.confirmado.em)}>{formatQuando(e.confirmado.em)}</span>
-          {e.confirmado.motivo ? `: ${e.confirmado.motivo}` : ''}. Volta para Revisar se aparecer evidência contrária.
+          {e.confirmado.motivo ? <>: <span title={e.confirmado.motivo}>{motivoEmPalavras(e.confirmado.motivo)}</span></> : ''}. Volta para Revisar se aparecer evidência contrária.
         </p>
       ) : null}
       {e.confirmacao_contestada && e.em_revisar ? (

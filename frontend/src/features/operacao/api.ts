@@ -6,6 +6,7 @@
 import { ApiError, apiRequest, toApiError } from '../../api/client';
 import { lerLiberacao, lerLista, lerOperacao, type Operacao, type ResultadoDaLiberacao, type ResumoDaOperacao } from './modelo';
 import { lerAprendizado, type LeituraDoAprendizado } from './aprendizadoDaOperacao';
+import type { CorpoDaOperacao } from './criar';
 import { OPERACAO_DE_EXEMPLO } from './operacaoDeExemplo';
 
 const enc = encodeURIComponent;
@@ -55,9 +56,9 @@ export const apiOperacoes = {
    * O aprendizado da operação nas 10 perguntas (adendo v1.96). Rota ausente, operação sem execução ou memória (404), resposta
    * fora do formato e falha de leitura viram "indisponível" com o motivo: o relatório não pode virar "nada aprendido".
    */
-  async aprendizado(id: string, signal?: AbortSignal): Promise<LeituraDoAprendizado> {
+  async aprendizado(id: string, signal?: AbortSignal, filtros?: { persona?: string | null; simulados?: boolean }): Promise<LeituraDoAprendizado> {
     try {
-      const a = lerAprendizado(await apiRequest<unknown>('GET', `/operacoes/${enc(id)}/aprendizado`, { query: { simulados: 'false' }, signal }));
+      const a = lerAprendizado(await apiRequest<unknown>('GET', `/operacoes/${enc(id)}/aprendizado`, { query: { simulados: filtros?.simulados ? 'true' : 'false', persona: filtros?.persona || undefined }, signal }));
       return a ? { situacao: 'lido', aprendizado: a } : { situacao: 'indisponivel', motivo: 'A resposta do aprendizado veio em formato inesperado.' };
     } catch (e) {
       const err = toApiError(e);
@@ -67,6 +68,12 @@ export const apiOperacoes = {
       }
       return { situacao: 'indisponivel', motivo: `Não foi possível ler o aprendizado: ${err.message}` };
     }
+  },
+  /** Cria a operação (adendo v1.94): 201 com o detalhe. A mesma `idempotency_key` com o mesmo corpo devolve a mesma operação. */
+  async criar(corpo: CorpoDaOperacao, idempotencyKey: string): Promise<Operacao> {
+    const op = lerOperacao(await apiRequest<unknown>('POST', '/operacoes', { body: { ...corpo, idempotency_key: idempotencyKey } }));
+    if (!op) throw new ApiError(502, 'resposta_invalida', 'A resposta da criação não é uma operação.');
+    return op;
   },
   async cancelar(id: string): Promise<Operacao> {
     const op = lerOperacao(await apiRequest<unknown>('POST', `/operacoes/${enc(id)}/cancelar`, { body: {} }));

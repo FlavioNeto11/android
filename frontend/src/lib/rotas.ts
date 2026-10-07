@@ -45,7 +45,7 @@
  *     (de gatilho), `profile_id`, `pede_atencao=1`, `ordem` = `atualizado` | `proxima` | `criado`. Convivem com `aba`.
  */
 export const TELAS = ['painel', 'personas', 'aplicativos', 'execucoes', 'pedidos', 'pendencias', 'aprendizado',
-                      'infraestrutura', 'configuracao', 'diagnostico', 'canais', 'operacoes'] as const;
+                      'infraestrutura', 'configuracao', 'diagnostico', 'canais', 'operacoes', 'host'] as const;
 export type Tela = (typeof TELAS)[number];
 
 export interface Rota {

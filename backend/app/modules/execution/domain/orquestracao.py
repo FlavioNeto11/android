@@ -3,16 +3,18 @@
 A pessoa não escolhe mais à mão entre "aparelhos marcados", "por persona" e "distribuir": no modo Automático o
 sistema lê o pedido e decide. A divisão é de propósito:
 
-- **semântica → IA**: que persona combina com o que foi pedido (perfil, interesses, voz, crenças), quantas o
-  pedido pede, e quando o pedido não deve ser roteado (regra de conduta, ADR-048);
+- **semântica → IA**: que persona combina com o que foi pedido (perfil, interesses, voz, crenças) e quantas o
+  pedido pede;
 - **onde → código**: o aparelho de cada persona escolhida vem do `resolver_alvos` (vínculo → sessão pronta →
   principal) e o desempate, do balanceamento (carga do servidor, aparelho ligado, ocupado). A IA vê a
   disponibilidade e a saúde do aparelho só para PREFERIR a persona livre e de aparelho saudável entre duas
   igualmente adequadas — não escolhe aparelho.
 
-Crença serve à COERÊNCIA: nunca se escolhe quem teria de dizer ou fazer o contrário do que acredita. Não serve para
-mirar persuasão ("as de esquerda para comentar no post do candidato"): pedido de propaganda política ou religiosa,
-de voto ou de adesão, ou campanha coordenada de opinião volta com `alerta_conduta` e ninguém é escolhido.
+Crença serve à COERÊNCIA: nunca se escolhe quem teria de dizer ou fazer o contrário do que acredita.
+
+Regra de conteúdo do pedido não mora aqui (decisão do dono, 06/10): vai para o serviço externo de autorização.
+`alerta_conduta` segue no contrato como o ponto de recusa (preenchido, zera a escolha em `normalizar`), mas o
+orquestrador não o preenche.
 
 Persona sem as crenças mínimas (`CRENCAS_MINIMAS`) não é adivinhada quando o pedido depende delas: vai para
 `nao_avaliaveis`, que é o que o painel oferece completar com a IA (enriquecimento, ADR-048).
@@ -30,7 +32,6 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel
 
 from app.modules.execution.domain.command_refinement import motivo_sem_valor
-from app.modules.identity.domain.persona import CONDUTA_DAS_CRENCAS
 
 #: Quantas candidatas vão ao modelo, no máximo: cada cartão é biografia + crenças de uma pessoa (o que sai da
 #: máquina cresce com o parque). As mais disponíveis primeiro. São os PADRÕES: o valor vigente vem de
@@ -65,22 +66,13 @@ Como decidir:
   que depende dela), NÃO adivinhe: liste a persona com `falta` dizendo o quê.
 - `perguntas`: só se o pedido for ambíguo a ponto de mudar QUEM faz (ex.: "a persona de sempre" sem pista).
 - `resumo`: uma frase dizendo a escolha e o porquê.
-
-Regra de conduta (vale acima de tudo):
-- Crença serve à COERÊNCIA de quem faz, não para mirar persuasão. Não escolha personas pela orientação política
-  ou religiosa para influenciar a opinião dos outros.
-- Se o pedido é propaganda política ou religiosa, pedido de voto ou de adesão, elogio ou ataque a candidato,
-  partido ou figura pública em campanha, ou campanha coordenada de opinião (várias personas empurrando a mesma
-  posição), devolva `alerta_conduta` com o motivo em uma frase, `escolhidas` vazia e `quantidade` 0. Fora disso,
-  `alerta_conduta` é "".
-- Desinformação, ofensa a pessoa ou grupo, e burlar verificação (CAPTCHA, 2FA) também são `alerta_conduta`.
+- `alerta_conduta`: sempre "".
 """
 
 
 def orquestracao_system(untrusted_rule: str) -> str:
-    """O prompt de sistema com a regra de dado não confiável dos demais papéis (recebida de `planning.prompts`) e a
-    conduta sobre crenças da persona (ADR-048), a mesma que vai ao bloco `<persona>`."""
-    return f"{_SISTEMA}\nConduta sobre crenças das personas: {CONDUTA_DAS_CRENCAS}\n{untrusted_rule}"
+    """O prompt de sistema com a regra de dado não confiável dos demais papéis (recebida de `planning.prompts`)."""
+    return f"{_SISTEMA}\n{untrusted_rule}"
 
 
 class OrquestracaoInvalida(ValueError):
@@ -211,7 +203,6 @@ def _sem_acento(texto: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFD", texto.lower()) if unicodedata.category(ch) != "Mn")
 
 
-_CONDUTA = re.compile(r"\b(vot[eoa]r?|voto|candidat\w*|campanha|propaganda|eleic\w*|desinforma\w*|fake news)\b")
 _RELIGIOSO = re.compile(r"\b(crist\w*|igreja|deus|fe|evangel\w*|catolic\w*|missa|culto|biblia|oracao|religi\w*)\b")
 _POLITICO = re.compile(r"\b(politic\w*|esquerda|direita|governo|conservador\w*|progressist\w*)\b")
 _DESCRENTE = re.compile(r"\b(ateia|ateu|sem religiao|agnostic\w*)\b")
@@ -221,15 +212,10 @@ _PALAVRA = re.compile(r"[a-z]{4,}")
 
 
 def orquestracao_simulada(req: PedidoDeOrquestracao) -> OrquestracaoOut:
-    """Sem IA, determinístico: conduta por palavras, contradição religiosa simples, "não avaliável" quando o pedido
+    """Sem IA, determinístico: contradição religiosa simples, "não avaliável" quando o pedido
     é de crença e o cartão não tem crença, e o resto por palavras em comum com o perfil, desempatado pela saúde do
     aparelho e pela disponibilidade. Serve aos testes e ao modo simulado — não mede a qualidade da escolha real."""
     pedido = _sem_acento(req.command)
-    if _CONDUTA.search(pedido):
-        return normalizar(OrquestracaoOut(
-            quantidade=0, escolhidas=[], descartadas=[], nao_avaliaveis=[], perguntas=[],
-            alerta_conduta="[simulado] o pedido parece propaganda, pedido de voto ou campanha de opinião.",
-            resumo="[simulado] pedido não roteado pela regra de conduta"), req)
     m = _QUANTIDADE.search(pedido)
     quantidade = (int(m.group(1)) if m.group(1).isdigit() else _NUMEROS[m.group(1)]) if m else 1
     de_crenca = bool(_RELIGIOSO.search(pedido) or _POLITICO.search(pedido))

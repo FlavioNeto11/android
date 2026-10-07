@@ -23,12 +23,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from app.contracts.origem import PREFIXO_OPERACAO
-from app.db import Database, Row, dumps, loads
+from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs
+from app.social.repository import sessao_vencida
 from app.social.service import SocialError
 from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS, normal
 from app.taskqueue.recipes import SENSITIVE_PARAM
@@ -51,6 +52,8 @@ FORA_DO_PRINCIPAL = "sessão fora do aparelho principal"
 SEM_APARELHO = "aparelho indisponível"
 TETO_DE_CUSTO = "teto de custo"
 LIMITE_DE_ACOES = "limite de ações executadas"
+#: 31.174: o aparelho da sessão existe, mas não recebe tarefa agora (fora do ar, na loja ou com conta travada).
+APARELHO_INAPTO = "aparelho fora do ar ou com conta travada"
 AGUARDA_LIBERACAO = "aguarda liberação"
 
 
@@ -100,18 +103,22 @@ _NOME_DE_PARAMETRO = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
     """Nome e valor de cada parâmetro fixo. Credencial nunca: a execução não carrega credencial (ADR-040), e um parâmetro
     vai ao plano, ao objetivo, ao prompt e ao texto digitado pelo canal comum. A recusa olha o NOME (`senha`, `codigo`,
-    `token`), o par `nome=valor` e o FORMATO do valor sozinho (senha ou código sem rótulo)."""
-    for nome, valor in (parametros or {}).items():
+    `token`), o par `nome=valor` e o FORMATO do valor sozinho (senha ou código sem rótulo).
+
+    A recusa diz a POSIÇÃO do parâmetro, nunca o nome nem o valor (achado do Copilot no PR 487): a credencial pode
+    estar no próprio nome, e o corpo do erro volta ao cliente e vai ao log."""
+    for posicao, (nome, valor) in enumerate((parametros or {}).items(), start=1):
         texto = str(valor)
         if (chave_sensivel(nome) or SENSITIVE_PARAM.search(nome) or redact(f"{nome}={texto}") != f"{nome}={texto}"
                 or looks_secret(texto) or parece_senha_ou_codigo(texto)):
-            raise OperacaoError("credencial_no_comando", f"O parâmetro {nome!r} parece credencial; a operação não "
+            raise OperacaoError("credencial_no_comando", f"O {posicao}º parâmetro parece credencial; a operação não "
                                 "leva credencial (a senha só sai do cofre, pelo canal sensível).", 409)
         if (not _NOME_DE_PARAMETRO.match(nome) or nome in NOMES_RESERVADOS
                 or nome.startswith(("perfil_", "conta_"))):
-            raise OperacaoError("pedido_invalido", f"Nome de parâmetro não aceito: {nome!r}.", 422)
+            raise OperacaoError("pedido_invalido", f"Nome do {posicao}º parâmetro não aceito (minúsculas, dígitos e _,"
+                                " até 40; sem os nomes reservados nem perfil_ e conta_).", 422)
         if not isinstance(valor, str) or not 1 <= len(valor) <= 300 or "{" in valor or "}" in valor:
-            raise OperacaoError("pedido_invalido", f"Valor do parâmetro {nome!r}: de 1 a 300 caracteres, sem chaves.",
+            raise OperacaoError("pedido_invalido", f"Valor do {posicao}º parâmetro: de 1 a 300 caracteres, sem chaves.",
                                 422)
     if len(parametros or {}) > 10:
         raise OperacaoError("pedido_invalido", "No máximo 10 parâmetros.", 422)
@@ -264,20 +271,22 @@ class ServicoDeOperacoes:
             raise OperacaoError("operacao_inexistente", "Operação não encontrada.", 404)
         definicao = self._definicao(str(op["app_id"]))
         limite = int(self.limites().operacao_max_acoes_executadas)
-        alvos, leituras = [], []
-        for a in self.db.query("SELECT * FROM operacao_alvos WHERE operacao_id=? ORDER BY seq, profile_id", (op_id,)):
-            leitura, resultado = self._ler_alvo(op, a, definicao)
-            leituras.append((a, leitura))
-            alvos.append((a, leitura, resultado))
         executadas = self._acoes_comprometidas(op_id)
         aprovados = self._runs_com_acao_aprovada(op_id)
         if aprovados and op["acao_final"] == "preparar" and op["status"] != "cancelada":
             # A ação aprovada POR FORA do liberar (Pendências, Telegram: a onda 1 de 06/10) vai rodar. A operação passa a
             # `executar` e reabre, como no liberar; sem isto, ficava `concluida` com o `finished_at` da preparação e a
-            # ação executada e verificada depois dele.
+            # ação executada e verificada depois dele. A reabertura vem ANTES da leitura dos alvos (achado do Codex no
+            # PR 483): lidos com `preparar`, `acao_preparada` era concluído, e o mesmo GET fechava a operação de novo.
+            # Transição condicional no SQL, como no liberar (achado do Copilot no PR 487): o cancelar que gravou
+            # `cancelada` depois da leitura acima não pode ser sobrescrito por `em_curso`.
             self.db.execute("UPDATE operacoes SET acao_final='executar', status='em_curso', finished_at=NULL, updated_at=?"
-                            " WHERE id=? AND acao_final='preparar'", (now_iso(), op_id))
+                            " WHERE id=? AND acao_final='preparar' AND status<>'cancelada'", (now_iso(), op_id))
             op = self.db.one("SELECT * FROM operacoes WHERE id=?", (op_id,)) or op
+        alvos = []
+        for a in self.db.query("SELECT * FROM operacao_alvos WHERE operacao_id=? ORDER BY seq, profile_id", (op_id,)):
+            leitura, resultado = self._ler_alvo(op, a, definicao)
+            alvos.append((a, leitura, resultado))
         saida = []
         for a, lt, resultado in alvos:
             estado, motivo, parou = lt.estado, lt.motivo, lt.parou_em
@@ -298,15 +307,40 @@ class ServicoDeOperacoes:
                           "estado": estado, "motivo": motivo,
                           "parou_em": parou if estado in ("bloqueado", "cancelado") else None,
                           "estagios": [{"estagio": e, "em": em} for e, em in lt.estagios], "resultado": resultado,
-                          "custo_usd": custo})
+                          "custo_usd": custo, "sessao_verificada_em": self._sessao_verificada_em(a)})
         capacidade = self._capacidade(saida)
         status = self._status(op, saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
                 "max_usd": op["max_usd"], "assunto": op["assunto"], "fontes": loads(op["fontes"], []),
-                "parametros": loads(op["parametros"], None),
+                "parametros": loads(op["parametros"], None), "fontes_da_pesquisa": self._fontes_da_pesquisa(op_id),
                 "status": status, "created_at": op["created_at"],
                 "finished_at": self._fechar(op, status, capacidade, fim=self._fim_real(saida)),
                 "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id)}
+
+    def _sessao_verificada_em(self, a: Row) -> str | None:
+        """31.173: quando a sessão da conta do alvo NESTE aparelho foi vista na tela pela última vez (`account_sessions`).
+        A porta do despacho relê a vencida antes da tarefa; aqui é o que a pessoa olha antes de começar."""
+        if not a["account_id"] or not a["instance_id"]:
+            return None
+        linha = self.db.one("SELECT verified_at FROM account_sessions WHERE account_id=? AND instance_id=?",
+                            (a["account_id"], a["instance_id"]))
+        return str(linha["verified_at"]) if linha is not None and linha["verified_at"] else None
+
+    def _fontes_da_pesquisa(self, op_id: str) -> list[str]:
+        """As URLs que a pesquisa externa da operação ACHOU (frente de aprendizado, migração 125: `pedido_observacoes` com
+        `tipo='url'`). `fontes` é o que o pedido trouxe de entrada; sem isto, o GET mostrava 0 fontes com pesquisa paga."""
+        vistas: list[str] = []
+        try:
+            linhas = self.db.query("SELECT valor FROM pedido_observacoes WHERE operacao_id=? AND tipo='url' AND valor IS"
+                                   " NOT NULL ORDER BY capturado_em, id", (op_id,))
+        except OPERATIONAL_ERRORS as exc:   # banco sem a migração 125 (a coluna `operacao_id`): a pesquisa não gravou nada
+            if not coluna_ausente(exc):
+                raise
+            return vistas
+        for r in linhas:
+            if str(r["valor"]) not in vistas:
+                vistas.append(str(r["valor"]))
+        return vistas
 
     def _definicao(self, app_id: str) -> tuple[str, dict[str, str]]:
         row = self.db.one("SELECT package FROM apps WHERE id=?", (app_id,))
@@ -321,7 +355,7 @@ class ServicoDeOperacoes:
         etapas: list[EtapaLida] = []
         efeito: Row | None = None
         if a["run_id"]:
-            run = self.db.one("SELECT status FROM runs WHERE id=?", (a["run_id"],))
+            run = self.db.one("SELECT status, status_detail, finished_at FROM runs WHERE id=?", (a["run_id"],))
             obj = self.db.one("SELECT * FROM objectives WHERE run_id=? ORDER BY id LIMIT 1", (a["run_id"],))
             if obj is not None:
                 for s in self.db.query("SELECT * FROM steps WHERE objective_id=? AND plan_version=? ORDER BY seq, id",
@@ -343,7 +377,10 @@ class ServicoDeOperacoes:
             objetivo_motivo=_motivo((obj["blocked_reason"] or obj["status_detail"]) if obj is not None else None),
             run_status=str(run["status"]) if run is not None else None, etapas=etapas, marcas=marcas,
             abertura=abertura, estagio_por_capability=por_cap, acao_final=str(op["acao_final"]),
-            criado_em=str(op["created_at"]), objetivo_bloqueio=obj["blocked_kind"] if obj is not None else None))
+            criado_em=str(op["created_at"]), objetivo_bloqueio=obj["blocked_kind"] if obj is not None else None,
+            recusa_no_plano=(_motivo(run["status_detail"]) or "recusada no planejamento")
+            if obj is None and run is not None and run["status"] == "failed" else None,
+            recusa_em=run["finished_at"] if run is not None else None))
         return leitura, self._resultado(a, efeito, marcas)
 
     def _resultado(self, a: Row, efeito: Row | None, marcas: dict[str, object]) -> dict[str, object] | None:
@@ -427,8 +464,36 @@ class ServicoDeOperacoes:
                            " NULL", (status, agora, agora, op["id"])) == 0:
             return None
         self.bus.emit("operacao.encerrada", f"Operação {op['id']} encerrada: {status}.",
-                      data={"operacao_id": op["id"], "status": status, "capacidade": capacidade})
+                      data={"operacao_id": op["id"], "status": status, "capacidade": capacidade,
+                            "custo": self._custo(str(op["id"]))})
         return agora
+
+    # ------------------------------------------------------------------ pool elegível (31.174)
+    def elegiveis(self, app_id: str) -> dict[str, object]:
+        """Quem pode ser alvo AGORA neste app: a mesma conferência da criação (persona → conta → sessão → aparelho, na
+        ordem do dono), mais o aparelho apto (online, fora da loja, sem conta travada). Só leitura: nada é criado nem
+        despachado. A sessão vencida continua elegível (a porta do despacho relê a tela antes da tarefa) e vem marcada,
+        para a pessoa reverificar antes da onda. Diagnóstico da prova (§ NECESSÁRIO): o pool era montado à mão."""
+        if self.db.one("SELECT id FROM apps WHERE id=?", (app_id,)) is None:
+            raise OperacaoError("app_inexistente", f"O app {app_id!r} não está registrado.", 404)
+        validade = int(getattr(self.social, "session_max_age_s", 0) or 0)
+        itens: list[dict[str, object]] = []
+        for r in self.db.query("SELECT id FROM instagram_profiles ORDER BY id"):
+            pid = str(r["id"])
+            parada, motivo, conta, aparelho = self._conferir(AlvoPedido(pid), app_id)
+            if parada is None and not self._aparelho_apto(aparelho):
+                parada, motivo = "aparelho", APARELHO_INAPTO
+            sessao = (self.db.one("SELECT status, verified_at FROM account_sessions WHERE account_id=? AND instance_id=?",
+                                  (conta, aparelho)) if conta and aparelho else None)
+            itens.append({"profile_id": pid, "persona_nome": self._nome(pid), "account_id": conta,
+                          "instance_id": aparelho, "elegivel": parada is None, "parou_em": parada, "motivo": motivo,
+                          "sessao_verificada_em": sessao["verified_at"] if sessao is not None else None,
+                          "sessao_vencida": sessao_vencida(sessao, validade)})
+        motivos = Counter(str(i["motivo"]) for i in itens if not i["elegivel"] and i["motivo"])
+        return {"app_id": app_id, "itens": itens,
+                "contagem": {"personas": len(itens), "elegiveis": sum(1 for i in itens if i["elegivel"]),
+                             "com_sessao_vencida": sum(1 for i in itens if i["elegivel"] and i["sessao_vencida"]),
+                             "motivos": dict(sorted(motivos.items()))}}
 
     # ------------------------------------------------------------------ cancelar e liberar
     def cancelar(self, op_id: str, *, quem: str | None = None) -> dict[str, object]:

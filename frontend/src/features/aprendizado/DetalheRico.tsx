@@ -4,7 +4,7 @@ import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { SeloEmProva } from '../../components/SeloEmProva';
-import { SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
+import { SeloEmUsoReal, SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { textoDosApps } from '../../lib/appsDoFluxo';
@@ -18,6 +18,7 @@ import { abrirApp, dicaDoApp, nomeDoApp } from './apps';
 import { AppsDoItem, eMultiApp } from './AppsDoItem';
 import { lerOrigemDoTreino, linkDaSessaoDeTreino, type OrigemDoTreino } from './origemDoTreino';
 import { EscopoDoFluxo } from './EscopoDoFluxo';
+import { ReligarFluxoDeProva } from './ReligarFluxoDeProva';
 import { SecaoDoParecer } from './ParecerDaIA';
 import {
   SEM_DADO, destinoDaRelacao, metaDeSaude, metaDeVersao, rotuloDaDimensao, rotuloDaFerramenta, rotuloDaRelacao,
@@ -31,6 +32,7 @@ import {
   type VizinhaDaReceita, ORIGEM_LABEL, acoesDoItem, nomearCapabilityNoTexto, porQueOSistemaNaoPublica, rotuloDoEstado,
   rotuloDoKind, motivoDaInvalida, nomeDaEtapa, textoDaEvidencia,
 } from './model';
+import { motivoEmPalavras } from './aprovacaoAutomatica';
 import { formatUsd } from './metricas';
 import styles from './Aprendizado.module.css';
 import { useCarga } from './useCarga';
@@ -106,6 +108,7 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
           {rotuloDoEstado(item.state)}
           {item.kind === 'fluxo' && item.ensinado_em_prova ? <> <SeloEmProva ensinado={item.ensinado_em_prova} /></> : null}
           {item.kind === 'fluxo' && item.nascido_de_prova ? <> <SeloNascidoDeProva nascido={item.nascido_de_prova} /></> : null}
+          {item.kind === 'fluxo' && item.state !== 'disabled' ? <> <SeloEmUsoReal desde={item.em_uso_real_desde} /></> : null}
         </Fato>
         <Fato rotulo="Origem">{ORIGEM_LABEL[item.origin] ?? item.origin}</Fato>
       </dl>
@@ -541,14 +544,14 @@ function Historico({ trilha }: { trilha: DetalheDoLivro['trilha'] }) {
           {trilha.map((t) => (
             <li key={t.id} data-tipo={t.tipo ?? undefined}>
               {formatQuando(t.decided_at)} · {passoDaTransicao(t)} por <strong>{t.decided_by}</strong>
-              {t.tipo === 'confirmacao' ? (t.motivo_da_pessoa ? `: ${t.motivo_da_pessoa}` : ' (sem motivo)') : ': '}
+              {t.tipo === 'confirmacao' ? (t.motivo_da_pessoa ? `: ${motivoEmPalavras(t.motivo_da_pessoa)}` : ' (sem motivo)') : ': '}
               {t.tipo === 'confirmacao' ? null : t.tipo === 'evidencia_invalida' && t.run_invalidada ? (
                 <>
                   <Badge tone="danger" size="sm">evidência inválida</Badge>{' '}
                   a execução <a className={styles.linkAlvo} href={hrefDaExecucao(t.run_invalidada)}>{t.run_invalidada}</a>{' '}
                   terminou como sucesso sem comprovar o que fez
                 </>
-              ) : t.reason}
+              ) : (t.reason ? motivoEmPalavras(t.reason) : t.reason)}
             </li>
           ))}
         </ol>
@@ -710,6 +713,9 @@ export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onM
                         curador={detalhe.curador} onMudou={onMudou} />
         {item.kind === 'fluxo' && conteudo?.tipo === 'fluxo' && conteudo.origem.tipo === 'treino' ? (
           <Secao slug="escopo" titulo="A quem vale"><EscopoDoFluxo flowId={item.ref} /></Secao>
+        ) : null}
+        {item.kind === 'fluxo' && item.nascido_de_prova === true && item.state === 'disabled' ? (
+          <Secao slug="religar" titulo="Religar para uso real"><ReligarFluxoDeProva flowId={item.ref} onMudou={onMudou} /></Secao>
         ) : null}
         <Acoes item={item} invalidar={detalhe.invalidar_evidencia?.run_id ?? null} onMudou={onMudou} />
       </div>

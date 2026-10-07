@@ -12,8 +12,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.modules.learning.domain.uso_real import motivo_do_religamento
 from app.modules.learning.domain.vocabulario import LivroKind
 from app.modules.learning.presentation.livro import mudar_status_legado
 from app.modules.skills.presentation.schemas import EscopoDoFluxoBody
@@ -95,7 +96,8 @@ async def flows_similar(request: Request, body: FlowMatchBody) -> dict[str, obje
 async def update_flow(request: Request, flow_id: str, patch: dict[str, object]) -> object:
     s = _st(request)
     flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: o id ou a referência pública (o `href` dos avisos)
-    if s.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)) is None:
+    linha = s.db.one("SELECT id, nascido_de_prova FROM flows WHERE id=?", (flow_id,))
+    if linha is None:
         raise _err(404, "not_found", "Fluxo não encontrado.")
     if patch.get("status") not in ("active", "disabled"):
         raise _err(400, "invalid", "status deve ser 'active' ou 'disabled'.")
@@ -105,6 +107,14 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, object]) 
     motivo = patch.get("motivo")
     if motivo is not None and (not isinstance(motivo, str) or not motivo.strip() or len(motivo.strip()) > MOTIVO_MAX):
         raise _err(400, "invalid", f"motivo deve ser um texto de 1 a {MOTIVO_MAX} caracteres.")
+    # 31.150 (K-106): o fluxo de prova só volta ao uso real com o porquê, e pode mudar de escopo no mesmo gesto (a
+    # prova o deixou em `quem_ensinou`). A trilha diz "religado para uso real: <motivo>"; a marca de origem fica.
+    de_prova = bool(linha["nascido_de_prova"])
+    if status == "active" and de_prova and motivo is None:
+        raise _err(400, "motivo_obrigatorio", "Fluxo nascido de prova: diga por que ele volta ao uso real (motivo).")
+    escopo = _escopo_do_patch(s, patch.get("escopo"))
+    if escopo is not None and not (status == "active" and de_prova):
+        raise _err(400, "invalid", "escopo neste PUT só vale ao religar um fluxo de prova; use PUT /api/flows/{id}/scope.")
     # Fase G (guarda apontada pela fase D): fluxo ADOTADO por uma habilidade publicada não se religa por aqui — o
     # mesmo comando ficaria vivo nos dois backends. Voltar ao fluxo é desfazer a adoção, que desabilita a versão
     # na mesma transação.
@@ -124,11 +134,45 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, object]) 
         # ADR-054 (D1): pelo livro, na MESMA transação das guardas — status e trilha com a pessoa que decidiu, ou
         # nenhum dos dois. Sem a trilha, o fluxo que ela desligou aqui podia renascer do próximo plano (a última
         # linha da trilha seguia sendo a refutação do sistema) e o conteúdo não ficava vetado.
+        antes = s.scheduler.flows.scope(flow_id) if escopo is not None else None
+        if escopo is not None:
+            s.scheduler.flows.set_scope(flow_id, profile_ids=escopo.profile_ids, group_ids=escopo.group_ids)
         mudar_status_legado(request, LivroKind.FLUXO, flow_id, status,
-                            reason=motivo.strip() if isinstance(motivo, str)
+                            reason=motivo_do_religamento(motivo) if de_prova and status == "active"
+                            and isinstance(motivo, str)
+                            else motivo.strip() if isinstance(motivo, str)
                             else "ligado na lista de fluxos do painel" if status == "active"
                             else "desligado na lista de fluxos do painel")
+    if antes is not None:
+        _registrar_escopo(request, flow_id, antes)
     return next(f for f in s.scheduler.flows.list() if f["id"] == flow_id)
+
+
+def _escopo_do_patch(s: AppState, bruto: object) -> EscopoDoFluxoBody | None:
+    """O `escopo` opcional do PUT (31.150): `{profile_ids, group_ids}`, com as mesmas recusas do `/scope`."""
+    if bruto is None:
+        return None
+    try:
+        escopo = EscopoDoFluxoBody.model_validate(bruto)
+    except ValidationError as exc:
+        raise _err(400, "invalid", "escopo deve ser {profile_ids: [...], group_ids: [...]}.") from exc
+    for pid in escopo.profile_ids:
+        if s.social_repo.profile_row(pid) is None:
+            raise _err(400, "unknown_profile", f"Perfil inexistente: {pid}.")
+    for gid in escopo.group_ids:
+        if s.social_repo.policy_group_row(gid) is None:
+            raise _err(400, "unknown_group", f"Grupo de acesso inexistente: {gid}.")
+    return escopo
+
+
+def _registrar_escopo(request: Request, flow_id: str, antes: dict[str, list[str]]) -> None:
+    """A trilha do escopo é o evento `log` com o antes, o depois e quem decidiu, como no `/scope`."""
+    s = _st(request)
+    depois = s.scheduler.flows.scope(flow_id)
+    s.bus.emit("log", "Escopo da habilidade mudou", data={
+        "flow_id": flow_id, "por": autor_do_gesto(getattr(request.state, "operador", None)),
+        "antes": {"profile_ids": antes["profile_ids"], "group_ids": antes["group_ids"]},
+        "depois": {"profile_ids": depois["profile_ids"], "group_ids": depois["group_ids"]}})
 
 
 @router.put("/flows/{flow_id}/scope")

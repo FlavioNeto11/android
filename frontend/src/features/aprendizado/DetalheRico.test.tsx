@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, installBrowserStubs, json, openDetails, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, installBrowserStubs, json, openDetails, setValue, text, waitFor } from '../../test/harness';
 import { useToastStore } from '../../store/toasts';
 import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
@@ -358,6 +358,24 @@ describe('evidência inválida e reaprendido (30.23)', () => {
     expect(passoDaTransicao({ from: 'candidate', to: 'disabled' })).toBe('Candidato → Desligado');
     expect(passoDaTransicao({ from: null, to: 'candidate' })).toBe('Candidato');
     expect(passoDaTransicao({ from: 'published', to: 'published', tipo: 'confirmacao' })).toBe('Confirmado que fica');
+  });
+
+  it('31.164: a trilha mostra o motivo da régua em palavras, na confirmação e na transição, e não mexe no motivo de uma pessoa', async () => {
+    await mostrar(detalhe({
+      trilha: [
+        { id: 1, from: 'candidate', to: 'validated', reason: 'auto:qa_para_aprovar v1 — saúde saudavel; parecer manter (lr-ade33a6e8607eaeb)', decided_by: 'sistema',
+          decided_at: '2026-10-02T20:46:54Z', run_id: null, tipo: null, run_invalidada: null },
+        { id: 2, from: 'published', to: 'published', reason: 'confirmado que fica: x', decided_by: 'sistema', decided_at: '2026-10-03T10:00:00Z',
+          run_id: null, tipo: 'confirmacao', run_invalidada: null, motivo_da_pessoa: 'auto:qa_revisar v1 — classe B; app com.pocqa.messenger (qa); 3 a favor, 0 contra; 0 falhas de reprodução; saúde pouca_amostra; parecer pedir_evidencia (lr-fe4a3e84376de6ac)' },
+        { id: 3, from: 'validated', to: 'published', reason: 'conferi o alvo; saúde pouca_amostra mesmo', decided_by: 'Ana Ribeiro',
+          decided_at: '2026-10-03T11:00:00Z', run_id: null, tipo: null, run_invalidada: null },
+      ],
+    }));
+    const trilha = text(container.querySelector('[aria-label="Trilha"]')!);
+    expect(trilha).toContain('Aprovação automática do que esperava você — saúde: Saudável; parecer do curador: manter como está');
+    expect(trilha).toContain('Confirmação automática do que estava em revisão — classe B; app com.pocqa.messenger (qa); 3 a favor, 0 contra; 0 falhas de reprodução; saúde: Pouca amostra; parecer do curador: pedir mais evidência');
+    expect(trilha).toContain('conferi o alvo; saúde pouca_amostra mesmo');
+    expect(trilha).not.toMatch(/auto:qa_|lr-ade33|pedir_evidencia/);
   });
 
   it('a receita reaprendida diz o que reaprende, com link, e por que espera o dono', async () => {
@@ -784,5 +802,145 @@ describe('detalhe rico: a etapa do fluxo diz os pacotes que também aceita (31.1
     const itens = Array.from(container.querySelectorAll('ol[aria-label="Etapas do fluxo"] > li'));
     expect(itens.map((li) => li.textContent?.includes('Também aceita concluir em'))).toEqual([false, true, false]);
     expect(text(itens[1] as HTMLElement)).toContain('Também aceita concluir em: com.google.android.settings.intelligence');
+  });
+});
+
+// ---------------------------------------------------------------- 31.168 (adendo v1.97): religar o fluxo de prova para uso real
+describe('detalhe rico: religar o fluxo de prova para uso real (31.168)', () => {
+  const FLUXO = (extra: Partial<EntradaDoLivro> = {}): DetalheDoLivro => detalhe({
+    conteudo: { tipo: 'fluxo', nome: 'Abrir a busca', comando_modelo: 'abra a busca', origem: { tipo: 'treino', fonte: 't', source_run_id: null },
+                apps: [], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } },
+    item: { kind: 'fluxo', ref: 'f-0a1b2c3d4e5f', state: 'disabled', nascido_de_prova: true, ...extra },
+  });
+  let backend: FakeBackend;
+  let mudou: number;
+  const mostrarComGesto = async (d: DetalheDoLivro) => {
+    await act(async () => { root.render(<DetalheRico detalhe={d} onMudou={() => { mudou += 1; }} />); });
+  };
+  const trocarEscopo = () => Array.from(container.querySelectorAll('label')).find((l) => /Trocar a quem o fluxo vale/.test(l.textContent ?? ''))!.querySelector('input') as HTMLInputElement;
+  const abrirForm = async () => { await click(byRole('button', /^Religar para uso real$/, container)); };
+  const campoMotivo = () => byRole('textbox', /Por que ele volta ao uso real/, container) as HTMLTextAreaElement;
+  const puts = () => backend.callsTo('PUT', /\/flows\/f-0a1b2c3d4e5f$/);
+
+  beforeEach(() => {
+    mudou = 0;
+    backend = new FakeBackend();
+    backend.install();
+    backend.on('GET', /\/instagram\/profiles$/, () => json([
+      { id: 'ig-1', username: 'conta.um', persona_name: 'Persona Um', display_name: null },
+      { id: 'ig-2', username: 'conta.dois', persona_name: null, display_name: null },
+    ]));
+    backend.on('GET', /policy-groups$/, () => json([{ id: 'g-1', name: 'Equipe A', description: '' }]));
+    backend.on('PUT', /\/flows\/f-0a1b2c3d4e5f$/, (c) => json({ id: 'f-0a1b2c3d4e5f', status: 'active', ...(c.body as object), em_uso_real_desde: '2026-10-07T10:00:00Z' }));
+    useToastStore.setState({ toasts: [] });
+  });
+
+  it('só o fluxo de prova desligado ganha a seção; o ligado, o de uso real e a receita não', async () => {
+    await mostrar(FLUXO());
+    expect(secoes()).toContain('Religar para uso real');
+    await mostrar(FLUXO({ state: 'published' }));
+    expect(secoes()).not.toContain('Religar para uso real');
+    await mostrar(FLUXO({ nascido_de_prova: false }));
+    expect(secoes()).not.toContain('Religar para uso real');
+    await mostrar(FLUXO({ nascido_de_prova: undefined }));
+    expect(secoes()).not.toContain('Religar para uso real');
+    await mostrar(detalhe({ item: { kind: 'receita', state: 'disabled', nascido_de_prova: true } }));
+    expect(secoes()).not.toContain('Religar para uso real');
+  });
+
+  it('o motivo é obrigatório (o botão diz por que está apagado) e, com ele, o PUT leva status e motivo, sem escopo', async () => {
+    await mostrarComGesto(FLUXO());
+    await abrirForm();
+    const enviar = byRole('button', /Religar para uso real — indisponível/, container);
+    expect(enviar.getAttribute('aria-disabled') ?? String((enviar as HTMLButtonElement).disabled)).toBeTruthy();
+    expect(text(container)).toContain('Diga o motivo');
+    expect(puts()).toHaveLength(0);
+    await setValue(campoMotivo(), '  provado na operação de 07/10  ');
+    await click(await botaoPronto(/^Religar para uso real$/, container));
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(puts()[0]!.body).toEqual({ status: 'active', motivo: 'provado na operação de 07/10' });
+    await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'Fluxo religado para uso real')).toBe(true));
+    expect(mudou).toBe(1);                                                    // o detalhe se relê: a trilha e o selo aparecem
+    expect(backend.callsTo('GET', /\/instagram\/profiles$/)).toHaveLength(0);  // sem trocar o escopo, nada de listas
+  });
+
+  it('trocar a quem vale carrega as listas só então, mostra a persona pelo nome (nunca a conta) e manda o escopo ordenado', async () => {
+    await mostrarComGesto(FLUXO());
+    await abrirForm();
+    expect(text(container)).toContain('continua valendo para quem a prova deixou');
+    await click(trocarEscopo());
+    await waitFor(() => expect(allByRole('checkbox', /^Persona /, container)).toHaveLength(2));
+    const t = text(container);
+    expect(t).toContain('Persona Um');
+    expect(t).toContain('Persona sem nome');
+    expect(t).not.toMatch(/conta\.um|conta\.dois/);
+    expect(t).toContain('Nada marcado: o fluxo passa a valer para todos os perfis.');
+    await click(byRole('checkbox', /Persona Persona sem nome/, container));
+    await click(byRole('checkbox', /Persona Persona Um/, container));
+    await click(byRole('checkbox', /Grupo Equipe A/, container));
+    expect(text(container)).not.toContain('Nada marcado: o fluxo passa a valer');
+    await setValue(campoMotivo(), 'vale para o lote');
+    await click(await botaoPronto(/^Religar para uso real$/, container));
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(puts()[0]!.body).toEqual({ status: 'active', motivo: 'vale para o lote', escopo: { profile_ids: ['ig-1', 'ig-2'], group_ids: ['g-1'] } });
+  });
+
+  it('trocar o escopo sem marcar ninguém manda vazio (todos) só depois de dito na tela; a lista que não carrega impede o envio às cegas', async () => {
+    backend.on('GET', /\/instagram\/profiles$/, () => apiError(500, 'internal', 'banco indisponível'));
+    await mostrarComGesto(FLUXO());
+    await abrirForm();
+    await setValue(campoMotivo(), 'vale para todos');
+    await click(trocarEscopo());
+    await waitFor(() => expect(text(container)).toContain('A lista de perfis e grupos não carregou'));
+    expect(text(container)).toContain('Espere a lista de perfis e grupos carregar');
+    expect(puts()).toHaveLength(0);
+    backend.on('GET', /\/instagram\/profiles$/, () => json([{ id: 'ig-1', username: 'conta.um', persona_name: 'Persona Um', display_name: null }]));
+    await click(byRole('button', /Tentar de novo/, container));
+    await waitFor(() => expect(allByRole('checkbox', /^Persona /, container)).toHaveLength(1));
+    await click(await botaoPronto(/^Religar para uso real$/, container));
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(puts()[0]!.body).toEqual({ status: 'active', motivo: 'vale para todos', escopo: { profile_ids: [], group_ids: [] } });
+  });
+
+  it('a recusa do servidor aparece no campo, o motivo digitado fica e nada some da tela; Cancelar descarta o rascunho', async () => {
+    backend.on('PUT', /\/flows\/f-0a1b2c3d4e5f$/, () => apiError(409, 'command_published', 'A habilidade h-1 está publicada com o mesmo comando.'));
+    await mostrarComGesto(FLUXO());
+    await abrirForm();
+    await setValue(campoMotivo(), 'quero ligar');
+    await click(await botaoPronto(/^Religar para uso real$/, container));
+    await waitFor(() => expect(text(container)).toContain('A habilidade h-1 está publicada com o mesmo comando.'));
+    expect(campoMotivo().value).toBe('quero ligar');
+    expect(mudou).toBe(0);
+    expect(useToastStore.getState().toasts.some((t) => t.title === 'Fluxo religado para uso real')).toBe(false);
+    await click(byRole('button', /^Cancelar$/, container));
+    expect(allByRole('textbox', /Por que ele volta ao uso real/, container)).toHaveLength(0);
+    await abrirForm();
+    expect(campoMotivo().value).toBe('');
+  });
+
+  it('o selo "Em uso real desde" aparece no Estado do fluxo ligado e não no desligado, sem data, sem a marca ou com data inválida', async () => {
+    const selo = () => Array.from(container.querySelectorAll('span')).filter((x) => /^Em uso real desde /.test(x.textContent ?? '')).length;
+    await mostrar(FLUXO({ state: 'published', em_uso_real_desde: '2026-10-07T10:00:00Z' }));
+    expect(selo()).toBeGreaterThan(0);
+    await mostrar(FLUXO({ state: 'disabled', em_uso_real_desde: '2026-10-07T10:00:00Z' }));        // desligado de novo: o selo não fica
+    expect(selo()).toBe(0);
+    await mostrar(FLUXO({ state: 'published', em_uso_real_desde: null }));
+    expect(selo()).toBe(0);
+    await mostrar(FLUXO({ state: 'published' }));
+    expect(selo()).toBe(0);
+    await mostrar(FLUXO({ state: 'published', em_uso_real_desde: 'ontem' }));
+    expect(selo()).toBe(0);
+    await mostrar(detalhe({ item: { kind: 'receita', state: 'published', em_uso_real_desde: '2026-10-07T10:00:00Z' } }));
+    expect(selo()).toBe(0);                                                                         // só o fluxo
+  });
+
+  it('a trilha mostra o motivo gravado pelo servidor ("religado para uso real: …")', async () => {
+    await mostrar(FLUXO({ state: 'published', em_uso_real_desde: '2026-10-07T10:00:00Z' }), );
+    await mostrar(detalhe({
+      item: { kind: 'fluxo', ref: 'f-0a1b2c3d4e5f', state: 'published', nascido_de_prova: true, em_uso_real_desde: '2026-10-07T10:00:00Z' },
+      trilha: [{ id: 5, from: 'disabled', to: 'published', reason: 'religado para uso real: provado na operação de 07/10', decided_by: 'Flavio',
+                 decided_at: '2026-10-07T10:00:00Z', run_id: null, tipo: null, run_invalidada: null }],
+    }));
+    expect(text(container.querySelector('[aria-label="Trilha"]') as HTMLElement)).toContain('religado para uso real: provado na operação de 07/10');
   });
 });

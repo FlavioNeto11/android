@@ -675,20 +675,29 @@ it('31.90-E: etapa com ação do catálogo não tem editor da conferência (o sa
 it('31.90-F: a coluna da gravação diz por que a gravação reconhece o elemento (seletor e id, sem o pacote)', async () => {
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('QA-001'));
-  expect(text()).toContain('(reconhecido por identificador e texto: conversation_name)');
+  expect(text()).toContain('(achado pelo identificador conversation_name e pelo texto)');
   expect(text()).not.toContain('x:id/conversation_name');
 });
 
 it('31.90-F: alvoReconhecido cobre cada seletor, o alvo sem identificador e o que não é toque', () => {
   const entrada = (parcial: Partial<TrainingInput>) => ({ ...SESSAO.inputs[0], ...parcial }) as unknown as TrainingInput;
-  expect(alvoReconhecido(entrada({ target: { desc: 'Enviar', unique: ['desc'] } }))).toBe('reconhecido por descrição');
-  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/ok', unique: ['rid', 'text'], text: 'OK' } }))).toBe('reconhecido por identificador (ou texto): ok');
+  expect(alvoReconhecido(entrada({ target: { desc: 'Enviar', unique: ['desc'] } }))).toBe('achado pela descrição');
+  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/ok', unique: ['rid', 'text'], text: 'OK' } }))).toBe('achado pelo identificador ok; também se acha só pelo texto');
   expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [] } }))).toBe('sem identificador único: este toque não vira receita');
   expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [], filhos: [{}] } }))).toBe('reconhecido pelo que o elemento contém');
   // O contêiner sem identidade: a pessoa vê o filho rotulado (e o id) pelo qual a receita o acha, até três.
   expect(alvoReconhecido(entrada({ target: { unique: [], filhos: [
     { text: 'Fulano', resource_id: 'a:id/row_name', unique: ['text'] }, { desc: 'Foto', unique: ['desc'] }, { resource_id: 'a:id/so_id' }, { text: 'quarto' }] } })))
     .toBe('reconhecido pelo que o elemento contém: “Fulano”, identificador row_name; “Foto”; identificador so_id');
+  // 31.169: o seletor composto, as alternativas e o id sem o pacote, em palavras (nada de "(ou identificador, texto)")
+  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/btn_profile', text: 'Perfil', unique: ['rid+text', 'rid', 'text'] } })))
+    .toBe('achado pelo identificador btn_profile e pelo texto; também se acha só pelo identificador ou só pelo texto');
+  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/icon', desc: 'Voltar', unique: ['rid+desc', 'desc'] } })))
+    .toBe('achado pelo identificador icon e pela descrição; também se acha só pela descrição');
+  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/so_id', unique: ['rid'] } }))).toBe('achado pelo identificador so_id');
+  expect(alvoReconhecido(entrada({ target: { text: 'OK', unique: ['rid+text', 'text'] } }))).toBe('achado pelo identificador e pelo texto; também se acha só pelo texto');   // sem id: nada de "undefined"
+  expect(alvoReconhecido(entrada({ target: { text: 'OK', unique: ['inventado'] } }))).toBe('achado por inventado');                                                         // seletor que a tela não conhece
+  expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [] } }))).not.toMatch(/achado/);
   expect(alvoReconhecido(entrada({ target: null }))).toBeNull();                      // sem alvo: a frase é de toqueSemAlvo
   expect(alvoReconhecido(entrada({ type: 'text', target: { unique: ['text'], text: 'x' } }))).toBeNull();
 });

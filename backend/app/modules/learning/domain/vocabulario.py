@@ -40,11 +40,14 @@ class SourceKind(StrEnum):
     DISAMBIGUATION = "disambiguation"
     FEEDBACK_NOTE = "feedback_note"
     MANUAL = "manual"
+    #: 31.149: a correção ensinada que não virou receita na etapa que falhou vira lição do planejador (o caminho é de
+    #: uma pessoa: só o dono a publica)
+    CORRECAO_ENSINADA = "teaching_correction"
 
 
 #: Origens em que o TEXTO veio de uma pessoa: o item nasce com `human_origin=1` e só o dono o publica (D1).
 FONTES_HUMANAS = frozenset({SourceKind.APPROVAL_EDIT, SourceKind.ANSWER, SourceKind.FEEDBACK_NOTE,
-                            SourceKind.MANUAL})
+                            SourceKind.MANUAL, SourceKind.CORRECAO_ENSINADA})
 
 
 class Papel(StrEnum):

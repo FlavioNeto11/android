@@ -1,6 +1,6 @@
 /**
  * Seção "Crenças" da persona (ADR-048): religião e política RICAS, que vão ao modelo e moldam a voz — o bloco
- * `<persona>` do backend (`social/context.py::linhas_de_crencas`) as escreve com a linha de conduta. Dois cartões no
+ * `<persona>` do backend (`social/context.py::linhas_de_crencas`) as escreve com a linha de uso das crenças. Dois cartões no
  * contrato de página (`PageSection` + grade de duas colunas), cada um com a leitura visual e a edição própria: salvar manda um
  * PATCH só de `biography.beliefs.<crença>`, que o servidor mescla chave a chave (esvaziar tudo manda `null`, que
  * apaga a crença).
@@ -51,11 +51,6 @@ export const ENGAJAMENTO_OPCOES: readonly { value: EngajamentoPolitico; label: s
   { value: 'nenhum', label: 'Nenhum' }, { value: 'baixo', label: 'Baixo' },
   { value: 'medio', label: 'Médio' }, { value: 'alto', label: 'Alto' },
 ];
-
-/** A regra de conduta, a mesma do backend (`CONDUTA_DAS_CRENCAS`), dita para quem edita. */
-const CONDUTA =
-  'A persona não faz propaganda política nem religiosa, não pede voto nem adesão, não espalha desinformação e não '
-  + 'ataca grupos nem pessoas por crença, ideologia ou identidade.';
 
 function rotulo<T extends string>(opcoes: readonly { value: T; label: string }[], valor?: T | null): string | null {
   return opcoes.find((o) => o.value === valor)?.label ?? null;
@@ -172,7 +167,7 @@ export function SecaoCrencas({ biography, onSalvar }: {
                  subtitle="Religião e política dão coerência aos valores, ao tom e às escolhas desta pessoa.">
       <Banner tone="info" icon={ShieldCheck} compact className={styles.crencasAviso}
               title="Vão ao modelo e moldam a voz, não viram assunto">
-        O modelo recebe estas crenças para a pessoa reagir de forma coerente ao que aprova e ao que evita. {CONDUTA}
+        O modelo recebe estas crenças para a pessoa reagir de forma coerente ao que aprova e ao que evita.
       </Banner>
       {/* Duas colunas que ocupam a largura: a grade automática deixava trilhas vazias à direita no mapa. */}
       <div className={styles.crencasGrade}>
