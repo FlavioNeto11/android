@@ -6,6 +6,7 @@ trabalhador por thread lógico roda sob o teto, e o teste mede quanto da CPU tot
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -81,6 +82,8 @@ class TestTetoDeCpu:
 
     def test_o_teto_limita_a_arvore_inteira_inclusive_os_netos(self, tmp_path):
         livre = _queimar_sem_teto(tmp_path)
+        if os.environ.get("FARM_FUNIL_RODANDO") and livre["ratio"] <= 0.5:
+            pytest.skip(f"controle sem valor: o funil ja roda sob o proprio teto de CPU (sem teto a carga usou {livre['ratio']:.0%})")
         preso = _queimar(tmp_path, "-Teto", "25")
         assert livre["ratio"] > 0.5, f"controle: sem teto a carga deveria usar a maior parte da CPU ({livre})"
         assert preso["ratio"] < 0.40, f"com teto de 25 % a árvore usou {preso['ratio']:.0%} da CPU total"
