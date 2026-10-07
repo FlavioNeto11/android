@@ -19,6 +19,7 @@ import { plural } from '../../lib/format';
 import { textoComMarcadores } from '../../lib/marcadores';
 import { FluxoNoLivro } from './FluxoNoLivro';
 import { OrigemDoTreino } from './OrigemDoTreino';
+import { RendimentoDoEnsinoSecao } from './RendimentoDoEnsino';
 import { DescricaoEntrada, agruparTeclas, falhaDe } from './TrainingReview';
 import styles from './Training.module.css';
 
@@ -135,6 +136,13 @@ export function SessaoSalva({ sessionId, onClose }: { sessionId: string; onClose
               ) : null}
             </div>
           ) : <p className={styles.hint}>Esta sessão não chegou a ter proposta.</p>}
+
+          {sessao.status === 'saved' ? (
+            <>
+              <h4 className={styles.sub}>Rendimento</h4>
+              <RendimentoDoEnsinoSecao sessionId={sessionId} />
+            </>
+          ) : null}
         </div>
       )}
     </Dialog>
