@@ -975,6 +975,16 @@ Os scripts da operação provisória ficam versionados em `.claude/canais/`, e o
       importa (a âncora do 28.48 também): o deploy vem antes do uso. O script e o backend moram no mesmo checkout e
       chegam juntos no merge; a janela só existe se o script for usado de um worktree contra o central antigo;
 - `resumo_laco.py`: o resumo de hora em hora, com `--carimbar` e `--ensaio`;
+- `resumo_rodada.py` (28.66): UM resumo consolidado de uma operação encerrada (31.154) para o Telegram do dono, em até 12
+  linhas no molde do aviso de deploy (assunto, resultado com números, `Crítico:` e `Espera você:`):
+  - lê `GET /api/operacoes/<id>` (ou `--arquivo operacao.json`, offline) e recusa a operação em curso;
+  - mostra solicitados, com conta, com sessão, concluídos, bloqueados, o bloqueio por motivo (contagem), as ações por tipo,
+    o custo em US$ contra o teto e a duração;
+  - nunca leva nome ou @handle de persona ou conta, id, comando, assunto, fontes nem o texto de comentário, legenda ou DM;
+    o motivo (texto livre) sai sem os nomes do próprio JSON e o corpo passa por `redacao.redigir`; o único link é o do
+    painel, posto depois da redação;
+  - o modo padrão só imprime o HTML (ensaio); `--enviar` usa o `telegram_status.py` e imprime o `message_id`, só com o sinal
+    da orquestradora. Prova `simulated` (`.claude/canais/test_resumo_rodada.py`); a `real` espera uma operação encerrada;
 - `url_painel.py`: grava ou recua o `avisos.url_painel` do `config.yaml`, com backup.
 
 As ferramentas do Trello ficam em `.claude/trello/`.
