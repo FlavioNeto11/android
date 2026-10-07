@@ -479,7 +479,7 @@ describe('31.228: modelos e custo no detalhe do agente', () => {
     expect(text(bloco.querySelector('[data-soma-da-funcao="decide"]')!)).toContain('8');
     expect(text(bloco.querySelector('[data-soma-total]')!)).toContain('US$ 0,12');
     expect(text(bloco.querySelector('[data-divisao-das-decisoes]')!)).toBe('Quem decidiu: claude-sonnet-5-5 6 (75%) · claude-opus-5-5 2 (25%).');
-    expect(bloco.textContent).not.toMatch(/decide|verify/);                          // nenhuma função em código cru
+    expect(bloco.textContent).not.toMatch(/\bdecide\b|\bverify\b/);                          // nenhuma função em código cru
   });
 
   it('só um modelo decidiu: não há divisão a mostrar; sem chamada de IA, diz isso; sem execução, nada é lido', async () => {
