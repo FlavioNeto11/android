@@ -16,6 +16,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Mapping, Protocol, Sequence, TypeVar
 
@@ -62,11 +63,12 @@ from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
 from ..social.approvals import ler_rascunho
 from ..social.chave_da_aprovacao import ARGUMENTO_DO_ROTULO_IA, rotulo_ia_exigido
-from ..util import norm_text, now, now_iso, parse_iso
+from ..util import norm_text, now, now_iso, parse_iso, to_iso
 from .costuras import (SAIU_POR_EXCECAO, SEM_COSTURAS, CosturasDeAprendizado, FechamentoDeTentativa, PedidoDeLicoes,
                        avisar, pedir_licoes)
 from .foreach import sanitize_item, teto_de_chamadas
 from .proofs import marcas_pendentes_na_tela, nivel_pelo_marcador, variantes_de_arroba
+from .observabilidade import efeitos_rejulgados_do_app
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .latencia import TemposDaTentativa, ms_desde
 from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_galeria
@@ -4187,7 +4189,9 @@ class StepExecutor:
                     # verificação passa a ter limite próprio, que era o que faltava (achado #96).
                     marcado = self._marcador_dispensa_o_juiz(step, capability, obs, need=need,
                                                              ja_julgou=judged_polls > 0, escalou=escalou)
+                    pela_prova_local = False       # 31.238: o "sim" veio da prova local do app, não do juiz barato
                     if marcado is not None:
+                        pela_prova_local = True
                         # 31.57: o marcador de entrega que o catálogo declara ("Seen" debaixo da bolha desta execução)
                         # afirma o nível na árvore. Como no 31.26, substitui SÓ o julgamento barato: o "sim" segue para
                         # o rejulgamento do 17.10 logo abaixo, que confere a tela e diz o nível que vale.
@@ -4208,6 +4212,7 @@ class StepExecutor:
                         verdict = Verdict(satisfied="yes", delivery_level=DeliveryLevel.sent,
                                           evidence=f"prova local ({local_proof}) na árvore: o primeiro julgamento foi "
                                                    "dispensado; o rejulgamento confere")
+                        pela_prova_local = True
                         metricas.contar("verificacao.primeiro_juiz_dispensado", prova=str(local_proof))
                         self.repo.decision(f"{rt.id} · {step.title}: envio comprovado pela árvore local (sent_text); o "
                                            "primeiro julgamento foi dispensado e o rejulgamento confere",
@@ -4241,9 +4246,13 @@ class StepExecutor:
                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="nivel", image_reason=motivo_imagem))
                         level = verdict.delivery_level
-                    if (verdict.satisfied == "yes" and not escalou and (step.side_effect or need is not None)
-                            and self.cfg.file.ai.rejudge_yes_on_side_effect
-                            and self.cfg.ai_role("verify").model != self.cfg.ai_role("escalation").model):
+                    rejulgaria = (verdict.satisfied == "yes" and not escalou and (step.side_effect or need is not None)
+                                  and self.cfg.file.ai.rejudge_yes_on_side_effect
+                                  and self.cfg.ai_role("verify").model != self.cfg.ai_role("escalation").model)
+                    if rejulgaria and pela_prova_local and self._rejulgamento_dispensado(run_id, rt.id, step):
+                        escalou = True             # 31.238: dispensado; o "sim" da prova local vale
+                        rejulgaria = False
+                    if rejulgaria:
                         # Item 17.10: um "sim" errado numa etapa com efeito externo (ela mesma, ou a que confirma o nível de entrega do efeito) vira sucesso falso (no rejulgamento de
                         # 25/09 o Haiku aprovou 6 telas erradas em 56). O modelo de escalonamento confere a mesma tela,
                         # uma vez, e o veredito dele é o que vale: se discordar, não conta como prova.
@@ -4446,6 +4455,32 @@ class StepExecutor:
         if nivel is None or DELIVERY_ORDER[DeliveryLevel(nivel)] < DELIVERY_ORDER[need]:
             return None
         return DeliveryLevel(nivel)
+
+    def _rejulgamento_dispensado(self, run_id: str, iid: str, step: StepDTO) -> bool:
+        """31.238: o app desta etapa ganhou o direito à dispensa do rejulgamento `sim_com_efeito` (mínimo de rejulgados na
+        janela, nenhuma discordância; `efeitos_rejulgados_do_app`, a régua de `/api/usage`)? Dispensado, fica na trilha
+        da execução (`kind = rejulgamento_dispensado`, com o app e a conta que deu o direito) e na métrica: é o contador da
+        próxima medida. Leitura que falha não dispensa nada."""
+        ai = self.cfg.file.ai
+        if not ai.rejulgamento_dispensado_por_app:
+            return False
+        try:
+            app = app_da_etapa(step.app_id, self.repo.db.scalar("SELECT app_ids FROM runs WHERE id=?", (run_id,)))
+            desde = to_iso(now() - timedelta(days=ai.rejulgamento_dispensa_janela_dias))
+            rejulgados, discordancias = efeitos_rejulgados_do_app(self.repo.db, app, desde=desde)
+        except Exception:  # noqa: BLE001 - na dúvida, o rejulgamento roda
+            log.exception("%s: direito à dispensa do rejulgamento não lido; rejulga", iid)
+            return False
+        if rejulgados < ai.rejulgamento_dispensa_minimo or discordancias:
+            return False
+        texto = (f"{iid} · {step.title}: efeito comprovado pela prova local do app; rejulgamento dispensado (31.238: "
+                 f"{rejulgados} rejulgamento(s) do app {app} em {ai.rejulgamento_dispensa_janela_dias} dia(s), "
+                 "nenhuma discordância)")
+        self.repo.bus.emit("decision", texto, run_id=run_id, instance_id=iid, step_id=step.id,
+                           data={"text": texto, "kind": "rejulgamento_dispensado", "app": app,
+                                 "rejulgados": rejulgados, "discordancias": discordancias})
+        metricas.contar("verificacao.rejulgamento_dispensado", app=app)
+        return True
 
     async def _sent_text_dispensa_o_juiz(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation, *,
                                          need: DeliveryLevel | None, local_proof: str | None, ja_julgou: bool,

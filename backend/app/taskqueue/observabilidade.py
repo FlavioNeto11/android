@@ -54,6 +54,17 @@ def grupos(db: Database, prices: dict[str, list[float]], *, run_id: str | None, 
     }
 
 
+def efeitos_rejulgados_do_app(db: Database, app: str, *, desde: str) -> tuple[int, int]:
+    """31.238: `(rejulgados, discordâncias)` do rejulgamento `sim_com_efeito` de um app desde `desde`, pela MESMA régua
+    de `/api/usage` (`_DISCORDA`, `app_da_etapa`). É o direito do app à dispensa do rejulgamento."""
+    linhas = db.query(
+        "SELECT c.verdict, s.app_id, r.app_ids FROM ai_calls c LEFT JOIN steps s ON s.id=c.step_id"
+        " LEFT JOIN runs r ON r.id=c.run_id WHERE c.ts >= ? AND c.role='verify' AND c.motivo='rejulgamento'"
+        " AND c.escalate='sim_com_efeito' AND c.ok=1", (desde,))
+    do_app = [r for r in linhas if app_da_etapa(r["app_id"], r["app_ids"]) == app]
+    return len(do_app), sum(int(_DISCORDA["sim_com_efeito"](r["verdict"])) for r in do_app)
+
+
 def _rejulgamentos(db: Database, por_motivo: dict[str | None, tuple[int, float]], *, run_id: str | None,
                    desde: str | None) -> dict[str, object]:
     """Custo do rejulgamento e a discordância, no total e por app (o app da etapa, como no histórico das ações)."""
