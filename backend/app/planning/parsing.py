@@ -21,6 +21,7 @@ from ..models import (DeliveryLevel, ForaDoCatalogo, MissingInfo, Plan, PlannerI
 from ..taskqueue.saidas import referencias
 from .capabilities import (CapabilityCatalog, CapabilityNode, compose, herdar_argumentos, load_catalog,
                            montar_etapa)
+from .habilidades import escolha_do_json
 from .provider import AIError, PlanRequest, Verdict, erro_de_validacao_sem_entrada, validar_saida
 
 
@@ -56,6 +57,19 @@ class _StepOut(BaseModel):
     opcional: bool = False            # item 31.36: etapa que só limpa a tela (o parsing confere a regra)
 
 
+class _ValorOut(BaseModel):
+    nome: str
+    valor: str
+
+
+# 31.151: a habilidade conhecida escolhida, com os valores tirados do comando. Lista de pares, não dicionário: o esquema
+# estrito fecha todo objeto (`additionalProperties: false`), e um dicionário de nomes livres não passaria. Sem docstring:
+# ela iria ao esquema que o modelo lê.
+class _HabilidadeOut(BaseModel):
+    ref: str
+    valores: list[_ValorOut]
+
+
 class _PlanOut(BaseModel):
     summary: str
     app_id: str | None
@@ -63,6 +77,7 @@ class _PlanOut(BaseModel):
     success_criteria: list[str]
     steps: list[_StepOut]
     missing: list[MissingInfo]
+    habilidade: _HabilidadeOut | None = None
 
 
 # Formato do planejamento COM catálogo: por etapa, só o que o modelo realmente decide. Esquema pequeno é esquema
@@ -93,6 +108,7 @@ class _CapPlanOut(BaseModel):
     steps: list[_CapStepOut]
     missing: list[MissingInfo]
     fora_do_catalogo: list[_ForaOut] = []
+    habilidade: _HabilidadeOut | None = None
 
 
 # Formato do planejamento ENTRE APPS (item 24.1, ADR-058): cada etapa diz o app dela e é AÇÃO do catálogo (app com
@@ -132,6 +148,7 @@ class _MultiPlanOut(BaseModel):
     steps: list[_MultiStepOut]
     missing: list[MissingInfo]
     fora_do_catalogo: list[_ForaOut] = []
+    habilidade: _HabilidadeOut | None = None
 
 
 # Formato CURTO da etapa livre (LT-4b, `ai.esquema_do_plano: curto`): o plano custa ~6,6 ms por token de saída, e
@@ -166,6 +183,7 @@ class _PlanCurtoOut(BaseModel):
     success_criteria: list[str]
     steps: list[_StepCurtoOut]
     missing: list[MissingInfo]
+    habilidade: _HabilidadeOut | None = None
 
 
 class _LivreCurtoOut(BaseModel):
@@ -198,6 +216,7 @@ class _MultiPlanCurtoOut(BaseModel):
     steps: list[_MultiStepCurtoOut]
     missing: list[MissingInfo]
     fora_do_catalogo: list[_ForaOut] = []
+    habilidade: _HabilidadeOut | None = None
 
 
 #: Tentativas da etapa livre sem efeito no formato curto: o padrão de `PlanStep`. No formato longo o modelo escolhia
@@ -354,7 +373,7 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
         plan.steps = []
     # R6: o plano livre também declara os apps de que precisa (antes, só a skill compilada declarava).
     plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
-    return plan
+    return _com_escolha(plan, raw, req)
 
 
 def _titulo_limpo(titulo: str) -> str:
@@ -424,6 +443,13 @@ def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: 
         # A recusa substitui o plano inteiro: um pedaço montado ou uma pergunta não servem a quem pediu o impossível.
         plan.steps, plan.missing, plan.fora_do_catalogo = [], [], fora
     plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
+    return _com_escolha(plan, raw, req)
+
+
+def _com_escolha(plan: Plan, raw: str, req: PlanRequest) -> Plan:
+    """31.151: com habilidades oferecidas, o campo `habilidade` da resposta vai junto do plano (o `_plan` confere)."""
+    if getattr(req, "habilidades", None) and (e := escolha_do_json(raw)) is not None:
+        plan.escolha_por_semelhanca = {"ref": e.ref, "valores": e.valores}
     return plan
 
 
@@ -521,7 +547,7 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
     if falha is not None:
         raise AIError(f"Plano inválido devolvido pelo modelo: {falha}", kind="invalid_output")
     plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
-    return plan
+    return _com_escolha(plan, raw, req)
 
 
 def verdict_from_json(raw: str) -> Verdict:

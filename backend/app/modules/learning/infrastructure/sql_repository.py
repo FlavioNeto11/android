@@ -89,8 +89,9 @@ class SqlLearningRepository:
         e = novo.escopo
         row = self._db.one(
             "SELECT * FROM learning_items WHERE kind=? AND scope_app=? AND scope_capability=? AND scope_step_hash=?"
-            " AND scope_role=? AND scope_profile_id=? AND content_hash=? AND state IN (?,?,?)",
-            (novo.kind.value, e.app, e.capability, e.step_hash, e.role, e.profile_id, novo.content_hash, *_VIVOS))
+            " AND scope_role=? AND scope_profile_id=? AND scope_subject=? AND content_hash=? AND state IN (?,?,?)",
+            (novo.kind.value, e.app, e.capability, e.step_hash, e.role, e.profile_id, e.subject, novo.content_hash,
+             *_VIVOS))
         return _item(row) if row else None
 
     def criar_item(self, novo: NovoItem, *, by: str, estado: SkillState, detalhe: str | None, reason: str,
@@ -106,11 +107,12 @@ class SqlLearningRepository:
             with self._db.tx():
                 self._db.execute(
                     "INSERT INTO learning_items(id, kind, state, state_detail, scope_app, scope_capability,"
-                    " scope_step_hash, scope_role, scope_profile_id, app_version, side_effect, human_origin, content,"
-                    " content_hash, summary, tokens, source_kind, provenance, parent_id, created_by, created_at,"
-                    " updated_at, state_at, state_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " scope_step_hash, scope_role, scope_profile_id, scope_subject, app_version, side_effect,"
+                    " human_origin, content, content_hash, summary, tokens, source_kind, provenance, parent_id,"
+                    " created_by, created_at, updated_at, state_at, state_by)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (item_id, novo.kind.value, estado.value, detalhe, e.app, e.capability, e.step_hash, e.role,
-                     e.profile_id, novo.app_version, int(novo.side_effect), int(novo.human_origin),
+                     e.profile_id, e.subject, novo.app_version, int(novo.side_effect), int(novo.human_origin),
                      canonical_json(novo.content), novo.content_hash, novo.summary, novo.tokens,
                      novo.source_kind.value, canonical_json(novo.provenance), novo.parent_id, by, agora, agora, agora,
                      by))
@@ -608,7 +610,7 @@ def _item(row: Row) -> ItemDeAprendizado:
         state_detail=linhas.texto_ou_nulo(row, "state_detail"),
         escopo=Escopo(app=linhas.texto(row, "scope_app"), capability=linhas.texto(row, "scope_capability"),
                       step_hash=linhas.texto(row, "scope_step_hash"), role=linhas.texto(row, "scope_role"),
-                      profile_id=linhas.texto(row, "scope_profile_id")),
+                      profile_id=linhas.texto(row, "scope_profile_id"), subject=linhas.texto(row, "scope_subject")),
         app_version=linhas.texto_ou_nulo(row, "app_version"), side_effect=bool(linhas.inteiro(row, "side_effect")),
         human_origin=bool(linhas.inteiro(row, "human_origin")), content=linhas.json_objeto(row, "content"),
         content_hash=linhas.texto(row, "content_hash"), summary=linhas.texto(row, "summary"),

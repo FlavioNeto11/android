@@ -14,7 +14,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from app.modules.learning.domain.ciclo import Desligamento, SkillState
 from app.modules.learning.domain.curador import Dossie
@@ -471,3 +471,12 @@ class PassoDeCuradoria(Protocol):
     nome: str
 
     def executar(self, agora: datetime) -> int: ...
+
+
+@runtime_checkable
+class PassoPorOperacao(Protocol):
+    """O passo que também roda para UMA operação assim que ela encerra, com o relatório (só ids e contagens)."""
+
+    nome: str
+
+    def da_operacao(self, operacao: str, agora: datetime) -> JsonObject | None: ...

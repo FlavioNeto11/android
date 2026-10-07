@@ -2329,3 +2329,193 @@ pela proveniência, pela interação ou inferida) está no topo de `infrastructu
 A confiança fica numa régua só (`confirmado`/`hipotese`) e o valor original aparece ao lado, em `estado`. O que a rota
 não responde aparece em `nao_coberto`. Contrato: adendo v1.96. O relatório da operação da Portal (31.162) lê esta rota.
 
+## A curadoria por operação encerrada (31.217)
+
+O passo do 31.190 (o fato confirmado da pesquisa vira candidata do escritor) rodava só na volta periódica da curadoria
+(`aprendizado.curadoria_s`, 15 min de fábrica), e ninguém via o que ele tinha promovido ou recusado.
+
+- **Na hora:** o laço da curadoria (`state.py::_curadoria_loop`) ouve `operacao.encerrada` no barramento e roda, só no
+  líder da trava `curadoria`, os passos que sabem rodar por operação (`PassoPorOperacao`; hoje, o dos fatos). Entre um
+  evento e outro, a volta periódica segue no mesmo prazo. O evento perdido (assinatura descartada, processo fora) é
+  coberto por ela: a volta olha as operações encerradas da janela de 7 dias.
+- **O relatório** (`FatosDaOperacaoParaOLivro.da_operacao`) é publicado como `aprendizado.curadoria_da_operacao`:
+  - `nascidas`: os ids das candidatas novas;
+  - `ja_no_livro`: os fatos que já tinham item vivo;
+  - `recusadas`: a contagem por motivo fechado (`MotivoDaRecusa`: `nao_e_fato`, `hipotese`, `vencido`, `sem_app`,
+    `longo`, `identificador`, `sem_assunto`), a mesma régua da `candidata`;
+  - `vetadas`: o que o Livro recusou (veto de uma pessoa ou texto com cara de credencial);
+  - `vencidas_no_livro`: os itens vivos do mesmo app que nasceram de um fato cujo frescor passou. Só relata: o item
+    não muda de estado.
+- Só ids e contagens: o texto do fato fica no Livro.
+
+## O plano de ensino guiado do Instagram (31.201)
+
+Só documento e leitura: nada aqui foi executado. O plano diz o que ensinar no Instagram, em que ordem, em que aparelho
+e como medir, a partir das contas novas do dono (29.168; o roteiro de cadastro e de primeiro login está em
+`.claude/handoffs/prova30/android.md` §11–§13). Cada passo com conta real pede o sim do dono na hora.
+
+**Ponto de partida.** Leitura só de leitura no central em 07/10, ~00:30Z, commit `42cba3cd`, banco aberto em `mode=ro`:
+- sessões de ensino: 26, das quais 12 salvas, 9 descartadas, 3 gravadas e 2 propostas. As salvas são de 3 personas;
+- receitas ensinadas ativas: 14 no Ajustes do Android, 7 no QA Messenger e **1 no Instagram** (a 221, `open_profile_1`,
+  abre o perfil de quem roda, com 0 reproduções);
+- etapas reais conduzidas por receita ensinada: 9 no Ajustes do Android, 12 no QA Messenger e **0 no Instagram**.
+
+No Instagram, o ensino ainda não rendeu uso real. O plano existe para mudar isso sem efeito fora da máquina.
+
+### As regras que valem durante todo o plano
+
+- **A conta nova só lê** (§13.6): nada de seguir, curtir, comentar, mandar mensagem ou publicar até o dono dizer.
+  - A etapa com efeito não se ensina por aqui: a troca do ensino a recusa (31.153).
+  - Uma ação com efeito continua no catálogo, com aprovação.
+- **Um login por vez, medido** (§13.2), fora das janelas de medida do notebook. Planejar 2 rodadas por conta (§11).
+- **A tela de bloqueio para tudo** ("Confirm you're human" e afins). Ninguém toca, e a conta sai (§11).
+- **Uma conta por aparelho**, e o aparelho com conta não tem o reinício de dados.
+- **Valor da persona no ensino.** O @ ou o nome da própria persona digitado durante o ensino é trocado por parâmetro e
+  mascarado na gravação, na proposta e no relatório (K-107, 31.183).
+  - A etapa que mira a conta da PRÓPRIA persona traz o aviso do 31.182.
+  - Essa etapa não serve a outra persona como foi gravada.
+- **A proposta do ensino é uma chamada paga de IA** (papel do planejador, `training/generalizer.py`), uma por sessão.
+  O custo de cada sessão é lido em `ai_calls`. Com o uso pago autorizado para operar, o teto é por sessão, e o gasto
+  vai na trilha.
+
+### O que ensinar, em ordem (tudo só leitura)
+
+| # | O que | Parâmetro | Por que nesta ordem |
+|---|---|---|---|
+| 1 | Abrir o Instagram até a tela inicial | nenhum | É a base de todas as outras. Se a abertura não fica estável, o resto cai na IA |
+| 2 | Abrir a busca e procurar um perfil pelo @ | `{username}` | É a etapa que a operação mais repete. O valor vira parâmetro: nunca o @ de quem ensina |
+| 3 | Abrir o perfil achado | `{username}` | É o alvo da operação (P-027: o post nosso mais recente) |
+| 4 | Abrir o post mais recente do perfil | nenhum | É a leitura do alvo (31.179) |
+| 5 | Voltar à tela inicial | nenhum | Fecha o caminho. Sem ela, a próxima etapa parte de uma tela desconhecida |
+| 6 | Abrir o próprio perfil | nenhum | Só para a persona que ensina (31.182). Fica por último porque não serve às outras |
+
+Uma persona ensina; as outras usam. Pela regra do 30.81, a receita ensinada vale só para quem ensinou, até o
+"Confirmar que fica" no Livro ou uma prova real. Ensinar a mesma etapa em várias personas gasta IA e não mede nada a
+mais.
+
+### Onde
+
+- **Primeira conta: o android-11 (central)**, depois de ligado e com o app verificado (§12).
+  - O central tem folga de CPU, e o ensino grava cada toque.
+  - A persona dessa conta ensina as etapas 1 a 6.
+- **Segunda conta: o android-09 (notebook).** Ela não ensina: executa as etapas 1 a 5 depois da liberação, para medir o
+  alcance noutra persona e noutro host.
+- **As outras contas novas** (10, 12, 05; §12) entram uma a uma, só para usar. Não há ensino novo, salvo onde a medida
+  mostrar uma tela diferente.
+
+### Como medir cada receita (rotas desta fase)
+
+1. **Depois de salvar**: o relatório do ensino diz o que virou receita e o que ficou na IA. A troca diz o que recusou
+   (efeito, dado da persona).
+2. **Uso na persona que ensinou**: 2 ou 3 operações só de leitura no mesmo app.
+   - `GET /api/aprendizado/receitas/{id}/rendimento` (31.191, adendo v1.110) dá `sem_ia.real`, `caiu_na_ia.real` e o
+     `custo_evitado_usd`.
+   - A régua proposta para o "liberaria" do 31.202: 3 usos reais sem IA, em 2 execuções distintas, e nenhuma falha nas
+     últimas 3.
+3. **Quem pode usar**: `GET /api/aprendizado/alcance?app=com.instagram.android` (31.181, adendo v1.107) diz, por
+   persona, se a receita vale e o motivo de não valer. Até a liberação, a resposta esperada para as outras personas é
+   `pode: false`, motivo `presa_a_quem_ensinou`.
+4. **Liberar**: o dono decide no Livro ("Confirmar que fica"), olhando o rendimento. Depois disso a segunda conta usa.
+   - O mesmo `rendimento` passa a contar o uso fora de quem ensinou.
+   - A sugestão do 31.202 (em sombra) fica ao lado, para comparar com a decisão do dono.
+5. **A prova da onda**: `scripts/prova-onda-aprendizado.py` (31.192) marca o 31.165 como `real` quando uma etapa da
+   operação foi conduzida por receita do ensino. É o primeiro uso real do ensino no Instagram.
+
+**Pronto** quando as etapas 1 a 5 tiverem `sem_ia.real ≥ 3` na persona que ensinou e pelo menos 1 uso real sem IA na
+segunda conta, sem falha nas últimas 3. **Parar** e chamar o dono na tela de bloqueio, no `auth_challenge`, na conta
+errada aberta ou com 2 falhas seguidas da mesma receita.
+
+### O que este plano não faz
+
+- Não cria conta, não digita senha e não resolve verificação: isso é do dono (§11).
+- Não ensina ação com efeito e não muda a regra do 30.81. A liberação sem pessoa é a pergunta do 31.202.
+- Não liga aparelho, não mexe em `max_online_devices` e não roda no meio da medida do notebook.
+
+## A sombra da quarentena pelo rendimento (31.202)
+
+Um passo da curadoria, sem IA, lê o uso REAL de cada receita ensinada ativa e diz o que faria. **Nada se aplica**: a
+loja de receitas, a quarentena (3 falhas seguidas) e o 30.81 seguem iguais. Ligar de verdade é uma pergunta ao dono.
+
+- **"liberaria"**: a receita ainda vale só para quem ensinou e rendeu no uso real dessa persona.
+  - O limiar: 3 usos sem IA, em 2 execuções distintas, e nenhuma falha nas 3 últimas tentativas dela.
+  - O uso de outra persona não conta.
+- **"prenderia de volta"**: a receita já liberada falhou nas 2 últimas tentativas reais fora de quem ensinou. Falhar
+  aqui é a receita não conduzir sozinha (`recipe>…` ou falha).
+- **"nenhuma"**: o resto, com o motivo e as contagens.
+- **Nunca "liberaria"** para a receita com efeito externo (ação `commit`) nem para a que mira a conta da própria persona
+  (o parâmetro `{conta_<app>_usuario}`, o mesmo do aviso do 31.182). A receita 221 do Instagram é deste caso.
+- **O uso real** segue a régua do rendimento (`domain/rendimento.tipo_de_uso`): nem simulada, nem prova, nem lote. A
+  persona de cada tentativa é a do objetivo da etapa (`objectives.profile_id`). A liberação usa a régua da loja
+  (`RecipeStore.liberada_fora_do_ensino`).
+- **Onde fica**: um sinal por receita em `learning_signals`, sobrescrito a cada passo.
+  - `kind` é `sombra_da_quarentena` e `source_ref` é `receita:<id>`, com `created_by` sistema.
+  - `reason` é a sugestão e `note` o motivo. `data` leva as contagens, a regra (`31.202-v1`) e se está liberada.
+  - Como as sombras do 30.34 e do 30.55, o sinal não é gesto de pessoa: fica fora da aba Sinais. Lê-se por
+    `GET /api/aprendizado/sinais?kind=sombra_da_quarentena`.
+- Código: `domain/sombra_da_quarentena.py` e `infrastructure/sombra_da_quarentena_sql.py`. A montagem só registra o
+  passo quando há a loja de receitas.
+- A pergunta ao dono (o que muda com sim e com não) está em `.claude/handoffs/aprendizado-pergunta-31-202.md`.
+
+## A lição do planejador por persona (31.218)
+
+O 31.149 fazia da correção ensinada (a que não virou receita na etapa que falhou) uma lição do planejador do app
+inteiro. O que uma persona errou ia ao plano de todas.
+
+- **De quem é:** a lição nasce com a persona do objetivo que falhou (`scope_profile_id`; o id, nunca o nome, também na
+  proveniência). Sem persona na execução, segue do app.
+- **Para quem vai:** a lição com persona só vai ao planejamento de UMA persona, a mesma (`licoes.nivel`). A costura
+  `PedidoDeLicoes.profile_id` vai preenchida só quando todos os aparelhos do plano são dessa persona; com várias, vai
+  '' e a lição fica fora.
+- **Identidade:** a persona faz parte do escopo, então a mesma correção a partir de duas personas são dois itens. Cada
+  um espera o dono: o texto é de pessoa (D1).
+- **Onde se vê:** o alcance (31.181) mostra, em cada persona, as `correcoes`: o que ela erra (a etapa), como se
+  corrige (o caminho) e se vale só para ela ou para o app. A lição anterior ao 31.218 aparece na persona da etapa que
+  falhou, marcada `app`. A prévia das lições aceita `persona=` (adendo v1.118).
+- `scope_profile_id` deixa de ser só de voz e preferência. O relatório do aprendizado da operação já trata o item
+  com dona como conhecimento da persona; a lição de correção passa a contar lá desse jeito.
+
+## O ensino do fluxo para alvo de terceiro (31.219)
+
+Preparado, não executado. O alvo da onda 2 passou a ser o primeiro post de uma página pública de terceiro (P-029). A
+única receita ensinada do Instagram (a 221) abre o PRÓPRIO perfil e não serve a esse alvo. Este é o roteiro para
+ensinar o caminho certo quando o dono der a conta de teste.
+
+**A proposta de referência** está em `backend/tests/fixtures/ensino/proposta_alvo_de_terceiro.json`. É o que a sessão
+deve salvar:
+- comando `abra o perfil de {username}, a primeira publicação e os comentários`, com um parâmetro só, `{username}`: o @
+  da página pública de terceiro, sem a arroba. Nunca a conta da persona;
+- três etapas, todas ações do catálogo do Instagram e sem efeito:
+  1. `abrir_perfil`: `OPEN_PROFILE`, com `username = {username}`;
+  2. `abrir_primeira_publicacao`: `OPEN_POST`, com `target` = "a primeira publicação da grade" e
+     `post_author = {username}` (a regra de uma conta por alvo, ADR-055, precisa do autor);
+  3. `abrir_comentarios`: `OPEN_COMMENTS`.
+- `test_ensino_alvo_de_terceiro.py` confere que ela só lê, que o único parâmetro é `{username}`, que cada etapa monta
+  pelo catálogo e que a prévia a aceita sem o aviso de conta própria (31.182).
+
+**O roteiro, com a conta de teste do dono** (cada passo com conta real pede o sim dele na hora):
+1. Antes: a conta logada no aparelho e verificada (`session_ready`), e uma página pública de terceiro escolhida pelo
+   dono. Fora da janela de medida do notebook. Nada de comentar, curtir, seguir nem mandar mensagem: o fluxo só lê.
+2. Abrir uma sessão de ensino no aparelho, com o app Instagram, e demonstrar à mão: tocar a busca, digitar o @ da
+   página, abrir o perfil, tocar a primeira publicação da grade e tocar o balão de comentários. Parar.
+3. Pedir a proposta à IA: é uma chamada paga, uma por sessão.
+4. Na prévia, comparar com a referência:
+   - o comando com `{username}`;
+   - as três etapas com as ações do catálogo;
+   - nenhum aviso de conta própria;
+   - nenhuma etapa com efeito;
+   - o @ digitado virou parâmetro, não literal.
+   Se a proposta divergir, corrigir na prévia antes de salvar. A IA atribui as entradas gravadas às etapas; descartar
+   só o que não é de etapa nenhuma.
+5. Salvar, com o escopo da persona que ensinou. Pela regra do 30.81, as receitas valem só para ela até o "Confirmar
+   que fica" ou a prova.
+6. Medir: 2 ou 3 execuções só de leitura com outro @ público. Depois `GET /api/aprendizado/receitas/{id}/rendimento`
+   (31.191) e `GET /api/aprendizado/alcance?app=instagram` (31.181).
+7. Parar na tela de bloqueio, no `auth_challenge` e na conta errada, como no plano de ensino guiado (31.201).
+
+**Na operação (onda 2), o fluxo não substitui o plano.** A escolha por semelhança (31.151, que executa direto pelo
+31.210) troca o plano INTEIRO pelo do fluxo e só confere se `{username}` está no comando (`habilidades.escolha_valida`).
+Não confere se o fluxo cobre o comando todo. Este fluxo só lê; a ação final da operação (o comentário com aprovação)
+ficaria de fora. Na operação, o que serve são as ETAPAS ensinadas (31.153): o planejador livre monta o plano com a
+ação final, e cada etapa de leitura que tiver receita estável troca o ator pela receita. Sem ensino feito antes da
+onda, o planejador vai livre nos alvos.
+

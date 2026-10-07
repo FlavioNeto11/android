@@ -56,6 +56,9 @@ class PedidoDeLicoes:
     objective_id: str | None = None
     step_id: str | None = None
     attempt_id: str | None = None
+    #: 31.218: a persona do pedido quando ela é UMA só (o planejamento de uma execução com várias personas manda '');
+    #: a lição com persona (a correção ensinada a partir da falha dela) só vai ao pedido da mesma persona.
+    profile_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)

@@ -19,6 +19,225 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.219: o ensino do fluxo para alvo de terceiro, preparado (branch feat/31-219-ensino-alvo-de-terceiro)
+
+- O alvo da onda 2 é o primeiro post de uma página pública de terceiro (P-029), e a única receita ensinada do Instagram
+  abre o próprio perfil.
+- A proposta de referência fica em `backend/tests/fixtures/ensino/proposta_alvo_de_terceiro.json`: busca, perfil de
+  `{username}`, primeira publicação e comentários, só leitura e com as ações do catálogo.
+- O roteiro para a conta de teste do dono está em `docs/dominios/aprendizado.md`. Nada foi executado.
+- Prova `simulated`: `backend/tests/test_ensino_alvo_de_terceiro.py` (2). `real`: `not_run`, pede a conta de teste.
+
+## 2026-10-07 — 31.218: a lição do planejador por persona (branch feat/31-218-licao-por-persona, adendo v1.118)
+
+- A correção ensinada a partir de uma falha (31.149) ia ao plano de todas as personas do app. Agora a lição é da
+  persona do objetivo que falhou e só vai ao planejamento dela.
+- O planejamento manda a persona na costura só quando o plano é de UMA persona.
+- O alcance mostra em cada persona as `correcoes`: o que ela erra e como se corrige. A prévia das lições aceita
+  `persona=`.
+- Prova `simulated`: `backend/tests/test_licao_do_planejador_por_persona.py` (4). `real`: `not_run`, pede o deploy.
+
+## 2026-10-07 — 31.217: curadoria por operação encerrada (branch feat/31-217-curadoria-por-operacao)
+
+- O passo do 31.190 rodava só na volta de 15 min, sem dizer o que promoveu. Agora o laço da curadoria ouve
+  `operacao.encerrada` e roda o passo para aquela operação na hora, só no líder.
+- O relatório sai no evento `aprendizado.curadoria_da_operacao`, só com ids e contagens: nascidas, já no Livro,
+  recusadas por motivo fechado, vetadas e vencidas no Livro. A volta periódica segue e cobre o evento perdido.
+- Prova `simulated`: `backend/tests/test_curadoria_por_operacao.py` (3), incluindo o laço que ouve o evento no harness.
+  `real`: `not_run`, pede o deploy e uma operação encerrada.
+
+## 2026-10-07 — 31.190, complemento: a proveniência do fato no Livro (adendo v1.117, aprendizado/integ-60)
+
+- A Portal (31.214) mostra a origem, a evidência, a confiança e o frescor da lição que nasceu de um fato da pesquisa.
+- A lista do Livro ganha `source_kind`. O detalhe da lição ganha `proveniencia`, só para o modelo
+  `fato_da_operacao` e com chaves fechadas: operacao, assunto, fontes, frescor_ate, usado_em, execucoes e confianca.
+- Prova `simulated`: `backend/tests/test_fatos_da_operacao_no_livro.py` (3). `real`: `not_run`, pede o deploy.
+
+## 2026-10-07 — 31.210: o fluxo reconhecido por semelhança executa direto (branch feat/31-210-semelhanca-executa)
+
+- Decisão do dono (P-032, 07/10: "sim executa direto"). A execução `execute` cujo plano o planejador escolheu por
+  semelhança (31.151) não para mais em `planned` à espera da prévia: segue para `running`.
+- A trilha diz "seguiu por semelhança", e `flows.uses` sobe na escolha. Sai a constante `SEM_CONFIRMACAO`.
+- As portas de aprovação de efeito externo continuam: a etapa com efeito pede aprovação no despacho, como sempre.
+- Contrato v1.103 ajustado.
+- Prova `simulated`: `backend/tests/test_fluxo_por_semelhanca.py` (5). `real`: `not_run`, pede o deploy.
+
+## 2026-10-07 — 31.183, correção: os avisos do ensino saem mascarados (achado da Portal, aprendizado/integ-60)
+
+- A prévia, o salvar e o refazer receitas devolviam `warnings` em claro. Vários citam a etapa pelo título ou, sem
+  título, pela `key`, e a IA escolhe os dois a partir da tela. O aviso do 31.182 já usava a posição da etapa.
+- `exibicao.avisos` mascara o texto e a forma de chave (`abrir_perfil_{perfil_nome}`). A proposta guardada não muda.
+- Prova `simulated`: `backend/tests/test_proposta_para_exibir.py` (4). Ensino, arquitetura e rotas: 502 passaram.
+## 2026-10-07 — 31.200: o escopo de assunto no Livro (branch feat/31-200-escopo-de-assunto, migração 128)
+
+- O fato da pesquisa de uma operação (31.190) nascia no escopo do app inteiro. Publicado, iria a todo texto do
+  escritor no app, sobre qualquer post.
+- Migração 128: `learning_items.scope_subject`, e o índice `ux_learning_items_vivo` com o assunto. O item anterior
+  fica sem assunto, e a chave do veto dele não muda.
+- O fato nasce com o assunto canônico da operação. Sem assunto, ou com identificador no assunto, não nasce.
+- A lição com assunto só vai ao prompt de quem pede o mesmo assunto (`licoes.nivel`). Hoje nenhum pedido do escritor
+  leva assunto, então ela não vai a prompt nenhum.
+- `GET /api/aprendizado` ganha o campo `assunto` e o filtro `?assunto=` (adendo v1.113).
+- Prova `simulated`: `backend/tests/test_livro_escopo_de_assunto.py` e `backend/tests/test_migracao_128.py`, em SQLite.
+  PostgreSQL e `real`: `not_run`.
+## 2026-10-07 — 31.201: o plano de ensino guiado do Instagram (branch feat/31-201-plano-de-ensino, só documento)
+
+- Seção nova em `docs/dominios/aprendizado.md`, com quatro partes:
+  - o que ensinar, em ordem e só leitura (6 etapas);
+  - onde: uma persona ensina no android-11, e a segunda conta, no android-09, só usa;
+  - como medir: rendimento (31.191), alcance (31.181), "Confirmar que fica" e a prova da onda (31.192);
+  - quando parar.
+- Parte das contas novas do dono (29.168). Nada executado.
+- Ponto de partida, lido no central em 07/10 ~00:30Z (`42cba3cd`, banco em `mode=ro`): 1 receita ensinada no
+  Instagram, com 0 uso real; 12 etapas reais no QA Messenger e 9 no Ajustes do Android.
+## 2026-10-07 — 31.202: o rendimento da receita ensinada alimenta a quarentena em sombra (branch feat/31-202-sombra-da-quarentena)
+
+- Um passo da curadoria, sem IA, grava por receita ensinada ativa o que faria, sem fazer:
+  - "liberaria": 3 usos reais sem IA de quem ensinou, em 2 execuções, sem falha nas últimas 3;
+  - "prenderia de volta": a receita liberada falhou nas 2 últimas vezes fora de quem ensinou;
+  - "nenhuma", com o motivo.
+- Nunca "liberaria" para a receita com efeito externo nem para a que mira a conta da própria persona.
+- Nada se aplica. O sinal `sombra_da_quarentena` fica fora da aba Sinais, como as sombras do 30.34 e do 30.55; lê-se
+  por `GET /api/aprendizado/sinais?kind=sombra_da_quarentena` (adendo v1.115).
+- A pergunta ao dono está em `.claude/handoffs/aprendizado-pergunta-31-202.md`.
+- Prova `simulated`: `backend/tests/test_sombra_da_quarentena.py` (3 testes). `real`: `not_run`, pede o deploy.
+
+## 2026-10-07 — 31.192: o script que marca a prova da onda do aprendizado pelo commit no ar (branch feat/31-192-marcacao-da-onda)
+
+- A medida da onda 2 de 07/10 depende do commit no ar. No central lido em 06/10 23:10Z (`42cba3cd`), os cortes 58 e 59
+  estavam fora.
+- `scripts/prova-onda-aprendizado.py --operacao OP` lê o commit pela saúde (ou `--commit`) e o banco em `mode=ro`. Para
+  o 31.165, o 31.178 e o 31.179, confere pelo git se o commit do item está no central e o que a operação exercitou:
+  - 31.165: etapa conduzida por receita do ensino;
+  - 31.178: evidência a favor com a execução aberta;
+  - 31.179: fato de pesquisa confirmado pela leitura do alvo.
+- Sai o formato do plano-100 só com as linhas `real`. As `not_run` vão a `pendentes`, com o motivo, e não entram no
+  `aplicar`, que apagaria a prova simulada.
+- Prova `simulated`: `scripts/tests/test_prova_onda_aprendizado.py` (2 testes; banco migrado, ancestral do git trocado).
+  `real` só de leitura, em 07/10 00:05Z no central `42cba3cd`, com a operação da onda 1 (`op-20261006194323-0a1540`):
+  as três saíram `not_run`, "o commit … do item não está no central".
+## 2026-10-07 — 31.191: o rendimento de uma receita, com o custo de IA evitado (branch feat/31-191-rendimento-por-receita)
+
+- O rendimento do ensino (31.177) era por sessão. A tela do Livro (31.196, Portal) mostra cada receita, também as de
+  execução.
+- `GET /api/aprendizado/receitas/{id}/rendimento` (adendo v1.110) usa o leitor do 31.177
+  (`LeitorDoRendimento.da_receita`). Ele dá:
+  - a contagem por uso: sem IA, caiu na IA, outras;
+  - as reproduções, a origem, a sessão e o último uso;
+  - o custo evitado: etapas reais sem IA × o US$ médio da IA na mesma etapa (`template_hash`), em execução não
+    simulada.
+
+  Sem referência de custo na retenção, os dois campos de custo vêm `null`.
+- A branch leva também o `fix/31-177-prefixo-do-lote` (6f21669a): o rendimento usa o `PREFIXO_LOTE` do contrato.
+- Prova `simulated`: `backend/tests/test_rendimento_por_receita.py`. Rendimento do ensino, arquitetura, ordem e
+  cobertura de rotas, avisos de rajada e fatos da operação: 39 passaram. mypy 257. `real`: `not_run`, pede o deploy.
+
+## 2026-10-07 — 31.190: o fato confirmado da pesquisa da operação vira candidata do escritor no Livro (branch feat/31-190-curadoria-memoria)
+
+- A memória da operação já decidia a confiança por código: dois domínios na pesquisa ou a leitura do alvo (31.179). O
+  vencido saía do bloco pelo frescor. Mas o fato morria com a operação, e a próxima sobre o mesmo assunto pagava a
+  pesquisa de novo.
+- Um passo novo da curadoria periódica, sem IA (`FatosDaOperacaoParaOLivro`, `learning/domain/fatos_da_operacao.py`),
+  leva ao Livro cada fato de pesquisa confirmado e dentro do frescor de uma operação encerrada nos últimos 7 dias:
+  - como lição do escritor no escopo do pacote do app, em `candidate`;
+  - com `source_kind` novo, `operation_fact`;
+  - a proveniência traz a operação, o assunto, os domínios das fontes, o frescor e em quantos textos o fato foi.
+- Ficam fora:
+  - a hipótese;
+  - o vencido;
+  - a leitura do alvo, que é daquele post e vale 6 h;
+  - as fontes;
+  - o estado da pesquisa;
+  - a operação aberta.
+- **Só uma pessoa publica.** O Livro não tem escopo de assunto, e a lição ativa do escritor iria a todo texto do app.
+  A origem entra em `FONTES_HUMANAS` (trava do D1: `requires_owner`), e não só pela falta de evidência (revisão de
+  segredos). O fato com @ ou e-mail não vai, e o assunto com identificador sai da proveniência.
+- **Sem duplicata.** O conteúdo é só o texto do fato. O mesmo fato em outra operação cai no mesmo item, e o passo é
+  idempotente.
+- **Prova `simulated`:** `backend/tests/test_fatos_da_operacao_no_livro.py`, com 2 testes. As baterias de aprendizado,
+  Livro, lições, operação, pedidos, pesquisa e arquitetura passaram (2015 testes). A única falha,
+  `test_prompts_licoes.py::test_os_prompts_de_sistema_ficam_iguais_byte_a_byte`, já falha na main e2e4a9b8: as regras
+  de conteúdo (T1) mudaram os prompts de sistema. mypy fica em 257. **`real`:** `not_run`, pede o deploy e a operação
+  de 07/10 encerrada.
+
+## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
+
+- Medido no percurso real da Portal no 57 (06/10 23:20Z): o resumo do fluxo na aba Aprendizado da operação mostrava o
+  marcador cru (`{caption_contains}`), e o `GET /api/operacoes/{id}/aprendizado` não dizia as personas da operação.
+- O resumo do fluxo leva o valor do parâmetro quando a operação tem UM valor só para ele em todos os objetivos. O que
+  varia por alvo, ou que a operação não tem, segue como marcador. `instance_id`, `run_id` e `account_label` ficam fora,
+  e o resumo continua redigido.
+- A resposta ganha `personas`: os `profile_id` das execuções da operação, ordenados, para o filtro do painel (adendo v1.106).
+- Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py` (8 testes, 1 novo); operação, pedidos e
+  arquitetura: 722 passaram; mypy 257. `real`: `not_run` (a aba da Portal após o deploy).
+
+## 2026-10-06 — K-107 (do 31.160): a gravação crua do ensino sai mascarada na leitura (branch feat/31-160-gravacao-mascarada)
+
+- Medido em 06/10 (ensino do 31.160, alvo = o perfil da própria persona): o fluxo, a receita e o Livro saíram limpos,
+  mas o `GET /api/training/{id}` devolvia o @ e o nome dela no `target.text`, no `target.desc` e nas linhas da tela.
+- `TrainingRecorder.get` mascara as entradas por padrão (`dado_da_persona.na_gravacao`): todo dado da persona (3+
+  caracteres) vira o marcador no texto do alvo tocado (`text`, `desc`, `content_desc`, `hint`, `label`), nas linhas e no
+  título da tela, nos `filhos` do alvo e no texto digitado, por palavra, sem diferença de caixa, também logo depois
+  de um @ e com qualquer espaço entre as partes do valor. Limite: casa o valor inteiro (o primeiro nome sozinho fica). Vale para o GET
+  da sessão e para as respostas que a devolvem (iniciar, gravar, desfazer, proposta, salvar, reproduzir). As quatro
+  leituras internas do ensino (proposta, salvar, prévia e reproduzir) usam `get(..., crua=True)`: a destilação segue
+  igual. O formato da resposta não muda.
+- A proposta guardada (títulos e resumo) não é mascarada além do que já era: o painel a devolve na prévia e no salvar,
+  e o marcador no título faria a etapa mirar a persona de cada aparelho em vez do alvo visto.
+- A prévia e o salvar avisam quando um parâmetro do comando sai porque o exemplo é o dado da própria persona que
+  ensinou: "{param} saiu do comando: … a etapa vai usar {marcador} de cada aparelho".
+- Prova `simulated`: `backend/tests/test_treino_gravacao_mascarada.py` (3 testes). Ensino, receitas, personas e
+  arquitetura: 925 passaram (antes da correção da revisão) e 699 do ensino, personas e arquitetura depois dela; mypy 257, docs-check 0. `real`: `not_run` (um GET de sessão de ensino gravada com o perfil da própria persona, após o
+  deploy).
+
+## 2026-10-06 — 31.153: as etapas ensinadas como ações conhecidas do app no plano livre (branch feat/31-153-etapas-ensinadas)
+
+- Medido em 06/10: a receita ensinada só era achada pela chave da etapa (o `template_hash`). O plano livre gerava outro
+  texto e outro hash, e as 27 receitas ensinadas só serviam aos próprios fluxos, quase todos desligados.
+- Cada etapa de fluxo ensinado (ligado ou não) que tem receita do ensino ativa, com 1 ou mais reproduções boas, vira
+  oferta ao planejador livre (`planning/etapas_ensinadas.py`, `FlowStore.etapas_ensinadas`). Ficam de fora a etapa com
+  efeito, a com `commit_guard`, a do catálogo e o nome fora do formato.
+  - As ofertas são dos apps do aparelho e dos citados no comando: uma por (app, nome), a mais reproduzida, até 12.
+  - O bloco `<etapas_ensinadas>` vai no texto de usuário com nome, app e nomes dos parâmetros. O título fica de fora,
+    porque pode trazer o valor demonstrado.
+- Quando o plano livre tem uma etapa com esse nome no mesmo app e declara os parâmetros dela, o código a troca pela
+  etapa-molde do ensino, mantendo as dependências. A etapa materializada ganha o MESMO `template_hash` da receita, e o
+  executor a roda sem IA, caindo na IA se divergir. A trilha diz qual receita. Faltando parâmetro, fica a etapa do
+  plano, com o motivo.
+- Revisão de segredos (médio e baixos corrigidos): a etapa do plano com efeito, trava, ação do catálogo ou `bindings`
+  não é trocada pelo molde (perderia a marca que a leva à aprovação); a etapa de sessão ou login (`ACAO_DE_SESSAO`) e a
+  chave que carrega uma palavra de um valor demonstrado do fluxo não são oferecidas.
+- O esquema de saída do plano não muda. O escopo da receita segue o 30.81; a decisão do dono (a ação ensinada serve a
+  todas as personas ou só ao escopo de quem ensinou) fica pendente.
+- Prova `simulated`: `backend/tests/test_etapas_ensinadas_no_plano_livre.py` (2 testes; a etapa materializada tem o
+  hash da receita). Planejamento, receitas, fluxos e arquitetura: 4801 passaram; mypy 257 (no teto). `real`: `not_run` (um comando livre do
+  Configurações em que a etapa de busca roda pela receita ensinada com 0 decisões de IA).
+
+## 2026-10-06 — 31.151: o pedido parecido chega ao fluxo pelo planejador (branch feat/31-151-fluxo-por-semelhanca)
+
+- Medido em 06/10: 8 de 275 execuções foram planejadas por fluxo ensinado, todas lote de prova; 0 uso real. `match` só
+  casava o texto inteiro do molde e o planejador não conhecia fluxo nenhum.
+- No ramo livre do `_plan`, os fluxos ativos e no escopo que o comando PARECE vão ao planejador como habilidades
+  conhecidas (`planning/habilidades.py`). O bloco `<habilidades_conhecidas>` vai no texto de usuário e leva:
+  - a referência pública, o molde, os nomes dos parâmetros e os apps;
+  - nunca o valor demonstrado nem o nome do fluxo.
+
+  Vão no máximo 3, com nota mínima de 0,3. A paráfrase do item dá 0,333; o valor é a calibrar.
+- O planejador devolve o plano de sempre e o campo `habilidade` (`{ref, valores: [{nome, valor}]}` ou `null`), nos
+  5 formatos de saída do plano. É lista de pares porque o esquema estrito fecha todo objeto.
+- O código confere a escolha: a referência foi oferecida, os parâmetros são exatamente os do molde, e cada valor está
+  no comando. Valendo, o plano é o do fluxo, como no `match`:
+  - `planner.model = fluxo:<id>`, `runs.flow_id` gravado e `flows.uses` sobe;
+  - a trilha diz "Plano do fluxo X por semelhança, nota N".
+
+  Recusada, fica o plano livre, com o motivo na trilha; sem escolha, a trilha lista o que foi oferecido.
+- Decisão do dono pendente (roda sem confirmação ou só com a prévia aprovada): até ela, `habilidades.SEM_CONFIRMACAO =
+  False`. A execução `execute` planejada por semelhança para em `planned` e espera o início por uma pessoa.
+- `Plan.escolha_por_semelhanca` é só de passagem (`exclude=True`): o plano gravado não muda. Adendo v1.103.
+- Prova `simulated`: `backend/tests/test_fluxo_por_semelhanca.py` (5 testes: casa, parece e é escolhido, parece e é
+  recusado, não escolhido; o valor demonstrado não vai ao prompt; o JSON do provedor real). Planejamento, parsing,
+  prompts, fluxos e arquitetura: 3373 passaram; as 2 falhas da rodada (o teste novo do provedor real e a catraca de Any) foram corrigidas e rerodadas (48 passaram). Revisor de segredos: sem alto; o médio (molde com literal de alvo, como @, endereço ou número longo, não vai ao prompt) e três baixos (referência fora do oferecido não vai à trilha; parâmetros reservados fora; uses só sobe ao aprovar) corrigidos. `real`: `not_run` (um pedido parafraseado no android-04 planejado pelo
+  fluxo ensinado, cerca de US$ 0,02, com o sim do dono).
 
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 
@@ -160,48 +379,53 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   genérica, que não usa a pós-condição, então não há backfill (sem migração e sem script).
 - Prova `simulated`: `backend/tests/test_empate_para_hash.py` (3 testes; reprova no código anterior), incluindo um
   `plan` simulado em que a etapa ganha o hash do ensino e a loja de receitas acha a receita gravada nele.
+## 2026-10-07 — 31.183: a proposta do ensino para exibir, com o dado da persona mascarado (branch feat/31-183-proposta-exibicao)
 
-## 2026-10-06 — prova30 A3 (extensão do 31.157): o aprendizado de uma operação nas 10 perguntas do dono (branch feat/prova30-a3-aprendizado-da-operacao)
+- Este item fecha o médio que a revisão de segredos do K-107 deixou. O título, o objetivo e o resumo da proposta só
+  trocavam o dado que a pessoa DIGITOU inteiro. Um @ ou um nome visto na tela e citado pela IA saía em claro no
+  `GET /api/training/{id}`.
+- A leitura da sessão ganha `proposal_exibicao` (`training/exibicao.py`), uma cópia da proposta com todo dado da
+  persona trocado pelo marcador:
+  - sem diferença de caixa, também depois do @ e com qualquer espaço;
+  - em título, objetivo, resumo, comando, perguntas e conferência;
+  - os identificadores (`capability`, `app_id`) ficam; a `key` da etapa é mascarada também, com o `_` como separador;
+  - vale em toda resposta do treino que traz a sessão (lista, GET, parar, descartar, desfazer, proposta, salvar e
+    refazer receitas), achado médio da revisão de segredos.
+  - o relatório por etapa (`steps[]`) da prévia, do salvar e do refazer receitas sai com o título e o motivo
+    mascarados (achado da Portal no 31.189); a `key` fica.
+- A `proposal` não muda: o painel a devolve na prévia e no salvar. Limite: casa o valor inteiro. O painel passa a
+  exibir a cópia no 31.189 (Portal). Adendo v1.109.
+- Prova `simulated`: `backend/tests/test_proposta_para_exibir.py` (2 testes). Ensino, personas, alcance, arquitetura e
+  rotas: 720 passaram; mypy 257. `real`: `not_run`, pede o deploy.
 
-- Pedido da orquestradora (o dono pediu para adiantar): para uma operação, responder às 10 perguntas do aprendizado do
-  dono com origem, evidência, confiança e frescor por item, e com filtro por persona. Até aqui as respostas existiam
-  espalhadas (Livro, memória da persona, memória da operação), sem uma leitura por operação.
-- `GET /api/operacoes/{id}/aprendizado` (adendo v1.96): só leitura, sem IA e sem tabela nova.
-  - Ligação às execuções da operação: direta por `run_id` (evidência, transição, sinal, interação), pela origem
-    (receita, fluxo), pela proveniência (lição) e pela interação (memória da persona). O backlog é inferido e vem
-    marcado.
-  - Uma régua só de confiança, e o valor original ao lado.
-  - Reutilizável e "revisar" são regras de código.
-  - Texto redigido e cortado em 200 caracteres. O simulado fica fora por padrão. O que a rota não cobre vem em
-    `nao_coberto`.
-- **`resultado.conhecimento_ids` do alvo (achado da tentativa 3 da onda 1, 06/10):** o contrato da 124 diz que a lista vem
-  da frente de Aprendizado, e nada a gravava; ela vinha sempre vazia. Agora a porta de escrita grava em
-  `operacao_alvos.marcas` as refs dos fatos que o texto recebeu (o bloco e a leitura igual à tela). Prova `simulated`:
-  `backend/tests/test_conhecimento_da_operacao.py::test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem`.
-- **O assunto da operação vai ao escritor junto da intenção (decisão da orquestradora após a tentativa 3):** o texto
-  ignorava o assunto quando o post não tinha relação com ele, porque só `<intencao>` mandava. Agora o bloco
-  `<assunto_da_operacao>` (de `operacoes.assunto`) vem logo depois da intenção e pede para relacionar só quando fizer
-  sentido com a publicação. O `draft_meta` marca `fatos_da_operacao.assunto: true`. Prova `simulated`:
-  `backend/tests/test_conhecimento_da_operacao.py::test_o_assunto_vai_junto_da_intencao_e_so_relaciona_quando_couber` e
-  `backend/tests/test_pesquisa_da_operacao.py`.
-- **Revisão do PR 480 (corte 57), 4 achados confirmados no código e corrigidos:**
-  1. a evidência da lição era buscada por `licao:li-…`, e o Livro a grava por `li-…`: nunca casava;
-  2. a contagem ignorava `conflict` e a neutralização (`forma`/`invalida`); agora passa por `promocao.efetivas`/`contrarias`;
-  3. voz e preferência ignoravam `scope_profile_id`; agora são da persona dona;
-  4. a falha ao gravar `conhecimento_ids` ficava só no log; agora fica no `draft_meta` da etapa e em `avisos` do GET,
-     sem derrubar o texto.
-  5. (Codex, PR 482) a lição de duas personas virava "da operação inteira" e aparecia para uma terceira; agora guarda o
-     conjunto em `personas` (`::test_licao_de_duas_personas_guarda_o_conjunto_e_nao_vira_da_operacao`).
-  
-  Prova `simulated`:
-  `backend/tests/test_aprendizado_da_operacao.py::test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona`
-  (reprova no código anterior) e
-  `backend/tests/test_conhecimento_da_operacao.py::test_falha_ao_gravar_conhecimento_ids_nao_derruba_e_fica_visivel`.
-- O roteador mora no módulo de pedidos, com `prefix=/api/operacoes` e um caminho de dois segmentos que não colide com
-  as rotas da Jev, e não mexe no `state.py`.
-- Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
-  `::test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so`, `::test_persona_simulado_redacao_e_404` e
-  `::test_a_rota_responde_e_diz_404_sem_a_124` (5 no arquivo). Real: `not_run` até a operação de 07/10.
+## 2026-10-07 — 31.182: o ensino avisa quando a etapa mira a conta da própria persona (branch feat/31-182-aviso-propria-conta)
+
+- Medido em 06/10, no 31.160: a pessoa ensinou a abrir o perfil da persona que ensinava. O 31.87 trocou o @ por
+  `{conta_instagram_usuario}`, e a receita 221 virou "abrir o PRÓPRIO perfil", que não serve ao alvo de uma operação.
+  Nada avisou.
+- A prévia e o salvar dizem, por etapa, quando o título, o objetivo, a digitação, a pré-condição ou a conferência citam
+  o marcador da conta da persona (`conta_<app>[_<host>]_usuario`, `training/conta_propria.py`): "a
+  receita dela abre a conta de quem roda, em cada aparelho". O aviso traz a posição da etapa e o marcador, sem valor
+  nem a `key` (que a IA escolhe e pode ter o nome; revisão de segredos). É só aviso:
+  o salvar não recusa.
+- Prova `simulated`: `backend/tests/test_aviso_da_propria_conta.py` (2 testes) e `test_treino_dado_da_persona.py`.
+  `real`: `not_run`, pede o deploy (a prévia de um ensino com o próprio perfil).
+
+## 2026-10-07 — 31.181: quem pode usar o quê num app, por persona (branch feat/31-181-alcance-por-persona)
+
+- Medido em 06/10, na leitura da onda 2, sobre as 19 receitas ativas do Instagram:
+  - 18 nasceram de execução e valiam para as três personas com conta;
+  - a do ensino valia só para quem ensinou, e o fluxo ensinado tinha escopo de uma persona.
+
+  O Livro e a Portal não diziam isso.
+- `GET /api/aprendizado/alcance?app=<app_id>` (adendo v1.107) responde por persona vinculada ao app. Para cada receita
+  ativa e cada fluxo (ligado ou candidato), diz `pode` e o motivo do não: `presa_a_quem_ensinou`, `fora_do_escopo` ou
+  `fluxo_nao_ligado`. Traz também o resumo por persona. O fluxo sai pela `ref_publico`, nunca pelo id interno (30.83;
+  achado médio da revisão de segredos).
+- As regras são as do executor, injetadas (`RecipeStore._restrita_ao_ensino`, `FlowStore._no_escopo`): domínio puro em
+  `learning/domain/alcance.py` e leitura em `learning/infrastructure/alcance_sql.py`.
+- Prova `simulated`: `backend/tests/test_alcance_por_persona.py` (2 testes; o "Confirmar que fica" solta a receita
+  para a outra persona). Arquitetura e rotas: 26 passaram. `real`: `not_run`, pede o deploy.
 
 ## 2026-10-06 — 29.166 (a), guarda: o job `docs` não fica verde com formato NAO conferido (branch ci/29-166a-guarda-nao-conferido)
 

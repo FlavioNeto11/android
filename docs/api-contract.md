@@ -1183,6 +1183,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `learning.ensinado_sem_receita` | sim | o mesmo, quando nada ativo ficou no lugar (a etapa voltou para a IA); `warn`; 30.80 B; ver o adendo v1.61 |
 | `learning.ensinado_espera_decisao` | sim | `ServicoDeValidacao` (a volta da validação), via `LearningService.avisar_espera_do_ensinado`. O fluxo ensinado que a prova automática não cobre espera a decisão de uma pessoa; `warn`; 30.81; ver o adendo v1.65 |
 | `learning.ensinado_decidido` | sim | `LearningService` (`confirmar_que_fica`, `_mover_nativo`): uma pessoa decidiu o ensinado que esperava; `info`; 30.81; ver o adendo v1.65 |
+| `aprendizado.curadoria_da_operacao` | sim | `state.py::_curadoria_da_operacao`, ao ouvir `operacao.encerrada` (só no líder da trava `curadoria`): `data` `{operacao_id, fatos_da_operacao: {operacao, app, nascidas: [ids], ja_no_livro, recusadas: {motivo: n}, vetadas, vencidas_no_livro: [ids]}}`; só ids e contagens; `info`; 31.217 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `training.input.undone` | sim | `training/recorder.py` (`desfazer_a_ultima`): a última entrada saiu da gravação viva; `data: {training_session_id, seq, type}`; 31.90-D |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
@@ -7612,3 +7613,176 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
   - `liberada`: vale fora da persona que ensinou (30.81).
 - **Vizinhos:** contam as etapas de planos LIVRES (sem fluxo e sem prova de fluxo) que aceitaram o pacote.
 - **Prova:** `simulated` (`backend/tests/test_rendimento_do_ensino.py`, 2 testes). `real`: `not_run`.
+
+## Adendo v1.103 (06/10/2026; número da orquestradora; item 31.151) — o pedido parecido chega ao fluxo pelo planejador
+
+- **`POST /api/runs` com planejamento livre:** os fluxos ativos e no escopo que o comando PARECE (até 3, nota mínima
+  0,3) vão ao planejador como habilidades conhecidas.
+  - Vão a referência pública, o molde, os nomes dos parâmetros (sem os reservados) e os apps.
+  - O molde com literal de alvo (um @, um endereço, um número longo) não vai.
+  - Nunca vão o valor demonstrado nem o nome do fluxo.
+- **Escolha:** o planejador pode devolver, com o plano, a habilidade e os valores tirados do comando. O código confere
+  a referência oferecida, os parâmetros exatos e que cada valor está no comando.
+  - Valendo, o plano gravado é o do fluxo: `plan.planner.model = "fluxo:<id>"` e `runs.flow_id` = o fluxo. A trilha
+    (`decision`) diz "Plano do fluxo <ref> “<molde>” por semelhança, nota N".
+  - Recusada, fica o plano livre, com o motivo na trilha.
+  - Sem escolha, a trilha lista as oferecidas.
+- **Comportamento (ajustado pelo 31.210, P-032, decisão do dono em 07/10):** a execução pedida com `mode: "execute"`
+  cujo plano veio por semelhança segue direto para `running`, sem parar em `planned` para a prévia. A trilha
+  (`decision`) diz "seguiu por semelhança". `flows.uses` sobe na escolha. As portas de aprovação de efeito externo
+  continuam: a etapa com efeito pede aprovação no despacho, como em qualquer plano. Até o 31.210 a execução parava em
+  `planned` ("aguarda a prévia aprovada").
+- **O plano gravado não muda de forma:** a escolha não é gravada nele.
+- **Prova:** `simulated` (`backend/tests/test_fluxo_por_semelhanca.py`, 5 testes; o 31.210 no mesmo arquivo). `real`:
+  `not_run` (pede o deploy que leve o 31.151 e o 31.210).
+
+## Adendo v1.106 (06/10/2026; número da orquestradora; item 31.157) — as personas e o valor no resumo do fluxo
+
+Este adendo estende o `GET /api/operacoes/{operacao_id}/aprendizado` do adendo v1.96. Ele corrige dois achados do
+percurso real da Portal no 57.
+
+- **`personas`:** campo novo no topo da resposta, com a lista dos `profile_id` das execuções da operação, ordenados e
+  sem repetição. É o filtro `persona` do painel. Sem execução, a lista vem vazia.
+- **O resumo do item `fluxo:<id>`:** passa a trazer o valor do parâmetro quando a operação tem UM valor só para ele em
+  todos os objetivos. Fica como marcador `{nome}` o parâmetro que:
+  - varia por alvo;
+  - a operação não tem;
+  - é da execução (`instance_id`, `run_id`, `account_label`).
+
+  O resumo continua redigido e com até 200 caracteres.
+- Nada mais muda na forma da resposta.
+- **Prova:** `simulated` (`backend/tests/test_aprendizado_da_operacao.py`). `real`: `not_run`, pede o deploy do corte
+  59.
+
+## Adendo v1.107 (07/10/2026; número da orquestradora; item 31.181) — quem pode usar o quê num app, por persona
+
+`GET /api/aprendizado/alcance?app=<app_id>`: só leitura, sem IA. Diz, por persona vinculada ao app (vínculo ativo em
+`device_profile_bindings`), cada receita ativa do pacote do app e cada fluxo ligado ou candidato do app, com `pode` e o
+motivo do não.
+
+- `200 {app_id, pacote, gerado_em, personas: [{profile_id, aparelhos}], resumo: {profile_id: {receita: n, fluxo: n}},
+  itens: [...]}`.
+- O item é `{tipo, id, chave, origem, estado, ..., por_persona: {profile_id: {pode, motivo}}}`:
+  - `tipo` é `receita` ou `fluxo`;
+  - `id` é o id da receita, ou a `ref_publico` do fluxo: o id interno do fluxo nunca sai (30.83), e a ref que faltar
+    é preenchida na hora;
+  - `chave` é a etapa da receita (vazia no fluxo);
+  - `origem` é `ensino` ou `execucao`;
+  - na receita, também `reproducoes_ok` e `reproducoes_falha`;
+  - no fluxo, também `usos` e `nascido_de_prova`.
+- O `motivo` (nulo quando `pode`) vem de um vocabulário fechado:
+  - `presa_a_quem_ensinou`: a receita do ensino sem "Confirmar que fica" nem prova real do fluxo (30.81);
+  - `fora_do_escopo`: o escopo do fluxo (personas ou grupos) não inclui a persona;
+  - `fluxo_nao_ligado`: o fluxo é candidato.
+- As regras são as do executor (`RecipeStore._restrita_ao_ensino` e `FlowStore._no_escopo`), não uma cópia.
+- `404 app_desconhecido`: o app não está cadastrado. `422`: `app` ausente.
+- **Prova:** `simulated` (`backend/tests/test_alcance_por_persona.py`). `real`: `not_run`, pede o deploy.
+
+## Adendo v1.109 (07/10/2026; número da orquestradora; item 31.183) — a proposta do ensino para exibir
+
+`GET /api/training/{id}` ganha `proposal_exibicao`, uma cópia da `proposal` só para exibir:
+
+- todo dado da persona vira o marcador `{nome}`, sem diferença de caixa, também depois do @ e com qualquer espaço;
+- vale em título, objetivo, resumo, comando, perguntas e conferência;
+- os identificadores ficam como estão: `capability`, `app_id`, `kind`, `name`, `inputs`, `seq` e as marcas de etapa;
+- sem proposta, ou sem persona, a cópia é igual à `proposal`.
+
+Toda resposta do treino que traz a sessão leva o campo: a lista, o GET, parar, descartar, desfazer, a proposta e,
+dentro de `session`, salvar e refazer receitas. Na cópia, a `key` da etapa também é mascarada: o `_` conta como
+separador. O relatório por etapa (`steps[]`) da prévia, do salvar e do refazer receitas sai
+com `title` e `reason` mascarados; a `key` fica (achado da Portal no 31.189). A `proposal` não muda, porque é ela que o painel devolve na prévia e no salvar. Limite: o valor só é trocado
+inteiro. O painel passa a exibir a cópia no 31.189 (Portal).
+
+**Prova:** `simulated` (`backend/tests/test_proposta_para_exibir.py`). `real`: `not_run`, pede o deploy.
+
+## Adendo v1.110 (07/10/2026; número da orquestradora; item 31.191) — o rendimento de uma receita
+
+`GET /api/aprendizado/receitas/{id}/rendimento`: só leitura, sem IA. Usa o leitor e a régua do uso real do
+`GET /api/training/{id}/rendimento` (31.177) e vale para receita do ensino e de execução.
+
+- `200 {id, step_key, app, status, liberada, sem_ia, caiu_na_ia, outras, usd_da_ia_na_retencao, origem, sessao,
+  reproducoes, custo_medio_ia_por_etapa_usd, custo_evitado_usd, ultimo_uso_em, gerado_em}`.
+- Os campos:
+  - `app` é o pacote. `liberada` diz se a receita vale fora da persona que ensinou (30.81); na de execução é sempre
+    `true`.
+  - `sem_ia`, `caiu_na_ia` e `outras` são `{real, prova, simulada}`. `sem_ia` conta as etapas que a receita conduziu
+    e comprovou. `caiu_na_ia` conta as em que divergiu e a IA assumiu.
+  - `origem` é `ensino` ou `execucao`. `sessao` é a sessão de ensino, ou `null`.
+  - `reproducoes` é `{ok, falha}`, da loja de receitas.
+  - `usd_da_ia_na_retencao` é o US$ de IA das tentativas dela, das chamadas ainda guardadas.
+  - `custo_medio_ia_por_etapa_usd` é o US$ médio de IA por tentativa conduzida pela IA, sem receita. Conta só as etapas
+    com a mesma identidade da receita (`steps.template_hash`), em execução não simulada, nas 200 mais recentes.
+  - `custo_evitado_usd` = `sem_ia.real` × esse médio.
+- **Sem dado:** as contagens vêm `0`, nunca `null`. Os dois campos de custo vêm `null` quando não há referência de
+  custo na retenção: o custo evitado não é inventado. `ultimo_uso_em` vem `null` na receita nunca usada.
+- `404 receita_desconhecida`.
+- **Prova:** `simulated` (`backend/tests/test_rendimento_por_receita.py`). `real`: `not_run`, pede o deploy.
+
+## Adendo v1.113 (07/10/2026; número da orquestradora; item 31.200) — o escopo de assunto no Livro
+
+`GET /api/aprendizado` ganha um campo e um filtro. Nada mais muda na rota.
+
+- Campo `assunto` em cada item: o assunto canônico do item (minúsculas, sem acento, sem pontuação), ou `null` no item
+  sem assunto e nos tipos que não têm o eixo (receita, fluxo, habilidade, memória). Hoje só o fato da pesquisa de uma
+  operação (31.190, `source_kind` `operation_fact`) nasce com assunto.
+- Filtro `?assunto=` (até 200 caracteres; mais que isso, `422`): só os itens daquele assunto, comparado na forma
+  canônica ("Festival de Inverno!" acha "festival de inverno"). Entra antes da contagem, como os outros filtros.
+- Regra que acompanha (sem rota): a lição com assunto só vai ao prompt de quem pede o MESMO assunto; a lição sem
+  assunto segue indo a todos do papel no app. O fato da operação sem assunto, ou com identificador no assunto, não
+  nasce mais no Livro.
+- Migração 128 (`learning_items.scope_subject`).
+- **Prova:** `simulated` (`backend/tests/test_livro_escopo_de_assunto.py`, `backend/tests/test_migracao_128.py`, em
+  SQLite). PostgreSQL e `real`: `not_run`, pedem a vez da suíte e o deploy.
+
+## Adendo v1.115 (07/10/2026; número da orquestradora; item 31.202) — a sombra da quarentena nos sinais
+
+`GET /api/aprendizado/sinais` aceita um valor novo em `?kind=`: `sombra_da_quarentena`. Nada mais muda na rota.
+
+- Um sinal por receita ensinada ativa, gravado pelo passo da curadoria e sobrescrito a cada passo.
+  - `source_ref` é `receita:<id>` e `created_by` é `sistema`.
+  - `reason`: `liberaria`, `prenderia_de_volta` ou `nenhuma`. `note` é o motivo, em português, só com contagens.
+  - `polarity`: `positive` em liberaria, `negative` em prenderia de volta e `neutral` em nenhuma.
+- **Fora da lista padrão:** sem `kind`, a rota não traz este sinal, como os das sombras do 30.34 (`autopublicaria`) e do
+  30.55 (`aprovaria`). Não é gesto de pessoa.
+- **Nada se aplica:** a sugestão não muda a receita, a quarentena nem a regra do 30.81.
+- **Prova:** `simulated` (`backend/tests/test_sombra_da_quarentena.py`). `real`: `not_run`, pede o deploy.
+
+## Adendo v1.117 (07/10/2026; número da orquestradora; parte do item 31.190) — a proveniência do fato da operação
+
+Para o painel mostrar origem, evidência, confiança e frescor da lição que nasceu de um fato da pesquisa (31.214).
+
+- `GET /api/aprendizado`: cada item ganha `source_kind`. É a origem do item de `learning_items` (ex.
+  `operation_fact`, `recovery`, `manual`); `null` em receita, fluxo, habilidade e memória.
+- `GET /api/aprendizado/licao/{id}`: o detalhe ganha `proveniencia`. É `null` em toda lição que não seja do modelo
+  `fato_da_operacao`. Nesse modelo, as chaves são FECHADAS:
+  - `operacao`: o id da operação de que o fato veio;
+  - `assunto`: o assunto da operação, como foi escrito ("" quando tinha identificador);
+  - `fontes`: os domínios das fontes, sem `www.`;
+  - `frescor_ate`: até quando o fato vale (UTC), ou `null`;
+  - `usado_em`: quantos alvos receberam o fato no texto;
+  - `execucoes`: os ids das execuções da operação (até 20);
+  - `confianca`: sempre `"confirmado"`, porque só o fato confirmado nasce no Livro.
+- A regra e a chave da memória não saem.
+- **Publicar** a candidata é `POST /api/aprendizado/licao/{id}/status` com `{"to": "published", "reason": …}`, num gesto
+  só (passa por `validated`). Só uma pessoa publica: `human_origin` = `true`.
+- **Prova:** `simulated` (`backend/tests/test_fatos_da_operacao_no_livro.py`). `real`: `not_run`, pede o deploy.
+
+## Adendo v1.118 (07/10/2026; número da orquestradora; item 31.218) — a lição do planejador por persona
+
+A correção ensinada a partir de uma falha (31.149) vira lição do planejador da PERSONA que falhou, não do app inteiro.
+
+- **`GET /api/aprendizado/alcance?app=`** (v1.107): cada entrada de `personas` ganha `correcoes`, a lista das lições
+  vivas (`candidate`, `validated`, `published`) do planejador nascidas de correção ensinada no app, com origem nessa
+  persona. Cada uma traz:
+  - `id`, `estado`;
+  - `acao`: a chave da etapa que falhou;
+  - `caminho`: as chaves das etapas que a pessoa ensinou;
+  - `texto`: o que vai ao prompt;
+  - `escopo`: `persona` (vale só para ela) ou `app` (lição anterior ao 31.218, que vale para todas; a persona dela é a
+    do objetivo da etapa que falhou).
+- **`GET /api/aprendizado/licoes/previa`** ganha `persona=` (até 64). Sem ele, a lição de uma persona não entra no
+  bloco, como no planejamento de várias personas.
+- **Regra (sem rota):** a lição com persona só vai ao planejamento de uma execução cujos aparelhos são todos dessa
+  persona. A mesma correção ensinada a partir de duas personas são dois itens, cada um publicado pelo dono.
+- **Prova:** `simulated` (`backend/tests/test_licao_do_planejador_por_persona.py`). `real`: `not_run`, pede o deploy e
+  uma correção ensinada de uma falha real.

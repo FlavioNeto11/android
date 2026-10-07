@@ -16,6 +16,8 @@ Os tipos sem casa nativa (tela, lição, voz, preferência) moram em `learning_i
 """
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -127,16 +129,31 @@ def escopo_do_fluxo(match_key: str) -> str:
 # ------------------------------------------------------------------ itens do livro (learning_items)
 @dataclass(frozen=True, slots=True)
 class Escopo:
-    """'' = qualquer. `capability='*'` é a etapa livre."""
+    """'' = qualquer. `capability='*'` é a etapa livre. `subject` (31.200): o assunto canônico (`assunto_canonico`)."""
 
     app: str = ""
     capability: str = ""
     step_hash: str = ""
     role: str = ""
     profile_id: str = ""
+    subject: str = ""
 
     def chave(self, kind: LivroKind) -> str:
-        return "|".join((kind.value, self.app, self.capability, self.step_hash, self.role, self.profile_id))
+        """A chave do veto (`learning_transitions.scope_key`). Sem assunto, a MESMA de antes da 128, byte a byte: a
+        trilha e os desligamentos já gravados continuam valendo; o assunto entra só quando existe."""
+        base = "|".join((kind.value, self.app, self.capability, self.step_hash, self.role, self.profile_id))
+        return f"{base}|assunto:{self.subject}" if self.subject else base
+
+
+#: Tamanho do assunto canônico (a coluna `scope_subject`, 128).
+ASSUNTO_MAX = 120
+
+
+def assunto_canonico(texto: str | None) -> str:
+    """O assunto como eixo do escopo: minúsculas, sem acento, só letras e dígitos separados por um espaço. "Festival
+    de Inverno!" e "festival  de inverno" são o mesmo assunto; '' quando não sobra nada."""
+    sem_acento = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode("ascii")
+    return " ".join(re.sub(r"[^0-9a-z]+", " ", sem_acento.casefold()).split())[:ASSUNTO_MAX].strip()
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,6 +297,10 @@ class EntradaDoLivro:
     #: 31.150: quando uma pessoa religou o fluxo de prova para uso real (`uso_real.em_uso_real_desde`, da trilha);
     #: `None` nos outros e no fluxo de prova que não foi religado, ou que saiu de uso depois.
     em_uso_real_desde: str | None = None
+    #: Adendo v1.117: a origem do item de `learning_items` (`SourceKind`, ex. `operation_fact`); `None` nos tipos nativos.
+    source_kind: str | None = None
+    #: 31.200: o assunto canônico do item (`scope_subject`); `None` no item sem assunto e nos outros tipos.
+    assunto: str | None = None
 
     @property
     def requires_owner(self) -> bool:
@@ -307,7 +328,8 @@ def entrada_do_item(item: ItemDeAprendizado) -> EntradaDoLivro:
         side_effect=item.side_effect, human_origin=item.human_origin, created_at=item.created_at,
         state_at=item.state_at, last_used_at=item.last_used_at, a_favor=item.evidence_for,
         contra=item.evidence_against, detail=item.state_detail, content_hash=item.content_hash,
-        scope_key=item.escopo.chave(item.kind), app_version=item.app_version)
+        scope_key=item.escopo.chave(item.kind), app_version=item.app_version, assunto=item.escopo.subject or None,
+        source_kind=item.source_kind.value)
 
 
 def para_aprovar(e: EntradaDoLivro) -> bool:

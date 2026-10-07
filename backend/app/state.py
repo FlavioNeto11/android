@@ -1668,10 +1668,48 @@ class AppState:
         return token
 
     async def _curadoria_loop(self) -> None:
-        """A régua diária durável e os passos registrados pelos pacotes seguintes, a cada `aprendizado.curadoria_s`."""
-        while True:
-            await asyncio.sleep(max(60, int(self.cfg.file.aprendizado.curadoria_s)))
-            await self._curadoria_uma_vez()
+        """A régua diária durável e os passos registrados pelos pacotes seguintes, a cada `aprendizado.curadoria_s`. E,
+        entre uma volta e outra, a curadoria de cada operação que encerra (`operacao.encerrada`), na hora: o fato da
+        pesquisa chega ao Livro sem esperar a volta. O evento perdido (assinatura descartada, processo fora) não se
+        perde: a volta periódica olha as operações encerradas da janela."""
+        fila = self.bus.subscribe()
+        proxima = time.monotonic() + max(60, int(self.cfg.file.aprendizado.curadoria_s))
+        try:
+            while True:
+                if not self.bus.is_subscribed(fila):
+                    fila = self.bus.subscribe()
+                falta = proxima - time.monotonic()
+                if falta <= 0:
+                    await self._curadoria_uma_vez()
+                    proxima = time.monotonic() + max(60, int(self.cfg.file.aprendizado.curadoria_s))
+                    continue
+                try:
+                    rec = await asyncio.wait_for(fila.get(), timeout=falta)
+                except asyncio.TimeoutError:
+                    continue
+                if rec.kind == "operacao.encerrada":
+                    await self._curadoria_da_operacao(str((rec.data or {}).get("operacao_id") or ""))
+        finally:
+            self.bus.unsubscribe(fila)
+
+    async def _curadoria_da_operacao(self, operacao: str) -> Mapping[str, object] | None:
+        """A curadoria de UMA operação encerrada, só no líder, com o relatório no barramento
+        (`aprendizado.curadoria_da_operacao`: só ids e contagens). Devolve o relatório, ou None quando não rodou."""
+        if not operacao or self._lider(CURADORIA) is None:
+            return None
+        try:
+            relatorio = await asyncio.to_thread(self.learning.curar_operacao, operacao)
+        except Exception:  # noqa: BLE001 - a curadoria nunca derruba o processo
+            log.exception("aprendizado: curadoria da operação %s", operacao)
+            return None
+        if relatorio is not None:
+            fatos = relatorio.get("fatos_da_operacao")
+            lista = fatos.get("nascidas") if isinstance(fatos, dict) else None
+            nascidas = len(lista) if isinstance(lista, list) else 0
+            self.bus.emit("aprendizado.curadoria_da_operacao",
+                          f"Curadoria da operação {operacao}: {nascidas} fato(s) novo(s) no Livro.",
+                          data={"operacao_id": operacao, **relatorio})
+        return relatorio
 
     async def _curadoria_uma_vez(self) -> bool:
         """Uma volta da curadoria, só no líder. Idempotente por construção (chaves únicas e CAS): a trava é por
