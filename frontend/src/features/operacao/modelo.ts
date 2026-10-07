@@ -6,6 +6,8 @@
  * entrada NÃO têm campo aqui, de propósito: a conta é só o rótulo (`conta`, o @).
  */
 
+import { formatUsd4 } from '../../lib/format';
+
 /** Os estágios do pipeline, na ordem fixa do dono e do adendo. `acao_executada` e `acao_bloqueada` ocupam a mesma posição. */
 export const ESTAGIOS = [
   { id: 'persona', rotulo: 'Persona' },
@@ -43,6 +45,8 @@ export const isEstadoDoAlvo = (v: unknown): v is EstadoDoAlvo => typeof v === 's
 
 export type StatusDaOperacao = 'em_curso' | 'concluida' | 'concluida_com_bloqueios' | 'cancelada';
 const STATUS: readonly string[] = ['em_curso', 'concluida', 'concluida_com_bloqueios', 'cancelada'];
+export const STATUS_DA_OPERACAO = STATUS as readonly StatusDaOperacao[];
+export const isStatusDaOperacao = (v: string): v is StatusDaOperacao => STATUS.includes(v);
 
 export interface AcaoFinal {
   /** A chave da ação de efeito (ex.: `CREATE_COMMENT`); o painel traduz o que conhece. */
@@ -106,6 +110,8 @@ export interface ResumoDaOperacao {
   created_at: string | null;
   finished_at: string | null;
   capacidade: Capacidade;
+  /** O gasto total de IA, quando o resumo o traz (o detalhe sempre traz); `null` = não informado, nunca zero. */
+  custo_usd: number | null;
 }
 
 /** Cada parte que o backend não mandou fica `null` ("não informado"), nunca zero. */
@@ -220,6 +226,7 @@ export function lerResumo(v: unknown): ResumoDaOperacao | null {
     id, command: texto(o.command) ?? '', app_id: texto(o.app_id), acao_final: texto(o.acao_final),
     status: typeof o.status === 'string' && STATUS.includes(o.status) ? (o.status as StatusDaOperacao) : null,
     created_at: texto(o.created_at), finished_at: texto(o.finished_at), capacidade: lerCapacidade(o.capacidade),
+    custo_usd: usdOuNulo(registro(o.custo)?.total_usd),
   };
 }
 
@@ -292,6 +299,28 @@ export const ROTULO_DO_STATUS: Record<StatusDaOperacao, string> = {
 const ROTULO_DA_ACAO: Record<string, string> = { CREATE_COMMENT: 'Comentário', SEND_MESSAGE: 'Mensagem', preparar: 'Só preparar', executar: 'Preparar e executar' };
 /** A ação em palavras; a chave que o painel não conhece fica como veio. */
 export const rotuloDaAcao = (tipo: string | null): string => (tipo ? ROTULO_DA_ACAO[tipo] ?? tipo : 'não informada');
+
+/** O filtro da lista: o estado da operação e um trecho do objetivo (sem caixa nem acento); vazio = não filtra. */
+const semAcento = (t: string): string => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+export function filtrarOperacoes<T extends Pick<ResumoDaOperacao, 'status' | 'command'>>(itens: readonly T[], estado: StatusDaOperacao | '', busca: string): T[] {
+  const q = semAcento(busca.trim());
+  return itens.filter((o) => (!estado || o.status === estado) && (!q || semAcento(o.command).includes(q)));
+}
+
+/** Quantas operações há em cada estado (as sem estado não entram em nenhum). */
+export function contarPorStatus(itens: readonly Pick<ResumoDaOperacao, 'status'>[]): Record<StatusDaOperacao, number> {
+  const c: Record<StatusDaOperacao, number> = { em_curso: 0, concluida: 0, concluida_com_bloqueios: 0, cancelada: 0 };
+  for (const o of itens) if (o.status) c[o.status] += 1;
+  return c;
+}
+
+/** "Criada hoje, 19:43 · instagram · Preparar e executar": o que distingue uma operação da outra quando o objetivo é parecido. */
+export function descricaoDaOperacao(o: Pick<ResumoDaOperacao, 'created_at' | 'app_id' | 'acao_final'> & { custo_usd?: number | null }, quando: (iso: string) => string = (i) => i): string {
+  return [
+    o.created_at ? `Criada ${quando(o.created_at)}` : 'Criada em data não informada', o.app_id ?? 'app não informado', rotuloDaAcao(o.acao_final),
+    ...(typeof o.custo_usd === 'number' ? [formatUsd4(o.custo_usd)] : []),
+  ].join(' · ');
+}
 
 export type Verificacao = 'verificada' | 'nao_verificada' | 'sem_acao';
 /** "Verificada" só com a pós-condição comprovada; ação tentada sem prova é "não verificada"; sem ação final, nada a verificar. */
