@@ -18,6 +18,7 @@ from marco import (  # noqa: E402
     contar_aparelhos,
     corpo_marco,
     decidir_marco,
+    itens_de,
     extrair,
     montar_m8,
     montar_m9,
@@ -102,6 +103,13 @@ def test_sem_migracao_uma_migracao_e_hora_com_no_ar() -> None:
     assert d89.real is None and d89.not_run is None and d89.backup is None and d89.tag is None
 
 
+def test_titulo_nao_repete_a_migracao_que_o_resumo_do_cabecalho_ja_diz() -> None:
+    d = _d(90)
+    d.resumo = "correções do corte 56; sem migração"
+    t = titulo_marco(d)
+    assert t.count("sem migração") == 1 and t.endswith("sem migração")
+
+
 def test_titulo_do_marco_no_formato_do_molde() -> None:
     t = titulo_marco(_d(91))
     assert t.startswith("📅 Deploy 91 · 05/03 21:15Z (abcdef01) · corte de teste: tela nova, regra configurável, relatório")
@@ -177,3 +185,8 @@ def test_redacao_tira_handle_ip_e_credencial_do_cartao() -> None:
 def test_hora_de_agora_no_formato_do_molde() -> None:
     from marco import agora_rotulo
     assert agora_rotulo(datetime(2030, 3, 5, 22, 7, tzinfo=timezone.utc)) == "05/03 22:07Z"
+
+
+def test_itens_que_ficaram_fora_do_deploy_nao_contam() -> None:
+    texto = "Itens: 28.63, 28.64 e o teste do AnexosTab (28.62, 28.60 e 28.58 ficaram fora por conflito e vão no 59); Jev 15.15."
+    assert itens_de(texto) == ["28.63", "28.64", "15.15"]
