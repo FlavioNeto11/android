@@ -389,6 +389,10 @@ class LimitsCfg(BaseModel):
     # demais param em `acao_preparada` com o motivo "limite de ações executadas". Pedido do dono (06/10): configurável
     # aqui, junto dos outros limites, e lido a cada liberação.
     operacao_max_acoes_executadas: int = Field(3, ge=0, le=64)
+    # 31.220: de quanto em quanto tempo (s) o laço do sistema lê as operações abertas e as avança sem leitura externa
+    # (`modules/operacoes/infrastructure/laco.py`). 0 = desligado, o padrão do corte 61 (a prova de 07/10 usa o laço
+    # da Canais). Relido a cada volta.
+    operacao_laco_s: int = Field(0, ge=0, le=3600)
     fleet_max_accounts_per_target: int = Field(3, ge=1, le=50)
     fleet_target_window_days: int = Field(30, ge=1, le=365)
     fleet_target_window_s: int = Field(3600, ge=60, le=86400)
