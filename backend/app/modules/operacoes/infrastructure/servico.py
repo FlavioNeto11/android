@@ -270,7 +270,7 @@ class ServicoDeOperacoes:
             # 31.207 (J0, ADR-080): o app que DECLARA a troca de conta atende N personas no mesmo aparelho, uma depois da
             # outra; só uma conta está aberta por vez, e a porta de sessão da execução troca para a esperada (31.155).
             # Basta a persona servir ao app no aparelho. App sem a declaração (o Instagram) segue exigindo a sessão.
-            pela_troca = self._aparelho_pela_troca(alvo, app_id)
+            pela_troca = self._aparelho_pela_troca(alvo, str(conta["id"]), app_id)
             if pela_troca is None:
                 return "sessao", SEM_SESSAO, str(conta["id"]), alvo.instance_id
             aparelho = pela_troca
@@ -279,18 +279,33 @@ class ServicoDeOperacoes:
             return "aparelho", SEM_APARELHO, str(conta["id"]), aparelho
         return None, None, str(conta["id"]), aparelho
 
-    def _aparelho_pela_troca(self, alvo: AlvoPedido, app_id: str) -> str | None:
+    def _aparelho_pela_troca(self, alvo: AlvoPedido, conta_id: str, app_id: str) -> str | None:
         """O aparelho em que a persona entra pela troca declarada (31.207): o pedido, ou o principal dela, desde que ela
-        sirva ao app nele. None quando o app não declara a troca ou ela não serve ao app ali."""
+        possa entrar nele (`_pode_entrar_pela_troca`). None quando o app não declara a troca ou ela não pode."""
         if not troca_declarada(self.db, app_id):
             return None
         alvo_do_pedido = alvo.instance_id
         if alvo_do_pedido is None:
             principal = self.social.binding_principal(alvo.profile_id)
             alvo_do_pedido = str(principal["instance_id"]) if principal is not None else None
-        if alvo_do_pedido is None or not self._serve_o_app(alvo.profile_id, alvo_do_pedido, app_id):
+        if alvo_do_pedido is None or not self._pode_entrar_pela_troca(alvo.profile_id, conta_id, alvo_do_pedido,
+                                                                       app_id):
             return None
         return alvo_do_pedido
+
+    def _pode_entrar_pela_troca(self, profile_id: str, conta_id: str, instance_id: str, app_id: str) -> bool:
+        """Os pré-requisitos da porta de sessão que se conferem sem tocar no aparelho (achado do Codex no PR 493,
+        `sessao.py` `_antes_de_sair` e `_needs_person`): a persona serve ao app no aparelho, a conta tem senha guardada,
+        ativa e com o consentimento para a automação digitá-la (ADR-040), e a sessão dela ali não parou num desafio nem
+        em conta errada. Sem isso a execução nasceria para ficar bloqueada, e a capacidade contaria quem não executa."""
+        if not self._serve_o_app(profile_id, instance_id, app_id):
+            return False
+        cred = self.social.account_credential_row(profile_id, conta_id)
+        if cred is None or cred["consent_at"] is None or cred["status"] != "active":
+            return False
+        parada = self.db.scalar("SELECT status FROM account_sessions WHERE account_id=? AND instance_id=?",
+                                (conta_id, instance_id))
+        return parada not in (SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value)
 
     def _serve_o_app(self, profile_id: str, instance_id: str, app_id: str) -> bool:
         """A persona serve ao app no aparelho: o vínculo daquele app, ou o vínculo sem app de quem tem conta nele (a
@@ -685,8 +700,8 @@ class ServicoDeOperacoes:
         # A conta que entra pela troca declarada (31.207) conta como sessão válida: a porta de sessão a abre na hora.
         troca = bool(alvos) and troca_declarada(self.db, str(alvos[0]["app_id"]))
         com_sessao = [a for a in contas if self._sessoes_prontas(str(a["account_id"]))
-                      or (troca and bool(a["instance_id"]) and self._serve_o_app(
-                          str(a["profile_id"]), str(a["instance_id"]), str(a["app_id"])))]
+                      or (troca and bool(a["instance_id"]) and self._pode_entrar_pela_troca(
+                          str(a["profile_id"]), str(a["account_id"]), str(a["instance_id"]), str(a["app_id"])))]
         disponiveis = [a for a in com_sessao if self._aparelho_apto(a["instance_id"])]
         estados = Counter(str(a["estado"]) for a in alvos)
         motivos = Counter(str(a["motivo"]) for a in alvos if a["estado"] == "bloqueado" and a["motivo"])
@@ -774,7 +789,10 @@ class ServicoDeOperacoes:
         if fora:
             raise OperacaoError("estado_desconhecido", f"Estado desconhecido no filtro: {', '.join(fora)}.", 422)
         atual = self.ler(op_id)
-        if atual["finished_at"] or atual["status"] == "cancelada":
+        # Só a cancelada é recusada, como no liberar (achado do Codex no PR 493): com todos os alvos restantes à espera
+        # do liberar, a leitura fecha a operação (eles contam como bloqueados), e é justamente aí que se descartam as
+        # ações preparadas. A execução já terminada sai em `ignorados` como `ja_terminou`.
+        if atual["status"] == "cancelada":
             raise OperacaoError("ja_encerrada", f"A operação já terminou ({atual['status']}).", 409)
         cancelados: list[str] = []
         ignorados: list[dict[str, str]] = []
