@@ -32,6 +32,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `test_pela_porta_o_teto_agir_do_grupo_libera_o_efeito_sem_pedido_de_aprovacao` ficou em skip citando o ADR-083, e a
   restauração do leitor está em `fix/28-61-grupo-sem-aprovacao`, sem mesclar até o dono decidir.
 - Prova `simulated`: 114 arquivos dirigidos, 2019 passed, 43 skipped. `real`: `not_run`.
+## 2026-10-07 — 31.267: o alvo de operação começa no estado conhecido do app, sem IA (branch feat/31-267-estado-conhecido-no-alvo)
+
+- Achado do Aprendizado (31.262, rodada de 07/10 12:55Z): os três aparelhos começaram com a folha de comentários da
+  operação anterior aberta, e a IA gastou 2 a 5 decisões (US$ 0,03 a 0,08 por alvo) só para voltar. O motor de sessão
+  sabe voltar, mas a porta de sessão só o chama com a sessão vencida, e ela tinha sido lida às 09:30Z.
+- Agora o despacho tem o preparo do alvo (`Scheduler.preparo_do_alvo`, `AppState._preparo_do_alvo`). Antes da 1ª
+  etapa do alvo de uma operação, `ensure_session(observe_only=True)` volta, reabre o app e lê a conta: sem IA, sem
+  digitar, sem efeito. Sai o evento `preparo.estado_conhecido` (`sessao_pronta`, `ms`).
+- Uma vez por objetivo, e só antes da 1ª tentativa: o objetivo retomado depois de uma aprovação já está na tela da
+  etapa. A sessão lida depois de a execução nascer já deixou o app em casa. App sem motor de sessão, ou execução fora
+  de operação, seguem como antes.
+- Prova `simulated`: `backend/tests/test_estado_conhecido_no_alvo.py` (2). `real`: `not_run` até a 1ª operação depois
+  do deploy.
 
 ## 2026-10-07 — 31.260: o rascunho lê só o post em foco no feed "Posts", e o commit confere o mesmo post (branch feat/31-260-post-em-foco)
 
