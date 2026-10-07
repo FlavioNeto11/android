@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — código morto removido pelo ADR-083 na jev/integ-62 (remerge sobre a main do refactor dos tetos)
+
+- O refactor do dono (`76672bea..ac2f6bba`, ADR-083) tirou o espaçamento entre contas, os tetos por hora e por dia, o
+  aquecimento e a coordenação de frota. Saíram da jev/integ-62, que remergeou a main, o que só existia por causa deles:
+  - `ESPACO_DA_FROTA` (a constante do motivo de espera, do 31.258);
+  - a reserva de frota do 31.240: `backend/app/social/reserva_da_frota.py`, a chamada em `gates.py` e `test_reserva_da_frota.py`;
+  - `_adiadas_pela_frota` e o motivo "espaçamento da frota" no GET da operação, com o teste do alvo represado. `alvos[].retomada_em`
+    (adendo v1.126) continua no contrato e fica sempre `null`; o painel do 31.264 já trata nulo.
+- Continuam: `aguarda_resposta` e `aguardando_resposta` (31.251), a pesquisa no relatório (31.259), o post em foco (31.260) e o
+  teto `agir` do grupo liberado (31.253). A dispensa de aprovação de política pelo grupo (28.61) morreu com o refactor: o teste
+  `test_pela_porta_o_teto_agir_do_grupo_libera_o_efeito_sem_pedido_de_aprovacao` ficou em skip citando o ADR-083, e a
+  restauração do leitor está em `fix/28-61-grupo-sem-aprovacao`, sem mesclar até o dono decidir.
+- Prova `simulated`: 114 arquivos dirigidos, 2019 passed, 43 skipped. `real`: `not_run`.
+
 ## 2026-10-07 — 31.260: o rascunho lê só o post em foco no feed "Posts", e o commit confere o mesmo post (branch feat/31-260-post-em-foco)
 
 - O defeito, na rodada de 07/10 12:55Z (android-06, r-20261007125539-542a75): o feed "Posts" abriu com o post tocado no
