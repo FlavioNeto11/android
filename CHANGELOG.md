@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.190, complemento: a proveniência do fato no Livro (adendo v1.117, aprendizado/integ-60)
+
+- A Portal (31.214) mostra a origem, a evidência, a confiança e o frescor da lição que nasceu de um fato da pesquisa.
+- A lista do Livro ganha `source_kind`. O detalhe da lição ganha `proveniencia`, só para o modelo
+  `fato_da_operacao` e com chaves fechadas: operacao, assunto, fontes, frescor_ate, usado_em, execucoes e confianca.
+- Prova `simulated`: `backend/tests/test_fatos_da_operacao_no_livro.py` (3). `real`: `not_run`, pede o deploy.
+
 ## 2026-10-07 — 31.183, correção: os avisos do ensino saem mascarados (achado da Portal, aprendizado/integ-60)
 
 - A prévia, o salvar e o refazer receitas devolviam `warnings` em claro. Vários citam a etapa pelo título ou, sem

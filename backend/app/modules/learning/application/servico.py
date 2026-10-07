@@ -34,6 +34,7 @@ from app.modules.learning.domain.evidencia_invalida import (ja_invalidada, motiv
 from app.modules.learning.domain.conteudo import capability_unica, licao_legivel, nome_da_capability, tela_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.espera import Faixa
+from app.modules.learning.domain.fatos_da_operacao import proveniencia_do_fato
 from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, EntradaDoLivro, ItemDeAprendizado,
                                                quem_no_log,
                                                NovoItem, Transicao, a_revisar, apps_do_item, contagem,
@@ -100,6 +101,9 @@ class DetalheDoLivro:
     #: 30.44: o título da etapa que o texto de cada evidência cita, por (execução, posição, chave), lido da execução na
     #: hora (nunca gravado: é texto do planejador). A etapa que a execução não tem mais fica fora.
     titulos_das_etapas: Mapping[tuple[str, int, str], str] = field(default_factory=dict)
+    #: Adendo v1.117: a proveniência do fato da operação (31.190, `fatos_da_operacao.proveniencia_do_fato`); `None` em
+    #: todo o resto.
+    proveniencia: JsonObject | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,7 +307,12 @@ class LearningService:
         validas = tuple(x for x in evidencias if x.run_id not in invalidas) if invalidas else evidencias
         return DetalheDoLivro(e, evidencias, trilha, exposicoes, conteudo, saude=self.saude_de(e, validas, trilha),
                               versao=self._versao(e, validas), relacoes=self._relacoes(e, conteudo),
-                              titulos_das_etapas=self._titulos_das_etapas(evidencias))
+                              titulos_das_etapas=self._titulos_das_etapas(evidencias),
+                              proveniencia=self._proveniencia(kind, e.ref))
+
+    def _proveniencia(self, kind: LivroKind, ref: str) -> JsonObject | None:
+        item = self._repo.item(ref) if kind is LivroKind.LICAO else None
+        return None if item is None else proveniencia_do_fato(item.content, item.provenance)
 
     def _titulos_das_etapas(self, evidencias: Sequence[Evidencia]) -> dict[tuple[str, int, str], str]:
         """30.44: o título da etapa citada no texto de cada evidência com execução ("etapa 5 (send_message)"), lido de

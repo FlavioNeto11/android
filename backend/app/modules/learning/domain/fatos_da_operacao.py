@@ -25,7 +25,7 @@ from app.modules.learning.domain.licoes import LICAO_MAX_CARACTERES
 from app.modules.learning.domain.livro import Escopo, NovoItem
 from app.modules.learning.domain.tokens import estimar_tokens
 from app.modules.learning.domain.vocabulario import LivroKind, Papel, SourceKind
-from app.modules.skills.domain.document import JsonValue
+from app.modules.skills.domain.document import JsonObject, JsonValue
 
 #: O prefixo da chave do fato de pesquisa na memória da operação (`pesquisa_da_operacao._gravar`).
 PREFIXO_DO_FATO = "pesquisa."
@@ -72,6 +72,25 @@ def candidata(f: FatoDaOperacao, agora: str) -> NovoItem | None:
                                 "assunto": assunto, "fontes": dominios, "frescor_ate": f.frescor_ate,
                                 "usado_em": f.usado_em, "execucoes": execucoes},
                     tokens=estimar_tokens(texto))
+
+
+def proveniencia_do_fato(content: JsonObject, provenance: JsonObject) -> JsonObject | None:
+    """Adendo v1.117: a proveniência que o detalhe do Livro mostra, só do item `fato_da_operacao` e com chaves FECHADAS
+    (a regra e a chave da memória ficam de fora). `confianca` é sempre "confirmado": só o fato confirmado nasce no Livro
+    (`elegivel`). `None` em qualquer outra lição."""
+    if content.get("modelo") != "fato_da_operacao":
+        return None
+
+    def lista(chave: str) -> list[JsonValue]:
+        valor = provenance.get(chave)
+        return [str(v) for v in valor if v is not None] if isinstance(valor, list) else []
+
+    frescor = provenance.get("frescor_ate")
+    usado = provenance.get("usado_em")
+    return {"operacao": str(provenance.get("operacao") or ""), "assunto": str(provenance.get("assunto") or ""),
+            "fontes": lista("fontes"), "frescor_ate": str(frescor) if frescor else None,
+            "usado_em": usado if isinstance(usado, int) and not isinstance(usado, bool) else 0,
+            "execucoes": lista("execucoes"), "confianca": "confirmado"}
 
 
 def candidatas(fatos: Sequence[FatoDaOperacao], agora: str) -> list[NovoItem]:

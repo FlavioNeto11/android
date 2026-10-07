@@ -152,6 +152,7 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
             "saude": _saude(saude), "nasceu_de": e.nasceu_de, "nasceu_em": e.nasceu_em, "reaprendido": _reaprendido(e.reaprendido),
             "nascido_de_prova": e.nascido_de_prova,                 # 31.143 (v1.92): o selo e o filtro "Prova" (31.131)
             "em_uso_real_desde": e.em_uso_real_desde,               # 31.150: o selo "em uso real desde"
+            "source_kind": e.source_kind,                           # v1.117: a origem do item de learning_items
             **_do_legado(e, legado), **_da_espera(e, servico)}
 
 
@@ -268,6 +269,7 @@ def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
                        for e in sorted(d.evidencias, key=lambda e: e.observed_at or "", reverse=True)],
         "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
         "conteudo": d.conteudo, "versao": d.versao, "relacoes": list(d.relacoes),
+        "proveniencia": d.proveniencia,                          # v1.117: só no fato da operação (31.190)
         "invalidar_evidencia": None if a_invalidar is None else {"run_id": a_invalidar},
         "pareceres": [], "curador": None}
     pareceres = _pareceres(servico)

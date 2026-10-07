@@ -7656,3 +7656,23 @@ inteiro. O painel passa a exibir a cópia no 31.189 (Portal).
 - `404 receita_desconhecida`.
 - **Prova:** `simulated` (`backend/tests/test_rendimento_por_receita.py`). `real`: `not_run`, pede o deploy.
 
+## Adendo v1.117 (07/10/2026; número da orquestradora; parte do item 31.190) — a proveniência do fato da operação
+
+Para o painel mostrar origem, evidência, confiança e frescor da lição que nasceu de um fato da pesquisa (31.214).
+
+- `GET /api/aprendizado`: cada item ganha `source_kind`. É a origem do item de `learning_items` (ex.
+  `operation_fact`, `recovery`, `manual`); `null` em receita, fluxo, habilidade e memória.
+- `GET /api/aprendizado/licao/{id}`: o detalhe ganha `proveniencia`. É `null` em toda lição que não seja do modelo
+  `fato_da_operacao`. Nesse modelo, as chaves são FECHADAS:
+  - `operacao`: o id da operação de que o fato veio;
+  - `assunto`: o assunto da operação, como foi escrito ("" quando tinha identificador);
+  - `fontes`: os domínios das fontes, sem `www.`;
+  - `frescor_ate`: até quando o fato vale (UTC), ou `null`;
+  - `usado_em`: quantos alvos receberam o fato no texto;
+  - `execucoes`: os ids das execuções da operação (até 20);
+  - `confianca`: sempre `"confirmado"`, porque só o fato confirmado nasce no Livro.
+- A regra e a chave da memória não saem.
+- **Publicar** a candidata é `POST /api/aprendizado/licao/{id}/status` com `{"to": "published", "reason": …}`, num gesto
+  só (passa por `validated`). Só uma pessoa publica: `human_origin` = `true`.
+- **Prova:** `simulated` (`backend/tests/test_fatos_da_operacao_no_livro.py`). `real`: `not_run`, pede o deploy.
+

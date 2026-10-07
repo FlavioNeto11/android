@@ -17,7 +17,10 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from app.modules.learning.domain.fatos_da_operacao import FatoDaOperacao, candidata
+import httpx
+
+from app.main import create_app
+from app.modules.learning.domain.fatos_da_operacao import FatoDaOperacao, candidata, proveniencia_do_fato
 from app.modules.learning.infrastructure.fatos_da_operacao_sql import FatosDaOperacaoParaOLivro
 from app.util import now_iso
 
@@ -99,3 +102,26 @@ async def test_o_passo_leva_ao_livro_uma_vez_e_so_a_candidata(harness: Harness) 
     _memoria(db, "op-2", "pesquisa.f1", FATO)
     assert passo.executar(agora) == 0
     assert db.scalar("SELECT COUNT(*) FROM learning_items WHERE source_kind='operation_fact'") == 1
+
+
+async def test_o_livro_mostra_a_proveniencia_do_fato_v1_117(harness: Harness) -> None:
+    """Adendo v1.117 (31.214 da Portal): `source_kind` na lista e `proveniencia` no detalhe, só do fato da operação,
+    com chaves fechadas (a regra e a chave da memória não saem)."""
+    st = harness.state
+    db = st.db
+    _operacao(db, "op-1")
+    _fonte(db, "op-1", "ob-1", "https://www.exemplo.org/a")
+    _memoria(db, "op-1", "pesquisa.f1", FATO, evidencia=["ob-1"])
+    FatosDaOperacaoParaOLivro(st.learning, st.learning._repo, db).executar(  # type: ignore[attr-defined]
+        datetime.now(timezone.utc))
+    item_id = db.scalar("SELECT id FROM learning_items WHERE source_kind='operation_fact'")
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        lista = (await c.get("/api/aprendizado", params={"kind": "licao", "rotulo": "todos"})).json()["itens"]
+        detalhe = (await c.get(f"/api/aprendizado/licao/{item_id}")).json()
+    assert [i["source_kind"] for i in lista if i["ref"] == item_id] == ["operation_fact"]
+    assert detalhe["proveniencia"] == {"operacao": "op-1", "assunto": "festival de inverno", "fontes": ["exemplo.org"],
+                                       "frescor_ate": FUTURO, "usado_em": 0, "execucoes": [],
+                                       "confianca": "confirmado"}
+    assert proveniencia_do_fato({"modelo": "contraste"}, {"operacao": "op-1"}) is None    # só o fato da operação

@@ -280,6 +280,8 @@ class EntradaDoLivro:
     #: 31.150: quando uma pessoa religou o fluxo de prova para uso real (`uso_real.em_uso_real_desde`, da trilha);
     #: `None` nos outros e no fluxo de prova que não foi religado, ou que saiu de uso depois.
     em_uso_real_desde: str | None = None
+    #: Adendo v1.117: a origem do item de `learning_items` (`SourceKind`, ex. `operation_fact`); `None` nos tipos nativos.
+    source_kind: str | None = None
 
     @property
     def requires_owner(self) -> bool:
@@ -307,7 +309,7 @@ def entrada_do_item(item: ItemDeAprendizado) -> EntradaDoLivro:
         side_effect=item.side_effect, human_origin=item.human_origin, created_at=item.created_at,
         state_at=item.state_at, last_used_at=item.last_used_at, a_favor=item.evidence_for,
         contra=item.evidence_against, detail=item.state_detail, content_hash=item.content_hash,
-        scope_key=item.escopo.chave(item.kind), app_version=item.app_version)
+        scope_key=item.escopo.chave(item.kind), app_version=item.app_version, source_kind=item.source_kind.value)
 
 
 def para_aprovar(e: EntradaDoLivro) -> bool:
