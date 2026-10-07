@@ -354,6 +354,25 @@ inteira, sem diferença de maiúscula. O valor que está num parâmetro do coman
 F2) e a receita aprendida da execução continua guardando `{param}`. O `actions.target` fica com o valor: é o seletor da
 receita e da lição (o elemento da tela), e o evento não o leva.
 
+**A nota do juiz na evidência leva também o usuário da conta e o texto da etapa (31.242).** Achado da leitura das
+evidências da onda 2 de 07/10: a nota do juiz repete o usuário da conta ("@fulano said …") e o texto do comentário,
+que o mapa acima não leva. A nota passa pelo mapa da NOTA (`Repository.trocas_da_nota`), que soma três coisas:
+- o mapa do registro;
+- o usuário de cada conta da persona (`{conta_<app>_usuario}`, com e sem a arroba, porque a borda da palavra não casa
+  depois de `@`);
+- os textos da etapa que o juiz repete (`content`, `username`, `post_author`, `caption_contains`, `target`), como
+  `{chave}`.
+
+O valor curto demais ou que já é marcador fica de fora. Vale na gravação e na saída (`Repository.nota_para_fora`:
+detalhe da execução no painel e na API, e o evento `evidence.added`). Assim, a nota gravada antes sai mascarada sem
+reescrever o banco.
+
+Limites:
+- só o valor INTEIRO: o trecho ou a paráfrase do comentário fica;
+- na saída vale o usuário de AGORA: a conta trocada ou retirada deixa o antigo na nota velha;
+- o contexto da falha no treino (`training/origem.py`) lê a nota direto do banco e ainda não passa por esse mapa;
+- eventos, ações e detalhe da etapa seguem o mapa do registro, sem o usuário da conta.
+
 A F1 não cobre o texto das etapas (`steps.postcondition`/`goal`/`title` e `plan_versions.steps`): a materialização ainda
 grava o valor resolvido. Isso é a F2 (o molde na linha e a resolução em memória no executor, combinada com a Android).
 A aprovação e a porta de política guardam e mostram o marcador; a tela de aprovação resolve o valor ao vivo pela

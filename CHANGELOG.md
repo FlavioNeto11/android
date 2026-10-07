@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.242: a nota do juiz na evidência sai sem o usuário da conta e sem o texto da etapa (branch feat/31-242-mascarar-notas-do-juiz)
+
+- A nota do juiz repetia o usuário da conta da persona ("@fulano said …") e o texto do comentário, que o mapa do
+  registro (31.113 F1) não leva. Achado ao ler as evidências 2951 a 2956 da onda 2 (só leitura, sem copiar valor).
+- A nota passa pelo mapa da nota (`Repository.trocas_da_nota`): o do registro, mais o usuário de cada conta da persona
+  (com e sem a arroba) e os textos da etapa (`content`, alvo, legenda) como `{chave}`. Vale na gravação e na saída
+  (detalhe da execução e evento `evidence.added`). A nota antiga sai mascarada, e o banco não é reescrito.
+- Limites: só o valor inteiro; na saída, o usuário de agora. O contexto da falha do treino e os eventos, ações e
+  detalhe da etapa seguem sem o usuário da conta (`docs/dominios/persona.md`).
+- Prova `simulated`: `backend/tests/test_nota_do_juiz_mascarada.py` (4). `real`: `not_run` (as notas da 1ª operação
+  depois do deploy, e o detalhe da execução da onda 2).
+
 ## 2026-10-07 — 31.239: o comentário publicado do Instagram comprovado pela árvore, como dado no catálogo (branch feat/31-239-marcador-de-comentario)
 
 - O CREATE_COMMENT do Instagram declara `local_proof: comentario:{account_label}`. A prova (`proofs._comentario_publicado`)
