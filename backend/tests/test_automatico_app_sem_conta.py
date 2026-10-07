@@ -19,7 +19,7 @@ import secrets as pysecrets
 import pytest
 from pydantic import SecretStr
 
-from app.models import PersonaDeviceBody, PersonaPatch, ProfileCreate
+from app.models import PersonaDeviceBody, ProfileCreate
 from app.modules.identity.presentation.schemas import CredentialUpdate
 from app.taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody
 
@@ -76,9 +76,6 @@ async def test_sem_aparelho_sem_conta_apto_o_de_conta_real_entra_e_a_previa_diz(
 
 async def test_contraprova_app_de_conta_segue_para_a_persona(harness: Harness) -> None:
     sueli = _persona(harness, "Sueli", "android-02", outlook=True)
-    # Sem as crenças mínimas o simulado a põe em `nao_avaliaveis` (esta contraprova já falhava na main por isso).
-    harness.state.social.update_persona(sueli, PersonaPatch.model_validate({"biography": {"beliefs": {
-        "religion": {"affiliation": "católica", "practice": "devota"}, "politics": {"orientation": "centro"}}}}))
     # ADR-085: o Outlook tem login gerenciado; sem sessão pronta a automação só entra com a senha guardada com consentimento
     conta = next(c for c in harness.state.social.list_accounts(sueli) if c.app_id == "outlook")
     harness.state.social.set_account_credential(

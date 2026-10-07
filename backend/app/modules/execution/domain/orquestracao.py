@@ -210,23 +210,29 @@ _DISPONIBILIDADE = re.compile(r"desligad|sem sessao|sessao (?:nao|pronta|expirad
 
 # ---------------------------------------------------------------------- simulado
 
+#: 31.277: o pedido que depende de crença (fé ou política). Só nele a persona sem crenças registradas é "não avaliável":
+#: o refactor do ADR-083 trocou `de_crenca and sem_crencas` por `sem_crencas` e o Automático deixou de sugerir qualquer
+#: persona sem crenças, mesmo para "leia o último e-mail". A conduta (alerta, descarte por religião) não volta.
+_RELIGIOSO = re.compile(r"\b(crist\w*|igreja|deus|fe|evangel\w*|catolic\w*|missa|culto|biblia|oracao|religi\w*)\b")
+_POLITICO = re.compile(r"\b(politic\w*|esquerda|direita|governo|conservador\w*|progressist\w*)\b")
 _NUMEROS = {"uma": 1, "um": 1, "duas": 2, "dois": 2, "tres": 3, "quatro": 4, "cinco": 5}
 _QUANTIDADE = re.compile(r"\b(\d+|uma|um|duas|dois|tres|quatro|cinco)\s+(?:personas?|pessoas?|contas?|perfis)\b")
 _PALAVRA = re.compile(r"[a-z]{4,}")
 
 
 def orquestracao_simulada(req: PedidoDeOrquestracao) -> OrquestracaoOut:
-    """Sem IA, determinístico: por palavras em comum com o perfil, desempatado pela saúde do aparelho e pela
-    disponibilidade. Serve aos testes e ao modo simulado — não mede a qualidade da escolha real."""
+    """Sem IA, determinístico: "não avaliável" quando o pedido é de crença e o cartão não tem crença, e o resto por
+    palavras em comum com o perfil, desempatado pela saúde do aparelho e pela disponibilidade. Serve aos testes e ao modo simulado — não mede a qualidade da escolha real."""
     pedido = _sem_acento(req.command)
     m = _QUANTIDADE.search(pedido)
     quantidade = (int(m.group(1)) if m.group(1).isdigit() else _NUMEROS[m.group(1)]) if m else 1
+    de_crenca = bool(_RELIGIOSO.search(pedido) or _POLITICO.search(pedido))
     palavras = set(_PALAVRA.findall(pedido))
     avaliadas: list[tuple[int, CartaoDePersona]] = []
     nao_avaliaveis: list[NaoAvaliavelOut] = []
     for c in req.cartoes:
         perfil = _sem_acento(" ".join(c.perfil))
-        if c.sem_crencas:
+        if de_crenca and c.sem_crencas:
             nao_avaliaveis.append(NaoAvaliavelOut(profile_id=c.profile_id, falta="crenças não registradas"))
             continue
         avaliadas.append((len(palavras & set(_PALAVRA.findall(perfil))), c))

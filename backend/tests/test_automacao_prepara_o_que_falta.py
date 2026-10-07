@@ -142,3 +142,13 @@ def test_o_simulado_nao_descarta_por_sessao_pronta_nem_por_estar_livre() -> None
                                                      max_personas=2))
     assert {e.profile_id for e in out.escolhidas} == {"a", "b"} and out.descartadas == []
     assert out.escolhidas[0].profile_id == "b"                                # o desempate só ordena
+
+
+def test_sem_crencas_so_e_nao_avaliavel_quando_o_pedido_depende_delas() -> None:
+    """31.277: o refactor do ADR-083 trocou `de_crenca and sem_crencas` por `sem_crencas`, e o Automático deixou de
+    sugerir toda persona sem crenças, até para "leia o último e-mail"."""
+    cartoes = [CartaoDePersona("a", "A", perfil=("hobbies: culinária",), sem_crencas=True)]
+    leitura = orquestracao_simulada(PedidoDeOrquestracao(command="leia o último e-mail no Outlook", cartoes=cartoes))
+    assert [e.profile_id for e in leitura.escolhidas] == ["a"] and leitura.nao_avaliaveis == []
+    de_fe = orquestracao_simulada(PedidoDeOrquestracao(command="fale da igreja com a prima", cartoes=cartoes))
+    assert de_fe.escolhidas == [] and [n.profile_id for n in de_fe.nao_avaliaveis] == ["a"]

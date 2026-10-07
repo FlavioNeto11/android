@@ -20,6 +20,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-07 — 31.277: o Automático volta a sugerir a persona sem crenças quando o pedido não depende delas (branch fix/31-277-automatico-sem-crenca)
+
+- O funil 60 e a main reprovavam `test_automatico_app_sem_conta::test_contraprova_app_de_conta_segue_para_a_persona` e
+  `test_roteamento_por_conjunto_de_apps::test_automatico_so_sugere_quem_tem_conta_em_todos_os_apps`. Causa: o refactor do
+  ADR-083 (`76672bea`/`a5897880`), ao tirar o alerta de conduta, trocou `if de_crenca and c.sem_crencas` por
+  `if c.sem_crencas` em `orquestracao_simulada`. Toda persona sem crenças registradas virava "não avaliável", mesmo para
+  "leia o último e-mail".
+- Volta só a condição (o pedido de fé ou de política), sem alerta de conduta nem descarte por religião. O prompt do modelo
+  real já dizia isso e não mudou.
+- Os dois testes também precisaram da senha guardada com consentimento na persona: com o ADR-085 (31.274), o app de login
+  gerenciado sem senha nem sessão pronta é descarte por código. A contraprova não ganha mais as crenças que eu tinha
+  posto antes para fazê-la passar (era remendo; a regra é a causa).
+- Prova `simulated`: 132 passed (os dois testes, `test_orquestracao`, `test_automacao_prepara_o_que_falta`,
+  `test_sugestao*`, arquitetura, catracas). `real`: `not_run`.
+
 ## 2026-10-07 — 31.274 parte 2 (ADR-085): a sugestão automática prepara o que falta e só descarta o impossível (branch feat/31-274-automacao-prepara)
 
 - Caso real do dono: persona apta (aparelho parado, sessão `unknown`) ia para "descartadas" por "aparelho desligado e sem
