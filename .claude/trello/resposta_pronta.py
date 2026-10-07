@@ -1,25 +1,34 @@
-"""28.71: da resposta do dono por app à confirmação em bloco, num comando só (ensaio por padrão).
+"""28.71/28.77: da resposta do dono por app ou web ao registro no cartão, num comando só (ensaio por padrão).
 
-A regra do dono: a resposta a um cartão de pergunta (P-NNN) dada pelo app do Trello só vale depois de UM "ok" dele no
-Telegram ou no chat, e esse "ok" cobre todas as pendentes. Antes a Canais fazia isso à mão (vigia, leitura do banco,
-um `registrar_resposta.py` por cartão). Este script:
+Regra do dono (07/10, 28.77): a resposta a um cartão de pergunta (P-NNN), pelo app OU pela web do Trello, vale como dada.
+NÃO há confirmação em bloco no Telegram nem no chat: a resposta é registrada e o cartão movido na hora. A autoria
+(`app_do_dono`, `digitado`) é só informação no registro. As condições escritas no cartão continuam valendo (a Canais as
+lê); só a resposta AMBÍGUA volta como pergunta nova no Trello. Este script:
 
   1. lê as entradas do dono em `canal_entradas` com id maior que `--base`;
-  2. liga cada resposta de app (`responde_a` = `pergunta:P-NNN;autoria=app_do_dono`) ao cartão P-NNN ABERTO da lista
-     "Perguntas para você" (a mais recente por pergunta; P-NNN já em "Perguntas respondidas" é ignorada; sem cartão
-     aberto vira "sem cartão", nada se inventa);
-  3. imprime, por pendente, o COMANDO PRONTO do `registrar_resposta.py` (em ensaio);
-  4. detecta a confirmação em bloco: uma entrada do dono no Telegram (mensagem solta, sem alvo), POSTERIOR à resposta,
-     de até 60 caracteres e só com as frases do conjunto abaixo; `--ok-no-chat "<texto>"` traz o "ok" dado no chat da
-     sessão e vale pelas mesmas regras. Sem confirmação imprime "aguardando ok dele" e nunca aplica;
-  5. com `--aplicar`, só as confirmadas, uma por uma, pela função `registrar` do `registrar_resposta.py` (idempotente);
-     uma linha por pendente: registrada, já registrada ou faltou.
+  2. liga cada resposta do dono (`responde_a` = `pergunta:P-NNN` com `autoria=app_do_dono`, `digitado` ou ausente) ao cartão
+     P-NNN ABERTO da lista "Perguntas para você" (a mais recente por pergunta; P-NNN já em "Perguntas respondidas" é
+     ignorada; sem cartão aberto vira "sem cartão", nada se inventa; `autoria=app` e `nao_confirmada` não são o dono);
+  3. classifica o texto (regra simples, abaixo): clara, livre ou ambígua;
+  4. imprime, por pendente pronta, o COMANDO PRONTO do `registrar_resposta.py` (em ensaio);
+  5. com `--aplicar`, TODAS as prontas (claras e livres), uma por uma, pela função `registrar` do
+     `registrar_resposta.py` (idempotente); uma linha por pendente: registrada, já registrada ou faltou. A ambígua nunca
+     é aplicada: sai "ambígua: voltar como pergunta nova".
+
+Regra do texto (`classificar`, sobre o texto sem acento nem pontuação):
+  - ambígua: vazio; com "?"; que cita outra P-NNN além da do cartão (ou mais de uma); sim e não juntos; texto curto (até
+    60 caracteres) que não começa por sim/não/ok e não é escolha reconhecível;
+  - clara: só "sim", "não/nao", "ok", "pode", "siga/segue/pode seguir a recomendação" (em combinação), ou uma escolha
+    explícita ("A", "opção B", "letra C", "B fica");
+  - livre: texto longo (mais de 60 caracteres) sem "?", ou curto que começa por sim/não/ok mas traz algo mais ("sim, mas só
+    depois de conferir"). É registrado LITERALMENTE e marcado "ler (Canais)" no relatório: as condições dele são lidas pela
+    Canais antes de agir.
 
 Nunca comenta em cartão. A saída não ecoa mais que 80 caracteres do literal do dono e os passa por `redacao.redigir`
 (o literal COMPLETO só vai ao cartão, por `registrar_resposta`, como a palavra dele).
 
 Uso (da raiz):
-  backend/.venv/Scripts/python.exe .claude/trello/resposta_pronta.py --base 3570 [--ok-no-chat "ok"] [--aplicar]
+  backend/.venv/Scripts/python.exe .claude/trello/resposta_pronta.py --base 3570 [--aplicar]
 """
 from __future__ import annotations
 
@@ -42,10 +51,14 @@ from redacao import redigir  # noqa: E402
 
 LISTA_PERGUNTAS = "6ac3c209ab485e2957580b09"       # Execução › Perguntas para você
 LIMITE_LITERAL_NA_SAIDA = 80
-LIMITE_DA_CONFIRMACAO = 60                          # texto maior que isto não é um "ok": é uma mensagem
-FRASES_DE_OK = ("ok", "ja respondi", "respondido", "confirmo", "sim", "pode registrar")  # já sem acento, minúsculas
-_SO_FRASES = re.compile(r"^(?:(?:" + "|".join(re.escape(f) for f in FRASES_DE_OK) + r")(?: |$))+$")
-_PERGUNTA = re.compile(r"pergunta:(P-\d+);autoria=app_do_dono\b")
+LIMITE_TEXTO_CURTO = 60                             # até aqui um texto sem sim/não/escolha é ambíguo; acima é "livre"
+AUTORIAS_DO_DONO = ("app_do_dono", "digitado", "")  # só informação (28.77); `app` e `nao_confirmada` não são ele
+_PERGUNTA = re.compile(r"pergunta:(P-\d+)(?:;autoria=(\w*))?")
+_ID_P = re.compile(r"\bp (\d+)\b")                  # "P-034" normalizado vira "p 034"
+_PALAVRA_CLARA = r"(?:sim|nao|ok|pode|siga|segue|seguir|a recomendacao)"
+_SO_CLARA = re.compile(rf"^{_PALAVRA_CLARA}(?: {_PALAVRA_CLARA})*$")
+_ESCOLHA = re.compile(r"^(?:(?:opcao|letra) )?[a-e](?: fica| vale| mesmo)?$|\b(?:opcao|letra) [a-e]\b")
+_AFIRMA = ("sim", "ok", "siga", "segue", "seguir")
 _NOME_P = re.compile(r"^\s*(P-\d+)\b")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _TELEFONE = re.compile(r"(?<!\w)\+?\d[\d ().-]{7,}\d")
@@ -61,10 +74,17 @@ class Pendente:
     pergunta: str
     cartao: dict[str, object] | None = None
     situacao: str = "aberta"                 # "aberta" | "sem_cartao" | "ja_respondida"
-    confirmada_por: str = ""                 # "entrada 3576" | "chat"
-    confirmacao_texto: str = ""
+    autoria: str = ""                        # informação (app_do_dono, digitado, ""); nunca trava
+    classe: str = "clara"                    # "clara" | "livre" | "ambigua" (ver `classificar`)
+    motivo: str = ""                         # por que é ambígua
     resultado: str = ""                      # "registrada" | "ja_registrada" | "faltou" | "" (ainda não aplicada)
     substituida_por: int | None = field(default=None)
+
+    @property
+    def pronta(self) -> bool:
+        """Entra no `--aplicar`: cartão aberto, a resposta mais recente, e não ambígua."""
+        return (self.situacao == "aberta" and self.substituida_por is None and self.cartao is not None
+                and self.classe != "ambigua")
 
 
 def normalizar(texto: str) -> str:
@@ -73,11 +93,29 @@ def normalizar(texto: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", sem.lower()).split())
 
 
-def eh_confirmacao(texto: str | None) -> bool:
-    """Só as frases do conjunto explícito, em qualquer ordem/repetição, e só em texto curto."""
-    if not texto or len(texto.strip()) > LIMITE_DA_CONFIRMACAO:
-        return False
-    return bool(_SO_FRASES.match(normalizar(texto)))
+def classificar(texto: str | None, pergunta: str = "") -> tuple[str, str]:
+    """(classe, motivo) do texto da resposta: "clara", "livre" ou "ambigua". A regra está no docstring do módulo."""
+    bruto = (texto or "").strip()
+    if not bruto:
+        return "ambigua", "texto vazio"
+    if "?" in bruto:
+        return "ambigua", "o texto é uma pergunta"
+    norm = normalizar(bruto)
+    citadas = {f"P-{n}" for n in _ID_P.findall(norm)}
+    if len(citadas) > 1 or (citadas and pergunta and citadas != {pergunta}):
+        return "ambigua", "cita mais de uma pergunta"
+    palavras = norm.split()
+    if not palavras:
+        return "ambigua", "texto sem palavras"
+    if _SO_CLARA.match(norm):
+        if "nao" in palavras and any(w in palavras for w in _AFIRMA):
+            return "ambigua", "sim e não juntos"
+        return "clara", ""
+    if _ESCOLHA.search(norm):
+        return "clara", ""
+    if len(bruto) > LIMITE_TEXTO_CURTO or palavras[0] in ("sim", "nao", "ok"):
+        return "livre", ""
+    return "ambigua", "texto curto sem sim, não ou escolha reconhecível"
 
 
 def quando_de(recebida_em: object) -> str:
@@ -96,19 +134,15 @@ def ler_entradas(db, base: int) -> list[dict[str, object]]:  # noqa: ANN001
     return [dict(r) for r in linhas]
 
 
-def respostas_de_app(entradas: list[dict[str, object]]) -> list[tuple[dict[str, object], str]]:
+def respostas_do_dono(entradas: list[dict[str, object]]) -> list[tuple[dict[str, object], str, str]]:
+    """(entrada, P-NNN, autoria) das respostas do dono em cartão de pergunta, pelo app ou pela web. Texto vazio entra (sai
+    como ambígua, não some em silêncio); autoria que não é dele (`app`, `nao_confirmada`) fica de fora."""
     out = []
     for e in entradas:
         m = _PERGUNTA.search(str(e.get("responde_a") or "")) if e.get("canal") == "trello" else None
-        if m and str(e.get("texto") or "").strip():
-            out.append((e, m.group(1)))
+        if m and (m.group(2) or "") in AUTORIAS_DO_DONO:
+            out.append((e, m.group(1), m.group(2) or ""))
     return out
-
-
-def confirmacoes_do_telegram(entradas: list[dict[str, object]]) -> list[dict[str, object]]:
-    """Mensagem solta do dono (não é resposta a aviso com alvo, nem botão) que bate o conjunto de frases."""
-    return [e for e in entradas if e.get("canal") == "telegram" and e.get("tipo", "mensagem") == "mensagem"
-            and not e.get("alvo") and eh_confirmacao(str(e.get("texto") or ""))]
 
 
 def _por_pergunta(cartoes: list[dict[str, object]]) -> dict[str, dict[str, object]]:
@@ -120,16 +154,18 @@ def _por_pergunta(cartoes: list[dict[str, object]]) -> dict[str, dict[str, objec
     return out
 
 
-def planejar(entradas: list[dict[str, object]], abertos: list[dict[str, object]], respondidos: list[dict[str, object]],
-             ok_no_chat: str = "") -> list[Pendente]:
-    """Puro: liga resposta a cartão e marca a confirmação. Uma resposta por pergunta (a mais recente); as anteriores
-    saem como substituídas. A confirmação precisa ser POSTERIOR (id maior) à resposta."""
+def planejar(entradas: list[dict[str, object]], abertos: list[dict[str, object]],
+             respondidos: list[dict[str, object]]) -> list[Pendente]:
+    """Puro: liga resposta a cartão e classifica o texto. Uma resposta por pergunta (a mais recente); as anteriores saem
+    como substituídas. Sem confirmação: toda resposta ligada a um cartão aberto e não ambígua está pronta (28.77)."""
     cartoes, ja = _por_pergunta(abertos), _por_pergunta(respondidos)
     ultima: dict[str, Pendente] = {}
     pendentes: list[Pendente] = []
-    for e, p in respostas_de_app(entradas):
+    for e, p, autoria in respostas_do_dono(entradas):
+        literal = str(e.get("texto") or "").strip()
+        classe, motivo = classificar(literal, p)
         pend = Pendente(entrada=int(e["id"]), canal=str(e["canal"]), quando=quando_de(e.get("recebida_em")),
-                        literal=str(e["texto"]).strip(), pergunta=p)
+                        literal=literal, pergunta=p, autoria=autoria, classe=classe, motivo=motivo)
         if p in cartoes:
             pend.cartao = cartoes[p]
         else:
@@ -138,18 +174,6 @@ def planejar(entradas: list[dict[str, object]], abertos: list[dict[str, object]]
             ultima[p].substituida_por = pend.entrada
         ultima[p] = pend
         pendentes.append(pend)
-    confirmacoes = confirmacoes_do_telegram(entradas)
-    chat_ok = eh_confirmacao(ok_no_chat)
-    for pend in pendentes:
-        if pend.situacao != "aberta" or pend.substituida_por is not None:
-            continue
-        depois = [c for c in confirmacoes if int(c["id"]) > pend.entrada]
-        if depois:
-            pend.confirmada_por = f"entrada {depois[0]['id']}"
-            pend.confirmacao_texto = f"Telegram, entrada {depois[0]['id']}, '{str(depois[0]['texto']).strip()}'"
-        elif chat_ok:
-            pend.confirmada_por = "chat"
-            pend.confirmacao_texto = f"chat, '{ok_no_chat.strip()}'"
     return pendentes
 
 
@@ -166,8 +190,8 @@ def comando(p: Pendente) -> str:
     partes = ["backend/.venv/Scripts/python.exe .claude/trello/registrar_resposta.py", f"--cartao {cartao}",
               f"--entrada {p.entrada}", f"--canal {p.canal}", f"--quando {shlex.quote(p.quando)}",
               f"--literal {shlex.quote(trecho(p.literal))}"]
-    if p.confirmada_por:
-        partes.append(f"--confirmacao {shlex.quote(redigir(p.confirmacao_texto))}")
+    if p.autoria:
+        partes.append(f"--autoria {shlex.quote(p.autoria)}")
     return " ".join(partes)
 
 
@@ -179,21 +203,23 @@ def linha(p: Pendente) -> str:
         return f"{cab} -> sem cartão aberto em Perguntas para você (nada inventado)"
     if p.situacao == "ja_respondida":
         return f"{cab} -> ignorada: a pergunta já está em Perguntas respondidas"
+    if p.classe == "ambigua":
+        return f"{cab} -> ambígua ({p.motivo}): voltar como pergunta nova no Trello"
+    marca = " · texto livre: ler (Canais)" if p.classe == "livre" else ""
     if p.resultado:
-        return f"{cab} -> {_ROTULOS.get(p.resultado, p.resultado)}"
-    if not p.confirmada_por:
-        return f"{cab} -> aguardando ok dele"
-    return f"{cab} -> confirmada por {p.confirmada_por}"
+        return f"{cab} -> {_ROTULOS.get(p.resultado, p.resultado)}{marca}"
+    return f"{cab} -> pronta para registrar{marca}"
 
 
 async def aplicar(cl, pendentes: list[Pendente]) -> None:  # noqa: ANN001
-    """Só as confirmadas, uma por uma; uma falha não derruba as outras (a linha diz "faltou"; sem a mensagem de erro)."""
+    """Todas as prontas, uma por uma, sem confirmação; uma falha não derruba as outras (a linha diz "faltou"; sem a
+    mensagem de erro). A ambígua nunca é aplicada."""
     for p in pendentes:
-        if p.situacao != "aberta" or p.substituida_por is not None or not p.confirmada_por or p.cartao is None:
+        if not p.pronta:
             continue
         try:
-            r = await rr.registrar(cl, cartao=str(p.cartao["id"]), entrada=p.entrada, canal=p.canal, quando=p.quando,
-                                   literal=p.literal, confirmacao=p.confirmacao_texto, aplicar=True, redigir=redigir,
+            r = await rr.registrar(cl, cartao=str(p.cartao["id"]), entrada=p.entrada, canal=p.canal, quando=p.quando,  # type: ignore[index]
+                                   literal=p.literal, autoria=p.autoria, aplicar=True, redigir=redigir,
                                    falar=lambda _t: None)
             p.resultado = "registrada" if r == "registrada" else "ja_registrada"
         except Exception as exc:  # noqa: BLE001 - uma linha "faltou" por pendente; o texto do erro pode ter dado sensível
@@ -202,15 +228,17 @@ async def aplicar(cl, pendentes: list[Pendente]) -> None:  # noqa: ANN001
 
 def relatorio(pendentes: list[Pendente], *, aplicando: bool) -> list[str]:
     if not pendentes:
-        return ["nenhuma resposta de app do dono nas entradas novas"]
+        return ["nenhuma resposta do dono em cartão de pergunta nas entradas novas"]
     saida = []
     for p in pendentes:
         saida.append(linha(p))
-        if not aplicando and p.cartao is not None and p.substituida_por is None and not p.resultado:
+        if not aplicando and p.pronta and not p.resultado:
             saida.append("    comando: " + comando(p))
-    confirmadas = sum(1 for p in pendentes if p.confirmada_por and p.situacao == "aberta" and p.substituida_por is None)
-    aguardando = sum(1 for p in pendentes if not p.confirmada_por and p.situacao == "aberta" and p.substituida_por is None)
-    saida.append(f"resumo: {len(pendentes)} resposta(s), {confirmadas} confirmada(s), {aguardando} aguardando ok dele"
+    prontas = sum(1 for p in pendentes if p.pronta)
+    ambiguas = sum(1 for p in pendentes if p.situacao == "aberta" and p.substituida_por is None and p.classe == "ambigua")
+    livres = sum(1 for p in pendentes if p.pronta and p.classe == "livre")
+    saida.append(f"resumo: {len(pendentes)} resposta(s), {prontas} pronta(s) para registrar ({livres} de texto livre para "
+                 f"a Canais ler), {ambiguas} ambígua(s) a devolver como pergunta nova"
                  + ("" if aplicando else " (ensaio: nada foi escrito; use --aplicar)"))
     return saida
 
@@ -224,7 +252,7 @@ async def _principal(args: argparse.Namespace) -> int:
     e = EnvSettings()
     cl = ClienteTrello(e.trello_api_key.get_secret_value().strip(), e.trello_token.get_secret_value().strip())
     pendentes = planejar(entradas, await cl.cartoes_da_lista(LISTA_PERGUNTAS),
-                         await cl.cartoes_da_lista(rr.LISTA_RESPONDIDAS), args.ok_no_chat)
+                         await cl.cartoes_da_lista(rr.LISTA_RESPONDIDAS))
     if args.aplicar:
         await aplicar(cl, pendentes)
     for t in relatorio(pendentes, aplicando=args.aplicar):
@@ -235,8 +263,7 @@ async def _principal(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--base", required=True, type=int, help="só entradas com id maior que este")
-    p.add_argument("--ok-no-chat", default="", help='o "ok" dado no chat da sessão (vale pelas mesmas frases curtas)')
-    p.add_argument("--aplicar", action="store_true", help="registra as confirmadas (sem isto é ensaio, só leitura)")
+    p.add_argument("--aplicar", action="store_true", help="registra as prontas (sem isto é ensaio, só leitura)")
     args = p.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]  # console do Windows é cp1252
     return asyncio.run(_principal(args))
