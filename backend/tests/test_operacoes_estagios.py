@@ -154,3 +154,18 @@ def test_a_hora_do_rascunho_que_espera_o_liberar_e_a_do_pedido() -> None:
                      pedido_em="2026-10-07T10:05:00.000Z", comecou_em=None)   # `ready`: não começou
     lt = derivar(_fatos([_etapa("OPEN_PROFILE", "succeeded", h="01"), efeito], status="waiting_user"))
     assert dict(lt.estagios)["acao_preparada"] == dict(lt.estagios)["resposta_gerada"] == "2026-10-07T10:05:00.000Z"
+
+
+def test_o_alvo_que_espera_a_porta_de_sessao_diz_por_que() -> None:
+    """31.173: o objetivo `pending` antes do aparelho (a porta de sessão relendo a tela) era `pendente` sem motivo; agora
+    leva o motivo da espera. Sem motivo gravado, continua `pendente` sem motivo."""
+    import dataclasses
+
+    espera = "a verificação desta sessão passou da validade; o aparelho vai ser relido antes da tarefa"
+    fatos = FatosDoAlvo(parada_na_criacao=None, motivo_na_criacao=None, objetivo_status="pending",
+                        objetivo_comecou_em=None, objetivo_motivo=espera, run_status="running", etapas=[], marcas={},
+                        abertura="instagram_aberto", estagio_por_capability=IG, acao_final="preparar", criado_em=T0)
+    lida = derivar(fatos)
+    assert (lida.estado, lida.motivo, lida.estagio) == ("pendente", espera, "sessao")
+    sem = derivar(dataclasses.replace(fatos, objetivo_motivo=None))
+    assert (sem.estado, sem.motivo) == ("pendente", None)

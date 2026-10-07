@@ -428,6 +428,16 @@ avisos depois da faxina"), e a trava cai no TTL.
   começa com "Falta" ou "faltam"; se a evidência não tem essa oração, fica a frase que já está no cartão e só a parte da prova
   muda; sem nenhuma das duas, vale o detalhe ou o bloqueio do estado. O item implementado que o plano classificou depois do
   registro do deploy vale como implantado quando a evidência real cita o commit que o central rodava ("central 7154d7cf") ou o número do deploy ("deploy 32", só até o último deploy). Para o item sem commit de suíte nem citação no deploy (a hora de classificação engana: rodada do registro, resultado segurado), vale o primeiro commit que pôs o cabeçalho dele no CHANGELOG: o menor deploy cujo commit do central o contém; no primeiro deploy com commit conhecido a linha diz "o deploy 38 ou um anterior", porque não dá para separar "entrou nele" de "já estava antes". O id que o CHANGELOG do deploy diz que "fica para o corte N" não conta como citado nele.
+- **Regra, o marco do deploy sai do CHANGELOG (28.64):** `python .claude/trello/marco.py [--deploy NN] [--aplicar]` lê o
+  registro "## AAAA-MM-DD — Deploy NN (...)" (o mais recente, ou o NN pedido) e monta o cartão de Programa › Marcos e deploys
+  (título `📅 Deploy NN · DD/MM HH:MMZ (sha) · resumo · migrações`; corpo com "Para quem não é técnico", "Por que importa",
+  "Técnico", prova `real`, prova `simulated`, `not_run` e fonte) e as leituras de M9 (contagens da suíte do registro) e M8
+  (`GET /api/instances` por estado, leitura pontual). Nada é inventado: os campos vêm do texto do registro, o que falta sai
+  como "não consta", e as duas frases genéricas levam a marca "(gerado do CHANGELOG; a Canais pode editar)". Tudo passa por
+  `redacao.redigir`. Idempotente: acha o marco pelo prefixo `📅 Deploy NN ` na lista (cria ou atualiza, nunca duplica) e a
+  leitura nova troca o prefixo `**Leitura de ...**` da antiga. M8 e M9 só mudam quando o deploy é o mais recente do
+  CHANGELOG. Sem `--aplicar` só imprime (a rede do ensaio é só leitura); `--offline` não usa rede. Testes:
+  `.claude/trello/test_marco.py` (simulated, trechos fictícios no formato do CHANGELOG).
 - **Hoje:** `.claude/trello/reconciliar.py` (testes em `.claude/trello/test_reconciliar.py`), a rotina da skill `trello` e o
   aviso no fim do `aplicar` do plano. As exceções acima (sem estado, "Espera você") ficam num relato para o dono ver.
 - **No produto:** nada ainda. A Central só tem o espelho dos avisos; levar a reconciliação para dentro dela é decisão a
@@ -614,6 +624,16 @@ avisos depois da faxina"), e a trava cai no TTL.
     resposta nova ao dono (ele já recebeu o "guardei"). O conteúdo se lê pelo armazém
     (`GET /api/canais/anexos/{id}/conteudo`) e se risca antes de repassar. Foto e PDF sem legenda seguem como sempre (o
     `/ler` em reply). O filtro de credencial do texto colado não mudou: continua apagando saída de script como texto.
+  - **28.63, um cartão por achado de revisão automática:** `.claude/trello/achados.py` (host, fora do backend, só leitura do
+    GitHub) consome a lista JSON do coletor 29.170 da Frente GitHub (`scripts/coletar_achados_revisao.py --json`; campos
+    `id`, `pr`, `revisor`, `gravidade`, `arquivo`, `linha`, `frase`, `artefato`, `url`, `pr_estado`) e cria UM cartão por `id`
+    em Próximas (PR aberto e achado com arquivo; o resumo geral da revisão não vira cartão), com PR, gravidade, onde, a frase
+    mascarada (de novo por `redacao.redigir`), o link do comentário (só `https://github.com/`) e a linha `Chave do achado: <id>`
+    na descrição, que o torna idempotente. `artefato=true` (regra de conduta de agente) e gravidade P3 ou ausente vão para o fim
+    da lista, com "(baixa prioridade)" no nome. Quando o PR sai de `open`, o cartão vai a Concluído com a nota. O nome não
+    começa com ID do plano, então a reconciliação o ignora. Achado é "a conferir", nunca ordem; nada escreve no GitHub.
+    Prova `simulated`: `.claude/trello/test_achados.py`; `real` em 06/10 com o coletor da Frente GitHub (117 achados, 82 com
+    arquivo, 7 em PR aberto, 7 cartões criados; a 2ª execução fez 0 ações).
 - **Hoje:** nada na operação provisória.
 - **No produto:** item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, `anexos_trello.py`, o
   adaptador do Telegram, `GET /api/canais/anexos/{id}`, `POST /api/canais/anexos/{id}/trello`, `devices/captura_pontual.py`,

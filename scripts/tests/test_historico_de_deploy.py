@@ -184,3 +184,51 @@ def test_deploy_nao_reusa_o_nome_de_um_parametro_nas_variaveis_novas() -> None:
     novas = set(re.findall(r"(?m)^\s*\$(?:script:)?(\w+)\s*=", d[d.index("$inicioDoDeploy"):]))
     parametros = {"ensaio", "stopemulators", "pularbackup", "pularfrontend", "pulardependencias", "semtag"}
     assert not ({n.lower() for n in novas} & parametros)
+
+
+@precisa_pwsh
+def test_tempo_por_etapa_soma_arredonda_e_so_aparece_quando_medido(tmp_path: Path) -> None:
+    """29.156 (fatia 2): `Close-EtapaDoDeploy` soma o tempo desde a marca anterior; a linha antiga não ganha campo novo."""
+    alvo = tmp_path / "deploys.jsonl"
+    r = _ps(tmp_path, "\n".join([
+        f"$a = '{alvo}'",
+        "$t0 = [datetime]::SpecifyKind([datetime]'2026-10-06 15:00:00', 'Utc')",
+        "$e = New-EstadoDeEtapas -Agora $t0",
+        "Close-EtapaDoDeploy $e 'backup' -Agora $t0.AddSeconds(12.34)",
+        "Close-EtapaDoDeploy $e 'subida' -Agora $t0.AddSeconds(52.34)",
+        "Close-EtapaDoDeploy $e 'subida' -Agora $t0.AddSeconds(62.37)",          # mesmo nome soma
+        "Close-EtapaDoDeploy $e 'relogio_atrasado' -Agora $t0.AddSeconds(10)",   # relógio andou para trás: nunca negativo
+        "Add-RegistroDeDeploy -Caminho $a -Registro (New-RegistroDeDeploy -Resultado 'ok' -UtcAgora $t0 -EtapasS $e.etapas)",
+        "Add-RegistroDeDeploy -Caminho $a -Registro (New-RegistroDeDeploy -Resultado 'ok' -UtcAgora $t0)",
+        "Add-RegistroDeDeploy -Caminho $a -Registro (New-RegistroDeDeploy -Resultado 'ok' -UtcAgora $t0 -EtapasS ([ordered]@{}))",
+    ]))
+    assert r.returncode == 0, r.stderr
+    com, sem, vazio = (json.loads(x) for x in alvo.read_text(encoding="utf-8").splitlines())
+    assert com["etapas_s"] == {"backup": 12.3, "subida": 50.0, "relogio_atrasado": 0.0}
+    assert list(com["etapas_s"]) == ["backup", "subida", "relogio_atrasado"]      # a ordem é a do deploy
+    assert "etapas_s" not in sem and "etapas_s" not in vazio
+
+
+def test_deploy_mede_cada_etapa_na_ordem_e_leva_o_tempo_tanto_no_ok_quanto_na_falha() -> None:
+    d = _deploy()
+    ordem = ["'backup'", "'site'", "'docs_check'", "'painel'", "'parada'", "'dependencias'", "'subida'", "'conferencia'", "'tag'"]
+    posicoes = [d.index(f"Close-EtapaDoDeploy $estadoDeEtapas {n}") for n in ordem]
+    assert posicoes == sorted(posicoes), "as marcas seguem a ordem das etapas do deploy"
+    assert d.index("$estadoDeEtapas = New-EstadoDeEtapas") < posicoes[0]
+    trap = d.index("\ntrap {")
+    assert "-EtapasS $estadoDeEtapas.etapas" in d[trap:trap + 1200] and "'interrompida'" in d[trap:trap + 600]
+    assert "-Resultado 'ok'" in d and "-EtapasS $estadoDeEtapas.etapas" in d[d.index("-Resultado 'ok'"):d.index("-Resultado 'ok'") + 700]
+    assert "tempo por etapa (s): " in d
+    # só medição: a lib de etapas nunca lança para fora do deploy
+    lib = LIB.read_text(encoding="utf-8")
+    assert "catch { }" in lib.split("function Close-EtapaDoDeploy")[1].split("function New-RegistroDeDeploy")[0]
+
+
+@precisa_pwsh
+def test_deploy_ps1_continua_sintaticamente_valido(tmp_path: Path) -> None:
+    r = _ps(tmp_path, "\n".join([
+        "$tokens = $null; $erros = $null",
+        f"$null = [System.Management.Automation.Language.Parser]::ParseFile('{SCRIPTS / 'deploy.ps1'}', [ref]$tokens, [ref]$erros)",
+        "if ($erros.Count -gt 0) { $erros | ForEach-Object { $_.Message }; exit 1 }",
+    ]))
+    assert r.returncode == 0, r.stdout + r.stderr

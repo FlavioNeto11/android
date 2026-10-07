@@ -2820,6 +2820,15 @@ alvo.
 sessão (o painel não precisa do valor). E avisar na prévia quando um parâmetro do comando some porque o exemplo é o
 dado da própria persona: quem ensina pode querer o alvo genérico.
 
+**Aplicabilidade.** Vigente até a correção. Para ensinar navegação até um perfil, use um alvo que não seja a persona que
+ensina.
+
+ensina. A identidade da etapa foi alinhada pelo 31.165 (`para_hash` prefere o marcador da persona no empate): com ele,
+a receita ensinada para o próprio perfil casa com a execução que mira o próprio perfil. O mascaramento da gravação crua
+segue pendente.
+
+**Quem muda `backend/app/planning/prompts.py` roda `tests/test_prompts_licoes.py`.** Os prompts de sistema têm hash congelado (`SISTEMAS`); o refactor das regras de conteúdo (T1, `dfaeb216`) mudou três deles sem atualizar o teste e a falha só apareceu na suíte inteira do corte 58, depois do deploy 57. A mudança de prompt é decisão de quem a pede; o hash novo vai no mesmo commit, com o motivo no comentário.
+
 **O que foi feito.** A leitura da sessão mascara o dado da persona pelo marcador (`dado_da_persona.na_gravacao`, no
 `TrainingRecorder.get`). Isso vale para o alvo tocado e os `filhos` dele, para o título e as linhas da tela e para o
 texto digitado. A máscara não diferencia caixa, pega o valor também depois do @ e aceita qualquer espaço entre as

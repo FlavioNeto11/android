@@ -147,6 +147,7 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
   hospedado e não ocupa o central.
 - **Actions fixadas por SHA e Dependabot (29.157):** `actions/checkout`, `setup-python`, `setup-node` e `cache` (nos workflows e nas ações compostas de `.github/actions`) apontam para o SHA do commit, com a versão no comentário (`# v4.4.0`), para que uma tag movida não mude o que roda no CI. `.github/dependabot.yml` olha só `github-actions`, uma vez por mês, num PR único; o PR dele é ACHADO (a frente GitHub confere, ninguém mescla sozinho). Não cobre pip nem npm. Para atualizar à mão: `gh api repos/actions/<nome>/commits/<tag> --jq .sha` e trocar SHA e comentário juntos.
 - **Secret scan semanal (29.158):** `.github/workflows/secret-scan.yml`, em runner hospedado, manual e às segundas, não bloqueia push. Roda o gitleaks (imagem v8.30.1 fixada por digest) no histórico inteiro com `--redact`; o log do gitleaks é descartado e só `scripts/secret_scan_resumo.py` escreve: regra, caminho, linha e hash curto, nunca valor, contexto, autor ou e-mail (relatório sem redação = nada impresso e o job falha). Achado vira UMA issue `achado` (ou comentário na aberta) e quer dizer segredo vazado: trocar. Falso positivo entra em `.gitleaks.toml` por caminho ou regra, nunca pelo valor. Disparo: `gh workflow run secret-scan.yml` (só depois de o arquivo estar na `main`).
+- **Limpeza das branches de revisão (29.155, C18):** `.github/workflows/limpa-branches-revisao.yml`, em runner hospedado, uma vez por dia (08:11Z) apaga no GitHub as branches `revisao/*` que já estão na `main`, já tiveram PR, não têm PR aberto e têm a ponta de mais de 6 horas, no máximo 20 por execução (`scripts/limpar_branches_revisao.py`; qualquer dúvida deixa a branch). Só esse prefixo; a `main` e as branches das frentes nunca. Disparo manual é ensaio, e só apaga com `aplicar=true`; o agendado só apaga com a variável do repositório `LIMPEZA_APLICAR=true`.
 - **Aviso quando o cron falha (29.155, C2):** `.github/workflows/ci-aviso-de-falha.yml`, em runner hospedado, abre UMA issue por
   noite quando o `schedule` do CI termina em `failure`, `cancelled`, `timed_out` ou `startup_failure`. Título "CI noturno
   AAAA-MM-DD: <jobs>", rótulo `ci` (criado na primeira vez), corpo com o run, o commit e, por job, os destaques e as últimas
@@ -160,6 +161,11 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
   achado é dado a conferir, não ordem). Os rótulos do repositório moram em `scripts/github_rotulos.py` (`frente:android|jev|aprendizado|
   portal|canais|github|desenho`, `tamanho:P|M|G`, `agente`, `achado`, `ci`): ensaio por padrão, `--aplicar` cria ou corrige cor e
   descrição, nunca apaga. O formulário só aplica `agente` ou `achado` sozinho; frente e tamanho a coordenação põe depois.
+- **Achados das revisões automáticas (29.170):** `python scripts/coletar_achados_revisao.py --repo dono/nome [--horas 48 | --prs 487,488] [--json]` (só leitura; `--json` é o contrato da Canais: `id`, `pr`, `revisor`, `gravidade`, `arquivo`, `linha`, `frase`, `artefato`, `url`, `pr_estado`) tabela os achados do Codex e do Copilot nos PRs, com gravidade e arquivo:linha, para a orquestradora conferir; achado é a conferir, nunca ordem. Não dispara revisão (cada uma do Copilot custa créditos do dono). O quadro vai para o terminal ou `.claude/handoffs`, nunca para o Git.
+- **Modelo de PR e rótulo (29.171):** `.github/pull_request_template.md` lembra prova, um PR por tarefa e `[skip ci]`; `.github/workflows/rotula-pr.yml` (hospedado, `pull_request_target`, sem checkout do PR) põe `frente:github` em branch `ci/…` e `agente` em `copilot/…` (`scripts/rotulo_do_pr.py`); outro prefixo não ganha rótulo, e o rótulo precisa existir (`scripts/github_rotulos.py --aplicar`).
+
+- **Gatilhos travados e `[skip ci]` (29.176):** o `ci.yml` só tem `schedule` e `workflow_dispatch`; push de branch e PR nunca acionam o runner `central` (`scripts/tests/test_ci_gatilhos.py` falha se mudar). Por isso `[skip ci]` é SÓ dos commits que entram na `main`; o último commit de uma branch de PR não o leva, para o check leve rodar.
+- **CI leve do PR (29.175):** `.github/workflows/pr-leve.yml` roda em runner HOSPEDADO (`ubuntu-latest`, nunca o `central`) a cada PR: `docs-check`, `pytest scripts/tests` e `typecheck` + `vitest` + `build` do frontend; sem a suíte do backend (essa é do funil e do cron). Cerca de 6 min de relógio e 7 faturáveis por PR (medido em 06/10). Commit com `[skip ci]` na ponta não dispara o check de `pull_request`: dispare à mão (`gh workflow run pr-leve.yml --ref <branch>`, hospedado) ou use uma ponta sem a marca. `AnexosTab.test.tsx` fica de fora até a Canais corrigi-lo em Linux.
 - **Leitura diária do GitHub (29.155, C10):** `python scripts/github_rotina.py --repo dono/nome` (só leitura, `--json` para os dados) imprime a linha que a frente GitHub manda à coordenação toda manhã: cron da noite, runner `central`, runs ruins das últimas 26 h, issues `ci` e `agente` abertas, PRs do agente e créditos do Copilot ESTIMADOS (146 por revisão, 31 por tarefa do agente, medidos em 06/10). Roteiro e o que ler à mão no Chrome: `.claude/handoffs/github-rotina-diaria.md`. Sem workflow novo e nada no runner central.
 - **Disparo só-PostgreSQL de verdade (29.155, C3):** o job `porta` agora é pulado em `somente_postgres=true`, então nenhum job
   vai ao runner do central (antes a porta ainda ia, por ~5 s, e os demais eram pulados por dependência dela).
@@ -312,7 +318,9 @@ instala na máquina dele.
 **O que cada subida deixa.** Uma subida de verdade (a que parou o backend) acrescenta UMA linha a `data\deploys.jsonl`
 (fora do Git, como o resto de `data\`): `ts_utc`, `resultado` (`ok` ou `falhou`), `commit_antes`/`migracao_antes` (o que
 estava no ar), `commit_depois`/`migracao_depois`, `backup` (a pasta em `data\backups` que vale para voltar),
-`backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s` e `opcoes`. Ensaio, recusa
+`backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s`, `opcoes` e `etapas_s` (29.156: segundos de cada etapa na ordem do deploy, `backup`, `site`, `docs_check`,
+`painel`, `parada`, `dependencias`, `subida`, `conferencia`, `tag`; numa falha, `interrompida` é o tempo da etapa que quebrou;
+linhas anteriores ao campo não têm; a mesma lista sai na tela como "tempo por etapa"). Ensaio, recusa
 do portão do `-PularBackup` e falha do build do painel (antes de parar) não entram: não mudaram nada no ar. Ler:
 `Get-Content data\deploys.jsonl | ConvertFrom-Json | Select-Object ts_utc, resultado, commit_antes, commit_depois, backup, tag`.
 
@@ -346,6 +354,13 @@ novo não é um estado testado (o `deploy.ps1` confere código e banco e recusa 
    monte uma árvore na tag (`git worktree add C:\temp\arvore-rollback <tag>`) e rode, com ela acessível à máquina do worker,
    `pwsh -File scripts\worker-install.ps1 -Origem <a árvore>`; confira na Infraestrutura que o worker voltou a `online` e sem
    `agent_outdated`. Remova a árvore temporária depois (`git worktree remove`).
+**Ensaio do caminho 2 sem desfazer nada** (29.156, fatia 3): `pwsh -File scripts\rollback-ensaio.ps1` pega a linha `ok` mais nova
+de `data\deploys.jsonl`, extrai só `backend\` do `commit_antes` (`git archive`, sem tocar o checkout nem o `.git`), restaura o
+backup da linha numa pasta de trabalho (`restore.ps1` sem `-Confirmar`) e abre a cópia com o código antigo. Aprova se a
+integridade está ok, a migração da cópia é a `migracao_antes` da linha e o código antigo NÃO quer aplicar migração nenhuma. Veredito em
+`data\rollback-ensaio\ultimo.json`; saída 0 ok, 1 falhou, 2 pulado (backup podado ou commit ausente: aviso, não aprovação). Rode depois de
+um deploy que trouxe migração, antes de precisar do rollback.
+
 4. **Depois de qualquer rollback:** `GET /api/health` (commit e migração), a 8010 escutando, a prova de fora, e uma linha
    nova em `data\deploys.jsonl` (o rollback também é uma subida e fica no histórico).
 
@@ -450,6 +465,13 @@ Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06
   e ler a conta logada, sem tocar. `account_label`, `/personas` e os vínculos não bastam: o android-04 tinha
   `qa-user-04` e nenhuma persona, com a conta do felipe logada (K-053). Experimento vai num aparelho novo e sem conta
   (provisionar e aposentar são permitidos no ambiente central).
+- **Amostrador permanente do host** (29.156, fatia 1) — `scripts/amostrador-host.ps1`, tarefa `farm-amostrador-host` (ao ligar o
+  host e todo dia 00:05; uma instância; prioridade ociosa; só leitura; `-Instalar` registra sem iniciar). Uma linha por minuto em
+  `data/observabilidade/host/AAAAMMDD.csv` (UTC), retenção de 7 dias só nessa pasta: `ts_utc, cpu_host_pct,
+  vm_convidado_nucleos, vmmem_ws_mb, qemu_host_pct, ram_livre_mb, disco_livre_gb, processos_top` (até 3 NOMES de processo com mais
+  CPU no minuto, em % do host, sem linha de comando) e `avisos_pressao` (`android-05:3;android-01:1`, lidos do banco em
+  `mode=ro`; vazio = nenhum ou não medido). É a entrada do 29.165 e da janela da prova. Na primeira leitura de teste, o topo
+  da CPU do host foi `python` (provavelmente os testes do funil) e o antivírus, não a VM do WSL nem os emuladores.
 
 ## 11. Segurança
 
@@ -760,6 +782,8 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `pg-rapido.py` | P | PG dirigido da suíte no contêiner descartável `farm-pg-rapido` (29.99): recria o contêiner com WAL mínimo, roda a lista em `--partes`, amostra o disco a cada 30 s e aborta a parte com uma linha em 85 % do tmpfs; `--simular` só lista as partes, `--amostrar` lê o contêiner de pé. Só com a vez da orquestradora |
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
+| `amostrador-host.ps1` | S | Amostrador permanente do host (CPU, RAM, disco, VM do WSL, processos que mais usam CPU, avisos de pressão por aparelho), 1 linha/min em `data\observabilidade\host`, retenção 7 dias; `-Instalar` [P] registra a tarefa `farm-amostrador-host` |
+| `rollback-ensaio.ps1` | S | Ensaio do rollback com migração: backup da última linha de `deploys.jsonl` aberto pelo código do `commit_antes`, em pasta própria (Idle, sem tocar o checkout nem `data\poc.sqlite3`) |
 | `restore-ensaio.ps1` | S | Ensaio semanal sobre a cópia mais nova (pasta própria, Idle, não toca `data\poc.sqlite3`); `-Instalar` [P] registra a tarefa `farm-restore-ensaio` |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central`; grava `data\deploys.jsonl` e, conferida a subida, cria a tag `deploy-AAAAMMDD-HHMM` e o release (29.159; `-SemTag` pula a tag) |
 | `eval-run.ps1` (sem `-Yes`) | S | Só imprime o plano da bateria; nenhuma conexão, nenhum adb (26/09: antes, mesmo "simulado" fazia POST no backend vivo e rodava adb) |
@@ -798,6 +822,9 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `gravacao-com-marcador.py` (`--ensaio` padrão / `--aplicar --backup CAMINHO`) | S / P | Reparo único do 31.118: as gravações de ensino salvas antes dele recebem o marcador da persona no texto digitado e, desde a F2, na tela gravada (`screen_lines`, `screen_title`). O ensaio roda numa cópia do banco (origem em `mode=ro`) e imprime as contagens e os ids das sessões que mudariam; `--aplicar` exige o backup e a mesma migração do código. Rodar só com o backend no ar já no 31.118 e com o "vai" da orquestradora. Nunca imprime valor nem id de persona |
 | `github_rotulos.py` (`--aplicar` escreve) | S / P | Rótulos do repositório (29.155): o ensaio só lê (`gh label list`); `--aplicar` cria ou corrige cor e descrição dos rótulos da lista, só no GitHub do repositório, e nunca apaga rótulo |
 | `github_rotina.py` | S | Leitura diária do GitHub (29.155, C10), só leitura: uma linha com o cron da noite, runner, runs ruins, issues `ci` e `agente`, PRs do agente e uma ESTIMATIVA de créditos do Copilot (contagem de runs; o saldo real só a página de uso mostra) |
+| `limpar_branches_revisao.py` (`--aplicar` apaga) | S / P | Apaga no GitHub as branches `revisao/*` já mescladas (29.155, C18); o ensaio só lê; não toca o parque nem o central |
+| `coletar_achados_revisao.py` | S | Tabela dos achados das revisões automáticas (Codex e Copilot) nos PRs da janela (29.170), só leitura; mascara e-mail, IPv4 e sequências longas |
+| `rotulo_do_pr.py` | S | Rotula o PR pelo prefixo da branch (29.171); ensaio por padrão, `--aplicar` rotula; só rótulo existente, nunca cria nem tira |
 | `secret_scan_resumo.py` | S | Resumo redigido do relatório do gitleaks e issue do achado (29.158); roda no workflow hospedado, não toca o parque nem o central; só chama o `gh` com o token do workflow |
 | `ci_issue_falha.py --run-id N --ensaio` | S | Só LÊ o GitHub (`gh api`, `gh run view --log-failed`) e imprime a issue que o aviso do cron abriria para aquele run (29.155); sem `--ensaio` escreve no GitHub, mas só roda dentro do workflow `ci-aviso-de-falha.yml`, em runner hospedado |
 | `marcar-fluxo-de-prova.py` (`--fluxo ID` repetível; `--ensaio` padrão / `--aplicar --backup CAMINHO`) | S / P | 31.130: marca como nascidos de uma prova os fluxos dados pelo id (ou referência pública) e a sessão de treino de origem (`nascido_de_prova`, migração 122). O ensaio roda numa cópia do banco (origem em `mode=ro`) e imprime as contagens e os ids; `--aplicar` exige o backup e a mesma migração do código. Idempotente; id inexistente sai com código 1. Não muda status, plano nem trilha. A Android roda como operadora depois do deploy |

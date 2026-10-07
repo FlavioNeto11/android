@@ -427,6 +427,39 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_alcance_por_persona.py` (2 testes; o "Confirmar que fica" solta a receita
   para a outra persona). Arquitetura e rotas: 26 passaram. `real`: `not_run`, pede o deploy.
 
+## 2026-10-06 — 29.166 (a), guarda: o job `docs` não fica verde com formato NAO conferido (branch ci/29-166a-guarda-nao-conferido)
+
+- `.github/workflows/ci.yml`, job `docs`: o passo do `docs-check` guarda a saída e falha se ela trouxer "NAO conferido" (o aviso que o `docs-check` dá, com código 0, quando faltam pyyaml ou pydantic), a pedido da Frente DevOps. Vale junto da instalação das três dependências (631ce8c4). Prova `simulated`: o trecho de pwsh testado localmente com saída com e sem o aviso (falha com 1 e passa com 0) e yaml do workflow. Prova `real`: `not_run`; o aviso só passa a existir no `docs-check` com o 29.160 da Frente DevOps, e o job roda no central.
+
+## 2026-10-06 — 29.155 (C18): limpeza diária das branches de revisão já mescladas (branch ci/29-155-c18-limpeza)
+
+- `.github/workflows/limpa-branches-revisao.yml` (`ubuntu-latest`, diário 08:11Z, disparo manual em ensaio) e `scripts/limpar_branches_revisao.py`: apaga só `revisao/*` que já estão na main (comparação do GitHub), que já tiveram PR, sem PR aberto (como origem ou base) e com a ponta de mais de 6 h; relê a ref antes de apagar (ponta mudou: fica), no máximo 20 por execução; erro de API deixa a branch. O run agendado só apaga com a variável do repositório `LIMPEZA_APLICAR=true` (ensaio sem ela), a ligar depois de um disparo manual com `aplicar=true` conferido (revisão do `revisor-segredos`). Motivo: hoje as frentes abriram mais de dez branches `revisao/*` só para a revisão automática. Prova `simulated`: `scripts/tests/test_limpar_branches_revisao.py` (18 testes). Prova `real` em parte: ensaio contra o repositório real em 06/10 (somente leitura): 10 branches `revisao/*`, 0 a apagar (6 recentes demais, 4 ainda não na main), 0 erros. Apagar de verdade: `not_run` até o primeiro run agendado depois da mescla.
+
+## 2026-10-06 — 29.170: coletor dos achados das revisões automáticas de PR (branch ci/29-170-coletor-achados)
+
+- `scripts/coletar_achados_revisao.py`: só LEITURA pelo `gh`; junta numa tabela os comentários em linha e os resumos que o Codex e o Copilot escreveram nos PRs da janela (`--horas`, padrão 48; ou `--prs`), com PR, revisor, gravidade (P0 a P3, quando o texto traz), arquivo:linha e a primeira frase, mascarada por formato (e-mail, IPv4, sequência longa) e encurtada. Todo achado sai como a conferir, nunca ordem. Motivo: hoje cada achado está espalhado em PRs que fecham depois do corte. Prova `simulated`: `scripts/tests/test_coletar_achados_revisao.py` (17 testes). Com `--json` sai o contrato da Canais (28.63): lista de {id estável = PR:arquivo:linha:revisor, pr, revisor, gravidade, arquivo, linha, frase, artefato, url (link do comentário, só github.com), pr_estado (open, closed, merged)}; `frase` sem trecho de código e `artefato` marca o achado que só repete regra de conduta de agente aplicada a PR de sessão. Observação `real`, não prova de entrega: o comando `python scripts/coletar_achados_revisao.py --repo FlavioNeto11/android --prs 487`, rodado nesta máquina de Windows Server em 06/10/2026 às 21:49Z (lido de `date -u`) sobre a árvore ainda sem commit, devolveu 8 linhas do PR 487 (7 achados em linha, 5 P1 e 2 P2, mais o resumo do Copilot) e não escreveu nada. Máscara por formato inclui `Bearer`, `senha=` e similares (revisão do `revisor-segredos`). Sem workflow novo e sem custo (não dispara revisão).
+
+## 2026-10-06 — 29.171: modelo de PR e rótulo pelo prefixo da branch (branch ci/29-171-modelo-pr)
+
+- `.github/pull_request_template.md` (prova real/simulated/not_run, um PR por tarefa, sem segredo, `[skip ci]`) e `.github/workflows/rotula-pr.yml` (`pull_request_target` opened/reopened, `ubuntu-latest`, `pull-requests: write`, checkout só da `main`, nome da branch só por variável de ambiente) com `scripts/rotulo_do_pr.py`: `ci/…` recebe `frente:github` e `copilot/…` recebe `agente`; outro prefixo não ganha rótulo, o rótulo não é criado se faltar e nunca se tira nem se comenta; erro do `gh` deixa o PR como está. Motivo: o `[skip ci]` das sessões desliga os workflows de `pull_request`, então o rótulo precisa do outro evento. Prova `simulated`: `scripts/tests/test_rotulo_do_pr.py` (9 testes). Prova `not_run`: o workflow só roda depois de estar na `main`; a prova real é o rótulo `frente:github` aparecer no próximo PR `ci/…` (run verde sozinho não prova: o script sai com 0 em erro do `gh`).
+
+## 2026-10-06 — 29.176: o `ci.yml` só dispara pela main, pelo cron e por disparo manual; `[skip ci]` só na main (branch ci/29-176-ci-so-main)
+
+- Medido: o `ci.yml` já não tinha `push` (30/09) nem `pull_request` (05/10, 29.102); só `schedule` e `workflow_dispatch`. Faltava travar isso: `scripts/tests/test_ci_gatilhos.py` (5 testes, no pytest do job docs) falha se o `ci.yml` ganhar qualquer outro gatilho, se outro workflow usar `CI_RUNS_ON` (runner `central`), se `push` não for só `main` sem tag, ou se `pull_request`/`pull_request_target` aparecer fora de job `ubuntu-latest`. Com isso o `[skip ci]` deixa de ser necessário nas branches e nos PRs: passa a ser só dos commits que entram na `main`, e o último commit de uma branch de PR NÃO o leva, para o check leve (`pr-leve.yml`, 29.175) rodar. Prova `real`, 06/10/2026, PR de teste 489 descartável (fechado, branch `teste/29-176-prova` apagada), push de branch SEM `[skip ci]` às 22:30Z: um único run, `CI leve do PR` (run 37540976380, `pull_request`, `ubuntu-latest`), verde às 22:33Z (docs-check + scripts/tests 3 min 4 s, frontend 3 min 22 s); NENHUM run do workflow `CI` (nem job no `central`) para essa branch. `simulated`: o teste novo pega um `push` injetado no `ci.yml` (verificado à mão em cópia temporária).
+
+## 2026-10-06 — 29.175: CI hospedado leve a cada PR (branch ci/29-175-ci-hospedado-leve)
+
+- `.github/workflows/pr-leve.yml` (`pull_request` e `workflow_dispatch`, SÓ `ubuntu-latest`, nunca o runner `central`; `ci.yml` continua sem `pull_request`): `docs-check` + `pytest scripts/tests` com as dependências do backend, e `typecheck` + `vitest` + `build` do frontend (2 workers), sem a suíte do backend; cancela o check anterior do mesmo PR. O GitHub não dispara `pull_request` com `[skip ci]` na ponta: o check só aparece num PR cuja ponta não tem a marca, ou no disparo manual. Achados da medida em Linux: `scripts/tests/test_pg_rapido.py::test_arvore_que_ja_saiu_nao_vira_kill_falho` usava `_k32` (kernel32) e agora só roda no Windows; `frontend/src/features/canais/AnexosTab.test.tsx` falha 5 testes em Linux/Node 22 (espera `<img>` da miniatura) e fica fora do check leve até a Canais corrigir. Prova `real`, 06/10/2026, `ubuntu-latest` (hospedado), PR de teste 488 descartável (fechado, branch `teste/29-175-prova` apagada): VERDE no run 37539799729 (22:19Z a 22:22Z; frontend 3 min 32 s, docs e scripts 2 min 25 s, 779 passed e 11 skipped em `scripts/tests`, 1941 testes do vitest passaram) e VERMELHO provocado no run 37540209511 (22:22Z a 22:26Z; `test_vermelho_provocado` com `assert False`; check `docs-check + scripts/tests` fail em 2 min 49 s, frontend pass em 3 min 11 s). Custo hospedado medido: ~6 min de relógio por PR, 7 min faturáveis (cada job arredonda para cima), sem custo de IA. Os três primeiros runs falharam antes do verde (dependências do backend ausentes, `_k32`, AnexosTab) e foram o motivo dos ajustes acima.
+
+## 2026-10-06 — 28.63 (Canais): um cartão por achado de revisão automática (branch canais/28-63-achados)
+
+- `.claude/trello/achados.py` e `test_achados.py`: cria um cartão em Próximas por achado do coletor 29.170 (`--json`), idempotente pela
+  chave `PR:arquivo:linha:revisor` na descrição, fecha (vai a Concluído) quando o PR sai de `open`, baixa prioridade no fim da lista, frase
+  mascarada de novo por `redacao.redigir`, link só do github.com, sem trecho de código nem handle; o resumo geral da revisão não vira cartão.
+- Prova `simulated`: `.claude/trello/test_achados.py` (9 testes) mais `test_reconciliar.py` (42 passed no conjunto). Prova `real` (06/10, central, commit
+  945f5043 + coletor da Frente GitHub 3a298541): 117 achados lidos, 82 com arquivo, 7 em PR aberto, 7 cartões criados; a segunda execução leu 7 cartões
+  existentes e fez 0 ações. `not_run`: o fechamento por PR mesclado em dado real (o PR 487 ainda está aberto) e o coletor ainda não está na `main`.
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.
@@ -460,6 +493,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-06 — 29.155 (C17): os limites do agente de nuvem não valem como critério de revisão de PR de sessão (branch ci/29-155-c17-revisao)
 
 - `AGENTS.md` (seção nova "A quem valem estes limites"), `.github/copilot-instructions.md` (seção de revisão) e os três perfis de `.github/agents/`: "Nunca edite", "um PR por tarefa", "uma área por PR" e `[skip ci]` descrevem o agente que ESCREVE a partir de uma issue (branch `copilot/*`); ao revisar PR de branch de sessão (`feat/*`, `fix/*`, `docs/*`, `ci/*`), o Codex e o Copilot usam só os critérios de revisão. Motivo: nos PRs 473 a 476 do corte 56, 5 de 15 achados do Codex eram esses limites aplicados a PR de frente (lista em `.claude/handoffs/github-revisoes-corte56.md`). Os limites do agente de nuvem seguem iguais para PR `copilot/*`. Prova `simulated`: `docs-check` e os testes de `scripts/tests`. Prova `real`: `not_run` até o próximo PR de frente revisado depois da mescla, sem esses achados.
+
+## 2026-10-06 — 28.64 (Canais): o marco do deploy e as leituras M8 e M9 gerados do CHANGELOG (branch canais/marco-do-deploy)
+
+- A cada deploy a Canais escrevia à mão um script para criar o cartão de marco e atualizar M8 e M9. Agora `python .claude/trello/marco.py [--deploy NN] [--aplicar] [--offline]` extrai, por funções puras, hora, commit curto, migrações (ou "sem migração"), backup, tag, agente do notebook, itens e as linhas `real`, `simulated` e `not_run` do registro do deploy, e monta o cartão no formato do molde (título `📅 Deploy NN · DD/MM HH:MMZ (sha) · resumo · migrações`). Idempotente (acha o marco pelo prefixo do título e atualiza em vez de duplicar); M9 sai das contagens do registro e M8 de `GET /api/instances` (leitura pontual), só quando o deploy é o mais recente. Texto pela `redacao.redigir`; as frases genéricas levam "(gerado do CHANGELOG; a Canais pode editar)". Regra em `docs/dominios/canais.md` § 5.
+- Prova `simulated`: `.claude/trello/test_marco.py` (12 testes com trechos fictícios no formato do CHANGELOG: cada campo, "sem migração", seção ausente, decisão criar × atualizar, prefixo da leitura, redação) e `test_reconciliar.py` e `test_redacao.py` (62 no total). Prova `real` só em ensaio, sem `--aplicar`, em 06/10/2026 contra o CHANGELOG deste worktree: `--deploy 56` e `--deploy 55` imprimem o marco (a lista Marcos já tinha o cartão de ambos: decisão "atualizar", sem duplicar) e a leitura de M8 deu 7 online de 15. `not_run`: `--aplicar` (nada foi gravado no Trello).
 
 ## 2026-10-06 — 28.57: arquivo de texto com o nome original no envio e repasse do `.txt` do dono sem legenda (branch canais/anexos-28-57)
 
@@ -539,6 +577,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-07 — Deploy 58 (reposição do ensino, operação pela tela, observabilidade e canais; sem migração)
+
+- **Implantado** às 01:12Z: central em `0c8683e8b8549d`, sem migração, 19 pontas sobre a main `e2e4a9b8`. Itens: Aprendizado 31.165 (no empate de valores entre objetivo e persona, `para_hash` prefere o marcador da persona; a receita 221 passa a ser encontrada), 31.150 (fluxo de prova religado para uso real com motivo obrigatório e escopo; `em_uso_real_desde`; o "Ligar" do Livro segue a mesma regra; adendo v1.97), 31.149 (a correção ensinada volta ao comando que falhou; `correcao` na resposta do save; a correção que não liga vira lição candidata do planejador; adendos v1.98 e v1.100), 31.169 (pesquisa externa uma vez na criação da operação, antes de qualquer alvo; adendo v1.99), 31.152 (pacotes vizinhos dos fluxos ensinados viram conhecimento do app no plano livre); Portal 31.168 (selo "em uso real desde" e "Religar para uso real"), 31.170 (texto de reconhecimento do elemento em palavras), 31.171 (hora do painel ao lado do UTC no relatório Markdown), 31.172 (cabeçalho da Operação coerente após a liberação), 31.176 (criar operação pela tela: formulário com prévia da capacidade, fontes, parâmetros fixos e "Repetir como nova"); GitHub 29.169 (limpeza diária das branches de revisão já na main, em ensaio até `LIMPEZA_APLICAR`), 29.166a (guarda "NAO conferido" no job docs), 29.170 (coletor de achados de revisão com `--json`), 29.171 (modelo de PR e rótulo da frente); DevOps 29.160 (schema de `config.example.yaml` e de `plano-100.json` no docs-check), 29.156 fatia 1 (amostrador permanente do host: CSV por minuto, processos no topo, avisos de pressão por aparelho, retenção de 7 dias); Canais 28.63 (um cartão por achado de revisão automática do coletor 29.170), 28.64 (marco do deploy e M8/M9 gerados do CHANGELOG pelo script de host) e o teste do AnexosTab sem dependência de plataforma (28.62, 28.60 e 28.58 ficaram fora por conflito com o bootstrap e vão no 59); Jev 15.15 F5c B (o resto do `AppState.__init__` vai para `bootstrap.montar`). Correções feitas durante o funil 58, só teste e uma importação: `fix/31-177-prefixo-do-lote` 6f21669a (`rendimento.py` importa `PREFIXO_LOTE` de `app/contracts/origem.py`, achado da Jev no dirigido do vigia) e os seis hashes de `test_prompts_licoes` recalculados após o dfaeb216 (regras de conteúdo T1, decisão do dono; lição: quem muda `prompts.py` roda `test_prompts_licoes`).
+- Prova `real`: deploy `deploy.ps1` (backup `20261006-221038`); `GET /api/health` ok, migração 127, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+0.1.0+0c8683e`; A10 ok; tag deploy-20261007-0112. Hardware 29.161 (análise dos dois notebooks e plano em degraus, leituras de 06/10, lista de compras no Trello).
+- Prova `simulated` (suíte 58 sobre `0c8683e8b8549d`): `scripts/tests` 895 passed; backend em SQLite inteiro 12574; frontend 2032 e build; catracas 89 (backend) e 7 (scripts); docs-check 0/0; mypy 257 (teto 257); PostgreSQL dirigido 4052 (parte 1) + 3485 (parte 2) passed; falhas e errors de ConnectionTimeout rerodados sozinhos: 84 passed. Falhas declaradas: 8 de `test_amostrador_host` por disputa do mutex global com o amostrador real do host (reexecutadas a seco com o amostrador parado: 14 passed; o teste ganha mutex próprio no corte 59), `test_prontidao_subsistemas::test_b1_boot_local_preparo_zumbi` instável sob carga (verde a seco) e 2 errors de ConnectionTimeout do psycopg no setup do PG (contêiner lento; reexecutados: verdes). SQLite inteiro levou 31 min contra 15 min no 57: o wrapper -Teto 40 NÃO limitou a árvore (o pwsh 7 é app MSIX e sai do job, achado da DevOps; 29.174 fica não testado; o funil 59 roda com powershell 5.1 sob o wrapper, -Teto 25).
+- `not_run`: tarefas `farm-amostrador-host` e `LIMPEZA_APLICAR` (DevOps e GitHub registram depois deste deploy); percursos reais do Portal (31.168, 31.170 a 31.172, 31.176 na onda 2); religar fluxo para persona real (sim do dono); 31.149 real (refazer a falha no QA Messenger).
+
 ## 2026-10-06 — Deploy 57 (correções das revisões do corte 56 e painel do grupo de política; sem migração)
 
 - **Implantado** às 23:08Z: central em `42cba3cd879f36`, sem migração, 5 pontas sobre a main `dfaeb216`. Itens: Jev 31.154 (revisões dos PRs 479, 483 e 487: nome fixo em conflito recusa o alvo em `acao_bloqueada` com motivo "parâmetro em conflito"; conferência e reserva do teto na mesma seção crítica; aprovação por Pendências ou Telegram vale como liberação e a reabertura recalcula os alvos; `finished_at` é a hora do último estágio; `fontes_da_pesquisa` no `GET /api/operacoes/{id}`; motivo de recusa sem nome de chave; v1.95); Aprendizado 31.163 (revisões dos PRs 480 e 482: evidência da lição pelo id cru como o Livro grava; `conflict` conta contra e forma/invalida neutralizam; voz e preferência com `scope_profile_id` ficam na persona dona; falha ao gravar `conhecimento_ids` fica visível em `draft_meta` e no campo `avisos` do `GET .../aprendizado`; lição de duas ou mais personas guarda o conjunto em `personas`); Portal 28.61 (seletor do grupo dispensado da aprovação de política em Configurações › Limites, com nome do grupo e ajuda), 31.164 (texto de decisão da plataforma em palavras nas receitas, na nota "Confirmado que fica" e na trilha do Livro), 31.166 (aba Aprendizado na tela Operação: 10 perguntas, lições reforçadas e contestadas, avisos, filtro por persona e simulados) e 31.167 (avisos e lições no relatório da operação, JSON e Markdown). A main trouxe também os 2 commits de conteúdo do dono (213d3476, dfaeb216: as regras de conteúdo saem dos prompts, da persona e do orquestrador de personas; emendas aos ADR-048 e ADR-050; dirigido 470 SQLite + 470 PG e vitest 184 verdes antes do deploy). Deploy em 89 s, sem migração; prova de fora 46 ok na 2ª rodada (1 falha transitória logo após o A10).
@@ -581,6 +626,58 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `real` (06/10, central WIN-7S2UASNLFOP, site servido localmente na porta 5199 a partir do checkout): as cinco abas
   casam `aria-controls` e painel, a aba nova abre o painel certo e o botão de exemplo preenche a mensagem do formulário.
   Não implantado.
+
+## 2026-10-06 — 31.180: as amostras do host pela API (branch feat/31-180-amostras-do-host, corte 59)
+
+- `GET /api/host/amostras?horas=` (só leitura, adendo v1.102) lê o CSV diário do amostrador do host (29.156) e devolve
+  as amostras das últimas N horas: CPU, VM do WSL, qemu, RAM, disco, os 3 processos do topo e os avisos de pressão por
+  aparelho.
+- Sem CSV, dá 404 `sem_amostras`. A resposta não leva nome de máquina nem caminho.
+- A tela é do Portal.
+- Prova `simulated`: `backend/tests/test_amostras_do_host.py`, com o CSV falso, a janela na virada do dia, a linha de
+  falha e a rota com 200, 404 e 422.
+
+## 2026-10-06 — 31.174: pool elegível para operação, adendo v1.105 (branch feat/31-174-pool-elegivel, corte 58, sobre o 31.173)
+
+- `GET /api/operacoes/elegiveis?app_id=` mostra quem pode ser alvo agora. É só leitura: nada é criado nem despachado.
+- Os critérios são a mesma conferência da criação (persona → conta → sessão → aparelho, na ordem do dono) mais o
+  aparelho apto: online, fora da loja e sem conta travada.
+- Cada item traz `elegivel`, `parou_em`, `motivo`, `sessao_verificada_em` e `sessao_vencida`. A sessão vencida continua
+  elegível, porque a porta relê a tela antes da tarefa, e vem marcada para a reverificação antes da onda.
+- A contagem traz personas, elegíveis, elegíveis com sessão vencida e motivos.
+- A rota vem antes de `/operacoes/{operacao_id}`.
+- Prova `simulated`:
+  - `backend/tests/test_operacoes.py::test_o_pool_elegivel_e_a_conferencia_da_criacao_sem_criar_nada`;
+  - `backend/tests/test_operacoes.py::test_rota_do_pool_elegivel_vem_antes_do_id_da_operacao`.
+
+## 2026-10-06 — 31.173: a sessão na operação, adendo v1.104 (branch feat/31-173-sessao-na-operacao, corte 58, sobre o F5c B)
+
+- O alvo que espera antes do aparelho (a porta de sessão relendo a tela, a vaga) leva o MOTIVO da espera, e não só
+  `pendente`.
+- O GET traz `sessao_verificada_em` por alvo: a última vez que a sessão da conta naquele aparelho foi vista na tela.
+- A porta de sessão ganha um teto de releituras falhas seguidas da sessão vencida, por conta e aparelho
+  (`TETO_DE_RELEITURAS_DA_SESSAO` = 3).
+  - No teto, o objetivo para com o motivo, e a contagem zera para a retomada. Uma releitura boa também zera.
+  - Antes, a releitura que falhava sempre voltava a cada volta do despacho. Foi o caso do android-03 em 06/10, às 21:22Z
+    e às 21:32Z: o UiAutomator ficou sem a árvore da janela.
+- Prova `simulated`:
+  - `backend/tests/test_operacoes_estagios.py::test_o_alvo_que_espera_a_porta_de_sessao_diz_por_que`;
+  - `backend/tests/test_operacoes.py::test_o_get_traz_a_hora_da_ultima_verificacao_da_sessao_do_alvo`;
+  - `backend/tests/test_operacoes.py::test_a_releitura_da_sessao_que_falha_sempre_para_no_teto_com_o_motivo`.
+
+## 2026-10-06 — 15.15 F5c B: o resto do `AppState.__init__` vai para `bootstrap.montar` (branch feat/15-15-f5c-b, corte 58)
+
+- O corpo do `AppState.__init__` passa a ser `app/bootstrap.py::montar(self, cfg, …)`, e os atributos ficam declarados
+  na classe. Conferido por script contra o `__init__` da a330e29f:
+  - as linhas de código são as mesmas, sem comentários nem linhas vazias;
+  - só as anotações de atributo subiram para a classe.
+- `SettingsStore` e `_FontesDoEspelhoDoTrello` passam a morar em `app.bootstrap`, os dois imports tardios do treino
+  (`TrainingRecorder`, `TrainingSkills`) vão junto, e `bootstrap` não importa `app.state` em tempo de execução.
+- Catracas com as bases baixadas: imports tardios de `app.state` 3→1 (com `app.bootstrap` 2) e `Any` de `app.state`
+  13→10 (`app.bootstrap` 0).
+- Destrava a janela de `state.py` e `bootstrap.py` para o 31.151 a 31.153 (Aprendizado).
+- Prova `simulated`: dirigidos de 175 arquivos (o padrão `bootstrap|AppState|create_app|state.<peça>`), mais
+  `test_revisao_previa`, `test_trello_espelho`, `test_desligamento_sombras` e as catracas. mypy 257; docs-check 0.
 
 ## 2026-10-06 — 31.154: revisão dos PRs 479 e 483 (branch feat/corte57-jev, corte 57)
 
@@ -806,6 +903,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
   `::test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so`, `::test_persona_simulado_redacao_e_404` e
   `::test_a_rota_responde_e_diz_404_sem_a_124` (5 no arquivo). Real: `not_run` até a operação de 07/10.
+
 
 ## 2026-10-06 — 31.157 e 31.158 (prova30 A1/A2): conhecimento comum da operação e pesquisa externa por lacuna (branch feat/prova30-a1-conhecimento-da-operacao)
 

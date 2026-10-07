@@ -572,7 +572,7 @@ async def test_comentario_humano_recente_nao_conta_como_desfecho(cen: Cenario) -
 # --------------------------------------------------------------------- as portas dos módulos donos (state.py)
 async def test_o_adaptador_do_state_le_pelas_portas_publicas_e_pagina(tmp_path: Path) -> None:
     from app.modules.learning.infrastructure.validacoes_sql import RegistroDeValidacoesSql
-    from app.state import _FontesDoEspelhoDoTrello
+    from app.bootstrap import _FontesDoEspelhoDoTrello
 
     c = Cenario(tmp_path)
     c.validacao("lv-a", "fluxo:f1", "pendente")

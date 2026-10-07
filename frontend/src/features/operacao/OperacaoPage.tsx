@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, FlaskConical, Hourglass, Play, ShieldCheck, ShieldQuestion, Workflow, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CircleX, Copy, FlaskConical, Hourglass, Play, Plus, ShieldCheck, ShieldQuestion, Workflow, type LucideIcon } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -9,7 +9,7 @@ import { Field, Select } from '../../components/Field';
 import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
-import { cx, formatInt, formatUsd4 } from '../../lib/format';
+import { cx, formatInt, formatUsd4, plural } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
@@ -19,11 +19,13 @@ import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { apiOperacoes, type ListaDeOperacoes } from './api';
 import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
+import { CriarOperacao } from './CriarOperacao';
+import { guardarRascunho, rascunhoDaOperacao } from './criar';
 import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
 import {
-  acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
+  acoesDaOperacao, acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
   ROTULO_DA_VERIFICACAO, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, rotuloDaAcao, rotuloDoEstagio, verificacaoDoAlvo, type Alvo, type EstadoDoAlvo,
   type EstagioId, type Operacao, type ResumoDaOperacao, type StatusDaOperacao, type Verificacao,
 } from './modelo';
@@ -35,6 +37,9 @@ import {
  * déficit aparece, não se esconde. Só leitura, exceto o cancelar (com confirmação). Contrato: rascunho do adendo v1.94; até a
  * rota existir no central, a tela lê um exemplo fixo e diz isso.
  */
+
+/** O segmento da rota que abre o formulário de criação (`#/operacoes/nova`); os ids de operação nunca têm esta forma. */
+const ROTA_NOVA = 'nova';
 
 const TOM_DO_ESTADO: Record<EstadoDoAlvo, Tone> = { pendente: 'muted', em_curso: 'info', concluido: 'success', bloqueado: 'warning', cancelado: 'muted' };
 const ICONE_DO_ESTADO: Record<EstadoDoAlvo, LucideIcon> = { pendente: Hourglass, em_curso: Play, concluido: CircleCheck, bloqueado: ShieldQuestion, cancelado: CircleX };
@@ -264,6 +269,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const alvos = op.alvos.filter((a) => (!estado || a.estado === estado) && (!parou || estagioDeParada(a) === parou));
   const encerrada = op.status !== null && op.status !== 'em_curso';
   const preparados = alvosPreparados(op.alvos);
+  const feitas = acoesDaOperacao(op.alvos);
   // Quantas contas ainda cabem no limite configurado (as que já executaram contam); sem o limite à mão, a lista inteira.
   const vagas = typeof limiteDeAcoes === 'number' ? Math.max(0, limiteDeAcoes - acoesJaExecutadas(op.alvos)) : preparados.length;
   const motivoSemLiberar = op.exemplo ? 'É um exemplo: não há o que liberar.'
@@ -294,6 +300,8 @@ function DetalheDaOperacao({ id }: { id: string }) {
     <Page title="Operação" lead={op.command || 'Sem objetivo informado.'}
           actions={(
             <>
+              <Button size="sm" variant="outline" icon={Copy} disabledReason={op.exemplo ? 'É um exemplo: não há o que repetir.' : null}
+                      onClick={() => { guardarRascunho(rascunhoDaOperacao(op)); useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_NOVA] }); }}>Repetir como nova</Button>
               <Button size="sm" variant="outline" disabledReason={op.exemplo ? 'É um exemplo: não há o que relatar.' : null} onClick={() => setAbrirRelatorio(true)}>Relatório</Button>
               <Button size="sm" variant="primary" disabledReason={motivoSemLiberar} onClick={() => setAbrirLiberar(true)}>Liberar</Button>
               <Button size="sm" variant="danger" loading={cancelando} disabledReason={motivoSemCancelar} onClick={() => void cancelar()}>Cancelar a operação</Button>
@@ -310,6 +318,11 @@ function DetalheDaOperacao({ id }: { id: string }) {
         <a className={styles.link} href={hashDe('operacoes')}>← Todas as operações</a>
         {op.status ? <Badge tone={TOM_DO_STATUS[op.status]} size="sm">{ROTULO_DO_STATUS[op.status]}</Badge> : null}
         <span className={styles.mudo}>Ação final: {rotuloDaAcao(op.acao_final)}</span>
+        {feitas.executadas > 0 ? (
+          <span className={styles.mudo} data-acoes-feitas>
+            · {plural(feitas.executadas, 'ação executada', 'ações executadas')}, {plural(feitas.verificadas, 'verificada', 'verificadas')}
+          </span>
+        ) : null}
       </p>
       <CustoEAssunto op={op} />
       <FaixaDeCapacidade op={op} />
@@ -371,7 +384,11 @@ function ListaDeOperacoes() {
   if (erro && !dado) return <Page title="Operação"><LoadErrorState what="as operações" error={erro} onRetry={recarregar} /></Page>;
   const itens: ResumoDaOperacao[] = dado?.itens ?? [];
   return (
-    <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim.">
+    <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim."
+          actions={(
+            <Button size="sm" variant="primary" icon={Plus} disabledReason={dado?.exemplo ? 'O central ainda não oferece o módulo de operações.' : null}
+                    onClick={() => useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_NOVA] })}>Nova operação</Button>
+          )}>
       {erro && dado ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {dado?.exemplo ? AVISO_DE_EXEMPLO : null}
       {itens.length === 0 ? (
@@ -396,5 +413,6 @@ function ListaDeOperacoes() {
 export function OperacaoPage() {
   useEffect(() => { document.title = 'Operação · Central de Aparelhos'; }, []);
   const id = useUiStore((s) => s.rota.segmentos[0]);
+  if (id === ROTA_NOVA) return <CriarOperacao />;
   return id ? <DetalheDaOperacao key={id} id={id} /> : <ListaDeOperacoes />;
 }

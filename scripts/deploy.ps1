@@ -93,16 +93,18 @@ $opcoesDoDeploy = @($PSBoundParameters.Keys | Where-Object { $_ -ne 'Ensaio' } |
 trap {
   if ($script:subidaParou -and -not $script:subidaRegistrada) {
     $script:subidaRegistrada = $true
+    Close-EtapaDoDeploy $estadoDeEtapas 'interrompida'   # o tempo gasto na etapa que falhou
     try {
       Add-RegistroDeDeploy -Caminho $arquivoDeDeploys -Registro (New-RegistroDeDeploy -Resultado 'falhou' `
         -CommitAntes $antes.commit -MigracaoAntes $antes.migration -CommitDepois $esperadoCommit `
         -Backup $pastaDoBackup -BackupDoEnsaio $backupDoEnsaio -Motivo $_.Exception.Message `
-        -DuracaoS ((Get-Date) - $inicioDoDeploy).TotalSeconds -Opcoes $opcoesDoDeploy)
+        -DuracaoS ((Get-Date) - $inicioDoDeploy).TotalSeconds -Opcoes $opcoesDoDeploy -EtapasS $estadoDeEtapas.etapas)
     } catch { Write-Warning "não consegui gravar a linha do histórico de deploys: $($_.Exception.Message)" }
   }
   throw $_
 }
 
+$estadoDeEtapas = New-EstadoDeEtapas   # tempo por etapa (29.156): vai à linha de data\deploys.jsonl e à tela
 # ------------------------------------------------------------------ 1. cópia, ANTES de qualquer coisa
 # Teto de 10 cópias de deploy (29.38): eram 161 cópias e 23 GB em 04/10, com dez deploys num dia.
 $tetoDeCopias = 10
@@ -135,6 +137,7 @@ if (-not $PularBackup) {
                     Sort-Object LastWriteTime | Select-Object -Last 1).Name
 }
 
+Close-EtapaDoDeploy $estadoDeEtapas 'backup'
 # ------------------------------------------------------------------ 1b. a pasta do site institucional (29.77)
 # Com `portal.site_ligado`, um arquivo fora da lista de extensões em `site/` (um `Thumbs.db` que o Explorer deixou, um
 # rascunho) DERRUBA a subida do central inteiro, de propósito (ADR-075): nada fora da lista vai à internet. Conferido
@@ -166,6 +169,7 @@ if ($LASTEXITCODE -ne 0) {
   throw 'a pasta site/ tem arquivo fora da lista e portal.site_ligado está ligado: o central não subiria. Limpe a pasta.'
 }
 
+Close-EtapaDoDeploy $estadoDeEtapas 'site'
 # ------------------------------------------------------------------ 1c. docs-check (29.166)
 # O docs-check (links, IDs, mapa e, quando o 29.160 entrar, o formato de `config/config.example.yaml` e de
 # `.claude/plano-100.json`) roda aqui, com o Python do venv do backend (que tem PyYAML e pydantic: sem eles o docs-check só
@@ -198,6 +202,7 @@ if ($Ensaio) {
   return
 }
 
+Close-EtapaDoDeploy $estadoDeEtapas 'docs_check'
 # ------------------------------------------------------------------ 2. o painel
 # Isto faltava, e o sintoma não denuncia a causa: o backend sobe no commit novo, `/api/health` confere commit e
 # migração, tudo diz "ok" — e o navegador continua servindo o bundle antigo, porque `frontend/dist` é ARTEFATO e
@@ -232,6 +237,7 @@ if (-not $PularFrontend) {
   Write-Host ("    dist reconstruído: $($maisNovo.Name), $($maisNovo.LastWriteTime)")
 }
 
+Close-EtapaDoDeploy $estadoDeEtapas 'painel'
 # ------------------------------------------------------------------ 3. parar
 # Com a tarefa `farm-central` registrada (install-central-service.ps1), quem sobe o backend é o SUPERVISOR: parar
 # só o processo faria o supervisor religar o código velho em até 15 s, disputando a porta com o start.ps1. A
@@ -243,6 +249,7 @@ if ($supervisionado) { Stop-ScheduledTask -TaskName 'farm-central' -ErrorAction 
 & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'stop.ps1') @(if ($StopEmulators) { '-StopEmulators' })
 if ((Saude) -ne $null) { throw 'o backend ainda responde depois do stop; não suba um segundo dono do banco.' }
 
+Close-EtapaDoDeploy $estadoDeEtapas 'parada'
 # ------------------------------------------------------------------ 3b. dependências
 # Faltava, como o painel faltou: o deploy trocava o código e deixava o venv como estava, e uma versão nova no
 # `requirements.txt` (cryptography 46 → 50, item T.4) nunca chegava à produção. Com o backend PARADO de propósito:
@@ -284,6 +291,7 @@ if (-not $PularDependencias) {
   }
 }
 
+Close-EtapaDoDeploy $estadoDeEtapas 'dependencias'
 # ------------------------------------------------------------------ 4. subir (a migração acontece aqui)
 Write-Host '--- subindo (AppState aplica as migrações pendentes na inicialização) ---'
 if ($supervisionado) {
@@ -298,6 +306,7 @@ if ($supervisionado) {
   if ($LASTEXITCODE -ne 0) { throw 'o start falhou; veja data\logs\backend.err.log' }
 }
 
+Close-EtapaDoDeploy $estadoDeEtapas 'subida'
 # ------------------------------------------------------------------ 5. conferir o que subiu
 $depois = Saude
 if (-not $depois) { throw '/api/health não respondeu depois da subida.' }
@@ -313,6 +322,7 @@ Write-Host ("depois da subida: status $($depois.status) | commit $($depois.commi
 $depois.problems | ForEach-Object { Write-Warning "$($_.message) → $($_.hint)" }
 if ($problemas) { throw ("a subida não confere: " + ($problemas -join '; ')) }
 
+Close-EtapaDoDeploy $estadoDeEtapas 'conferencia'
 # ------------------------------------------------------------------ 6. histórico e tag (29.159)
 # Só aqui, com a subida conferida: a tag nomeia um commit que está no ar e passou na conferência. Tudo no melhor
 # esforço (sem gh, sem rede, sem permissão): o aviso sai na tela e na linha do histórico, e o deploy continua.
@@ -325,13 +335,15 @@ if (-not $SemTag) {
                 $(if ($resultadoDaTag.release) { '; release criado.' } else { '.' }))
   }
 }
+Close-EtapaDoDeploy $estadoDeEtapas 'tag'
 $script:subidaRegistrada = $true
 try {
   Add-RegistroDeDeploy -Caminho $arquivoDeDeploys -Registro (New-RegistroDeDeploy -Resultado 'ok' `
     -CommitAntes $antes.commit -MigracaoAntes $antes.migration -CommitDepois $depois.commit -MigracaoDepois $depois.migration `
     -Backup $pastaDoBackup -BackupDoEnsaio $backupDoEnsaio -Tag $resultadoDaTag.tag -Motivo $resultadoDaTag.aviso `
-    -DuracaoS ((Get-Date) - $inicioDoDeploy).TotalSeconds -Opcoes $opcoesDoDeploy)
+    -DuracaoS ((Get-Date) - $inicioDoDeploy).TotalSeconds -Opcoes $opcoesDoDeploy -EtapasS $estadoDeEtapas.etapas)
   Write-Host 'histórico: uma linha em data\deploys.jsonl'
+  Write-Host ('tempo por etapa (s): ' + (($estadoDeEtapas.etapas.GetEnumerator() | ForEach-Object { '{0} {1:F1}' -f $_.Key, $_.Value }) -join ', '))
 } catch { Write-Warning "não consegui gravar a linha do histórico de deploys: $($_.Exception.Message)" }
 
 Write-Host ''

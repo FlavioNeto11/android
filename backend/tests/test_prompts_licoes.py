@@ -47,25 +47,27 @@ SNAPSHOT = {
     "verifier": "c7cca9087d0ee629df2e821fc22f641de8518c246dd6c598f27891536115e6ca",
 }
 SISTEMAS = {
+    # Regras de conteúdo T1 (06/10, decisão do dono, dfaeb216): a CONDUCT_RULE perdeu os limites de conduta e foi para o serviço
+    # externo de autorização — o hash do ator e dos planejadores (ACTOR, PLANNER, PLANNER_CAPABILITY, PLANNER_MULTIAPP e as duas variantes CURTO) muda de propósito.
     # Item 24.3: o ator aprende quando usar read_value (ler antes de concluir e antes do efeito; código, senha e
     # token nunca são valor) — o hash muda de propósito, como no 24.8 abaixo.
     # Item 31.38: a regra de leitura ganhou `step_blocked(kind="dado_ausente")` — o hash muda de propósito.
     # Item 31.72: a regra de aviso e cookies diz "recuse; NUNCA aceite" (a trava é do executor) — muda de propósito.
-    "ACTOR_SYSTEM": "8ba92d2e7fb3d830a127ac5c70a809c0e475c4a53d340e5c333254d98b84954f",
+    "ACTOR_SYSTEM": "28508a277d725214c01ffaedcf4549dae4e97c4e524a59dd3e3f4ef477f9ae5b",
     # Item 24.8: o exemplo vedado (código lido no Outlook) virou um exemplo permitido, e a regra de código/senha/
     # token nunca atravessar etapas entrou no texto — o hash muda de propósito, não é enfraquecimento do teste.
     # Item 24.3: a regra de `saidas` e `{{saida:<nome>}}` (valor lido numa etapa e usado nas seguintes).
     # Item 29.57: os planejadores levam a regra de identidade (ANA, quando falam com a pessoa) — o hash muda de
     # propósito; o ator e o verificador não a levam e ficam iguais.
-    "PLANNER_SYSTEM": "1065525d77b034b5ba13cfe48ccb71fb7058c07aed385e62c8f807b785f6dace",
+    "PLANNER_SYSTEM": "1e065ce30ad7fc78642c74f6b3035ce55f7265496f9012b226812571e0108518",
     # Item 31.98: o exemplo de nome de usuário com @ virou fictício (era o de uma conta) — o hash dos três que o
     # trazem (capability e multiapp, inteiro e curto) muda de propósito.
-    "PLANNER_CAPABILITY_SYSTEM": "4d9ccea49ad80675cecee5e62215995ba0f16da2696ec5d8d6c0c882de8d0600",
+    "PLANNER_CAPABILITY_SYSTEM": "3611d9716047c8eadb64b440ee5bc487d8c86667436480b4ce13327608cbcb2c",
     # 29.57 (leitura da orquestradora): o multiapp e as variantes curtas não tinham hash congelado; passam a ter, já
     # com a regra de identidade.
-    "PLANNER_MULTIAPP_SYSTEM": "c7a7ac398020540eda3b495b1f63d8591b3cd5c7d6569aea684cea10d8718bde",
-    "PLANNER_SYSTEM_CURTO": "697f5c68a8940b807ff878e1080af18c7d5ea9827b5121009d31dbbefe258111",
-    "PLANNER_MULTIAPP_SYSTEM_CURTO": "06f4bab8bcc83a24ee6c6688340e57a9c8212769b986bc77ad3d5e1f13f0696e",
+    "PLANNER_MULTIAPP_SYSTEM": "e472b9848916bf3d6dfdd3431622e2fab136d6a160299b3715d3c03988158227",
+    "PLANNER_SYSTEM_CURTO": "64eed835bbb067119e3449c453e0f6d276a3c029af077f5c13e9107efde26fea",
+    "PLANNER_MULTIAPP_SYSTEM_CURTO": "a65d0cfbd64ea61ea52cb92202d2cd879eb92e2340f0a1284232874dda1b36c5",
     # Item 29.58 (C): o verificador passa a contar as cópias do efeito desta execução (`copias`) — o hash muda de
     # propósito, não é enfraquecimento do teste.
     # Item 31.40: o verificador marca `sobreposicao` quando algo cobre o alvo — o hash muda de propósito.

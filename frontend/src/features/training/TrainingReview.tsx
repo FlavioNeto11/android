@@ -101,8 +101,17 @@ export function toqueSemAlvo(e: TrainingInput): string | null {
   return e.sensitive && e.x === null ? 'em teclado ou tela sensível (não gravado)' : 'sem elemento identificado';
 }
 
-/** Como o seletor `unique` da gravação se lê (`recorder._CAMPOS_DO_SELETOR`): o que a receita compara no aparelho. */
-const SELETOR: Record<string, string> = { 'rid+text': 'identificador e texto', 'rid+desc': 'identificador e descrição', rid: 'identificador', desc: 'descrição', text: 'texto' };
+/**
+ * Como o seletor `unique` da gravação se lê (`recorder._CAMPOS_DO_SELETOR`): o que a receita compara no aparelho. Cada um é um
+ * jeito que SOZINHO acha o elemento na tela gravada. `soEle`: a mesma forma, para quando é uma alternativa de um só campo ("só pelo texto").
+ */
+const SELETOR: Record<string, { como: string; soEle: string }> = {
+  'rid+text': { como: 'pelo identificador e pelo texto', soEle: 'pelo identificador e pelo texto' },
+  'rid+desc': { como: 'pelo identificador e pela descrição', soEle: 'pelo identificador e pela descrição' },
+  rid: { como: 'pelo identificador', soEle: 'só pelo identificador' },
+  desc: { como: 'pela descrição', soEle: 'só pela descrição' },
+  text: { como: 'pelo texto', soEle: 'só pelo texto' },
+};
 
 /**
  * 31.90-F: como a gravação RECONHECE o elemento tocado, para a pessoa conferir antes de salvar (a receita só vale se o
@@ -112,8 +121,9 @@ const SELETOR: Record<string, string> = { 'rid+text': 'identificador e texto', '
 export function alvoReconhecido(e: TrainingInput): string | null {
   const t = e.target;
   if ((e.type !== 'tap' && e.type !== 'long_press') || !t || !Object.keys(t).length) return null;
-  const como = (t.unique ?? []).map((u) => SELETOR[u] ?? u);
+  const unicos = t.unique ?? [];
   const id = t.resource_id ? t.resource_id.split('/').pop() : '';
+  const como = unicos.map((u) => SELETOR[u]);
   if (!como.length) {
     if (!t.filhos?.length) return 'sem identificador único: este toque não vira receita';
     // Contêiner sem identidade: a receita acha o elemento por um filho rotulado (até três gravados); a pessoa vê quais.
@@ -124,7 +134,12 @@ export function alvoReconhecido(e: TrainingInput): string | null {
     }).filter(Boolean);
     return `reconhecido pelo que o elemento contém${filhos.length ? `: ${filhos.join('; ')}` : ''}`;
   }
-  return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `: ${id}` : ''}`;
+  // 31.169: em palavras ("achado pelo identificador ok e pelo texto"), com o id técnico logo depois da palavra que o nomeia, e as
+  // outras formas que também acham o elemento ditas como alternativas, não como lista de rótulos soltos entre parênteses.
+  const [primeiro, ...outras] = como;
+  const dito = (primeiro?.como ?? `por ${unicos[0]}`).replace(/(identificador)/, id ? `$1 ${id}` : '$1');
+  const alternativas = outras.map((o, i) => o?.soEle ?? `por ${unicos[i + 1]}`);
+  return `achado ${dito}${alternativas.length ? `; também se acha ${alternativas.join(' ou ')}` : ''}`;
 }
 
 const SELETOR_DA_POS = /^(text|desc|id)==(.+)$/;

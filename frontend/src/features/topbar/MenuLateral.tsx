@@ -1,5 +1,5 @@
 import {
-  CalendarClock, GraduationCap, Inbox, LayoutGrid, ListChecks, Package, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon,
+  CalendarClock, Gauge, GraduationCap, Inbox, LayoutGrid, ListChecks, Package, PanelLeftClose, PanelLeftOpen, Server, Settings as SettingsIcon,
   Radio, Stethoscope, UserRound, Workflow, X, type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
@@ -34,6 +34,7 @@ export const NAV: readonly { tela: Tela; label: string; icon: LucideIcon }[] = [
   { tela: 'diagnostico', label: 'Diagnóstico', icon: Stethoscope },
   { tela: 'canais', label: 'Canais', icon: Radio },
   { tela: 'operacoes', label: 'Operação', icon: Workflow },
+  { tela: 'host', label: 'Host', icon: Gauge },
 ];
 
 export const ID_MENU = 'menu-principal';

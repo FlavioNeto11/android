@@ -40,7 +40,7 @@ beforeAll(() => installBrowserStubs());
 beforeEach(() => {
   backend = new FakeBackend();
   backend.install();
-  backend.on('GET', CONTEUDO, () => new Response(new Blob(['png'], { type: 'image/png' })));
+  backend.on('GET', CONTEUDO, () => new Response('png', { headers: { 'Content-Type': 'image/png' } }));
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
