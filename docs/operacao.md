@@ -404,7 +404,12 @@ estado antigo, nunca uma edição retroativa.
   relata; o pedido é consumido, a raiz tem de estar na pasta-pai dos checkouts). Log por execução em `data\canais\tarefas`
   (padrões de token cobertos por `***`, 30 dias); sem segredo na linha de comando (o token vem do arquivo de ambiente da instalação, lido
   pelos próprios scripts da Canais); saída 0 ok, 1 script falhou, 2 faltou script/python, 3 atrasada, 4 sem pedido, 5 pedido inválido.
-  O `-Instalar` real só depois que os scripts da Canais estiverem no checkout central.
+  O `-Instalar` real só depois que os scripts da Canais estiverem no checkout central. Mais duas tarefas (28.73 e 28.75):
+  `-Tarefa laco-de-aparelhos` (`farm-canais-laco-de-aparelhos`: `avisos_de_aparelho.py --laco --intervalo-s 120`, sobe ao ligar o host e
+  às 00:05, reinicia até 3 vezes, sem limite de tempo, log em fluxo e UM por dia) e `-Tarefa saude-dos-lacos`
+  (`farm-canais-saude-dos-lacos`: `saude_dos_lacos.py --avisar` a cada 5 min, limite de 4 min; só lê e avisa, nunca relança). Como as
+  outras, levam `-Enviar` na tarefa registrada e sem ele só imprimem. Antes de registrar o laço, parar o que roda na sessão da Canais
+  (dois laços mandariam o aviso duas vezes).
 - **Restaurar o banco regride a cerca** (`commands.fence`, usada para invalidar comando obsoleto por aparelho):
   depois de restaurar, o agente recusa comandos com "cerca N é anterior à última executada (M)" e os `start`
   ficam `failed` sem reparo automático. Procedimento: subir manualmente o `fence` do último comando do aparelho

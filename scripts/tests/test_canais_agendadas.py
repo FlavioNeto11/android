@@ -36,9 +36,10 @@ def arvore(tmp_path, monkeypatch):
     raiz = tmp_path / "pai" / "checkout"
     (raiz / "scripts").mkdir(parents=True)
     shutil.copy(SCRIPT, raiz / "scripts" / SCRIPT.name)
-    for rel in (".claude/canais/resumo_diario.py", ".claude/trello/espelho_do_deploy.py"):
+    for rel in (".claude/canais/resumo_diario.py", ".claude/trello/espelho_do_deploy.py", ".claude/canais/avisos_de_aparelho.py",
+                ".claude/canais/saude_dos_lacos.py"):
         arq = raiz / rel
-        arq.parent.mkdir(parents=True)
+        arq.parent.mkdir(parents=True, exist_ok=True)
         arq.write_text(FALSO, encoding="utf-8")
     marca = tmp_path / "marca.txt"
     monkeypatch.setenv("FAKE_MARCA", str(marca))
@@ -188,6 +189,62 @@ class TestEspelhoDoDeploy:
         raiz, _ = arvore
         r = _rodar(raiz, "-Tarefa", "espelho-do-deploy", "-Pedir", "-Raiz", str(raiz.parent), "-Deploy", "1000", "-SemDisparar")
         assert r.returncode != 0
+
+
+@precisa_pwsh
+class TestLacoESaude:
+    def test_laco_instala_ao_ligar_o_host_com_enviar_e_sem_limite(self, arvore):
+        plano = json.loads(_rodar(arvore[0], "-Tarefa", "laco-de-aparelhos", "-Instalar", "-Simular").stdout)
+        assert plano["tarefa"] == "farm-canais-laco-de-aparelhos"
+        assert "ao ligar o host" in plano["gatilho"] and "sem limite" in plano["limite"]
+        assert "-Tarefa laco-de-aparelhos -Executar -Enviar" in plano["argumentos"]
+
+    def test_saude_instala_a_cada_5_min_com_enviar(self, arvore):
+        plano = json.loads(_rodar(arvore[0], "-Tarefa", "saude-dos-lacos", "-Instalar", "-Simular").stdout)
+        assert plano["tarefa"] == "farm-canais-saude-dos-lacos"
+        assert "5 min" in plano["gatilho"] and "4 min" in plano["limite"]
+        assert "-Tarefa saude-dos-lacos -Executar -Enviar" in plano["argumentos"]
+
+    def test_laco_com_enviar_passa_laco_e_intervalo_e_grava_no_log_do_dia(self, arvore):
+        raiz, marca = arvore
+        r = _rodar(raiz, "-Tarefa", "laco-de-aparelhos", "-Executar", "-Enviar")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert marca.read_text(encoding="utf-8") == "--laco --intervalo-s 120"
+        logs = list((raiz / "data" / "canais" / "tarefas").glob("*-000000-laco-de-aparelhos.log"))
+        assert len(logs) == 1, "um log por dia, não um por execução"
+        texto = logs[0].read_text(encoding="utf-8")
+        assert "fim rc=0" in texto and "args: --laco --intervalo-s 120" in texto
+        assert "AAAAAAAAAAAAAAAA" not in texto and "***" in texto, "token coberto também na saída em fluxo"
+
+    def test_laco_sem_enviar_e_so_um_ciclo_de_ensaio(self, arvore):
+        raiz, marca = arvore
+        r = _rodar(raiz, "-Tarefa", "laco-de-aparelhos", "-Executar")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert marca.read_text(encoding="utf-8") == "", "sem --laco, sem envio"
+        assert "args:" in r.stdout
+
+    def test_laco_que_falha_vira_codigo_1(self, arvore):
+        raiz, _ = arvore
+        r = _rodar(raiz, "-Tarefa", "laco-de-aparelhos", "-Executar", "-Enviar", env={"FAKE_RC": "5"})
+        assert r.returncode == 1
+        assert "script_rc=5" in "".join(p.read_text(encoding="utf-8") for p in (raiz / "data" / "canais" / "tarefas").glob("*.log"))
+
+    def test_saude_com_enviar_passa_avisar_e_nunca_religar(self, arvore):
+        raiz, marca = arvore
+        r = _rodar(raiz, "-Tarefa", "saude-dos-lacos", "-Executar", "-Enviar")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert marca.read_text(encoding="utf-8") == "--avisar"
+        assert "--religar" not in SCRIPT.read_text(encoding="utf-8").split("#>", 1)[1].replace("`--religar` não é usado", "")
+
+    def test_saude_sem_enviar_so_imprime(self, arvore):
+        raiz, marca = arvore
+        r = _rodar(raiz, "-Tarefa", "saude-dos-lacos", "-Executar")
+        assert r.returncode == 0 and marca.read_text(encoding="utf-8") == "" and "args:" in r.stdout
+
+    def test_sem_o_script_da_canais_e_codigo_2(self, arvore):
+        raiz, marca = arvore
+        (raiz / ".claude" / "canais" / "saude_dos_lacos.py").unlink()
+        assert _rodar(raiz, "-Tarefa", "saude-dos-lacos", "-Executar").returncode == 2 and not marca.exists()
 
 
 def test_o_script_nao_tem_segredo_nem_mexe_em_wsl_tunel_relogio_nem_mata_processo():

@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Tarefas agendadas do host para os scripts da Canais (29.186): o resumo diário ao dono e o espelho do deploy sob demanda.
-  Hoje os dois dependem de uma sessão viva (cron de sessão, ou a Canais rodando o comando à mão); como tarefa do host
-  sobrevivem a ela.
+  Tarefas agendadas do host para os scripts da Canais (29.186): o resumo diário ao dono, o espelho do deploy sob demanda, o laço de avisos
+  de aparelho e a saúde dos laços. Hoje dependem de uma sessão viva (cron de sessão, ou a Canais rodando o comando à mão);
+  como tarefa do host sobrevivem a ela.
 
 .DESCRIPTION
-  Duas tarefas, no molde da `farm-restore-ensaio`:
+  Quatro tarefas, no molde da `farm-restore-ensaio`:
 
   * `-Tarefa resumo-diario` -> tarefa `farm-canais-resumo-diario`: todo dia às 07:03 do horário LOCAL do host (Brasília), a
     partir de `-APartirDe` (padrão 2026-10-08). Roda `.claude\canais\resumo_diario.py` do checkout onde este script está. A
@@ -16,6 +16,15 @@
     com `-Pedir -Raiz <checkout em origin/main> [-Deploy NN] [-Aplicar]`: o pedido vira `data\canais\tarefas\espelho-pedido.json`
     e a tarefa é disparada. Sem `-Aplicar` o espelho só relata (nada é gravado no Trello). O pedido é consumido (renomeado com
     carimbo) antes de rodar, então disparar a tarefa de novo sem pedido novo não repete nada.
+
+  * `-Tarefa laco-de-aparelhos` -> tarefa `farm-canais-laco-de-aparelhos` (28.73): o laço de avisos de aparelho
+    (`.claude\canais\avisos_de_aparelho.py --laco --intervalo-s 120`), vivo o tempo todo: sobe ao ligar o host (e todo dia às 00:05, rede
+    de segurança; `IgnoreNew` não duplica) e reinicia até 3 vezes se cair. A saída vai linha a linha para um log por dia
+    (`AAAAMMDD-000000-laco-de-aparelhos.log`). Sem `-Enviar`, um ciclo de ensaio que só imprime. ANTES de registrar, a Canais precisa
+    parar o laço que roda na sessão dela: dois laços mandariam o aviso duas vezes.
+  * `-Tarefa saude-dos-lacos` -> tarefa `farm-canais-saude-dos-lacos` (28.75): `.claude\canais\saude_dos_lacos.py --avisar` a cada 5 min
+    (limite de 4 min por execução). Só LÊ e avisa quando algo parou ou voltou; nunca relança nada (o `--religar` não é usado: quem
+    mantém o laço vivo é a própria tarefa). Sem `-Enviar`, só imprime.
 
   Segredo: nenhum token na linha de comando da tarefa nem no log. O token do Telegram e a chave do Trello são lidos pelos
   próprios scripts da Canais, do config/.env do checkout central. O log por execução (`data\canais\tarefas\<carimbo>-<tarefa>.log`)
@@ -28,7 +37,7 @@
   Prioridade ociosa, sem rede própria (a rede é a dos scripts da Canais), sem tocar WSL, túnel, relógio nem `.wslconfig`.
 
 .PARAMETER Tarefa
-  `resumo-diario` ou `espelho-do-deploy`.
+  `resumo-diario`, `espelho-do-deploy`, `laco-de-aparelhos` ou `saude-dos-lacos`.
 .PARAMETER Instalar
   Registra a tarefa e sai (não roda). Com `-Simular` só mostra o plano em JSON. O real fica para depois que os scripts da Canais
   estiverem no checkout central.
@@ -45,7 +54,8 @@
 .PARAMETER Aplicar
   Com `-Pedir`: grava no Trello (sem isto, só relata).
 .PARAMETER Enviar
-  Só resumo-diario: envia ao Telegram do dono (sem isto, ensaio).
+  resumo-diario, laco-de-aparelhos e saude-dos-lacos: faz o que a tarefa faz de verdade (envia ao Telegram do dono e grava o estado);
+  sem isto, é ensaio e só imprime. A tarefa registrada leva `-Enviar`.
 .PARAMETER Forcar
   Só resumo-diario: ignora a trava de execução atrasada.
 .PARAMETER Simular
@@ -67,7 +77,7 @@
   pwsh -File scripts\canais-agendadas.ps1 -Tarefa resumo-diario -Executar        # ensaio: imprime, não envia
 #>
 [CmdletBinding()]
-param([Parameter(Mandatory)][ValidateSet('resumo-diario', 'espelho-do-deploy')][string]$Tarefa,
+param([Parameter(Mandatory)][ValidateSet('resumo-diario', 'espelho-do-deploy', 'laco-de-aparelhos', 'saude-dos-lacos')][string]$Tarefa,
       [switch]$Instalar, [switch]$Remover, [switch]$Executar, [switch]$Pedir,
       [string]$Raiz = '', [int]$Deploy = 0, [switch]$Aplicar, [switch]$Enviar, [switch]$Forcar, [switch]$Simular,
       [switch]$SemDisparar, [string]$AgoraLocal = '', [string]$Python = '', [string]$Pasta = '', [string]$APartirDe = '2026-10-08')
@@ -76,9 +86,12 @@ $raizDoCheckout = Split-Path -Parent $PSScriptRoot
 if (-not $Python) { $Python = Join-Path $raizDoCheckout 'backend\.venv\Scripts\python.exe' }
 if (-not $Pasta) { $Pasta = Join-Path $raizDoCheckout 'data\canais\tarefas' }
 $inv = [Globalization.CultureInfo]::InvariantCulture
-$nomeDaTarefa = if ($Tarefa -eq 'resumo-diario') { 'farm-canais-resumo-diario' } else { 'farm-canais-espelho-deploy' }
-$scriptDaCanais = if ($Tarefa -eq 'resumo-diario') { Join-Path $raizDoCheckout '.claude\canais\resumo_diario.py' }
-                  else { Join-Path $raizDoCheckout '.claude\trello\espelho_do_deploy.py' }
+$nomeDaTarefa = @{ 'resumo-diario' = 'farm-canais-resumo-diario'; 'espelho-do-deploy' = 'farm-canais-espelho-deploy'
+                   'laco-de-aparelhos' = 'farm-canais-laco-de-aparelhos'; 'saude-dos-lacos' = 'farm-canais-saude-dos-lacos' }[$Tarefa]
+$caminhoDoScript = @{ 'resumo-diario' = '.claude\canais\resumo_diario.py'; 'espelho-do-deploy' = '.claude\trello\espelho_do_deploy.py'
+                      'laco-de-aparelhos' = '.claude\canais\avisos_de_aparelho.py'; 'saude-dos-lacos' = '.claude\canais\saude_dos_lacos.py' }[$Tarefa]
+$scriptDaCanais = Join-Path $raizDoCheckout $caminhoDoScript
+$ehLaco = $Tarefa -eq 'laco-de-aparelhos'   # processo que não acaba: a saída é gravada linha a linha, num log por dia
 $modos = @($Instalar, $Remover, $Executar, $Pedir) | Where-Object { $_ }
 if (@($modos).Count -ne 1) { throw 'escolha exatamente um: -Instalar, -Remover, -Executar ou -Pedir' }
 if ($Pedir -and $Tarefa -ne 'espelho-do-deploy') { throw '-Pedir só vale para espelho-do-deploy' }
@@ -88,24 +101,40 @@ if ($Instalar) {
   $exe = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
   if (-not $exe) { $exe = 'powershell.exe' }
   $argumentos = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`" -Tarefa $Tarefa -Executar"
-  if ($Tarefa -eq 'resumo-diario') { $argumentos += ' -Enviar' }
+  if ($Tarefa -ne 'espelho-do-deploy') { $argumentos += ' -Enviar' }   # o espelho só grava com -Aplicar, vindo do pedido
   $dia = [datetime]::ParseExact($APartirDe, 'yyyy-MM-dd', $inv)
-  $plano = [ordered]@{ tarefa = $nomeDaTarefa; executavel = $exe; argumentos = $argumentos
-                       gatilho = $(if ($Tarefa -eq 'resumo-diario') { "diario 07:03 local a partir de $APartirDe" } else { 'nenhum (sob demanda)' })
-                       limite = $(if ($Tarefa -eq 'resumo-diario') { '15 min' } else { '30 min' }) }
+  $gatilhoEmTexto = switch ($Tarefa) {
+    'resumo-diario'     { "diario 07:03 local a partir de $APartirDe" }
+    'laco-de-aparelhos' { 'ao ligar o host + diario 00:05 (rede de seguranca); reinicia se cair' }
+    'saude-dos-lacos'   { 'a cada 5 min, para sempre' }
+    default             { 'nenhum (sob demanda)' }
+  }
+  $limiteEmTexto = switch ($Tarefa) { 'resumo-diario' { '15 min' } 'laco-de-aparelhos' { 'sem limite' } 'saude-dos-lacos' { '4 min' } default { '30 min' } }
+  $plano = [ordered]@{ tarefa = $nomeDaTarefa; executavel = $exe; argumentos = $argumentos; gatilho = $gatilhoEmTexto; limite = $limiteEmTexto }
   if ($Simular) { $plano | ConvertTo-Json -Compress; return }
   $eu = ([Security.Principal.WindowsIdentity]::GetCurrent()).Name
   Unregister-ScheduledTask -TaskName $nomeDaTarefa -Confirm:$false -ErrorAction SilentlyContinue
   $acao = New-ScheduledTaskAction -Execute $exe -Argument $argumentos
   $principal = New-ScheduledTaskPrincipal -UserId $eu -LogonType S4U -RunLevel Highest
-  $limite = if ($Tarefa -eq 'resumo-diario') { New-TimeSpan -Minutes 15 } else { New-TimeSpan -Minutes 30 }
+  $limite = switch ($Tarefa) { 'resumo-diario' { New-TimeSpan -Minutes 15 } 'laco-de-aparelhos' { [TimeSpan]::Zero } 'saude-dos-lacos' { New-TimeSpan -Minutes 4 } default { New-TimeSpan -Minutes 30 } }
   $ajustes = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
                -MultipleInstances IgnoreNew -ExecutionTimeLimit $limite
-  if ($Tarefa -eq 'resumo-diario') {
-    $gatilho = New-ScheduledTaskTrigger -Daily -At ($dia.Date.AddHours(7).AddMinutes(3))
-    Register-ScheduledTask -TaskName $nomeDaTarefa -Action $acao -Trigger $gatilho -Principal $principal -Settings $ajustes | Out-Null
-  } else {
-    Register-ScheduledTask -TaskName $nomeDaTarefa -Action $acao -Principal $principal -Settings $ajustes | Out-Null
+  if ($ehLaco) { $ajustes.RestartCount = 3; $ajustes.RestartInterval = (New-TimeSpan -Minutes 1) }
+  switch ($Tarefa) {
+    'resumo-diario' {
+      $gatilho = New-ScheduledTaskTrigger -Daily -At ($dia.Date.AddHours(7).AddMinutes(3))
+      Register-ScheduledTask -TaskName $nomeDaTarefa -Action $acao -Trigger $gatilho -Principal $principal -Settings $ajustes | Out-Null
+    }
+    'laco-de-aparelhos' {
+      # Ao ligar o host e, como rede de segurança, todo dia 00:05: com IgnoreNew a 2ª partida não duplica o laço vivo.
+      $gatilhos = @((New-ScheduledTaskTrigger -AtStartup), (New-ScheduledTaskTrigger -Daily -At 00:05))
+      Register-ScheduledTask -TaskName $nomeDaTarefa -Action $acao -Trigger $gatilhos -Principal $principal -Settings $ajustes | Out-Null
+    }
+    'saude-dos-lacos' {
+      $gatilho = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+      Register-ScheduledTask -TaskName $nomeDaTarefa -Action $acao -Trigger $gatilho -Principal $principal -Settings $ajustes | Out-Null
+    }
+    default { Register-ScheduledTask -TaskName $nomeDaTarefa -Action $acao -Principal $principal -Settings $ajustes | Out-Null }
   }
   Write-Host "tarefa '$nomeDaTarefa' registrada ($($plano.gatilho)). NÃO foi executada."
   return
@@ -151,7 +180,11 @@ function Remove-Segredos([string]$texto) {
   $t = $t -replace '(?i)\b(bearer|token|key|secret|password)\s*[=:]\s*\S+', '$1=***'
   return $t
 }
-function Add-Log([string]$linha) { Add-Content -LiteralPath $arquivoDeLog -Value (Remove-Segredos $linha) -Encoding utf8 }
+# O laço roda por dias: um log por dia (`AAAAMMDD-000000-<tarefa>.log`), para não crescer sem fim e a retenção de 30 dias valer.
+function Add-Log([string]$linha) {
+  $alvo = if ($ehLaco) { Join-Path $Pasta ('{0}-000000-{1}.log' -f (Get-Date).ToString('yyyyMMdd', $inv), $Tarefa) } else { $arquivoDeLog }
+  Add-Content -LiteralPath $alvo -Value (Remove-Segredos $linha) -Encoding utf8
+}
 function Close-Execucao([int]$codigo, [string]$motivo) {
   Add-Log ("fim rc={0} dur={1:N1}s {2}" -f $codigo, $relogio.Elapsed.TotalSeconds, $motivo)
   # Retenção: só os logs e pedidos consumidos desta pasta, pela data do NOME, com mais de 30 dias.
@@ -180,6 +213,12 @@ if ($Tarefa -eq 'resumo-diario') {
     if ($inicio -gt $limiteDoDia -and -not $Forcar) { Close-Execucao 3 'atrasada demais: não envia (use -Forcar)' }
     $argumentosDoScript += '--enviar'
   }
+} elseif ($Tarefa -eq 'laco-de-aparelhos') {
+  # Com -Enviar é o laço (grava o estado e manda o aviso agrupado a cada 120 s); sem, um ciclo de ensaio que só imprime.
+  if ($Enviar) { $argumentosDoScript += @('--laco', '--intervalo-s', '120') }
+} elseif ($Tarefa -eq 'saude-dos-lacos') {
+  # Com -Enviar grava o estado e avisa só quando algo parou (ou voltou); sem, só imprime. Nunca relança nada (`--religar` não é usado).
+  if ($Enviar) { $argumentosDoScript += '--avisar' }
 } else {
   if (-not (Test-Path -LiteralPath $arquivoDoPedido)) { Close-Execucao 4 'sem pedido (use -Pedir)' }
   $consumido = Join-Path $Pasta "espelho-pedido-$carimbo.json"
@@ -203,11 +242,19 @@ if ($Tarefa -eq 'resumo-diario') {
 Add-Log ('comando: python {0} {1}' -f (Split-Path -Leaf $scriptDaCanais), ($argumentosDoScript -join ' '))
 $saida = ''
 $codigoDoScript = 1
-try {
-  $saida = (& $Python $scriptDaCanais @argumentosDoScript 2>&1 | Out-String)
-  $codigoDoScript = $LASTEXITCODE
-} catch { $saida = "erro ao rodar: $($_.Exception.GetType().Name)"; $codigoDoScript = 1 }
-if ($saida.Length -gt 20000) { $saida = $saida.Substring(0, 20000) + "`n[saída cortada em 20000 caracteres]" }
-Add-Log $saida
-if ($Tarefa -eq 'resumo-diario' -and -not $Enviar) { Write-Host $saida }
+if ($ehLaco -and $Enviar) {
+  # Processo que não acaba: cada linha vai ao log do dia assim que sai (a tarefa agendada o mantém vivo e o reinicia se cair).
+  try {
+    & $Python $scriptDaCanais @argumentosDoScript 2>&1 | ForEach-Object { Add-Log ([string]$_) }
+    $codigoDoScript = $LASTEXITCODE
+  } catch { Add-Log "erro ao rodar: $($_.Exception.GetType().Name)"; $codigoDoScript = 1 }
+} else {
+  try {
+    $saida = (& $Python $scriptDaCanais @argumentosDoScript 2>&1 | Out-String)
+    $codigoDoScript = $LASTEXITCODE
+  } catch { $saida = "erro ao rodar: $($_.Exception.GetType().Name)"; $codigoDoScript = 1 }
+  if ($saida.Length -gt 20000) { $saida = $saida.Substring(0, 20000) + "`n[saída cortada em 20000 caracteres]" }
+  Add-Log $saida
+}
+if (-not $Enviar -and $Tarefa -ne 'espelho-do-deploy') { Write-Host $saida }   # ensaio: o que o script mandaria
 Close-Execucao $(if ($codigoDoScript -eq 0) { 0 } else { 1 }) "script_rc=$codigoDoScript"
