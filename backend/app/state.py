@@ -37,6 +37,7 @@ from .devices.sdk import SdkTools
 from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
+from .modules.operacoes.infrastructure.laco import LacoDasOperacoes
 from .modules.avisos.infrastructure.contatos_sql import ContatosDoCanal
 from .modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from .modules.avisos.infrastructure.entrada import ServicoDeEntrada, parece_codigo
@@ -258,6 +259,7 @@ class AppState:
     _laco_principal: asyncio.AbstractEventLoop | None
     teaching: TeachingService
     runs: RunService
+    laco_das_operacoes: LacoDasOperacoes
     leitor_de_anexos: LeitorDeAnexo
     telegram_entrada: ServicoDeEntrada
     trello_espelho: EspelhoDoTrello
@@ -1389,6 +1391,8 @@ class AppState:
             self.rede_convergencia.verificar_ao_subir()
             # A saída do central, medida em segundo plano (29.20); desligada com `rede.sonda.medir_central: false`.
             self._bg.append(asyncio.create_task(self.rede_saida_central.laco(), name="rede-saida-central"))
+            # 31.220: avança as operações abertas sem leitura externa; desligado por padrão (`operacao_laco_s: 0`).
+            self._bg.append(asyncio.create_task(self.laco_das_operacoes.laco(), name="operacoes"))
         else:
             # `ROLE=api`: esta réplica atende o painel e mais nada. Sem Appium, sem ciclo de vida de aparelho, sem
             # worker local, sem scheduler e — principalmente — sem NENHUMA reconciliação de partida: quem

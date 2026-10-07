@@ -357,8 +357,12 @@ def preparo_error(cap: Capability, por_chave: Mapping[str, Capability]) -> str |
 
 
 class CapabilityCatalog:
-    def __init__(self, package: str, capabilities: list[Capability], contract_version: int = 1):
+    def __init__(self, package: str, capabilities: list[Capability], contract_version: int = 1,
+                 parametros: Mapping[str, FormaDoParametro] | None = None):
         self.package = package
+        # 31.227: a forma e o tamanho dos parâmetros fixos que o app declara (`parametros` no YAML); o que não está
+        # aqui vale o teto genérico.
+        self.parametros: dict[str, FormaDoParametro] = dict(parametros or {})
         # Versão do contrato das ações, declarada no arquivo do app (`contract_version`). Quem monta o catálogo em
         # código (testes, dublês) fica com 1, que é a versão que o registro de capabilities entende hoje.
         self.contract_version = contract_version
@@ -719,7 +723,21 @@ RISCOS = ("low", "medium", "high")
 #: Os tipos de pós-condição que o executor sabe comprovar: os mesmos do `Postcondition` (um só lugar).
 TIPOS_DE_POS = get_args(Postcondition.model_fields["kind"].annotation)
 
-_RAIZ = ("app", "contract_version", "acoes")
+_RAIZ = ("app", "contract_version", "parametros", "acoes")
+
+#: 31.227: as formas que o catálogo declara para um parâmetro fixo. `handle` = nome de perfil, sem arroba nem espaço (a
+#: prova local compara o texto da tela, que não traz o @); `texto` = livre, só com o tamanho.
+FORMAS_DE_PARAMETRO = ("handle", "texto")
+#: O teto genérico do valor de um parâmetro fixo (o mesmo da operação); a declaração só aperta.
+TETO_DE_PARAMETRO = 300
+
+
+@dataclass(frozen=True)
+class FormaDoParametro:
+    """A forma e o tamanho máximo de um parâmetro, declarados no catálogo do app (31.227)."""
+
+    forma: str
+    max: int
 _CHAVE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 #: Pacote Android (`com.exemplo.app`). O pacote vira componente de caminho: sem esta forma, `..` sairia da pasta.
 _PACOTE_ANDROID = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
@@ -863,10 +881,38 @@ def catalogo_de_dados(dados: object, onde: str = "o catálogo") -> CapabilityCat
     repetidas = sorted(k for k, n in Counter(c.key for c in acoes).items() if n > 1)
     if repetidas:
         raise CatalogoInvalido(f"{onde}: ação repetida {', '.join(repetidas)}")
+    parametros = _parametros(dados.get("parametros"), acoes, f"{onde}.parametros")
     try:
-        return CapabilityCatalog(app.strip(), acoes, contract_version=versao)
+        return CapabilityCatalog(app.strip(), acoes, contract_version=versao, parametros=parametros)
     except ValueError as exc:                   # prova local mal escrita: mesma recusa, com o nome do arquivo
         raise CatalogoInvalido(f"{onde}: {exc}") from exc
+
+
+def _parametros(bruto: object, acoes: list[Capability], onde: str) -> dict[str, FormaDoParametro]:
+    """`parametros: {nome: {forma, max}}` (31.227). O nome tem de ser um que alguma ação usa (erro de digitação seria
+    uma declaração que nunca vale); a forma, do vocabulário; o máximo, de 1 ao teto genérico."""
+    if bruto is None:
+        return {}
+    if not isinstance(bruto, dict):
+        raise CatalogoInvalido(f"{onde}: esperava um mapa nome → {{forma, max}}")
+    usados: set[str] = set()
+    for c in acoes:
+        usados.update(c.bindings, c.optional_bindings, c.inherited_bindings)
+    saida: dict[str, FormaDoParametro] = {}
+    for nome, decl in bruto.items():
+        aqui = f"{onde}.{nome}"
+        if str(nome) not in usados:
+            raise CatalogoInvalido(f"{aqui}: nenhuma ação usa este parâmetro")
+        if not isinstance(decl, dict) or set(decl) != {"forma", "max"}:
+            raise CatalogoInvalido(f"{aqui}: esperava {{forma, max}}")
+        forma = decl["forma"]
+        if forma not in FORMAS_DE_PARAMETRO:
+            raise CatalogoInvalido(f"{aqui}.forma: {forma!r} fora de {', '.join(FORMAS_DE_PARAMETRO)}")
+        maximo = _inteiro(decl["max"], f"{aqui}.max")
+        if not 1 <= maximo <= TETO_DE_PARAMETRO:
+            raise CatalogoInvalido(f"{aqui}.max: de 1 a {TETO_DE_PARAMETRO}")
+        saida[str(nome)] = FormaDoParametro(str(forma), maximo)
+    return saida
 
 
 def carregar_catalogo(caminho: Path) -> CapabilityCatalog:

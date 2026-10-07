@@ -389,6 +389,10 @@ class LimitsCfg(BaseModel):
     # demais param em `acao_preparada` com o motivo "limite de ações executadas". Pedido do dono (06/10): configurável
     # aqui, junto dos outros limites, e lido a cada liberação.
     operacao_max_acoes_executadas: int = Field(3, ge=0, le=64)
+    # 31.220: de quanto em quanto tempo (s) o laço do sistema lê as operações abertas e as avança sem leitura externa
+    # (`modules/operacoes/infrastructure/laco.py`). 0 = desligado, o padrão do corte 61 (a prova de 07/10 usa o laço
+    # da Canais). Relido a cada volta.
+    operacao_laco_s: int = Field(0, ge=0, le=3600)
     fleet_max_accounts_per_target: int = Field(3, ge=1, le=50)
     fleet_target_window_days: int = Field(30, ge=1, le=365)
     fleet_target_window_s: int = Field(3600, ge=60, le=86400)
@@ -676,6 +680,9 @@ class PesquisaCfg(BaseModel):
     #: Quanto tempo o fato pesquisado vale; vencido, o assunto volta a ser lacuna.
     frescor_h: float = Field(24.0, gt=0, le=24 * 30)
     max_fatos: int = Field(8, ge=1, le=20)
+    #: 31.231: quantos fatos confirmados e frescos do Livro, do mesmo assunto, cobrem o pedido e dispensam a pesquisa
+    #: paga (critério em `learning/domain/reaproveitamento_da_pesquisa.py`). 0 desliga o reaproveitamento.
+    reaproveitar_min_fatos: int = Field(2, ge=0, le=20)
 
 
 class AiCfg(BaseModel):
@@ -776,6 +783,17 @@ class AiCfg(BaseModel):
     # ação e só sobe pelos controles acima. Escalar na divergência é decisão do dono pendente, com o custo medido
     # em `relatorio-desempenho.md` (22 etapas `recipe+ai` em 7 dias).
     strong_model_for_side_effect: bool | Literal["by_risk"] = "by_risk"
+    # 31.223: quando a etapa com efeito sobe ao modelo forte (acima), ele decide SÓ o commit. A etapa começa no modelo de
+    # ação (abrir o campo, digitar, focar), e a primeira decisão que dispararia o efeito (`is_commit_action`, o seletor
+    # ou o verbo) é descartada e refeita no modelo forte, que segue até o fim da tentativa (como o LT-12). Medido na
+    # onda 1 (07/10): o Opus decidia os 2 passos do comentário (US$ 0,112 de 0,279 do alvo). A trava de commit, a
+    # política de risco e o rejulgamento do "sim" com efeito não mudam. `false` = a etapa inteira no forte (o de antes).
+    strong_model_only_on_commit: bool = True
+    # 31.232: o modelo forte que confere o efeito (a decisão do commit refeita, 31.223, e o rejulgamento do "sim" com
+    # efeito, 17.10) recebe a imagem quando o alvo do efeito NÃO está na árvore (toque por coordenada, elemento ausente
+    # ou ferramenta sem elemento). Com o alvo na árvore, a régua de sempre decide (na onda 1, sem imagem). Só acrescenta
+    # a imagem; nunca tira a que outra causa manda. `false` = como antes.
+    imagem_quando_alvo_fora_da_arvore: bool = True
     # Item 17.10 (cascata para ator barato). `step_blocked` do tier 0 (kinds que um modelo mais forte ainda pode resolver:
     # tela inesperada, informação faltando, app incompatível, outro) sobe UMA vez ao tier 1 na mesma tela antes de pedir uma
     # pessoa. `challenge`, `auth_required` e `wrong_account` NUNCA sobem: dependem de pessoa ou do autenticador.

@@ -14,19 +14,27 @@ Regras:
       e `ref` = a operação, tokens e buscas;
     * a consulta nasce só do assunto, das fontes indicadas e da leitura do alvo; nunca de persona nem de tela sensível;
     * falhou ou não achou fonte: fica a marca `pesquisa.estado` (progresso) por uma hora, para 30 agentes não pagarem
-      30 tentativas.
+      30 tentativas;
+    * 31.231: antes de pagar, os fatos do Livro do MESMO assunto e app (`fatos_do_livro`, a porta do aprendizado, que
+      recebe o id da operação). Cobrindo o
+      pedido pelo critério explícito (`reaproveitamento_da_pesquisa.cobertura`), eles entram na memória como
+      `livro.<item>` (descoberta, confirmada, com o frescor do Livro) e a `pesquisa.estado` registra o reaproveitamento
+      com o critério; nenhuma chamada de IA. Não cobrindo, a pesquisa paga roda como antes.
 """
 from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
 from app.config import PesquisaCfg
 from app.db import Database, loads
+from app.modules.learning.domain.reaproveitamento_da_pesquisa import FatoDoLivro, cobertura
 from app.modules.pedidos.domain import memoria as dominio_memoria
 from app.modules.pedidos.domain.observacao import curto, sha256_do_valor
+from app.modules.pedidos.domain.resumo_da_pesquisa import (CHAVE_DO_ESTADO, ESTADO_FALHOU, ESTADO_REAPROVEITADO,
+                                                           MARCA_DO_CRITERIO, PREFIXO_DO_LIVRO)
 from app.modules.pedidos.infrastructure.conhecimento_da_operacao import ConhecimentoDaOperacao
 from app.modules.pedidos.infrastructure.relatorios import parece_segredo
 from app.modules.pedidos.infrastructure.repositorio_memoria import NovaObservacao, RepositorioDeMemoria
@@ -35,7 +43,6 @@ from app.planning.pesquisa import PesquisaBruta, PesquisaConsolidada, PesquisaRe
 
 log = logging.getLogger(__name__)
 
-CHAVE_DO_ESTADO = "pesquisa.estado"
 #: Depois de uma tentativa sem resultado, quanto esperar antes de outra na mesma operação.
 ESPERA_APOS_FALHA_S = 3600
 FONTES_INDICADAS_MAX = 5
@@ -49,6 +56,8 @@ class Feito:
     fontes: int
     buscas: int
     descartados: int
+    #: 31.231: fatos do Livro reaproveitados no lugar da pesquisa paga (0 quando a pesquisa rodou)
+    reaproveitados: int = 0
 
 
 def _hash(texto: str) -> str:
@@ -56,11 +65,15 @@ def _hash(texto: str) -> str:
 
 
 class PesquisaDaOperacao:
-    def __init__(self, db: Database, cfg: PesquisaCfg, prices: dict[str, list[float]]):
+    def __init__(self, db: Database, cfg: PesquisaCfg, prices: dict[str, list[float]],
+                 fatos_do_livro: Callable[[str], Sequence[FatoDoLivro]] | None = None):
         self.db = db
         self.cfg = cfg
         self.prices = prices
         self.repo = RepositorioDeMemoria(db)
+        #: 31.231: os fatos do Livro do assunto e do app de uma operação, pelo id dela (a porta do aprendizado);
+        #: `None` = sem reaproveitamento
+        self.fatos_do_livro = fatos_do_livro
 
     # ------------------------------------------------------------------ o que a operação pede
     def assunto_e_fontes(self, operacao_id: str) -> tuple[str, tuple[str, ...]] | None:
@@ -103,6 +116,8 @@ class PesquisaDaOperacao:
         pedido = self.assunto_e_fontes(operacao_id)
         if pedido is None or not self.lacuna(operacao_id):
             return None
+        if (reaproveitado := self._reaproveitar(operacao_id, pedido, run_id=run_id)) is not None:
+            return reaproveitado
         gasto = self.gasto(operacao_id)
         if gasto >= self.cfg.teto_usd_por_operacao:
             log.info("operação %s: teto da pesquisa atingido (US$ %.4f de US$ %.2f)", operacao_id, gasto,
@@ -116,11 +131,36 @@ class PesquisaDaOperacao:
             bruta = await chamar(req)
         except Exception as exc:  # noqa: BLE001 - pesquisa é contexto: a falha marca a espera e o texto segue
             log.info("operação %s: a pesquisa falhou (%s)", operacao_id, type(exc).__name__)
-            self._marcar_estado(operacao_id, "a pesquisa falhou; nova tentativa depois da espera", run_id,
+            self._marcar_estado(operacao_id, f"{ESTADO_FALHOU}; nova tentativa depois da espera", run_id,
                                 frescor_s=ESPERA_APOS_FALHA_S)
             return None
         consolidada = fatos_consolidados(bruta, max_fatos=self.cfg.max_fatos)
         return self._gravar(operacao_id, consolidada, buscas=bruta.buscas, run_id=run_id)
+
+    def _reaproveitar(self, operacao_id: str, pedido: tuple[str, tuple[str, ...]], *, run_id: str) -> Feito | None:
+        """31.231: os fatos do Livro do assunto no lugar da pesquisa paga, quando cobrem o pedido; `None` = pesquisar.
+        A leitura do Livro que falha nunca derruba a pesquisa: ela segue paga, como antes."""
+        if self.fatos_do_livro is None:
+            return None
+        _, fontes = pedido
+        try:
+            fatos = self.fatos_do_livro(operacao_id)
+        except Exception:  # noqa: BLE001 - o Livro é atalho: sem ele, a pesquisa paga roda
+            log.exception("operação %s: fatos do Livro não lidos; a pesquisa segue", operacao_id)
+            return None
+        agora = self.db.agora_iso()
+        c = cobertura(fatos, fontes_indicadas=fontes, agora=agora, min_fatos=self.cfg.reaproveitar_min_fatos)
+        if not c.cobre:
+            log.info("operação %s: o Livro não cobre o pedido (%s); a pesquisa paga roda", operacao_id, c.motivo)
+            return None
+        with self.db.tx():
+            gravados = sum(self._escrever(operacao_id, f"{PREFIXO_DO_LIVRO}{f.ref}", "descoberta", f.texto, confianca="confirmado",
+                                          evidencia=(), frescor_ate=f.frescor_ate, run_id=run_id) for f in c.usados)
+            itens = ", ".join(f.ref for f in c.usados)
+            self._marcar_estado(operacao_id, f"{ESTADO_REAPROVEITADO} (31.231): {len(c.usados)} fato(s), itens {itens}; "
+                                             f"frescor até {c.frescor_ate}; {MARCA_DO_CRITERIO}{c.motivo}",
+                                run_id, frescor_s=None, prazo=c.frescor_ate)
+        return Feito(fatos=gravados, confirmados=gravados, fontes=0, buscas=0, descartados=0, reaproveitados=gravados)
 
     def _gravar(self, operacao_id: str, c: PesquisaConsolidada, *, buscas: int, run_id: str) -> Feito:
         agora = self.db.agora_iso()

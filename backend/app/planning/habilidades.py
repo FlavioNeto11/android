@@ -19,8 +19,13 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..models import PlanStep
 
 #: A nota mínima do `parecidos` para o fluxo ir ao planejador. Bem mais baixa que a da sugestão no painel (0,9): aqui
 #: quem decide é o modelo, o código confere os valores, e a etapa com efeito segue pela aprovação de sempre.
@@ -120,5 +125,23 @@ def escolha_valida(escolha: Escolha, oferecidas: Mapping[str, HabilidadeConhecid
     return None
 
 
-__all__ = ["MAXIMO", "NOTA_MINIMA", "RESERVADOS", "Escolha", "HabilidadeConhecida", "bloco",
+def acoes_finais_fora(livre: Sequence[PlanStep], do_fluxo: Sequence[PlanStep]) -> list[str]:
+    """31.222: as etapas com efeito do plano livre (efeito externo ou trava de commit) que o plano do fluxo não cobre,
+    pela ação do catálogo (senão pela chave). A escolha por semelhança troca o plano INTEIRO: com uma delas fora, o
+    fluxo de leitura derrubaria a ação final do comando (o comentário da operação). Só a ação ou a chave, nunca valor."""
+    # pela MULTIPLICIDADE (achado da revisão do PR 504): dois envios no plano livre e um no fluxo deixam um de fora
+    cobertas = Counter(s.capability or s.key for s in do_fluxo)
+    fora: list[str] = []
+    for s in livre:
+        if not (s.side_effect or s.commit_guard):
+            continue
+        acao = s.capability or s.key
+        if cobertas[acao] > 0:
+            cobertas[acao] -= 1
+        else:
+            fora.append(acao)
+    return list(dict.fromkeys(fora))
+
+
+__all__ = ["MAXIMO", "NOTA_MINIMA", "RESERVADOS", "Escolha", "acoes_finais_fora", "HabilidadeConhecida", "bloco",
            "escolha_do_json", "escolha_valida", "molde_oferecivel", "parametros_do_molde"]

@@ -33,6 +33,8 @@ from .events import EventBus
 from .gates import Portoes
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.avisos.infrastructure.anexos import ArmazemDeAnexos
+from .modules.operacoes.infrastructure.laco import LacoDasOperacoes
+from .modules.operacoes.infrastructure.servico import ServicoDeOperacoes
 from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.canais_frota import CanaisDaFrota
 from .modules.avisos.infrastructure.contatos_sql import ContatosDoCanal
@@ -552,6 +554,11 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
                                                   data={"teaching_id": tid}))
     self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                            secrets=self.secrets, skills=self.skill_planner)
+    # 31.220: o laço que avança as operações abertas sem leitura externa; o serviço é o mesmo das rotas.
+    self.laco_das_operacoes = LacoDasOperacoes(
+        self.db, lambda: ServicoDeOperacoes(self.db, self.runs, self.social_repo, self.approval_service,
+                                            self.settings.get, self.bus, cfg.file.ai.prices),
+        lambda: int(self.settings.get().operacao_laco_s))
     # A conversa de volta pelo Telegram (28.15, ADR-071): o mesmo bot dos avisos recebe; desligada de fábrica
     # (`avisos.entrada.enabled`). As portas chamam os MESMOS serviços das rotas do painel.
     triagem = TriagemDeCredencial()

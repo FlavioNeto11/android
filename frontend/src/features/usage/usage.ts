@@ -287,6 +287,7 @@ const IMAGE_REASON_LABEL: Record<string, string> = {
   primeira_da_leitura: 'primeira tela da leitura',
   leitura_pendente: 'saída ainda não lida',
   arvore_pobre: 'árvore da tela pobre',
+  alvo_fora_da_arvore: 'alvo do efeito fora da árvore',
 };
 
 export function imageReasonLabel(motivo: string): string {

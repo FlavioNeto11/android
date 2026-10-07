@@ -94,7 +94,7 @@ def _st(request: Request) -> AppState:
 def _servico(request: Request) -> ServicoDeOperacoes:
     st = _st(request)
     return ServicoDeOperacoes(st.db, st.runs, st.social_repo, st.approval_service, st.settings.get, st.bus,
-                              st.cfg.file.ai.prices)
+                              st.cfg.file.ai.prices, pesquisa=st.cfg.file.ai.pesquisa)
 
 
 def _erro(exc: OperacaoError) -> HTTPException:

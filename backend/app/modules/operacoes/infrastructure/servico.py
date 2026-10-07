@@ -26,12 +26,15 @@ from typing import TYPE_CHECKING
 from app.contracts.origem import PREFIXO_OPERACAO
 from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
+from app.modules.applications.infrastructure import registry as apps_registrados
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain import fila as filas, latencia, relatorio as rel
 from app.modules.operacoes.domain.estagios import ESTADOS, EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
+from app.modules.pedidos.domain import resumo_da_pesquisa
+from app.modules.pedidos.infrastructure.repositorio_memoria import RepositorioDeMemoria
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
-from app.planning import costs
-from app.social.repository import sessao_vencida
+from app.planning import costs, custo_por_passo
+from app.social.repository import sessao_vencida, troca_declarada
 from app.social.service import SocialError
 from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS, normal
 from app.taskqueue.recipes import SENSITIVE_PARAM
@@ -39,7 +42,7 @@ from app.taskqueue.service import RunError
 from app.util import now_iso
 
 if TYPE_CHECKING:
-    from app.config import LimitsCfg
+    from app.config import LimitsCfg, PesquisaCfg
     from app.events import EventBus
     from app.social.approvals import Approval, ApprovalService
     from app.social.repository import SocialRepository
@@ -167,6 +170,42 @@ def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
         raise OperacaoError("pedido_invalido", "Dois parâmetros com o mesmo valor.", 422)
 
 
+def _conferir_contra_o_app(parametros: Mapping[str, str] | None, pacote: str) -> None:
+    """31.224 (adendo v1.121) e 31.227: o parâmetro fixo que não casa com o app é recusado ANTES de qualquer execução,
+    para que um erro de digitação na prova não custe chamada paga. Sem catálogo, só a conferência genérica (o teto de
+    300). Com catálogo, a chave tem de ser uma que as ações usam (a recusa traz a lista dos aceitos, que vem do catálogo,
+    não do pedido), e o parâmetro que o catálogo declara (`parametros` no YAML) segue a forma e o tamanho dele: `handle`
+    vai sem arroba e sem espaço. Como em `_conferir_parametros`, a recusa diz a POSIÇÃO (`posicao`, 1 = o primeiro de
+    `parametros`), nunca o nome que veio; `campo` só sai quando o nome é um declarado pelo app."""
+    if not parametros:
+        return
+    catalogo = apps_registrados.get(pacote)
+    if catalogo is None:
+        return
+    usados: set[str] = set()
+    for cap in catalogo.capabilities:
+        usados.update(cap.bindings, cap.optional_bindings, cap.inherited_bindings)
+    aceitos = sorted(usados)
+    for posicao, (nome, valor) in enumerate(parametros.items(), start=1):
+        if nome not in usados:
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro não é aceito por este app; aceitos: "
+                                f"{', '.join(aceitos)}.", 422, motivo="parametro_desconhecido", posicao=posicao,
+                                aceitos=aceitos)
+        decl = catalogo.parametros.get(nome)
+        if decl is None:
+            continue
+        if decl.forma == "handle" and "@" in valor:
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro ({nome}) vai sem arroba.", 422,
+                                motivo=f"{nome}_com_arroba", posicao=posicao, campo=nome)
+        if decl.forma == "handle" and any(c.isspace() for c in valor):
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro ({nome}) vai sem espaço.", 422,
+                                motivo=f"{nome}_com_espaco", posicao=posicao, campo=nome)
+        if len(valor) > decl.max:
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro ({nome}) tem no máximo {decl.max} "
+                                "caracteres neste app.", 422, motivo=f"{nome}_longo", posicao=posicao, campo=nome,
+                                max=decl.max)
+
+
 def _sha(pedido: PedidoDeOperacao) -> str:
     corpo = {"command": pedido.command.strip(), "app_id": pedido.app_id, "acao_final": pedido.acao_final,
              "max_usd": pedido.max_usd, "assunto": pedido.assunto, "fontes": list(pedido.fontes),
@@ -179,12 +218,15 @@ def _sha(pedido: PedidoDeOperacao) -> str:
 
 class ServicoDeOperacoes:
     def __init__(self, db: Database, runs: RunService, social: SocialRepository, aprovacoes: ApprovalService,
-                 limites: Callable[[], LimitsCfg], bus: EventBus, precos: dict[str, list[float]]) -> None:
+                 limites: Callable[[], LimitsCfg], bus: EventBus, precos: dict[str, list[float]],
+                 pesquisa: PesquisaCfg | None = None) -> None:
         self.db, self.runs, self.social, self.aprovacoes = db, runs, social, aprovacoes
         self.limites, self.bus, self.precos = limites, bus, precos
         self._lote: _Lote | None = None
         #: Desligar só serve ao teste que prova que a leitura em lote devolve o mesmo que a de um alvo por vez.
         self.com_lote = True
+        #: 31.235: a configuração da pesquisa externa (ligada e o mínimo de fatos do Livro), só para o resumo do GET
+        self.pesquisa = pesquisa
 
     # ------------------------------------------------------------------ criar
     def criar(self, pedido: PedidoDeOperacao, *, quem: str | None = None) -> dict[str, object]:
@@ -206,6 +248,9 @@ class ServicoDeOperacoes:
                 raise OperacaoError("chave_em_uso", "Esta chave de idempotência já criou outra operação.", 409,
                                     operacao_id=existente["id"])
             return self.ler(str(existente["id"]))
+        # Depois da repetição (achados do Codex nos PRs 495 e 503): a operação aceita antes desta regra, ou antes de o
+        # catálogo mudar, mandada de novo com o mesmo corpo e a mesma chave, devolve a que existe, e não um 422.
+        _conferir_contra_o_app(pedido.parametros, str(app["package"] or ""))
         op_id = f"op-{now_iso()[:19].replace('-', '').replace(':', '').replace('T', '')}-{secrets.token_hex(3)}"
         agora = now_iso()
         self.db.execute(
@@ -269,11 +314,50 @@ class ServicoDeOperacoes:
         else:
             aparelho = alvo.instance_id or (sessoes[0] if sessoes else None)
         if aparelho is None or aparelho not in sessoes:
-            return "sessao", SEM_SESSAO, str(conta["id"]), alvo.instance_id
+            # 31.207 (J0, ADR-080): o app que DECLARA a troca de conta atende N personas no mesmo aparelho, uma depois da
+            # outra; só uma conta está aberta por vez, e a porta de sessão da execução troca para a esperada (31.155).
+            # Basta a persona servir ao app no aparelho. App sem a declaração (o Instagram) segue exigindo a sessão.
+            pela_troca = self._aparelho_pela_troca(alvo, str(conta["id"]), app_id)
+            if pela_troca is None:
+                return "sessao", SEM_SESSAO, str(conta["id"]), alvo.instance_id
+            aparelho = pela_troca
         rt = self.runs.devices.devices.get(aparelho)
         if rt is None or rt.store:
             return "aparelho", SEM_APARELHO, str(conta["id"]), aparelho
         return None, None, str(conta["id"]), aparelho
+
+    def _aparelho_pela_troca(self, alvo: AlvoPedido, conta_id: str, app_id: str) -> str | None:
+        """O aparelho em que a persona entra pela troca declarada (31.207): o pedido, ou o principal dela, desde que ela
+        possa entrar nele (`_pode_entrar_pela_troca`). None quando o app não declara a troca ou ela não pode."""
+        if not troca_declarada(self.db, app_id):
+            return None
+        alvo_do_pedido = alvo.instance_id
+        if alvo_do_pedido is None:
+            principal = self.social.binding_principal(alvo.profile_id)
+            alvo_do_pedido = str(principal["instance_id"]) if principal is not None else None
+        if alvo_do_pedido is None or not self._pode_entrar_pela_troca(alvo.profile_id, conta_id, alvo_do_pedido,
+                                                                       app_id):
+            return None
+        return alvo_do_pedido
+
+    def _pode_entrar_pela_troca(self, profile_id: str, conta_id: str, instance_id: str, app_id: str) -> bool:
+        """Os pré-requisitos da porta de sessão que se conferem sem tocar no aparelho (achado do Codex no PR 493,
+        `sessao.py` `_antes_de_sair` e `_needs_person`): a persona serve ao app no aparelho, a conta tem senha guardada,
+        ativa e com o consentimento para a automação digitá-la (ADR-040), e a sessão dela ali não parou num desafio nem
+        em conta errada. Sem isso a execução nasceria para ficar bloqueada, e a capacidade contaria quem não executa."""
+        if not self._serve_o_app(profile_id, instance_id, app_id):
+            return False
+        cred = self.social.account_credential_row(profile_id, conta_id)
+        if cred is None or cred["consent_at"] is None or cred["status"] != "active":
+            return False
+        parada = self.db.scalar("SELECT status FROM account_sessions WHERE account_id=? AND instance_id=?",
+                                (conta_id, instance_id))
+        return parada not in (SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value)
+
+    def _serve_o_app(self, profile_id: str, instance_id: str, app_id: str) -> bool:
+        """A persona serve ao app no aparelho: o vínculo daquele app, ou o vínculo sem app de quem tem conta nele (a
+        mesma leitura de `profiles_of_instance`, que decide qual persona do aparelho a tarefa usa)."""
+        return any(str(v["profile_id"]) == profile_id for v in self.social.profiles_of_instance(instance_id, app_id))
 
     def _principal_com_sessao(self, profile_id: str, sessoes: list[str]) -> str | None:
         principal = self.social.binding_principal(profile_id)
@@ -369,6 +453,9 @@ class ServicoDeOperacoes:
             leitura, resultado = self._ler_alvo(op, a, definicao)
             alvos.append((a, leitura, resultado))
         saida = []
+        # 31.229 (adendo v1.124): o custo e o modelo por passo de cada alvo, numa leitura só para todos.
+        por_passo = custo_por_passo.por_execucao(self.db, self.precos, [str(a["run_id"]) for a in linhas
+                                                                         if a["run_id"]], definicao[1])
         for a, lt, resultado in alvos:
             estado, motivo, parou = lt.estado, lt.motivo, lt.parou_em
             # Só o alvo SEM a ação aprovada aguarda liberação; o liberado segue o estado da execução dele (em curso
@@ -394,17 +481,37 @@ class ServicoDeOperacoes:
                                        for (e, em), ms in zip(lt.estagios, lat.etapas_ms, strict=True)],
                           "latencia": {"duracao_ms": lat.duracao_ms, "espera_do_liberar_ms": lat.espera_do_liberar_ms},
                           "resultado": resultado, "custo_usd": custo,
-                          "sessao_verificada_em": self._sessao_verificada_em(a)})
+                          "sessao_verificada_em": self._sessao_verificada_em(a),
+                          "custo_por_passo": por_passo.get(str(a["run_id"])) if a["run_id"] else None})
         self._anotar_filas(saida)
         capacidade = self._capacidade(saida)
         status = self._status(op, saida)
+        custo_por_modelo, custo_por_estagio = custo_por_passo.somar(
+            a["custo_por_passo"] for a in saida)
+        custo_da_operacao = self._custo(op_id)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
                 "max_usd": op["max_usd"], "assunto": op["assunto"], "fontes": loads(op["fontes"], []),
                 "parametros": loads(op["parametros"], None), "fontes_da_pesquisa": self._fontes_da_pesquisa(op_id),
                 "status": status, "created_at": op["created_at"],
                 "finished_at": self._fechar(op, status, capacidade, fim=self._fim_real(saida)),
-                "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id),
-                "latencia_por_estagio": latencia.por_estagio(saida)}
+                "capacidade": capacidade, "alvos": saida, "custo": custo_da_operacao,
+                "pesquisa": self._pesquisa(op, custo_da_operacao["pesquisa_usd"]),
+                "latencia_por_estagio": latencia.por_estagio(saida),
+                "custo_por_modelo": custo_por_modelo, "custo_por_estagio": custo_por_estagio}
+
+    def _pesquisa(self, op: Row, custo_usd: float) -> dict[str, object] | None:
+        """31.235: o resumo da pesquisa externa (reaproveitada do Livro, paga, falhou ou não rodou), da memória da
+        operação. Sem assunto, a operação não pediu pesquisa: `None`. Sem texto de fato nem URL."""
+        try:
+            entradas = RepositorioDeMemoria(self.db).entradas_da_operacao(str(op["id"]))
+        except OPERATIONAL_ERRORS as exc:   # banco sem a coluna `operacao_id` da memória: a pesquisa não gravou nada
+            if not coluna_ausente(exc):
+                raise
+            entradas = []
+        cfg = self.pesquisa
+        return resumo_da_pesquisa.resumo(entradas, pediu=bool((op["assunto"] or "").strip()),
+                                         ligada=bool(cfg and cfg.enabled),
+                                         minimo_fatos=cfg.reaproveitar_min_fatos if cfg else 0, custo_usd=custo_usd)
 
     def relatorio(self, op_id: str, aprendizado: Mapping[str, object] | None) -> dict[str, object]:
         """O relatório consolidado (31.195, adendo v1.111): o GET da operação (com a latência do v1.108) arrumado para a
@@ -672,7 +779,11 @@ class ServicoDeOperacoes:
 
     def _capacidade(self, alvos: list[dict[str, object]]) -> dict[str, object]:
         contas = [a for a in alvos if a["account_id"]]
-        com_sessao = [a for a in contas if self._sessoes_prontas(str(a["account_id"]))]
+        # A conta que entra pela troca declarada (31.207) conta como sessão válida: a porta de sessão a abre na hora.
+        troca = bool(alvos) and troca_declarada(self.db, str(alvos[0]["app_id"]))
+        com_sessao = [a for a in contas if self._sessoes_prontas(str(a["account_id"]))
+                      or (troca and bool(a["instance_id"]) and self._pode_entrar_pela_troca(
+                          str(a["profile_id"]), str(a["account_id"]), str(a["instance_id"]), str(a["app_id"])))]
         disponiveis = [a for a in com_sessao if self._aparelho_apto(a["instance_id"])]
         estados = Counter(str(a["estado"]) for a in alvos)
         motivos = Counter(str(a["motivo"]) for a in alvos if a["estado"] == "bloqueado" and a["motivo"])
@@ -702,8 +813,12 @@ class ServicoDeOperacoes:
         """Grava o estágio lido e avisa a mudança (`operacao.alvo`); a leitura seguinte só avisa se mudou de novo."""
         if (a["estagio"], a["estado"], a["motivo"]) == (estagio, estado, motivo):
             return
-        self.db.execute("UPDATE operacao_alvos SET estagio=?, estado=?, motivo=?, updated_at=? WHERE operacao_id=? AND"
-                        " profile_id=?", (estagio, estado, motivo, now_iso(), op_id, a["profile_id"]))
+        # Condicional no SQL (31.220): o laço do sistema e um GET que leem juntos gravam e avisam uma vez só.
+        if self.db.execute("UPDATE operacao_alvos SET estagio=?, estado=?, motivo=?, updated_at=? WHERE operacao_id=?"
+                           " AND profile_id=? AND (estagio<>? OR estado<>? OR COALESCE(motivo, '')<>?)",
+                           (estagio, estado, motivo, now_iso(), op_id, a["profile_id"], estagio, estado,
+                            motivo or "")).rowcount == 0:
+            return
         self.bus.emit("operacao.alvo", f"Operação {op_id}: {a['profile_id']} em {estagio} ({estado}).",
                       run_id=a["run_id"], instance_id=a["instance_id"],
                       data={"operacao_id": op_id, "profile_id": a["profile_id"], "estagio": estagio, "estado": estado,
@@ -720,9 +835,15 @@ class ServicoDeOperacoes:
         if status == "em_curso" or op["finished_at"]:
             return str(op["finished_at"]) if op["finished_at"] else None
         agora = min(fim, now_iso()) if fim else now_iso()
+        # `.rowcount` (31.220): `execute` devolve o cursor, e a comparação com 0 nunca era verdadeira; o laço e um GET
+        # que fecham juntos emitiam o `operacao.encerrada` duas vezes. O `status` na condição (achado do Codex no PR
+        # 494): o cancelar de outra réplica, gravado depois da leitura de `op`, não pode virar `concluida*` aqui.
         if self.db.execute("UPDATE operacoes SET status=?, finished_at=?, updated_at=? WHERE id=? AND finished_at IS"
-                           " NULL", (status, agora, agora, op["id"])) == 0:
-            return None
+                           " NULL AND (status<>'cancelada' OR ?='cancelada')",
+                           (status, agora, agora, op["id"], status)).rowcount == 0:
+            # Perdeu a corrida: devolve a hora que ficou gravada (ou nenhuma, se foi o cancelar), sem avisar de novo.
+            gravada = self.db.scalar("SELECT finished_at FROM operacoes WHERE id=?", (op["id"],))
+            return str(gravada) if gravada else None
         self.bus.emit("operacao.encerrada", f"Operação {op['id']} encerrada: {status}.",
                       data={"operacao_id": op["id"], "status": status, "capacidade": capacidade,
                             "custo": self._custo(str(op["id"]))})
@@ -788,7 +909,10 @@ class ServicoDeOperacoes:
         if fora:
             raise OperacaoError("estado_desconhecido", f"Estado desconhecido no filtro: {', '.join(fora)}.", 422)
         atual = self.ler(op_id)
-        if atual["finished_at"] or atual["status"] == "cancelada":
+        # Só a cancelada é recusada, como no liberar (achado do Codex no PR 493): com todos os alvos restantes à espera
+        # do liberar, a leitura fecha a operação (eles contam como bloqueados), e é justamente aí que se descartam as
+        # ações preparadas. A execução já terminada sai em `ignorados` como `ja_terminou`.
+        if atual["status"] == "cancelada":
             raise OperacaoError("ja_encerrada", f"A operação já terminou ({atual['status']}).", 409)
         cancelados: list[str] = []
         ignorados: list[dict[str, str]] = []

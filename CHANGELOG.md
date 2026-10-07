@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.235: o GET da operação diz como a pesquisa rodou (branch feat/31-235-pesquisa-na-operacao)
+
+- `GET /api/operacoes/{id}` ganha `pesquisa` (adendo v1.125), aditivo, para a tela Operação do Portal (31.234). É `null` sem assunto.
+  O estado é `reaproveitada_do_livro`, `paga`, `falhou` ou `nao_rodou`, com o critério por extenso, o mínimo de
+  fatos, o menor frescor, o custo da pesquisa e as referências dos fatos do Livro usados.
+- Lê só a memória da operação (`pesquisa.estado` e `livro.<item>`); nem texto de fato nem URL saem no campo. Os
+  textos de estado da pesquisa passaram a constantes do domínio, para que a leitura e a escrita não se desencontrem.
+- Prova `simulated`: `backend/tests/test_pesquisa_no_get_da_operacao.py` (3; os quatro estados escritos pela própria
+  pesquisa da operação, e a rota). `real`: `not_run`, até o GET da primeira operação com assunto depois do deploy.
+
+## 2026-10-07 — 31.229: o custo e o modelo por passo no GET da execução e no do alvo (adendo v1.124, branch feat/31-229-custo-por-passo, corte 61)
+
+- `custo_por_passo` em `GET /api/runs/{id}` e em `alvos[]` de `GET /api/operacoes/{id}`. Por passo: o modelo do último
+  decide, o commit (a ação com efeito não rejeitada, com o modelo, o tier e o escalate do decide que a escolheu), as
+  chamadas, o custo e o custo por modelo. Na operação, `custo_por_modelo` e `custo_por_estagio`. Sem migração: o vínculo
+  `ai_calls.step_id` e `actions.ai_call_id` já existia. Só expõe; a política de modelos (31.223) não muda.
+- Prova `simulated`: `backend/tests/test_custo_por_passo.py` (2 testes: a trilha da decisão descartada e da refeita, e
+  a soma que fecha com `spent_usd`). Uma mutação que deixa a ação rejeitada contar como commit é pega. Real: not_run.
+- Junto, nota no v1.124: `GET /api/host/amostras` traz as três colunas do amostrador v2 (`cpu_media_pct`,
+  `demais_processos_pct`, `nao_atribuido_pct`), `null` na linha do v1 (achado da Portal no 31.211). Prova `simulated`:
+  `backend/tests/test_amostras_do_host.py`, que reprova na leitura anterior. Real: not_run.
+
 ## 2026-10-07 — 31.216: a leitura repetida da operação não grava nem avisa de novo (branch feat/operacao-latencia-por-estagio, corte 60)
 
 - O `GET /api/operacoes/{id}` grava só o que mudou desde a leitura anterior (o estágio derivado, a reabertura e o
@@ -27,6 +49,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_operacoes.py::test_ler_varias_vezes_nao_grava_de_novo_nem_avisa_de_novo` (seis
   leituras; o banco e a contagem de eventos iguais depois da primeira; a mutação que tira a guarda de `_anotar` é pega).
   Real: not_run.
+## 2026-10-07 — 31.207 (J0): N personas no mesmo aparelho na operação, só no app que declara a troca (branch feat/31-207-j0-troca-na-operacao, corte 61)
+
+- No app que declara a troca de conta (ADR-080, `troca` no `sessao.yaml`), o alvo cuja persona serve ao app no
+  aparelho (o pedido, ou o principal dela) entra na operação sem sessão aberta ali: ganha a execução própria, a porta
+  de sessão troca para a conta dela (31.155) e o despacho serializa os alvos do aparelho. A capacidade conta esse alvo
+  em `sessoes_validas`. Sem a declaração, nada muda: quem não tem sessão para em `sessao`. Nenhum app do parque declara
+  a troca hoje, então o Instagram fica de fora por construção.
+- Prova `simulated`: `backend/tests/test_operacoes.py::test_n_personas_no_mesmo_aparelho_so_quando_o_app_declara_a_troca`
+  (com e sem a declaração; uma mutação que desliga a entrada pela troca é pega). Ele prova a admissão do alvo e a
+  capacidade; a troca de conta durante a execução é a do 31.155 (`test_troca_de_conta.py`). Real: not_run.
 
 ## 2026-10-07 — 31.206 e 31.213: a fila do aparelho no GET e a lista de operações por persona (branch feat/operacao-latencia-por-estagio, corte 60)
 
@@ -107,6 +139,58 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   2009 ms para 0. A tabela está em `.claude/handoffs/jev-31-175-medida.md`.
 - Sem mudança de código: a fila por vaga já existe, e `max_ai_concurrency` é relido ao vivo.
 - Prova `simulated`; a leitura real fica para a onda 2.
+## 2026-10-07 — 31.232: o forte confere o efeito com a imagem quando o alvo está fora da árvore (branch feat/31-232-commit-sem-imagem)
+
+- Na onda 1, o commit refeito no forte (31.223) e o rejulgamento do "sim" com efeito saíram sem imagem (`arvore_rica`).
+  Com o alvo escolhido na árvore, isso basta; num toque por coordenada, o forte conferia às cegas.
+- Agora a mesma regra vale para os dois juízes: com o alvo fora da árvore (coordenada, elemento ausente ou ferramenta
+  sem elemento), a imagem vai junto, com `image_reason = alvo_fora_da_arvore`. Com o alvo na árvore, decide a régua de
+  sempre. A regra só acrescenta a imagem; a tela sensível e a política `never` continuam mandando, e o juiz barato
+  não muda. `ai.imagem_quando_alvo_fora_da_arvore: false` volta ao de antes.
+- Prova `simulated`: `backend/tests/test_imagem_do_alvo_fora_da_arvore.py` (6). `real`: `not_run`.
+
+## 2026-10-07 — 31.231: a pesquisa reaproveita o Livro (branch feat/31-231-pesquisa-reaproveita-o-livro)
+
+- A 2ª operação do mesmo assunto pagava a pesquisa de novo (US$ 0,043 na onda 1) pelo que o Livro já sabia.
+- Agora, antes da chamada paga, a lacuna lê os fatos do Livro do mesmo assunto canônico e do mesmo app. Cobrem o pedido quando há
+  pelo menos `ai.pesquisa.reaproveitar_min_fatos` (padrão 2) vivos, confirmados e dentro do frescor, e, havendo fontes
+  indicadas, cada domínio indicado entre os desses fatos. Cobrindo, os fatos entram na memória como `livro.<item>` e a
+  `pesquisa.estado` registra itens, frescor e critério; não cobrindo, a pesquisa paga roda como antes, com o motivo no log.
+- Prova `simulated`: `backend/tests/test_pesquisa_reaproveita_o_livro.py` (4). `real`: `not_run`.
+
+## 2026-10-07 — 31.230: a receita sem o "voltar" inicial (branch feat/31-230-receita-sem-voltar-inicial)
+
+- A tentativa da IA que começava por `press_back` não virava receita: foi o que barrou o `open_profile` na onda 1.
+- Agora o voltar inicial é descartado quando a 1ª ação gravada partiu do estado conhecido declarado do app. A ação
+  leva a âncora, e a reprodução confere a tela antes de agir. O voltar no meio do caminho segue recusado.
+- Prova `simulated`: `backend/tests/test_receita_sem_voltar_inicial.py` (6). `real`: `not_run`.
+
+## 2026-10-07 — 31.223: o modelo forte só no commit (branch feat/31-223-forte-so-no-commit, adendo v1.122)
+
+- Na etapa com efeito, o Opus decidia todos os passos: na onda 1, US$ 0,112 de 0,279 do alvo.
+- Agora, com `ai.strong_model_only_on_commit` (padrão `true`), o modelo de ação navega, e só a decisão que dispararia o
+  efeito é refeita no forte. A trava de commit, a política de risco e o rejulgamento do efeito não mudam.
+- Dois testes antigos que medem o modo de antes ficam com a chave em `false`.
+- Prova `simulated`: `backend/tests/test_forte_so_no_commit.py` (2). `real`: `not_run`.
+
+## 2026-10-07 — 31.222: a semelhança não derruba a ação final (branch feat/31-222-semelhanca-sem-acao-final)
+
+- A escolha por semelhança trocava o plano inteiro pelo do fluxo. Um fluxo de leitura escolhido para um comando com
+  comentário derrubava o comentário.
+- Agora, se o plano livre tem etapa com efeito ou trava que o fluxo não cobre, a escolha é recusada e fica o plano
+  livre, com o motivo na trilha.
+- Prova `simulated`: `backend/tests/test_semelhanca_sem_acao_final.py` (3). `real`: `not_run`.
+
+## 2026-10-07 — 31.221: o ensino a partir da execução (branch feat/31-221-ensino-da-execucao, adendo v1.120)
+
+- A operação do Instagram planeja com ações do catálogo, que as etapas ensinadas do 31.153 não cobrem. O que as
+  reaproveita é a receita, que nasce candidata e só vira ativa após 2 execuções que concordem.
+- Agora `GET /api/aprendizado/execucao/{run}/ensino` diz, por etapa, a candidata ou o motivo fechado (inclusive
+  `caminho_nao_reproduzivel` com `press_back`, o achado da onda 1). O `POST` na mesma rota deixa a pessoa promover as
+  candidatas num gesto, pelo Livro, com `ensino_da_execucao:<run> persona:<id>` na trilha.
+- Corrigida a ressalva do 31.219: as etapas do 31.153 também não servem à operação.
+- Prova `simulated`: `backend/tests/test_ensino_da_execucao.py` (2). `real`: `not_run`, pede o deploy e uma execução
+  real da onda 2.
 
 ## 2026-10-07 — 31.219: o ensino do fluxo para alvo de terceiro, preparado (branch feat/31-219-ensino-alvo-de-terceiro)
 
@@ -328,6 +412,33 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   recusado, não escolhido; o valor demonstrado não vai ao prompt; o JSON do provedor real). Planejamento, parsing,
   prompts, fluxos e arquitetura: 3373 passaram; as 2 falhas da rodada (o teste novo do provedor real e a catraca de Any) foram corrigidas e rerodadas (48 passaram). Revisor de segredos: sem alto; o médio (molde com literal de alvo, como @, endereço ou número longo, não vai ao prompt) e três baixos (referência fora do oferecido não vai à trilha; parâmetros reservados fora; uses só sobe ao aprovar) corrigidos. `real`: `not_run` (um pedido parafraseado no android-04 planejado pelo
   fluxo ensinado, cerca de US$ 0,02, com o sim do dono).
+
+## 2026-10-07 — 31.220: o laço do sistema que avança a operação sem leitura externa (branch feat/31-220-laco-da-operacao, corte 61)
+
+- `LacoDasOperacoes` lê as operações abertas a cada `operacao_laco_s` (novo em `LimitsCfg`, adendo v1.119; padrão 0 =
+  desligado neste corte). Antes, só uma leitura (o painel, a Canais ou a resposta de um POST) fechava a operação e emitia
+  `operacao.encerrada`.
+- O estágio do alvo (`_anotar`) passa a ser gravado por `UPDATE` condicional, e o `_fechar` passa a ler o `.rowcount`. A
+  comparação antiga do cursor com 0 nunca era verdadeira, e dois fechamentos juntos emitiam o evento duas vezes.
+- Prova `simulated`: `backend/tests/test_operacoes_laco.py` (5 testes, relógio falso); os dois testes de corrida
+  reprovam no código anterior. Real: not_run (a operação de 07/10 fechando sem leitura externa, depois da prova e com
+  o laço ligado).
+
+## 2026-10-07 — 31.227: a forma e o tamanho do parâmetro declarados no catálogo do app (branch feat/31-227-forma-dos-parametros, corte 61)
+
+- `catalogo.yaml` ganha `parametros: {nome: {forma: handle|texto, max}}` (adendo v1.123), conferido na carga. O Instagram declara
+  `username` e `post_author` como handle de até 30 caracteres. A conferência do 31.224 lê a declaração; sem ela, vale o
+  teto genérico de 300. O app sem catálogo deixa de ter a regra do `username`.
+- Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (os casos novos e a carga recusando declaração errada). A
+  mutação que desliga o tamanho é pega. Real: not_run.
+
+## 2026-10-07 — 31.224: `parametros` da operação conferidos com o app antes de qualquer execução (branch feat/31-224-valida-parametros, corte 61)
+
+- `POST /api/operacoes` (adendo v1.121) recusa com 422 o `username` com arroba ou com espaço, e a chave fora do catálogo do app
+  (com a lista dos aceitos), antes de gravar e de criar execução. O corpo traz `motivo` e `posicao`, nunca o nome que
+  veio. O app sem catálogo segue com a chave livre.
+- Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (3 testes novos, um parametrizado). A mutação que desliga
+  a regra do username é pega. Real: not_run.
 
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 

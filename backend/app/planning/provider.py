@@ -170,9 +170,10 @@ MotivoDaChamada = Literal["julgamento", "rejulgamento", "vazio", "decisao", "cas
                           "leitura"]
 #: RA-10: por que a imagem foi, ou não, junto (`ai_calls.image_reason`), na ordem de `StepExecutor._motivo_da_imagem`.
 #: Sem imagem: sensivel · politica_nunca · arvore_rica. Com imagem: politica_sempre · pedida · problema ·
-#: primeira_julgada · arvore_pobre. A coluna `with_image` diz se ela de fato foi (a captura pode falhar).
-MotivoDaImagem = Literal["sensivel", "politica_nunca", "politica_sempre", "pedida", "problema", "primeira_julgada",
-                         "primeira_da_leitura", "leitura_pendente", "arvore_pobre", "arvore_rica"]
+#: primeira_julgada · arvore_pobre · alvo_fora_da_arvore (31.232: o forte que confere o efeito, com o alvo fora da
+#: árvore). A coluna `with_image` diz se ela de fato foi (a captura pode falhar).
+MotivoDaImagem = Literal["sensivel", "politica_nunca", "politica_sempre", "alvo_fora_da_arvore", "pedida", "problema",
+                         "primeira_julgada", "primeira_da_leitura", "leitura_pendente", "arvore_pobre", "arvore_rica"]
 MOTIVOS_DE_ESCALONAMENTO: Final[tuple[str, ...]] = get_args(MotivoDeEscalonamento)
 MOTIVOS_DA_CHAMADA: Final[tuple[str, ...]] = get_args(MotivoDaChamada)
 MOTIVOS_DA_IMAGEM: Final[tuple[str, ...]] = get_args(MotivoDaImagem)
