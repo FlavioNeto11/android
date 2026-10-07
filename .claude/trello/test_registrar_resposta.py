@@ -19,7 +19,7 @@ CARTAO = {"name": "P-099 · Regra de teste", "desc": "Corpo da pergunta", "idLis
 def test_descricao_no_topo_com_separador():
     [descrever, *_] = rr.decidir(CARTAO, [], REGISTRO, "06/10")
     assert descrever.tipo == "descrever"
-    assert descrever.desc.startswith("**RESPOSTA DO DONO (06/10 19:38Z, entrada 3573, digitada por ele no app do Trello")
+    assert descrever.desc.startswith("**RESPOSTA DO DONO (06/10 19:38Z, entrada 3573, digitada por ele no Trello (app ou web)")
     assert descrever.desc.endswith("\n\n---\n\nCorpo da pergunta")
     assert '"sim, pode"' in descrever.desc
 
@@ -71,7 +71,18 @@ def test_literal_intocado_e_leitura_redigida():
     assert '"meu segredo é este"' in r                      # o literal é a palavra dele
     assert "Lido como: o [x] vai embora" in r              # a leitura é da Canais
     assert "digitada por ele no Telegram" in r
-    assert "Confirmada em bloco: Telegram, entrada 2, 'respondido'." in r
+    assert "Nota: Telegram, entrada 2, 'respondido'." in r        # o parâmetro antigo só vira nota (28.77)
+    assert "Confirmada" not in r and "em bloco" not in r
+
+
+def test_registro_sem_confirmacao_e_sem_trava_de_autoria():
+    """28.77: nada de confirmação; a autoria, quando conhecida, é só informação no bloco."""
+    for aut in ("", "app_do_dono", "digitado"):
+        r = rr.montar_registro(quando="06/10 19:38Z", entrada=1, canal="trello", literal="sim", autoria=aut)
+        assert r.startswith(rr.PREFIXO_REGISTRO) and "digitada por ele no Trello (app ou web)" in r
+        assert ("autoria: " + aut in r) if aut else ("autoria" not in r)
+        assert "Confirmada" not in r and "em bloco" not in r and "conferida" not in r and "Nota" not in r
+    assert rr.ja_registrada(r)
 
 
 def test_data_curta_e_canal_invalidos():
@@ -80,6 +91,18 @@ def test_data_curta_e_canal_invalidos():
         rr.data_curta("ontem")
     with pytest.raises(ValueError):
         rr.montar_registro(quando="06/10", entrada=1, canal="zap", literal="x")
+
+
+def test_confirmacao_nao_e_mais_obrigatoria_na_linha_de_comando(monkeypatch):
+    vistos = []
+
+    async def falso(args):
+        vistos.append(args)
+        return 0
+    monkeypatch.setattr(rr, "_principal", falso)
+    assert rr.main(["--cartao", "abcd1234", "--entrada", "1", "--canal", "trello", "--quando", "06/10 19:38Z",
+                    "--literal", "sim"]) == 0
+    assert vistos[0].confirmacao == "" and vistos[0].autoria == "" and vistos[0].aplicar is False
 
 
 def test_ensaio_sem_aplicar_nao_chama_a_rede(monkeypatch, capsys):
@@ -114,7 +137,7 @@ def test_ensaio_sem_aplicar_nao_chama_a_rede(monkeypatch, capsys):
         monkeypatch.setitem(sys.modules, nome, mod)
     import asyncio
     args = rr.argparse.Namespace(cartao="abcd1234", entrada=1, canal="trello", quando="06/10 19:38Z", literal="sim",
-                                 leitura="", confirmacao="", aplicar=False)
+                                 leitura="", confirmacao="", autoria="", nota="", aplicar=False)
     assert asyncio.run(rr._principal(args)) == 0
     saida = capsys.readouterr().out
     assert "ensaio" in saida and "descrever" in saida and "criar_decisao" in saida

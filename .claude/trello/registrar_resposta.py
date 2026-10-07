@@ -8,12 +8,15 @@ Antes, a cada resposta a Canais rodava à mão um script avulso. Este faz os tr�
       cartão da pergunta, no topo.
 
 O literal do dono vai como está (é o que ele escreveu; o redator só AVISA na saída se mudaria algo, para a Canais decidir).
-A leitura e a confirmação são da Canais e passam por `redacao.redigir` antes de ir ao Trello.
+A leitura (e a nota opcional) são da Canais e passam por `redacao.redigir` antes de ir ao Trello.
+
+Regra do dono de 07/10 (28.77): a resposta dele num cartão de pergunta, pelo app OU pela web, vale como dada e é registrada
+na hora, SEM confirmação no Telegram nem no chat. A autoria (`app_do_dono`, `digitado`) é só INFORMAÇÃO no bloco, nunca trava.
 
 Uso (da raiz):
   backend/.venv/Scripts/python.exe .claude/trello/registrar_resposta.py --cartao <id curto ou completo> --entrada 3573 \\
       --canal trello|telegram --quando "06/10 19:38Z" --literal "<texto exato>" [--leitura "..."] \\
-      [--confirmacao "Telegram, entrada 3576, 'respondido'"] [--aplicar]
+      [--autoria app_do_dono] [--nota "..."] [--aplicar]
 Sem `--aplicar` só relata o que faria (ensaio).
 """
 from __future__ import annotations
@@ -35,7 +38,7 @@ PREFIXO_REGISTRO = "**RESPOSTA DO DONO"
 SEPARADOR = "\n\n---\n\n"
 PREFIXO_DECISAO = "⚖️ "
 MARCA_DATA = " · respondida em "
-_CANAIS = {"trello": "digitada por ele no app do Trello", "telegram": "digitada por ele no Telegram"}
+_CANAIS = {"trello": "digitada por ele no Trello (app ou web)", "telegram": "digitada por ele no Telegram"}
 
 
 @dataclass
@@ -73,14 +76,20 @@ def ja_registrada(desc: str) -> bool:
 
 
 def montar_registro(*, quando: str, entrada: int, canal: str, literal: str, leitura: str = "",
-                    confirmacao: str = "", redigir=lambda t: t) -> str:  # noqa: ANN001
-    """O bloco do topo. O literal NÃO passa pelo redator (é a palavra dele); leitura e confirmação passam."""
+                    autoria: str = "", nota: str = "", confirmacao: str = "",
+                    redigir=lambda t: t) -> str:  # noqa: ANN001
+    """O bloco do topo. O literal NÃO passa pelo redator (é a palavra dele); leitura e nota passam.
+
+    `autoria` (app_do_dono, digitado...) entra só como informação, quando conhecida. `confirmacao` é o parâmetro antigo
+    (28.65/28.71): não é mais exigido e, se vier, só aparece como nota (28.77)."""
     if canal not in _CANAIS:
         raise ValueError(f"canal deve ser um de {sorted(_CANAIS)}")
-    texto = (f'{PREFIXO_REGISTRO} ({quando.strip()}, entrada {entrada}, {_CANAIS[canal]}; conferida no banco):** '
+    info = f"; autoria: {autoria.strip()}" if autoria.strip() else ""
+    texto = (f'{PREFIXO_REGISTRO} ({quando.strip()}, entrada {entrada}, {_CANAIS[canal]}{info}; lida no banco):** '
              f'"{literal.strip()}".')
-    if confirmacao.strip():
-        texto += f" Confirmada em bloco: {redigir(confirmacao.strip()).rstrip('.')}."
+    nota = nota.strip() or confirmacao.strip()
+    if nota:
+        texto += f" Nota: {redigir(nota).rstrip('.')}."
     if leitura.strip():
         texto += f" Lido como: {redigir(leitura.strip())}"
     return texto.rstrip() + " Repassada literal à orquestradora."
@@ -113,7 +122,8 @@ def decidir(cartao: dict[str, str], decisoes: list[str], registro: str, data: st
 
 
 async def registrar(cl, *, cartao: str, entrada: int, canal: str, quando: str, literal: str, leitura: str = "",  # noqa: ANN001
-                    confirmacao: str = "", aplicar: bool = False, redigir=lambda t: t,  # noqa: ANN001
+                    confirmacao: str = "", autoria: str = "", nota: str = "", aplicar: bool = False,
+                    redigir=lambda t: t,  # noqa: ANN001
                     falar=print) -> str:  # noqa: ANN001
     """Os três passos para UM cartão, com o cliente do Trello já aberto (o `main` e o `resposta_pronta.py` o reusam).
 
@@ -121,7 +131,7 @@ async def registrar(cl, *, cartao: str, entrada: int, canal: str, quando: str, l
     (escreveu algo). `falar` recebe as linhas de relato (o chamador pode silenciar)."""
     data = data_curta(quando)
     registro = montar_registro(quando=quando, entrada=entrada, canal=canal, literal=literal,
-                               leitura=leitura, confirmacao=confirmacao, redigir=redigir)
+                               leitura=leitura, autoria=autoria, nota=nota, confirmacao=confirmacao, redigir=redigir)
     cartao_atual = await cl._pedir("GET", f"/1/cards/{cartao}", params={"fields": "name,desc,idList,shortLink"})
     existentes = await cl._pedir("GET", f"/1/lists/{LISTA_DECISOES}/cards", params={"fields": "name", "filter": "open"})
     acoes = decidir(cartao_atual, [c["name"] for c in existentes], registro, data)
@@ -162,7 +172,8 @@ async def _principal(args: argparse.Namespace) -> int:
     e = EnvSettings()
     cl = ClienteTrello(e.trello_api_key.get_secret_value().strip(), e.trello_token.get_secret_value().strip())
     await registrar(cl, cartao=args.cartao, entrada=args.entrada, canal=args.canal, quando=args.quando,
-                    literal=args.literal, leitura=args.leitura, confirmacao=args.confirmacao, aplicar=args.aplicar,
+                    literal=args.literal, leitura=args.leitura, confirmacao=args.confirmacao, autoria=args.autoria,
+                    nota=args.nota, aplicar=args.aplicar,
                     redigir=redigir)
     return 0
 
@@ -175,7 +186,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--quando", required=True, help='ex.: "06/10 19:38Z"')
     p.add_argument("--literal", required=True, help="texto exato do dono (vai como está)")
     p.add_argument("--leitura", default="", help="como a Canais leu a resposta")
-    p.add_argument("--confirmacao", default="", help="confirmação em bloco, ex.: Telegram, entrada 3576, 'respondido'")
+    p.add_argument("--autoria", default="", help="informação, não trava: app_do_dono, digitado (vazio se desconhecida)")
+    p.add_argument("--nota", default="", help="nota opcional da Canais, vai ao bloco")
+    p.add_argument("--confirmacao", default="", help="DESCONTINUADO (28.77): não é exigido; se vier, só aparece como nota")
     p.add_argument("--aplicar", action="store_true")
     args = p.parse_args(argv)
     data_curta(args.quando)

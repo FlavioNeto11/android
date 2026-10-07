@@ -1,4 +1,4 @@
-"""28.71: resposta do dono por app -> comando pronto -> confirmação em bloco -> registro (fakes, sem rede nem banco real).
+"""28.71/28.77: resposta do dono por app ou web -> comando pronto -> registro direto, sem confirmação (fakes, sem rede nem banco real).
 
 Prova `simulated`: banco e Trello são fakes; nada escreve em cartão de verdade.
 Rodar: backend/.venv/Scripts/python.exe -m pytest -q .claude/trello/test_resposta_pronta.py
@@ -85,90 +85,122 @@ class FakeDb:
         return [r for r in self.linhas if int(r["id"]) > params[0]]  # type: ignore[arg-type]
 
 
-def plano(entradas, abertos=ABERTOS, respondidos=(), chat=""):  # noqa: ANN001, ANN201
-    return rp.planejar(entradas, list(abertos), list(respondidos), chat)
+def plano(entradas, abertos=ABERTOS, respondidos=()):  # noqa: ANN001, ANN201
+    return rp.planejar(entradas, list(abertos), list(respondidos))
+
+# ---------------------------------------------------------------- classificação do texto (28.77)
+@pytest.mark.parametrize("texto", ["sim", "Sim!", "não", "nao", "Não.", "ok", "OK 👍", "siga a recomendação",
+                                   "pode seguir a recomendação", "Pode seguir a recomendação.", "sim, pode", "pode",
+                                   "A", "A fica", "opção B", "Letra c", "B fica"])
+def test_textos_claros(texto: str) -> None:
+    assert rp.classificar(texto, "P-033") == ("clara", "")
 
 
-# ---------------------------------------------------------------- confirmação
-@pytest.mark.parametrize("texto", ["ok", "Ok!", "OK, já respondi", "já respondi", "Respondido", "confirmo", "Sim", "sim 👍",
-                                   "pode registrar", "Sim, pode registrar."])
-def test_frases_que_confirmam(texto: str) -> None:
-    assert rp.eh_confirmacao(texto)
+@pytest.mark.parametrize("texto,motivo", [
+    ("", "vazio"), ("   ", "vazio"), (None, "vazio"),
+    ("talvez", "curto"), ("depois eu vejo", "curto"), ("hmm", "curto"),
+    ("sim?", "pergunta"), ("pode ser a A ou a B?", "pergunta"),
+    ("sim, e também a P-034", "mais de uma"), ("ok para a P-034", "mais de uma"), ("P-033 e P-034: sim", "mais de uma"),
+    ("sim nao", "juntos"), ("não siga a recomendação", "juntos"),
+])
+def test_textos_ambiguos(texto: str | None, motivo: str) -> None:
+    classe, porque = rp.classificar(texto, "P-033")
+    assert classe == "ambigua" and porque
 
 
-@pytest.mark.parametrize("texto", ["", None, "não", "ok, mas troca a P-034", "sim, e também quero mudar a regra do orçamento "
-                                   "de IA para dez dólares por dia, ok?", "ok " * 30, "talvez", "okay"])
-def test_frases_que_nao_confirmam(texto: str | None) -> None:
-    assert not rp.eh_confirmacao(texto)
+def test_texto_longo_livre_e_curto_com_ressalva_sao_livres_nao_ambiguos() -> None:
+    assert rp.classificar("A segunda pasta só depois de eu conferir a primeira, combinado", "P-033")[0] == "livre"
+    assert rp.classificar("sim, mas só depois de conferir", "P-033")[0] == "livre"
+    assert rp.classificar("sim, mas troca a regra de orçamento para dez dólares por dia no total", "P-033")[0] == "livre"
 
 
-def test_texto_longo_mesmo_com_frase_valida_nao_confirma() -> None:
-    longo = "sim " * 16                       # 64 caracteres, só frases do conjunto: passa do limite, então não conta
-    assert len(longo.strip()) > rp.LIMITE_DA_CONFIRMACAO
-    assert not rp.eh_confirmacao(longo)
-    p = plano([app(10, "P-033"), tg(11, longo)])
-    assert p[0].confirmada_por == ""
+def test_a_mesma_pergunta_citada_no_texto_nao_e_ambigua() -> None:
+    assert rp.classificar("sim, P-033", "P-033")[0] == "livre"
 
 
 # ---------------------------------------------------------------- ligação
-def test_liga_a_resposta_ao_cartao_certo() -> None:
+def test_liga_a_resposta_ao_cartao_certo_e_ja_esta_pronta() -> None:
     [p] = plano([app(10, "P-034", "A fica")])
     assert p.cartao and p.cartao["id"] == "c34" and p.pergunta == "P-034" and p.situacao == "aberta"
-    assert p.quando == "07/10 01:10Z"
+    assert p.quando == "07/10 01:10Z" and p.pronta and p.classe == "clara"      # sem confirmação: pronta de saída
     assert "--cartao c34" in rp.comando(p) and "--entrada 10" in rp.comando(p) and "--canal trello" in rp.comando(p)
     assert "--quando '07/10 01:10Z'" in rp.comando(p) and "A fica" in rp.comando(p)
-    assert p.confirmada_por == ""            # só a resposta: ainda aguarda
+    assert "--confirmacao" not in rp.comando(p) and "pronta para registrar" in rp.linha(p)
 
 
-def test_so_resposta_de_app_do_dono_conta() -> None:
-    ent = [entrada(10, "trello", "x", "pergunta:P-033;autoria=digitado"), entrada(11, "trello", "x", "fato:abc"),
-           entrada(12, "telegram", "x", "pergunta:P-033;autoria=app_do_dono"), app(13, "P-033", "   ")]
+def test_so_resposta_do_dono_em_cartao_de_pergunta_conta() -> None:
+    ent = [entrada(11, "trello", "x", "fato:abc"), entrada(12, "telegram", "x", "pergunta:P-033;autoria=app_do_dono"),
+           entrada(13, "trello", "sim", "pergunta:P-033;autoria=app"), entrada(14, "trello", "sim",
+                                                                           "pergunta:P-033;autoria=nao_confirmada")]
     assert plano(ent) == []
+
+
+def test_autoria_e_so_informacao_app_web_ou_ausente_valem() -> None:
+    for resp, esperado in (("pergunta:P-033;autoria=app_do_dono", "app_do_dono"), ("pergunta:P-033;autoria=digitado", "digitado"),
+                           ("pergunta:P-033", ""), ("pergunta:P-033;autoria=", "")):
+        [p] = plano([entrada(10, "trello", "sim", resp)])
+        assert p.pronta and p.autoria == esperado
+        assert ("--autoria" in rp.comando(p)) == bool(esperado)
+
+
+def test_resposta_vazia_nao_some_em_silencio() -> None:
+    [p] = plano([app(10, "P-033", "   ")])
+    assert p.classe == "ambigua" and not p.pronta and "ambígua" in rp.linha(p) and "texto vazio" in rp.linha(p)
 
 
 def test_sem_cartao_aberto() -> None:
     [p] = plano([app(10, "P-099")])
-    assert p.situacao == "sem_cartao" and p.cartao is None
+    assert p.situacao == "sem_cartao" and p.cartao is None and not p.pronta
     assert "sem cartão" in rp.linha(p) and "comando" not in "\n".join(rp.relatorio([p], aplicando=False))
 
 
 def test_pergunta_ja_respondida_e_ignorada() -> None:
     ja = [cartao("P-033", "c33", lista=rr.LISTA_RESPONDIDAS)]
-    p = plano([app(10, "P-033"), tg(11, "ok")], abertos=[], respondidos=ja)[0]
-    assert p.situacao == "ja_respondida" and p.confirmada_por == "" and "já está em Perguntas respondidas" in rp.linha(p)
+    p = plano([app(10, "P-033")], abertos=[], respondidos=ja)[0]
+    assert p.situacao == "ja_respondida" and not p.pronta and "já está em Perguntas respondidas" in rp.linha(p)
     assert "comando" not in "\n".join(rp.relatorio([p], aplicando=False))
 
 
 def test_duas_respostas_a_mesma_pergunta_vale_a_mais_recente() -> None:
-    a, b = plano([app(10, "P-033", "A"), app(11, "P-033", "B"), tg(12, "ok")])
-    assert a.substituida_por == 11 and a.confirmada_por == "" and b.confirmada_por == "entrada 12"
+    a, b = plano([app(10, "P-033", "A"), app(11, "P-033", "B")])
+    assert a.substituida_por == 11 and not a.pronta and b.pronta
+    # a mais recente ambígua não é salva pela anterior: volta como pergunta nova
+    a, b = plano([app(10, "P-033", "sim"), app(11, "P-033", "talvez")])
+    assert not a.pronta and not b.pronta and b.classe == "ambigua"
 
 
-# ---------------------------------------------------------------- confirmação em bloco
-def test_um_ok_cobre_varias_pendentes() -> None:
-    ps = plano([app(10, "P-033"), app(11, "P-034"), tg(12, "ok, já respondi"), app(13, "P-035")])
-    assert [p.confirmada_por for p in ps] == ["entrada 12", "entrada 12", ""]   # a P-035 veio DEPOIS do ok
-    assert ps[0].confirmacao_texto == "Telegram, entrada 12, 'ok, já respondi'"
-
-
-def test_confirmacao_anterior_a_resposta_nao_vale() -> None:
-    [p] = plano([tg(9, "ok"), app(10, "P-033")])
-    assert p.confirmada_por == ""
-
-
-def test_ok_que_responde_a_um_aviso_com_alvo_nao_confirma() -> None:
-    [p] = plano([app(10, "P-033"), tg(11, "sim", alvo="approval:77"), tg(12, "ok", tipo="botao")])
-    assert p.confirmada_por == ""
-
-
-def test_ok_no_chat_confirma_todas() -> None:
-    ps = plano([app(10, "P-033"), app(11, "P-034")], chat="ok")
-    assert [p.confirmada_por for p in ps] == ["chat", "chat"] and ps[0].confirmacao_texto == "chat, 'ok'"
-    assert all(p.confirmada_por == "" for p in plano([app(10, "P-033")], chat="ok, mas muda a P-034"))
+# ---------------------------------------------------------------- sem confirmação (28.77)
+def test_nao_existe_mais_confirmacao_em_bloco() -> None:
+    assert not hasattr(rp, "eh_confirmacao") and not hasattr(rp, "confirmacoes_do_telegram")
+    # o "ok" do Telegram, anterior ou posterior, não muda nada: a resposta do app já estava pronta
+    for ent in ([app(10, "P-033"), tg(11, "ok")], [tg(9, "ok"), app(10, "P-033")], [app(10, "P-033")]):
+        [p] = plano(ent)
+        assert p.pronta and p.situacao == "aberta"
+    with pytest.raises(SystemExit):
+        rp.main(["--base", "1", "--ok-no-chat", "ok"])
 
 
 # ---------------------------------------------------------------- aplicar
-def test_sem_confirmacao_nao_aplica_e_nao_chama_registrar(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_aplica_direto_sem_confirmacao_so_as_prontas_uma_por_uma() -> None:
+    fake = FakeTrello(ABERTOS)
+    ps = plano([app(10, "P-033", "A fica"), app(11, "P-034", "B"), app(12, "P-035", "talvez"), app(13, "P-099")])
+    asyncio.run(rp.aplicar(fake, ps))
+    assert [p.resultado for p in ps] == ["registrada", "registrada", "", ""]
+    c33, c34, c35 = fake.cartoes["c33"], fake.cartoes["c34"], fake.cartoes["c35"]
+    assert str(c33["desc"]).startswith("**RESPOSTA DO DONO (07/10 01:10Z, entrada 10") and '"A fica"' in str(c33["desc"])
+    assert "digitada por ele no Trello (app ou web); autoria: app_do_dono" in str(c33["desc"])
+    assert "Confirmada" not in str(c33["desc"]) and "em bloco" not in str(c33["desc"]) and "conferida" not in str(c33["desc"])
+    assert c33["idList"] == rr.LISTA_RESPONDIDAS and c34["idList"] == rr.LISTA_RESPONDIDAS
+    assert c35["idList"] == rp.LISTA_PERGUNTAS and c35["desc"] == "Corpo"          # a ambígua ficou como estava
+    assert sorted(fake.decisoes) == ["⚖️ P-033. Regra de teste · respondida em 07/10",
+                                     "⚖️ P-034. Regra de teste · respondida em 07/10"]
+    assert fake.comentarios == 0
+    texto = "\n".join(rp.relatorio(ps, aplicando=True))
+    assert texto.count("-> registrada") == 2 and "ambígua (texto curto" in texto and "voltar como pergunta nova" in texto
+    assert "2 pronta(s)" in texto and "1 ambígua(s)" in texto and "aguardando ok" not in texto
+
+
+def test_ambigua_nunca_chama_registrar(monkeypatch: pytest.MonkeyPatch) -> None:
     chamadas: list[object] = []
 
     async def espia(*a: object, **k: object) -> str:
@@ -176,31 +208,25 @@ def test_sem_confirmacao_nao_aplica_e_nao_chama_registrar(monkeypatch: pytest.Mo
         return "registrada"
     monkeypatch.setattr(rr, "registrar", espia)
     fake = FakeTrello(ABERTOS)
-    ps = plano([app(10, "P-033"), app(11, "P-099")])
+    ps = plano([app(10, "P-033", "talvez"), app(11, "P-034", "sim e a P-035?"), app(12, "P-035", "   ")])
     asyncio.run(rp.aplicar(fake, ps))
-    assert chamadas == [] and fake.escritas == 0 and fake.comentarios == 0
-    texto = "\n".join(rp.relatorio(ps, aplicando=True))
-    assert "aguardando ok dele" in texto and "sem cartão" in texto
+    assert chamadas == [] and fake.escritas == 0
+    assert all("voltar como pergunta nova" in rp.linha(p) for p in ps)
 
 
-def test_com_confirmacao_registra_so_as_confirmadas_uma_por_uma() -> None:
+def test_texto_livre_e_registrado_literal_e_marcado_para_a_canais() -> None:
     fake = FakeTrello(ABERTOS)
-    ps = plano([app(10, "P-033", "A fica"), app(11, "P-034", "B"), tg(12, "ok"), app(13, "P-035", "C")])
+    livre = "A segunda pasta só depois de eu conferir a primeira, combinado"
+    ps = plano([app(10, "P-033", livre)])
     asyncio.run(rp.aplicar(fake, ps))
-    assert [p.resultado for p in ps] == ["registrada", "registrada", ""]
-    c33, c34, c35 = fake.cartoes["c33"], fake.cartoes["c34"], fake.cartoes["c35"]
-    assert str(c33["desc"]).startswith("**RESPOSTA DO DONO (07/10 01:10Z, entrada 10") and '"A fica"' in str(c33["desc"])
-    assert "Confirmada em bloco: Telegram, entrada 12, 'ok'" in str(c33["desc"])
-    assert c33["idList"] == rr.LISTA_RESPONDIDAS and c34["idList"] == rr.LISTA_RESPONDIDAS
-    assert c35["idList"] == rp.LISTA_PERGUNTAS and c35["desc"] == "Corpo"          # a P-035 ficou como estava
-    assert sorted(fake.decisoes) == ["⚖️ P-033. Regra de teste · respondida em 07/10",
-                                     "⚖️ P-034. Regra de teste · respondida em 07/10"]
+    assert ps[0].classe == "livre" and ps[0].resultado == "registrada"
+    assert f'"{livre}"' in str(fake.cartoes["c33"]["desc"])                        # literal, com a condição dele
     texto = "\n".join(rp.relatorio(ps, aplicando=True))
-    assert texto.count("-> registrada") == 2 and "aguardando ok dele" in texto
+    assert "texto livre: ler (Canais)" in texto and "1 de texto livre" in texto
 
 
 def test_idempotencia_repetir_nao_reescreve_nem_duplica() -> None:
-    entradas = [app(10, "P-033", "A fica"), tg(11, "ok")]
+    entradas = [app(10, "P-033", "A fica")]
     fake = FakeTrello(ABERTOS)
     asyncio.run(rp.aplicar(fake, plano(entradas)))
     desc, decisoes = fake.cartoes["c33"]["desc"], list(fake.decisoes)
@@ -224,21 +250,20 @@ def test_idempotencia_repetir_nao_reescreve_nem_duplica() -> None:
 def test_falha_numa_pendente_nao_derruba_as_outras_e_nao_vaza_a_mensagem() -> None:
     fake = FakeTrello(ABERTOS)
     del fake.cartoes["c33"]                              # o GET do cartão falha (KeyError com o id dentro)
-    ps = plano([app(10, "P-033"), app(11, "P-034"), tg(12, "ok")], abertos=ABERTOS)
+    ps = plano([app(10, "P-033"), app(11, "P-034")], abertos=ABERTOS)
     asyncio.run(rp.aplicar(fake, ps))
     assert ps[0].resultado == "faltou (KeyError)" and ps[1].resultado == "registrada"
     assert "c33" not in "\n".join(rp.relatorio(ps, aplicando=True))
 
-
 # ---------------------------------------------------------------- saída
 def test_saida_corta_em_80_e_redige_handle_email_telefone() -> None:
     literal = "A fica, mas fale com @fulana_teste e use fulana@exemplo.com ou +55 11 91234-5678 " + "x" * 200
-    [p] = plano([app(10, "P-033", literal), tg(11, "ok")])
+    [p] = plano([app(10, "P-033", literal)])
     saida = "\n".join(rp.relatorio([p], aplicando=False))
     assert "@fulana_teste" not in saida and "fulana@exemplo.com" not in saida and "91234-5678" not in saida
     assert "x" * 60 not in saida and "…" in saida
     assert len(rp.trecho(literal)) <= rp.LIMITE_LITERAL_NA_SAIDA
-    assert "comando:" in saida and "--confirmacao" in saida
+    assert "comando:" in saida and "--confirmacao" not in saida
 
 
 def test_comando_com_aspas_e_barra_vai_entre_aspas_simples() -> None:
@@ -248,7 +273,7 @@ def test_comando_com_aspas_e_barra_vai_entre_aspas_simples() -> None:
 
 
 def test_sem_respostas() -> None:
-    assert rp.relatorio([], aplicando=False) == ["nenhuma resposta de app do dono nas entradas novas"]
+    assert rp.relatorio([], aplicando=False) == ["nenhuma resposta do dono em cartão de pergunta nas entradas novas"]
 
 
 # ---------------------------------------------------------------- leitura e CLI

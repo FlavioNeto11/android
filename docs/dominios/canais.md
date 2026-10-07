@@ -337,7 +337,20 @@ avisos depois da faxina"), e a trava cai no TTL.
     nunca vira o dono. Fora das listas de perguntas o app não muda nada, e o comentário que autorize efeito fora da
     máquina segue pedindo a confirmação no Telegram (28.30), com ou sem app reconhecido. Dentro das listas de perguntas
     nenhum código pede o 28.30: a resposta vai à orquestradora sem Telegram, e quem barra o efeito externo é ela, ao ler
-    a resposta (comentário nunca autoriza efeito em conta real).
+    a resposta (comentário nunca autoriza efeito em conta real). **Superado em parte pelo 28.77 (abaixo):** a conferência
+    de autoria deste item (28.54) e do 28.30 deixa de ser trava para REGISTRAR a resposta; fica como informação.
+  - **Regra de 07/10 01:47Z, sem trava de autoria nem confirmação (28.77):** o dono respondeu no Trello e mandou no
+    Telegram, literal: "acabei de responder no trello, a partir de agora nao precisa checar novamente por aqui do trello pra
+    ca no app ou na web, respondeu la ja tome como verdade". A orquestradora ampliou: a resposta dele num cartão de
+    pergunta (P-NNN), pelo app OU pela web, é REGISTRADA e o cartão MOVIDO na hora, SEM confirmação no Telegram nem no chat,
+    inclusive para apagar dado ou efeito externo. **Supera:** a checagem de autoria (28.30 e 28.54: `autoria=app_do_dono`,
+    `digitado` ou ausente valem igual; vira só uma informação no bloco "RESPOSTA DO DONO") e a confirmação em bloco de
+    06/10 (28.71). **Continua:** (a) as condições escritas no próprio cartão (por exemplo, "2ª pasta só depois de conferir")
+    valem e a Canais as lê antes de agir; (b) a resposta AMBÍGUA (vazia, com "?", que cita outra pergunta, ou curta sem
+    sim, não ou escolha reconhecível) NÃO é registrada: volta como pergunta nova no Trello; (c) o comentário do dono
+    FORA das listas de perguntas segue pelo 28.30 (cartão de plano não é pergunta); (d) `autoria=app` e `nao_confirmada`
+    continuam não sendo o dono. Os dois scripts (`registrar_resposta.py` e `resposta_pronta.py`) já seguem a regra; a
+    Central não muda aqui (a classificação do 28.52/28.54 segue gravando a autoria em `responde_a`, agora só como dado).
   - **Alvo desconhecido (28.55):** o comentário num cartão FORA das listas de perguntas e sem fato (um cartão que a Central
     não conhece) escrito por um app que o dono não reconheceu (o app da Central, um script, uma sessão) deixa de valer como
     digitado: vira `outro`, sem texto, e a linha leva `responde_a = alvo_desconhecido;autoria=app`. O comentário sem
@@ -417,24 +430,28 @@ avisos depois da faxina"), e a trava cai no TTL.
 
 - **Regra, o procedimento da resposta do dono a uma pergunta (28.65):** a Canais não escreve mais script avulso. Depois de
   conferir a resposta no banco, roda `.claude/trello/registrar_resposta.py --cartao <id> --entrada <N> --canal trello|telegram
-  --quando "DD/MM HH:MMZ" --literal "<texto exato>" [--leitura "..."] [--confirmacao "..."]` (sem `--aplicar` é ensaio). Com
+  --quando "DD/MM HH:MMZ" --literal "<texto exato>" [--leitura "..."] [--autoria app_do_dono] [--nota "..."]` (sem `--aplicar`
+  é ensaio; `--confirmacao` é descontinuado desde o 28.77: não é exigido e, se vier, só aparece como nota). Com
   `--aplicar` ele põe o bloco "RESPOSTA DO DONO" no topo da descrição, move o cartão para Perguntas respondidas (no topo, com
   " · respondida em DD/MM" no nome) e cria "⚖️ <nome>" em Programa › Decisões do dono com o link da pergunta. É idempotente
   (descrição já registrada não se reescreve; decisão de mesmo nome não se duplica). O literal do dono vai como está e o
-  redator só avisa se mudaria algo; leitura e confirmação passam por `redacao.redigir`.
-- **Regra, a resposta pronta (28.71):** resposta do dono por app só vale depois de UM "ok" dele no Telegram ou no chat, e esse
-  "ok" cobre todas as pendentes. Em vez do vigia e de um `registrar_resposta.py` por cartão, a Canais roda
-  `.claude/trello/resposta_pronta.py --base <id da última entrada vista> [--ok-no-chat "ok"] [--aplicar]` (sem `--aplicar` é
-  ensaio e só lê). Ele lê as entradas do dono em `canal_entradas`, liga cada `pergunta:P-NNN;autoria=app_do_dono` ao cartão
-  `P-NNN` ABERTO de "Perguntas para você" (a resposta mais recente por pergunta; `P-NNN` já em Perguntas respondidas é
-  ignorada; sem cartão aberto sai "sem cartão" e nada se inventa) e imprime, por pendente, o comando pronto do
-  `registrar_resposta.py` (o literal sai cortado em 80 caracteres e redigido, sem handle, e-mail nem telefone; o `--aplicar`
-  daqui usa o texto inteiro). A confirmação é uma mensagem solta do dono no Telegram (sem alvo, não botão), **posterior** à
-  resposta, com até 60 caracteres e só com estas frases: ok, já respondi, respondido, confirmo, sim, pode registrar (sem
-  acento nem pontuação, em qualquer combinação); `--ok-no-chat` traz o "ok" dado no chat da sessão, pela mesma regra. Sem
-  confirmação a linha diz "aguardando ok dele" e nada é escrito. Com `--aplicar`, só as confirmadas, uma por uma, pela função
-  `registrar` do `registrar_resposta.py` (idempotente; uma linha por pendente: registrada, já registrada ou faltou, sem a
-  mensagem do erro). Nunca comenta em cartão. Prova: `simulated` (fakes de banco e Trello); `real`: `not_run`.
+  redator só avisa se mudaria algo; leitura e nota passam por `redacao.redigir`.
+- **Regra, a resposta pronta (28.71, sem confirmação desde o 28.77):** a resposta do dono num cartão de pergunta, por app ou
+  pela web, vale como dada e se registra na hora; NÃO há "ok" em bloco no Telegram nem no chat (regra de 07/10 01:47Z, em C-24).
+  Em vez do vigia e de um `registrar_resposta.py` por cartão, a Canais roda
+  `.claude/trello/resposta_pronta.py --base <id da última entrada vista> [--aplicar]` (sem `--aplicar` é ensaio e só lê; o
+  `--ok-no-chat` foi removido). Ele lê as entradas do dono em `canal_entradas`, liga cada `pergunta:P-NNN` (com
+  `autoria=app_do_dono`, `digitado` ou ausente: só informação; `app` e `nao_confirmada` não são ele) ao cartão `P-NNN` ABERTO
+  de "Perguntas para você" (a resposta mais recente por pergunta; `P-NNN` já em Perguntas respondidas é ignorada; sem cartão
+  aberto sai "sem cartão" e nada se inventa) e imprime, por pendente pronta, o comando do `registrar_resposta.py` (o literal
+  sai cortado em 80 caracteres e redigido, sem handle, e-mail nem telefone; o `--aplicar` daqui usa o texto inteiro). **Regra
+  do texto:** clara = só "sim", "não", "ok", "pode", "siga/pode seguir a recomendação" ou uma escolha explícita ("A", "opção
+  B", "B fica"); livre = texto longo sem "?" (ou curto começando por sim/não/ok com ressalva), registrado LITERAL e marcado
+  "ler (Canais)", porque as condições escritas valem; ambígua = vazio, com "?", que cita outra `P-NNN`, "sim e não" juntos,
+  ou curto sem sim, não ou escolha reconhecível, e NÃO é aplicada: sai "ambígua: voltar como pergunta nova no Trello". Com
+  `--aplicar`, todas as prontas (claras e livres), uma por uma, pela função `registrar` do `registrar_resposta.py`
+  (idempotente; uma linha por pendente: registrada, já registrada ou faltou, sem a mensagem do erro). Nunca comenta em
+  cartão. Prova: `simulated` (fakes de banco e Trello); `real`: `not_run`.
 - **Regra, a reconciliação total:** a cada espelho de deploy e a cada `claude-plan-100.py aplicar`, a Canais roda
   `.claude/trello/reconciliar.py` (primeiro sem `--aplicar`, que só relata, depois com ele). O script confere **todos** os
   cartões do quadro Execução com o estado do plano e o deploy de cada item (commit "merge: ID na suíte N"; sem ele, o id
