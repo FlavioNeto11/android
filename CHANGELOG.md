@@ -20,6 +20,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-07 — 29.190: conferência do JSON de resultado antes do aplicar (branch ci/29-190-confere-resultado)
+
+- `scripts/resultado_confere.py ARQ...` confere o JSON de resultado do plano-100 ANTES do `claude-plan-100.py aplicar`, reusando de `scripts/claude-plan-100.py` as constantes `ESTADOS` e `PROVAS`, os IDs da tabela do plano e a própria `validar` (item a item, para listar TODOS os problemas e não só o primeiro). Além do que a `validar` cobra, exige na evidência: `real` com data, máquina ou runner e commit ou id de execução; `simulated` com `arquivo::teste` ou arquivo de teste; `not_run` com o motivo. `--gravar RASCUNHO DESTINO` só grava (de forma atômica) se não houver problema. Só lê o plano; sem rede, `gh` nem IA. Nasceu do `status: "done"` que quebrou o `aplicar` do deploy 58.
+- Os JSONs já gravados da frente (29-169 a 29-189) passaram pela conferência: status `implemented` e `proof` só no vocabulário do plano; os textos descritivos de prova de 29.187, 29.188 e 29.169 foram para `evidence`. Sobra só "29.189: ID que não existe no plano" até a orquestradora registrar o ID na tabela.
+- Prova `simulated`: `scripts/tests/test_resultado_confere.py` (17 testes; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, esta máquina, `date -u`): a ferramenta rodada sobre os 16 JSONs de resultado da frente: 15 ok e 1 com o aviso esperado do ID 29.189.
+
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 
 - Na onda 1 (06/10), a pesquisa da operação deixou 6 de 8 fatos como `hipotese` (uma fonte só), e nada os
