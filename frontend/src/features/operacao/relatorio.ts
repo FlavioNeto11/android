@@ -82,8 +82,9 @@ export interface RelatorioDaOperacao {
   limites: string[];
 }
 
-const LIMITES = [
-  'Custo por agente "não informado": o alvo ainda não tinha execução (ou o central é anterior ao custo por alvo).',
+/** Cada limite só aparece quando vale para ESTE relatório: a nota do custo sai quando todos os agentes têm custo (percurso real de 06/10). */
+const limitesDoRelatorio = (agentes: readonly { custo_usd: number | null }[]): string[] => [
+  ...(agentes.some((a) => a.custo_usd === null) ? ['Custo por agente "não informado": o alvo ainda não tinha execução (ou o central é anterior ao custo por alvo).'] : []),
   'O relatório vem do estado da operação no momento em que foi gerado; uma operação em curso muda depois.',
 ];
 
@@ -168,7 +169,7 @@ export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendiz
     textos: { total: comTexto.length, distintos: grupos.size, repetidos: [...grupos.values()].filter((g) => g.agentes.length > 1), lista: comTexto },
     agentes,
     aprendizado: aprendizadoDoRelatorio(op, aprendizado),
-    limites: LIMITES,
+    limites: limitesDoRelatorio(agentes),
   };
 }
 
