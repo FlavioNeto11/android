@@ -11481,14 +11481,16 @@
   "28.61": {
    "id": "28.61",
    "status": "implemented",
-   "proof": "real",
-   "evidence": "Real, como dado: em 06/10/2026, às 19:57:15Z, no central (deploy 55, 086236e9), o POST /api/instagram/policy-groups criou o grupo 'Liberado' (grp-AX6yCTUvW7eZFmn2), em resposta ao pedido do dono no Telegram às 19:46:43Z. Tudo autonomous, exceto LOGOUT (manual_only). Limites do grupo Operação. São 11 de 16 personas; as 5 do grupo Recuperação ficaram fora (proteção de conta). Conferido pelo GET /api/instagram/profiles/{id}/policy. Desfazer: grupo_liberado.py desfazer, com o backup gravado antes. Simulated, como código (ponta 441abaac, corte 56): o setting LimitsCfg.grupo_sem_aprovacao (vazio = desligado), por PolicyEngine._sem_aprovacao_pelo_grupo, troca approval_required por autonomous só para os membros do grupo. A exceção do 30.65, as recusas (frota, tetos, retirada), a conduta, a proteção de conta e o liberar e o teto da operação continuam. Teste: backend/tests/test_interacao_entre_contas_nossas.py::test_2861_persona_do_grupo_sem_aprovacao_nao_passa_pela_aprovacao_de_politica. O PUT grupo_sem_aprovacao no central fica com a orquestradora, depois do deploy 56 (not_run até lá). Este registro substitui o resultado-28-61-jev.json, que dizia que o código não entrava.",
-   "grupo": "jev",
-   "modelo": "opus-5.5",
+   "proof": "simulated",
+   "evidence": "Grupo de política Liberado: leitor de grupo_sem_aprovacao e teste (Jev, ac028b94); real: not_run. Corte 62 (integ/suite-62, ponta 228c56a4097b5b = main 1366e45c + Jev ac028b94 + da345bb6; Windows, central WIN-7S2UASNLFOP, 07/10/2026 21:35Z-22:21Z, Idle, wrapper -Teto 25): scripts 1262 passed (+1 test_com_teto_de_cpu, DevOps, conhecido); SQLite 12572 passed, 59 skipped; vitest 174/2301 passed (isolado), typecheck e build ok; catracas 89 e 9; docs-check 0/0; mypy 257 = teto; PostgreSQL dirigido 1968 + 2227 passed.",
+   "blocker": null,
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-62",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T21:18:22+00:00"
+   "quando": "2026-10-07T22:28:50+00:00"
   },
   "31.160": {
    "id": "31.160",
@@ -17520,6 +17522,15 @@
     "frente-github",
     "jev",
     "rodada 07/10 12:55Z — leitura real da Jev"
+   ]
+  },
+  {
+   "quando": "2026-10-07T22:28:50+00:00",
+   "itens": [
+    "28.61"
+   ],
+   "grupos": [
+    "android-suite-62"
    ]
   }
  ]
