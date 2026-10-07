@@ -10,8 +10,9 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from ..db import loads
-from ..models import InteractionType
-from ..planning.capabilities import Capability, capability_of, pacote_ancora
+from ..models import InteractionStatus, InteractionType
+from ..planning.capabilities import Capability
+from ..modules.applications.infrastructure.registry import pacote_ancora
 from .repository import SocialRepository
 
 # Padrões de limite (vazios: sem controle de taxa).

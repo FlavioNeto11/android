@@ -1,0 +1,157 @@
+{
+  "gerado_em": "2026-10-06T19:51:06.624Z",
+  "operacao": {
+    "id": "op-20261006194323-0a1540",
+    "comando": "No Instagram, abra pela busca o seu próprio perfil, abra a publicação cuja legenda contém \"Primeira foto por aqui.\" e comente nela com a sua leitura sobre esse assunto, ligando ao que a publicação mostra.",
+    "app_id": "instagram",
+    "acao_final": "preparar",
+    "status": "Concluída",
+    "criada_em": "2026-10-06T19:43:23.422Z",
+    "encerrada_em": "2026-10-06T19:44:58.051Z",
+    "assunto": "novidades do Instagram em outubro de 2026 que afetam quem publica fotos",
+    "fontes": []
+  },
+  "capacidade": {
+    "solicitados": 1,
+    "contas_existentes": 1,
+    "sessoes_validas": 1,
+    "contas_disponiveis": 1,
+    "concluidas": 1,
+    "bloqueadas": 0,
+    "em_curso": 0,
+    "motivos": []
+  },
+  "custo": {
+    "pesquisa_usd": 0.0526,
+    "alvos_usd": 0.2368,
+    "total_usd": 0.2894,
+    "teto_usd": 0.75
+  },
+  "falhas_por_motivo": [],
+  "textos": {
+    "total": 1,
+    "distintos": 1,
+    "repetidos": [],
+    "lista": [
+      {
+        "agente": "Lucas Almeida",
+        "texto": "marcada como AI content, mas a estreia foi aqui mesmo. bom começo pra galeria"
+      }
+    ]
+  },
+  "agentes": [
+    {
+      "agente": "Lucas Almeida",
+      "aparelho": "android-01",
+      "estado": "Concluído",
+      "parou_em": null,
+      "motivo": null,
+      "estagios": [
+        {
+          "estagio": "persona",
+          "rotulo": "Persona",
+          "em": "2026-10-06T19:43:23.422Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "conta",
+          "rotulo": "Conta",
+          "em": "2026-10-06T19:43:23.422Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "sessao",
+          "rotulo": "Sessão",
+          "em": "2026-10-06T19:43:23.422Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "aparelho",
+          "rotulo": "Aparelho",
+          "em": "2026-10-06T19:43:29.961Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "instagram_aberto",
+          "rotulo": "Instagram aberto",
+          "em": "2026-10-06T19:43:29.958Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "target_localizado",
+          "rotulo": "Perfil-alvo localizado",
+          "em": "2026-10-06T19:43:54.920Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "post_localizado",
+          "rotulo": "Post localizado",
+          "em": "2026-10-06T19:44:28.063Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "conteudo_lido",
+          "rotulo": "Conteúdo lido",
+          "em": "2026-10-06T19:44:33.206Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "conhecimento_recuperado",
+          "rotulo": "Conhecimento recuperado",
+          "em": "2026-10-06T19:44:42.438Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "resposta_gerada",
+          "rotulo": "Resposta gerada",
+          "em": "2026-10-06T19:48:05.915Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "interface_de_comentario_alcancada",
+          "rotulo": "Interface de comentário alcançada",
+          "em": "2026-10-06T19:44:32.674Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "acao_preparada",
+          "rotulo": "Ação preparada",
+          "em": "2026-10-06T19:48:05.915Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "acao_executada",
+          "rotulo": "Ação executada",
+          "em": "2026-10-06T19:48:05.915Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "resultado_verificado",
+          "rotulo": "Resultado verificado",
+          "em": "2026-10-06T19:48:05.915Z",
+          "alcancado": true
+        }
+      ],
+      "conhecimento_ids": [],
+      "texto": "marcada como AI content, mas a estreia foi aqui mesmo. bom começo pra galeria",
+      "evidencia_id": 2941,
+      "acao_final": {
+        "tipo": "CREATE_COMMENT",
+        "verificada": "sim",
+        "evidencia_id": 2943
+      },
+      "custo_usd": null
+    }
+  ],
+  "aprendizado": {
+    "disponivel": false,
+    "motivo": "O central ainda não oferece o aprendizado da operação.",
+    "gerado_em": null,
+    "perguntas": [],
+    "nao_coberto": []
+  },
+  "limites": [
+    "Custo por agente \"não informado\": o alvo ainda não tinha execução (ou o central é anterior ao custo por alvo).",
+    "O relatório vem do estado da operação no momento em que foi gerado; uma operação em curso muda depois."
+  ]
+}
