@@ -20,6 +20,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-07 — 29.201: `fecha_pr_revisao.py` fecha sem merge os PRs de revisão cumpridos (branch ci/29-201-fecha-pr-revisao)
+
+- `scripts/fecha_pr_revisao.py --repo dono/nome [--lidos lidos.json] [--horas-minimas 2] [--aplicar]` lê os PRs abertos `[revisão] …` e classifica o que
+  o Codex fez: `com_achados` (só fecha se o número está em `--lidos`: lista, ou registro da medida com confirmados ou falsos já anotados pela frente), `sem_achado` (👍), `limite` (limite do plano),
+  `falhou` e `andamento` (não fecha). Fecha com comentário padrão, no máximo 30 por execução, só com mais de 2 h de idade; nunca mescla, nunca apaga
+  branch (a limpeza é do `limpar_branches_revisao.py`). Ensaio por padrão; só `gh`, nunca em workflow.
+- Prova `simulated`: `scripts/tests/test_fecha_pr_revisao.py` (10 testes, `gh` falso; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, `date -u` 12:48Z, esta máquina,
+  API, só ensaio): 33 PRs de revisão abertos classificados (21 fecham, 12 ficam: achados não lidos de 515 a 521 e PRs com menos de 2 h), nada fechado.
+
 ## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
 
 - Medido no percurso real da Portal no 57 (06/10 23:20Z): o resumo do fluxo na aba Aprendizado da operação mostrava o
@@ -1008,7 +1017,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-06 — 29.155 (C5): modelos de issue e rótulos por frente e tamanho (branch ci/29-155-c5-issues)
 
-- `.github/ISSUE_TEMPLATE/tarefa-do-agente.yml` e `achado.yml` (formulários do GitHub) e `scripts/github_rotulos.py` (a lista dos 13 rótulos: `frente:*`, `tamanho:P|M|G`, `agente`, `achado`, `ci`; ensaio por padrão, `--aplicar` escreve, nunca apaga). Prova `real`: os 13 rótulos foram criados no repositório em 06/10 12:31Z pela máquina central com `--aplicar` (e a releitura disse "nada a fazer"); a lista de 23 rótulos tem os 10 padrão intactos. Prova `simulated`: `scripts/tests/test_github_rotulos.py` (9 testes, `gh` falso) e o YAML dos dois formulários lido com `yaml.safe_load`. A revisão de segredos de 06/10 pediu 3 ajustes de texto nos formulários (a issue é fonte da tarefa e não dos limites, a caixa de conferência alinhada ao `AGENTS.md`, aviso contra print e log com dado de pessoa), todos feitos; o tamanho G saiu do formulário do agente. O script de rótulos foi rodado sobre a base `2aa73973`. `not_run`: o GitHub mostrar os formulários na tela de nova issue e aceitá-los (só depois do merge na `main`).
+- `.github/ISSUE_TEMPLATE/tarefa-do-agente.yml` e `achado.yml` (formulários do GitHub) e `scripts/github_rotulos.py` (a lista dos 13 rótulos: `frente:*`, `tamanho:P|M|G`, `agente`, `achado`, `ci`; ensaio por padrão, `--aplicar` escreve, nunca apaga). Prova `real`: os 13 rótulos foram criados no repositório em 06/10 12:31Z pela máquina central com `--aplicar` (e a releitura disse "nada a fazer"); a lista de 23 rótulos tem os 10 padrão intactos. Prova `simulated`: `scripts/tests/test_github_rotulos.py` (10 testes, `gh` falso) e o YAML dos dois formulários lido com `yaml.safe_load`. A revisão de segredos de 06/10 pediu 3 ajustes de texto nos formulários (a issue é fonte da tarefa e não dos limites, a caixa de conferência alinhada ao `AGENTS.md`, aviso contra print e log com dado de pessoa), todos feitos; o tamanho G saiu do formulário do agente. O script de rótulos foi rodado sobre a base `2aa73973`. `not_run`: o GitHub mostrar os formulários na tela de nova issue e aceitá-los (só depois do merge na `main`).
 
 ## 2026-10-06 — 29.155 (C4): AGENTS.md e os perfis de agente backend, frontend e docs (branch ci/29-155-c4-agentes)
 
