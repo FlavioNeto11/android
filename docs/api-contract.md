@@ -7636,7 +7636,7 @@ Código: `_conferir_contra_o_app` em `modules/operacoes/infrastructure/servico.p
 `backend/tests/test_plano_da_operacao.py`: a recusa sem gravar nem criar execução, o caminho aceito, o app sem catálogo
 e o 422 pela rota.
 
-## Nota do 31.227 (07/10/2026; sem número; o número fica com a orquestradora) — a forma do parâmetro vem do catálogo
+## Adendo v1.123 (07/10/2026; número da orquestradora; item 31.227) — a forma do parâmetro vem do catálogo
 
 O `catalogo.yaml` do app ganha a seção opcional `parametros: {nome: {forma, max}}`. `forma` é `handle` (sem arroba
 nem espaço) ou `texto`, e `max` vai de 1 a 300. A carga recusa nome que nenhuma ação usa, forma fora do vocabulário e

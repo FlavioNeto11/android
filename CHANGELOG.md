@@ -22,7 +22,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-07 — 31.227: a forma e o tamanho do parâmetro declarados no catálogo do app (branch feat/31-227-forma-dos-parametros, corte 61)
 
-- `catalogo.yaml` ganha `parametros: {nome: {forma: handle|texto, max}}`, conferido na carga. O Instagram declara
+- `catalogo.yaml` ganha `parametros: {nome: {forma: handle|texto, max}}` (adendo v1.123), conferido na carga. O Instagram declara
   `username` e `post_author` como handle de até 30 caracteres. A conferência do 31.224 lê a declaração; sem ela, vale o
   teto genérico de 300. O app sem catálogo deixa de ter a regra do `username`.
 - Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (os casos novos e a carga recusando declaração errada). A
