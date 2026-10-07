@@ -155,6 +155,20 @@ class PolicyEngine:
                        pedido: ContextoDoPedido | None) -> str | None:
         return None
 
+    def _sem_aprovacao_pelo_grupo(self, profile_id: str, politica: str, nota: str) -> tuple[str, str]:
+        """28.61: a persona do grupo de `LimitsCfg.grupo_sem_aprovacao` não passa pela aprovação de POLÍTICA. Só troca
+        `approval_required` por `autonomous`: a ação desligada ou manual já foi recusada antes, e nada mais passa por
+        aqui. Restaurado depois do refactor do ADR-083, que tirou o leitor junto com os tetos por engano: o pedido do
+        dono de 06/10 ("tudo liberado para todas as personas") era sobre aprovação, e o refactor era sobre taxa."""
+        if politica != "approval_required" or self._settings is None:
+            return politica, nota
+        grupo = str(getattr(self._settings(), "grupo_sem_aprovacao", "") or "").strip()
+        linha = self.repo.profile_row(profile_id) if grupo else None
+        if linha is None or linha["policy_group_id"] != grupo:
+            return politica, nota
+        dispensa = "aprovação dispensada: a persona está no grupo de política sem aprovação (28.61)"
+        return "autonomous", "; ".join(t for t in (nota, dispensa) if t)
+
     def tem_conversa(self, profile_id: str, counterparty: str | None, app_id: str | None = None) -> bool:
         return False
 
@@ -171,4 +185,5 @@ class PolicyEngine:
             return Verdict(allowed=False, policy=politica,
                            reason=f"a ação {cap.key} é manual neste perfil",
                            hint="Faça esta ação pelo controle manual do aparelho, ou mude a política do perfil.")
-        return Verdict(policy=politica, needs_approval=politica == "approval_required")
+        politica, nota = self._sem_aprovacao_pelo_grupo(profile_id, politica, "")
+        return Verdict(policy=politica, needs_approval=politica == "approval_required", reason=nota)
