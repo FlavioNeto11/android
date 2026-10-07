@@ -328,7 +328,8 @@ Close-EtapaDoDeploy $estadoDeEtapas 'conferencia'
 # esforço (sem gh, sem rede, sem permissão): o aviso sai na tela e na linha do histórico, e o deploy continua.
 $resultadoDaTag = $null
 if (-not $SemTag) {
-  $resultadoDaTag = Publish-TagDeDeploy -Raiz $root -Commit $esperadoCommit -Migracao $depois.migration
+  $resultadoDaTag = Publish-TagDeDeploy -Raiz $root -Commit $esperadoCommit -Migracao $depois.migration `
+    -CommitAnterior $antes.commit -MigracaoAnterior $antes.migration
   if ($resultadoDaTag.aviso) { Write-Warning $resultadoDaTag.aviso }
   if ($resultadoDaTag.tag) {
     Write-Host ("tag $($resultadoDaTag.tag)" + $(if ($resultadoDaTag.empurrada) { ' enviada à origem' } else { ' (só local)' }) +
