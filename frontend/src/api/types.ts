@@ -402,6 +402,11 @@ interface Settings {
   orquestracao_max_candidatas: number;
   /** Quantas contas executam a ação final no post nosso numa operação (as demais ficam paradas até serem liberadas). */
   operacao_max_acoes_executadas: number;
+  /**
+   * ADR-082 (31.253): ligado (padrão), numa operação com ação final "executar" o alvo cuja persona está no grupo `grupo_sem_aprovacao` nasce com o
+   * teto `agir`: comenta sem aprovação nem Liberar. Desligado, todos os alvos voltam a "preparar". Backend anterior ao corte 61 não manda.
+   */
+  operacao_grupo_liberado_executa?: boolean;
 }
 
 /** v0.20 (C2): `on_demand` só captura prévia de aparelho que alguém olha; `always` é o laço antigo. */

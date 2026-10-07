@@ -243,8 +243,66 @@ it('28.61: se a lista de grupos não carrega, o id continua editável como texto
 it('28.61: backend anterior ao corte 57 (sem o campo) não mostra o grupo de aprovação', async () => {
   const sem = { ...useAppStore.getState().settings! } as Partial<Settings>;
   delete sem.grupo_sem_aprovacao;
+  delete sem.operacao_grupo_liberado_executa;                 // o corte 61 (ADR-082) é posterior ao 57: o backend sem o grupo também não tem a chave
   useAppStore.setState({ settings: sem as Settings });
   await act(async () => { root.render(<LimitsSection />); });
   expect(container.textContent).not.toContain('Aprovação de política');
   expect(backend.callsTo('GET', /policy-groups/)).toHaveLength(0);
+});
+
+// 31.263 (ADR-082, 31.253): `operacao_grupo_liberado_executa`: a chave que faz o grupo dispensado agir sem aprovação na operação que executa.
+const CHAVE_LIBERADO = 'Operação que executa age sem aprovação para o grupo dispensado';
+const interruptorLiberado = () => Array.from(container.querySelectorAll('label')).find((l) => (l.textContent ?? '').includes(CHAVE_LIBERADO))?.querySelector('input') as HTMLInputElement;
+const gruposComMembros = [
+  { id: 'g-b', name: 'Liberado', description: '', capabilities: {}, limits: {}, loosened: [], members: [{ id: 'p1', username: 'a' }, { id: 'p2', username: null, name: 'Sem conta' }, { id: 'p3', username: 'c' }] },
+  { id: 'g-a', name: 'Análise', description: '', capabilities: {}, limits: {}, loosened: [], members: [] },
+];
+
+it('31.263: a chave vem ligada (padrão), explica o efeito e desligar manda só ela ao PUT /api/settings', async () => {
+  backend.on('GET', /^\/api\/instagram\/policy-groups/, () => json(gruposComMembros));
+  backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...useAppStore.getState().settings!, ...(c.body as Partial<Settings>) }));
+  await act(async () => { root.render(<LimitsSection />); });
+  await waitFor(() => expect(interruptorLiberado()).toBeTruthy());
+  expect(interruptorLiberado().checked).toBe(true);
+  expect(container.textContent).toContain('comenta na conta real sem nenhuma pessoa ler o texto antes');
+  expect(container.textContent).toContain('todos os alvos voltam a “Preparar”');
+  await click(interruptorLiberado());
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ operacao_grupo_liberado_executa: false });
+});
+
+it('31.263: ao lado da chave, o grupo apontado por grupo_sem_aprovacao com o nome e quantas personas; muda junto com a escolha', async () => {
+  useAppStore.setState({ settings: { ...useAppStore.getState().settings!, grupo_sem_aprovacao: 'g-b' } });
+  backend.on('GET', /^\/api\/instagram\/policy-groups/, () => json(gruposComMembros));
+  await act(async () => { root.render(<LimitsSection />); });
+  await waitFor(() => expect(caixaDoGrupo().disabled).toBe(false));
+  const apontado = () => container.querySelector('[data-grupo-apontado]')!.textContent;
+  expect(apontado()).toBe('Grupo apontado: Liberado · 3 personas. As personas dele agem sem aprovação.');
+  await setValue(caixaDoGrupo(), 'g-a');
+  expect(apontado()).toContain('Análise · 0 personas');
+  expect(apontado()).toContain('Sem personas, a chave não tem efeito.');
+  await setValue(caixaDoGrupo(), '');
+  expect(apontado()).toBe('Nenhum grupo apontado: nenhuma persona é dispensada da aprovação.');
+});
+
+it('31.263: grupo salvo que sumiu da lista é dito, e a lista sem `members` (backend antigo) mostra só o nome', async () => {
+  useAppStore.setState({ settings: { ...useAppStore.getState().settings!, grupo_sem_aprovacao: 'g-sumiu' } });
+  backend.on('GET', /^\/api\/instagram\/policy-groups/, () => json(grupos));
+  await act(async () => { root.render(<LimitsSection />); });
+  await waitFor(() => expect(caixaDoGrupo().disabled).toBe(false));
+  expect(container.querySelector('[data-grupo-apontado]')!.textContent).toContain('não existe mais');
+  await setValue(caixaDoGrupo(), 'g-b');
+  expect(container.querySelector('[data-grupo-apontado]')!.textContent).toContain('Grupo apontado: Operação própria. ');
+  expect(container.querySelector('[data-grupo-apontado]')!.textContent).not.toContain('·');
+});
+
+it('31.263: backend anterior ao corte 61 (sem a chave): o interruptor não aparece, o grupo continua', async () => {
+  const sem = { ...useAppStore.getState().settings! } as Partial<Settings>;
+  delete sem.operacao_grupo_liberado_executa;
+  useAppStore.setState({ settings: sem as Settings });
+  backend.on('GET', /^\/api\/instagram\/policy-groups/, () => json(grupos));
+  await act(async () => { root.render(<LimitsSection />); });
+  await waitFor(() => expect(caixaDoGrupo().disabled).toBe(false));
+  expect(container.textContent).not.toContain(CHAVE_LIBERADO);
 });

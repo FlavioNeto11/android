@@ -185,6 +185,15 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     soSeOServidorManda: true,
     title: 'Aprovação de política',
     description: 'Por padrão, a ação de uma persona que a política deixa sob aprovação espera o dono. Aqui um grupo de política fica dispensado dessa espera (28.61); vale na hora, sem reiniciar.',
+    toggles: [
+      {
+        key: 'operacao_grupo_liberado_executa',
+        label: 'Operação que executa age sem aprovação para o grupo dispensado',
+        hint: 'Ligado (padrão): a persona do grupo dispensado, numa operação com ação final “Executar”, nasce com permissão de agir: comenta na conta real sem '
+          + 'nenhuma pessoa ler o texto antes e sem passar pelo Liberar. Recusas, frota, espaçamento entre contas, tetos, conduta e proteção de conta continuam. '
+          + 'Desligado: todos os alvos voltam a “Preparar” e esperam o Liberar (ADR-082). Vale na criação de cada alvo; a execução já criada mantém o que tinha.',
+      },
+    ],
     grupos: [
       {
         key: 'grupo_sem_aprovacao',

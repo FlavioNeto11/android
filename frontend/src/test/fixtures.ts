@@ -19,6 +19,7 @@ export const SETTINGS: Settings = {
   auto_start_devices: false, max_online_devices: 3, min_online_dwell_s: 60, idle_stop_s: 0,
   preview_mode: 'on_demand',
   orquestracao_max_escolhidas: 30, orquestracao_max_candidatas: 60, operacao_max_acoes_executadas: 3,
+  operacao_grupo_liberado_executa: true,
 };
 
 export const APPS: AppConfig[] = [

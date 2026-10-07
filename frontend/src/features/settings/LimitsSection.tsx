@@ -195,6 +195,7 @@ function GroupRow({ field, value, onChange }: { field: GroupPickField; value: st
     ? `${field.hint} Não consegui listar os grupos agora: informe o id do grupo (vazio = desligado).`
     : field.hint;
   return (
+    <>
     <Field label={field.label} hint={hint}>
       {(ids) => grupos === 'erro' ? (
         <TextInput id={ids.id} aria-describedby={ids.describedBy} value={value} onChange={(e) => onChange(e.target.value)} />
@@ -206,7 +207,20 @@ function GroupRow({ field, value, onChange }: { field: GroupPickField; value: st
         </Select>
       )}
     </Field>
+    {/* O grupo apontado, ao lado da chave que age nele (31.263): quem liga "executar sem aprovação" vê QUEM passa a agir sem revisão. */}
+    <p className={styles.fieldsetHint} data-grupo-apontado>{resumoDoGrupoApontado(value, lista)}</p>
+    </>
   );
+}
+
+/** O que a escolha do grupo dispensado significa agora: nome e quantas personas (pela lista de grupos que a própria tela já lê). */
+export function resumoDoGrupoApontado(id: string, lista: readonly PolicyGroup[] | null): string {
+  if (id === '') return 'Nenhum grupo apontado: nenhuma persona é dispensada da aprovação.';
+  if (lista === null) return 'Lendo o grupo apontado…';
+  const g = lista.find((x) => x.id === id);
+  if (!g) return 'O grupo apontado não existe mais: ninguém é dispensado da aprovação até você escolher outro.';
+  const n = Array.isArray(g.members) ? g.members.length : null;
+  return `Grupo apontado: ${g.name}${n === null ? '' : ` · ${n} ${n === 1 ? 'persona' : 'personas'}`}. ${n === 0 ? 'Sem personas, a chave não tem efeito.' : 'As personas dele agem sem aprovação.'}`;
 }
 
 type ChoiceValue = NonNullable<Settings[ChoiceField['key']]>;
