@@ -332,6 +332,8 @@ class ServicoDeOperacoes:
         return {"items": itens}
 
     def ler(self, op_id: str) -> dict[str, object]:
+        """A operação lida agora. Grava só o que mudou desde a leitura anterior (estágio, reabertura, fechamento e os
+        eventos deles), e a mesma leitura repetida não grava nada (31.216): o painel e a Canais podem ler à vontade."""
         op = self.db.one("SELECT * FROM operacoes WHERE id=?", (op_id,))
         if op is None:
             raise OperacaoError("operacao_inexistente", "Operação não encontrada.", 404)

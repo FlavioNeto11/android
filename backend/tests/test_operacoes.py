@@ -982,3 +982,33 @@ async def test_a_lista_filtrada_por_persona_ou_aparelho_traz_so_as_operacoes_del
         assert r.status_code == 200 and [i["id"] for i in r.json()["items"]] == [as_duas["id"]]
         r = await c.get("/api/operacoes", params={"profile_id": ""})
         assert r.status_code == 422
+
+
+async def test_ler_varias_vezes_nao_grava_de_novo_nem_avisa_de_novo(harness: Harness) -> None:
+    """31.216 (achado da Canais, 28.74): o resumo diário e o painel fazem muitos GETs. A leitura grava só o que mudou
+    desde a anterior (o estágio derivado e o fechamento, com o aviso de cada um), e a mesma leitura repetida não grava
+    nada nem avisa de novo: o banco e os eventos ficam iguais. O estado gravado começa atrasado de propósito, para a
+    primeira leitura ter o que gravar."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Repete")
+    _conta(harness, pid, "qa-user-51")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-releitura"))
+    st.db.execute("UPDATE operacao_alvos SET estagio='persona', estado='pendente', motivo=NULL WHERE operacao_id=?",
+                  (op["id"],))
+    st.db.execute("UPDATE operacoes SET status='em_curso', finished_at=NULL WHERE id=?", (op["id"],))
+
+    def retrato() -> tuple[object, ...]:
+        return (dict(st.db.one("SELECT * FROM operacoes WHERE id=?", (op["id"],))),
+                [dict(r) for r in st.db.query("SELECT * FROM operacao_alvos WHERE operacao_id=?", (op["id"],))],
+                st.db.scalar("SELECT COUNT(*) FROM events"))
+
+    antes = retrato()
+    primeira = s.ler(op["id"])
+    depois = retrato()
+    assert depois != antes and depois[2] > antes[2]  # type: ignore[operator]
+    assert primeira["status"] == "concluida_com_bloqueios" and primeira["finished_at"]
+    for _ in range(5):
+        assert s.ler(op["id"]) == primeira
+    assert retrato() == depois

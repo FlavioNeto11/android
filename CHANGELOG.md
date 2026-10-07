@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.216: a leitura repetida da operação não grava nem avisa de novo (branch feat/operacao-latencia-por-estagio, corte 60)
+
+- O `GET /api/operacoes/{id}` grava só o que mudou desde a leitura anterior (o estágio derivado, a reabertura e o
+  fechamento, com os eventos deles); repetido, não grava nada nem emite evento. Fica registrado na nota do 31.216, depois
+  do adendo v1.116.
+- Prova `simulated`: `backend/tests/test_operacoes.py::test_ler_varias_vezes_nao_grava_de_novo_nem_avisa_de_novo` (seis
+  leituras; o banco e a contagem de eventos iguais depois da primeira; a mutação que tira a guarda de `_anotar` é pega).
+  Real: not_run.
+
 ## 2026-10-07 — 31.206 e 31.213: a fila do aparelho no GET e a lista de operações por persona (branch feat/operacao-latencia-por-estagio, corte 60)
 
 - 31.206 (adendo v1.114): o alvo pendente traz `fila` `{posicao, a_frente, previsao_inicio_em, base_ms}`, na ordem do

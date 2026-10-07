@@ -7562,3 +7562,13 @@ Sem filtro, a lista é a de sempre, sem `alvos`. Um filtro vazio (`?profile_id=`
 
 Código: `ServicoDeOperacoes.listar` e a rota em `modules/operacoes/presentation/router.py`. Teste:
 `backend/tests/test_operacoes.py::test_a_lista_filtrada_por_persona_ou_aparelho_traz_so_as_operacoes_dela_com_o_resumo_do_alvo`.
+
+### Nota do 31.216 (sem número novo): a leitura repetida não grava
+
+`GET /api/operacoes/{id}` (e a lista, o relatório e as respostas dos POSTs, que leem por ele) **grava só o que mudou
+desde a leitura anterior**: o estágio derivado de cada alvo, com o evento `operacao.alvo`, a reabertura da operação
+cuja ação foi aprovada por fora do liberar e o fechamento com `operacao.encerrada`. Cada escrita é condicional, e a
+mesma leitura repetida não grava nada nem emite evento. "Só lê" quer dizer "não grava de novo", não "nunca grava": não
+há laço do sistema que avance a operação, e é a leitura (a do painel, a da Canais ou a de um POST) que a avança.
+Teste: `backend/tests/test_operacoes.py::test_ler_varias_vezes_nao_grava_de_novo_nem_avisa_de_novo`, com uma mutação
+(sem a guarda de `_anotar`) pega pelo teste.
