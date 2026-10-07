@@ -1,4 +1,4 @@
-import { CircleAlert, ListChecks, Play, Server, Shuffle, Smartphone, Sparkles, UserRound, Wand2 } from 'lucide-react';
+import { CircleAlert, ListChecks, Play, Power, Server, Shuffle, Smartphone, Sparkles, UserRound, Wand2 } from 'lucide-react';
 import type { RunMode, RunTargetsSuggestion } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -16,7 +16,7 @@ const ADERENCIA = { alta: { tone: 'success', rotulo: 'aderência alta' }, media:
  * confirmar ecoa estes alvos, como a prévia por persona. Sem formulário novo: o que falta numa persona se completa
  * na própria persona ("Completar com IA"), a um clique daqui.
  */
-export function SugestaoDeAlvos({ sugestao, carregando, erro, mode, enviando, impede, onConfirmar, onManual, onFechar }: {
+export function SugestaoDeAlvos({ sugestao, carregando, erro, mode, enviando, impede, onConfirmar, onManual, onIncluir, onFechar }: {
   sugestao: RunTargetsSuggestion | null;
   carregando: boolean;
   erro: string | null;
@@ -26,6 +26,8 @@ export function SugestaoDeAlvos({ sugestao, carregando, erro, mode, enviando, im
   impede: string | null;
   onConfirmar: () => void;
   onManual: () => void;
+  /** 31.274: levar uma persona descartada pela IA para a escolha manual, junto das escolhidas. */
+  onIncluir: (profileId: string) => void;
   onFechar: () => void;
 }) {
   const openPersona = useUiStore((s) => s.openPersona);
@@ -62,6 +64,7 @@ export function SugestaoDeAlvos({ sugestao, carregando, erro, mode, enviando, im
                     ) : null}
                   </div>
                   <p className={styles.motivo}>{e.motivo}</p>
+                  {(e.preparo ?? []).map((p) => <p key={p} className={styles.preparo}><Power size={12} aria-hidden /> {p}</p>)}
                 </li>
               ))}
             </ul>
@@ -98,7 +101,15 @@ export function SugestaoDeAlvos({ sugestao, carregando, erro, mode, enviando, im
             <details className={styles.descartadas}>
               <summary>{plural(s.descartadas.length, 'persona descartada', 'personas descartadas')}</summary>
               <ul>
-                {s.descartadas.map((d) => <li key={d.profile_id}><strong>{d.nome}</strong>: {d.motivo}</li>)}
+                {s.descartadas.map((d) => (
+                  <li key={d.profile_id}>
+                    <strong>{d.nome}</strong>: {d.motivo}{' '}
+                    <button type="button" className={styles.link} onClick={() => onIncluir(d.profile_id)}
+                            title="A sugestão não a escolheu, mas a escolha é sua: abre a escolha manual com ela marcada.">
+                      Incluir e escolher manualmente
+                    </button>
+                  </li>
+                ))}
               </ul>
             </details>
           ) : null}
