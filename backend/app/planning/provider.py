@@ -251,6 +251,10 @@ class PlanRequest:
     #: 31.153: as etapas ensinadas com receita estável dos apps do plano (`etapas_ensinadas.EtapaEnsinada`): nome,
     #: app, o que faz e os nomes dos parâmetros. Vazio = o pedido de antes.
     etapas_ensinadas: list[EtapaEnsinada] = field(default_factory=list)
+    #: 31.236: os `parametros` da OPERAÇÃO da execução (nome → valor já decidido pela pessoa). Sem eles o planejador
+    #: perguntava o que a operação já sabia (onda 2 de 07/10: "qual é o @…" com `username` fixado) e o alvo parava em
+    #: `needs_input`. Vazio = fora de operação, e o pedido é o de antes, byte a byte.
+    parametros_fixos: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.236: os parâmetros fixos da operação chegam ao planejador (branch feat/31-236-parametros-no-planejador)
+
+- Na onda 2 de 07/10 (op-20261007100019-681b9b), as três execuções pararam em `needs_input` com "qual é o @ da página
+  alvo", embora a operação tivesse `parametros.username`. O planejador só via o comando, e os fixos entravam depois do
+  plano (`fixar_parametros`), sem tocar no `missing`.
+- Agora a execução de operação manda os `parametros` ao planejador (`PlanRequest.parametros_fixos`, bloco
+  `<parametros_da_operacao>` logo depois do comando, nos três modos de planejamento). Fora de operação, o texto sai o de
+  antes, byte a byte.
+- Se mesmo assim o planejador perguntar por um campo com o NOME de um fixo, o fixo responde (`sem_perguntas_dos_fixos`)
+  e a decisão registra só o nome. A pergunta por outro campo continua indo a `needs_input`.
+- O teto `preparar` dos alvos não muda: ele nasce na criação do alvo (28.23) e é o portão do liberar e da aprovação
+  com `acao_final=executar`. Não foi ele que parou a onda.
+- Prova `simulated`: `backend/tests/test_parametros_no_planejador.py` (5; duas mutações pegas: sem o fixo no pedido e
+  sem a resposta à pergunta). `real`: `not_run` até o deploy (a onda 2 contornou o defeito com o @ também no comando).
+
 ## 2026-10-07 — 31.235: o GET da operação diz como a pesquisa rodou (branch feat/31-235-pesquisa-na-operacao)
 
 - `GET /api/operacoes/{id}` ganha `pesquisa` (adendo v1.125), aditivo, para a tela Operação do Portal (31.234). É `null` sem assunto.
