@@ -8019,7 +8019,7 @@ Sem rota nova (só dois campos de leitura no `GET /api/ai`). A exposição por p
 - **Prova:** `simulated` (`backend/tests/test_forte_so_no_commit.py`). `real`: `not_run`; o custo por alvo da primeira
   operação depois do deploy 61, contra a onda 2.
 
-## Adendo (07/10/2026; número a definir pela orquestradora; item 31.235) — a pesquisa da operação no GET
+## Adendo v1.125 (07/10/2026; número da orquestradora; item 31.235) — a pesquisa da operação no GET
 
 Sem rota nova. O `GET /api/operacoes/{id}` ganha um campo aditivo e só de leitura. O contrato é o mesmo combinado com o
 Portal (31.234, `.claude/handoffs/jev-para-portal-31-234.md`).

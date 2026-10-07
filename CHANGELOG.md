@@ -21,7 +21,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-07 — 31.235: o GET da operação diz como a pesquisa rodou (branch feat/31-235-pesquisa-na-operacao)
 
-- `GET /api/operacoes/{id}` ganha `pesquisa`, aditivo, para a tela Operação do Portal (31.234). É `null` sem assunto.
+- `GET /api/operacoes/{id}` ganha `pesquisa` (adendo v1.125), aditivo, para a tela Operação do Portal (31.234). É `null` sem assunto.
   O estado é `reaproveitada_do_livro`, `paga`, `falhou` ou `nao_rodou`, com o critério por extenso, o mínimo de
   fatos, o menor frescor, o custo da pesquisa e as referências dos fatos do Livro usados.
 - Lê só a memória da operação (`pesquisa.estado` e `livro.<item>`); nem texto de fato nem URL saem no campo. Os
