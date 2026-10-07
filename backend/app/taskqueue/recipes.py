@@ -824,6 +824,8 @@ class RecipeStore:
         #: provada da mesma etapa noutra versão, variante ou na legada (`find`). Desligado, só mede a causa. A loja
         #: sozinha não herda: quem liga é o executor, e só com a prova em sombra (`recipes_promote_after > 0`).
         self.herdar = herdar
+        #: 31.249: o escopo do alvo de cada receita (pela etapa em que ela foi aprendida); não muda, então fica em memória.
+        self._escopos: dict[int, str | None] = {}
 
     def _avisar(self, recipe_id: int, de: str | None, para: str, motivo: str, por: str = SISTEMA) -> None:
         if self.ouvinte is not None:
@@ -831,7 +833,7 @@ class RecipeStore:
 
     def find(self, package: str | None, app_version: str | None, step_hash: str | None, *,
              signature: str = "", variant: str = "", step_hash_generico: str | None = None,
-             persona: str | None = None, prova_fluxo: str | None = None) -> Row | None:
+             persona: str | None = None, prova_fluxo: str | None = None, escopo: str | None = None) -> Row | None:
         """Identidade da receita: pacote + versão + ASSINATURA + VARIANTE de interface + etapa.
 
         Assinatura entra porque dois APKs podem dizer a mesma versão e não serem o mesmo app; variante entra porque
@@ -876,18 +878,26 @@ class RecipeStore:
             if row is not None:
                 resultado = nome
                 break
+        if row is not None and escopo is not None and self.escopo_da_receita(row) not in (None, escopo):
+            # 31.249: a receita aprendida num post da PRÓPRIA conta não reproduz em post de terceiro (e vice-versa): a
+            # identidade da etapa é a mesma, mas a tela não (a 111, da grade do perfil nosso, divergiu nos 3 alvos de
+            # terceiro da onda 2 de 07/10 e custou US$ 0,14). A IA decide a etapa; nada de herança nem genérica.
+            metricas.contar("receita.consulta", resultado="outro_escopo")
+            self._registrar_consulta(int(row["id"]), "outro_escopo")
+            return None
         if row is not None and self._restrita_ao_ensino(row, persona, prova_fluxo):
             metricas.contar("receita.consulta", resultado="ensino_em_prova")
             return None
         if row is None:
             # Uma consulta a mais, só no erro: distingue "nunca aprendida" de "aprendida e posta de lado". As duas
             # mandam a etapa para a IA, mas pedem coisas diferentes de quem lê (aprender × investigar a tela).
-            quarentena = self.db.one("SELECT 1 FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
+            quarentena = self.db.one("SELECT id FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
                                      " AND variant=? AND step_hash IN (" + ",".join("?" * len(hashes)) + ")"
                                      " AND status='quarantined' LIMIT 1",
                                      (package, app_version, signature, variant, *hashes))
             if quarentena is not None:
                 resultado = "quarentena"
+                self._registrar_consulta(int(quarentena["id"]), "quarentena")
             else:
                 resultado, row = self._herdar(package, app_version, step_hash, signature=signature, variant=variant)
                 if row is None and len(hashes) > 1:
@@ -898,6 +908,41 @@ class RecipeStore:
         generica_casou = row is not None and len(hashes) > 1 and row["step_hash"] == hashes[1]
         metricas.contar("receita.consulta", resultado=resultado, chave="generica" if generica_casou else None)
         return row
+
+    def _registrar_consulta(self, recipe_id: int, resultado: str) -> None:
+        """31.271: a última consulta da receita (`ultima_consulta_em`/`_resultado`, migração 129), lida pela prova da
+        candidata no Livro. No `find` é melhor esforço: a consulta corre fora de transação, por etapa elegível, e uma
+        gravação que falha não pode virar exceção da consulta (a etapa só perderia o que a aba Aprendido mostra)."""
+        try:
+            self.db.execute("UPDATE recipes SET ultima_consulta_em=?, ultima_consulta_resultado=? WHERE id=?",
+                            (now_iso(), resultado, recipe_id))
+        except Exception:  # noqa: BLE001 - a marca é leitura do painel; a consulta segue sem ela
+            log.exception("receita: última consulta da %s não gravada", recipe_id)
+
+    def escopo_da_receita(self, row: Row) -> str | None:
+        """31.249: o escopo do alvo da etapa em que a receita foi aprendida (`learned_from_step`): `proprio` quando o
+        alvo dela (`post_author`/`username`) era a conta da persona daquela execução, `terceiro` quando
+        era outra conta, `None` quando não se sabe (treino, etapa apagada, ação sem conta-alvo). `None` não filtra."""
+        rid = int(row["id"])
+        if rid not in self._escopos:
+            self._escopos[rid] = self._escopo_aprendido(str(row["learned_from_step"] or ""))
+        return self._escopos[rid]
+
+    def _escopo_aprendido(self, step_id: str) -> str | None:
+        if not step_id or step_id.startswith(PREFIXO_DO_TREINO):
+            return None
+        try:
+            linha = self.db.one("SELECT s.bindings, o.profile_id FROM steps s"
+                                " JOIN objectives o ON o.id = s.objective_id WHERE s.id=?", (step_id,))
+            if linha is None:
+                return None
+            contas = [str(r["handle"]) for r in self.db.query(
+                "SELECT handle FROM profile_accounts WHERE profile_id=? AND handle IS NOT NULL", (linha["profile_id"],))
+                ] if linha["profile_id"] else []
+            return escopo_do_alvo(loads(linha["bindings"], {}) or {}, contas)
+        except Exception:  # noqa: BLE001 - o escopo é filtro de otimização: sem ele, a consulta de sempre
+            log.exception("receita: escopo da etapa %s não lido", step_id)
+            return None
 
     def liberada_fora_do_ensino(self, row: Row) -> bool:
         """30.81, para o rendimento do ensino: a receita vale fora da persona que ensinou (a do treino só depois do
@@ -1188,6 +1233,29 @@ class RecipeStore:
         metricas.contar("receita.reproducao", resultado="divergiu")
         return True, self._falhou(recipe_id, zera_serie=False)
 
+    def nao_aplicavel_em_prova(self, recipe_id: int) -> bool:
+        """31.262: o 30.80 na SOMBRA. A candidata não se aplicou nesta execução (o alvo da ação 1 não estava na tela de
+        partida) e a IA comprovou a etapa: não é veredito sobre ela. Antes, contava como divergência, zerava a prova e
+        trocava a candidata pelo caminho da IA, que partia de outra tela (a chave genérica do `open_profile` passou por
+        118, 166, 222 e 223 sem nunca ficar ativa; a 222 virou a 223 por uma etapa que começou fora do app).
+
+        A série é a mesma `nao_aplicavel_seguidas` da reprodução; a concordância e a divergência a zeram. Devolve True a
+        partir da `NAO_APLICAVEL_CONTA_APOS`-ésima seguida: aí conta como divergência (o 1º seletor quebrado de vez não
+        prende a chave numa candidata que nunca se aplica)."""
+        with self.db.tx():
+            agora = now_iso()
+            self.db.execute("UPDATE recipes SET nao_aplicavel_seguidas=nao_aplicavel_seguidas+1, last_used_at=?"
+                            " WHERE id=?", (agora, recipe_id))
+            seguidas = int(self.db.scalar("SELECT nao_aplicavel_seguidas FROM recipes WHERE id=?", (recipe_id,)) or 0)
+            if seguidas < NAO_APLICAVEL_CONTA_APOS:
+                # 31.271: sem veredito, a última consulta diz que ela não se aplicou; a que conta vira a divergência
+                # que o executor leva ao `shadow` logo depois (gravada lá, uma vez só).
+                self.db.execute("UPDATE recipes SET ultima_consulta_em=?, ultima_consulta_resultado='nao_aplicavel'"
+                                " WHERE id=?", (agora, recipe_id))
+        conta = seguidas >= NAO_APLICAVEL_CONTA_APOS
+        metricas.contar("receita.sombra", resultado="divergiu" if conta else "nao_aplicavel")
+        return conta
+
     def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int, simulada: bool = False) -> bool:
         """Veredito da sombra de UMA execução da etapa. Devolve True se a candidata foi promovida a ativa agora.
 
@@ -1206,6 +1274,9 @@ class RecipeStore:
         RA-19 B: a concordância de uma execução SIMULADA (`simulada`) não conta para a candidata: não soma à sequência
         nem a promove; só evidência real publica. A divergência dela zera, como qualquer outra (o lado seguro), e na
         ativa a taxa acumula igual.
+
+        31.271: o veredito que conta grava a última consulta (`concordou`/`divergiu`). A concordância simulada que não
+        conta não grava nada: a aba Aprendido diria "concordou" de uma consulta que não somou à prova.
         """
         with self.db.tx():
             row = self.db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
@@ -1213,13 +1284,17 @@ class RecipeStore:
                 return False
             if agreed and simulada and row["status"] == "candidate":
                 return False
+            consulta = (now_iso(), "concordou" if agreed else "divergiu")
             if agreed:
-                self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1, shadow_agree=shadow_agree+1"
-                                " WHERE id=?", (recipe_id,))
+                self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1, shadow_agree=shadow_agree+1,"
+                                " nao_aplicavel_seguidas=0, ultima_consulta_em=?, ultima_consulta_resultado=?"
+                                " WHERE id=?", (*consulta, recipe_id))
             elif row["status"] == "candidate":
-                self.db.execute("UPDATE recipes SET shadow_total=0, shadow_agree=0 WHERE id=?", (recipe_id,))
+                self.db.execute("UPDATE recipes SET shadow_total=0, shadow_agree=0, nao_aplicavel_seguidas=0,"
+                                " ultima_consulta_em=?, ultima_consulta_resultado=? WHERE id=?", (*consulta, recipe_id))
             else:
-                self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1 WHERE id=?", (recipe_id,))
+                self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1, ultima_consulta_em=?,"
+                                " ultima_consulta_resultado=? WHERE id=?", (*consulta, recipe_id))
             seguidas = int(self.db.scalar("SELECT shadow_agree FROM recipes WHERE id=?", (recipe_id,)) or 0)
             if not (agreed and row["status"] == "candidate" and seguidas >= max(1, promote_after)):
                 return False
@@ -1272,3 +1347,24 @@ class RecipeStore:
 
     def replayer(self, row: Row, variables: dict[str, str]) -> Replayer:
         return Replayer(recipe_id=row["id"], version=row["version"], actions=loads(row["actions"], []), variables=variables)
+
+
+# ------------------------------------------------------------------ 31.249: escopo do alvo
+ESCOPO_PROPRIO, ESCOPO_TERCEIRO = "proprio", "terceiro"
+#: Os argumentos que nomeiam a CONTA-alvo da etapa (o perfil aberto, o autor do post). A legenda e a imagem não dizem de
+#: quem é o alvo; o `objeto_alvo` do catálogo só existe nas ações de efeito, e a navegação (OPEN_POST) o traz nos argumentos.
+_ALVO_QUE_E_CONTA = ("username", "post_author")
+_MARCADOR_DE_CONTA = re.compile(r"^@?\{conta_\w+_usuario(?:_\d+)?\}$")
+
+
+def escopo_do_alvo(bindings: Mapping[str, object], contas: Sequence[str]) -> str | None:
+    """31.249: `proprio` quando a conta-alvo da etapa (`_ALVO_QUE_E_CONTA`) é uma das `contas` da persona (ou o marcador
+    dela, 31.113 F3), `terceiro` quando é outra conta, `None` sem conta-alvo (argumento ausente ou vazio)."""
+    valores = [str(bindings.get(n) or "").strip() for n in _ALVO_QUE_E_CONTA]
+    valores = [v for v in valores if v]
+    if not valores:
+        return None
+    minhas = {c.strip().lstrip("@").casefold() for c in contas if c and c.strip()}
+    if any(_MARCADOR_DE_CONTA.match(v) or v.lstrip("@").casefold() in minhas for v in valores):
+        return ESCOPO_PROPRIO
+    return ESCOPO_TERCEIRO

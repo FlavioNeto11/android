@@ -241,6 +241,23 @@ _ORIGEM_DO_ITEM: Mapping[SourceKind, Origem] = {
 
 
 @dataclass(frozen=True, slots=True)
+class ProvaDaCandidata:
+    """31.271: a prova da receita CANDIDATA, para a aba Aprendido (31.270) ver por que ela não vira ativa.
+
+    `concordancias`: `recipes.shadow_agree`, a sequência (a divergência zera). `necessarias`: `ai.recipes_promote_after`;
+    `None` = quem leu não sabe (o leitor sem a configuração). `ultima_consulta_em`/`_resultado`: a última consulta
+    gravada pela loja (migração 129), `None` = nunca consultada desde então. `substitui_*`: a ATIVA da mesma chave
+    (pacote, versão, assinatura, variante e etapa) que ela assume ao ser promovida; `None` = não há ativa."""
+
+    concordancias: int
+    necessarias: int | None = None
+    ultima_consulta_em: str | None = None
+    ultima_consulta_resultado: str | None = None
+    substitui_ref: str | None = None
+    substitui_versao: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class EntradaDoLivro:
     """Uma linha do livro, venha de onde vier. `ref` é o id na fonte (receita: o número; habilidade: `id@versão`;
     memória: o perfil; item: `li-…`)."""
@@ -301,6 +318,8 @@ class EntradaDoLivro:
     source_kind: str | None = None
     #: 31.200: o assunto canônico do item (`scope_subject`); `None` no item sem assunto e nos outros tipos.
     assunto: str | None = None
+    #: 31.271: só na receita candidata; `None` em todo o resto.
+    prova_da_candidata: ProvaDaCandidata | None = None
 
     @property
     def requires_owner(self) -> bool:

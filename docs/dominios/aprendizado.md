@@ -2620,6 +2620,90 @@ Agora (`StepExecutor._after_step`, `ai.candidata_da_ativa_que_divergiu`, padrão
 **Prova.** `simulated`: `backend/tests/test_candidata_da_ativa_que_divergiu.py` (5). `real`: `not_run`; a 1ª receita
 ativa que divergir até a quarentena depois do deploy.
 
+## A receita só reproduz no escopo do alvo em que nasceu (31.249)
+
+Medido em 07/10 (só leitura): a receita 111 (`open_post_1`) foi aprendida em 03/10 num post da PRÓPRIA conta da
+persona. As etapas `open_post_1` da onda 2 e da rodada iam a post de terceiro, com o MESMO `template_hash`, porque a
+etapa não cita o autor na pós-condição. Na onda 2 a 111 divergiu nos 3 alvos e foi à quarentena: US$ 0,1415, 39 % da
+onda.
+
+Só uma receita viva cabe por chave. Se o escopo entrasse na identidade, as receitas de um dos lados ficariam órfãs, e a
+identidade é calculada em vários lugares. Por isso ele entra na CONSULTA (`RecipeStore.find(..., escopo=)`):
+- **Regra** (`recipes.escopo_do_alvo`): a conta-alvo da etapa (`post_author` ou `username`) pode ser uma conta da
+  persona, sem caixa nem arroba, ou o marcador dela (31.113 F3); nesse caso o escopo é `proprio`. Outra conta dá
+  `terceiro`. Sem conta-alvo, `None`.
+- **Receita**: o escopo sai da etapa em que ela foi aprendida (`learned_from_step`, com as contas da persona daquela
+  execução em `profile_accounts`) e fica em memória (não muda). Sem a etapa, ou vinda do treino, `None`.
+- **Consulta**: o executor passa o escopo da etapa da vez, pelas contas da persona e o `account_label`. A receita de
+  outro escopo não reproduz: `receita.consulta{resultado=outro_escopo}`, e a IA decide a etapa, sem herança nem chave
+  genérica. Com `None` de um dos lados, a consulta é a de sempre.
+
+No dado real de 07/10, a regra dá: 111 `proprio`; 222 e 223 (`open_profile` de terceiro) `terceiro`; 91
+(`open_comments`, sem conta-alvo) `None`.
+
+Limite: a chave segue com uma receita viva só. O escopo que perder a vaga vai à IA, e não diverge pagando.
+
+**Prova.** `simulated`: `backend/tests/test_escopo_da_receita.py` (5: a regra; o escopo da etapa aprendida; a consulta
+no mesmo escopo e no outro, com a métrica; sem escopo conhecido vale nos dois; o executor passa o escopo). `real`:
+`not_run`. A prova é a 1ª operação em post de terceiro depois do deploy, com `outro_escopo` no lugar da divergência da
+111.
+
+## O roteiro de prova real dos deploys 60 e 61 (31.268)
+
+`scripts/prova-real-aprendizado.py --operacao OP` fecha as provas reais dos itens do aprendizado em minutos depois da
+operação (tabela em `docs/operacao.md`). Por item, primeiro o commit (o do `feat` dele estava no central quando a
+operação começou?), depois a leitura com o achado:
+
+| Item | Evidência esperada |
+|---|---|
+| 31.231 | log "pesquisa reaproveitada do Livro" (sem chamada paga) |
+| 31.232 | decisão de commit no forte (`decide`, `escalate=efeito`, tier ≥ 1) sem imagem, salvo o alvo fora da árvore |
+| 31.236 (Jev) | operação com parâmetro fixo sem execução em `needs_input` |
+| 31.237 | o 1º plano grava o cache e os irmãos leem (`cache_read > 0`) |
+| 31.238 | evento `rejulgamento_dispensado` |
+| 31.239 | decision "comentário comprovado pela árvore local" |
+| 31.242 / 31.243 | notas; eventos, ações e `status_detail` sem o usuário da conta da persona (contagem, nunca o valor) |
+| 31.244 | receita aprendida na operação com o marcador da persona e sem o valor |
+| 31.248 | operação sem assunto com "pesquisa com o assunto da leitura do alvo" |
+| 31.249 | etapa com receita de outro escopo na mesma chave conduzida pela IA, nunca pela receita |
+| 31.250 | decision "pelo marcador do catálogo" na etapa livre com nível |
+| 31.262 | evento `receita_nao_aplicavel` com `em_prova` |
+
+Só o `presente` vira `real` em `resultados`. O `divergente` é prova real de defeito e fica em `divergencias`, para
+quem corrige. `ausente`, `sem_caso` e `nao_no_ar` são `not_run` e nunca entram no `aplicar`.
+
+Ensaio na rodada de 07/10 (`op-20261007125539-22ef67`, central `8552b160`, deploy 59): os 13 itens saem `nao_no_ar`.
+Com `--commit` forçado na ponta da integ-62, só como diagnóstico das leituras, a onda 2 (`op-20261007100755-096a28`)
+mostra o defeito de antes: 31.249 divergente nas 3 etapas `open_post_1` (a 111 de outro escopo), 31.242 e 31.243
+divergentes (usuário sem máscara), 31.232 divergente (imagem no commit do forte). A rodada mostra 31.237 divergente
+(os 2 planos irmãos frios).
+
+**Prova.** `simulated`: `scripts/tests/test_prova_real_aprendizado.py` (6). `real`: o ensaio acima.
+
+## A candidata que não se aplica na partida segue em prova (31.262)
+
+Medido em 07/10 (só leitura): a receita 222 (`open_profile` de perfil de terceiro, chave genérica) não reproduziu na
+rodada das 12:55, e não podia: era candidata, nascida às 10:08 na onda 2, com 0 concordâncias, e candidata não
+reproduz (são 2 seguidas para promover). A onda 2 também foi conduzida pela IA (9 decisões, 3 por aparelho). A rodada
+pagou 16 decisões e 1 julgamento: os 3 aparelhos começaram com a folha de comentários que a operação anterior deixou
+aberta (2 a 5 decisões para voltar ao perfil), e o replanejamento do android-06 refez a etapa (4 decisões).
+
+O defeito do aprendizado estava na sombra. A divergência por tela de partida diferente zerava a prova e trocava a
+candidata pelo caminho da IA: a 222 virou a 223 (o mesmo caminho com um `open_app` na frente) numa etapa que começou
+fora do app. A chave passou por 118, 166, 222 e 223 sem nunca ficar ativa. Agora, como o 30.80 na reprodução:
+- o alvo da AÇÃO 1 ausente na tela de partida (`AlvoAusente` antes de comparar qualquer ação) encerra a comparação, sem
+  veredito (`_RecipeRun.partida_diferente`);
+- com a etapa comprovada, a candidata segue em prova (a sequência não zera), o caminho da IA não a substitui, e a série
+  `nao_aplicavel_seguidas` sobe (`RecipeStore.nao_aplicavel_em_prova`, métrica `receita.sombra`); o evento é
+  `receita_nao_aplicavel` com `em_prova`;
+- a concordância e a divergência zeram a série; a 3ª seguida conta como divergência, como antes.
+
+A folha que ficou aberta entre operações não é do aprendizado: é do preparo da etapa (quem devolve o app ao estado
+conhecido antes do alvo).
+
+**Prova.** `simulated`: `backend/tests/test_sombra_partida_diferente.py` (3). `real`: o diagnóstico acima (leitura do
+central). A correção é `not_run` até a próxima etapa com candidata em prova que comece fora do estado dela.
+
 ## A receita sem o "voltar" inicial (31.230)
 
 Achado da onda 1 (07/10): a IA começou o `open_profile` por voltar (`press_back`). Como o voltar depende da tela de
@@ -2669,3 +2753,38 @@ A chave `livro.` não volta ao Livro: o minerador do 31.190 só lê `pesquisa.*`
 registra, serviço que paga quando não cobre ou quando a leitura falha, leitor do Livro no harness). `real`: `not_run`;
 a 1ª operação de assunto repetido depois do deploy. Contrato com a Jev aceito em 07/10 com dois pontos (filtro por app;
 o `candidate` só por ter vindo confirmado), os dois aplicados.
+
+## O assunto da operação nasce da leitura do alvo (31.248)
+
+Medido na onda 2 (07/10): a operação não tinha `assunto` nem `fontes`. `pesquisar_se_preciso` voltava `None` sem
+assunto, e a lacuna (o critério 5 do dono, que existe desde o 31.158) nem era consultada. A pesquisa (critério 6) e o
+reaproveitamento do 31.231 não tinham onde agir.
+
+Agora, sem assunto guardado (`ai.pesquisa.assunto_da_leitura`, padrão `true`), o assunto vem da leitura do alvo:
+- **Regra** (`learning/domain/reaproveitamento_da_pesquisa.assunto_da_leitura`, pura): o recorte PÚBLICO da
+  publicação (`alvo.conteudo`, gravado pelo primeiro agente que a leu, com frescor de 6 h), em uma linha, com três
+  limpezas:
+  - sem menção a conta, porque o nome de um terceiro não vai à busca externa;
+  - sem endereço;
+  - a hashtag vira palavra.
+
+  O resultado é cortado na palavra (160). Com menos de 3 palavras, não há assunto.
+- **Quando**: a pesquisa da criação (31.169) não acha assunto nem leitura e não roda. Ela também não deixa marca, então
+  a lacuna fica aberta. A 1ª leitura de uma operação sem assunto, na porta de escrita, agenda a pesquisa com a mesma
+  trava: o 1º agente escreve sem os fatos, e os seguintes já os leem. Dois alvos pagam uma vez.
+- **Livro**: o 31.231 é consultado com esse assunto antes de pagar (`fatos_do_livro(operacao, assunto)`).
+- **Minerador**: o fato que a operação deixa leva o MESMO assunto ao Livro (a mesma regra sobre a mesma leitura, em
+  `fatos_da_operacao_sql._operacoes`), para a próxima operação da mesma publicação o reusar. A coluna
+  `operacoes.assunto` (da Jev) não é escrita.
+
+O log diz "pesquisa com o assunto da leitura do alvo".
+
+Limites:
+- o assunto é o texto da publicação, sem resumo por IA;
+- duas publicações diferentes dão assuntos diferentes, e o Livro só cobre a mesma publicação (ou o mesmo texto).
+
+**Prova.** `simulated`: `backend/tests/test_assunto_da_leitura_do_alvo.py` (6: a regra; o serviço sem assunto, sem
+marca antes da leitura e com o Livro consultado pelo assunto da leitura; o assunto guardado vence e o desligado é o de
+antes; o Livro cobrindo não paga; o minerador; a porta com dois alvos e uma pesquisa). `real`: `not_run`. A 1ª
+operação sem assunto depois do deploy faz uma chamada paga, até o teto de US$ 0,25 por operação; ela pede o sim do
+dono para a validação.

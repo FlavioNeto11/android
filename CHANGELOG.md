@@ -265,6 +265,70 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Sem mudança de código: a fila por vaga já existe, e `max_ai_concurrency` é relido ao vivo.
 - Prova `simulated`; a leitura real fica para a onda 2.
 
+## 2026-10-07 — 31.271: a prova da receita candidata no Livro (branch feat/31-271-prova-da-candidata)
+
+- A receita candidata passa a guardar a última consulta (migração 129: `recipes.ultima_consulta_em` e
+  `ultima_consulta_resultado`). Gravam `RecipeStore.shadow` (`concordou`, `divergiu`), `nao_aplicavel_em_prova`
+  (`nao_aplicavel`, 31.262) e `RecipeStore.find` (`outro_escopo`, `quarentena`). No `find` a gravação é melhor esforço:
+  não vira exceção da consulta. A concordância simulada que não conta não grava.
+- A linha do Livro (lista e item aberto) ganha `prova_da_candidata` só na candidata: concordâncias, necessárias
+  (`ai.recipes_promote_after`), última consulta e a ativa da mesma chave que ela substitui (adendo v1.128). A ativa sai
+  do próprio lote na lista, sem consulta por candidata.
+- Prova `simulated`: `backend/tests/test_prova_da_candidata.py` (7) e `test_migracao_129.py` (2); vizinhos de receita e
+  Livro verdes. `real`: `not_run`. O PostgreSQL também (`not_run`, só na vez da orquestradora).
+
+## 2026-10-07 — 31.268: o roteiro de prova real do aprendizado dos deploys 60 e 61 (branch feat/31-268-roteiro-prova-real)
+
+- `scripts/prova-real-aprendizado.py --operacao OP`: só leitura (banco em `mode=ro`, saúde por GET). Por item: o
+  commit no ar (o `--commit`, o último deploy do CHANGELOG antes da operação ou a saúde) e a leitura com o achado
+  `presente`, `divergente`, `ausente`, `sem_caso` ou `nao_no_ar`. Só o `presente` vai a `resultados` como `real`.
+  `--saida` grava um JSON por item; `--tabela` imprime legível. Só ids e contagens.
+- Ensaio na rodada de 07/10 (`op-20261007125539-22ef67`, deploy 59): os 13 itens saem `nao_no_ar`.
+- Prova `simulated`: `scripts/tests/test_prova_real_aprendizado.py` (6). `real`: o ensaio.
+
+## 2026-10-07 — 31.262: a candidata que não se aplica na partida segue em prova (branch feat/31-262-sombra-partida-diferente)
+
+- Diagnóstico (leitura do central): a 222 era candidata com 0 concordâncias e não podia reproduzir na rodada. A onda 2
+  também foi da IA (9 decisões). A rodada pagou 16 decisões: a folha de comentários da operação anterior estava aberta
+  nos 3 aparelhos, e o replanejamento do android-06 refez a etapa.
+- Correção na sombra (o 30.80 da reprodução): o alvo da ação 1 ausente na tela de partida não conta divergência, não
+  zera a prova e não troca a candidata; a série `nao_aplicavel_seguidas` sobe e a 3ª seguida conta como divergência.
+- Prova `simulated`: `backend/tests/test_sombra_partida_diferente.py` (3). `real`: `not_run`.
+
+## 2026-10-07 — 31.250: as marcas de entrega do QA Messenger dispensam o juiz barato (branch feat/31-250-marcas-do-qa)
+
+- O 31.250 de origem (a discordância do rejulgamento vira lição do juiz barato) foi recusado: o ADR-024 deixa o
+  verificador fora das lições. A troca fecha o erro medido com prova local.
+- Medido em 07/10: as 12 discordâncias do rejulgamento por nível eram todas do QA Messenger, em etapas com nível `sent`.
+- Agora `conhecimento/apps/com.pocqa.messenger/entrega.yaml` declara as marcas do `message_status` ("Enviada ✓",
+  "Entregue ✓✓", "Lida ✓✓"; pendente "Enviando…"; falha "Falha no envio ✕"). Na etapa sem capability, a marca casada
+  debaixo da bolha desta execução dispensa o primeiro julgamento (travas do 31.57; o 31.238 vale como para toda prova
+  local). O texto é o do último `type_text` da etapa, só em memória.
+- O QA Messenger continua sem catálogo: a porta do 13.2 e a oferta ao planejador não mudam (teste compara).
+- Prova `simulated`: `backend/tests/test_marcas_do_qa_messenger.py` (11). `real`: `not_run` (a 1ª execução do QA
+  Messenger com nível `sent` depois do deploy em que `verificacao.primeiro_juiz_dispensado{prova=marcador:sent}` contar).
+
+## 2026-10-07 — 31.249: a receita só reproduz no escopo do alvo em que nasceu (branch feat/31-249-escopo-da-receita)
+
+- A 111 (`open_post`, aprendida num post da própria conta) reproduziu em post de terceiro na onda 2, com o mesmo
+  `template_hash`. Divergiu nos 3 alvos: US$ 0,1415.
+- Agora a consulta (`RecipeStore.find(..., escopo=)`) compara o escopo da etapa com o da receita. O escopo é `proprio`
+  ou `terceiro`, pelo `post_author`/`username` contra as contas da persona; o da receita sai da etapa em que ela foi
+  aprendida. A receita de outro escopo não reproduz (`receita.consulta{resultado=outro_escopo}`), e a IA decide.
+- Sem migração e sem mudar a identidade da etapa.
+- Prova `simulated`: `backend/tests/test_escopo_da_receita.py` (5). `real`: `not_run` (a 1ª operação em post de
+  terceiro depois do deploy).
+
+## 2026-10-07 — 31.248: o assunto da operação nasce da leitura do alvo quando o pedido não traz um (branch feat/31-248-assunto-da-leitura-do-alvo)
+
+- A onda 2 não pesquisou porque a operação não tinha assunto: a lacuna (critério 5) nem era consultada.
+- Agora o assunto vem da leitura do alvo: o recorte público, sem menção a conta nem endereço
+  (`reaproveitamento_da_pesquisa.assunto_da_leitura`).
+- A 1ª leitura agenda a pesquisa, uma vez por operação. O Livro (31.231) é consultado com esse assunto antes de pagar,
+  e o minerador leva o mesmo assunto ao fato. `ai.pesquisa.assunto_da_leitura: false` volta ao de antes.
+- Prova `simulated`: `backend/tests/test_assunto_da_leitura_do_alvo.py` (6). `real`: `not_run` (a 1ª operação sem
+  assunto depois do deploy; chamada paga até o teto da operação, com o sim do dono).
+
 ## 2026-10-07 — 31.244: a receita aceita o marcador da persona já gravado no texto digitado (branch feat/31-244-distill-aceita-marcador-da-persona)
 
 - O registro grava o dado da persona como marcador (31.113 F1, `{perfil_nome}`; 31.243, `@{conta_<app>_usuario}`). A
@@ -864,6 +928,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `plan` simulado em que a etapa ganha o hash do ensino e a loja de receitas acha a receita gravada nele.
 ## 2026-10-07 — 31.183: a proposta do ensino para exibir, com o dado da persona mascarado (branch feat/31-183-proposta-exibicao)
 
+
+- Este item fecha o médio que a revisão de segredos do K-107 deixou. O título, o objetivo e o resumo da proposta só
+  trocavam o dado que a pessoa DIGITOU inteiro. Um @ ou um nome visto na tela e citado pela IA saía em claro no
+  `GET /api/training/{id}`.
+- A leitura da sessão ganha `proposal_exibicao` (`training/exibicao.py`), uma cópia da proposta com todo dado da
+  persona trocado pelo marcador:
+  - sem diferença de caixa, também depois do @ e com qualquer espaço;
+  - em título, objetivo, resumo, comando, perguntas e conferência;
+  - os identificadores (`capability`, `app_id`) ficam; a `key` da etapa é mascarada também, com o `_` como separador;
+  - vale em toda resposta do treino que traz a sessão (lista, GET, parar, descartar, desfazer, proposta, salvar e
+    refazer receitas), achado médio da revisão de segredos.
+  - o relatório por etapa (`steps[]`) da prévia, do salvar e do refazer receitas sai com o título e o motivo
+    mascarados (achado da Portal no 31.189); a `key` fica.
+- A `proposal` não muda: o painel a devolve na prévia e no salvar. Limite: casa o valor inteiro. O painel passa a
+  exibir a cópia no 31.189 (Portal). Adendo v1.109.
+- Prova `simulated`: `backend/tests/test_proposta_para_exibir.py` (2 testes). Ensino, personas, alcance, arquitetura e
+  rotas: 720 passaram; mypy 257. `real`: `not_run`, pede o deploy.
 ## 2026-10-06 — prova30 A3 (extensão do 31.157): o aprendizado de uma operação nas 10 perguntas do dono (branch feat/prova30-a3-aprendizado-da-operacao)
 
 - Pedido da orquestradora (o dono pediu para adiantar): para uma operação, responder às 10 perguntas do aprendizado do
