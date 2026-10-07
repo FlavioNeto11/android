@@ -1099,7 +1099,7 @@ describe('busca, filtros e visão em tabela', () => {
     await waitFor(() => document.querySelector('table') !== null);
     expect(window.location.hash).toBe('#/personas?visao=tabela');
     const cabecalhos = [...document.querySelectorAll('thead th')].map((th) => th.textContent);
-    expect(cabecalhos).toEqual(['Seleção', 'Nº', 'Persona', 'Conta (@)', 'Contas', 'Aparelho', 'Situação', 'Grupo', 'Ações']);
+    expect(cabecalhos).toEqual(['Seleção', 'Nº', 'Persona', 'Conta (@)', 'Contas', 'Aparelho', 'Situação', 'Capacidade', 'Sessão', 'Cofre', 'Último uso', 'Grupo', 'Ações']);
     expect((byRole('checkbox', /^Selecionar Quillon Teixeira$/) as HTMLInputElement).checked).toBe(true);
     expect((byRole('checkbox', /^Selecionar Luciana Bastos$/) as HTMLInputElement).checked).toBe(false);
     await click(byRole('button', /^Cartões$/));
@@ -1197,5 +1197,51 @@ describe('Nº da persona e aparelho dividido (31.245)', () => {
     await act(async () => useUiStore.getState().navegar({ tela: 'personas', query: { visao: 'tabela', q: 'carla' } }, 'replace'));
     await waitFor(() => document.querySelectorAll('tbody tr').length === 1);
     expect(document.querySelector('tbody tr [data-numero-da-persona]')?.textContent).toBe('3');
+  });
+});
+
+describe('capacidade por persona (31.255)', () => {
+  const SEM_SENHA = () => pessoa({ id: 'ig-7', name: 'Marta Sem Senha', username: 'marta.s', instance_id: 'android-07',
+    credential: { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null, updated_at: null, last_used_at: null } });
+  const PRONTA = () => pessoa({ id: 'ig-8', name: 'Paulo Pronto', username: 'paulo.p', instance_id: 'android-08',
+    credential: { configured: true, login_identifier: 'persona-b@exemplo.com', status: 'active', failed_attempts: 0, blocked_until: null, updated_at: null, last_used_at: '2026-10-07T10:00:00Z', consent_at: '2026-10-06T09:00:00Z' },
+    session: { status: 'session_ready', instance_id: 'android-08', observed_username: 'paulo.p', verified_at: '2026-10-07T09:00:00Z', detail: null, stale: false } });
+
+  it('o cartão diz se a pessoa está pronta ou o que falta, com o atalho para a guia certa, sem o identificador de login', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([PRONTA(), SEM_SENHA(), SEM_CONTA]));
+    await render();
+    await waitFor(() => text().includes('Marta Sem Senha'));
+    const selos = [...document.querySelectorAll('[data-capacidade]')].map((e) => e.getAttribute('data-capacidade')).sort();
+    expect(selos).toEqual(['pronta', 'sem_conta', 'sem_senha']);
+    expect(text()).toContain('Pronta para operar');
+    expect(text()).toContain('Falta guardar a senha');
+    expect(() => byRole('button', /^Guardar senha: abrir Marta Sem Senha/)).not.toThrow();
+    expect(text()).not.toMatch(/persona-b@exemplo.com|luciana@exemplo\.com/);
+  });
+
+  it('o filtro Capacidade mostra só quem falta resolver aquilo, com a contagem no chip; sem conta, sem senha e prontas somam a lista', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([PRONTA(), SEM_SENHA(), SEM_CONTA]));
+    await render();
+    await waitFor(() => text().includes('Marta Sem Senha'));
+    await click(byRole('button', /^Sem senha guardada/));
+    await waitFor(() => !text().includes('Paulo Pronto'));
+    expect(text()).toContain('Marta Sem Senha');
+    expect(text()).not.toContain('Elaine Prado');
+    expect(window.location.hash).toContain('capacidade=sem-senha');
+  });
+
+  it('a tabela traz Capacidade, Sessão, Cofre e Último uso, e o botão do que falta', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([PRONTA(), SEM_SENHA()]));
+    await render();
+    await click(byRole('button', /^Tabela$/));
+    await waitFor(() => document.querySelector('table') !== null);
+    const linha = (nome: string) => [...document.querySelectorAll('tbody tr')].find((tr) => tr.textContent?.includes(nome)) as HTMLElement;
+    const paulo = linha('Paulo Pronto');
+    expect(paulo.querySelector('[data-sessao-da-persona="pronta"]')?.textContent).toBe('Pronta');
+    expect(paulo.querySelector('[data-cofre-da-persona="pronto"]')?.textContent).toBe('Senha e consentimento');
+    const marta = linha('Marta Sem Senha');
+    expect(marta.querySelector('[data-cofre-da-persona="sem_senha"]')?.textContent).toBe('Sem senha guardada');
+    expect(marta.textContent).toContain('nunca');
+    expect(marta.querySelector('button[aria-label^="Guardar senha"]')).not.toBeNull();
   });
 });
