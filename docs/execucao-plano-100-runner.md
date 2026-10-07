@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-782 de 869 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+833 de 914 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -517,16 +517,28 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.187 | implemented | simulated | claude-sonnet-5-5 | — | scripts/tests/test_ci_issue_falha.py (gh falso): ciclo vermelho, vermelho, verde abre, comenta na mesma e fecha; verde de disparo manual, run pulado e verde sem issue aberta não escrevem; nenhuma chamada leva --assignee… | Abertura, comentário e fechamento reais ficam not_run até o primeiro cron vermelho seguido de verde depois do arquivo estar na main (workflow_run só roda o arq… |
 | 29.188 | implemented | simulated | claude-sonnet-5-5 | — | scripts/tests/test_custo_semanal_issue.py (gh falso e saída gravada do github_custo): abre com título fixo e rótulo custo, comenta na mais antiga, não reaproveita outra, nunca atribui, ensaio não escreve, formato proibi… | primeiro disparo real (segunda 12/10 06:00Z, ou gh workflow run depois do arquivo na main) é not_run; leitura de créditos do Copilot no workflow: not_run, sem… |
 | 29.189 | implemented | real | claude-sonnet-5-5 | — | real: 07/10/2026 01:20Z, runner hospedado ubuntu-latest, dispatch do pr-leve.yml numa branch descartável (apagada) com a exclusão do AnexosTab removida e o commit 60ba96e8 da Canais: run 37556584580 verde, vitest 150 ar… |  |
-| 29.190 | pendente | — | — | — |  |  |
-| 29.191 | pendente | — | — | — |  |  |
+| 29.190 | implemented | simulated | claude-sonnet-5-5 | — | scripts/tests/test_resultado_confere.py::Regras (17 testes, 25 com test_ci_gatilhos e test_workflows_pins): done e prova descritiva recusados com a lista do que vale, todos os problemas listados, real exige data+máquina… |  |
+| 29.191 | partial | real | claude-sonnet-5-5 | — | Medida em 07/10/2026 01:27Z, runners hospedados ubuntu-latest, passos lidos por gh api nos runs 37548654811 (job PostgreSQL do cron) e 37556584580 (CI leve): ci.yml e pr-leve.yml já usam cache de download do pip e do np… | O cache pedido não compensa pela medida; só a paralelização dos testes (ex.: -n 2 em scripts/tests) mexeria em minuto cobrado, e muda como os testes rodam: dep… |
 | 29.192 | implemented | simulated | claude-sonnet-5-5 | — | scripts/tests/test_agente_nuvem.py::Atribuir e ::Medir (gh falso, relógio fixo; 49 testes com test_issue_do_pacote, test_github_rotulos, test_ci_gatilhos e test_workflows_pins): atribui só issue aberta com etiqueta agen… | A atribuição real de um item e a medida de aceitação e custo por item ficam not_run até a orquestradora escolher o item e o rótulo agente-nuvem existir no repo… |
 | 29.193 | implemented | simulated | claude-sonnet-5-5 | — | scripts/tests/test_pg_necessario.py (gh falso; 23 testes com test_ci_gatilhos e test_workflows_pins): pula só se todo arquivo mudado (inclusive nome antigo de arquivo movido) for irrelevante; arquivo novo, scripts/, con… | A medida depois (minutos reais) e uma noite de cron em que o PostgreSQL é pulado de verdade ficam not_run: dependem do cron e entram na leitura de 13/10 com gi… |
-| 29.194 | pendente | — | — | — |  |  |
-| 29.195 | pendente | — | — | — |  |  |
-| 29.196 | pendente | — | — | — |  |  |
-| 29.197 | implemented | real | claude-sonnet-5-5 | — | REAL 07/10/2026 02:41Z-03:17Z, central (e3e08afa, deploy 59), Idle, host sem outra carga de teste (avisos de pressao 0 em todas as corridas; cpu_media do host 14-24 %): fatia de 64 arquivos (1 de cada 8 da lista do PG d… | Subir a CPU da VM do Docker (WSL processors): decisao do dono (pergunta a registrar), not_run. O --paralelo fica no codigo, desligado por padrao. |
-| 29.198 | pendente | — | — | — |  |  |
-| 29.199 | pendente | — | — | — |  |  |
+| 29.194 | implemented | real | claude-sonnet-5-5 | — | Leitura real da API em 07/10/2026 01:46Z a 01:49Z, esta máquina, branch ci/29-194-medida-codex commit 602a8fbc (sobre integ/suite-60 81ce6ecd): scripts/medir_revisao_codex.py sobre os PRs 473 a 483 (cortes 56 e 57): 10… |  |
+| 29.195 | implemented | real | claude-sonnet-5-5 | — | Branch ci/29-195-limites-do-agente-so-do-agente commit edb56259 (sobre main 50760e86), 07/10/2026 10:36Z, esta máquina. (a) AGENTS.md e .github/copilot-instructions.md marcam as listas Nunca edite e um PR por tarefa com… |  |
+| 29.196 | implemented | simulated | claude-sonnet-5-5 | — | scripts/funil.ps1 (DevOps, 6ff27667) rodou o funil 61 nas etapas de scripts, catracas e docs-check; correção da variável com a caixa do parâmetro (29.204, Android) no corte 61; simulated, testes com carga do 29.196 not_… |  |
+| 29.197 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 29.198 | implemented | simulated | claude-sonnet-5-5 | — | simulated: scripts/tests/test_amostrador_do_deploy.py (22 passam; tarefa, processo, amostrador e CSV FALSOS num diretorio temporario) mais os testes antigos do deploy (test_deploy_ensaio_de_rollback, test_deploy_portao_… | A acao de reinstalar na pratica: not_run ate um deploy que mude o amostrador. |
+| 29.199 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 29.200 | pendente | — | — | — |  |  |
+| 29.201 | pendente | — | — | — |  |  |
+| 29.202 | pendente | — | — | — |  |  |
+| 29.203 | pendente | — | — | — |  |  |
+| 29.204 | pendente | — | — | — |  |  |
+| 29.205 | pendente | — | — | — |  |  |
+| 29.206 | pendente | — | — | — |  |  |
+| 29.207 | pendente | — | — | — |  |  |
+| 29.208 | pendente | — | — | — |  |  |
+| 29.209 | pendente | — | — | — |  |  |
+| 29.210 | pendente | — | — | — |  |  |
+| 29.211 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -768,7 +780,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.151 | implemented | simulated | claude-opus-5-5 | — | feat/31-151-fluxo-por-semelhanca 0a04fb14 + adendo v1.103 em d0b243cc (sobre d397a793, corte 59). Fluxos ativos e no escopo (_no_escopo, 30.81) que o comando parece (FlowStore.semelhantes, nota mínima 0,3 medida: a pará… | Real autorizado pela orquestradora (06/10, teto US$ 0,05, uma execução do pedido parafraseado no android-04, sem conta real, cancelada após ler o plano), mas n… |
 | 31.152 | implemented | simulated | claude-opus-5-5 | — | feat/31-152-pacotes-vizinhos 9b6b4577, com o ajuste do revisor-segredos em 1eb3c92e (feat/31-149-licao-do-planejador; a ponta 350b5795 da feat/31-177-rendimento-do-ensino contém os dois), sobre a 849b3717 (corte 58). O… | Falta o real: um comando livre que abre a busca do Configurações e conclui sem a IA assumir (cerca de US$ 0,03), depois do deploy, com o sim do dono para o gas… |
 | 31.153 | implemented | simulated | claude-opus-5-5 | — | feat/31-153-etapas-ensinadas 0631b9d0 + 53ab847f (revisão de segredos: a etapa do plano com efeito, trava, catálogo ou bindings não é trocada; etapa de sessão e chave com palavra de valor demonstrado não são oferecidas;… | Decisão do dono: a ação ensinada por uma persona serve a todas ou só ao escopo de quem ensinou (hoje: 30.81). Real: um comando livre do Configurações em que a… |
-| 31.154 | implemented | simulated | opus-5.5 | — | Nota do 31.154, correção do percurso da Portal no 57: cada estágio do alvo guarda a sua hora. Branch feat/31-175-medida-sobre-main (9a4e8e29). Em backend/app/modules/operacoes/domain/estagios.py, depois do liberar, a ho… |  |
+| 31.154 | implemented | real |  | — | Real, 07/10, central (checkout C:/git/android, porta 8000), commit 8552b160 (migração 127), rodada op-20261007125539-22ef67 (16 alvos: 3 com conta e sessão, 13 sem conta), execuções r-20261007125539-8f0772 (android-01),… |  |
 | 31.155 | implemented | simulated | opus-5.5 | — | Branch feat/31-155-troca-de-conta @ d0b94a5e (PR 473). Toque de saída incerto: tocou=True antes do tap, e _invalidar_o_app no except. _sem_volta exige credencial ativa. Testes: backend/tests::test_toque_de_saida_com_err… |  |
 | 31.156 | implemented | simulated | opus-5.5 | — | a9e73add (branch feat/prova30-j1-j2-candidata, de 8d948c0b). LimitsCfg.orquestracao_max_escolhidas=30 e orquestracao_max_candidatas=60, lidos a cada POST /api/runs/targets/suggest; max_personas do corpo até 64. Simulate… | None |
 | 31.157 | implemented | simulated |  | — | feat/31-160-gravacao-mascarada 36bfdbae (corte 59). Achados b e d da Portal no 57 (06/10 23:20Z): o resumo do fluxo no GET /api/operacoes/{id}/aprendizado leva o valor do parâmetro quando a operação tem um valor só para… |  |
@@ -789,7 +801,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.172 | implemented | real | claude-sonnet-5-5 | — | 2026-10-07T01:2xZ, maquina WIN-7S2UASNLFOP, central 0c8683e8 (deploy 58), navegador embutido, so leitura, aba fechada ao fim: operacao op-20261006194323-0a1540 (1 alvo, acao liberada e executada): cabecalho 'Concluida ·… |  |
 | 31.173 | implemented | simulated | opus-5.5 | — | Adendo v1.104 (branch feat/31-173-sessao-na-operacao, bf4211e7). O alvo pendente leva o motivo da espera: backend/tests/test_operacoes_estagios.py::test_o_alvo_que_espera_a_porta_de_sessao_diz_por_que. O GET traz sessao… |  |
 | 31.174 | implemented | simulated | opus-5.5 | — | Adendo v1.105 (branch feat/31-174-pool-elegivel, 99a7f61b mais os docs f9692d94; ponta da cadeia df0c2845 com o 31.180 fundido). GET /api/operacoes/elegiveis?app_id= (só leitura): a conferência da criação, o aparelho ap… |  |
-| 31.175 | partial | simulated | opus-5.5 | — | Branch feat/31-175-medida-sobre-main (5e45fa13; sem mudança de código). Medida opt-in da concorrência de IA: backend/tests/test_medida_concorrencia_31175.py::test_medida_da_concorrencia_de_ia, que só roda com MEDIR_3117… |  |
+| 31.175 | implemented | real |  | — | Real, 07/10, central (checkout C:/git/android, porta 8000), commit 8552b160 (migração 127), rodada op-20261007125539-22ef67 (16 alvos: 3 com conta e sessão, 13 sem conta), execuções r-20261007125539-8f0772 (android-01),… |  |
 | 31.176 | implemented | simulated | claude-sonnet-5-5 | — | CriarOperacao.test.tsx (21 testes) + OperacaoPage/Relatorio/Aprendizado tests; vitest 151 arquivos / 1983 testes; tsc limpo. Cobre resolverAlvo, previa, validacao de fontes (https, sem usuario/query, ate 10) e parametro… |  |
 | 31.177 | implemented | simulated | claude-opus-5-5 | — | feat/31-177-rendimento-do-ensino 350b5795 (sobre 1eb3c92e); adendo v1.101 em d397a793 (feat/31-179-hipotese-pela-leitura, ponta única do corte 58). GET /api/training/{id}/rendimento, só leitura, sem migração: por receit… | Real: o GET nas sessões salvas do central depois do deploy. |
 | 31.178 | implemented | simulated | claude-opus-5-5 | — | feat/31-178-evidencia-no-fechamento 918bbc85 (sobre 350b5795). A retrocarga (ReproducoesSql.faltantes) lê também a execução aberta, só o a favor (etapa succeeded conduzida pela receita, estado final da etapa); o contra… | Real: a onda 2 de 07/10 (plataforma_aprendeu com a execução ainda aberta), depois do deploy. |
@@ -821,7 +833,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.204 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/operacao/CompararOperacoes.test.tsx (9 testes: logica pura e tela com servidor falso no formato v1.111); vitest completo 2114 verdes (164 arquivos); tsc limpo. Real = percurso no navegador (marcar… |  |
 | 31.205 | implemented | simulated | opus-5.5 | — | Branch feat/operacao-latencia-por-estagio (e4a2a9ce; o motivo está documentado no adendo v1.114, ae813877). Com a operação no max_usd, a execução de alvo que ainda vai planejar é recusada antes de qualquer chamada de IA… |  |
 | 31.206 | implemented | simulated | opus-5.5 | — | Adendo v1.114, mesma branch (ae813877). alvos[].fila = {posicao, a_frente, previsao_inicio_em, base_ms} no alvo pendente, null nos outros. A ordem é a do despacho (o que roda, a maior prioridade, a execução mais antiga)… |  |
-| 31.207 | pendente | — | — | — |  |  |
+| 31.207 | implemented | simulated | opus-5.5 | — | Branch feat/31-207-j0-troca-na-operacao (76a68980, base ae813877). No app que declara a troca de conta (ADR-080), o alvo cuja persona serve ao app no aparelho (o pedido, ou o principal dela; a mesma leitura de profiles_… |  |
 | 31.208 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/operacao/FilaEPrevisao.test.tsx (8 testes) + OperacaoPage.test.tsx ajustado (indice da coluna); vitest completo 2122 verdes (165 arquivos); tsc limpo. Real = percurso no navegador (operacao com alv… |  |
 | 31.209 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/aprendizado/LicoesPorAssunto.test.tsx (13 testes: funcoes puras, endereco e tela com servidor falso que filtra por assunto exato); vitest completo 2135 verdes (166 arquivos); tsc limpo. Real = perc… |  |
 | 31.210 | implemented | simulated |  | — | feat/31-210-semelhanca-executa (sobre b52934ab). P-032 (dono, 07/10 00:36Z; confirmada 00:38Z): a execução execute cujo plano veio por semelhança (31.151) segue para running sem parar em planned; a trilha diz 'seguiu po… |  |
@@ -834,31 +846,64 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.217 | implemented | simulated |  | — | feat/31-217-curadoria-por-operacao (sobre f3ab8ba7); integ-60 118b5ecb. O laço da curadoria (state.py) ouve operacao.encerrada e roda, só no líder da trava curadoria, os passos PassoPorOperacao (hoje o do 31.190) para a… |  |
 | 31.218 | implemented | simulated |  | — | feat/31-218-licao-por-persona (sobre f3ab8ba7); integ-60 e54564df. A correção ensinada (31.149) nasce com a persona do objetivo que falhou em scope_profile_id e na proveniência (id, nunca nome); nivel() só entrega a liç… |  |
 | 31.219 | implemented | simulated |  | — | feat/31-219-ensino-alvo-de-terceiro (sobre f3ab8ba7); integ-60 34afdfec. Proposta de referência parametrizada por {username} (OPEN_PROFILE → OPEN_POST primeira da grade com post_author → OPEN_COMMENTS, todas sem efeito)… |  |
-| 31.220 | pendente | — | — | — |  |  |
-| 31.221 | pendente | — | — | — |  |  |
-| 31.222 | pendente | — | — | — |  |  |
-| 31.223 | pendente | — | — | — |  |  |
-| 31.224 | pendente | — | — | — |  |  |
-| 31.225 | pendente | — | — | — |  |  |
-| 31.226 | pendente | — | — | — |  |  |
-| 31.227 | pendente | — | — | — |  |  |
-| 31.228 | pendente | — | — | — |  |  |
-| 31.229 | pendente | — | — | — |  |  |
-| 31.230 | pendente | — | — | — |  |  |
-| 31.231 | pendente | — | — | — |  |  |
-| 31.232 | pendente | — | — | — |  |  |
-| 31.233 | pendente | — | — | — |  |  |
-| 31.234 | pendente | — | — | — |  |  |
-| 31.235 | pendente | — | — | — |  |  |
-| 31.236 | pendente | — | — | — |  |  |
-| 31.237 | pendente | — | — | — |  |  |
-| 31.238 | pendente | — | — | — |  |  |
-| 31.239 | pendente | — | — | — |  |  |
-| 31.240 | pendente | — | — | — |  |  |
-| 31.241 | pendente | — | — | — |  |  |
-| 31.242 | pendente | — | — | — |  |  |
-| 31.243 | pendente | — | — | — |  |  |
-| 31.244 | pendente | — | — | — |  |  |
+| 31.220 | implemented | simulated | opus-5.5 | — | Branch feat/31-220-laco-da-operacao (12a8ca5e; adendo v1.119 em 0b013545, base main 50760e86). LacoDasOperacoes (backend/app/modules/operacoes/infrastructure/laco.py) lê as operações sem finished_at a cada LimitsCfg.ope… |  |
+| 31.221 | implemented | simulated |  | — | feat/31-221-ensino-da-execucao sobre aprendizado/integ-61 (ef237e48 = integ-60 34afdfec + main 50760e86); integ-61 4bceba0e (fast-forward). Reenquadrado com a orquestradora (07/10 ~01:40Z): a operação planeja com ações… |  |
+| 31.222 | implemented | simulated |  | — | feat/31-222-semelhanca-sem-acao-final sobre aprendizado/integ-61 (ef237e48). habilidades.acoes_finais_fora: as etapas do plano livre com efeito ou trava de commit que o plano do fluxo não cobre (pela ação do catálogo, s… |  |
+| 31.223 | implemented | simulated |  | — | feat/31-223-forte-so-no-commit (1e2c6220 + b15ba819) sobre aprendizado/integ-61. ai.strong_model_only_on_commit (padrão true, adendo v1.122): a etapa com efeito que sobe ao modelo de escalonamento começa no modelo de aç… |  |
+| 31.224 | implemented | simulated | opus-5.5 | — | Branch feat/31-224-valida-parametros (22f95dd3; adendo v1.121 em 790b3489; base main 50760e86). POST /api/operacoes confere os parametros com o app antes de gravar e de criar execução (_conferir_contra_o_app em servico.… |  |
+| 31.225 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/operacao/CriarOperacao.test.tsx (4 testes novos: o leitor por posicao/campo, username, parametro_desconhecido na posicao 2 com os aceitos, motivo por parametro do 31.227 (_longo, post_author sem ca… |  |
+| 31.226 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/runs/EnsinoDaExecucao.test.tsx (13 testes: leitor tolerante, os nove motivos em palavras, receita por etapa com ligacao ao Livro, confirmacao antes do POST sem corpo, promovidas e recusadas por rec… |  |
+| 31.227 | implemented | simulated | opus-5.5 | — | Branch feat/31-227-forma-dos-parametros (29d42fef; adendo v1.123 em bbb55c08). A base é a 790b3489 do 31.224, não a main 50760e86: o 31.227 estende o validador do 31.224. O catalogo.yaml ganha parametros: {nome: {forma:… |  |
+| 31.228 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/operacao/OperacaoPage.test.tsx (4 testes novos: soma por funcao e divisao das decisoes, leitura do uso por run_id e a tabela, so um modelo/sem chamada/sem execucao, falha de leitura); vitest comple… |  |
+| 31.229 | implemented | simulated | opus-5.5 | — | Branch feat/31-229-custo-por-passo (d2175373; contrato publicado antes em ce45f6e9, adendo v1.124). A base é a 0ad132a0 (a ponta do 60), porque o GET do alvo com latência e fila só existe lá. Sem migração: o vínculo já… |  |
+| 31.230 | implemented | simulated |  | — | feat/31-230-receita-sem-voltar-inicial sobre aprendizado/integ-61 (96d5c005); integ-61 731b4de6. recipes.distill(em_casa_antes=...): o prefixo de press_back antes da 1ª ação gravada é descartado quando essa ação partiu… |  |
+| 31.231 | implemented | simulated |  | — | feat/31-231-pesquisa-reaproveita-o-livro sobre aprendizado/integ-61 (731b4de6); integ-61 d65cdb32 (aceite da Jev: filtro por scope_app e candidate só por vir confirmado, cd2924f7). Antes da chamada paga (depois da lacun… |  |
+| 31.232 | implemented | simulated |  | — | feat/31-232-commit-sem-imagem sobre aprendizado/integ-61 (98e03824); integ-61 24923009. Medido antes (real, só leitura, 07/10 ~02:50Z, ai_calls do r-20261006194323-240d40): o Opus de US$ 0,081 com imagem era a 1ª decisã… |  |
+| 31.233 | partial | real |  | — | Leitura só leitura (sqlite ro) em 2026-10-07T10:10Z no central (GET /api/health: commit 8552b160, migração 127) por .claude/handoffs/aprendizado/medida_custo_por_etapa.py: onda 2 op-20261007100755-096a28 (r-202610071007… |  |
+| 31.234 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/operacao/OperacaoPage.test.tsx (5 testes novos: leitores e conhecimento em palavras, reaproveitada com criterio/frescor/fatos, paga com custo e fontes (link so https sem parametros), central sem o… |  |
+| 31.235 | implemented | simulated | opus-5.5 | — | Campo aditivo `pesquisa` em GET /api/operacoes/{id} (contrato de jev-para-portal-31-234.md): estado reaproveitada_do_livro/paga/falhou/nao_rodou, criterio, minimo_fatos, frescor_ate, custo_usd, fatos[{item, origem, fres… |  |
+| 31.236 | implemented | simulated | opus-5.5 | — | Os parametros da operação chegam ao planejador (PlanRequest.parametros_fixos; bloco <parametros_da_operacao> nos três modos, nada fora de operação) e a pergunta pelo nome de um fixo é respondida por ele (plano_da_operac… |  |
+| 31.237 | implemented | simulated |  | — | feat/31-237-plano-aquece-o-cache sobre aprendizado/integ-61 (d65cdb32); integ-61 11318933. Medido antes (real, só leitura, 07/10 10:08Z): na op-20261007100019-681b9b os 3 planos paralelos gravaram cada um o prefixo (cac… |  |
+| 31.238 | implemented | simulated |  | — | Medida só leitura em 2026-10-07T10:25Z no central (commit 8552b160, migração 127): GET /api/usage?days=7 (scope days=7, sem run) e ai_calls (sqlite ro, motivo='rejulgamento', ts >= 2026-09-30T10:25Z; primeira 2026-10-03… |  |
+| 31.239 | implemented | simulated |  | — | Desenho a partir das notas do juiz nas evidências 2951-2956 da onda 2 (op-20261007100755-096a28), lidas só em leitura no central (8552b160) e sem copiar texto: autor e texto do comentário em elementos separados na mesma… |  |
+| 31.240 | implemented | simulated | opus-5.5 | — | Reserva de frota por alvo na passagem pela porta (travas frota:<app>:<alvo>, CAS, sem migração; app/social/reserva_da_frota.py, PolicyEngine.reservar_frota, gancho em _policy_gate). backend/tests/test_reserva_da_frota.p… |  |
+| 31.241 | implemented | simulated | opus-5.5 | — | A operação fechada reabre quando o alvo volta a correr (aprovação fora do liberar com acao_final executar) e fecha de novo com o fim real e operacao.encerrada novo; nunca a cancelada. backend/tests/test_operacao_reabre_… |  |
+| 31.242 | implemented | simulated |  | — | Achado na leitura só leitura das evidências 2951-2956 da onda 2 (07/10, central 8552b160; contagem sem SELECT de nota nesta tarefa): a nota do juiz repete o usuário da conta da persona e o texto do comentário, fora do m… |  |
+| 31.243 | implemented | simulated |  | — | Código: mascara_da_persona.mapa passa a levar sempre o usuário de cada conta da persona (USUARIO_DA_CONTA = conta_<app>[_<host>]_usuario[_N]) com e sem arroba ('@valor' -> '@{nome}'), com a regra de sempre (valor num pa… |  |
+| 31.244 | implemented | simulated |  | — | Código: recipes.detemplate ganha marcadores (nomes das variáveis da persona): o marcador da persona já gravado no texto (31.113 F1 {perfil_…}; 31.243 @{conta_<app>_usuario}) conta como variável usada e a arroba logo ant… |  |
+| 31.245 | pendente | — | — | — |  |  |
+| 31.246 | pendente | — | — | — |  |  |
+| 31.247 | pendente | — | — | — |  |  |
+| 31.248 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.249 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.250 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.251 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.252 | pendente | — | — | — |  |  |
+| 31.253 | implemented | simulated |  | — | feat/31-253-grupo-liberado-executa cc6b6bad (sobre jev/integ-61 25264d50), mesclada na integ/suite-61 90f70d70. ADR-082. Com acao_final=executar, o alvo cuja persona está em grupo_sem_aprovacao nasce com o teto agir: se… |  |
+| 31.254 | pendente | — | — | — |  |  |
+| 31.255 | pendente | — | — | — |  |  |
+| 31.256 | pendente | — | — | — |  |  |
+| 31.257 | pendente | — | — | — |  |  |
+| 31.258 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.259 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.260 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.261 | pendente | — | — | — |  |  |
+| 31.262 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.263 | pendente | — | — | — |  |  |
+| 31.264 | pendente | — | — | — |  |  |
+| 31.265 | pendente | — | — | — |  |  |
+| 31.266 | pendente | — | — | — |  |  |
+| 31.267 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.268 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.269 | pendente | — | — | — |  |  |
+| 31.270 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.271 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.272 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.273 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.274 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.275 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.276 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
+| 31.277 | implemented | simulated | claude-sonnet-5-5 | — | Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correç… | None |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -876,7 +921,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (87): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.156, 29.162, 29.166, 29.168, 29.172, 29.173, 29.174, 29.180, 29.182, 29.185, 29.186, 29.190, 29.191, 29.194, 29.195, 29.196, 29.198, 29.199, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.161, 31.162, 31.175, 31.207, 31.220, 31.221, 31.222, 31.223, 31.224, 31.225, 31.226, 31.227, 31.228, 31.229, 31.230, 31.231, 31.232, 31.233, 31.234, 31.235, 31.236, 31.237, 31.238, 31.239, 31.240, 31.241, 31.242, 31.243, 31.244, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (81): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.156, 29.162, 29.166, 29.168, 29.172, 29.173, 29.174, 29.180, 29.182, 29.185, 29.186, 29.191, 29.200, 29.201, 29.202, 29.203, 29.204, 29.205, 29.206, 29.207, 29.208, 29.209, 29.210, 29.211, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.161, 31.162, 31.233, 31.245, 31.246, 31.247, 31.252, 31.254, 31.255, 31.256, 31.257, 31.261, 31.263, 31.264, 31.265, 31.266, 31.269, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
