@@ -21,7 +21,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-07 — 29.189: CI leve do PR volta a rodar o vitest inteiro (AnexosTab não é mais excluído)
 
-- `.github/workflows/pr-leve.yml`: sai o `--exclude src/features/canais/AnexosTab.test.tsx` (a Canais tornou o teste independente de plataforma em 60ba96e8, já na `main`; 20/20 em Linux no run 37541449598). Prova `real` em runner hospedado: ver o run do dispatch no commit.
+- `.github/workflows/pr-leve.yml`: sai o `--exclude src/features/canais/AnexosTab.test.tsx` (a Canais tornou o teste independente de plataforma em 60ba96e8, já na `main`; 20/20 em Linux no run 37541449598). Prova `real` (07/10 01:20Z, `ubuntu-latest`): dispatch do `pr-leve.yml` numa branch descartável com este workflow e o commit da Canais, run 37556584580 verde, vitest 150 arquivos passados (181 s), CI leve inteiro em ~4 min; a branch foi apagada.
 
 ## 2026-10-07 — 29.188: medida semanal de custo automática, em artifact e numa issue única (branch ci/29-188-custo-semanal)
 
