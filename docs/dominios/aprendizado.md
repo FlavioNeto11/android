@@ -2648,6 +2648,38 @@ no mesmo escopo e no outro, com a métrica; sem escopo conhecido vale nos dois; 
 `not_run`. A prova é a 1ª operação em post de terceiro depois do deploy, com `outro_escopo` no lugar da divergência da
 111.
 
+## O roteiro de prova real dos deploys 60 e 61 (31.268)
+
+`scripts/prova-real-aprendizado.py --operacao OP` fecha as provas reais dos itens do aprendizado em minutos depois da
+operação (tabela em `docs/operacao.md`). Por item, primeiro o commit (o do `feat` dele estava no central quando a
+operação começou?), depois a leitura com o achado:
+
+| Item | Evidência esperada |
+|---|---|
+| 31.231 | log "pesquisa reaproveitada do Livro" (sem chamada paga) |
+| 31.232 | decisão de commit no forte (`decide`, `escalate=efeito`, tier ≥ 1) sem imagem, salvo o alvo fora da árvore |
+| 31.236 (Jev) | operação com parâmetro fixo sem execução em `needs_input` |
+| 31.237 | o 1º plano grava o cache e os irmãos leem (`cache_read > 0`) |
+| 31.238 | evento `rejulgamento_dispensado` |
+| 31.239 | decision "comentário comprovado pela árvore local" |
+| 31.242 / 31.243 | notas; eventos, ações e `status_detail` sem o usuário da conta da persona (contagem, nunca o valor) |
+| 31.244 | receita aprendida na operação com o marcador da persona e sem o valor |
+| 31.248 | operação sem assunto com "pesquisa com o assunto da leitura do alvo" |
+| 31.249 | etapa com receita de outro escopo na mesma chave conduzida pela IA, nunca pela receita |
+| 31.250 | decision "pelo marcador do catálogo" na etapa livre com nível |
+| 31.262 | evento `receita_nao_aplicavel` com `em_prova` |
+
+Só o `presente` vira `real` em `resultados`. O `divergente` é prova real de defeito e fica em `divergencias`, para
+quem corrige. `ausente`, `sem_caso` e `nao_no_ar` são `not_run` e nunca entram no `aplicar`.
+
+Ensaio na rodada de 07/10 (`op-20261007125539-22ef67`, central `8552b160`, deploy 59): os 13 itens saem `nao_no_ar`.
+Com `--commit` forçado na ponta da integ-62, só como diagnóstico das leituras, a onda 2 (`op-20261007100755-096a28`)
+mostra o defeito de antes: 31.249 divergente nas 3 etapas `open_post_1` (a 111 de outro escopo), 31.242 e 31.243
+divergentes (usuário sem máscara), 31.232 divergente (imagem no commit do forte). A rodada mostra 31.237 divergente
+(os 2 planos irmãos frios).
+
+**Prova.** `simulated`: `scripts/tests/test_prova_real_aprendizado.py` (6). `real`: o ensaio acima.
+
 ## A candidata que não se aplica na partida segue em prova (31.262)
 
 Medido em 07/10 (só leitura): a receita 222 (`open_profile` de perfil de terceiro, chave genérica) não reproduziu na

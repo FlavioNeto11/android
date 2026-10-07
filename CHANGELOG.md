@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.268: o roteiro de prova real do aprendizado dos deploys 60 e 61 (branch feat/31-268-roteiro-prova-real)
+
+- `scripts/prova-real-aprendizado.py --operacao OP`: só leitura (banco em `mode=ro`, saúde por GET). Por item: o
+  commit no ar (o `--commit`, o último deploy do CHANGELOG antes da operação ou a saúde) e a leitura com o achado
+  `presente`, `divergente`, `ausente`, `sem_caso` ou `nao_no_ar`. Só o `presente` vai a `resultados` como `real`.
+  `--saida` grava um JSON por item; `--tabela` imprime legível. Só ids e contagens.
+- Ensaio na rodada de 07/10 (`op-20261007125539-22ef67`, deploy 59): os 13 itens saem `nao_no_ar`.
+- Prova `simulated`: `scripts/tests/test_prova_real_aprendizado.py` (6). `real`: o ensaio.
+
 ## 2026-10-07 — 31.262: a candidata que não se aplica na partida segue em prova (branch feat/31-262-sombra-partida-diferente)
 
 - Diagnóstico (leitura do central): a 222 era candidata com 0 concordâncias e não podia reproduzir na rodada. A onda 2
