@@ -406,6 +406,10 @@ class SaudeDoSistema:
         # para valerem também no modo simulado. O perfil que some da configuração não derruba a aba.
         extra["esquema_do_plano"] = self._e.cfg.file.ai.esquema_do_plano
         extra["leitura_visual"] = self._e.cfg.file.ai.leitura_visual.enabled
+        # 31.223: a política do modelo forte em vigor (só leitura; muda no config.yaml e vale na subida)
+        forte = self._e.cfg.file.ai.strong_model_for_side_effect
+        extra["strong_model_for_side_effect"] = forte if isinstance(forte, str) else str(forte).lower()
+        extra["strong_model_only_on_commit"] = self._e.cfg.file.ai.strong_model_only_on_commit
         try:
             extra["profiles"] = perfis_para_o_painel(self._e.cfg)
         except Exception:  # noqa: BLE001 - o status da IA nunca cai por causa da lista de perfis

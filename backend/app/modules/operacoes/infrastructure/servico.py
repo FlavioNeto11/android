@@ -29,6 +29,8 @@ from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionSt
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain import fila as filas, latencia, relatorio as rel
 from app.modules.operacoes.domain.estagios import ESTADOS, EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
+from app.modules.pedidos.domain import resumo_da_pesquisa
+from app.modules.pedidos.infrastructure.repositorio_memoria import RepositorioDeMemoria
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs, custo_por_passo
 from app.social.repository import sessao_vencida
@@ -39,7 +41,7 @@ from app.taskqueue.service import RunError
 from app.util import now_iso
 
 if TYPE_CHECKING:
-    from app.config import LimitsCfg
+    from app.config import LimitsCfg, PesquisaCfg
     from app.events import EventBus
     from app.social.approvals import Approval, ApprovalService
     from app.social.repository import SocialRepository
@@ -179,12 +181,15 @@ def _sha(pedido: PedidoDeOperacao) -> str:
 
 class ServicoDeOperacoes:
     def __init__(self, db: Database, runs: RunService, social: SocialRepository, aprovacoes: ApprovalService,
-                 limites: Callable[[], LimitsCfg], bus: EventBus, precos: dict[str, list[float]]) -> None:
+                 limites: Callable[[], LimitsCfg], bus: EventBus, precos: dict[str, list[float]],
+                 pesquisa: PesquisaCfg | None = None) -> None:
         self.db, self.runs, self.social, self.aprovacoes = db, runs, social, aprovacoes
         self.limites, self.bus, self.precos = limites, bus, precos
         self._lote: _Lote | None = None
         #: Desligar só serve ao teste que prova que a leitura em lote devolve o mesmo que a de um alvo por vez.
         self.com_lote = True
+        #: 31.235: a configuração da pesquisa externa (ligada e o mínimo de fatos do Livro), só para o resumo do GET
+        self.pesquisa = pesquisa
 
     # ------------------------------------------------------------------ criar
     def criar(self, pedido: PedidoDeOperacao, *, quem: str | None = None) -> dict[str, object]:
@@ -404,14 +409,30 @@ class ServicoDeOperacoes:
         status = self._status(op, saida)
         custo_por_modelo, custo_por_estagio = custo_por_passo.somar(
             a["custo_por_passo"] for a in saida)
+        custo_da_operacao = self._custo(op_id)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
                 "max_usd": op["max_usd"], "assunto": op["assunto"], "fontes": loads(op["fontes"], []),
                 "parametros": loads(op["parametros"], None), "fontes_da_pesquisa": self._fontes_da_pesquisa(op_id),
                 "status": status, "created_at": op["created_at"],
                 "finished_at": self._fechar(op, status, capacidade, fim=self._fim_real(saida)),
-                "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id),
+                "capacidade": capacidade, "alvos": saida, "custo": custo_da_operacao,
+                "pesquisa": self._pesquisa(op, custo_da_operacao["pesquisa_usd"]),
                 "latencia_por_estagio": latencia.por_estagio(saida),
                 "custo_por_modelo": custo_por_modelo, "custo_por_estagio": custo_por_estagio}
+
+    def _pesquisa(self, op: Row, custo_usd: float) -> dict[str, object] | None:
+        """31.235: o resumo da pesquisa externa (reaproveitada do Livro, paga, falhou ou não rodou), da memória da
+        operação. Sem assunto, a operação não pediu pesquisa: `None`. Sem texto de fato nem URL."""
+        try:
+            entradas = RepositorioDeMemoria(self.db).entradas_da_operacao(str(op["id"]))
+        except OPERATIONAL_ERRORS as exc:   # banco sem a coluna `operacao_id` da memória: a pesquisa não gravou nada
+            if not coluna_ausente(exc):
+                raise
+            entradas = []
+        cfg = self.pesquisa
+        return resumo_da_pesquisa.resumo(entradas, pediu=bool((op["assunto"] or "").strip()),
+                                         ligada=bool(cfg and cfg.enabled),
+                                         minimo_fatos=cfg.reaproveitar_min_fatos if cfg else 0, custo_usd=custo_usd)
 
     def relatorio(self, op_id: str, aprendizado: Mapping[str, object] | None) -> dict[str, object]:
         """O relatório consolidado (31.195, adendo v1.111): o GET da operação (com a latência do v1.108) arrumado para a

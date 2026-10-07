@@ -2163,6 +2163,10 @@ class AiStatus(BaseModel):
     balances: list[dict[str, object]] = []
     #: Formato da etapa livre do plano (`ai.esquema_do_plano`, LT-4b): `longo` | `curto` (adendo v0.87).
     esquema_do_plano: str | None = None
+    #: 31.223 (adendo v1.122): a política do modelo forte em vigor, só leitura. `strong_model_for_side_effect` é
+    #: `by_risk` | `true` | `false`; os dois mudam no `config.yaml` e valem na subida da farm-central.
+    strong_model_for_side_effect: str | None = None
+    strong_model_only_on_commit: bool | None = None
     #: Os perfis de IA declarados em `ai.profiles` (item 17.7), com o que cada um muda (adendo v0.87).
     profiles: list[AiProfileStatus] = []
     #: `ai.leitura_visual.enabled` (item 12.5), para a Situação dizer "ligada" sem depender do parágrafo do aviso (v0.87).

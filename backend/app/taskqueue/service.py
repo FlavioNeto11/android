@@ -1402,6 +1402,12 @@ class RunService:
             return plan
         row, do_fluxo = achado
         h = conhecidas[escolha.ref]
+        # 31.222: o fluxo que não cobre a ação final do comando (efeito ou trava no plano livre) não troca o plano
+        fora = habilidades.acoes_finais_fora(plan.steps, do_fluxo.steps)
+        if fora:
+            self.repo.decision(f"Habilidade {h.ref} escolhida por semelhança e recusada (31.222): o fluxo não cobre a "
+                               f"ação final {', '.join(fora)} do comando; segue o plano livre.", run_id=run_id)
+            return plan
         self.repo.db.execute("UPDATE runs SET flow_id=? WHERE id=?", (row["id"], run_id))
         self.flows.used(str(row["id"]))               # 31.210: segue direto, então o uso conta já na escolha
         self._pos_do_catalogo(run_id, do_fluxo)

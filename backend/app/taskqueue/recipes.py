@@ -476,19 +476,37 @@ def _alvo_ambiguo(tree: UiTree, selectors: list[dict[str, str]], variables: dict
 
 
 # ------------------------------------------------------------------ destilação
-def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dict[str, Any]] | None, str]:
-    """Ações executadas pela IA numa tentativa limpa → receita. Devolve (ações | None, motivo)."""
+#: 31.230: a marca da 1ª ação da receita cujo "voltar" inicial foi descartado: ela parte do estado conhecido do app
+#: (`conhecimento/apps/<pacote>/telas.yaml`, `estado_conhecido`), conferido na tela antes de reproduzir.
+ANCORA_ESTADO_CONHECIDO = "estado_conhecido"
+
+
+def distill(action_rows: list[Row], variables: dict[str, str], *,
+            em_casa_antes: Mapping[int, bool] | None = None) -> tuple[list[dict[str, Any]] | None, str]:
+    """Ações executadas pela IA numa tentativa limpa → receita. Devolve (ações | None, motivo).
+
+    31.230: o `press_back` ANTES da 1ª ação gravada é a IA voltando a um lugar conhecido (na onda 1, o `open_profile`
+    começou por voltar, e nenhuma receita nascia). Esse prefixo é descartado quando a 1ª ação gravada partiu do
+    estado conhecido do app (`em_casa_antes[id da ação]`, a tela anotada pelo executor antes da decisão); ela leva a
+    âncora, e a reprodução a confere antes de agir. Sem a anotação, sem estado conhecido declarado, ou com `voltar` no
+    meio do caminho, a tentativa segue recusada como antes."""
     secret_values = {v for k, v in variables.items() if v and SENSITIVE_PARAM.search(k)}
     out: list[dict[str, Any]] = []
     pending_scrolls: list[str] = []
+    voltas = 0
     for r in action_rows:
         tool, status = r["tool"], r["status"]
         if tool in READ_ONLY or tool in ("step_done", "step_blocked"):
             continue
         if status != "done" or r["source"] != "ai":
             return None, f"tentativa não foi limpa ({tool}: {status}/{r['source']})"
+        if tool == "press_back" and not out and not pending_scrolls and em_casa_antes is not None:
+            voltas += 1                             # 31.230: o voltar de recuperação, antes da 1ª ação gravada
+            continue
         if tool in UNSAFE_TO_REPLAY:
             return None, f"{tool} depende do estado de quem aprendeu"
+        if voltas and not out and not (em_casa_antes or {}).get(int(r["id"])):
+            return None, "o voltar inicial não terminou no estado conhecido do app: a receita não teria de onde partir"
         args = loads(r["args"], {}) or {}
         target = loads(r["target"]) if r["target"] else None
         if tool == "scroll":
@@ -530,6 +548,8 @@ def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dic
         if pending_scrolls:
             item["scroll"] = {"direction": pending_scrolls[-1], "max": len(pending_scrolls) + 3}
             pending_scrolls = []
+        if voltas and not out:
+            item["ancora"] = ANCORA_ESTADO_CONHECIDO
         out.append(item)
         if item["commit"]:
             break                                   # depois do efeito não há o que repetir: só verificar
@@ -659,6 +679,9 @@ class Replayer:
     done_actions: int = 0
     diverged: str | None = None
     log: list[str] = field(default_factory=list)
+    #: 31.230: a tela é o estado conhecido do app? (o executor liga; `None` = não se sabe, e a receita com âncora não
+    #: reproduz: nunca às cegas a partir de uma tela errada)
+    em_casa: Callable[[UiTree], bool] | None = None
 
     @property
     def exhausted(self) -> bool:
@@ -668,6 +691,10 @@ class Replayer:
         if self.exhausted:
             return None
         act = self.actions[self.idx]
+        if (act.get("ancora") == ANCORA_ESTADO_CONHECIDO and self.idx == 0 and self.scrolls == 0
+                and (self.em_casa is None or not self.em_casa(tree))):
+            # 30.80: a tela de partida errada é "não se aplicou", não defeito da receita; a IA assume
+            raise AlvoAusente("ação 1: a receita parte do estado conhecido do app, e esta tela não é ele")
         tag = f"[receita v{self.version}] {act.get('why') or act['tool']}"
         args: dict[str, Any] = {"rationale": tag, **act.get("args", {})}
         if "text" in args:
