@@ -7567,12 +7567,14 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
     (`decision`) diz "Plano do fluxo <ref> “<molde>” por semelhança, nota N".
   - Recusada, fica o plano livre, com o motivo na trilha.
   - Sem escolha, a trilha lista as oferecidas.
-- **Mudança de comportamento:** a execução pedida com `mode: "execute"` cujo plano veio por semelhança termina o
-  planejamento em `planned`, não em `running`. Ela espera o início por uma pessoa (a prévia aprovada) até a decisão do
-  dono (P-032). `flows.uses` só sobe quando ela é aprovada.
+- **Comportamento (ajustado pelo 31.210, P-032, decisão do dono em 07/10):** a execução pedida com `mode: "execute"`
+  cujo plano veio por semelhança segue direto para `running`, sem parar em `planned` para a prévia. A trilha
+  (`decision`) diz "seguiu por semelhança". `flows.uses` sobe na escolha. As portas de aprovação de efeito externo
+  continuam: a etapa com efeito pede aprovação no despacho, como em qualquer plano. Até o 31.210 a execução parava em
+  `planned` ("aguarda a prévia aprovada").
 - **O plano gravado não muda de forma:** a escolha não é gravada nele.
-- **Prova:** `simulated` (`backend/tests/test_fluxo_por_semelhanca.py`, 5 testes). `real`: `not_run` (pede o deploy
-  que leve o 31.151).
+- **Prova:** `simulated` (`backend/tests/test_fluxo_por_semelhanca.py`, 5 testes; o 31.210 no mesmo arquivo). `real`:
+  `not_run` (pede o deploy que leve o 31.151 e o 31.210).
 
 ## Adendo v1.106 (06/10/2026; número da orquestradora; item 31.157) — as personas e o valor no resumo do fluxo
 
