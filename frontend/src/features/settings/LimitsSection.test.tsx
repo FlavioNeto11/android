@@ -133,65 +133,8 @@ it('J1: cada limite explica o que é, o padrão e o teto, e a recusa do backend 
   expect(campo('Personas escolhidas por operação').value).toBe('50');
 });
 
-// ADR-081: a regra da frota sobre o mesmo alvo (frota_max_contas_por_alvo, fleet_target_window_days e o interruptor das contas nossas; o teto das curtidas é outro campo).
-const TETO = 'Contas da frota que podem agir sobre o mesmo alvo';
-const CURTIDAS = 'Contas da frota que podem curtir o mesmo alvo';
-const JANELA = 'Janela da regra da frota';
-const INTERRUPTOR = /Alvo que é conta nossa fica fora da regra/;
-const interruptor = () => Array.from(container.querySelectorAll('label')).find((l) => INTERRUPTOR.test(l.textContent ?? ''))?.querySelector('input') as HTMLInputElement;
-
-it('ADR-081: o grupo da regra da frota mostra o teto, o das curtidas, a janela e o interruptor, com o que valem, o padrão e a faixa, e salva só o que mudou', async () => {
-  backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...useAppStore.getState().settings!, ...(c.body as Partial<Settings>) }));
-  await act(async () => { root.render(<LimitsSection />); });
-  expect(container.textContent).toContain('Regra da frota sobre o mesmo alvo');
-  expect(campo(TETO).value).toBe('10');
-  expect(campo(CURTIDAS).value).toBe('3');
-  expect(campo(JANELA).value).toBe('30');
-  expect(interruptor().checked).toBe(true);                                                   // padrão: ligado
-  expect(container.textContent).toMatch(/Janela da regra da frota\s*dias/);                   // a unidade ao lado do rótulo
-  expect(container.textContent).toContain('Era 1. As curtidas têm teto próprio, logo abaixo. Padrão 10; vai de 1 a 64.');
-  expect(container.textContent).toContain('Só para curtidas');
-  expect(container.textContent).toContain('Padrão 30; vai de 1 a 365.');
-  expect(container.textContent).toContain('Pessoa real sempre entra.');
-  expect(container.textContent).not.toContain('Janela da coordenação de frota');             // a janela em segundos não tem mais uso
-  await setValue(campo(TETO), '12');
-  await setValue(campo(JANELA), '45');
-  await click(interruptor());
-  await click(await botaoPronto(/^Salvar limites/));
-  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
-  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ frota_max_contas_por_alvo: 12, fleet_target_window_days: 45, frota_conta_nossa_fora_da_regra: false });
-});
-
-it.each([[TETO, '0'], [TETO, '65'], [CURTIDAS, '51'], [JANELA, '0'], [JANELA, '366'], [JANELA, '3,5']])(
-  'ADR-081: %s = %s não salva e o erro cai no próprio campo', async (rotulo, valor) => {
-    await act(async () => { root.render(<LimitsSection />); });
-    await setValue(campo(rotulo), valor);
-    await click(byRole('button', /^Salvar limites/));
-    await waitFor(() => expect(container.textContent).toMatch(/entre|inteiro|mínimo|máximo|maior|menor|Informe/i));
-    expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(0);
-  },
-);
-
-it('ADR-081: backend anterior ao corte 56 (sem o teto novo nem o interruptor) mostra só a janela e o teto das curtidas, sem caixa vazia', async () => {
-  const sem = { ...useAppStore.getState().settings! } as Partial<Settings>;
-  delete sem.frota_max_contas_por_alvo;
-  delete sem.frota_conta_nossa_fora_da_regra;
-  useAppStore.setState({ settings: sem as Settings });
-  await act(async () => { root.render(<LimitsSection />); });
-  expect(container.textContent).toContain('Regra da frota sobre o mesmo alvo');
-  expect(campo(CURTIDAS).value).toBe('3');
-  expect(container.textContent).not.toContain('Contas da frota que podem agir sobre o mesmo alvo');
-  expect(container.textContent).not.toContain('Alvo que é conta nossa fica fora da regra');
-});
-
-it('ADR-081: a recusa do backend ao salvar o teto aparece sem perder o valor digitado', async () => {
-  backend.on('PUT', /^\/api\/settings$/, () => apiError(400, 'unknown_setting', 'frota_max_contas_por_alvo: configuração desconhecida'));
-  await act(async () => { root.render(<LimitsSection />); });
-  await setValue(campo(TETO), '20');
-  await click(await botaoPronto(/^Salvar limites/));
-  await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'Não foi possível salvar os limites' && String(t.message).includes('frota_max_contas_por_alvo'))).toBe(true));
-  expect(campo(TETO).value).toBe('20');
-});
+// ADR-083 (07/10): a regra da frota sobre o mesmo alvo (teto, janela e interruptor) saiu do código por decisão do dono; os testes
+// do ADR-081 saíram junto com o grupo da tela.
 
 // 28.61: grupo de política dispensado da aprovação (grupo_sem_aprovacao): o dono escolhe pelo nome, o servidor guarda o id.
 const GRUPO = 'Grupo dispensado da aprovação de política';
