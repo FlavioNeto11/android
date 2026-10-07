@@ -12,7 +12,7 @@ import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { useUiStore } from '../../store/ui';
-import { makeSnapshot } from '../../test/fixtures';
+import { SETTINGS, makeSnapshot } from '../../test/fixtures';
 import {
   FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor,
 } from '../../test/harness';
@@ -233,6 +233,42 @@ describe('ações em lote', () => {
     await waitFor(() => text().includes('Terminado: 2 ok'));
     expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-1$/)[1]?.body).toEqual({ policy_group_id: null });
     expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-9$/)).toHaveLength(0);   // já estava sem grupo
+  });
+
+  // 31.265: o grupo dispensado da aprovação (ADR-082): o diálogo diz o efeito antes do clique e marca o grupo na lista.
+  it('grupo de acesso: o grupo sem aprovação aparece marcado e o diálogo diz o efeito; os demais grupos não avisam', async () => {
+    rotas();
+    useAppStore.setState({ settings: { ...SETTINGS, grupo_sem_aprovacao: 'grp-1' } });
+    await render();
+    await waitFor(() => text().includes('Elaine Prado'));
+    await selecionar('Luciana Bastos', 'Tadeu Quintela');
+    await click(byRole('button', /Grupo de acesso/, barra()));
+    const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
+    // o primeiro grupo já vem escolhido: é o dispensado, e o aviso aparece sem a pessoa ter de procurá-lo
+    expect(text(dialogo)).toContain('2 personas passam a agir sem aprovação');
+    expect(text(dialogo)).toContain('sem aprovação nas portas');
+    const combo = byRole('combobox', /^Grupo/, dialogo) as HTMLSelectElement;
+    expect(Array.from(combo.options).map((o) => o.textContent)).toContain('Cautelosos · sem aprovação');
+    await setValue(combo, '');
+    expect(text(dialogo)).not.toContain('passam a agir sem aprovação');
+    expect(text(dialogo)).not.toContain('voltam a esperar');       // ninguém da seleção está no grupo dispensado
+  });
+
+  it('grupo de acesso: tirar do grupo quem está no dispensado avisa que volta a esperar o Liberar; sem a chave do central, nenhum aviso', async () => {
+    rotas([pessoa({ policy_group_id: 'grp-1', policy_group_name: 'Cautelosos' }), TADEU, ELAINE]);
+    useAppStore.setState({ settings: { ...SETTINGS, grupo_sem_aprovacao: 'grp-1' } });
+    await render();
+    await waitFor(() => text().includes('Elaine Prado'));
+    await selecionar('Luciana Bastos');
+    await click(byRole('button', /Grupo de acesso/, barra()));
+    let dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
+    await setValue(byRole('combobox', /^Grupo/, dialogo) as HTMLSelectElement, '');
+    expect(text(dialogo)).toContain('volta a esperar o Liberar');
+    await click(byRole('button', /^Cancelar$/, dialogo));
+    useAppStore.setState({ settings: { ...SETTINGS, grupo_sem_aprovacao: '' } });
+    await click(byRole('button', /Grupo de acesso/, barra()));
+    dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
+    expect(text(dialogo)).not.toContain('sem aprovação');
   });
 
   // 29.141 (achado 5 da volta da 38): todas sem conta dariam "0 ok"; o botão nem começa, e o texto não fala de "outras".

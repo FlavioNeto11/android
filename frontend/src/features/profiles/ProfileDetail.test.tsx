@@ -6,7 +6,7 @@ import type { InstagramProfile, ProfileAccount } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
-import { APPS, makeBinding, makeInstance, makeSession } from '../../test/fixtures';
+import { APPS, SETTINGS, makeBinding, makeInstance, makeSession } from '../../test/fixtures';
 import {
   FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor,
 } from '../../test/harness';
@@ -1150,6 +1150,75 @@ it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha próp
   await setValue(select, 'grp-2');
   await waitFor(() => expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-1$/)).toHaveLength(1));
   expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-1$/)[0]!.body).toEqual({ policy_group_id: 'grp-2' });
+});
+
+// 31.265: o grupo dispensado da aprovação (ADR-082) pede a confirmação que diz o efeito; os outros grupos seguem direto.
+async function abrirGrupoComLiberado(grupoAtual: string | null, extraSettings: Record<string, unknown> = {}): Promise<void> {
+  const politica = {
+    limits: {}, capabilities: {}, defaults: {}, loosened: [], group_id: grupoAtual, group_name: grupoAtual,
+    own: {}, group: {}, origin: {}, own_limits: {}, group_limits: {}, limits_origin: {},
+  };
+  montarConfigBackend([], politica);
+  backend.on('GET', /policy-groups$/, () => json([
+    { id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [], members: [], created_at: '', updated_at: '' },
+    { id: 'grp-2', name: 'Liberados', description: '', capabilities: {}, limits: {}, loosened: [], members: [{ id: 'ig-9', username: 'x' }], created_at: '', updated_at: '' },
+  ]));
+  backend.on('PATCH', /\/instagram\/profiles\/ig-1$/, () => json(perfil()));
+  useAppStore.setState({ settings: { ...SETTINGS, grupo_sem_aprovacao: 'grp-2', ...extraSettings } });
+  await act(async () => {
+    root.render(<><ProfileDetail profile={perfil()} onBack={() => {}} onChanged={async () => {}} /><ConfirmHost /></>);
+  });
+  await waitFor(() => text().includes('@luciana.bastos73519'));
+  await irParaGuia(/Configurações/i);
+  await waitFor(() => expect((byRole('combobox', /^Grupo$/) as HTMLSelectElement).disabled).toBe(false));
+}
+const PATCH_DO_GRUPO = () => backend.callsTo('PATCH', /\/instagram\/profiles\/ig-1$/);
+
+it('31.265: pôr a persona no grupo sem aprovação diz o efeito e só grava ao confirmar; cancelar não grava', async () => {
+  await abrirGrupoComLiberado('grp-1');
+  const select = byRole('combobox', /^Grupo$/) as HTMLSelectElement;
+  expect(Array.from(select.options).map((o) => o.textContent)).toContain('Liberados · 1 persona · sem aprovação');
+  await setValue(select, 'grp-2');
+  const dialogo = await waitFor(() => byRole('dialog', /no grupo Liberados\?/));
+  expect(text(dialogo)).toContain('sem aprovação nas portas');
+  expect(text(dialogo)).toContain('sem ninguém ler o texto antes');
+  expect(PATCH_DO_GRUPO()).toHaveLength(0);
+  await click(byRole('button', /^Voltar$/, dialogo));
+  await waitFor(() => expect(allByRole('dialog', /no grupo Liberados/)).toHaveLength(0));
+  expect(PATCH_DO_GRUPO()).toHaveLength(0);
+  await setValue(select, 'grp-2');
+  await click(byRole('button', /^Pôr no grupo$/, await waitFor(() => byRole('dialog', /no grupo Liberados\?/))));
+  await waitFor(() => expect(PATCH_DO_GRUPO()).toHaveLength(1));
+  expect(PATCH_DO_GRUPO()[0]!.body).toEqual({ policy_group_id: 'grp-2' });
+});
+
+it('31.265: com a chave "operacao_grupo_liberado_executa" desligada a confirmação diz que a persona continua esperando o Liberar', async () => {
+  await abrirGrupoComLiberado('grp-1', { operacao_grupo_liberado_executa: false });
+  await setValue(byRole('combobox', /^Grupo$/) as HTMLSelectElement, 'grp-2');
+  const dialogo = await waitFor(() => byRole('dialog', /no grupo Liberados\?/));
+  expect(text(dialogo)).toContain('está desligada');
+  expect(text(dialogo)).toContain('continua esperando o Liberar');
+  expect(text(dialogo)).not.toContain('sem ninguém ler o texto antes');
+});
+
+it('31.265: sair do grupo sem aprovação também confirma, dizendo que volta a esperar o Liberar; entre outros grupos segue direto', async () => {
+  await abrirGrupoComLiberado('grp-2');
+  const select = byRole('combobox', /^Grupo$/) as HTMLSelectElement;
+  await setValue(select, '');
+  const dialogo = await waitFor(() => byRole('dialog', /Tirar .* do grupo sem aprovação\?/));
+  expect(text(dialogo)).toContain('volta a esperar o Liberar');
+  expect(PATCH_DO_GRUPO()).toHaveLength(0);
+  await click(byRole('button', /^Tirar do grupo$/, dialogo));
+  await waitFor(() => expect(PATCH_DO_GRUPO()).toHaveLength(1));
+  expect(PATCH_DO_GRUPO()[0]!.body).toEqual({ policy_group_id: null });
+});
+
+it('31.265: trocar para um grupo que não é o dispensado grava direto, sem confirmação', async () => {
+  await abrirGrupoComLiberado(null);
+  await setValue(byRole('combobox', /^Grupo$/) as HTMLSelectElement, 'grp-1');
+  await waitFor(() => expect(PATCH_DO_GRUPO()).toHaveLength(1));
+  expect(PATCH_DO_GRUPO()[0]!.body).toEqual({ policy_group_id: 'grp-1' });
+  expect(allByRole('dialog', /grupo/i)).toHaveLength(0);
 });
 
 // Auditoria UX 27/09, P2.11: erro de carga das abas ia só para um toast e o esqueleto ficava para sempre.

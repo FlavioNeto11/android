@@ -7,12 +7,15 @@ import type {
 } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
+import { confirm } from '../../components/Confirm';
 import { Field, Select } from '../../components/Field';
 import { plural } from '../../lib/format';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
+import { useAppStore } from '../../store/app';
 import { toastError } from '../../store/toasts';
 import { Carregando, useVersaoAoVivo } from './detalheComum';
-import type { Pessoa } from './pessoa';
+import { EFEITO_DE_SAIR_DO_GRUPO_LIBERADO, efeitoDeEntrarNoGrupoLiberado, ehGrupoLiberado } from './grupoLiberado';
+import { nomeDe, type Pessoa } from './pessoa';
 import { LimitsEditor, type Origem, PolicyActionsEditor } from './PolicyEditor';
 import { baldeDoLimite, contarUsoDeHoje } from './PolicyVisual';
 import styles from './Profiles.module.css';
@@ -41,6 +44,7 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
   const [tentativa, setTentativa] = useState(0);
   // Mudou a política deste perfil (aqui, em outra aba ou pelo grupo): recarrega sozinha, como as demais abas.
   const versao = useVersaoAoVivo(profile);
+  const settings = useAppStore((s) => s.settings);
 
   // O REGISTRO de aplicativos diz quem tem catálogo e quem é o âncora; não é um padrão fixo no cliente. A falha
   // dele é erro da aba, com "Tentar de novo" (que o busca de novo, por `tentativa`): engolida, o app nunca se
@@ -98,6 +102,20 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
   }
 
   async function trocarGrupo(groupId: string) {
+    // O grupo dispensado da aprovação (ADR-082) muda o que a persona faz sem ninguém ler antes: entrar ou sair dele pede a
+    // confirmação que diz o efeito (31.265); os demais grupos seguem direto, como antes.
+    const entra = ehGrupoLiberado(groupId, settings);
+    const sai = !entra && ehGrupoLiberado(politica?.group_id ?? null, settings);
+    if (entra || sai) {
+      const nome = grupos.find((g) => g.id === groupId)?.name ?? 'o grupo escolhido';
+      const { confirmed } = await confirm({
+        title: entra ? `Pôr ${nomeDe(profile)} no grupo ${nome}?` : `Tirar ${nomeDe(profile)} do grupo sem aprovação?`,
+        danger: entra,
+        confirmLabel: entra ? 'Pôr no grupo' : 'Tirar do grupo',
+        body: entra ? efeitoDeEntrarNoGrupoLiberado(settings) : EFEITO_DE_SAIR_DO_GRUPO_LIBERADO,
+      });
+      if (!confirmed) return;
+    }
     setSalvando(true);
     try {
       await api.patchProfile(profile.id, { policy_group_id: groupId || null });
@@ -148,7 +166,7 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
                         onChange={(e) => void trocarGrupo(e.target.value)}>
                   <option value="">Sem grupo — só o padrão do catálogo</option>
                   {grupos.map((g) => (
-                    <option key={g.id} value={g.id}>{g.name} · {plural(g.members.length, 'persona', 'personas')}</option>
+                    <option key={g.id} value={g.id}>{g.name} · {plural(g.members.length, 'persona', 'personas')}{ehGrupoLiberado(g.id, settings) ? ' · sem aprovação' : ''}</option>
                   ))}
                 </Select>
               )}

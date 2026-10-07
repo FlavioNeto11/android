@@ -19,9 +19,11 @@ import { Dialog } from '../../components/Dialog';
 import { Field, Select, TextArea, TextInput } from '../../components/Field';
 import { ProgressBar } from '../../components/ProgressBar';
 import { plural } from '../../lib/format';
+import { useAppStore } from '../../store/app';
 import { CUSTO_ESTIMADO_POR_PERSONA } from './NovaPersona';
 import { custoDasFotos, faixaUsd, CUSTO_POR_PERSONA_USD, imagemPaga, personaSimulado } from './custos';
 import { RecusaLocal, executarEmLote, type ResultadoDoItem } from './emLote';
+import { EFEITO_DE_SAIR_DO_GRUPO_LIBERADO, efeitoDeEntrarNoGrupoLiberado, ehGrupoLiberado } from './grupoLiberado';
 import { nomeDe } from './pessoa';
 import styles from './Profiles.module.css';
 import { useAiStatus } from './useAiStatus';
@@ -139,6 +141,7 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
   const k = Number(fotos);
   const nomeDoGrupo = grupos.find((g) => g.id === grupoId)?.name ?? null;
   const semConta = pessoas.filter((p) => !p.username).length;
+  const settings = useAppStore((s) => s.settings);
 
   // ------------------------------------------------ o que cada operação faz com UMA pessoa
   async function executar(p: PersonaDTO): Promise<string | void> {
@@ -292,11 +295,22 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
           <Field label="Grupo" hint="O grupo decide o que a conta pode fazer sozinha, com aprovação ou só à mão.">
             {({ id, describedBy }) => (
               <Select id={id} aria-describedby={describedBy} value={grupoId} onChange={(e) => setGrupoId(e.target.value)}>
-                {grupos.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                {grupos.map((g) => <option key={g.id} value={g.id}>{g.name}{ehGrupoLiberado(g.id, settings) ? ' · sem aprovação' : ''}</option>)}
                 <option value="">Nenhum — tirar do grupo (volta ao padrão do catálogo)</option>
               </Select>
             )}
           </Field>
+          {/* O efeito antes do clique (31.265): pôr gente no grupo dispensado tira a revisão humana das portas; quem já está nele e sai volta a esperar o Liberar. */}
+          {ehGrupoLiberado(grupoId, settings) ? (
+            <Banner tone="warning" icon={TriangleAlert} role="status" title={`${plural(n, 'persona passa', 'personas passam')} a agir sem aprovação`}>
+              {efeitoDeEntrarNoGrupoLiberado(settings)}
+            </Banner>
+          ) : null}
+          {!ehGrupoLiberado(grupoId, settings) && pessoas.some((p) => ehGrupoLiberado(p.policy_group_id, settings)) ? (
+            <Banner tone="info" icon={TriangleAlert} role="status" title="Quem está no grupo sem aprovação volta a esperar o Liberar">
+              {EFEITO_DE_SAIR_DO_GRUPO_LIBERADO}
+            </Banner>
+          ) : null}
           {grupoId && semConta > 0 ? (
             <Banner tone="info" icon={TriangleAlert} role="status" title={`${plural(semConta, 'selecionada não tem', 'selecionadas não têm')} conta`}>
               {SEM_CONTA_NO_GRUPO}{semConta < n ? ' Elas aparecem como falha no resumo; as outras entram no grupo.' : ''}
