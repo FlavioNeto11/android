@@ -22,6 +22,7 @@ from .convergencia import Convergencia
 from .db import Database, dumps, loads
 from .decisoes_inversas import inversas_das_filas
 from .devices.captura_pontual import capturar_para_o_dono
+from .devices.diagnostics import ler_disco as ler_disco_da_saude
 from .devices.installer import AppInstaller
 from .devices.manager import DeviceManager, DeviceRuntime
 from .devices.rede_convergencia import ConvergenciaDeRede
@@ -46,6 +47,7 @@ from .modules.avisos.infrastructure.portas_da_central import nomes_e_dados_da_pe
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
 from .modules.avisos.infrastructure.trello_leitor import ComentariosDoTrello, LeitorDoTrello
 from .modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook, PortaDoWebhook
+from .modules.avisos.infrastructure.vigia_do_host import VigiaDoHost
 from .modules.decisoes.application.desfazer import DesfazerDecisoes
 from .modules.decisoes.infrastructure.adaptador_sql import AdaptadorDeDecisoes
 from .modules.decisoes.infrastructure.estado_sql import EstadoDasDecisoes
@@ -276,6 +278,10 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
                                   redigir=TriagemDeCredencial().redigir,
                                   faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta),
                                   nomes_de_persona=lambda: nomes_e_dados_da_persona(self.db))
+    # O que a Central confere no próprio host (28.60 ensaio de restauração, 28.58 disco baixo): lê o veredito do script
+    # e o livre do disco e avisa pela rotina. O leitor do disco é o da saúde (`devices.diagnostics.ler_disco`).
+    self.vigia_do_host = VigiaDoHost(cfg, self.avisos.enfileirar_aviso, ler_disco=ler_disco_da_saude,
+                                     pronto=lambda: self.avisos.ligado and self.avisos.canal() is not None)
     # O contato do site institucional (29.77, ADR-075): grava antes de avisar e entrega pela Canais. Desligado de fábrica.
     self.portal = Portal(cfg, self.db, self.avisos)
     # O que a plataforma decide sozinha (28.25): `bootstrap.montar_decisoes`.

@@ -179,6 +179,8 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
 - **PostgreSQL da noite só quando precisa (29.193):** o job `pg-necessario` do `ci.yml` (hospedado) decide, por `scripts/pg_necessario.py`, se o `backend-postgres` roda: pula só se TODO arquivo mudado desde a última corrida da `main` em que o PostgreSQL passou for de `docs/`, `.claude/`, `frontend/` (menos `rotas.ts`), dos outros workflows ou `.md`; na dúvida roda, e o disparo manual roda sempre. Ver a decisão da noite: o resumo do job `pg · precisa rodar hoje?` ou `python scripts/pg_necessario.py --repo dono/nome --evento schedule --head <sha> --run 1`.
 - **Esteira do agente de nuvem (29.192):** `python scripts/issue_do_pacote.py ITEM --repo dono/nome --agente-nuvem --aplicar` cria a issue do pacote com a etiqueta `agente-nuvem` (sem atribuir). `python scripts/agente_nuvem.py atribuir N --repo dono/nome` mostra as conferências e `--aplicar` atribui ao agente (única porta; um PR do agente aberto por vez e 1 atribuição por dia). `python scripts/agente_nuvem.py medir --repo dono/nome [--custos custos.json]` imprime aceitação, tempo, diff e créditos por item (créditos reais lidos na página de uso entram por `--custos`). A revisão do PR do agente é a de sempre.
 - **Medida semanal automática (29.188):** `.github/workflows/custo-semanal.yml` (hospedado) roda toda segunda 06:00Z o `github_custo.py --resumos` e publica o relatório como artifact `relatorio-custo` e como comentário na issue única com o rótulo `custo` (`scripts/custo_semanal_issue.py`, que recusa texto com formato de dado pessoal ou credencial). Disparo manual: `gh workflow run custo-semanal.yml`. O billing da conta não é lido (limite do token); os créditos reais se leem na página de uso da conta.
+
+- **Resumo por job no CI leve (29.179):** o `pr-leve.yml` termina cada job com uma linha (tempo por etapa, soma e testes do pytest e do vitest) no job summary e no log; é a base da leitura de custo por PR.
 - **Custo semanal do GitHub (29.178):** `python scripts/github_custo.py --repo dono/nome --dias 7 --anexar .claude/handoffs/github-custo-revisao.md` (só leitura, ~1,5 min) junta minutos hospedados faturáveis ESTIMADOS por workflow, minutos no runner `central`, créditos do Copilot estimados e as falhas. Não lê saldo nem gasto extra (a API de billing pede o escopo `user`) e o timing do run vem zerado em repositório privado: o saldo real continua sendo a página de uso, no Chrome do dono.
 - **Issue a partir do pacote (29.177):** `python scripts/issue_do_pacote.py <id> --repo dono/nome` (ensaio por padrão; `--aplicar` cria) gera a issue de tarefa do pacote do item, idempotente pela marca `<!-- pacote:<id> -->`. Não atribui ao agente de nuvem (a atribuição é manual, com o sim do dono) e recusa texto com e-mail, IP, serial ou arroba; leia a prévia antes de `--aplicar`, porque nome de persona não é detectável. Os pacotes ficam fora do Git: rode no checkout central (`--pacotes DIR` aponta outro lugar).
 - **Gatilhos travados e `[skip ci]` (29.176):** o `ci.yml` só tem `schedule` e `workflow_dispatch`; push de branch e PR nunca acionam o runner `central` (`scripts/tests/test_ci_gatilhos.py` falha se mudar). Por isso `[skip ci]` é SÓ dos commits que entram na `main`; o último commit de uma branch de PR não o leva, para o check leve rodar.
@@ -336,7 +338,7 @@ instala na máquina dele.
 (fora do Git, como o resto de `data\`): `ts_utc`, `resultado` (`ok` ou `falhou`), `commit_antes`/`migracao_antes` (o que
 estava no ar), `commit_depois`/`migracao_depois`, `backup` (a pasta em `data\backups` que vale para voltar),
 `backup_do_ensaio`, `tag`, `motivo` (a falha, em uma linha de até 300 caracteres), `duracao_s`, `opcoes` e `etapas_s` (29.156: segundos de cada etapa na ordem do deploy, `backup`, `site`, `docs_check`,
-`painel`, `parada`, `dependencias`, `subida`, `conferencia`, `tag`; numa falha, `interrompida` é o tempo da etapa que quebrou;
+`painel`, `parada`, `dependencias`, `subida`, `conferencia`, `tag`, `ensaio_de_rollback`; numa falha, `interrompida` é o tempo da etapa que quebrou;
 linhas anteriores ao campo não têm; a mesma lista sai na tela como "tempo por etapa"). Ensaio, recusa
 do portão do `-PularBackup` e falha do build do painel (antes de parar) não entram: não mudaram nada no ar. Ler:
 `Get-Content data\deploys.jsonl | ConvertFrom-Json | Select-Object ts_utc, resultado, commit_antes, commit_depois, backup, tag`.
@@ -384,6 +386,13 @@ backup da linha numa pasta de trabalho (`restore.ps1` sem `-Confirmar`) e abre a
 integridade está ok, a migração da cópia é a `migracao_antes` da linha e o código antigo NÃO quer aplicar migração nenhuma. Veredito em
 `data\rollback-ensaio\ultimo.json`; saída 0 ok, 1 falhou, 2 pulado (backup podado ou commit ausente: aviso, não aprovação). Rode depois de
 um deploy que trouxe migração, antes de precisar do rollback.
+
+**O deploy já o chama** (29.156, fatia 4): depois da tag e antes de gravar a linha, só quando a migração de depois difere da de antes
+e há pasta de backup, o `deploy.ps1` roda `rollback-ensaio.ps1` para ESSE deploy (commit, migração e backup por parâmetro: a linha ainda não
+existe). O resultado vai à linha de `data\deploys.jsonl` em `ensaio_de_rollback` (`ok`, `falhou` ou `pulado`) e, quando não é `ok`,
+em `ensaio_de_rollback_motivo` (texto fixo, até 200 caracteres); a tela mostra um aviso. **Nunca reverte nada nem derruba o
+deploy**, e `pulado` (backup podado, commit ausente) nunca conta como aprovação. `-SemEnsaioDeRollback` pula o passo. A etapa
+aparece em `etapas_s` como `ensaio_de_rollback`.
 
 4. **Depois de qualquer rollback:** `GET /api/health` (commit e migração), a 8010 escutando, a prova de fora, e uma linha
    nova em `data\deploys.jsonl` (o rollback também é uma subida e fica no histórico).
@@ -433,6 +442,9 @@ estado antigo, nunca uma edição retroativa.
   (`farm-canais-saude-dos-lacos`: `saude_dos_lacos.py --avisar` a cada 5 min, limite de 4 min; só lê e avisa, nunca relança). Como as
   outras, levam `-Enviar` na tarefa registrada e sem ele só imprimem. Antes de registrar o laço, parar o que roda na sessão da Canais
   (dois laços mandariam o aviso duas vezes).
+
+  1 falhou, 2 pulado. **Não manda Telegram**: quem avisa é o backend (28.60), que lê o `ultimo.json` a cada 15 min e manda `falhou`, `pulado`,
+  veredito ilegível ou veredito com mais de 192 h pela rotina do canal (`avisos.restore_ensaio.*`; `docs/dominios/canais.md`). PostgreSQL (`parque.dump`) não é ensaiado aqui.
 - **Restaurar o banco regride a cerca** (`commands.fence`, usada para invalidar comando obsoleto por aparelho):
   depois de restaurar, o agente recusa comandos com "cerca N é anterior à última executada (M)" e os `start`
   ficam `failed` sem reparo automático. Procedimento: subir manualmente o `fence` do último comando do aparelho
@@ -521,8 +533,12 @@ Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06
   threads do host) e a afinidade opcional dos núcleos E (`-NucleosE`: as threads de menor eficiência, lidas do próprio Windows;
   `-Afinidade 0x..` fixa uma máscara; `-Simular` só mostra o plano), e roda o comando **criado já dentro do job** (suspenso, entra, retoma):
   pytest, workers do xdist e netos ficam sob o teto; sem administrador; o job some com o comando e, se o wrapper morrer, a árvore
-  morre junto. `-Linha` passa pelo `cmd.exe /d /c`; um `pwsh -Command` NÃO serve, porque os processos que o PowerShell cria escapam do
-  job. Imprime a CPU usada pela árvore (% do total) e propaga o código de saída. Não toca `.wslconfig`, WSL, túnel nem relógio e não
+  morre junto. `-Linha` passa pelo `cmd.exe /d /c`. **O `pwsh` (PowerShell 7) deste host é um app MSIX e o Windows o ativa FORA do job: o
+  teto não vale para ele nem para nada que ele inicie** (o funil 58 rodou assim, sem teto, com a árvore em 0,0 s de CPU no
+  contador do wrapper). Use `powershell` (5.1) como hospedeiro do script do funil, ou chame o python/pytest direto; o wrapper
+  avisa quando o comando usa `pwsh` e quando a árvore quase não usa CPU. `-BatimentoS N` (padrão 60; 0 desliga) imprime a cada N s a
+  CPU que a árvore já usou e acusa árvore com 0 s depois de `-ZeroAposS` s (padrão 20): dá para conferir no primeiro minuto, pelo
+  arquivo de saída, que o funil está dentro do job. Imprime a CPU usada pela árvore (% do total) e propaga o código de saída. Não toca `.wslconfig`, WSL, túnel nem relógio e não
   mata processo alheio. Teste: `scripts/tests/test_com_teto_de_cpu.py`. O custo do teto é tempo de funil: compare a duração da
   suíte sem e com teto antes de adotar.
 
@@ -858,6 +874,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `python scripts/reverificar-sessoes.py aparelho:perfil:conta …` | P | Reverifica as sessões das contas reais pela API do central, só observando (`session/verify`, sem adb nem senha): no máximo 2 tentativas por aparelho, o @ redigido no motivo e a tela "Confirm you're human" parando o aparelho na hora; `--json` grava o desfecho por comando |
 | `recuperar-parque.ps1` | P | Reinicia aparelhos remotos pelo worker |
 | `worker-install.ps1` / `worker-agent.ps1 -Instalar` | P | Instala/registra o agente numa máquina worker |
+| `worker-comando.py` (`--worker`, `--linha` ou `--argv-json`; sessão em `CENTRAL_SESSAO`) | P | Cliente do comando remoto (29.154, ADR-079): pede a execução de UMA linha na máquina de um worker, espera o estado final e imprime a saída já redigida pela central; desligado de fábrica nos três interruptores; sem IA; o código de saída é o do comando (2 recusa/`uncertain`, 3 prazo, 4 sem sessão, 5 central fora) |
 | `install-central-service.ps1` | P | Registra o backend do central como tarefa supervisionada |
 | `worker-tunnel.ps1` | P | Sobe/mantém o túnel SSH real |
 | `portal-instalar-tunel.ps1` | P | **Rodado pelo dono**, como Administrador, depois do `cloudflared tunnel login`: cria o túnel da Cloudflare, grava o `config.yml` com as travas do ADR-073, aponta o DNS e instala o serviço `Cloudflared`. Não abre porta nem mexe no central |

@@ -24,6 +24,12 @@
   Fixa a árvore nos núcleos de eficiência (nem os mais rápidos nem os de baixo consumo); recusa em CPU sem classes distintas.
 .PARAMETER Afinidade
   Máscara de afinidade explícita (decimal ou 0x…), no grupo de processadores 0 (até 64 threads). Exclusivo com -NucleosE.
+.PARAMETER BatimentoS
+  A cada quantos segundos imprimir a CPU que a árvore já usou ("com-teto-de-cpu: 30 s: árvore 14,2 s de CPU ..."); 0 desliga (padrão 60).
+  Serve para conferir, ainda no primeiro minuto, que o comando está DENTRO do job: se a árvore marca 0 s depois de `-ZeroAposS` s (padrão
+  20), o wrapper avisa (o comando provavelmente escapou, como o `pwsh` 7).
+.PARAMETER ZeroAposS
+  Segundos antes de o batimento acusar árvore com 0 s de CPU (padrão 20).
 .PARAMETER Simular
   Não executa nada: imprime um JSON com o teto, a máscara e as classes de eficiência detectadas.
 .PARAMETER Linha
@@ -39,7 +45,9 @@ param(
   [string]$Afinidade = '',
   [switch]$Simular,
   [string]$Linha = '',
-  [string]$ComandoJson = ''
+  [string]$ComandoJson = '',
+  [ValidateRange(0, 3600)][int]$BatimentoS = 60,
+  [ValidateRange(1, 3600)][int]$ZeroAposS = 20
 )
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.Platform -and $PSVersionTable.Platform -ne 'Win32NT') { throw 'o teto de CPU por Job Object só existe no Windows.' }
@@ -147,7 +155,7 @@ public static class TetoDeCpu {
 
   // Roda `linha` (já com aspas de CreateProcess) debaixo do job: o processo nasce SUSPENSO, entra no job e só então roda, de modo que
   // nem ele nem nenhum descendente passa um instante fora do teto. Devolve o código de saída do comando; espera o processo acabar.
-  public static int Rodar(IntPtr job, string linha) {
+  public static int Rodar(IntPtr job, string linha, int cadaMs, Action aoPassar) {
     var si = new STARTUPINFO();
     si.cb = Marshal.SizeOf(typeof(STARTUPINFO));
     si.dwFlags = 0x100;                                                    // STARTF_USESTDHANDLES: a saída vai para onde a nossa vai
@@ -167,7 +175,8 @@ public static class TetoDeCpu {
         TerminateProcess(pi.hProcess, 1);
         throw new System.ComponentModel.Win32Exception(erro, "ResumeThread");
       }
-      WaitForSingleObject(pi.hProcess, 0xFFFFFFFF);
+      if (cadaMs <= 0 || aoPassar == null) WaitForSingleObject(pi.hProcess, 0xFFFFFFFF);
+      else while (WaitForSingleObject(pi.hProcess, (uint)cadaMs) == 0x102) aoPassar();   // 0x102 = WAIT_TIMEOUT: o comando segue rodando
       uint codigo;
       if (!GetExitCodeProcess(pi.hProcess, out codigo)) return 1;
       return unchecked((int)codigo);
@@ -231,13 +240,32 @@ if ($Linha) { $linhaDeComando = '"{0}" /d /s /c "{1}"' -f $env:ComSpec, $Linha }
 $job = [TetoDeCpu]::Criar($Teto, $mascara)
 $primeiro = if ($Linha) { ($Linha.Trim() -split '\s+')[0] } else { $cmd[0] }
 Write-Host ("com-teto-de-cpu: teto {0} % (≈ {1} de {2} threads), afinidade {3}; comando: {4}" -f $Teto, $plano.teto_em_threads, $total, $descricaoDaAfinidade, $primeiro)
+# O pwsh 7 deste host é um app MSIX: o Windows o ativa FORA do job e toda a descendência dele (pytest, workers, node) fica sem teto.
+# Medido em 07/10/2026: `pwsh` e o caminho real do pwsh.exe usaram 0,0 s de CPU dentro do job, `powershell` (5.1) e python direto, 100 %.
+$textoDoComando = if ($Linha) { $Linha } else { $cmd -join ' ' }
+$usaPwsh = $textoDoComando -match '(?i)(^|[\s"\\/&|;(])pwsh(\.exe)?(["\s]|$)'
+if ($usaPwsh) {
+  Write-Host 'com-teto-de-cpu: AVISO: o comando usa `pwsh` (PowerShell 7, app MSIX): ele escapa do job e o teto NÃO vale para ele nem para os filhos. Use `powershell` (5.1) ou chame o python direto.'
+}
 $relogio = [Diagnostics.Stopwatch]::StartNew()
-try { $codigo = [TetoDeCpu]::Rodar($job, $linhaDeComando) }
+$zeroAvisado = $false
+$batimento = [Action]{
+  $cpuAgora = [TetoDeCpu]::CpuDoJob($job); $tAgora = $relogio.Elapsed.TotalSeconds
+  Write-Host ('com-teto-de-cpu: {0:F0} s: árvore {1:F1} s de CPU ({2:F1} % do total; teto {3} %)' -f $tAgora, $cpuAgora, (100 * $cpuAgora / ($tAgora * $total)), $Teto)
+  if (-not $script:zeroAvisado -and $tAgora -ge $ZeroAposS -and $cpuAgora -ge 0 -and $cpuAgora -lt 0.2) {
+    $script:zeroAvisado = $true
+    Write-Host ('com-teto-de-cpu: AVISO: a árvore marca 0 s de CPU depois de {0:F0} s: o comando provavelmente está FORA do job (pwsh 7?) e roda SEM teto.' -f $tAgora)
+  }
+}
+try { $codigo = [TetoDeCpu]::Rodar($job, $linhaDeComando, ($BatimentoS * 1000), $batimento) }
 catch { Write-Host ("com-teto-de-cpu: o comando não rodou ({0})" -f $_.Exception.Message); $codigo = 126 }
 $parede = $relogio.Elapsed.TotalSeconds
 $cpuDaArvore = [TetoDeCpu]::CpuDoJob($job)
 if ($cpuDaArvore -ge 0 -and $parede -gt 0) {
   Write-Host ("com-teto-de-cpu: a árvore usou {0:F1} s de CPU em {1:F1} s de relógio = {2:F1} % do total de {3} threads (teto {4} %); código de saída {5}" -f `
               $cpuDaArvore, $parede, (100 * $cpuDaArvore / ($parede * $total)), $total, $Teto, $codigo)
+}
+if ($cpuDaArvore -ge 0 -and $parede -gt 10 -and $cpuDaArvore -lt 0.5) {
+  Write-Host 'com-teto-de-cpu: AVISO: a árvore quase não usou CPU: o comando provavelmente escapou do job (pwsh 7?) e rodou SEM teto.'
 }
 exit $codigo

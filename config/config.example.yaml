@@ -554,6 +554,17 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   #   janela_min: 60              # no máximo UMA mensagem de resumo por janela, e só se houve decisão nova
   #   desfazer_dias: 7            # prazo para o dono desfazer uma decisão automática
   #   intervalo_s: 30             # volta do adaptador (eventos e trilha do aprendizado) e do resumo
+  # restore_ensaio:               # (28.60) aviso de rotina do ensaio de restauração (scripts/restore-ensaio.ps1); só vale com avisos.enabled
+  #   enabled: true               # (true) false = não lê o veredito
+  #   intervalo_min: 15           # de quanto em quanto tempo relê o veredito
+  #   ultimo_json: data/restore-ensaio/ultimo.json   # relativo à raiz do projeto; ausente = nada a avisar
+  #   idade_max_h: 192            # veredito mais velho que isto = a tarefa semanal parou (7 dias + 1 de folga; 48 alarmaria toda terça)
+  # disco:                        # (28.58) aviso de rotina de disco baixo no central; NUNCA apaga nada; só vale com avisos.enabled
+  #   enabled: true               # (true) false = não lê o disco
+  #   piso_gb: 100                # livre abaixo disto avisa, e de novo a cada degrau abaixo (100, 80, 60...); voltar ao piso rearma
+  #   degrau_gb: 20               # distância entre os avisos
+  #   critico_gb: 60              # abaixo disto o aviso diz que backup e criação de aparelho podem falhar
+  #   intervalo_min: 15           # de quanto em quanto tempo lê o livre (o mesmo leitor da saúde)
   # entrada:                       # a conversa de volta (28.15, ADR-071): o chat do .env aprova, veta, responde e pede
   #   enabled: false              # (false) desligada; só liga com avisos.enabled. Ligar troca o consumidor do bot (docs/operacao.md)
   #   limite_por_min: 10          # mensagens do chat por minuto; o excesso vira `limitada`

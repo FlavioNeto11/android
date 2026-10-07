@@ -77,9 +77,9 @@ def _arvore(tmp: Path, *, migracao_do_backup: str = "002_b", migracao_antes: str
     return raiz
 
 
-def _rodar(raiz: Path) -> tuple[int, dict | None, str]:
+def _rodar(raiz: Path, *extra: str) -> tuple[int, dict | None, str]:
     r = subprocess.run([PWSH, "-NoProfile", "-File", str(raiz / "scripts" / "rollback-ensaio.ps1"), "-Raiz", str(raiz),
-                        "-Python", sys.executable], capture_output=True, text=True, timeout=300)
+                        "-Python", sys.executable, *extra], capture_output=True, text=True, timeout=300)
     ultimo = raiz / "data" / "rollback-ensaio" / "ultimo.json"
     return r.returncode, (json.loads(ultimo.read_text(encoding="utf-8")) if ultimo.exists() else None), r.stdout + r.stderr
 
@@ -95,6 +95,20 @@ class TestRollbackEnsaio:
         assert v["migracoes_que_o_codigo_antigo_quis_aplicar"] == []
         assert v["deploy_ts"] == "2026-10-06T21:15:51Z", "usa a linha ok mais nova, ignora a de falha"
         assert v["migracao_do_codigo_antigo"] == "002_b"
+
+    def test_o_deploy_passa_o_deploy_a_ensaiar_sem_precisar_da_linha_no_arquivo(self, tmp_path):
+        """O `deploy.ps1` chama antes de a linha do deploy existir: commit, migração e backup vêm por parâmetro."""
+        raiz = _arvore(tmp_path, com_linha=False)
+        commit = _git(raiz, "rev-parse", "HEAD")
+        codigo, v, saida = _rodar(raiz, "-CommitAntes", commit, "-MigracaoAntes", "002_b", "-Backup", "20261006-181424")
+        assert codigo == 0, saida
+        assert v["resultado"] == "ok" and v["commit_antes"] == commit and v["backup"] == "20261006-181424"
+
+    def test_parametros_do_deploy_valem_mais_que_o_arquivo_e_migracao_errada_falha(self, tmp_path):
+        raiz = _arvore(tmp_path)
+        commit = _git(raiz, "rev-parse", "HEAD")
+        codigo, v, _ = _rodar(raiz, "-CommitAntes", commit, "-MigracaoAntes", "001_a", "-Backup", "20261006-181424")
+        assert codigo == 1 and "difere" in v["motivo"]
 
     def test_trabalho_com_a_chave_restaurada_some_e_nada_vaza(self, tmp_path):
         raiz = _arvore(tmp_path)

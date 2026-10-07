@@ -23,9 +23,14 @@
   Checkout de onde ler `data\deploys.jsonl`, `data\backups` e o git (padrão: a raiz deste script).
 .PARAMETER Python
   Python do venv do backend.
+.PARAMETER CommitAntes
+.PARAMETER MigracaoAntes
+.PARAMETER Backup
+  Os três juntos dizem qual deploy ensaiar (o `deploy.ps1` os passa para o deploy que ACABOU de subir, cuja linha ainda não
+  está em `data\deploys.jsonl`). Sem eles, vale a linha `ok` mais nova do arquivo.
 #>
 [CmdletBinding()]
-param([string]$Raiz = '', [string]$Python = '')
+param([string]$Raiz = '', [string]$Python = '', [string]$CommitAntes = '', [string]$MigracaoAntes = '', [string]$Backup = '')
 $ErrorActionPreference = 'Stop'
 if (-not $Raiz) { $Raiz = Split-Path -Parent $PSScriptRoot }
 if (-not $Python) { $Python = Join-Path $Raiz 'backend\.venv\Scripts\python.exe' }
@@ -63,7 +68,9 @@ $limpezaIncompleta = $false
 try {
   $arquivoDeDeploys = Join-Path $Raiz 'data\deploys.jsonl'
   $linha = $null
-  if (Test-Path -LiteralPath $arquivoDeDeploys) {
+  if ($CommitAntes -and $MigracaoAntes -and $Backup) {
+    $linha = [pscustomobject]@{ ts_utc = $inicio.ToUniversalTime(); commit_antes = $CommitAntes; migracao_antes = $MigracaoAntes; backup = $Backup }
+  } elseif (Test-Path -LiteralPath $arquivoDeDeploys) {
     foreach ($texto in (Get-Content -LiteralPath $arquivoDeDeploys -Encoding UTF8)) {
       if (-not $texto.Trim()) { continue }
       try { $d = $texto | ConvertFrom-Json } catch { continue }
