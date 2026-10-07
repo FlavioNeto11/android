@@ -29,6 +29,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   não muda. `ai.imagem_quando_alvo_fora_da_arvore: false` volta ao de antes.
 - Prova `simulated`: `backend/tests/test_imagem_do_alvo_fora_da_arvore.py` (6). `real`: `not_run`.
 
+## 2026-10-07 — 31.237: o 1º plano da operação aquece o cache; os irmãos esperam (branch feat/31-237-plano-aquece-o-cache)
+
+- Na onda 2 cancelada (07/10), os 3 planos da operação saíram no mesmo instante e cada um gravou o mesmo prefixo do
+  prompt no cache (US$ 0,018 o plano). Na onda válida, que leu o cache gravado 7,5 min antes, cada um custou 0,0095.
+- Agora o 1º plano de uma operação sai sozinho, e os irmãos esperam por ele (com sucesso ou erro) antes de chamar a
+  IA, sem ocupar vaga. Teto em `ai.espera_do_plano_irmao_s` (padrão 60 s; vencido, segue como antes; 0 desliga).
+  Fora de operação, nada muda.
+- Prova `simulated`: `backend/tests/test_plano_irmao_espera_o_cache.py` (4; com o cache imitado, 3 irmãos dão 1
+  gravação e 2 leituras, e 3 gravações com a espera desligada). `real`: `not_run`.
+
 ## 2026-10-07 — 31.231: a pesquisa reaproveita o Livro (branch feat/31-231-pesquisa-reaproveita-o-livro)
 
 - A 2ª operação do mesmo assunto pagava a pesquisa de novo (US$ 0,043 na onda 1) pelo que o Livro já sabia.

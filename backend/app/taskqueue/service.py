@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from ..db import Row, dumps, loads
+from .vez_do_plano import VezDoPlano
 from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from ..devices.manager import DeviceManager
 from ..devices.verbs import verbos_suportados
@@ -170,6 +171,8 @@ class RunService:
         # Serviço social (opcional): resolve perfil ↔ aparelho. Sem ele, só execução por aparelho.
         self.profiles = profiles
         self._planning: dict[str, asyncio.Task[None]] = {}
+        #: 31.237: o 1º plano de cada operação aquece o cache do prompt; os irmãos esperam por ele
+        self._vez_do_plano = VezDoPlano()
         #: Costuras do aprendizado (ADR-054, A2), injetadas pelo AppState: as lições do planejador e o aviso dos gestos
         #: de uma pessoa (resolver um item, repetir itens). No-op por padrão; nunca mudam o que o gesto faz.
         self.costuras: CosturasDeAprendizado = SEM_COSTURAS
@@ -1174,16 +1177,19 @@ class RunService:
                 # chamava `provider.plan` direto — entrava no limite de concorrência e em nada mais, ficando fora
                 # da repetição com espera, do disjuntor de conta e de qualquer conferência de orçamento.
                 # `objective_id=None`: é uso da execução, e ainda não há objetivo nenhum para contar chamada.
-                plan = await self.scheduler.executor._ai(          # noqa: SLF001 - ponto único de chamada de IA
-                    run_id, None,
-                    # A lista de dados da persona COMUM a todos os aparelhos (ADR-040): nomes, nunca valores.
-                    lambda: self.provider.plan(PlanRequest(
-                        command=comando, run_id=run_id, instances=instances, apps=ofertados, catalog=catalog,
-                        catalogs=catalogos,
-                        available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
-                        lessons=list(licoes), habilidades=list(conhecidas.values()),
-                        etapas_ensinadas=ensinadas)),
-                    role="plan", marca=MarcaDaChamada(motivo="plano"))
+                # 31.237: o 1º plano da operação aquece o cache do prompt; os irmãos esperam por ele (teto na config)
+                operacao = run["operacao_id"] if "operacao_id" in run.keys() else None
+                async with self._vez_do_plano.vez(operacao, self.scheduler.cfg.file.ai.espera_do_plano_irmao_s):
+                    plan = await self.scheduler.executor._ai(          # noqa: SLF001 - ponto único de chamada de IA
+                        run_id, None,
+                        # A lista de dados da persona COMUM a todos os aparelhos (ADR-040): nomes, nunca valores.
+                        lambda: self.provider.plan(PlanRequest(
+                            command=comando, run_id=run_id, instances=instances, apps=ofertados, catalog=catalog,
+                            catalogs=catalogos,
+                            available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
+                            lessons=list(licoes), habilidades=list(conhecidas.values()),
+                            etapas_ensinadas=ensinadas)),
+                        role="plan", marca=MarcaDaChamada(motivo="plano"))
                 # R6: todo plano do planejador declara os apps em que roda — os parsers já preenchem; isto cobre o
                 # provedor que não preenche (um dublê, um provedor novo). Plano de skill traz os dele do compilador.
                 if not plan.required_apps:
