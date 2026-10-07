@@ -797,3 +797,4 @@ orquestradora; ela anota aqui antes de responder.
 | próximos livres (atualização 07/10 18:2xZ) | 31.275, 29.212, 28.78; ADR-086 (085 = a automação resolve o que falta, na main pela orquestradora); adendo v1.128; migração 129; K-108 | |
 | 31.275 | Portal | frontend da ADR-083: typecheck/build quebrados na main do dono em frontend/src/features/settings/LimitsSection.test.tsx e 10 falhas de vitest (campos de limite/frota removidos); corrigir sobre origin/main sem ressuscitar os campos; prova simulated = tsc + build + vitest completo verdes | reservado 07/10 18:3xZ, antes do 31.274 |
 | próximos livres (atualização 07/10 18:3xZ) | 31.276, 29.212, 28.78; ADR-086; adendo v1.128; migração 129; K-108 | |
+| migração 129 | 31.271 (Aprendizado): última consulta por receita candidata (coluna aditiva ou tabela) | Aprendizado | CONCEDIDA 07/10 19:0xZ pela orquestradora; próxima livre 130 |
