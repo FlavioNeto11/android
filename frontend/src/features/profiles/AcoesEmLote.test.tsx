@@ -105,7 +105,6 @@ describe('ações em lote', () => {
       { id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [], members: [],
         created_at: '', updated_at: '' },
     ]));
-    backend.on('GET', /\/instagram\/policy-defaults$/, () => json({ limits: {} }));
     backend.on('GET', /app-catalog/, () => json([]));
     backend.on('GET', /capabilities/, () => json([]));
   }

@@ -1292,7 +1292,6 @@ export interface Capability {
   side_effect: boolean;
   risk: string;
   default_policy: PolicyName;
-  limit_bucket: string | null;
   needs_draft: boolean;
   bindings: string[];
   /** Nas ações que escrevem, o texto é opcional: o normal é vir `content_brief` e cada perfil escrever o seu. */
@@ -1304,7 +1303,6 @@ export type PolicyName = 'autonomous' | 'approval_required' | 'manual_only' | 'd
 export interface ProfilePolicy {
   /** O app deste catálogo (23.10). `null` só quando nenhum app se resolveu (sem âncora e sem escolha explícita). */
   package?: string | null;
-  limits: Record<string, number>;
   capabilities: Record<string, PolicyName>;
   defaults: Record<string, PolicyName>;
   /** Chaves de `capabilities` mais frouxas que `defaults` — achado #114: afrouxar sempre foi aceito, isto marca. */
@@ -1315,17 +1313,13 @@ export interface ProfilePolicy {
   own?: Record<string, PolicyName>;
   group?: Record<string, PolicyName>;
   origin?: Record<string, PolicyOrigin>;
-  own_limits?: Record<string, number>;
-  group_limits?: Record<string, number>;
-  limits_origin?: Record<string, PolicyOrigin>;
 }
 
 /** De onde vem o valor que vale: escolha própria do perfil, herdado do grupo, ou padrão do catálogo. */
 export type PolicyOrigin = 'own' | 'group' | 'default';
 
-/** `null` numa chave apaga a escolha própria: a ação (ou o limite) volta a herdar do grupo/padrão. */
+/** `null` numa chave apaga a escolha própria: a ação volta a herdar do grupo/padrão. */
 export interface ProfilePolicyPatch {
-  limits?: Record<string, number | null>;
   capabilities?: Record<string, PolicyName | null>;
 }
 
@@ -1335,9 +1329,8 @@ export interface PolicyGroup {
   description: string;
   /** O app deste recorte do grupo (23.10): `capabilities` e `loosened` são só dele. */
   package?: string | null;
-  /** Só o que o grupo muda em relação ao padrão do catálogo DESTE app; `limits` valem para o perfil inteiro. */
+  /** Só o que o grupo muda em relação ao padrão do catálogo DESTE app. */
   capabilities: Record<string, PolicyName>;
-  limits: Record<string, number>;
   loosened: string[];
   /** `username` vem vazio ou nulo quando a conta da persona foi retirada (29.23); `name` (29.25) é a pessoa. */
   members: { id: string; username: string | null; name?: string | null }[];
@@ -1349,7 +1342,6 @@ export interface PolicyGroupCreateRequest {
   name: string;
   description?: string;
   capabilities?: Record<string, PolicyName>;
-  limits?: Record<string, number>;
   from_profile_id?: string | null;
   profile_ids?: string[];
 }
@@ -1358,7 +1350,6 @@ export interface PolicyGroupPatchRequest {
   name?: string;
   description?: string;
   capabilities?: Record<string, PolicyName | null>;
-  limits?: Record<string, number | null>;
   /** Lista COMPLETA de membros: quem sai volta a herdar só do padrão. */
   profile_ids?: string[];
 }

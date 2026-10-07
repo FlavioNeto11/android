@@ -14,7 +14,7 @@ import {
 import { mascararTerceiros, usuariosConhecidosDaOperacao } from './terceiros';
 
 /**
- * O que o BACKEND escreve nos motivos e resumos pode citar terceiros (o `@x` de uma conta da frota, o dono do post alvo, quem comentou, o
+ * O que o BACKEND escreve nos motivos e resumos pode citar terceiros (o `@x` de uma conta, o dono do post alvo, quem comentou, o
  * perfil alvo): no relatório saem, pelo MESMO mascarar da tela (`terceiros.ts`, 31.254), que é o único lugar da regra. `semArroba` ficou como o
  * nome antigo, sem a lista de usuários conhecidos da operação; dentro de `montarRelatorio` vale a versão com o perfil alvo. O texto gerado pela
  * persona não é metadado e não passa por aqui.

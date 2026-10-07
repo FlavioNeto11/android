@@ -151,7 +151,7 @@ it('28.61: lista os grupos de política pelo nome, "Nenhum" vem marcado e salvar
   await waitFor(() => expect(caixaDoGrupo().disabled).toBe(false));
   expect(caixaDoGrupo().value).toBe('');
   expect(Array.from(caixaDoGrupo().options).map((o) => o.textContent)).toEqual(['Nenhum (desligado)', 'Análise', 'Operação própria']);   // nome, em ordem alfabética
-  expect(container.textContent).toContain('recusas, conduta, proteção de conta e tetos continuam');
+  expect(container.textContent).toContain('as recusas e a proteção de conta continuam');
   await setValue(caixaDoGrupo(), 'g-b');
   await click(await botaoPronto(/^Salvar limites/));
   await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));

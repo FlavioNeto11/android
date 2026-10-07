@@ -80,7 +80,7 @@ export function LimitsSection() {
       <PageSection
         title="Parque — vale para todos os servidores"
         titleId="limites-do-parque"
-        subtitle="Freios de segurança e ritmo da automação. Os valores são validados de novo pelo backend ao salvar."
+        subtitle="Capacidade e consumo do parque: aparelhos, IA, capturas e tempos. Os valores são validados de novo pelo backend ao salvar."
         footer={(
           <>
             <span className={cx(styles.saveNote, dirtyCount > 0 && styles.saveNoteDirty)} aria-live="polite">

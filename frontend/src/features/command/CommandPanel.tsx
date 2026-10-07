@@ -477,7 +477,7 @@ export function CommandPanel() {
     if (porPersona) return { profile_ids: selecionadas, instance_ids: estreitarValido, device_policy: politica };
     if (!automatico) return { instance_ids: [...selectedIds] };
     // Automático: a sugestão é a mesma do Executar (pode custar uma chamada de IA do papel `plan`); só vai o que ela
-    // resolveu sem pergunta nem alerta de conduta, fixado em `targets` para o backend não re-escolher.
+    // resolveu sem pergunta, fixado em `targets` para o backend não re-escolher.
     const dados = await api.suggestRunTargets({ command: trimmed });
     const eco = ecoDosAlvos(dados.targets);
     // A pergunta que o backend fez é o que a pessoa precisa responder: vai inteira, não resumida.

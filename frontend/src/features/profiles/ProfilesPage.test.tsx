@@ -613,7 +613,6 @@ describe('grupos de acesso', () => {
       SEM_CONTA,
     ]));
     backend.on('GET', /\/instagram\/policy-groups$/, () => json(grupos));
-    backend.on('GET', /\/instagram\/policy-defaults$/, () => json({ limits: { likes_per_hour: 30 } }));
     backend.on('GET', /app-catalog/, () => json([
       { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
         session_provider: 'instagram', needs_profile: true },
@@ -633,7 +632,8 @@ describe('grupos de acesso', () => {
     await render();
     await waitFor(() => expect(text()).toContain('Grupos de acesso'));
     await waitFor(() => expect(text()).toContain('0 sozinho · 2 com aprovação · 0 só manual'));
-    expect(text()).toContain('2 mudança(s) em relação ao padrão');
+    // 31.276: o grupo ainda guarda `limits` no banco (inerte desde o ADR-083); só as ações contam como mudança
+    expect(text()).toContain('1 mudança(s) em relação ao padrão');
     expect(text(document.querySelector('[aria-label="Personas no grupo Cautelosos"]') as HTMLElement)).toContain('1 persona');
     expect(text()).toContain('nenhum — padrão do catálogo');      // o Quillon não tem grupo
   });
@@ -683,14 +683,17 @@ describe('grupos de acesso', () => {
     await waitFor(() => expect(text()).toContain('Novo grupo de acesso'));
     // O grupo de acesso governa o que a CONTA faz: a pessoa sem @ não aparece como membro possível.
     expect(() => byRole('checkbox', /@null/i)).toThrow();
-    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Aquecimento');
+    // 31.276: sem bloco de limites (por hora, por dia, aquecimento): o editor do grupo só tem as políticas das ações
+    expect(text()).not.toContain('Curtidas por hora');
+    expect(text()).not.toContain('Aquecimento de conta nova');
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Cautelosos novos');
     await click(byRole('checkbox', /@valdir.teixeira6352/i));
     await waitFor(() => expect(byRole('radiogroup', /Política de Curtir a publicação/i)).toBeTruthy());
     await click(byRole('radio', /Com aprovação/i, byRole('radiogroup', /Política de Curtir a publicação/i)));
     await click(byRole('button', /Criar grupo/i));
     await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
     expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body).toEqual({
-      name: 'Aquecimento', description: '', capabilities: { LIKE_POST: 'approval_required' }, limits: {},
+      name: 'Cautelosos novos', description: '', capabilities: { LIKE_POST: 'approval_required' },
       profile_ids: ['ig-2'],
     });
   });
@@ -728,7 +731,7 @@ describe('grupos de acesso', () => {
     await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
     const chamada = backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!;
     expect(chamada.body).toEqual({
-      name: 'Correio piloto', description: '', capabilities: { LER_CAIXA: 'manual_only' }, limits: {}, profile_ids: [],
+      name: 'Correio piloto', description: '', capabilities: { LER_CAIXA: 'manual_only' }, profile_ids: [],
     });
     expect(chamada.query.get('package')).toBe('com.exemplo.correio');
   });
