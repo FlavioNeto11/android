@@ -102,6 +102,17 @@ class Issue(unittest.TestCase):
         self.assertIn("agente", com.criacoes()[0][0])
         self.assertNotIn("--assignee", com.criacoes()[0][0])
 
+    def test_etiqueta_agente_nuvem_so_com_a_flag_e_continua_sem_atribuir(self) -> None:
+        sem = FakeGh(rotulos=("tamanho:P", "agente-nuvem"))
+        rodar(sem, pasta(), "--aplicar")
+        self.assertNotIn("agente-nuvem", sem.criacoes()[0][0])
+        com = FakeGh(rotulos=("tamanho:P", "agente-nuvem"))
+        rodar(com, pasta(), "--aplicar", "--agente-nuvem")
+        args, corpo = com.criacoes()[0][0], com.criacoes()[0][1]
+        self.assertIn("agente-nuvem", args)
+        self.assertFalse([x for x in args if "assign" in x])
+        self.assertIn("scripts/agente_nuvem.py", corpo)  # o corpo diz quem atribui
+
     def test_rotulo_inexistente_e_pulado_com_aviso(self) -> None:
         gh = FakeGh(rotulos=())
         codigo, _, err = rodar(gh, pasta(), "--aplicar")
