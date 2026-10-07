@@ -8,6 +8,8 @@
 
 import { formatUsd4 } from '../../lib/format';
 import { lerFila, type FilaDoAlvo } from './fila';
+import { lerCustoPorPasso, lerSomaPorEstagio, lerSomaPorModelo, type CustoPorPasso, type SomaPorEstagio, type SomaPorModelo } from './custoPorPasso';
+import { lerFontesDaPesquisa, lerPesquisaDaOperacao, type PesquisaDaOperacao } from './pesquisaDaOperacao';
 
 /** Os estágios do pipeline, na ordem fixa do dono e do adendo. `acao_executada` e `acao_bloqueada` ocupam a mesma posição. */
 export const ESTAGIOS = [
@@ -68,6 +70,8 @@ export interface Resultado {
 export interface Alvo {
   /** A chave da linha: a execução (`run_id`) ou a persona; nunca o aparelho, que se repete em ondas. */
   id: string;
+  /** v1.124 (31.229): o modelo e o custo de cada passo do agente; `null` = sem execução ou formato inesperado; ausente = central anterior. */
+  custo_por_passo?: CustoPorPasso | null;
   profile_id: string | null;
   persona: string | null;
   app_id: string | null;
@@ -124,6 +128,13 @@ export interface CustoDaOperacao { pesquisa_usd: number | null; alvos_usd: numbe
 
 export interface Operacao extends ResumoDaOperacao {
   alvos: Alvo[];
+  /** v1.124 (31.229): o custo da operação somado entre os alvos, por modelo e por estágio. Ausente no central anterior. */
+  custo_por_modelo?: SomaPorModelo[] | null;
+  custo_por_estagio?: SomaPorEstagio[] | null;
+  /** 31.234: a pesquisa da operação (reaproveitada do Livro ou paga). Campo PROPOSTO; ausente no central que não o manda. */
+  pesquisa?: PesquisaDaOperacao | null;
+  /** As URLs que a pesquisa externa achou (`OperacaoDetalhe.fontes_da_pesquisa`); ausente no central anterior. */
+  fontes_da_pesquisa?: string[] | null;
   /** O custo de IA da operação inteira: a pesquisa externa e os agentes, e o total que o teto compara. */
   custo: CustoDaOperacao | null;
   /** O teto em US$ da operação inteira. */
@@ -177,6 +188,8 @@ export function lerAlvo(v: unknown, posicao: number): Alvo | null {
     estagio: lerEstagio(o.estagio), estagios, ...(lat ? { latencia: { duracao_ms: inteiro(lat.duracao_ms), espera_do_liberar_ms: inteiro(lat.espera_do_liberar_ms) } } : {}), ...('fila' in o ? { fila: lerFila(o.fila) } : {}), estado: isEstadoDoAlvo(o.estado) ? o.estado : null, parou_em: lerEstagio(o.parou_em), motivo: texto(o.motivo),
     // `custo_usd` do alvo é o dado (existe mesmo antes do texto); o do `resultado` é só a reserva (resultado é null antes do texto).
     custo_usd: usdOuNulo(o.custo_usd) ?? usdOuNulo(registro(o.resultado)?.custo_usd), resultado: lerResultado(o.resultado),
+    // v1.124 (31.229): o modelo e o custo de cada passo; ausente no central anterior (a chave nem entra no objeto).
+    ...('custo_por_passo' in o ? { custo_por_passo: lerCustoPorPasso(o.custo_por_passo) } : {}),
   };
 }
 
@@ -277,6 +290,10 @@ export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
     ...(registro(o.latencia_por_estagio) ? { latencia_por_estagio: Object.fromEntries(porEstagio) } : {}),
     fontes: (Array.isArray(o.fontes) ? o.fontes : []).filter((f): f is string => typeof f === 'string' && f.trim() !== ''),
     parametros: lerParametros(o.parametros), exemplo,
+    ...('custo_por_modelo' in o ? { custo_por_modelo: lerSomaPorModelo(o.custo_por_modelo) } : {}),
+    ...('custo_por_estagio' in o ? { custo_por_estagio: lerSomaPorEstagio(o.custo_por_estagio) } : {}),
+    ...('pesquisa' in o ? { pesquisa: lerPesquisaDaOperacao(o.pesquisa) } : {}),
+    ...('fontes_da_pesquisa' in o ? { fontes_da_pesquisa: lerFontesDaPesquisa(o.fontes_da_pesquisa) } : {}),
   };
 }
 

@@ -394,6 +394,9 @@ async def test_a_folha_que_abre_entre_a_guarda_e_o_share_nao_recebe_o_toque(tmp_
     folha fora dela e o Share sai depois, uma vez. Sem a releitura, o toque nas coordenadas do Share cairia na folha."""
     ator = AtorQueVeAFolhaAbrirNoShare()
     async with _parque_com_dobra(tmp_path, folha=False, ator=ator) as h:
+        # 31.223: com o forte só no commit, a 1ª decisão de efeito é descartada e refeita, e a folha que este ator abre
+        # nela é vista na reobservação, não na releitura antes do toque. Este teste protege a releitura (29.90).
+        h.cfg.file.ai.strong_model_only_on_commit = False
         ator.fake = _fake(h)
         etapa = await _publicar(h)
         fake = _fake(h)

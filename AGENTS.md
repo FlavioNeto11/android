@@ -3,6 +3,8 @@
 Instruções para agentes de código (GitHub Copilot cloud agent, Codex e outros) que trabalham neste repositório: painel React
 (`frontend/`) e backend FastAPI (`backend/`) que operam um parque de emuladores Android. Escreva em português.
 
+> **Quem REVISA um PR (Codex, Copilot ou pessoa):** as listas "Nunca edite", "um PR por tarefa", "uma área por PR" e `[skip ci]` deste arquivo são **só do agente de nuvem** (PR de branch `copilot/*`). Em PR de `feat/*`, `fix/*`, `docs/*`, `ci/*` ou `revisao/*` (sessão da coordenação) elas NÃO são critério de revisão: não aponte violação delas.
+
 ## Leia nesta ordem
 
 1. [`.github/copilot-instructions.md`](.github/copilot-instructions.md): as regras que não se quebram, como validar e como
@@ -44,7 +46,7 @@ duas áreas vira dois PRs, ou fica com quem a escreveu.
   escreva que algo foi provado no ambiente real.
 - **Sem segredo e sem dado de pessoa** em código, teste, comentário, fixture, issue, PR ou mensagem de commit. Nome de
   conta, arroba, e-mail, telefone e IP reais nunca entram: use nomes fictícios e o domínio `.invalid`.
-- **Nunca edite**: estas instruções (`AGENTS.md`, `CLAUDE.md`, `.github/**` inteiro, o que inclui os perfis e os
+- **Nunca edite** (limite SÓ do agente de nuvem `copilot/*`; não vale para PR de sessão): estas instruções (`AGENTS.md`, `CLAUDE.md`, `.github/**` inteiro, o que inclui os perfis e os
   workflows), `.claude/**`, `config/**`, `deploy.ps1` e `scripts/**`. Não adicione dependência nem suba versão; não
   escolha número de migração, de ADR ou de item do plano: quem coordena dá o número.
 - **Ensino, contas reais, serviços de fora e chamadas pagas de IA**: não faça. Uma tarefa que peça isso está mal escrita;
@@ -62,7 +64,7 @@ duas áreas vira dois PRs, ou fica com quem a escreveu.
 ## Como a tarefa sai
 
 - Faça só o que a tarefa pede; o que achar fora do escopo vai como nota no PR.
-- Um PR por tarefa, a partir da `main`, com o número do item no título e `[skip ci]` no título de todo commit. O `[skip ci]`
+- Um PR por tarefa (regra SÓ do agente de nuvem `copilot/*`), a partir da `main`, com o número do item no título e `[skip ci]` no título de todo commit. O `[skip ci]`
   é intencional: o CI deste repositório só roda no cron diário e no disparo manual, e a coordenação roda a suíte inteira antes
   de aceitar. Não é uma forma de pular checagem.
 - Você não mescla, não implanta e não aprova. O PR é uma proposta: outra frente lê, roda a suíte inteira em cópia isolada

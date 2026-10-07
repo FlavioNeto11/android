@@ -393,6 +393,8 @@ interface Settings {
   orquestracao_max_candidatas: number;
   /** Quantas contas executam a ação final no post nosso numa operação (as demais ficam paradas até serem liberadas). */
   operacao_max_acoes_executadas: number;
+  /** v1.119 (31.220): de quanto em quanto tempo o laço do sistema avança as operações abertas, em segundos; 0 = desligado. Backend anterior não manda. */
+  operacao_laco_s: number;
 }
 
 /** v0.20 (C2): `on_demand` só captura prévia de aparelho que alguém olha; `always` é o laço antigo. */
@@ -410,6 +412,10 @@ interface AiStatus {
   models?: { plan: string; decide: string; verify: string; escalation: string; social?: string; persona?: string } | null;
   recipes?: 'off' | 'shadow' | 'replay' | null; flows?: boolean | null;
   image_policy?: 'always' | 'auto' | 'never' | null;
+  // v1.122 (31.223, Aprendizado): a política de escalada do modelo forte, SÓ LEITURA (mora no config.yaml e vale na subida da farm-central).
+  // Aditivos e opcionais: o central anterior não manda, e a tela não afirma nada.
+  strong_model_only_on_commit?: boolean | null;
+  strong_model_for_side_effect?: string | boolean | null;
   // disjuntor de conta de IA: chave válida, mas o provedor recusa por cobrança/credencial em tempo de execução
   account_blocked?: boolean;
   account_blocked_reason?: string | null;

@@ -20,7 +20,7 @@ import json
 import logging
 import re
 import unicodedata
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -263,15 +263,30 @@ def eh_generica(actions: Sequence[Mapping[str, object]], post_value: str | None,
 
 
 # ------------------------------------------------------------------ des-templatização
-def detemplate(text: str, variables: dict[str, str]) -> tuple[str, bool, bool]:
+def detemplate(text: str, variables: dict[str, str], *,
+               marcadores: Collection[str] = ()) -> tuple[str, bool, bool]:
     """Troca valores conhecidos por {nome} (o mais longo primeiro), com a MESMA borda do fluxo-modelo e do hash da
     receita (31.109, `flows._sub_values`): o valor só vale inteiro, então "nasal" não vira `{perfil}l` e "v10" não vira
     `v{n}`. Antes era `str.replace` sem borda, e a ação aprendida divergia da identidade da etapa.
-    Devolve (texto, usou_alguma_variável, ficou_100%_coberto_por_variáveis)."""
+    Devolve (texto, usou_alguma_variável, ficou_100%_coberto_por_variáveis).
+
+    31.244 (`marcadores`, os nomes das variáveis da persona que a REPRODUÇÃO resolve): o registro grava o dado da
+    persona já como marcador (31.113 F1: `{perfil_nome}`; 31.243: `@{conta_<app>_usuario}`). Esse marcador conta como
+    variável usada, e a arroba logo antes dele não sobra como literal. Um marcador gravado que nem a etapa nem a persona
+    resolvem não cobre (a reprodução falharia). Sem `marcadores`, tudo como antes."""
     valores = {n: v for n, v in variables.items() if v and len(v) >= 3}
     out = trocar_valores_por_nomes(text, valores) or text
     used = out != text
-    covered = used and not TEMPLATE_RE.sub("", out).strip(" \t\r\n.,;:!?-—()[]\"'“”")
+    resto = out
+    gravados = TEMPLATE_RE.findall(text)
+    if marcadores and gravados:
+        if not all(m in variables or m in marcadores for m in gravados):
+            return out, used, False
+        da_persona = [m for m in gravados if m in marcadores]
+        used = used or bool(da_persona)
+        if da_persona:
+            resto = re.sub(r"@(?=\{(?:" + "|".join(map(re.escape, da_persona)) + r")\})", "", out)
+    covered = used and not TEMPLATE_RE.sub("", resto).strip(" \t\r\n.,;:!?-—()[]\"'“”")
     return out, used, covered
 
 
@@ -476,19 +491,50 @@ def _alvo_ambiguo(tree: UiTree, selectors: list[dict[str, str]], variables: dict
 
 
 # ------------------------------------------------------------------ destilação
-def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dict[str, Any]] | None, str]:
-    """Ações executadas pela IA numa tentativa limpa → receita. Devolve (ações | None, motivo)."""
+#: 31.230: a marca da 1ª ação da receita cujo "voltar" inicial foi descartado: ela parte do estado conhecido do app
+#: (`conhecimento/apps/<pacote>/telas.yaml`, `estado_conhecido`), conferido na tela antes de reproduzir.
+ANCORA_ESTADO_CONHECIDO = "estado_conhecido"
+
+
+def distill(action_rows: list[Row], variables: dict[str, str], *,
+            em_casa_antes: Mapping[int, bool] | None = None,
+            com_trecho_da_receita: bool = False,
+            persona: Collection[str] = ()) -> tuple[list[dict[str, Any]] | None, str]:
+    """Ações executadas pela IA numa tentativa limpa → receita. Devolve (ações | None, motivo).
+
+    31.230: o `press_back` ANTES da 1ª ação gravada é a IA voltando a um lugar conhecido (na onda 1, o `open_profile`
+    começou por voltar, e nenhuma receita nascia). Esse prefixo é descartado quando a 1ª ação gravada partiu do
+    estado conhecido do app (`em_casa_antes[id da ação]`, a tela anotada pelo executor antes da decisão); ela leva a
+    âncora, e a reprodução a confere antes de agir. Sem a anotação, sem estado conhecido declarado, ou com `voltar` no
+    meio do caminho, a tentativa segue recusada como antes.
+
+    31.233 (`com_trecho_da_receita`): a tentativa em que uma receita ATIVA rodou um trecho, divergiu e a IA completou. As
+    ações da receita feitas (`done`) entram como as da IA: são o caminho que de fato levou à tela de onde a IA seguiu. A
+    que não chegou ao aparelho (`rejected`) fica fora; qualquer outro estado recusa, como antes.
+
+    31.244 (`persona`): os NOMES das variáveis da persona do objetivo. O `type_text` que o registro gravou com o marcador
+    dela (`{perfil_nome}`, `@{conta_<app>_usuario}`) vira receita com o marcador; a reprodução o resolve pelas variáveis
+    da persona (31.87 F2). Sem a variável na persona, segue recusado."""
     secret_values = {v for k, v in variables.items() if v and SENSITIVE_PARAM.search(k)}
     out: list[dict[str, Any]] = []
     pending_scrolls: list[str] = []
+    voltas = 0
     for r in action_rows:
         tool, status = r["tool"], r["status"]
         if tool in READ_ONLY or tool in ("step_done", "step_blocked"):
             continue
-        if status != "done" or r["source"] != "ai":
+        if com_trecho_da_receita and r["source"] == "recipe" and status == "rejected":
+            continue                                # 31.233: o gesto da receita que não chegou ao aparelho
+        de_quem = r["source"] == "ai" or (com_trecho_da_receita and r["source"] == "recipe")
+        if status != "done" or not de_quem:
             return None, f"tentativa não foi limpa ({tool}: {status}/{r['source']})"
+        if tool == "press_back" and not out and not pending_scrolls and em_casa_antes is not None:
+            voltas += 1                             # 31.230: o voltar de recuperação, antes da 1ª ação gravada
+            continue
         if tool in UNSAFE_TO_REPLAY:
             return None, f"{tool} depende do estado de quem aprendeu"
+        if voltas and not out and not (em_casa_antes or {}).get(int(r["id"])):
+            return None, "o voltar inicial não terminou no estado conhecido do app: a receita não teria de onde partir"
         args = loads(r["args"], {}) or {}
         target = loads(r["target"]) if r["target"] else None
         if tool == "scroll":
@@ -499,7 +545,7 @@ def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dic
             text = str(args.get("text", ""))
             if any(s and s in text for s in secret_values):
                 return None, "texto digitado contém parâmetro sensível"
-            templ, _, covered = detemplate(text, variables)
+            templ, _, covered = detemplate(text, variables, marcadores=persona)
             if not covered:
                 return None, "texto digitado não é 100 % coberto por parâmetros"
             item["args"] = {"text": templ, "clear_first": bool(args.get("clear_first", True)),
@@ -530,6 +576,8 @@ def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dic
         if pending_scrolls:
             item["scroll"] = {"direction": pending_scrolls[-1], "max": len(pending_scrolls) + 3}
             pending_scrolls = []
+        if voltas and not out:
+            item["ancora"] = ANCORA_ESTADO_CONHECIDO
         out.append(item)
         if item["commit"]:
             break                                   # depois do efeito não há o que repetir: só verificar
@@ -659,6 +707,9 @@ class Replayer:
     done_actions: int = 0
     diverged: str | None = None
     log: list[str] = field(default_factory=list)
+    #: 31.230: a tela é o estado conhecido do app? (o executor liga; `None` = não se sabe, e a receita com âncora não
+    #: reproduz: nunca às cegas a partir de uma tela errada)
+    em_casa: Callable[[UiTree], bool] | None = None
 
     @property
     def exhausted(self) -> bool:
@@ -668,6 +719,10 @@ class Replayer:
         if self.exhausted:
             return None
         act = self.actions[self.idx]
+        if (act.get("ancora") == ANCORA_ESTADO_CONHECIDO and self.idx == 0 and self.scrolls == 0
+                and (self.em_casa is None or not self.em_casa(tree))):
+            # 30.80: a tela de partida errada é "não se aplicou", não defeito da receita; a IA assume
+            raise AlvoAusente("ação 1: a receita parte do estado conhecido do app, e esta tela não é ele")
         tag = f"[receita v{self.version}] {act.get('why') or act['tool']}"
         args: dict[str, Any] = {"rationale": tag, **act.get("args", {})}
         if "text" in args:

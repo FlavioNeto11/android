@@ -225,7 +225,8 @@ async def test_o_registro_mascara_o_nome_novo_depois_da_troca_no_perfil(harness:
 _PERMITIDOS = {
     "app/porta_do_plano.py": {"_com_texto"},             # monta a LINHA com o texto editado; quem a lê é o helper
     "app/social/repository.py": {"saidas_da_acao", "etapas_em_curso_da_acao", "pedidos_da_acao"},  # resolvem logo após
-    "app/social/approvals.py": {"definir_texto", "textos_irmaos"},  # escreve a linha; o "não repita" com o marcador
+    # escrevem a linha (o texto; 31.260 b: a legenda do post em foco, só se vazia); o "não repita" com o marcador
+    "app/social/approvals.py": {"definir_texto", "fixar_post_em_foco", "textos_irmaos"},
     "app/state.py": set(),
     "app/gates.py": set(),                               # os portões moram aqui desde o 15.15 F5a
 }

@@ -370,6 +370,10 @@ class LimitsCfg(BaseModel):
     orquestracao_max_escolhidas: int = Field(30, ge=1, le=64)
     orquestracao_max_candidatas: int = Field(60, ge=1, le=120)
     operacao_max_acoes_executadas: int = Field(3, ge=0, le=64)
+    # 31.220: de quanto em quanto tempo (s) o laço do sistema lê as operações abertas e as avança sem leitura externa
+    # (`modules/operacoes/infrastructure/laco.py`). 0 = desligado, o padrão do corte 61 (a prova de 07/10 usa o laço
+    # da Canais). Relido a cada volta.
+    operacao_laco_s: int = Field(0, ge=0, le=3600)
     # 28.61 (dono, 06/10 19:46Z: "crie um grupo com tudo liberado para todas as personas … para que nao seja necessario
     # permissoes por enquanto"): o id do grupo de política cujas personas NÃO passam pela aprovação de POLÍTICA
     # (a escolha do perfil ou do grupo, a DM fria, a publicação no feed, a pessoa real num pedido, a citação da família e a
@@ -378,6 +382,11 @@ class LimitsCfg(BaseModel):
     # do despacho (o mesmo pedido a várias contas, a repetição e a família vistas depois do rascunho), a conduta e a
     # proteção de conta. Vazio = desligado. Lido ao vivo; desfazer é `PUT /api/settings {"grupo_sem_aprovacao": ""}`.
     grupo_sem_aprovacao: str = Field("", max_length=80)
+    # 31.253 / ADR-082 (dono, 07/10: "colocar todas as personas em um grupo que libera tudo para não precisar de
+    # permissão pra nada"; substitui em parte o 28.23): na operação com `acao_final=executar`, o alvo cuja persona está
+    # no grupo acima nasce com o teto `agir`, e não `preparar` — sem pedido de aprovação, sem pergunta no Telegram e sem
+    # passar pelo liberar. Fora do grupo, ou com isto desligado, segue `preparar`. Lido na criação de cada alvo.
+    operacao_grupo_liberado_executa: bool = True
     # 30.60 (N4): publicar no feed (balde `posts`) passa por uma pessoa mesmo com perfil ou grupo `autonomous`, como a DM
     # fria do ADR-055. Só a instalação afrouxa, aqui; um perfil não tem esse poder.
     publicar_sem_aprovacao: bool = False
@@ -641,6 +650,9 @@ class PesquisaCfg(BaseModel):
     #: Quanto tempo o fato pesquisado vale; vencido, o assunto volta a ser lacuna.
     frescor_h: float = Field(24.0, gt=0, le=24 * 30)
     max_fatos: int = Field(8, ge=1, le=20)
+    #: 31.231: quantos fatos confirmados e frescos do Livro, do mesmo assunto, cobrem o pedido e dispensam a pesquisa
+    #: paga (critério em `learning/domain/reaproveitamento_da_pesquisa.py`). 0 desliga o reaproveitamento.
+    reaproveitar_min_fatos: int = Field(2, ge=0, le=20)
 
 
 class AiCfg(BaseModel):
@@ -741,6 +753,21 @@ class AiCfg(BaseModel):
     # ação e só sobe pelos controles acima. Escalar na divergência é decisão do dono pendente, com o custo medido
     # em `relatorio-desempenho.md` (22 etapas `recipe+ai` em 7 dias).
     strong_model_for_side_effect: bool | Literal["by_risk"] = "by_risk"
+    # 31.223: quando a etapa com efeito sobe ao modelo forte (acima), ele decide SÓ o commit. A etapa começa no modelo de
+    # ação (abrir o campo, digitar, focar), e a primeira decisão que dispararia o efeito (`is_commit_action`, o seletor
+    # ou o verbo) é descartada e refeita no modelo forte, que segue até o fim da tentativa (como o LT-12). Medido na
+    # onda 1 (07/10): o Opus decidia os 2 passos do comentário (US$ 0,112 de 0,279 do alvo). A trava de commit, a
+    # política de risco e o rejulgamento do "sim" com efeito não mudam. `false` = a etapa inteira no forte (o de antes).
+    strong_model_only_on_commit: bool = True
+    # 31.237: quanto o plano de um alvo de operação espera o 1º plano da MESMA operação, para ler o prefixo do prompt do
+    # cache em vez de gravá-lo de novo (onda 2, 07/10: 3 planos paralelos, 3 gravações, US$ 0,018 contra 0,0113). Vencido
+    # o teto, segue como antes. 0 desliga.
+    espera_do_plano_irmao_s: float = Field(60.0, ge=0, le=600)
+    # 31.232: o modelo forte que confere o efeito (a decisão do commit refeita, 31.223, e o rejulgamento do "sim" com
+    # efeito, 17.10) recebe a imagem quando o alvo do efeito NÃO está na árvore (toque por coordenada, elemento ausente
+    # ou ferramenta sem elemento). Com o alvo na árvore, a régua de sempre decide (na onda 1, sem imagem). Só acrescenta
+    # a imagem; nunca tira a que outra causa manda. `false` = como antes.
+    imagem_quando_alvo_fora_da_arvore: bool = True
     # Item 17.10 (cascata para ator barato). `step_blocked` do tier 0 (kinds que um modelo mais forte ainda pode resolver:
     # tela inesperada, informação faltando, app incompatível, outro) sobe UMA vez ao tier 1 na mesma tela antes de pedir uma
     # pessoa. `challenge`, `auth_required` e `wrong_account` NUNCA sobem: dependem de pessoa ou do autenticador.
@@ -749,6 +776,18 @@ class AiCfg(BaseModel):
     # UMA vez pelo modelo de escalonamento, e quem vale é o mais forte (discordou → não conta como prova). Só age quando o
     # modelo do verificador é DIFERENTE do de escalonamento (senão seria a mesma pergunta ao mesmo modelo).
     rejudge_yes_on_side_effect: bool = True
+    # 31.238: o rejulgamento do "sim" com efeito é dispensado quando a PROVA LOCAL do app já comprovou o efeito na árvore
+    # (o marcador do catálogo, 31.57, ou o `sent_text`, 31.26) E o app ganhou o direito: pelo menos
+    # `rejulgamento_dispensa_minimo` rejulgamentos `sim_com_efeito` nos últimos `rejulgamento_dispensa_janela_dias`, sem
+    # nenhuma discordância. Medido em 07/10: 0 discordâncias em 119 (QA Messenger qualifica; Instagram, com 4, não).
+    # O app que deixa de ter o mínimo na janela volta a ser rejulgado e recupera o direito sozinho. `false` desliga.
+    rejulgamento_dispensado_por_app: bool = True
+    # 31.239: na etapa cuja ação declara a prova local `comentario:` (CREATE_COMMENT do Instagram), o comentário desta
+    # execução visível na lista, atribuído à conta conectada, dispensa o PRIMEIRO julgamento (o barato). O rejulgamento
+    # do 17.10 continua e decide, salvo o direito do app (31.238). Sem rejulgamento, a prova não fecha nada sozinha.
+    comentario_dispensa_primeiro_juiz: bool = True
+    rejulgamento_dispensa_minimo: int = Field(30, ge=1, le=10_000)
+    rejulgamento_dispensa_janela_dias: int = Field(7, ge=1, le=90)
     # Item 31.26 (opção A): na etapa com nível de entrega `sent` cuja ação declara a prova local `sent_text` (a SEND_MESSAGE
     # do Instagram: o texto numa mensagem do fio e fora do campo), essa prova substitui o PRIMEIRO julgamento (o barato).
     # O rejulgamento do "sim" com efeito (17.10) continua e é quem vale; sem ele (desligado ou mesmo modelo), nada muda.
@@ -789,6 +828,10 @@ class AiCfg(BaseModel):
     # caminho dela, vira ativa e passa a agir; uma divergência recomeça a contagem. Uma execução limpa só é um
     # caminho visto uma vez — aprender só com prova (pedido do dono). 0 = sem prova: nasce ativa (o modo anterior).
     recipes_promote_after: int = Field(2, ge=0, le=20)
+    # 31.233: a receita ATIVA que divergiu e caiu em quarentena nesta tentativa, com a IA completando a etapa: o caminho
+    # que de fato rodou (o trecho da receita e o da IA) vira candidata, em prova como qualquer outra. Medido na onda 2
+    # (07/10): a 111 divergiu nos 3 alvos, 39 % do custo, e nada se aprendeu. `false` = como antes.
+    candidata_da_ativa_que_divergiu: bool = True
     # RA-20: a etapa sem receita na chave atual herda, como CANDIDATA (em prova, nunca agindo), a receita provada da
     # mesma etapa noutra versão do app, noutra variante ou na legada. false = só mede a causa do "ausente". Só vale
     # com a prova (`recipes_promote_after > 0`): sem ela a receita aprendida já nasce ativa e não há o que herdar.

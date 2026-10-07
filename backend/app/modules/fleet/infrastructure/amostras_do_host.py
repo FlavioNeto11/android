@@ -13,10 +13,13 @@ import csv
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-#: As colunas do amostrador, na ordem do cabeçalho (29.156).
+#: As colunas do amostrador, na ordem do cabeçalho (29.156). As três últimas são do amostrador v2 (média do minuto e a
+#: CPU fora do topo e não atribuída; achado da Portal no 31.211, nota no adendo v1.124): opcionais, e a linha do v1 sem
+#: elas segue válida, com as três em `null`.
 COLUNAS = ("ts_utc", "cpu_host_pct", "vm_convidado_nucleos", "vmmem_ws_mb", "qemu_host_pct", "ram_livre_mb",
-           "disco_livre_gb", "processos_top", "avisos_pressao")
-_NUMEROS = COLUNAS[1:7]
+           "disco_livre_gb", "processos_top", "avisos_pressao", "cpu_media_pct", "demais_processos_pct",
+           "nao_atribuido_pct")
+_NUMEROS = (*COLUNAS[1:7], *COLUNAS[9:])
 
 
 def pasta_das_amostras(data_dir: Path) -> Path:

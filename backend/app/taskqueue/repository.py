@@ -58,6 +58,9 @@ TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 MOTIVO_REJEICAO = "rejeitado por quem aprova"
 #: Os desfechos de etapa que são FALHA e levam o tipo classificado (ADR-054); nos demais, `steps.failure_kind` é nulo.
 _ETAPA_EM_FALHA = frozenset({StepStatus.failed, StepStatus.uncertain, StepStatus.waiting_user})
+#: 31.242: os textos da etapa que o juiz repete na nota (o comentário, o alvo) viram `{chave}` na nota. A legenda
+#: (`caption_contains`) fica: é o texto público da publicação alvo, e a evidência diz qual legenda foi conferida.
+_TEXTOS_DA_ETAPA_NA_NOTA = ("content", "username", "post_author", "target")
 
 
 #: Estados de antes do trabalho automático: a execução que sai deles direto para um estado final (o planejador recusou,
@@ -206,6 +209,7 @@ class Repository:
         self._objetivo_de: dict[str, str] = {}
         self._objetivos_da_execucao: dict[str, list[str]] = {}
         bus.mascara = self.mascara_do_registro
+        bus.mascara_da_nota = self.trocas_da_nota      # 31.243: o contexto da falha do treino lê a nota pelo barramento
 
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None,
@@ -984,6 +988,29 @@ class Repository:
             trocas.update(self._mascara_do_objetivo(o)[0])
         return trocas
 
+    def trocas_da_nota(self, run_id: str | None, step_id: str | None, attempt_id: str | None) -> dict[str, str]:
+        """31.242: o mapa da NOTA da evidência — a nota do juiz repete o texto do comentário e o alvo, que o mapa do
+        registro não leva. É o mapa do registro (31.113 F1; desde o 31.243 com o usuário de cada conta da persona, com e
+        sem a arroba) mais os textos da etapa (`_TEXTOS_DA_ETAPA_NA_NOTA`). Só a nota: o resto segue o do registro."""
+        trocas = dict(self.mascara_do_registro(run_id, None, step_id, attempt_id))
+        if not self._objetivo_do_registro(step_id, attempt_id):
+            return trocas
+        sid = step_id or self.db.scalar("SELECT step_id FROM attempts WHERE id=?", (attempt_id,))
+        linha = self.db.one("SELECT bindings FROM steps WHERE id=?", (sid,)) if sid else None
+        bindings = (loads(linha["bindings"], {}) or {}) if linha is not None else {}
+        for chave in _TEXTOS_DA_ETAPA_NA_NOTA:
+            _na_nota(trocas, bindings.get(chave), chave, arroba=chave in ("username", "post_author", "target"))
+        return trocas
+
+    def nota_para_fora(self, r: Row) -> EvidenceDTO:
+        """31.242: a evidência como sai (painel, API, evento), com a nota pelo mapa da nota — a gravada antes do 31.242
+        sai mascarada também; o banco não é reescrito."""
+        ev = self.evidence_dto(r)
+        if not ev.note:
+            return ev
+        nota = mascara.no_texto(ev.note, self.trocas_da_nota(r["run_id"], r["step_id"], r["attempt_id"]))
+        return ev if nota == ev.note else ev.model_copy(update={"note": nota})
+
     def _objetivo_do_registro(self, step_id: str | None, attempt_id: str | None) -> str | None:
         chave = attempt_id or step_id
         if not chave:
@@ -1194,8 +1221,8 @@ class Repository:
 
     def _registrar_evidencia(self, *, run_id: str, instance_id: str, step_id: str | None, attempt_id: str | None,
                              ts: str, kind: str, note: str | None, path: str | None, redacted: bool) -> int:
-        if note:            # 31.113 F1: a nota é registro; leva o marcador da persona
-            note = mascara.no_texto(note, self.mascara_do_registro(run_id, None, step_id, attempt_id))
+        if note:            # 31.113 F1: a nota é registro; leva o marcador da persona (31.242: e o da conta e da etapa)
+            note = mascara.no_texto(note, self.trocas_da_nota(run_id, step_id, attempt_id))
         # `storage`/`stored_by` dizem ONDE o arquivo está e QUEM o gravou: sem isso a retenção de uma réplica
         # apaga do banco compartilhado a linha de um arquivo que está no disco da OUTRA (achado #172).
         eid = int(self.db.inserted_id(
@@ -1203,7 +1230,7 @@ class Repository:
             " storage, stored_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (run_id, instance_id, step_id, attempt_id, ts, kind, truncate(note, 600), path, int(redacted),
              self.storage.name if path else None, self.owner_id if path else None)) or 0)
-        ev = self.evidence_dto(self.db.one("SELECT * FROM evidence WHERE id=?", (eid,)))
+        ev = self.nota_para_fora(self.db.one("SELECT * FROM evidence WHERE id=?", (eid,)))
         self.bus.emit("evidence.added", f"Evidência registrada: {note or kind}", run_id=run_id, instance_id=instance_id,
                       step_id=step_id, attempt_id=attempt_id, data={"evidence": ev.model_dump(mode="json")})
         return eid
@@ -1831,7 +1858,7 @@ class Repository:
                  self.db.query("SELECT * FROM steps WHERE run_id=? ORDER BY instance_id, plan_version, seq", (run_id,))]
         attempts = [self.attempt_dto(a) for a in self.db.query(
             "SELECT a.* FROM attempts a JOIN steps s ON s.id=a.step_id WHERE s.run_id=? ORDER BY a.started_at", (run_id,))]
-        evidence = [self.evidence_dto(e) for e in self.db.query("SELECT * FROM evidence WHERE run_id=? ORDER BY id", (run_id,))]
+        evidence = [self.nota_para_fora(e) for e in self.db.query("SELECT * FROM evidence WHERE run_id=? ORDER BY id", (run_id,))]
         versions = [PlanVersionDTO(objective_id=v["objective_id"], version=v["version"], reason=v["reason"],
                                    created_at=v["created_at"],
                                    steps=[self._sem_dado_nos_argumentos(PlanStep.model_validate(s), v["objective_id"])
@@ -1890,3 +1917,15 @@ class Repository:
                       run_id=r["run_id"], instance_id=r["instance_id"], objective_id=r["objective_id"], step_id=r["sid"],
                       attempt_id=r["attempt_id"],
                       data={"action": dto.model_dump(mode="json"), "instance_id": r["instance_id"], "step_id": r["sid"]})
+
+def _na_nota(trocas: dict[str, str], valor: object, nome: str, *, arroba: bool) -> None:
+    """31.242: `valor → {nome}` no mapa da nota (e `@valor → @{nome}` para usuário), com o piso do mascarador; o valor
+    que já é marcador (`{...}`) ou curto demais fica de fora, e o que já está no mapa não muda de marcador."""
+    if not isinstance(valor, str):
+        return
+    v = valor.strip().lstrip("@") if arroba else valor.strip()
+    if len(v) < mascara.MINIMO or "{" in v:
+        return
+    trocas.setdefault(v, "{" + nome + "}")
+    if arroba:
+        trocas.setdefault("@" + v, "@{" + nome + "}")

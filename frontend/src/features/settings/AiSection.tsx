@@ -11,7 +11,7 @@ import { PageSection, TableWrap } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { balanceBrief, balanceOfRole, balanceStateLabel, balanceTone, balancesByUrgency } from '../../lib/aiBalance';
 import {
-  aiFeatureRows, aiModelRows, aiProfileRows, aiRoleRows, decisaoFechadaConsumidoresLabel, effortLabel, esquemaDoPlanoLabel,
+  aiEscaladaRows, aiFeatureRows, aiModelRows, aiProfileRows, aiRoleRows, decisaoFechadaConsumidoresLabel, effortLabel, esquemaDoPlanoLabel,
   leituraVisualLabel, spendLabel,
 } from '../../lib/aiLabels';
 import { useAppStore } from '../../store/app';
@@ -133,6 +133,7 @@ export function AiSection() {
               </KvRow>
             ) : null}
             {aiFeatureRows(status, features).map((f) => <KvRow key={f.key} label={f.label}>{f.value}</KvRow>)}
+            {aiEscaladaRows(status).map((f) => <KvRow key={f.key} label={f.label}>{f.value}</KvRow>)}
             <KvRow label="Chave de API">{status.configured ? 'Presente no backend' : 'Ausente'}</KvRow>
             <KvRow label="Dados saem da máquina?">{status.sends_data_externally ? 'Sim' : 'Não'}</KvRow>
             {gastoHoje ? <KvRow label="Gasto de hoje (UTC)">{gastoHoje}</KvRow> : null}

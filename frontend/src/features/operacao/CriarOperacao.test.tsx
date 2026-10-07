@@ -2,13 +2,14 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ApiError } from '../../api/client';
 import type { ProfileAccount } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useUiStore } from '../../store/ui';
 import { APPS, makeInstance } from '../../test/fixtures';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import {
-  erroDoFormulario, fontesDoCampo, lerRascunho, lerTeto, limparRascunho, montarCorpo, previaDaCapacidade, rascunhoDaOperacao, resolverAlvo, type FormularioDaOperacao,
+  erroDoFormulario, fontesDoCampo, lerRascunho, lerTeto, limparRascunho, montarCorpo, previaDaCapacidade, rascunhoDaOperacao, recusaDeParametros, resolverAlvo, type FormularioDaOperacao,
 } from './criar';
 import { lerOperacao } from './modelo';
 import { OperacaoPage } from './OperacaoPage';
@@ -336,5 +337,94 @@ describe('a lista leva à criação', () => {
     await act(async () => { root.unmount(); root = createRoot(container); root.render(<><OperacaoPage /><ConfirmHost /></>); });
     const b = await waitFor(() => byRole('button', /^Nova operação — indisponível: O central ainda não oferece o módulo de operações/, container));
     expect(b.getAttribute('aria-disabled')).toBe('true');
+  });
+});
+
+describe('31.224/31.225: o motivo da recusa dos parâmetros vai no campo certo', () => {
+  const recusa422 = (motivo: string, message: string, extra: Record<string, unknown> = {}) =>
+    json({ detail: { code: 'pedido_invalido', message, motivo, ...extra } }, 422);
+  const enviar = async () => {
+    await click(botao());
+    const d = await waitFor(() => byRole('dialog', /Criar a operação\?/));
+    await click(byRole('button', /^Criar a operação$/, d));
+  };
+  const erroDe = (rotulo: RegExp) => {
+    const l = Array.from(container.querySelectorAll('label')).find((x) => rotulo.test(x.textContent ?? ''))!;
+    return l.closest('div[class]')?.parentElement?.querySelector('[role="alert"]') ?? null;
+  };
+
+  it('recusaDeParametros acha o campo pela posicao (de 1, na ordem enviada) ou por campo; o resto é genérico', () => {
+    const e = (status: number, code: string, detail: Record<string, unknown>) => new ApiError(status, code, String(detail.message ?? 'x'), detail);
+    const ENVIADAS = ['username', 'caption_contains'];
+    expect(recusaDeParametros(e(422, 'pedido_invalido', { message: 'Sem arroba.', motivo: 'username_com_arroba', campo: 'username', posicao: 1 }), ENVIADAS))
+      .toEqual({ chave: 'username', campo: 'username', motivo: 'Sem arroba.' });
+    // o nome da chave desconhecida nunca volta: a posição aponta a do nosso corpo, e os aceitos entram na frase
+    expect(recusaDeParametros(e(422, 'pedido_invalido', { message: 'Parâmetro desconhecido.', motivo: 'parametro_desconhecido', posicao: 2, aceitos: ['username', 'post_id'] }), ENVIADAS))
+      .toEqual({ chave: 'caption_contains', campo: 'caption_contains', motivo: 'Parâmetro desconhecido. Este app aceita: username, post_id.' });
+    // sem campo e sem posição que case: aviso sem campo
+    expect(recusaDeParametros(e(422, 'pedido_invalido', { message: 'Parâmetro desconhecido.', motivo: 'parametro_desconhecido', posicao: 9 }), ENVIADAS))
+      .toEqual({ chave: null, campo: null, motivo: 'Parâmetro desconhecido.' });
+    expect(recusaDeParametros(e(422, 'pedido_invalido', { message: 'm', motivo: 'username_com_espaco', posicao: 0 }), ENVIADAS)).toMatchObject({ chave: null, campo: null });
+    // 422 genérico (só code e message), motivo de outra classe, outro status e erro qualquer: nada a mostrar por campo
+    expect(recusaDeParametros(e(422, 'validation_error', { message: 'Valor longo demais.' }), ENVIADAS)).toBeNull();
+    expect(recusaDeParametros(e(422, 'pedido_invalido', { message: 'm', motivo: 'outro' }), ENVIADAS)).toBeNull();
+    expect(recusaDeParametros(e(409, 'pedido_invalido', { message: 'm', motivo: 'username_com_arroba' }), ENVIADAS)).toBeNull();
+    expect(recusaDeParametros(new Error('x'), ENVIADAS)).toBeNull();
+  });
+
+  it('31.227: o motivo é por parâmetro declarado (_longo, _com_arroba de outro nome); campo que o formulário não oferece vira aviso sem campo', async () => {
+    const e = (detail: Record<string, unknown>) => new ApiError(422, 'pedido_invalido', String(detail.message), detail);
+    expect(recusaDeParametros(e({ message: 'O perfil alvo vai até 30 caracteres.', motivo: 'username_longo', campo: 'username', posicao: 1, max: 30 }), ['username']))
+      .toEqual({ chave: 'username', campo: 'username', motivo: 'O perfil alvo vai até 30 caracteres.' });
+    expect(recusaDeParametros(e({ message: 'O autor do post não leva @.', motivo: 'post_author_com_arroba', campo: 'post_author', posicao: 2 }), ['username', 'caption_contains']))
+      .toEqual({ chave: 'post_author', campo: null, motivo: 'O autor do post não leva @.' });
+    expect(recusaDeParametros(e({ message: 'm', motivo: 'Username_com_arroba', posicao: 1 }), ['username'])).toBeNull();   // fora do formato do motivo
+    backend.on('POST', /^\/api\/operacoes$/, () => recusa422('username_longo', 'O perfil alvo vai até 30 caracteres.', { campo: 'username', posicao: 1, max: 30 }));
+    await abrir();
+    await preencher();
+    await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'nasa');
+    await enviar();
+    await waitFor(() => expect(text(erroDe(/^Perfil alvo/)!)).toContain('vai até 30 caracteres'));
+  });
+
+  it('o 422 do username (posicao 1) aparece no campo Perfil alvo e não no aviso geral; mexer no campo limpa só ele', async () => {
+    backend.on('POST', /^\/api\/operacoes$/, () => recusa422('username_com_arroba', 'O perfil alvo não leva @.', { campo: 'username', posicao: 1 }));
+    await abrir();
+    await preencher();
+    await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'nasa');
+    await enviar();
+    await waitFor(() => expect(text(erroDe(/^Perfil alvo/)!)).toContain('O perfil alvo não leva @.'));
+    expect(campo<HTMLInputElement>(/^Perfil alvo/).getAttribute('aria-invalid')).toBe('true');
+    expect(erroDe(/^Trecho da legenda/)).toBeNull();
+    expect(text(container)).not.toContain('Revise os campos');
+    expect((backend.callsTo('POST', /operacoes$/)[0]!.body as { parametros: Record<string, string> }).parametros).toEqual({ username: 'nasa' });
+    await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'nasa2');
+    await waitFor(() => expect(erroDe(/^Perfil alvo/)).toBeNull());
+  });
+
+  it('parametro_desconhecido na posição 2 cai no Trecho da legenda, com os parâmetros aceitos; a nova recusa troca a antiga', async () => {
+    let n = 0;
+    backend.on('POST', /^\/api\/operacoes$/, () => (++n === 1
+      ? recusa422('parametro_desconhecido', 'Este app não conhece o parâmetro.', { posicao: 2, aceitos: ['username'] })
+      : recusa422('username_com_espaco', 'O perfil alvo não leva espaço.', { campo: 'username', posicao: 1 })));
+    await abrir();
+    await preencher();
+    await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'nasa');
+    await setValue(campo<HTMLInputElement>(/^Trecho da legenda/), 'foto');
+    await enviar();
+    await waitFor(() => expect(text(erroDe(/^Trecho da legenda/)!)).toContain('Este app aceita: username.'));
+    await enviar();
+    await waitFor(() => expect(text(erroDe(/^Perfil alvo/)!)).toContain('não leva espaço'));
+    expect(erroDe(/^Trecho da legenda/)).toBeNull();
+  });
+
+  it('um 422 genérico (sem motivo) mostra a frase do servidor no topo do formulário, sem marcar campo', async () => {
+    backend.on('POST', /^\/api\/operacoes$/, () => json({ detail: { code: 'validation_error', message: 'O valor do parâmetro é longo demais.' } }, 422));
+    await abrir();
+    await preencher();
+    await enviar();
+    await waitFor(() => expect(text(container)).toContain('O valor do parâmetro é longo demais.'));
+    expect(erroDe(/^Perfil alvo/)).toBeNull();
+    expect(campo<HTMLInputElement>(/^Perfil alvo/).getAttribute('aria-invalid')).not.toBe('true');
   });
 });

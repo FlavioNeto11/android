@@ -458,11 +458,25 @@ def licoes_block(lessons: list[str]) -> str:
     return f"{bloco}\n\n" if bloco else ""
 
 
+def parametros_fixos_block(fixos: dict[str, str]) -> str:
+    """31.236: os parâmetros que a operação já decidiu, logo depois do comando, seguidos de linha em branco; sem
+    operação, nada (o texto de usuário sai idêntico ao de antes). O planejador usa o NOME e o valor daqui em
+    `parameters` e não pergunta por eles; o sistema fixa os mesmos valores depois do plano (`plano_da_operacao`)."""
+    if not fixos:
+        return ""
+    linhas = "\n".join(f"- {nome} = {valor}" for nome, valor in fixos.items())
+    return ("<parametros_da_operacao origem=\"decididos pela pessoa ao criar a operação\">\n"
+            f"{linhas}\n"
+            "Use estes valores com estes nomes em `parameters` e nas etapas; não pergunte por eles em `missing`.\n"
+            "</parametros_da_operacao>\n\n")
+
+
 def planner_user(req: PlanRequest, max_steps: int) -> str:
     apps = "\n".join(_app_block(a) for a in req.apps) or "(nenhum app configurado)"
     insts = "\n".join(f"- {i['instance_id']}: conta={i.get('account_label') or '—'} app={i.get('app_id') or '—'}"
                       for i in req.instances)
     return (f"<comando_do_usuario>\n{req.command}\n</comando_do_usuario>\n\n"
+            f"{parametros_fixos_block(req.parametros_fixos)}"
             f"run_id desta execução: {req.run_id}\n\nApps configurados:\n{apps}\n\n"
             f"{licoes_block(req.lessons)}"
             f"{habilidades_conhecidas.bloco(req.habilidades)}"
@@ -476,6 +490,7 @@ def planner_capability_user(req: PlanRequest, max_steps: int) -> str:
     insts = "\n".join(f"- {i['instance_id']}: conta={i.get('account_label') or '—'}" for i in req.instances)
     app = next((a for a in req.apps if a.package == req.catalog.package), None)
     return (f"<comando_do_usuario>\n{req.command}\n</comando_do_usuario>\n\n"
+            f"{parametros_fixos_block(req.parametros_fixos)}"
             f"run_id desta execução: {req.run_id}\n"
             f"Aplicativo: {app.name if app else req.catalog.package} ({req.catalog.package})\n\n"
             f"Ações disponíveis:\n{req.catalog.prompt_block()}\n\n"
@@ -501,6 +516,7 @@ def planner_multiapp_user(req: PlanRequest, max_steps: int) -> str:
     insts = "\n".join(f"- {i['instance_id']}: conta={i.get('account_label') or '—'} app={i.get('app_id') or '—'}"
                       for i in req.instances)
     return (f"<comando_do_usuario>\n{req.command}\n</comando_do_usuario>\n\n"
+            f"{parametros_fixos_block(req.parametros_fixos)}"
             f"run_id desta execução: {req.run_id}\n\n"
             "Apps COM catálogo (etapa = uma ação do app, pelo nome exato):\n" + "\n".join(com_catalogo) + "\n\n"
             f"Apps SEM catálogo (etapa livre):\n{livres}\n\n"

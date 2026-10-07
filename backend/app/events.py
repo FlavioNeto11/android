@@ -58,6 +58,9 @@ class EventBus:
         #: 31.113 F1: `(run_id, objective_id, step_id, attempt_id) -> {valor: marcador}` da persona do objetivo; quem
         #: liga é o `Repository`. Sem ele (testes do barramento), o evento sai como veio.
         self.mascara: Callable[[str | None, str | None, str | None, str | None], dict[str, str]] | None = None
+        #: 31.243: `(run_id, step_id, attempt_id) -> {valor: marcador}` da NOTA da evidência (`Repository.trocas_da_nota`),
+        #: para quem lê a nota do banco sem o `Repository` (o contexto da falha do treino).
+        self.mascara_da_nota: Callable[[str | None, str | None, str | None], dict[str, str]] | None = None
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop

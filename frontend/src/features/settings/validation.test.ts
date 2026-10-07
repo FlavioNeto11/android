@@ -21,7 +21,7 @@ describe('limites', () => {
       'for_each_max_items', 'frame_max_age_ms',
       'idle_stop_s', 'log_retention_days', 'max_actions_per_step', 'max_active_devices', 'max_ai_concurrency',
       'max_attempts_per_step', 'max_steps_per_objective', 'min_online_dwell_s', 'no_progress_limit',
-      'objective_timeout_s', 'operacao_max_acoes_executadas', 'orquestracao_max_candidatas', 'orquestracao_max_escolhidas', 'retry_backoff_s', 'session_unknown_retry_cap', 'step_timeout_s',
+      'objective_timeout_s', 'operacao_laco_s', 'operacao_max_acoes_executadas', 'orquestracao_max_candidatas', 'orquestracao_max_escolhidas', 'retry_backoff_s', 'session_unknown_retry_cap', 'step_timeout_s',
     ]);
     expect(ALL_TOGGLE_FIELDS.map((t) => t.key)).toEqual(['auto_start_devices']);
     expect(ALL_CHOICE_FIELDS.map((c) => c.key)).toEqual(['preview_mode']);

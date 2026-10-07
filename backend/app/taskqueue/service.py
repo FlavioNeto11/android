@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from ..db import Row, dumps, loads
+from .vez_do_plano import VezDoPlano
 from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
 from ..devices.manager import DeviceManager
 from ..devices.verbs import verbos_suportados
@@ -171,6 +172,8 @@ class RunService:
         # Serviço social (opcional): resolve perfil ↔ aparelho. Sem ele, só execução por aparelho.
         self.profiles = profiles
         self._planning: dict[str, asyncio.Task[None]] = {}
+        #: 31.237: o 1º plano de cada operação aquece o cache do prompt; os irmãos esperam por ele
+        self._vez_do_plano = VezDoPlano()
         #: Costuras do aprendizado (ADR-054, A2), injetadas pelo AppState: as lições do planejador e o aviso dos gestos
         #: de uma pessoa (resolver um item, repetir itens). No-op por padrão; nunca mudam o que o gesto faz.
         self.costuras: CosturasDeAprendizado = SEM_COSTURAS
@@ -1086,7 +1089,18 @@ class RunService:
         novo, motivo = plano_da_operacao.ajustar(plan, fixos, capabilities)
         if motivo:
             self.repo.decision(f"Plano da operação: {motivo}.", run_id=run_id)
+        # 31.236: a pergunta do planejador por um nome que a operação fixou já tem resposta (só os nomes vão ao texto)
+        novo, respondidos = plano_da_operacao.sem_perguntas_dos_fixos(novo, fixos)
+        if respondidos:
+            self.repo.decision(f"Plano da operação: a pergunta por {', '.join(respondidos)} foi respondida pelo "
+                               "parâmetro fixo da operação (31.236).", run_id=run_id)
         return novo, plano_da_operacao.colisoes(plan, fixos)
+
+    def _fixos_da_operacao(self, run_id: str) -> dict[str, str]:
+        """31.236: os `parametros` da operação da execução, para o planejador; fora de operação, vazio."""
+        valor = self.repo.db.scalar("SELECT o.parametros FROM runs r JOIN operacoes o ON o.id = r.operacao_id"
+                                    " WHERE r.id=?", (run_id,))
+        return {str(k): str(v) for k, v in (loads(valor, {}) or {}).items()}
 
     def _teto_da_operacao_estourado(self, run_id: str) -> str | None:
         """O teto da operação com corte suave (rodada de 30 alvos): a execução de alvo que ainda vai planejar, com a
@@ -1207,16 +1221,21 @@ class RunService:
                 # chamava `provider.plan` direto — entrava no limite de concorrência e em nada mais, ficando fora
                 # da repetição com espera, do disjuntor de conta e de qualquer conferência de orçamento.
                 # `objective_id=None`: é uso da execução, e ainda não há objetivo nenhum para contar chamada.
-                plan = await self.scheduler.executor._ai(          # noqa: SLF001 - ponto único de chamada de IA
-                    run_id, None,
-                    # A lista de dados da persona COMUM a todos os aparelhos (ADR-040): nomes, nunca valores.
-                    lambda: self.provider.plan(PlanRequest(
-                        command=comando, run_id=run_id, instances=instances, apps=ofertados, catalog=catalog,
-                        catalogs=catalogos,
-                        available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
-                        lessons=list(licoes), habilidades=list(conhecidas.values()),
-                        etapas_ensinadas=ensinadas)),
-                    role="plan", marca=MarcaDaChamada(motivo="plano"))
+                # 31.237: o 1º plano da operação aquece o cache do prompt; os irmãos esperam por ele (teto na config)
+                operacao = run["operacao_id"] if "operacao_id" in run.keys() else None
+                async with self._vez_do_plano.vez(operacao, self.scheduler.cfg.file.ai.espera_do_plano_irmao_s):
+                    plan = await self.scheduler.executor._ai(          # noqa: SLF001 - ponto único de chamada de IA
+                        run_id, None,
+                        # A lista de dados da persona COMUM a todos os aparelhos (ADR-040): nomes, nunca valores.
+                        lambda: self.provider.plan(PlanRequest(
+                            command=comando, run_id=run_id, instances=instances, apps=ofertados, catalog=catalog,
+                            catalogs=catalogos,
+                            available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
+                            lessons=list(licoes), habilidades=list(conhecidas.values()),
+                            etapas_ensinadas=ensinadas,
+                            # 31.236: o planejador vê o que a operação já decidiu e não pergunta por isso
+                            parametros_fixos=self._fixos_da_operacao(run_id) if da_operacao else {})),
+                        role="plan", marca=MarcaDaChamada(motivo="plano"))
                 # R6: todo plano do planejador declara os apps em que roda — os parsers já preenchem; isto cobre o
                 # provedor que não preenche (um dublê, um provedor novo). Plano de skill traz os dele do compilador.
                 if not plan.required_apps:
@@ -1402,6 +1421,12 @@ class RunService:
             return plan
         row, do_fluxo = achado
         h = conhecidas[escolha.ref]
+        # 31.222: o fluxo que não cobre a ação final do comando (efeito ou trava no plano livre) não troca o plano
+        fora = habilidades.acoes_finais_fora(plan.steps, do_fluxo.steps)
+        if fora:
+            self.repo.decision(f"Habilidade {h.ref} escolhida por semelhança e recusada (31.222): o fluxo não cobre a "
+                               f"ação final {', '.join(fora)} do comando; segue o plano livre.", run_id=run_id)
+            return plan
         self.repo.db.execute("UPDATE runs SET flow_id=? WHERE id=?", (row["id"], run_id))
         self.flows.used(str(row["id"]))               # 31.210: segue direto, então o uso conta já na escolha
         self._pos_do_catalogo(run_id, do_fluxo)

@@ -15,7 +15,7 @@ provedor, modelo, prazo e concorrência próprios, roteados por `RoutingProvider
 | `plan` | Interpreta o objetivo em uma chamada estruturada: app, parâmetros, critérios de sucesso, etapas com dependência e pós-condição | 1 chamada por comando |
 | `decide` | Observa a tela (screenshot + hierarquia) e escolhe UMA ferramenta tipada | ~90% das chamadas, junto com `verify` |
 | `verify` | Confere a pós-condição da etapa por visão, quando a checagem determinística não basta | idem |
-| `escalation` | Assume quando o modelo barato tropeça, em nova tentativa e em etapa com efeito externo (`strong_model_for_side_effect`) | minoria, mas mais caro por chamada |
+| `escalation` | Assume quando o modelo barato tropeça, em nova tentativa e em etapa com efeito externo (`strong_model_for_side_effect`; com `strong_model_only_on_commit`, 31.223, só a decisão do commit) | minoria, mas mais caro por chamada |
 | `social` | Escreve a mensagem na voz da persona; nunca recebe imagem nem credencial | 1 por interação social |
 | `persona` | Gera e completa a persona (rascunho em texto); sem `ai.roles.persona` é o `social` (item 17.8) | 1 por persona gerada ou completada |
 
@@ -237,7 +237,12 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   `category='qa'` sozinho não basta, porque `POST/PUT /apps` o aceitam em qualquer app.
   Sem catálogo, "risco desconhecido" mandava toda etapa de envio ao modelo forte: 64 a 66 escalonamentos em 7 dias,
   43 % das chamadas do Opus no tier 1, cerca de US$ 0,20 por dia, e uma bateria de prova distorcida. A regra lê o dado
-  do app, nunca o nome (ADR-052). `strong_model_for_side_effect: true` continua subindo tudo (escolha explícita), etapa com
+  do app, nunca o nome (ADR-052). `strong_model_for_side_effect: true` continua subindo toda etapa com efeito (escolha explícita; com
+  `strong_model_only_on_commit: true`, o padrão desde o 31.223, sobe só a decisão do commit, e com `false` a etapa
+  inteira; com `espera_do_plano_irmao_s` (31.237, padrão 60), o 1º plano de uma operação aquece o cache do prompt e
+  os planos irmãos esperam por ele; com `imagem_quando_alvo_fora_da_arvore: true`, o padrão desde o 31.232, o forte que confere o efeito, no
+  commit refeito e no rejulgamento do "sim" com efeito, recebe a imagem quando o alvo não está na árvore, como num
+  toque por coordenada), etapa com
   capability segue o risco do catálogo, e app real sem catálogo continua no tier 1. Retentativa, erros seguidos e ciclo
   escalam em qualquer app.
 - **Desbravador** (`ai.pathfinder_wait_s`): visível (`wait_reason: pathfinder`), medido, agrupado por
@@ -307,6 +312,12 @@ achado não se confirmam nos dados.
     Desde o 31.26 (opção A, `ai.sent_text_dispensa_primeiro_juiz`), na etapa com nível `sent` cuja ação declara a prova
     local `sent_text` (a SEND_MESSAGE do Instagram), a prova confirmada na árvore substitui o primeiro julgamento
     (o barato). Nesse caso a única linha `verify` da etapa é a do rejulgamento `sim_com_efeito`, e é ele quem decide.
+    Desde o 31.238 (`ai.rejulgamento_dispensado_por_app`), esse rejulgamento também sai quando o app GANHOU o direito:
+    pelo menos `rejulgamento_dispensa_minimo` (30) rejulgamentos `sim_com_efeito` em `rejulgamento_dispensa_janela_dias`
+    (7), sem nenhuma discordância, pela régua do `/api/usage`. Só vale para o "sim" da prova local (marcador do
+    catálogo ou `sent_text`), nunca para o do juiz barato. A dispensa fica na trilha (`kind = rejulgamento_dispensado`).
+    O app que perde o mínimo na janela volta a ser rejulgado e recupera o direito sozinho. Medido em 07/10: 0
+    discordâncias em 119.
     Fica a decisão "envio comprovado pela árvore local (sent_text)" e a métrica `verificacao.primeiro_juiz_dispensado`.
     O atalho só vale quando: o nível é `sent` (entregue e lida, a árvore não prova); é o primeiro julgamento da
     verificação; o rejulgamento vai acontecer (ligado e com modelo diferente). Sem isso, nada muda.
@@ -320,6 +331,21 @@ achado não se confirmam nos dados.
     A métrica é a mesma, com `prova=marcador:<nivel>`, e o rejulgamento decide o nível que vale. Nenhum app declara
     marcador ainda: se a árvore real do Instagram expõe "Seen" ou "Delivered" debaixo da bolha não foi medido, e a
     declaração espera uma captura real, só leitura.
+    Desde o 31.239 (`ai.comentario_dispensa_primeiro_juiz`), o comentário tem prova local própria, declarada no
+    catálogo: `local_proof: comentario:{account_label}` no CREATE_COMMENT do Instagram (`proofs._comentario_publicado`).
+    A árvore comprova quando mostra o texto desta etapa (`content`, inteiro e normalizado) atribuído à conta conectada,
+    de um destes dois jeitos:
+    - a linha "autor said texto", a forma que a lista anuncia;
+    - o texto num elemento não editável, com o autor sozinho noutro elemento na mesma faixa.
+    O texto só no campo de escrita, o de outra pessoa ou o autor de outra linha não comprovam. Vale a linha de base do
+    31.59: só comprova se houver mais elementos com o texto igual do que no toque. Assim, o comentário igual e antigo
+    da própria conta (a nova tentativa depois de um efeito incerto) não prova o desta tentativa. A linha "autor said
+    texto" não entra nessa conta e, com linha de base, sozinha não comprova: o juiz decide. As travas e o efeito são
+    os do 31.26: dispensa só o primeiro julgamento, e o rejulgamento decide. Com a prova, o "sim" passa a valer para a
+    dispensa por app do 31.238 quando o Instagram atingir a régua. A prova nunca fecha o efeito sozinha: sem
+    rejulgamento, o juiz barato julga como antes. O CREATE_COMMENT também declara `pending_marks` ("Posting…",
+    "Publicando…"). Na onda 2 (evidências 2952 e 2955), o juiz dava por publicado com "Posting…" na linha; agora vale o
+    ADR-055: com a marca na tela, ninguém é consultado e, se ela não sair no prazo, o efeito fica incerto.
     Desde o 31.59, a prova `sent_text` (e o marcador por cima dela) exige a LINHA DE BASE: no toque do efeito, o
     executor guarda quantas bolhas com o texto IGUAL (normalizado; não mais "contém") a tela tinha, e a prova só vale
     se depois houver mais, e a bolha igual mais baixa tem de ser a última mensagem (nenhuma bolha do mesmo tipo abaixo;
@@ -337,7 +363,8 @@ achado não se confirmam nos dados.
   - `verdict` (o desfecho): `yes`/`no`/`uncertain`/`unprovable` no `verify`; o nome da ferramenta no `decide` (fora
     da lista de ferramentas, `desconhecida`); `plano` ou `pergunta` no `plan`; nulo na leitura e na linha de erro.
   - `image_reason` (por que a imagem foi junto, ou não), na ordem de `_motivo_da_imagem`. Sem imagem: `sensivel`,
-    `politica_nunca`, `arvore_rica`. Com imagem: `politica_sempre`, `pedida`, `problema`, `primeira_julgada`, `primeira_da_leitura` (31.37: 1ª decisão de etapa que lê valor), `leitura_pendente` (31.71: enquanto faltar saída declarada, só com `ai.imagem_enquanto_falta_saida`, desligada por padrão),
+    `politica_nunca`, `arvore_rica`. Com imagem: `politica_sempre`, `alvo_fora_da_arvore` (31.232: o forte que confere
+    um efeito cujo alvo não está na árvore), `pedida`, `problema`, `primeira_julgada`, `primeira_da_leitura` (31.37: 1ª decisão de etapa que lê valor), `leitura_pendente` (31.71: enquanto faltar saída declarada, só com `ai.imagem_enquanto_falta_saida`, desligada por padrão),
     `arvore_pobre`. `with_image` continua dizendo se ela de fato foi.
 
   A linha de erro e a de orçamento recusado passam a ter `provider` e modelo da função que a chamada usaria (a de

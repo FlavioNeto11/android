@@ -234,3 +234,12 @@
 }
 .filtroDeCancelar { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); border: 1px solid var(--border-1); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3); margin: 0 0 var(--sp-3); }
 .filtroDeCancelar legend { color: var(--text-3); font-size: var(--fs-sm); padding: 0 var(--sp-1); }
+
+/* 31.228: modelos e custo no detalhe de um agente; ocupa a linha inteira do detalhe. */
+.blocoDeModelos { grid-column: 1 / -1; }
+.tabelaDeModelos { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
+.tabelaDeModelos th, .tabelaDeModelos td { text-align: left; padding: var(--sp-1) var(--sp-3) var(--sp-1) 0; }
+.tabelaDeModelos thead th { color: var(--text-3); font-weight: var(--fw-semibold); }
+.tabelaDeModelos tfoot th, .tabelaDeModelos tfoot td { border-top: 1px solid var(--border-1); font-weight: var(--fw-semibold); }
+.somasDoCusto { display: flex; flex-direction: column; gap: var(--sp-1); }
+.somasDoCusto p { margin: 0; }

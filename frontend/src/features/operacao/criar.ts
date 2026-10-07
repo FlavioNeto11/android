@@ -3,6 +3,7 @@
  * (a conta da persona no app, a sessão dela, o aparelho), a prévia da capacidade que a pessoa vê ANTES de enviar e o corpo do
  * `POST /api/operacoes` (adendo v1.94/v1.95). A tela nunca cria conta nem persona: só escolhe entre as que já existem.
  */
+import { ApiError } from '../../api/client';
 import type { ProfileAccount } from '../../api/types';
 import { fonteComoLink, type Operacao } from './modelo';
 
@@ -214,4 +215,42 @@ export function montarCorpo(f: FormularioDaOperacao, alvos: readonly AlvoResolvi
     ...(fontes.length ? { fontes } : {}),
     ...(Object.keys(par).length ? { parametros: par } : {}),
   };
+}
+
+/** Os dois parâmetros fixos que o formulário oferece; qualquer outra chave que o servidor recuse não tem campo e vira aviso geral. */
+export type CampoDeParametro = 'username' | 'caption_contains';
+
+/**
+ * 31.224: o parâmetro que o servidor recusou, com a frase dele (nunca um "erro genérico"). `campo` = onde mostrar; null = sem campo na tela.
+ * `chave` é a do NOSSO corpo (o servidor nunca devolve o nome da chave desconhecida: a credencial pode estar nele); null = não deu para saber qual.
+ */
+export interface RecusaDeParametro { chave: string | null; campo: CampoDeParametro | null; motivo: string }
+
+const texto = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+// 31.227: o motivo é por parâmetro declarado no catálogo do app (`<nome>_com_arroba`, `<nome>_com_espaco`, `<nome>_longo`), além do `parametro_desconhecido`.
+const MOTIVO_POR_PARAMETRO = /^[a-z][a-z0-9_]*_(com_arroba|com_espaco|longo)$/;
+const motivoConhecido = (m: string): boolean => m === 'parametro_desconhecido' || MOTIVO_POR_PARAMETRO.test(m);
+
+/**
+ * Lê a recusa de parâmetros do `POST /api/operacoes` (422 do 31.224, Jev): `detail = {code: "pedido_invalido", message, motivo, posicao}`,
+ * com `motivo` = `<nome>_com_arroba` | `<nome>_com_espaco` | `<nome>_longo` (por parâmetro declarado: hoje `username` e `post_author`) ou
+ * `parametro_desconhecido`, e `posicao` contada de 1 na ordem das chaves de `parametros` que o formulário mandou (`chavesEnviadas`);
+ * `campo` (o nome declarado) vem em todos menos no desconhecido, e o `_longo` traz `max`. Um `campo` que o formulário não oferece (ex.:
+ * `post_author`) vira aviso sem campo. Em `parametro_desconhecido` vem também `aceitos` (nomes do catálogo do app), que entram na frase para sugerir a correção. A recusa para no
+ * primeiro problema (não há lista). Os 422 genéricos (só `code` e `message`) e qualquer outro erro dão `null`: quem chama mostra a
+ * frase no topo do formulário, como sempre.
+ */
+export function recusaDeParametros(e: unknown, chavesEnviadas: readonly string[]): RecusaDeParametro | null {
+  if (!(e instanceof ApiError) || e.status !== 422 || e.code !== 'pedido_invalido' || !e.detail) return null;
+  const d = e.detail;
+  const motivo = texto(d.motivo);
+  if (!motivo || !motivoConhecido(motivo)) return null;
+  let frase = texto(d.message) ?? texto(e.message);
+  if (!frase) return null;
+  const aceitos = Array.isArray(d.aceitos) ? d.aceitos.filter((a): a is string => typeof a === 'string' && a.trim() !== '') : [];
+  if (motivo === 'parametro_desconhecido' && aceitos.length > 0) frase = `${frase} Este app aceita: ${aceitos.join(', ')}.`;
+  const posicao = typeof d.posicao === 'number' && Number.isInteger(d.posicao) && d.posicao >= 1 ? d.posicao : null;
+  const chave = texto(d.campo) ?? (posicao !== null ? chavesEnviadas[posicao - 1] ?? null : null);
+  const campo: CampoDeParametro | null = chave === 'username' || chave === 'caption_contains' ? chave : null;
+  return { chave, campo, motivo: frase };
 }

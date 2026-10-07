@@ -37,6 +37,8 @@ _CODIGO = re.compile(r"`([^`\n]*)`")
 # Achado que só repete uma regra de conduta de agente (AGENTS.md, perfil do agente) aplicada a um PR de sessão: "artefato".
 _ARTEFATO = re.compile(r"(?i)regra expl[ií]cita do reposit[oó]rio|pro[ií]be agentes|nunca edite|um pr por tarefa|AGENTS\.md|copilot-instructions")
 _COMENTARIO_HTML =re.compile(r"<!--.*?(?:-->|$)")
+# o Codex abre o título com <sub><sub>...</sub></sub> (selo de gravidade em imagem): a marcação some, o texto fica
+_TAG_HTML = re.compile(r"</?[A-Za-z][^<>\n]{0,40}>")
 
 
 def gh_real(*args: str) -> str:
@@ -82,11 +84,18 @@ def resumo(corpo: str) -> str:
     corpo = _CERCA.sub("", corpo)
     corpo = _CODIGO.sub(_codigo, corpo)
     for linha in corpo.splitlines():
-        limpa = _LINK.sub(r"\1", _IMAGEM.sub("", _COMENTARIO_HTML.sub("", linha))).replace("*", "").replace("`", "'").replace("|", "/").strip(" #>-\t")
+        limpa = _LINK.sub(r"\1", _IMAGEM.sub("", _TAG_HTML.sub("", _COMENTARIO_HTML.sub("", linha)))).replace("*", "").replace("`", "'").replace("|", "/").strip(" #>-\t")
         if limpa:
             limpa = mascarar(limpa)
             return limpa if len(limpa) <= RESUMO_MAX else limpa[: RESUMO_MAX - 1] + "…"
     return "(sem texto)"
+
+
+def eh_artefato(corpo: str) -> bool:
+    """O Codex cita o AGENTS.md ou o copilot-instructions.md como LINK de rodapé em quase todo comentário: o link não é o achado."""
+    sem_rodape = re.sub(r"(?im)^.{0,40}\breference:.*$", "", corpo)
+    sem_link_de_regra = re.sub(r"\[[^\]]*(?:AGENTS\.md|copilot-instructions)[^\]]*\]\([^)]*\)", "", sem_rodape)
+    return bool(_ARTEFATO.search(_LINK.sub(r"\1", sem_link_de_regra)))
 
 
 def gravidade(corpo: str) -> str:
@@ -119,7 +128,7 @@ def achados_do_pr(repo: str, numero: int, gh: Gh) -> list[dict[str, Any]]:
         achados.append({"pr": str(numero), "revisor": mascarar(str(login)), "gravidade": gravidade(corpo),
                         "arquivo": arquivo, "linha": linha if isinstance(linha, int) else None,
                         "onde": f"{arquivo}:{linha}" if linha else arquivo, "resumo": resumo(corpo),
-                        "artefato": bool(_ARTEFATO.search(corpo)), "url": _url(c)})
+                        "artefato": eh_artefato(corpo), "url": _url(c)})
     for r in _itens(gh("api", "--paginate", f"repos/{repo}/pulls/{numero}/reviews")):
         user = r.get("user")
         login = user.get("login") if isinstance(user, dict) else None
@@ -127,7 +136,7 @@ def achados_do_pr(repo: str, numero: int, gh: Gh) -> list[dict[str, Any]]:
         if eh_revisor(login) and corpo:
             achados.append({"pr": str(numero), "revisor": mascarar(str(login)), "gravidade": gravidade(corpo),
                             "arquivo": "", "linha": None, "onde": "(resumo da revisão)", "resumo": resumo(corpo),
-                            "artefato": bool(_ARTEFATO.search(corpo)), "url": _url(r)})
+                            "artefato": eh_artefato(corpo), "url": _url(r)})
     if achados:
         estado = estado_do_pr(repo, numero, gh)
         for a in achados:

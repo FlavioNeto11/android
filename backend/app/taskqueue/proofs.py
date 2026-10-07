@@ -13,7 +13,13 @@ indisponível cai para o modelo, como sempre — a prova local nunca reprova soz
   no mesmo elemento). `{username}` e afins são resolvidos pelos bindings da etapa; `text=@ana` também casa "ana".
   `&` exige vários seletores na mesma tela, cada um no seu elemento: `text=={username}&id=composer` (27/09);
 - `selector_band:<seletor>`: como acima, mas o elemento casado precisa estar na MESMA faixa vertical de cada
-  `band_guard` da etapa — numa lista de comentários, o coração marcado do comentário de cima não prova o de baixo.
+  `band_guard` da etapa — numa lista de comentários, o coração marcado do comentário de cima não prova o de baixo;
+- `comentario:<autor>` (31.239): o comentário desta etapa publicado pelo autor (`{account_label}`, a conta conectada).
+  Vale a linha "autor said texto" (a forma que a lista anuncia, `COLLECT_COMMENTS`) ou o texto inteiro do `content` num
+  elemento não editável com o autor, escrito sozinho noutro elemento, na mesma faixa; com a linha de base do 31.59,
+  só se houver mais elementos com o texto igual do que no toque. A marca de pendente ("Posting…",
+  `pending_marks`) é conferida por quem chama, antes desta prova. Esta prova NÃO fecha o efeito sozinha: dispensa só o
+  primeiro julgamento, e o rejulgamento do 17.10 decide (ou o 31.238, com o direito do app).
 
 Com `card_guard` na etapa (a legenda da publicação alvo, já resolvida — `planning.capabilities.guardas_do_cartao`),
 o elemento casado pelo primeiro seletor precisa também estar no CARTÃO que traz cada texto (`UiTree.text_in_card`):
@@ -93,6 +99,42 @@ def nivel_pelo_marcador(marcas: Iterable[tuple[str, str]], conteudo: str | None,
     return max(casados, key=lambda nivel: _ORDEM_DO_MARCADOR[nivel]) if casados else None
 
 
+#: 31.239: como a lista anuncia a linha de um comentário (o mesmo vocabulário de `leitura.comentario` do app).
+_LINHA_DO_COMENTARIO = r"^@?{autor}\s+(?:said|disse|comentou)\s+(.+)$"
+
+
+def _comentario_publicado(autor: str, conteudo: str | None, tree: UiTree, *, antes: int | None = None) -> bool | None:
+    """31.239: `True` quando a árvore mostra o comentário `conteudo` atribuído a `autor`; `None` sem os dois.
+
+    Com a linha de base do 31.59 (`antes`: quantos elementos com o texto igual a tela tinha no toque), só vale se agora
+    houver mais: um comentário igual e antigo da própria conta (a nova tentativa depois de um efeito incerto) não prova
+    esta. A linha "autor said texto" não entra nessa conta; com linha de base, ela sozinha não prova (o juiz decide)."""
+    if not autor or "{" in autor or not conteudo or not norm_text(conteudo):
+        return None
+    if antes is not None and tree.mensagens_iguais(conteudo) <= antes:
+        return False
+    alvo = norm_text(conteudo)
+    autores = {norm_text(v) for v in variantes_de_arroba(autor) if norm_text(v)}
+    padrao = re.compile(_LINHA_DO_COMENTARIO.format(autor=re.escape(autor.lstrip("@"))), re.IGNORECASE)
+    for e in tree.elements:
+        if e.editable:
+            continue                                   # o campo de escrita com o texto não é comentário publicado
+        for bruto in (e.text, e.desc):
+            m = padrao.match((bruto or "").strip())
+            if m and norm_text(m.group(1)) == alvo:
+                return True
+        if alvo not in {norm_text(e.text), norm_text(e.desc)}:
+            continue
+        y1, y2 = e.bounds[1], e.bounds[3]
+        tol = max(60, y2 - y1)
+        for outro in tree.elements:
+            centro = (outro.bounds[1] + outro.bounds[3]) // 2
+            if outro is not e and y1 - tol <= centro <= y2 + tol and (
+                    norm_text(outro.text) in autores or norm_text(outro.desc) in autores):
+                return True
+    return False
+
+
 def local_proof_holds(local_proof: str | None, step: Any, tree: UiTree) -> bool | None:
     """`True` = comprovado pela árvore, sem modelo. `False`/`None` = não dá para afirmar: o chamador julga pelo
     modelo, como antes. Nunca vira reprovação por si só."""
@@ -116,6 +158,9 @@ def local_proof_holds(local_proof: str | None, step: Any, tree: UiTree) -> bool 
         return tree.sent_as_message(conteudo, antes=getattr(step, "mensagens_antes", None))
     if tipo == "count_gt":
         return _contagem_maior(bruto, bindings, tree)
+    if tipo == "comentario":
+        return _comentario_publicado(resolve_templates(bruto.strip(), bindings) or "", bindings.get("content"), tree,
+                                     antes=getattr(step, "mensagens_antes", None))
     # O `&` é separado ANTES de resolver as variáveis: um valor de binding nunca vira operador da prova.
     seletores = [resolve_templates(p.strip(), bindings) or "" for p in bruto.split("&")]
     if any(not s or "{" in s for s in seletores):     # variável sem valor nesta etapa: não há o que provar

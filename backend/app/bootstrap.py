@@ -33,6 +33,8 @@ from .events import EventBus
 from .gates import Portoes
 from .modules.applications.infrastructure.app_repository import AppRepository
 from .modules.avisos.infrastructure.anexos import ArmazemDeAnexos
+from .modules.operacoes.infrastructure.laco import LacoDasOperacoes
+from .modules.operacoes.infrastructure.servico import ServicoDeOperacoes
 from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.canais_frota import CanaisDaFrota
 from .modules.avisos.infrastructure.contatos_sql import ContatosDoCanal
@@ -341,6 +343,8 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
     #: que quebra não grava nada, e sem a trava o tick seguinte a reagendaria para sempre (achado #104).
     self._releituras_do_teto = {}
     self._releituras_falhas = {}
+    #: 31.267: os objetivos de alvo de operação já devolvidos ao estado conhecido (um preparo por objetivo).
+    self._alvos_preparados = set()
     # O pacote da conta vem do REGISTRO de apps (o app âncora do perfil, ADR-052 fatia 4), como no logout: é por
     # ele que o perfil diz se o app está no aparelho antes de oferecer Conectar.
     ancora = pacote_ancora()
@@ -381,6 +385,7 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
         self.provider.attach(repo=self.repo, settings_getter=self.settings.get)
     self.scheduler = Scheduler(cfg, self.repo, self.devices, self.provider, self.settings.get)
     self.scheduler.session_gate = self._session_gate
+    self.scheduler.preparo_do_alvo = self._preparo_do_alvo
     # Conta bloqueada que sai (29.23): a persona volta a `active`, então o agendador nunca VÊ o `blocked` que dispara
     # o disjuntor de conta (ADR-055); a retirada o aciona direto, na hora.
     self.social.sinal_de_desafio = lambda iid: self.devices.tem_atividade_de_desafio(iid)
@@ -552,6 +557,11 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
                                                   data={"teaching_id": tid}))
     self.runs = RunService(self.repo, self.scheduler, self.devices, self.provider, profiles=self.social,
                            secrets=self.secrets, skills=self.skill_planner)
+    # 31.220: o laço que avança as operações abertas sem leitura externa; o serviço é o mesmo das rotas.
+    self.laco_das_operacoes = LacoDasOperacoes(
+        self.db, lambda: ServicoDeOperacoes(self.db, self.runs, self.social_repo, self.approval_service,
+                                            self.settings.get, self.bus, cfg.file.ai.prices),
+        lambda: int(self.settings.get().operacao_laco_s))
     # A conversa de volta pelo Telegram (28.15, ADR-071): o mesmo bot dos avisos recebe; desligada de fábrica
     # (`avisos.entrada.enabled`). As portas chamam os MESMOS serviços das rotas do painel.
     triagem = TriagemDeCredencial()

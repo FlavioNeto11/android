@@ -37,6 +37,7 @@ from .devices.sdk import SdkTools
 from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
+from .modules.operacoes.infrastructure.laco import LacoDasOperacoes
 from .modules.avisos.infrastructure.contatos_sql import ContatosDoCanal
 from .modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from .modules.avisos.infrastructure.entrada import ServicoDeEntrada, parece_codigo
@@ -226,6 +227,7 @@ class AppState:
     social_repo: SocialRepository
     _releituras_do_teto: dict[tuple[str, str, str], str]
     _releituras_falhas: dict[tuple[str, str], int]
+    _alvos_preparados: set[str]
     persona_images: PersonaImageService
     social: SocialService
     lotes_de_persona: LotesDePersona
@@ -258,6 +260,7 @@ class AppState:
     _laco_principal: asyncio.AbstractEventLoop | None
     teaching: TeachingService
     runs: RunService
+    laco_das_operacoes: LacoDasOperacoes
     leitor_de_anexos: LeitorDeAnexo
     telegram_entrada: ServicoDeEntrada
     trello_espelho: EspelhoDoTrello
@@ -862,6 +865,54 @@ class AppState:
         return ("a verificação desta sessão passou da validade; o aparelho vai ser relido antes da tarefa" + sufixo,
                 reler)
 
+    def _preparo_do_alvo(self, rt: DeviceRuntime, package: str | None,
+                         obj: Row) -> tuple[str, Callable[[], Awaitable[None]]] | None:
+        """31.267: antes da 1ª etapa de um alvo de operação, o app volta ao estado conhecido pelo motor de sessão
+        (`ensure_session(observe_only=True)`: voltar, reabrir o app e ler a conta; sem IA, sem digitar, sem efeito).
+
+        Achado do Aprendizado (31.262, leitura real da rodada de 07/10 12:55Z): os três aparelhos começaram com a folha
+        de comentários da operação anterior aberta e gastaram 2 a 5 decisões de IA (US$ 0,03 a 0,08 por alvo) só para
+        voltar. O motor sabia voltar, mas só roda quando a sessão vence, e ela estava fresca.
+
+        Uma vez por objetivo, e só antes da 1ª tentativa: o objetivo retomado no meio (depois de uma aprovação) já está
+        na tela certa, e voltar o tiraria dela. Sessão lida depois de a execução nascer já deixou o app em casa."""
+        oid = str(obj["id"])
+        perfil = obj["profile_id"] if "profile_id" in obj.keys() else None   # objetivo sem perfil: nada a preparar
+        if oid in self._alvos_preparados or not perfil:
+            return None
+        run = self.repo.run_row(obj["run_id"])
+        operacao_id = run["operacao_id"] if run is not None and "operacao_id" in run.keys() else None
+        provedor = self.sessoes.for_package(package) if package is not None else None
+        if not operacao_id or provedor is None:
+            return None
+        if self.db.scalar("SELECT 1 FROM attempts a JOIN steps s ON s.id=a.step_id WHERE s.objective_id=? LIMIT 1",
+                          (oid,)):
+            self._alvos_preparados.add(oid)
+            return None
+        profile_id = str(perfil)
+        conta = self.social_repo.conta_do_pacote(profile_id, package)
+        conta_id = str(conta["id"]) if conta is not None else None
+        sessao = (self.social_repo.account_session_row(profile_id, conta_id, rt.id)
+                  if conta_id is not None else None)
+        if sessao is not None and sessao["verified_at"] and str(sessao["verified_at"]) >= str(run["created_at"]):
+            self._alvos_preparados.add(oid)
+            return None
+
+        async def preparar() -> None:
+            inicio = time.monotonic()
+            pronto: bool | None = None
+            try:
+                pronto = (await provedor.ensure_session(rt, profile_id, account_id=conta_id, observe_only=True)).ready
+            finally:
+                self._alvos_preparados.add(oid)
+                self.bus.emit("preparo.estado_conhecido",
+                              f"{rt.id}: app devolvido ao estado conhecido antes do alvo da operação",
+                              run_id=str(obj["run_id"]), instance_id=rt.id, objective_id=oid,
+                              data={"operacao_id": str(operacao_id), "sessao_pronta": pronto,
+                                    "ms": round((time.monotonic() - inicio) * 1000)})
+
+        return "devolvendo o app ao estado conhecido antes do alvo da operação (31.267)", preparar
+
     def sessao_vencida(self, session: Any) -> bool:
         """A sessão `session_ready` passou da validade? Verificação sem data conta como vencida.
 
@@ -1389,6 +1440,8 @@ class AppState:
             self.rede_convergencia.verificar_ao_subir()
             # A saída do central, medida em segundo plano (29.20); desligada com `rede.sonda.medir_central: false`.
             self._bg.append(asyncio.create_task(self.rede_saida_central.laco(), name="rede-saida-central"))
+            # 31.220: avança as operações abertas sem leitura externa; desligado por padrão (`operacao_laco_s: 0`).
+            self._bg.append(asyncio.create_task(self.laco_das_operacoes.laco(), name="operacoes"))
         else:
             # `ROLE=api`: esta réplica atende o painel e mais nada. Sem Appium, sem ciclo de vida de aparelho, sem
             # worker local, sem scheduler e — principalmente — sem NENHUMA reconciliação de partida: quem

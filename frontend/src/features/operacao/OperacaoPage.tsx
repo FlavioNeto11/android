@@ -25,8 +25,13 @@ import { filaEmPalavras, MOTIVO_DO_TETO } from './fila';
 import { latenciaDaOperacao, latenciaDoAlvo } from './latencia';
 import { CancelarAlvos } from './CancelarAlvos';
 import { CompararOperacoes } from './CompararOperacoes';
+import { estadoDoLaco, lacoEmPalavras, lacoExplica } from './laco';
 import { LiberarAcoes } from './LiberarAcoes';
+import { SomasDoCusto } from './LinhaDoTempoDoAlvo';
+import { ModelosDoAlvo } from './ModelosDoAlvo';
+import { PesquisaDaOperacaoSecao } from './PesquisaDaOperacaoSecao';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
+import { conhecimentoEmPalavras } from './pesquisaDaOperacao';
 import styles from './Operacao.module.css';
 import {
   acoesDaOperacao, acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, contarPorStatus, descricaoDaOperacao, filtrarOperacoes, isStatusDaOperacao, STATUS_DA_OPERACAO, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
@@ -211,7 +216,14 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
       </div>
       <div>
         <h4 className={styles.subtitulo}>Conhecimento usado ({formatInt(r?.conhecimento_ids.length ?? 0)})</h4>
-        {r?.conhecimento_ids.length ? <ul className={styles.motivos}>{r.conhecimento_ids.map((k) => <li key={k} className="mono">{k}</li>)}</ul> : <p className={styles.mudo}>Nenhum item informado.</p>}
+        {r?.conhecimento_ids.length ? (
+          <ul className={styles.motivos}>
+            {r.conhecimento_ids.map((k) => {
+              const c = conhecimentoEmPalavras(k);
+              return <li key={k} data-conhecimento={c.tipo ?? 'outro'}>{c.tipo ? <>{c.tipo}: </> : null}<span className="mono">{c.chave}</span></li>;
+            })}
+          </ul>
+        ) : <p className={styles.mudo}>Nenhum item informado.</p>}
       </div>
       <div>
         <h4 className={styles.subtitulo}>Estágios alcançados</h4>
@@ -230,6 +242,10 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
           </ol>
         ) : <p className={styles.mudo}>O backend não informou a hora de cada estágio.</p>}
         {latencia.esperaDoLiberarMs !== null ? <p className={styles.mudo} data-espera-do-liberar>Esperou a aprovação {formatSpan(latencia.esperaDoLiberarMs)} (da ação preparada ao liberar; não entra no tempo da ação executada).</p> : null}
+      </div>
+      <div className={styles.blocoDeModelos}>
+        <h4 className={styles.subtitulo}>Modelos e custo</h4>
+        {alvo.run_id ? <ModelosDoAlvo runId={alvo.run_id} custoPorPasso={alvo.custo_por_passo} /> : <p className={styles.mudo}>Este agente não tem execução: não há chamada de IA a mostrar.</p>}
       </div>
     </div>
   );
@@ -302,7 +318,8 @@ const AVISO_DE_EXEMPLO = (
 /** O custo (total, teto e a divisão pesquisa × agentes), o assunto e as fontes que o operador indicou. */
 function CustoEAssunto({ op }: { op: Operacao }) {
   const { custo, max_usd: teto, assunto, fontes } = op;
-  if (!custo && teto === null && !assunto && fontes.length === 0) return null;
+  const somas = (op.custo_por_modelo?.length ?? 0) + (op.custo_por_estagio?.length ?? 0) > 0;
+  if (!custo && teto === null && !assunto && fontes.length === 0 && !somas) return null;
   return (
     <section aria-label="Custo e assunto" className={styles.faixa}>
       {custo || teto !== null ? (
@@ -312,6 +329,7 @@ function CustoEAssunto({ op }: { op: Operacao }) {
             : <>Teto de custo de IA {formatUsd4(teto ?? 0)}</>}
         </p>
       ) : null}
+      <SomasDoCusto porModelo={op.custo_por_modelo ?? []} porEstagio={op.custo_por_estagio ?? []} rotulo="Na operação" />
       {assunto ? <p className={styles.objetivo}><strong>Assunto:</strong> {assunto}</p> : null}
       {fontes.length ? (
         <p className={styles.objetivo}>
@@ -412,6 +430,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
         ) : null}
       </p>
       <CustoEAssunto op={op} />
+      <PesquisaDaOperacaoSecao op={op} />
       <FaixaDeCapacidade op={op} />
       <PorApp op={op} />
       <Latencia op={op} />
@@ -467,6 +486,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
 }
 
 function ListaDeOperacoes() {
+  const lacoConfigurado = useAppStore((s) => s.settings?.operacao_laco_s);
   const { dado, erro, carregando, recarregar } = useCarga<ListaDeOperacoes>((s) => apiOperacoes.lista(s), 'lista');
   const [estado, setEstado] = useState<StatusDaOperacao | ''>('');
   const [busca, setBusca] = useState('');
@@ -476,6 +496,7 @@ function ListaDeOperacoes() {
   const todas: ResumoDaOperacao[] = dado?.itens ?? [];
   const itens = filtrarOperacoes(todas, estado, busca);
   const porStatus = contarPorStatus(todas);
+  const laco = estadoDoLaco(lacoConfigurado);
   return (
     <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim."
           actions={(
@@ -489,6 +510,11 @@ function ListaDeOperacoes() {
           )}>
       {erro && dado ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {dado?.exemplo ? AVISO_DE_EXEMPLO : null}
+      {laco ? (
+        <p className={styles.mudo} data-laco-do-sistema={laco.ligado ? 'ligado' : 'desligado'}>
+          <strong>Laço do sistema: {lacoEmPalavras(laco)}.</strong> {lacoExplica(laco)}
+        </p>
+      ) : null}
       {todas.length === 0 ? (
         <EmptyState icon={Workflow} title="Nenhuma operação ainda" hint="Quando uma operação for criada, ela aparece aqui, da mais nova para a mais antiga." />
       ) : (

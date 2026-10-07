@@ -368,6 +368,27 @@ def definir_texto(db: Database, step_id: str, texto: str) -> None:
                 db.execute("UPDATE objectives SET parameters=? WHERE id=?", (dumps(novos), row["objective_id"]))
 
 
+def fixar_post_em_foco(db: Database, step_id: str, trecho: str) -> None:
+    """31.260 (b): o post por posição ganha a identidade do post EM FOCO quando o texto é escrito. O trecho da legenda
+    vira `caption_contains` da etapa e entra na guarda de commit: o comentário só sai com aquele post na tela, a chave
+    da aprovação e o objeto do 30.64 passam a dizer QUAL post. Só preenche o vazio: a legenda citada no pedido vence.
+
+    Na rodada de 07/10 12:55Z (android-06) o texto falou de um post e a tela mostrava outro; quem segurou foi o
+    julgamento do ator. Agora o executor recusa pela guarda, sem depender dele."""
+    trecho = (trecho or "").strip()
+    row = db.one("SELECT bindings, commit_guard FROM steps WHERE id=?", (step_id,))
+    if row is None or not trecho:
+        return
+    bindings = loads(row["bindings"], {}) or {}
+    if str(bindings.get("caption_contains") or "").strip():
+        return
+    bindings["caption_contains"] = trecho
+    guardas = [g for g in (loads(row["commit_guard"], []) or []) if g]
+    if trecho not in guardas:
+        guardas.append(trecho)
+    db.execute("UPDATE steps SET bindings=?, commit_guard=? WHERE id=?", (dumps(bindings), dumps(guardas), step_id))
+
+
 def guardar_rascunho(db: Database, step_id: str, meta: dict[str, Any]) -> None:
     """Guarda na etapa o que o rascunho descobriu além do texto.
 

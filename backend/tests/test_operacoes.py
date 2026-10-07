@@ -1121,3 +1121,72 @@ async def test_rota_do_pool_elegivel_vem_antes_do_id_da_operacao(harness: Harnes
         assert r.status_code == 200 and r.json()["app_id"] == APP and "contagem" in r.json()
         assert (await c.get("/api/operacoes/elegiveis", params={"app_id": "nao-existe"})).status_code == 404
         assert (await c.get("/api/operacoes/elegiveis")).status_code == 422
+
+
+@pytest.mark.parametrize("declara", [False, True])
+async def test_n_personas_no_mesmo_aparelho_so_quando_o_app_declara_a_troca(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch, declara: bool) -> None:
+    """31.207 (J0, ADR-080): no app que declara a troca de conta, a persona vinculada ao aparelho entra na operação sem
+    sessão aberta ali (a porta de sessão da execução troca para a conta dela) e o despacho serializa os alvos no mesmo
+    aparelho. Sem a declaração (o Instagram), quem não tem sessão segue parado em `sessao`. Persona que não serve ao app
+    naquele aparelho para em `sessao` nos dois casos, e também a que não tem senha guardada com consentimento ou cuja
+    sessão ali parou num desafio (achado do Codex no PR 493: são os pré-requisitos da porta de sessão)."""
+    from app.modules.operacoes.infrastructure import servico as mod
+    from app.social import repository as social_repo
+    st = harness.state
+    assert st is not None
+    # Os vínculos nascem como no app que declara (o D2-a do repositório não recusa a segunda persona); o que varia
+    # entre os dois casos é só a declaração que a operação lê.
+    monkeypatch.setattr(social_repo, "_troca_declarada", lambda _db, app_id: app_id == APP)
+    monkeypatch.setattr(mod, "troca_declarada", lambda _db, app_id: declara and app_id == APP)
+    pids = []
+    contas = []
+    for n, (iid, sessao, consente) in enumerate((("android-02", True, True), ("android-02", False, True),
+                                                 ("android-02", False, True), ("android-03", False, True),
+                                                 ("android-02", False, False), ("android-02", False, True)), start=1):
+        pid = _persona(harness, f"Troca{n}")
+        st.social_repo.bind(pid, iid, app_id=APP, primary=True)
+        conta = _conta(harness, pid, f"qa-user-4{n}", sessao_em=iid if sessao else None)
+        # valores de teste: a referência não aponta para cofre nenhum; o que a operação lê é o consentimento
+        st.social_repo.set_account_credential(pid, conta, login_identifier=f"qa-user-4{n}", secret_ref="ref-de-teste",
+                                              key_id="chave-de-teste", consent_by="teste" if consente else None)
+        pids.append(pid)
+        contas.append(conta)
+    aberta, fechada, pelo_principal, de_fora, sem_consentimento, no_desafio = pids
+    st.social_repo.set_account_session(no_desafio, contas[5], "android-02", status=SessionStatus.auth_challenge)
+    op = _servico(harness).criar(_pedido(
+        [AlvoPedido(aberta), AlvoPedido(fechada, instance_id="android-02"), AlvoPedido(pelo_principal),
+         AlvoPedido(de_fora, instance_id="android-02"), AlvoPedido(sem_consentimento),
+         AlvoPedido(no_desafio)], chave=f"teste-op-troca-{int(declara)}"))
+    a, b, c, d, e, f = (_alvo(op, p) for p in (aberta, fechada, pelo_principal, de_fora, sem_consentimento, no_desafio))
+    assert a["run_id"] and a["instance_id"] == "android-02"
+    for parado in (d, e, f):
+        assert (parado["estado"], parado["parou_em"], parado["run_id"]) == ("bloqueado", "sessao", None)
+    if declara:
+        for alvo in (b, c):
+            assert alvo["run_id"] and alvo["instance_id"] == "android-02" and alvo["estado"] in ("pendente", "em_curso")
+        assert len({a["run_id"], b["run_id"], c["run_id"]}) == 3
+        assert op["capacidade"]["sessoes_validas"] == 3
+    else:
+        for alvo in (b, c):
+            assert (alvo["estado"], alvo["motivo"], alvo["parou_em"], alvo["run_id"]) == (
+                "bloqueado", "sem sessão", "sessao", None)
+        assert op["capacidade"]["sessoes_validas"] == 1
+
+
+async def test_cancelar_alvos_na_operacao_fechada_com_execucao_aberta(harness: Harness) -> None:
+    """Achado do Codex no PR 493: com todos os alvos restantes à espera do liberar, a leitura fecha a operação (eles contam
+    como bloqueados), e é aí que se descartam as ações preparadas. O cancelar por filtro só recusa a cancelada, como o
+    liberar; a execução ainda aberta é cancelada."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Fechada", "android-01")
+    _conta(harness, pid, "qa-user-71", sessao_em="android-01")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-cancelar-fechada"))
+    run_id = _alvo(op, pid)["run_id"]
+    st.db.execute("UPDATE operacoes SET status='concluida_com_bloqueios', finished_at=? WHERE id=?", (now_iso(), op["id"]))
+    feito = s.cancelar_alvos(op["id"], profile_ids=[pid])
+    assert feito["cancelados"] == [pid]
+    r = st.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (run_id,))
+    assert r["cancel_requested"] == 1 or r["status"] == "cancelled"

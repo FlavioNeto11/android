@@ -94,6 +94,13 @@ class Coletor(unittest.TestCase):
         self.assertTrue(mod._ARTEFATO.search("Este hunk viola a regra explícita do repositório que proíbe agentes"))
         self.assertFalse(mod._ARTEFATO.search("Apaga a branch errada"))
 
+    def test_rodape_agents_reference_do_codex_nao_faz_artefato(self) -> None:
+        # 29.195: o rodapé "AGENTS.md reference: [AGENTS.md:L52-L52](...)" estava marcando quase todo achado como artefato
+        corpo = "**P1** Propague a falha\n\nA função engole o erro.\n\nAGENTS.md reference: [AGENTS.md:L52-L52](https://x/y#L52)"
+        self.assertFalse(mod.eh_artefato(corpo))
+        self.assertFalse(mod.eh_artefato("Corrija o limite. [.github/copilot-instructions.mdL61-L61](https://x/y#L61-L61)"))
+        self.assertTrue(mod.eh_artefato("Remova: viola a regra explícita do repositório (AGENTS.md)\n\nAGENTS.md reference: [a](u)"))
+
     def test_frase_sem_trecho_de_codigo(self) -> None:
         txt = mod.resumo("Troque `x = foo(a, b)` por `nome_ok`\n```py\nsegredo()\n```")
         self.assertNotIn("foo(", txt)
@@ -116,6 +123,11 @@ class Coletor(unittest.TestCase):
 
     def test_comentario_html_do_revisor_e_pulado(self) -> None:
         self.assertEqual(mod.resumo("<!-- ccr-overview-v2\n## Visao geral\ntexto"), "Visao geral")
+
+    def test_tag_html_do_selo_do_codex_nao_vai_para_o_titulo(self) -> None:
+        # 29.195: o Codex abre o corpo com <sub><sub></sub></sub> (selo de gravidade em imagem)
+        self.assertEqual(mod.resumo("<sub><sub></sub></sub> Recuse colisões de lote\nmais texto"), "Recuse colisões de lote")
+        self.assertNotIn("<", mod.resumo("**<sub>P1</sub> Badge** Propague a falha"))
 
     def test_credencial_curta_por_formato_e_mascarada(self) -> None:
         txt = mod.resumo("Loga Authorization: Bearer abc123 e senha=hunter2 e api_key: xyz")

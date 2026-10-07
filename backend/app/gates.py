@@ -26,6 +26,7 @@ from .devices.manager import DeviceRuntime
 from .modules.pedidos.domain import conhecimento_da_operacao as conhecimento_dominio
 from .modules.pedidos.infrastructure.conhecimento_da_operacao import NAO_GRAVADOS, ConhecimentoDaOperacao, Fatos
 from .modules.pedidos.infrastructure.contexto import contexto_do_pedido
+from .modules.learning.infrastructure.fatos_do_livro_sql import LeitorDeFatosDoLivro
 from .modules.pedidos.infrastructure.pesquisa_da_operacao import PesquisaDaOperacao
 from .planning.capabilities import (
     Capability,
@@ -40,6 +41,7 @@ from .social.approvals import (
     DICA_DA_RECUSA,
     Approval,
     definir_texto,
+    fixar_post_em_foco,
     guardar_rascunho,
     guardar_recusa,
     ler_rascunho,
@@ -138,7 +140,9 @@ class Portoes:
         """prova30 A2: a pesquisa externa da operação, com a configuração `ai.pesquisa` (desligada de fábrica)."""
         if self._pesquisa_cache is None:
             ai = self._st.cfg.file.ai
-            self._pesquisa_cache = PesquisaDaOperacao(self._st.db, ai.pesquisa, ai.prices)
+            # 31.231: os fatos do Livro do mesmo assunto, antes da pesquisa paga
+            self._pesquisa_cache = PesquisaDaOperacao(self._st.db, ai.pesquisa, ai.prices,
+                                                      fatos_do_livro=LeitorDeFatosDoLivro(self._st.db).da_operacao)
         return self._pesquisa_cache
 
     async def _policy_gate(self, obj: Any, srow: Any, run: Any) -> Any:
@@ -443,6 +447,13 @@ class Portoes:
             alvo = alvo_da_acao(cap, bindings)
             arvore = await self._ler_tela(rt, pacote)
             tela = leitor.visible_content(arvore) if leitor is not None and arvore is not None else ""
+            # 31.260 (b): post por posição (sem legenda no pedido) e ação que confere a legenda no commit: a identidade
+            # do post EM FOCO entra na etapa antes do texto. O commit, a aprovação e o 30.64 passam a falar dele.
+            if (arvore is not None and "{caption_contains}" in cap.commit_guard
+                    and not str(bindings.get("caption_contains") or "").strip()
+                    and (trecho := getattr(leitor, "trecho_em_foco", lambda _a: None)(arvore))):
+                fixar_post_em_foco(self._st.db, srow["id"], trecho)
+                bindings = {**bindings, "caption_contains": trecho}
             fatos, leitura = await self._conhecimento_da_operacao(operacao_id, obj, srow, cap, arvore, tela, pacote,
                                                                   bindings)
             # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta
@@ -622,6 +633,10 @@ class Portoes:
                 return
             if feito is not None:
                 # Só contagens: os fatos e as fontes moram na memória da operação.
+                if feito.reaproveitados:                 # 31.231: o Livro cobriu o pedido; nenhuma chamada paga
+                    self._st.bus.emit("log", f"operação {operacao_id}: pesquisa reaproveitada do Livro: "
+                                             f"{feito.reaproveitados} fato(s), sem chamada paga", run_id=str(run_id))
+                    return
                 self._st.bus.emit("log", f"operação {operacao_id}: pesquisa na criação: {feito.fatos} fato(s) "
                                          f"({feito.confirmados} confirmado(s)), {feito.fontes} fonte(s), "
                                          f"{feito.buscas} busca(s)", run_id=str(run_id))
@@ -695,7 +710,7 @@ class Portoes:
                                    instance_id=obj["instance_id"], step_id=srow["id"])
                 pedido = None
         bindings = self._st.repo.bindings_da_etapa(srow, profile_id)
-        # O alvo normalizado é a chave da reserva de frota (`SocialRepository.fleet_targeting`).
+        # O alvo normalizado é a chave do pedido de aprovação.
         alvo = contraparte(cap, bindings) or alvo_da_acao(cap, bindings)
         # 31.113 F3: o pedido GUARDA o marcador (alvo e texto pela máscara reversível, resumo pela do registro); a
         # porta decide com o valor. A tela do painel resolve ao vivo (`texto_ao_vivo`); canal e evento levam o marcador.

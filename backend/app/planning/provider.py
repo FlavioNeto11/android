@@ -170,9 +170,10 @@ MotivoDaChamada = Literal["julgamento", "rejulgamento", "vazio", "decisao", "cas
                           "leitura"]
 #: RA-10: por que a imagem foi, ou não, junto (`ai_calls.image_reason`), na ordem de `StepExecutor._motivo_da_imagem`.
 #: Sem imagem: sensivel · politica_nunca · arvore_rica. Com imagem: politica_sempre · pedida · problema ·
-#: primeira_julgada · arvore_pobre. A coluna `with_image` diz se ela de fato foi (a captura pode falhar).
-MotivoDaImagem = Literal["sensivel", "politica_nunca", "politica_sempre", "pedida", "problema", "primeira_julgada",
-                         "primeira_da_leitura", "leitura_pendente", "arvore_pobre", "arvore_rica"]
+#: primeira_julgada · arvore_pobre · alvo_fora_da_arvore (31.232: o forte que confere o efeito, com o alvo fora da
+#: árvore). A coluna `with_image` diz se ela de fato foi (a captura pode falhar).
+MotivoDaImagem = Literal["sensivel", "politica_nunca", "politica_sempre", "alvo_fora_da_arvore", "pedida", "problema",
+                         "primeira_julgada", "primeira_da_leitura", "leitura_pendente", "arvore_pobre", "arvore_rica"]
 MOTIVOS_DE_ESCALONAMENTO: Final[tuple[str, ...]] = get_args(MotivoDeEscalonamento)
 MOTIVOS_DA_CHAMADA: Final[tuple[str, ...]] = get_args(MotivoDaChamada)
 MOTIVOS_DA_IMAGEM: Final[tuple[str, ...]] = get_args(MotivoDaImagem)
@@ -250,6 +251,10 @@ class PlanRequest:
     #: 31.153: as etapas ensinadas com receita estável dos apps do plano (`etapas_ensinadas.EtapaEnsinada`): nome,
     #: app, o que faz e os nomes dos parâmetros. Vazio = o pedido de antes.
     etapas_ensinadas: list[EtapaEnsinada] = field(default_factory=list)
+    #: 31.236: os `parametros` da OPERAÇÃO da execução (nome → valor já decidido pela pessoa). Sem eles o planejador
+    #: perguntava o que a operação já sabia (onda 2 de 07/10: "qual é o @…" com `username` fixado) e o alvo parava em
+    #: `needs_input`. Vazio = fora de operação, e o pedido é o de antes, byte a byte.
+    parametros_fixos: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

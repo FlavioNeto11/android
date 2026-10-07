@@ -19,6 +19,153 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — código morto removido pelo ADR-083 na jev/integ-62 (remerge sobre a main do refactor dos tetos)
+
+- O refactor do dono (`76672bea..ac2f6bba`, ADR-083) tirou o espaçamento entre contas, os tetos por hora e por dia, o
+  aquecimento e a coordenação de frota. Saíram da jev/integ-62, que remergeou a main, o que só existia por causa deles:
+  - `ESPACO_DA_FROTA` (a constante do motivo de espera, do 31.258);
+  - a reserva de frota do 31.240: `backend/app/social/reserva_da_frota.py`, a chamada em `gates.py` e `test_reserva_da_frota.py`;
+  - `_adiadas_pela_frota` e o motivo "espaçamento da frota" no GET da operação, com o teste do alvo represado. `alvos[].retomada_em`
+    (adendo v1.126) continua no contrato e fica sempre `null`; o painel do 31.264 já trata nulo.
+- Continuam: `aguarda_resposta` e `aguardando_resposta` (31.251), a pesquisa no relatório (31.259), o post em foco (31.260) e o
+  teto `agir` do grupo liberado (31.253). A dispensa de aprovação de política pelo grupo (28.61) morreu com o refactor: o teste
+  `test_pela_porta_o_teto_agir_do_grupo_libera_o_efeito_sem_pedido_de_aprovacao` ficou em skip citando o ADR-083, e a
+  restauração do leitor está em `fix/28-61-grupo-sem-aprovacao`, sem mesclar até o dono decidir.
+- Prova `simulated`: 114 arquivos dirigidos, 2019 passed, 43 skipped. `real`: `not_run`.
+## 2026-10-07 — 31.267: o alvo de operação começa no estado conhecido do app, sem IA (branch feat/31-267-estado-conhecido-no-alvo)
+
+- Achado do Aprendizado (31.262, rodada de 07/10 12:55Z): os três aparelhos começaram com a folha de comentários da
+  operação anterior aberta, e a IA gastou 2 a 5 decisões (US$ 0,03 a 0,08 por alvo) só para voltar. O motor de sessão
+  sabe voltar, mas a porta de sessão só o chama com a sessão vencida, e ela tinha sido lida às 09:30Z.
+- Agora o despacho tem o preparo do alvo (`Scheduler.preparo_do_alvo`, `AppState._preparo_do_alvo`). Antes da 1ª
+  etapa do alvo de uma operação, `ensure_session(observe_only=True)` volta, reabre o app e lê a conta: sem IA, sem
+  digitar, sem efeito. Sai o evento `preparo.estado_conhecido` (`sessao_pronta`, `ms`).
+- Uma vez por objetivo, e só antes da 1ª tentativa: o objetivo retomado depois de uma aprovação já está na tela da
+  etapa. A sessão lida depois de a execução nascer já deixou o app em casa. App sem motor de sessão, ou execução fora
+  de operação, seguem como antes.
+- Prova `simulated`: `backend/tests/test_estado_conhecido_no_alvo.py` (2). `real`: `not_run` até a 1ª operação depois
+  do deploy.
+
+## 2026-10-07 — 31.260: o rascunho lê só o post em foco no feed "Posts", e o commit confere o mesmo post (branch feat/31-260-post-em-foco)
+
+- O defeito, na rodada de 07/10 12:55Z (android-06, r-20261007125539-542a75): o feed "Posts" abriu com o post tocado no
+  alto e o cabeçalho do cartão seguinte à vista. O conteúdo da tela que vai ao rascunho levava os dois, e o texto aprovado
+  misturou os dois posts. O executor recusou comentar duas vezes: nenhum comentário saiu, e o alvo custou US$ 0,357.
+- Agora o app declara o cabeçalho de cartão (`leitura.conteudo.cartao: row_feed_profile_header`, medido em 07/10 13:46Z
+  pela hierarquia do android-06, só leitura), e `visible_content` lê só o cartão em foco: do primeiro cabeçalho visível
+  ao seguinte.
+- Na dúvida, a tela inteira, como antes: sem cabeçalho, ou com conteúdo acima do primeiro cabeçalho (o cartão de cima
+  rolou). A leitura da operação (`recorte_do_alvo`) passa a ser a do post em foco.
+- (b) Post por posição, quando a ação confere a legenda no commit (o CREATE_COMMENT): ao escrever o texto, a porta
+  do rascunho fixa a identidade do post em foco. São as 6 primeiras palavras da legenda do cartão, sem o autor e sem
+  o "… more". Viram `caption_contains` e guarda de commit da etapa (`fixar_post_em_foco`; a legenda citada no pedido
+  vence). Daí o comentário só sai com aquele post na tela, e a chave da aprovação e o objeto do 30.64 passam a dizer
+  QUAL post. Na dúvida (cartão indefinido, legenda curta), nada muda.
+- (c) Sem código novo: depois de "outro post" o plano já é revisado no máximo uma vez (`MAX_PLAN_REVISIONS` = 1;
+  ~US$ 0,10 na rodada). Com (b), a nova versão fixa de novo o post em foco.
+- `scripts/grupo-liberado-todas.py`: o desfazer vai aos handoffs do checkout central (`--desfazer-em`). Num worktree,
+  a pasta não existia.
+- Prova `simulated`: `backend/tests/test_post_em_foco.py` (10, um pela porta do rascunho de verdade), sobre a árvore
+  real com os textos trocados por texto inventado. `real`: `not_run` até a próxima rodada com post por posição.
+
+## 2026-10-07 — 31.259: a pesquisa no relatório consolidado e os critérios 5 e 6 pelo estado dela (adendo v1.127; branch feat/pesquisa-no-relatorio)
+
+- `GET /api/operacoes/{id}/relatorio` ganha `pesquisa`: o mesmo resumo do GET (31.235), com o critério passado pelo
+  `sem_arroba`.
+- Os critérios 5 ("Detectar necessidade de informação") e 6 ("Obter informação externa") agora leem o estado que a
+  pesquisa escreveu. Antes, só pelas fontes e pelo custo, o reaproveitamento do Livro ficava "não medido", e a
+  tentativa paga que falhou ou nada achou contava 6 como obtida.
+  - Agora: reaproveitada → 5 e 6 "sim"; paga → 6 "sim" só com fonte achada; falhou → 6 "não"; não rodou → "não
+    medido"; sem o campo, a regra antiga.
+  - O estado de base nunca baixa.
+- Prova `simulated`: `backend/tests/test_pesquisa_no_relatorio.py` (4). `real`: `not_run` até o deploy.
+
+## 2026-10-07 — 31.258 e 31.251: o alvo adiado pela frota e o que espera resposta aparecem no GET da operação (31.258 a frota, 31.251 o aguarda_resposta; adendo v1.126; branch feat/frota-adiada-no-get)
+
+- Com a reserva de frota (31.240), as contas aprovadas juntas sobre o mesmo alvo saem em série, e o painel via o alvo
+  só "em curso" durante a espera. Agora o alvo em curso com etapa em `retry_wait` pelo espaçamento traz
+  `motivo = "espaçamento da frota"` e `retomada_em` (a retomada mais cedo). A espera por outro limite não ganha esse
+  rótulo, e o @ que está no motivo da etapa não sai no GET.
+- Pedido do Portal (op-20261007100019-681b9b, três execuções em `needs_input` exibidas como "Em andamento"):
+  `alvos[].aguarda_resposta = {pergunta, desde}` (a pergunta da execução, redigida e cortada em 300 caracteres;
+  `desde` = o último `run.updated`) ou `null`, e `capacidade.aguardando_resposta` com a contagem.
+- Prova `simulated`: `backend/tests/test_frota_adiada_no_get.py` (3). `real`: `not_run` até o deploy.
+
+## 2026-10-07 — 31.253 (ADR-082): na operação que executa, a persona do grupo sem aprovação age sem pedir aprovação (branch feat/31-253-grupo-liberado-executa)
+
+- Decisão do dono em 07/10: as personas ficam num grupo que libera tudo, sem pedir permissão. Até aqui o grupo do 28.61 só
+  dispensava a aprovação de política, e o teto `preparar` do 28.23 seguia travando o efeito de todo alvo de operação.
+- Agora, com `acao_final=executar`, o alvo cuja persona está em `grupo_sem_aprovacao` nasce com o teto `agir`: sem pedido
+  de aprovação, sem pergunta no Telegram e sem liberar. Fora do grupo ou com `preparar`, segue como antes.
+- `operacao_grupo_liberado_executa` (padrão `true`, lido ao vivo na criação do alvo) volta atrás.
+- Recusas, frota, reserva de frota, tetos, conduta e proteção de conta seguem na porta.
+- Prova `simulated`: `backend/tests/test_grupo_liberado_executa.py` (3, um deles pela `_policy_gate` de verdade). `real`:
+  `not_run` até o deploy.
+
+## 2026-10-07 — 31.241: a operação com executar reabre depois da aprovação feita fora do liberar (branch feat/31-241-reabre-apos-aprovacao)
+
+- Na onda 2 de 07/10 (op-20261007100755-096a28), a operação fechou às 10:09:29Z em "aguarda liberação". As aprovações
+  vieram pelas Pendências às 10:12:51Z, e os comentários foram verificados até 10:14:00Z. O banco ficou com
+  `concluida_com_bloqueios`, o `finished_at` do preparo e nenhum `operacao.encerrada` novo, porque a reabertura do
+  `ler` só cobria `preparar`.
+- Agora o alvo que volta a correr reabre a operação fechada (CAS, nunca a cancelada). A operação fechada cujos alvos
+  terminaram com outro resultado fecha de novo: o fim é o último estágio real, nunca antes do gravado, e sai um
+  `operacao.encerrada` novo. A leitura repetida não grava nem avisa de novo.
+- Prova `simulated`: `backend/tests/test_operacao_reabre_apos_aprovacao.py` (3; o código de antes falha em 2).
+  `real`: `not_run` até o deploy.
+## 2026-10-07 — 31.240: a reserva de frota por alvo faz o espaçamento valer na corrida (branch feat/31-240-reserva-de-frota)
+
+- Na onda 2 de 07/10 (op-20261007100755-096a28), três aprovações saíram juntas às 10:12:51Z. As três portas passaram
+  em 10:12:52–53Z, antes de qualquer efeito existir para o espaçamento entre contas contar, e dois comentários saíram a
+  0,4 s um do outro. O espaçamento só comparava com a última interação registrada, e cada alvo da operação é uma
+  execução própria.
+- Agora a porta, ao liberar o efeito (depois da aprovação, nunca no preparo), toma a reserva do alvo na frota: uma linha
+  de `travas` por (app, alvo), por compare-and-swap, sem migração (`app/social/reserva_da_frota.py`).
+  - A outra conta que chega com a reserva viva é adiada, não recusada, e confere de novo em 30 s. Daí vale o
+    espaçamento de sempre, contado do efeito do dono.
+  - A reserva cai no efeito do dono, quando a etapa dele termina sem efeito, ou em 600 s. Sem espaçamento configurado,
+    nada é reservado.
+- Prova `simulated`: `backend/tests/test_reserva_da_frota.py` (6). Nele, três contas aprovadas juntas saem com
+  ≥120 s entre os efeitos; sem a reserva, o mesmo roteiro sai em rajada. Também pela `_policy_gate` real: a segunda
+  aprovada é adiada com o motivo 31.240, e tirar o gancho da porta faz esse teste falhar. `real`: `not_run` até o deploy.
+
+## 2026-10-07 — 31.236: os parâmetros fixos da operação chegam ao planejador (branch feat/31-236-parametros-no-planejador)
+
+- Na onda 2 de 07/10 (op-20261007100019-681b9b), as três execuções pararam em `needs_input` com "qual é o @ da página
+  alvo", embora a operação tivesse `parametros.username`. O planejador só via o comando, e os fixos entravam depois do
+  plano (`fixar_parametros`), sem tocar no `missing`.
+- Agora a execução de operação manda os `parametros` ao planejador (`PlanRequest.parametros_fixos`, bloco
+  `<parametros_da_operacao>` logo depois do comando, nos três modos de planejamento). Fora de operação, o texto sai o de
+  antes, byte a byte.
+- Se mesmo assim o planejador perguntar por um campo com o NOME de um fixo, o fixo responde (`sem_perguntas_dos_fixos`)
+  e a decisão registra só o nome. A pergunta por outro campo continua indo a `needs_input`.
+- O teto `preparar` dos alvos não muda: ele nasce na criação do alvo (28.23) e é o portão do liberar e da aprovação
+  com `acao_final=executar`. Não foi ele que parou a onda.
+- Prova `simulated`: `backend/tests/test_parametros_no_planejador.py` (5; duas mutações pegas: sem o fixo no pedido e
+  sem a resposta à pergunta). `real`: `not_run` até o deploy (a onda 2 contornou o defeito com o @ também no comando).
+
+## 2026-10-07 — 31.235: o GET da operação diz como a pesquisa rodou (branch feat/31-235-pesquisa-na-operacao)
+
+- `GET /api/operacoes/{id}` ganha `pesquisa` (adendo v1.125), aditivo, para a tela Operação do Portal (31.234). É `null` sem assunto.
+  O estado é `reaproveitada_do_livro`, `paga`, `falhou` ou `nao_rodou`, com o critério por extenso, o mínimo de
+  fatos, o menor frescor, o custo da pesquisa e as referências dos fatos do Livro usados.
+- Lê só a memória da operação (`pesquisa.estado` e `livro.<item>`); nem texto de fato nem URL saem no campo. Os
+  textos de estado da pesquisa passaram a constantes do domínio, para que a leitura e a escrita não se desencontrem.
+- Prova `simulated`: `backend/tests/test_pesquisa_no_get_da_operacao.py` (3; os quatro estados escritos pela própria
+  pesquisa da operação, e a rota). `real`: `not_run`, até o GET da primeira operação com assunto depois do deploy.
+
+## 2026-10-07 — 31.229: o custo e o modelo por passo no GET da execução e no do alvo (adendo v1.124, branch feat/31-229-custo-por-passo, corte 61)
+
+- `custo_por_passo` em `GET /api/runs/{id}` e em `alvos[]` de `GET /api/operacoes/{id}`. Por passo: o modelo do último
+  decide, o commit (a ação com efeito não rejeitada, com o modelo, o tier e o escalate do decide que a escolheu), as
+  chamadas, o custo e o custo por modelo. Na operação, `custo_por_modelo` e `custo_por_estagio`. Sem migração: o vínculo
+  `ai_calls.step_id` e `actions.ai_call_id` já existia. Só expõe; a política de modelos (31.223) não muda.
+- Prova `simulated`: `backend/tests/test_custo_por_passo.py` (2 testes: a trilha da decisão descartada e da refeita, e
+  a soma que fecha com `spent_usd`). Uma mutação que deixa a ação rejeitada contar como commit é pega. Real: not_run.
+- Junto, nota no v1.124: `GET /api/host/amostras` traz as três colunas do amostrador v2 (`cpu_media_pct`,
+  `demais_processos_pct`, `nao_atribuido_pct`), `null` na linha do v1 (achado da Portal no 31.211). Prova `simulated`:
+  `backend/tests/test_amostras_do_host.py`, que reprova na leitura anterior. Real: not_run.
+
 ## 2026-10-07 — 31.216: a leitura repetida da operação não grava nem avisa de novo (branch feat/operacao-latencia-por-estagio, corte 60)
 
 - O `GET /api/operacoes/{id}` grava só o que mudou desde a leitura anterior (o estágio derivado, a reabertura e o
@@ -27,6 +174,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_operacoes.py::test_ler_varias_vezes_nao_grava_de_novo_nem_avisa_de_novo` (seis
   leituras; o banco e a contagem de eventos iguais depois da primeira; a mutação que tira a guarda de `_anotar` é pega).
   Real: not_run.
+## 2026-10-07 — 31.207 (J0): N personas no mesmo aparelho na operação, só no app que declara a troca (branch feat/31-207-j0-troca-na-operacao, corte 61)
+
+- No app que declara a troca de conta (ADR-080, `troca` no `sessao.yaml`), o alvo cuja persona serve ao app no
+  aparelho (o pedido, ou o principal dela) entra na operação sem sessão aberta ali: ganha a execução própria, a porta
+  de sessão troca para a conta dela (31.155) e o despacho serializa os alvos do aparelho. A capacidade conta esse alvo
+  em `sessoes_validas`. Sem a declaração, nada muda: quem não tem sessão para em `sessao`. Nenhum app do parque declara
+  a troca hoje, então o Instagram fica de fora por construção.
+- Prova `simulated`: `backend/tests/test_operacoes.py::test_n_personas_no_mesmo_aparelho_so_quando_o_app_declara_a_troca`
+  (com e sem a declaração; uma mutação que desliga a entrada pela troca é pega). Ele prova a admissão do alvo e a
+  capacidade; a troca de conta durante a execução é a do 31.155 (`test_troca_de_conta.py`). Real: not_run.
 
 ## 2026-10-07 — 31.206 e 31.213: a fila do aparelho no GET e a lista de operações por persona (branch feat/operacao-latencia-por-estagio, corte 60)
 
@@ -107,6 +264,146 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   2009 ms para 0. A tabela está em `.claude/handoffs/jev-31-175-medida.md`.
 - Sem mudança de código: a fila por vaga já existe, e `max_ai_concurrency` é relido ao vivo.
 - Prova `simulated`; a leitura real fica para a onda 2.
+
+## 2026-10-07 — 31.244: a receita aceita o marcador da persona já gravado no texto digitado (branch feat/31-244-distill-aceita-marcador-da-persona)
+
+- O registro grava o dado da persona como marcador (31.113 F1, `{perfil_nome}`; 31.243, `@{conta_<app>_usuario}`). A
+  destilação o lia do banco, não achava parâmetro que o cobrisse e recusava a receita.
+- Agora `recipes.distill(..., persona=)` recebe os nomes das variáveis da persona do objetivo. O marcador que a persona
+  resolve conta como coberto, e a arroba logo antes dele não sobra. A reprodução digita o valor da persona da vez
+  (31.87 F2). Sem a variável na persona, segue recusado.
+- Prova `simulated`: `backend/tests/test_receita_com_marcador_da_persona.py` (5). `real`: `not_run` (a 1ª receita
+  destilada de passo com nome ou usuário depois do deploy).
+- Correções achadas pela bateria deste item:
+  - a nota do juiz volta a citar a legenda conferida (`caption_contains` saiu do mapa da nota do 31.242: é o texto
+    público do alvo; `test_alvo_por_legenda.py`);
+  - `test_legenda_rola_e_fecha_a_folha.py` desliga `ai.strong_model_only_on_commit` no teste da folha entre a guarda e
+    o Share. Com o 31.223, a 1ª decisão de efeito é refeita e a folha é vista na reobservação; o teste protege a
+    releitura antes do toque (29.90). Quebrava desde `1e2c6220`, sem efeito no comportamento: nada caía na folha.
+
+## 2026-10-07 — 31.243: o usuário da conta da persona fora do registro inteiro e do contexto do treino (branch feat/31-243-usuario-da-conta-no-registro)
+
+- O mapa do registro (31.113 F1, `mascara_da_persona.mapa`) passa a levar o usuário de cada conta da persona
+  (`{conta_<app>_usuario}`), com e sem a arroba. O valor que está num parâmetro do comando fica, como sempre. Assim,
+  eventos, ações e detalhe da etapa saem sem ele.
+- O contexto da falha do treino (`training/origem.py`) mascara pelo barramento (`EventBus.mascara` e o novo
+  `mascara_da_nota`): a linha antiga, gravada em claro, sai mascarada.
+- O treino e as leituras seguem casando pela chave (`resolver_texto` volta o marcador ao valor).
+- Prova `simulated`: `backend/tests/test_usuario_da_conta_no_registro.py` (3). `real`: `not_run` (o registro da 1ª
+  operação depois do deploy).
+
+## 2026-10-07 — 31.242: a nota do juiz na evidência sai sem o usuário da conta e sem o texto da etapa (branch feat/31-242-mascarar-notas-do-juiz)
+
+- A nota do juiz repetia o usuário da conta da persona ("@fulano said …") e o texto do comentário, que o mapa do
+  registro (31.113 F1) não leva. Achado ao ler as evidências 2951 a 2956 da onda 2 (só leitura, sem copiar valor).
+- A nota passa pelo mapa da nota (`Repository.trocas_da_nota`): o do registro, mais o usuário de cada conta da persona
+  (com e sem a arroba) e os textos da etapa (`content`, alvo, legenda) como `{chave}`. Vale na gravação e na saída
+  (detalhe da execução e evento `evidence.added`). A nota antiga sai mascarada, e o banco não é reescrito.
+- Limites: só o valor inteiro; na saída, o usuário de agora. O contexto da falha do treino e os eventos, ações e
+  detalhe da etapa seguem sem o usuário da conta (`docs/dominios/persona.md`).
+- Prova `simulated`: `backend/tests/test_nota_do_juiz_mascarada.py` (4). `real`: `not_run` (as notas da 1ª operação
+  depois do deploy, e o detalhe da execução da onda 2).
+
+## 2026-10-07 — 31.239: o comentário publicado do Instagram comprovado pela árvore, como dado no catálogo (branch feat/31-239-marcador-de-comentario)
+
+- O CREATE_COMMENT do Instagram declara `local_proof: comentario:{account_label}`. A prova (`proofs._comentario_publicado`)
+  reconhece na lista o texto desta etapa atribuído à conta conectada: a linha "autor said texto", ou o texto num
+  elemento não editável com o autor na mesma faixa. Só árvore, sem adb. Vale a linha de base do 31.59: o comentário
+  igual e antigo da própria conta, já na tela no toque, não prova a nova tentativa.
+- Com a prova, o primeiro julgamento sai e o rejulgamento decide (as travas do 31.26,
+  `ai.comentario_dispensa_primeiro_juiz`). Isso habilita a dispensa por app do 31.238 para o Instagram quando a régua
+  30/0 for atingida. Sem rejulgamento, nada muda.
+- O CREATE_COMMENT passa a declarar `pending_marks` ("Posting…", "Publicando…"). Na onda 2, o juiz dava por publicado
+  com "Posting…" na linha (evidências 2952 e 2955). Agora, com a marca na tela, ninguém é consultado e, se ela não sair
+  no prazo, o efeito fica incerto (ADR-055).
+- Prova `simulated`: `backend/tests/test_marcador_de_comentario.py` (8). `real`: `not_run` (a 1ª operação de comentário
+  depois do deploy).
+
+## 2026-10-07 — 31.232: o forte confere o efeito com a imagem quando o alvo está fora da árvore (branch feat/31-232-commit-sem-imagem)
+
+- Na onda 1, o commit refeito no forte (31.223) e o rejulgamento do "sim" com efeito saíram sem imagem (`arvore_rica`).
+  Com o alvo escolhido na árvore, isso basta; num toque por coordenada, o forte conferia às cegas.
+- Agora a mesma regra vale para os dois juízes: com o alvo fora da árvore (coordenada, elemento ausente ou ferramenta
+  sem elemento), a imagem vai junto, com `image_reason = alvo_fora_da_arvore`. Com o alvo na árvore, decide a régua de
+  sempre. A regra só acrescenta a imagem; a tela sensível e a política `never` continuam mandando, e o juiz barato
+  não muda. `ai.imagem_quando_alvo_fora_da_arvore: false` volta ao de antes.
+- Prova `simulated`: `backend/tests/test_imagem_do_alvo_fora_da_arvore.py` (6). `real`: `not_run`.
+
+## 2026-10-07 — 31.238: o rejulgamento do efeito dispensado por app (branch feat/31-238-rejulgamento-dispensado-por-app)
+
+- Medida real (07/10, `GET /api/usage?days=7`, só leitura): 119 rejulgamentos `sim_com_efeito` em 7 dias, 0
+  discordâncias, US$ 1,59. A taxa de 9 % do total vem toda do `nivel`.
+- Agora o rejulgamento `sim_com_efeito` sai quando o "sim" veio da prova local do app (marcador do catálogo ou
+  `sent_text`) e o app tem pelo menos 30 rejulgamentos em 7 dias sem discordância. Hoje o QA Messenger qualifica e
+  o Instagram (4) não. O "sim" do juiz barato segue rejulgado; o verify não muda. A dispensa fica na trilha
+  (`rejulgamento_dispensado`). `ai.rejulgamento_dispensado_por_app: false` desliga.
+- Prova `simulated`: `backend/tests/test_rejulgamento_dispensado_por_app.py` (7). `real`: a medida acima; a dispensa,
+  `not_run`.
+
+## 2026-10-07 — 31.233: a receita ativa que diverge ensina a candidata (branch feat/31-233-candidata-da-ativa-que-divergiu)
+
+- Leitura real da onda 2 (07/10, `op-20261007100755-096a28`, só leitura): US$ 0,9249 nos 3 alvos (0,3083 por alvo)
+  contra 0,2894 da onda 1. As decisões do comentário no Opus somam 43 %, e o 31.223 as corta quando entrar no ar.
+  O `open_post` pela IA depois que a receita 111 divergiu nos 3 alvos é 15 % (39 % da fase preparada), e nada se
+  aprendeu, porque o executor só aprendia quando quem divergia era uma candidata.
+- Agora, quando a receita ATIVA diverge, cai em quarentena nessa tentativa e a IA completa a etapa, o caminho que
+  rodou (o trecho feito da receita e o da IA) vira candidata, em prova como qualquer outra. Antes da quarentena, a
+  ativa segue segurando a chave. `ai.candidata_da_ativa_que_divergiu: false` volta ao de antes.
+- Prova `simulated`: `backend/tests/test_candidata_da_ativa_que_divergiu.py` (5). `real`: a leitura acima; o corte,
+  `not_run`.
+
+## 2026-10-07 — 31.237: o 1º plano da operação aquece o cache; os irmãos esperam (branch feat/31-237-plano-aquece-o-cache)
+
+- Na onda 2 cancelada (07/10), os 3 planos da operação saíram no mesmo instante e cada um gravou o mesmo prefixo do
+  prompt no cache (US$ 0,018 o plano). Na onda válida, que leu o cache gravado 7,5 min antes, cada um custou 0,0095.
+- Agora o 1º plano de uma operação sai sozinho, e os irmãos esperam por ele (com sucesso ou erro) antes de chamar a
+  IA, sem ocupar vaga. Teto em `ai.espera_do_plano_irmao_s` (padrão 60 s; vencido, segue como antes; 0 desliga).
+  Fora de operação, nada muda.
+- Prova `simulated`: `backend/tests/test_plano_irmao_espera_o_cache.py` (4; com o cache imitado, 3 irmãos dão 1
+  gravação e 2 leituras, e 3 gravações com a espera desligada). `real`: `not_run`.
+
+## 2026-10-07 — 31.231: a pesquisa reaproveita o Livro (branch feat/31-231-pesquisa-reaproveita-o-livro)
+
+- A 2ª operação do mesmo assunto pagava a pesquisa de novo (US$ 0,043 na onda 1) pelo que o Livro já sabia.
+- Agora, antes da chamada paga, a lacuna lê os fatos do Livro do mesmo assunto canônico e do mesmo app. Cobrem o pedido quando há
+  pelo menos `ai.pesquisa.reaproveitar_min_fatos` (padrão 2) vivos, confirmados e dentro do frescor, e, havendo fontes
+  indicadas, cada domínio indicado entre os desses fatos. Cobrindo, os fatos entram na memória como `livro.<item>` e a
+  `pesquisa.estado` registra itens, frescor e critério; não cobrindo, a pesquisa paga roda como antes, com o motivo no log.
+- Prova `simulated`: `backend/tests/test_pesquisa_reaproveita_o_livro.py` (4). `real`: `not_run`.
+
+## 2026-10-07 — 31.230: a receita sem o "voltar" inicial (branch feat/31-230-receita-sem-voltar-inicial)
+
+- A tentativa da IA que começava por `press_back` não virava receita: foi o que barrou o `open_profile` na onda 1.
+- Agora o voltar inicial é descartado quando a 1ª ação gravada partiu do estado conhecido declarado do app. A ação
+  leva a âncora, e a reprodução confere a tela antes de agir. O voltar no meio do caminho segue recusado.
+- Prova `simulated`: `backend/tests/test_receita_sem_voltar_inicial.py` (6). `real`: `not_run`.
+
+## 2026-10-07 — 31.223: o modelo forte só no commit (branch feat/31-223-forte-so-no-commit, adendo v1.122)
+
+- Na etapa com efeito, o Opus decidia todos os passos: na onda 1, US$ 0,112 de 0,279 do alvo.
+- Agora, com `ai.strong_model_only_on_commit` (padrão `true`), o modelo de ação navega, e só a decisão que dispararia o
+  efeito é refeita no forte. A trava de commit, a política de risco e o rejulgamento do efeito não mudam.
+- Dois testes antigos que medem o modo de antes ficam com a chave em `false`.
+- Prova `simulated`: `backend/tests/test_forte_so_no_commit.py` (2). `real`: `not_run`.
+
+## 2026-10-07 — 31.222: a semelhança não derruba a ação final (branch feat/31-222-semelhanca-sem-acao-final)
+
+- A escolha por semelhança trocava o plano inteiro pelo do fluxo. Um fluxo de leitura escolhido para um comando com
+  comentário derrubava o comentário.
+- Agora, se o plano livre tem etapa com efeito ou trava que o fluxo não cobre, a escolha é recusada e fica o plano
+  livre, com o motivo na trilha.
+- Prova `simulated`: `backend/tests/test_semelhanca_sem_acao_final.py` (3). `real`: `not_run`.
+
+## 2026-10-07 — 31.221: o ensino a partir da execução (branch feat/31-221-ensino-da-execucao, adendo v1.120)
+
+- A operação do Instagram planeja com ações do catálogo, que as etapas ensinadas do 31.153 não cobrem. O que as
+  reaproveita é a receita, que nasce candidata e só vira ativa após 2 execuções que concordem.
+- Agora `GET /api/aprendizado/execucao/{run}/ensino` diz, por etapa, a candidata ou o motivo fechado (inclusive
+  `caminho_nao_reproduzivel` com `press_back`, o achado da onda 1). O `POST` na mesma rota deixa a pessoa promover as
+  candidatas num gesto, pelo Livro, com `ensino_da_execucao:<run> persona:<id>` na trilha.
+- Corrigida a ressalva do 31.219: as etapas do 31.153 também não servem à operação.
+- Prova `simulated`: `backend/tests/test_ensino_da_execucao.py` (2). `real`: `not_run`, pede o deploy e uma execução
+  real da onda 2.
 
 ## 2026-10-07 — 31.219: o ensino do fluxo para alvo de terceiro, preparado (branch feat/31-219-ensino-alvo-de-terceiro)
 
@@ -343,6 +640,57 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   recusado, não escolhido; o valor demonstrado não vai ao prompt; o JSON do provedor real). Planejamento, parsing,
   prompts, fluxos e arquitetura: 3373 passaram; as 2 falhas da rodada (o teste novo do provedor real e a catraca de Any) foram corrigidas e rerodadas (48 passaram). Revisor de segredos: sem alto; o médio (molde com literal de alvo, como @, endereço ou número longo, não vai ao prompt) e três baixos (referência fora do oferecido não vai à trilha; parâmetros reservados fora; uses só sobe ao aprovar) corrigidos. `real`: `not_run` (um pedido parafraseado no android-04 planejado pelo
   fluxo ensinado, cerca de US$ 0,02, com o sim do dono).
+
+## 2026-10-07 — 31.220: o laço do sistema que avança a operação sem leitura externa (branch feat/31-220-laco-da-operacao, corte 61)
+
+- `LacoDasOperacoes` lê as operações abertas a cada `operacao_laco_s` (novo em `LimitsCfg`, adendo v1.119; padrão 0 =
+  desligado neste corte). Antes, só uma leitura (o painel, a Canais ou a resposta de um POST) fechava a operação e emitia
+  `operacao.encerrada`.
+- O estágio do alvo (`_anotar`) passa a ser gravado por `UPDATE` condicional, e o `_fechar` passa a ler o `.rowcount`. A
+  comparação antiga do cursor com 0 nunca era verdadeira, e dois fechamentos juntos emitiam o evento duas vezes.
+- Prova `simulated`: `backend/tests/test_operacoes_laco.py` (5 testes, relógio falso); os dois testes de corrida
+  reprovam no código anterior. Real: not_run (a operação de 07/10 fechando sem leitura externa, depois da prova e com
+  o laço ligado).
+
+## 2026-10-07 — 31.227: a forma e o tamanho do parâmetro declarados no catálogo do app (branch feat/31-227-forma-dos-parametros, corte 61)
+
+- `catalogo.yaml` ganha `parametros: {nome: {forma: handle|texto, max}}` (adendo v1.123), conferido na carga. O Instagram declara
+  `username` e `post_author` como handle de até 30 caracteres. A conferência do 31.224 lê a declaração; sem ela, vale o
+  teto genérico de 300. O app sem catálogo deixa de ter a regra do `username`.
+- Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (os casos novos e a carga recusando declaração errada). A
+  mutação que desliga o tamanho é pega. Real: not_run.
+
+## 2026-10-07 — 31.224: `parametros` da operação conferidos com o app antes de qualquer execução (branch feat/31-224-valida-parametros, corte 61)
+
+- `POST /api/operacoes` (adendo v1.121) recusa com 422 o `username` com arroba ou com espaço, e a chave fora do catálogo do app
+  (com a lista dos aceitos), antes de gravar e de criar execução. O corpo traz `motivo` e `posicao`, nunca o nome que
+  veio. O app sem catálogo segue com a chave livre.
+- Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (3 testes novos, um parametrizado). A mutação que desliga
+  a regra do username é pega. Real: not_run.
+
+## 2026-10-07 — 29.190: conferência do JSON de resultado antes do aplicar (branch ci/29-190-confere-resultado)
+
+- `scripts/resultado_confere.py ARQ...` confere o JSON de resultado do plano-100 ANTES do `claude-plan-100.py aplicar`, reusando de `scripts/claude-plan-100.py` as constantes `ESTADOS` e `PROVAS`, os IDs da tabela do plano e a própria `validar` (item a item, para listar TODOS os problemas e não só o primeiro). Além do que a `validar` cobra, exige na evidência: `real` com data, máquina ou runner e commit ou id de execução; `simulated` com `arquivo::teste` ou arquivo de teste; `not_run` com o motivo. `--gravar RASCUNHO DESTINO` só grava (de forma atômica) se não houver problema. Só lê o plano; sem rede, `gh` nem IA. Nasceu do `status: "done"` que quebrou o `aplicar` do deploy 58.
+- Os JSONs já gravados da frente (29-169 a 29-189) passaram pela conferência: status `implemented` e `proof` só no vocabulário do plano; os textos descritivos de prova de 29.187, 29.188 e 29.169 foram para `evidence`. Sobra só "29.189: ID que não existe no plano" até a orquestradora registrar o ID na tabela.
+- Prova `simulated`: `scripts/tests/test_resultado_confere.py` (17 testes; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, esta máquina, `date -u`): a ferramenta rodada sobre os 16 JSONs de resultado da frente: 15 ok e 1 com o aviso esperado do ID 29.189.
+
+- Achados do Codex no PR 498 (29.195 d), conferidos e corrigidos na própria branch: `simulated` só vale com `arquivo::teste`, `test_*`, `*.test.ts`, `*_test.py` ou pasta `tests/` (um `.py` qualquer não conta); `blocker` só completa `not_run`, nunca prova `real` ou `simulated`. Prova `simulated`: `scripts/tests/test_resultado_confere.py` (19 testes).
+
+## 2026-10-07 — 29.191: cache do .venv e do node_modules nos workflows hospedados: medido, não compensa (branch ci/29-191-cache-medido)
+
+- Medida `real` (07/10, `date -u` 01:27Z, runners `ubuntu-latest`, passos de `gh api .../jobs`): o `ci.yml` e o `pr-leve.yml` JÁ guardam o cache de download do pip e do npm (`cache: pip` e `cache: npm` do `setup-python` e `setup-node`). Job PostgreSQL do cron (run 37548654811): `pip install` 10 s e `setup-python` 3 s de ~2490 s do job (0,5 %); o `pytest` é 2450 s. CI leve (run 37556584580): docs-check + scripts/tests = instalar 9 s + python 6 s de 121 s, e `pytest scripts/tests` 103 s; frontend = `setup-node` 7 s + `npm ci` 4 s de 205 s, e `vitest` 181 s.
+- Conclusão: cachear o `.venv` e o `node_modules` inteiros pouparia, no melhor caso, ~5 s por job (restaurar o cache também custa), sem mudar nenhum minuto faturado (o arredondamento por job é para cima: 121 s e 205 s seguem em 3 e 4 min; o PostgreSQL segue em ~42 min), e traria o risco de um ambiente velho mascarar mudança de dependência (o que o `npm ci` e o `pip install` com o lock garantem hoje). NÃO implementado, por medida; nenhum workflow mudou. Onde estão os minutos: `pytest` do backend (PostgreSQL, 98 %), `vitest` (88 % do job de frontend) e `pytest scripts/tests` (85 % do job docs); só a paralelização desses testes (ex.: `-n 2` em `scripts/tests`, que depende de os testes não dividirem estado) mexeria em minuto cobrado, e isso muda COMO os testes rodam: fica como proposta com medida antes de qualquer troca.
+
+## 2026-10-07 — 29.195: limites do agente de nuvem marcados como só dele; coletor sem `<sub>` (branch ci/29-195-limites-do-agente-so-do-agente)
+
+- `AGENTS.md` e `.github/copilot-instructions.md`: aviso a quem revisa PR e marca nas listas "Nunca edite" e "um PR por tarefa"
+  de que valem **só para o agente de nuvem** (`copilot/*`); o que o agente faz não muda. Motivo: a medida do 29.194 achou 12 falsos
+  em 38, vários só repetindo essas regras num PR de sessão.
+- `scripts/coletar_achados_revisao.py` (29.170): o título do achado do Codex não leva mais a marcação `<sub>…</sub>`. Prova
+  `simulated`: `scripts/tests/test_coletar_achados_revisao.py::test_tag_html_do_selo_do_codex_nao_vai_para_o_titulo`.
+- Coletor: a regex de artefato não olha mais o link de rodapé (`AGENTS.md reference: [...]`, `[.github/copilot-instructions.md…](…)`) que o Codex põe em quase todo comentário; nos PRs 493 a 507 ela marcava 14 de 37 achados e agora marca 0 (a medida do 29.194 dava 'DESLIGAR' por esse falso sinal). Prova `simulated`: `test_rodape_agents_reference_do_codex_nao_faz_artefato`.
+- Feito (b): PRs de revisão do corte 61 só de branch de código (493 a 508), em paralelo, sem merge; 12 revisados pelo Codex em ~3 min (mediana), achados enviados às frentes donas.
+- Pendente (não feito): PR de revisão por corte só para branch de código e repetir a medida no corte 61 (esperam a lista da orquestradora).
 
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 
@@ -637,6 +985,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-06 — 29.171: modelo de PR e rótulo pelo prefixo da branch (branch ci/29-171-modelo-pr)
 
 - `.github/pull_request_template.md` (prova real/simulated/not_run, um PR por tarefa, sem segredo, `[skip ci]`) e `.github/workflows/rotula-pr.yml` (`pull_request_target` opened/reopened, `ubuntu-latest`, `pull-requests: write`, checkout só da `main`, nome da branch só por variável de ambiente) com `scripts/rotulo_do_pr.py`: `ci/…` recebe `frente:github` e `copilot/…` recebe `agente`; outro prefixo não ganha rótulo, o rótulo não é criado se faltar e nunca se tira nem se comenta; erro do `gh` deixa o PR como está. Motivo: o `[skip ci]` das sessões desliga os workflows de `pull_request`, então o rótulo precisa do outro evento. Prova `simulated`: `scripts/tests/test_rotulo_do_pr.py` (9 testes). Prova `not_run`: o workflow só roda depois de estar na `main`; a prova real é o rótulo `frente:github` aparecer no próximo PR `ci/…` (run verde sozinho não prova: o script sai com 0 em erro do `gh`).
+
+## 2026-10-07 — 29.194: medida da revisão automática do Codex nos PRs (branch ci/29-194-medida-codex)
+
+- `scripts/medir_revisao_codex.py --repo dono/nome --prs 473,474,... [--classificacao ledger.json] [--desde DATA] [--saida arq.md] [--publicar]` (só leitura pela API; `--publicar` comenta o relatório na issue única de custo, 29.178/29.188): por PR, achados do Codex por gravidade, revisões sem achado, tempo do PR aberto ao primeiro achado, commits da `main` que citam o PR com palavra de correção (indício) e a classificação da frente (confirmados e corrigidos / falsos); custo do Codex dito como sem API de uso (sem número inventado); recomendação MECÂNICA (manter, restringir ou desligar) que é decisão da orquestradora e do dono.
+- Resultado (07/10, `date -u` 01:46Z, esta máquina, API real), PRs 473 a 483 (cortes 56 e 57; NOS CORTES 58 A 60 NENHUM PR FOI ABERTO SÓ PARA REVISÃO, então o Codex não revisou nada ali; o PR 487, de corte 57, teve 8 achados do Copilot, não do Codex): 10 PRs revisados, 38 achados (34 P1, 4 P2), 3,8 por PR, primeiro achado em 5 min (mediana). Classificação da frente GitHub (título do achado casado com a mensagem do commit de correção; lida, não executada): 25 confirmados e corrigidos (66 %), 12 falsos ou fora de escopo (32 %, quase todos "remova a edição proibida", "mantenha o fixture", "exponha no painel": listas do agente de nuvem aplicadas ao PR de sessão), 1 sem resposta registrada (PR 481, chaves de `/api/settings`). Pela regex do coletor (29.170) seriam 17 de artefato: a regex erra nos dois sentidos, por isso a classificação da frente manda.
+- Recomendação mecânica: **RESTRINGIR**. A revisão acha defeito real (2 de cada 3 achados viraram correção, vários P1 de concorrência e de falha engolida, leitura da frente a conferir), mas um terço é ruído de regra: tirar do que o Codex lê as listas "nunca edite" e "um PR por tarefa" do `AGENTS.md` e dos perfis do agente de nuvem (29.155 C17 já avisa que não valem para PR de sessão) e rodar só em PR de código. Desligar perderia os achados reais; manter como está repete o ruído. Custo em dinheiro: sem API, sem sinal de gasto do repositório; o limite do plano é do dono.
+- Prova `simulated`: `scripts/tests/test_medir_revisao_codex.py` (13 testes; o job `docs` do `ci.yml` passa a rodá-lo). `real`: a leitura acima. `not_run`: a medida dos cortes 58 a 60 (não existe: sem PR de revisão).
+- Achados do Codex no PR 501 (29.195 d), conferidos e corrigidos na própria branch: mediana certa para quantidade par; o tempo até o achado usa só os comentários de achado (revisão limpa fica sem tempo); contadores e colunas P0, P1, P2 e P3; o relatório é validado (formato proibido) antes de imprimir ou gravar. Prova `simulated`: `scripts/tests/test_medir_revisao_codex.py` (17 testes).
 
 ## 2026-10-07 — 29.193: o PostgreSQL da noite só roda se algo que ele testa mudou desde a última corrida verde (branch ci/29-193-pg-so-quando-precisa)
 
