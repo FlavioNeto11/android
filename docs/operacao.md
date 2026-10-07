@@ -378,6 +378,7 @@ existe). O resultado vai à linha de `data\deploys.jsonl` em `ensaio_de_rollback
 em `ensaio_de_rollback_motivo` (texto fixo, até 200 caracteres); a tela mostra um aviso. **Nunca reverte nada nem derruba o
 deploy**, e `pulado` (backup podado, commit ausente) nunca conta como aprovação. `-SemEnsaioDeRollback` pula o passo. A etapa
 aparece em `etapas_s` como `ensaio_de_rollback`.
+**Amostrador do host em dia (29.198).** Depois da conferência, o deploy compara o cabeçalho do `amostrador-host.ps1` com o do último CSV de `data/observabilidade/host` (e a hora do script com a do processo) e, se o processo roda código antigo (ou a tarefa está registrada mas parada), faz Stop + `-Instalar` + Start da `farm-amostrador-host`, sem lacuna: a linha do histórico ganha `amostrador` (`reinstalado`|`falhou`), `amostrador_motivo` e `amostrador_lacuna_s` (segundos entre a última linha antes e a primeira depois; o alvo é abaixo de 90). Tarefa não registrada não é registrada sozinha (`-Instalar` à mão, uma vez). Melhor esforço: nunca derruba o deploy; `-SemAmostrador` pula o passo; a etapa aparece em `etapas_s` como `amostrador`. Código em `scripts/lib/amostrador-do-deploy.ps1`; teste `scripts/tests/test_amostrador_do_deploy.py` (dublês).
 
 4. **Depois de qualquer rollback:** `GET /api/health` (commit e migração), a 8010 escutando, a prova de fora, e uma linha
    nova em `data\deploys.jsonl` (o rollback também é uma subida e fica no histórico).

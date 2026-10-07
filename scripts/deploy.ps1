@@ -49,18 +49,23 @@
   comprovadamente só de documentação e a subida não pode esperar; o passo existe para pegar `config.example.yaml` ou
   `.claude/plano-100.json` fora do formato ANTES do backend parar.
 
+.PARAMETER SemAmostrador
+  Não confere nem reinstala a tarefa `farm-amostrador-host` depois da subida (29.198). Por padrão, se o amostrador do host roda código antigo
+  (cabeçalho do CSV diferente do do script, script mais novo que o processo, ou tarefa parada), o deploy faz Stop + -Instalar + Start dela.
+
 .EXAMPLE
-  pwsh -File scripts\deploy.ps1 -Ensaio      # sem janela: só backup + retrato do que está no ar
+  pwsh -File scripts\deploy.ps1 -Ensaio     # sem janela: só backup + retrato do que está no ar
   pwsh -File scripts\deploy.ps1              # a subida
 #>
 [CmdletBinding()]
-param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend, [switch]$PularDependencias, [switch]$SemTag, [switch]$PularDocsCheck, [switch]$SemEnsaioDeRollback)
+param([switch]$Ensaio, [switch]$StopEmulators, [switch]$PularBackup, [switch]$PularFrontend, [switch]$PularDependencias, [switch]$SemTag, [switch]$PularDocsCheck, [switch]$SemEnsaioDeRollback, [switch]$SemAmostrador)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $base = 'http://127.0.0.1:8000'
 
 . (Join-Path $PSScriptRoot 'lib\farm-health.ps1')   # "responde na porta" não é "a Farm responde" (26/09/2026)
 . (Join-Path $PSScriptRoot 'lib\historico-de-deploy.ps1')   # uma linha por subida e a tag do deploy (29.159)
+. (Join-Path $PSScriptRoot 'lib\amostrador-do-deploy.ps1')   # o amostrador do host acompanha o script novo (29.198)
 function Saude {
   # Só a Farm conta: com ela parada, o `cartorio-api-1` (0.0.0.0:8000) respondia 404 aqui. A VERSÃO (commit) é
   # conferida depois, pelo chamador — a identidade não muda de um commit para outro.
@@ -323,6 +328,33 @@ $depois.problems | ForEach-Object { Write-Warning "$($_.message) → $($_.hint)"
 if ($problemas) { throw ("a subida não confere: " + ($problemas -join '; ')) }
 
 Close-EtapaDoDeploy $estadoDeEtapas 'conferencia'
+# ------------------------------------------------------------------ 5b. amostrador do host em dia (29.198)
+# O amostrador roda com o código que tinha ao subir: um `git pull` que muda o script (ou o cabeçalho do CSV) não o atualiza. Aqui o deploy compara
+# o cabeçalho do script com o do último CSV (e a hora do script com a do processo) e, se estiverem desencontrados, faz Stop + -Instalar + Start da
+# tarefa `farm-amostrador-host`, sem lacuna. Melhor esforço: o resultado vai para a linha do histórico e NUNCA derruba o deploy.
+# >>> amostrador do deploy (29.198)
+$amostrador = $null
+if (-not $SemAmostrador) {
+  try {
+    $amostrador = Update-AmostradorDoDeploy -Raiz $root
+    if ($amostrador.resultado -ne 'nada') {
+      Write-Host ("amostrador do host: $($amostrador.resultado) ($($amostrador.motivo))" + $(if ($null -ne $amostrador.lacuna_s) { "; lacuna de $($amostrador.lacuna_s) s no CSV" } else { '' }))
+    }
+    if ($amostrador.resultado -eq 'falhou') { Write-Warning "amostrador do host: $($amostrador.motivo). O deploy segue; confira a tarefa farm-amostrador-host." }
+  } catch {
+    $amostrador = @{ resultado = 'falhou'; motivo = 'não consegui conferir o amostrador: ' + $_.Exception.GetType().Name; lacuna_s = $null }
+    Write-Warning "amostrador do host: $($amostrador.motivo). O deploy segue."
+  }
+}
+Close-EtapaDoDeploy $estadoDeEtapas 'amostrador'
+# Só vai à linha quando o deploy mexeu no amostrador (ou tentou): o formato das linhas antigas não muda.
+$argumentosDoAmostrador = @{}
+if ($amostrador -and $amostrador.resultado -in @('reinstalado', 'falhou')) {
+  $argumentosDoAmostrador['Amostrador'] = $amostrador.resultado
+  $argumentosDoAmostrador['AmostradorMotivo'] = [string]$amostrador.motivo
+  if ($null -ne $amostrador.lacuna_s) { $argumentosDoAmostrador['AmostradorLacunaS'] = [double]$amostrador.lacuna_s }
+}
+# <<< amostrador do deploy (29.198)
 # ------------------------------------------------------------------ 6. histórico e tag (29.159)
 # Só aqui, com a subida conferida: a tag nomeia um commit que está no ar e passou na conferência. Tudo no melhor
 # esforço (sem gh, sem rede, sem permissão): o aviso sai na tela e na linha do histórico, e o deploy continua.
@@ -379,7 +411,7 @@ try {
   Add-RegistroDeDeploy -Caminho $arquivoDeDeploys -Registro (New-RegistroDeDeploy -Resultado 'ok' `
     -CommitAntes $antes.commit -MigracaoAntes $antes.migration -CommitDepois $depois.commit -MigracaoDepois $depois.migration `
     -Backup $pastaDoBackup -BackupDoEnsaio $backupDoEnsaio -Tag $resultadoDaTag.tag -Motivo $resultadoDaTag.aviso `
-    -DuracaoS ((Get-Date) - $inicioDoDeploy).TotalSeconds -Opcoes $opcoesDoDeploy -EtapasS $estadoDeEtapas.etapas @argumentosDoEnsaioDeRollback)
+    -DuracaoS ((Get-Date) - $inicioDoDeploy).TotalSeconds -Opcoes $opcoesDoDeploy -EtapasS $estadoDeEtapas.etapas @argumentosDoEnsaioDeRollback @argumentosDoAmostrador)
   Write-Host 'histórico: uma linha em data\deploys.jsonl'
   Write-Host ('tempo por etapa (s): ' + (($estadoDeEtapas.etapas.GetEnumerator() | ForEach-Object { '{0} {1:F1}' -f $_.Key, $_.Value }) -join ', '))
 } catch { Write-Warning "não consegui gravar a linha do histórico de deploys: $($_.Exception.Message)" }
