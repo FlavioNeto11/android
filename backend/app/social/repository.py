@@ -63,6 +63,10 @@ def _troca_declarada(db: Database, app_id: str) -> bool:
     return capabilities_of(str(pacote)).account_switch
 
 
+#: O nome público, para quem fica fora do repositório (a operação, 31.207, aceita o alvo pela troca).
+troca_declarada = _troca_declarada
+
+
 class BindingConflict(RuntimeError):
     """Outra persona já serve ao mesmo app naquele aparelho (D2-a, migração 051). O serviço a traduz em 409
     `conta_do_app_ja_no_aparelho`; a mensagem nomeia quem está lá quando se sabe."""
