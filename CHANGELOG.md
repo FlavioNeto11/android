@@ -27,6 +27,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   indicadas, cada domínio indicado entre os desses fatos. Cobrindo, os fatos entram na memória como `livro.<item>` e a
   `pesquisa.estado` registra itens, frescor e critério; não cobrindo, a pesquisa paga roda como antes, com o motivo no log.
 - Prova `simulated`: `backend/tests/test_pesquisa_reaproveita_o_livro.py` (4). `real`: `not_run`.
+- Revisão da Jev (branch feat/31-231-filtro-por-app): o leitor filtra também pelo pacote do app da operação
+  (`scope_app`, que a curadoria do 31.190 grava). O fato do mesmo assunto noutro app não cobre a pesquisa, e a operação
+  sem pacote conhecido não reaproveita. Uma mutação que tira o filtro é pega pelo teste do leitor.
 
 ## 2026-10-07 — 31.230: a receita sem o "voltar" inicial (branch feat/31-230-receita-sem-voltar-inicial)
 

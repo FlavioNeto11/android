@@ -64,12 +64,13 @@ def _hash(texto: str) -> str:
 
 class PesquisaDaOperacao:
     def __init__(self, db: Database, cfg: PesquisaCfg, prices: dict[str, list[float]],
-                 fatos_do_livro: Callable[[str], Sequence[FatoDoLivro]] | None = None):
+                 fatos_do_livro: Callable[[str, str], Sequence[FatoDoLivro]] | None = None):
         self.db = db
         self.cfg = cfg
         self.prices = prices
         self.repo = RepositorioDeMemoria(db)
-        #: 31.231: os fatos do Livro de um assunto (a porta do aprendizado); `None` = sem reaproveitamento
+        #: 31.231: os fatos do Livro de um assunto NO pacote do app da operação (a porta do aprendizado); `None` = sem
+        #: reaproveitamento
         self.fatos_do_livro = fatos_do_livro
 
     # ------------------------------------------------------------------ o que a operação pede
@@ -140,8 +141,13 @@ class PesquisaDaOperacao:
         if self.fatos_do_livro is None:
             return None
         assunto, fontes = pedido
+        # O pacote do app da operação: o fato do mesmo assunto noutro app não cobre este (revisão da Jev no 31.231).
+        pacote = self.db.scalar("SELECT a.package FROM operacoes o JOIN apps a ON a.id=o.app_id WHERE o.id=?",
+                                (operacao_id,))
+        if not pacote:
+            return None
         try:
-            fatos = self.fatos_do_livro(assunto)
+            fatos = self.fatos_do_livro(assunto, str(pacote))
         except Exception:  # noqa: BLE001 - o Livro é atalho: sem ele, a pesquisa paga roda
             log.exception("operação %s: fatos do Livro não lidos; a pesquisa segue", operacao_id)
             return None
