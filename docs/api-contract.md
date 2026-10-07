@@ -8059,6 +8059,27 @@ Sem rota nova. O `GET /api/operacoes/{id}` ganha campos aditivos e só de leitur
   (`backend/app/modules/operacoes/infrastructure/servico.py`); o texto que casa a espera é
   `app.social.policy.ESPACO_DA_FROTA`.
 - **Prova:** `simulated` (`backend/tests/test_frota_adiada_no_get.py`). `real`: `not_run` até o deploy.
+
+## Adendo (07/10/2026; número a definir pela orquestradora) — a pesquisa no relatório consolidado (v1.111)
+
+Sem rota nova. O `GET /api/operacoes/{id}/relatorio` muda em dois pontos.
+
+- **`pesquisa`**: o mesmo objeto de `OperacaoDetalhe.pesquisa` (v1.125), com `criterio` passado pelo `sem_arroba`. É
+  `null` quando a operação não pediu pesquisa. Não traz texto de fato nem URL.
+- **Critérios 5 e 6**: o `nesta_operacao` lê `pesquisa.estado`.
+
+  | `pesquisa.estado` | 5 | 6 |
+  |---|---|---|
+  | `reaproveitada_do_livro` | `sim` | `sim` |
+  | `paga` | `sim` | `sim` só com `fontes_da_pesquisa` não vazio; senão `nao` |
+  | `falhou` | `sim` | `nao` |
+  | `nao_rodou` | `nao_medido` | `nao_medido` |
+
+  - Sem o campo, vale a regra anterior (fontes e custo).
+  - O `estado` do critério só sobe (`_ORDEM`). Numa operação já existente, o `nesta_operacao` de 5 e 6 pode mudar
+    na releitura; a Canais o exibe.
+- **Código:** `app/modules/operacoes/domain/relatorio.py` (`criterios`) e `ServicoDeOperacoes.relatorio`.
+- **Prova:** `simulated` (`backend/tests/test_pesquisa_no_relatorio.py`). `real`: `not_run` até o deploy.
 ## Adendo v1.119 (07/10/2026; número da orquestradora; item 31.220) — o laço que avança a operação
 
 `Settings.operacao_laco_s` (inteiro, 0 a 3600, padrão **0 = desligado**): de quanto em quanto tempo o laço do sistema lê

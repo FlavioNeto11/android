@@ -574,6 +574,9 @@ class ServicoDeOperacoes:
             "capacidade": {**cap, "motivos": [{"motivo": rel.sem_arroba(m), "n": n} for m, n in sorted(
                 (cap.get("motivos") or {}).items(), key=lambda kv: (-int(kv[1]), str(kv[0])))]},
             "identidades": rel.identidades(cap),
+            # O resumo da pesquisa do GET (31.235): sem texto de fato nem URL; o critério passa pelo sem_arroba.
+            "pesquisa": ({**pesquisa, "criterio": rel.sem_arroba(pesquisa.get("criterio"))}
+                         if isinstance(pesquisa := op.get("pesquisa"), dict) else None),
             "agentes": agentes,
             "falhas_por_motivo": rel.falhas_por_motivo(agentes),
             "textos": rel.textos(agentes),

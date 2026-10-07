@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — a pesquisa no relatório consolidado e os critérios 5 e 6 pelo estado dela (ID a reservar pela orquestradora; branch feat/pesquisa-no-relatorio)
+
+- `GET /api/operacoes/{id}/relatorio` ganha `pesquisa`: o mesmo resumo do GET (31.235), com o critério passado pelo
+  `sem_arroba`.
+- Os critérios 5 ("Detectar necessidade de informação") e 6 ("Obter informação externa") agora leem o estado que a
+  pesquisa escreveu. Antes, só pelas fontes e pelo custo, o reaproveitamento do Livro ficava "não medido", e a
+  tentativa paga que falhou ou nada achou contava 6 como obtida.
+  - Agora: reaproveitada → 5 e 6 "sim"; paga → 6 "sim" só com fonte achada; falhou → 6 "não"; não rodou → "não
+    medido"; sem o campo, a regra antiga.
+  - O estado de base nunca baixa.
+- Prova `simulated`: `backend/tests/test_pesquisa_no_relatorio.py` (4). `real`: `not_run` até o deploy.
+
 ## 2026-10-07 — o alvo adiado pela frota e o que espera resposta aparecem no GET da operação (ID a reservar pela orquestradora; branch feat/frota-adiada-no-get)
 
 - Com a reserva de frota (31.240), as contas aprovadas juntas sobre o mesmo alvo saem em série, e o painel via o alvo
