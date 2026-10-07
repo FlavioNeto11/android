@@ -390,7 +390,7 @@ jobs:
           if (Select-String -Path $saida -Pattern 'NAO conferido' -Quiet) { Write-Host 'docs-check deixou algo NAO conferido: instale as dependencias do formato'; exit 1 }
       - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py scripts/tests/test_github_rotulos.py scripts/tests/test_github_rotina.py scripts/tests/test_workflows_pins.py scripts/tests/test_secret_scan_resumo.py scripts/tests/test_limpar_branches_revisao.py scripts/tests/test_coletar_achados_revisao.py scripts/tests/test_rotulo_do_pr.py scripts/tests/test_ci_gatilhos.py scripts/tests/test_issue_do_pacote.py scripts/tests/test_github_custo.py scripts/tests/test_pr_leve_resumo.py scripts/tests/test_custo_semanal_issue.py scripts/tests/test_agente_nuvem.py scripts/tests/test_pg_necessario.py
       # 29.184: uma linha por job (tempo por etapa, soma, minutos cobrados estimados) no job summary e no log; só leitura, nunca
-      # derruba o job (continue-on-error; o script sai com 0 mesmo se o `gh` faltar). Sem contagem de testes aqui: o pytest deste
+      # derruba o job (continue-on-error; o script sai com 0 mesmo se o `gh` faltar). Sem contagem de testes aqui: o pytest deste scripts/tests/test_resultado_confere.py
       # job não passa por `tee` para não mexer no comando da rede da noite.
       - name: Resumo do job
         if: ${{ !cancelled() }}
