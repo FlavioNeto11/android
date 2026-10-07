@@ -213,8 +213,8 @@ class Scheduler:
         # 31.267: o preparo do alvo de uma operação, depois da porta de sessão aberta: (aparelho, pacote, objetivo) →
         # `None` quando nada a fazer; `(motivo, trabalho)` quando o app precisa voltar ao estado conhecido ANTES da 1ª
         # etapa (sem IA). Injetado pelo AppState: o scheduler não conhece operação nem motor de sessão.
-        self.preparo_do_alvo: Callable[[DeviceRuntime, str | None, Any],
-                                       tuple[str, Callable[[], Any]] | None] | None = None
+        self.preparo_do_alvo: Callable[[DeviceRuntime, str | None, Row],
+                                       tuple[str, Callable[[], Awaitable[None]]] | None] | None = None
         # Pré-voo do APP, sem efeito nenhum: `{code, motivo, acao}` quando o aplicativo daquele aparelho impede a
         # tarefa e só uma pessoa resolve; `None` quando não impede — inclusive quando não se sabe. Serve à recusa
         # explicada ANTES de planejar, e por isso é síncrona e não toca em aparelho. Injetado pelo AppState. O segundo

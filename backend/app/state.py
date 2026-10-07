@@ -866,7 +866,7 @@ class AppState:
                 reler)
 
     def _preparo_do_alvo(self, rt: DeviceRuntime, package: str | None,
-                         obj: Any) -> tuple[str, Callable[[], Awaitable[None]]] | None:
+                         obj: Row) -> tuple[str, Callable[[], Awaitable[None]]] | None:
         """31.267: antes da 1ª etapa de um alvo de operação, o app volta ao estado conhecido pelo motor de sessão
         (`ensure_session(observe_only=True)`: voltar, reabrir o app e ler a conta; sem IA, sem digitar, sem efeito).
 
@@ -877,7 +877,8 @@ class AppState:
         Uma vez por objetivo, e só antes da 1ª tentativa: o objetivo retomado no meio (depois de uma aprovação) já está
         na tela certa, e voltar o tiraria dela. Sessão lida depois de a execução nascer já deixou o app em casa."""
         oid = str(obj["id"])
-        if oid in self._alvos_preparados or not obj["profile_id"]:
+        perfil = obj["profile_id"] if "profile_id" in obj.keys() else None   # objetivo sem perfil: nada a preparar
+        if oid in self._alvos_preparados or not perfil:
             return None
         run = self.repo.run_row(obj["run_id"])
         operacao_id = run["operacao_id"] if run is not None and "operacao_id" in run.keys() else None
@@ -888,7 +889,7 @@ class AppState:
                           (oid,)):
             self._alvos_preparados.add(oid)
             return None
-        profile_id = str(obj["profile_id"])
+        profile_id = str(perfil)
         conta = self.social_repo.conta_do_pacote(profile_id, package)
         conta_id = str(conta["id"]) if conta is not None else None
         sessao = (self.social_repo.account_session_row(profile_id, conta_id, rt.id)
