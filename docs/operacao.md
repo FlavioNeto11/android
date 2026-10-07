@@ -405,6 +405,21 @@ estado antigo, nunca uma edição retroativa.
   `powershell -NoProfile -File scripts\funil.ps1 -Raiz <checkout> -ListaPg <lista> -Saida <run.txt>`; `-Simular` mostra o plano; `-ParaNoErro` para na
   primeira falha. A comparação entre cortes lê o run.txt direto (`devops-29-180-comparar.py run.txt=<corte>`). Teste:
   `scripts/tests/test_funil.py` (comandos falsos pelo gancho `-ComandosDeTeste`).
+- **`scripts/canais-agendadas.ps1`** (29.186) — as tarefas do host para os scripts da Canais, no molde da `farm-restore-ensaio`
+  (Idle, `-Instalar` / `-Remover`, `-Instalar -Simular` só mostra o plano). `-Tarefa resumo-diario`: `farm-canais-resumo-diario`, todo
+  dia às 07:03 do horário local do host (Brasília) desde 08/10; a ação registrada leva `-Enviar` (manda o `.claude\canais\resumo_diario.py`
+  ao Telegram do dono), uma execução manual sem `-Enviar` só imprime; atrasada mais de 6 h NÃO envia (`-Forcar` ignora). `-Tarefa
+  espelho-do-deploy`: `farm-canais-espelho-deploy`, sem gatilho: quem fecha o deploy usa `-Pedir -Raiz <checkout em origin/main>
+  [-Deploy NN] [-Aplicar]`, que grava `data\canais\tarefas\espelho-pedido.json` e dispara a tarefa (sem `-Aplicar` o espelho só
+  relata; o pedido é consumido, a raiz tem de estar na pasta-pai dos checkouts). Log por execução em `data\canais\tarefas`
+  (padrões de token cobertos por `***`, 30 dias); sem segredo na linha de comando (o token vem do arquivo de ambiente da instalação, lido
+  pelos próprios scripts da Canais); saída 0 ok, 1 script falhou, 2 faltou script/python, 3 atrasada, 4 sem pedido, 5 pedido inválido.
+  O `-Instalar` real só depois que os scripts da Canais estiverem no checkout central. Mais duas tarefas (28.73 e 28.75):
+  `-Tarefa laco-de-aparelhos` (`farm-canais-laco-de-aparelhos`: `avisos_de_aparelho.py --laco --intervalo-s 120`, sobe ao ligar o host e
+  às 00:05, reinicia até 3 vezes, sem limite de tempo, log em fluxo e UM por dia) e `-Tarefa saude-dos-lacos`
+  (`farm-canais-saude-dos-lacos`: `saude_dos_lacos.py --avisar` a cada 5 min, limite de 4 min; só lê e avisa, nunca relança). Como as
+  outras, levam `-Enviar` na tarefa registrada e sem ele só imprimem. Antes de registrar o laço, parar o que roda na sessão da Canais
+  (dois laços mandariam o aviso duas vezes).
 - **Restaurar o banco regride a cerca** (`commands.fence`, usada para invalidar comando obsoleto por aparelho):
   depois de restaurar, o agente recusa comandos com "cerca N é anterior à última executada (M)" e os `start`
   ficam `failed` sem reparo automático. Procedimento: subir manualmente o `fence` do último comando do aparelho
@@ -817,6 +832,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `funil.ps1` | P | O funil de um corte (scripts, SQLite, frontend, catracas, mypy, PG dirigido) em PowerShell 5.1 sob `com-teto-de-cpu.ps1`; run.txt padronizado; mexe só no contêiner `farm-pg-rapido` e em CPU/disco da máquina |
 | `rollback-ensaio.ps1` | S | Ensaio do rollback com migração: backup da última linha de `deploys.jsonl` aberto pelo código do `commit_antes`, em pasta própria (Idle, sem tocar o checkout nem `data\poc.sqlite3`) |
 | `restore-ensaio.ps1` | S | Ensaio semanal sobre a cópia mais nova (pasta própria, Idle, não toca `data\poc.sqlite3`); `-Instalar` [P] registra a tarefa `farm-restore-ensaio` |
+| `canais-agendadas.ps1` | S | Tarefas do host para a Canais: resumo diário 07:03 (`farm-canais-resumo-diario`) e espelho do deploy sob demanda (`farm-canais-espelho-deploy`, `-Pedir`); `-Instalar` [P] registra, `-Remover` tira; `-Enviar` manda ao Telegram do dono |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central`; grava `data\deploys.jsonl` e, conferida a subida, cria a tag `deploy-AAAAMMDD-HHMM` e o release (29.159; `-SemTag` pula a tag) |
 | `eval-run.ps1` (sem `-Yes`) | S | Só imprime o plano da bateria; nenhuma conexão, nenhum adb (26/09: antes, mesmo "simulado" fazia POST no backend vivo e rodava adb) |
 | `eval-run.ps1 -Yes` | P/T | POST no backend vivo e adb nos aparelhos, mesmo com provedor simulado; com provedor real gasta API |
