@@ -190,3 +190,28 @@ describe('AiSection — polimento do deploy 10: os consumidores da decisão fech
     expect(text(sem)).not.toContain('Decisão fechada (Jev)');
   });
 });
+
+describe('AiSection: 31.223, a política do modelo forte (só leitura)', () => {
+  it('com os campos do central: mostra em palavras o que o forte decide e que muda no config.yaml; nenhum campo para editar', async () => {
+    const c = await renderSection({ ...BASE, strong_model_only_on_commit: true, strong_model_for_side_effect: 'by_risk' });
+    const t = text(c);
+    expect(t).toContain('Modelo forte na etapa com efeito');
+    expect(t).toContain('pelo risco da etapa');
+    expect(t).toContain('Modelo forte só no commit');
+    expect(t).toContain('ligado: o forte decide só o commit, o resto da etapa é do modelo de ação');
+    expect(t).toContain('muda no config.yaml e vale na subida da farm-central');
+    expect(t).not.toMatch(/strong_model|by_risk/);                                              // nenhum nome interno cru
+    expect(c.querySelectorAll('input, select, textarea')).toHaveLength(0);                      // só leitura
+  });
+
+  it('desligado: a etapa inteira no forte, o modo de antes', async () => {
+    const c = await renderSection({ ...BASE, strong_model_only_on_commit: false, strong_model_for_side_effect: true });
+    expect(text(c)).toContain('desligado: a etapa inteira no forte');
+    expect(text(c)).toContain('sempre que a etapa tem efeito');
+  });
+
+  it('central anterior (sem os campos): a tela não afirma ligado nem desligado', async () => {
+    const c = await renderSection(BASE);
+    expect(text(c)).not.toContain('Modelo forte');
+  });
+});

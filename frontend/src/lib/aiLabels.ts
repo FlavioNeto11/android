@@ -213,6 +213,32 @@ export function spendLabel(spent: number | null | undefined, limit: number | nul
   return limit && limit > 0 ? `${fmt(spent)} de ${fmt(limit)} (${Math.round((spent / limit) * 100)}% do teto)` : fmt(spent);
 }
 
+/** 31.223: como o modelo forte entra na etapa com efeito. O valor vem do `ai.strong_model_for_side_effect` (`true`, `false` ou `by_risk`). */
+export function estrategiaDoForteLabel(v: string | boolean | null | undefined): string | null {
+  if (v === true || v === 'true' || v === 'always') return 'sempre que a etapa tem efeito';
+  if (v === false || v === 'false' || v === 'never') return 'nunca (a etapa não sobe ao forte)';
+  if (v === 'by_risk') return 'pelo risco da etapa';
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+/**
+ * 31.223 (v1.122): a política de escalada do modelo forte, em palavras e SÓ LEITURA. Vazio quando o central não manda nenhum dos dois campos
+ * (anterior ao 31.223): a tela não afirma ligado nem desligado. Mudar é no config.yaml, e vale na subida da farm-central.
+ */
+export function aiEscaladaRows(ai: Pick<AiStatus, 'strong_model_only_on_commit' | 'strong_model_for_side_effect'>): LabeledValue[] {
+  const rows: LabeledValue[] = [];
+  const quando = estrategiaDoForteLabel(ai.strong_model_for_side_effect);
+  if (quando) rows.push({ key: 'strong_model_for_side_effect', label: 'Modelo forte na etapa com efeito', value: quando });
+  if (typeof ai.strong_model_only_on_commit === 'boolean') {
+    rows.push({
+      key: 'strong_model_only_on_commit',
+      label: 'Modelo forte só no commit',
+      value: `${ai.strong_model_only_on_commit ? 'ligado: o forte decide só o commit, o resto da etapa é do modelo de ação' : 'desligado: a etapa inteira no forte'}; muda no config.yaml e vale na subida da farm-central`,
+    });
+  }
+  return rows;
+}
+
 /**
  * Estado de receitas / fluxos / política de imagem. Vale o que o `AiStatus` disser; quando ele não informa
  * (ex.: modo simulado devolve `null`), cai para `health.features`, que traz a mesma configuração do backend.
