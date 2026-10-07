@@ -137,6 +137,22 @@ def criterios(op: Mapping[str, object], agentes: Sequence[Mapping[str, object]],
     def sim_nao(cond: bool, medido: bool = True) -> str:
         return "nao_medido" if not medido else "sim" if cond else "nao"
 
+    # 5 e 6 pelo estado que a própria pesquisa escreveu (31.235). Só pelas fontes e pelo custo, o reaproveitamento do
+    # Livro (sem fonte nem custo) ficava "não medido", e a tentativa paga que falhou ou nada achou contava como obtida.
+    # Sem o campo (central anterior), vale a regra antiga.
+    resumo = op.get("pesquisa")
+    estado_da_pesquisa = resumo.get("estado") if isinstance(resumo, Mapping) else None
+    if estado_da_pesquisa in ("reaproveitada_do_livro", "paga", "falhou"):
+        detectou = "sim"
+        obteve = ("sim" if estado_da_pesquisa == "reaproveitada_do_livro"
+                  or (estado_da_pesquisa == "paga" and op.get("fontes_da_pesquisa")) else "nao")
+    elif estado_da_pesquisa == "nao_rodou":
+        detectou = obteve = "nao_medido"
+    else:
+        detectou = "sim" if op.get("fontes_da_pesquisa") else "nao_medido"
+        obteve = ("sim" if op.get("fontes_da_pesquisa") or (isinstance(pesquisa, (int, float)) and pesquisa > 0)
+                  else "nao_medido")
+
     sinais: dict[str, str] = {
         "1": "sim",
         "2": sim_nao(len(alvos) >= 20),
@@ -144,9 +160,8 @@ def criterios(op: Mapping[str, object], agentes: Sequence[Mapping[str, object]],
         "3": sim_nao(len(aparelhos) > 1, medido=bool(rodaram)),
         "3b": "nao_medido",
         "4": sim_nao(_alcancou(alvos, "conhecimento_recuperado"), medido=bool(rodaram)),
-        "5": "sim" if op.get("fontes_da_pesquisa") else "nao_medido",
-        "6": "sim" if op.get("fontes_da_pesquisa") or (isinstance(pesquisa, (int, float)) and pesquisa > 0)
-             else "nao_medido",
+        "5": detectou,
+        "6": obteve,
         "7": "sim" if aprendizado_disponivel else "nao_medido",
         "8": sim_nao(_alcancou(alvos, "conteudo_lido", "conhecimento_recuperado"), medido=bool(rodaram)),
         "9": sim_nao(_alcancou(alvos, "target_localizado", "post_localizado"), medido=bool(rodaram)),
