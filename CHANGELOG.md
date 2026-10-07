@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.218: a lição do planejador por persona (branch feat/31-218-licao-por-persona, adendo v1.118)
+
+- A correção ensinada a partir de uma falha (31.149) ia ao plano de todas as personas do app. Agora a lição é da
+  persona do objetivo que falhou e só vai ao planejamento dela.
+- O planejamento manda a persona na costura só quando o plano é de UMA persona.
+- O alcance mostra em cada persona as `correcoes`: o que ela erra e como se corrige. A prévia das lições aceita
+  `persona=`.
+- Prova `simulated`: `backend/tests/test_licao_do_planejador_por_persona.py` (4). `real`: `not_run`, pede o deploy.
+
 ## 2026-10-07 — 31.217: curadoria por operação encerrada (branch feat/31-217-curadoria-por-operacao)
 
 - O passo do 31.190 rodava só na volta de 15 min, sem dizer o que promoveu. Agora o laço da curadoria ouve

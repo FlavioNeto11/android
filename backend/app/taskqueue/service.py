@@ -1164,9 +1164,12 @@ class RunService:
                                                     *(a.id for a in apps_citados(comando, apps))]) if x])
                 # Lições medidas do planejador (ADR-054): só quando o planejador é de fato chamado (skill ou fluxo
                 # casados não pedem), uma vez por planejamento. Falha = nenhuma lição.
+                # 31.218: a persona vai junto só quando o plano é de UMA persona (a lição dela não vale para as outras)
+                pessoas = {str(p) for p in (i.get("profile_id") for i in instances) if p}
                 licoes = pedir_licoes(self.costuras, PedidoDeLicoes(
                     papel="planner", unidade=f"plan:{run_id}", run_id=run_id, app_package=alvo or "",
-                    capability="", step_hash="", simulated=bool(run["simulated"])))
+                    capability="", step_hash="", simulated=bool(run["simulated"]),
+                    profile_id=next(iter(pessoas)) if len(pessoas) == 1 else ""))
                 # O planejamento passa pelo MESMO laço das demais chamadas de IA (achado #96, item 4): antes ele
                 # chamava `provider.plan` direto — entrava no limite de concorrência e em nada mais, ficando fora
                 # da repetição com espera, do disjuntor de conta e de qualquer conferência de orçamento.

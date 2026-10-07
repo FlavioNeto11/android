@@ -7707,3 +7707,23 @@ Para o painel mostrar origem, evidência, confiança e frescor da lição que na
 - **Publicar** a candidata é `POST /api/aprendizado/licao/{id}/status` com `{"to": "published", "reason": …}`, num gesto
   só (passa por `validated`). Só uma pessoa publica: `human_origin` = `true`.
 - **Prova:** `simulated` (`backend/tests/test_fatos_da_operacao_no_livro.py`). `real`: `not_run`, pede o deploy.
+
+## Adendo v1.118 (07/10/2026; número da orquestradora; item 31.218) — a lição do planejador por persona
+
+A correção ensinada a partir de uma falha (31.149) vira lição do planejador da PERSONA que falhou, não do app inteiro.
+
+- **`GET /api/aprendizado/alcance?app=`** (v1.107): cada entrada de `personas` ganha `correcoes`, a lista das lições
+  vivas (`candidate`, `validated`, `published`) do planejador nascidas de correção ensinada no app, com origem nessa
+  persona. Cada uma traz:
+  - `id`, `estado`;
+  - `acao`: a chave da etapa que falhou;
+  - `caminho`: as chaves das etapas que a pessoa ensinou;
+  - `texto`: o que vai ao prompt;
+  - `escopo`: `persona` (vale só para ela) ou `app` (lição anterior ao 31.218, que vale para todas; a persona dela é a
+    do objetivo da etapa que falhou).
+- **`GET /api/aprendizado/licoes/previa`** ganha `persona=` (até 64). Sem ele, a lição de uma persona não entra no
+  bloco, como no planejamento de várias personas.
+- **Regra (sem rota):** a lição com persona só vai ao planejamento de uma execução cujos aparelhos são todos dessa
+  persona. A mesma correção ensinada a partir de duas personas são dois itens, cada um publicado pelo dono.
+- **Prova:** `simulated` (`backend/tests/test_licao_do_planejador_por_persona.py`). `real`: `not_run`, pede o deploy e
+  uma correção ensinada de uma falha real.

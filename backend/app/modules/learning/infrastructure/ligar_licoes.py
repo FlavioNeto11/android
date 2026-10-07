@@ -46,7 +46,7 @@ class FornecedorDoLivro:
         return self._licoes.licoes_para(Pedido(
             papel=Papel(pedido.papel), unidade=pedido.unidade, run_id=pedido.run_id, app=pedido.app_package,
             capability=pedido.capability, step_hash=pedido.step_hash, simulated=pedido.simulated,
-            objective_id=pedido.objective_id, step_id=pedido.step_id))
+            objective_id=pedido.objective_id, step_id=pedido.step_id, profile_id=pedido.profile_id))
 
 
 def ligar(servico: LearningService, livro: RepositorioDeAprendizado, db: Database, *,

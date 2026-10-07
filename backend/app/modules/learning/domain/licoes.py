@@ -419,10 +419,15 @@ class CorrecaoSemReceita:
     side_effect: bool
     valores: tuple[str, ...] = ()              # os valores do objetivo e da proposta: nenhum pode estar numa chave
     simulated: bool = False
+    #: 31.218: a persona do objetivo que falhou (o id, nunca o nome); '' quando a execução não tinha persona.
+    persona: str = ""
 
 
 def licao_da_correcao(c: CorrecaoSemReceita) -> NovoItem | Recusa:
     """A correção vira candidata do PLANEJADOR de origem humana: o sistema nunca a valida nem a publica (D1).
+
+    31.218: com persona, a lição é DELA (`scope_profile_id`): é o que essa persona erra e como se corrige, e só vai ao
+    planejamento dela (`nivel`). A mesma correção ensinada a partir de duas personas são dois itens.
 
     Só entram chaves de etapa que passam pela régua da chave livre, sem etapa de sessão e sem valor de parâmetro
     dentro; o título, o comando e os valores nunca entram (a lição vai ao prompt de todo plano do app)."""
@@ -445,11 +450,12 @@ def licao_da_correcao(c: CorrecaoSemReceita) -> NovoItem | Recusa:
     texto = MODELO_DA_CORRECAO.format(app=c.app, chave=c.chave, caminho=" → ".join(caminho))
     if len(texto) > LICAO_MAX_CARACTERES:
         return Recusa(MotivoDeRecusa.LONGA)
-    return NovoItem(kind=LivroKind.LICAO, escopo=Escopo(app=c.app, role=Papel.PLANNER.value),
+    return NovoItem(kind=LivroKind.LICAO, escopo=Escopo(app=c.app, role=Papel.PLANNER.value, profile_id=c.persona),
                     content={"modelo": "correcao", "acao": c.chave, "caminho": list[JsonValue](caminho)},
                     summary=texto, source_kind=SourceKind.CORRECAO_ENSINADA, side_effect=c.side_effect,
                     provenance={"regra": "correcao_ensinada", "minerador": VERSAO_DO_MINERADOR,
-                                "sessao": f"training:{c.sessao}", "execucao": c.run_id, "etapa": c.step_id},
+                                "sessao": f"training:{c.sessao}", "execucao": c.run_id, "etapa": c.step_id,
+                                "persona": c.persona},
                     tokens=estimar_tokens(texto))
 
 
@@ -517,6 +523,8 @@ class Pedido:
     step_id: str | None = None
     #: 31.200: o assunto do texto pedido (o da operação), cru; '' = sem assunto, e a lição com assunto não vai.
     assunto: str = ""
+    #: 31.218: a persona do pedido ('' = nenhuma ou várias): a lição com persona só vai ao pedido da mesma.
+    profile_id: str = ""
 
 
 class Nivel(IntEnum):
@@ -534,6 +542,9 @@ def nivel(item: ItemDeAprendizado, pedido: Pedido) -> Nivel | None:
         return None
     # 31.200: a lição com assunto vale só para o MESMO assunto; sem esta porta ela iria a todo texto do papel no app
     if e.subject and e.subject != assunto_canonico(pedido.assunto):
+        return None
+    # 31.218: a lição com persona (a correção ensinada a partir da falha dela) vale só para ela
+    if e.profile_id and e.profile_id != pedido.profile_id:
         return None
     if e.step_hash:
         return Nivel.ETAPA if e.step_hash == pedido.step_hash else None
