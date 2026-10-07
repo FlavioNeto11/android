@@ -330,6 +330,13 @@ release com as notas geradas. É no melhor esforço: sem `gh`, sem rede ou sem p
 histórico leva o aviso em `motivo` e o deploy segue (a tag não desfaz nem atrasa nada). `-SemTag` pula a tag e o release; a
 linha do histórico sai sempre. A tag não dispara o `conteiner.yml` (29.157: ele só roda em push da `main`).
 
+**Notas do release** (29.156, fatia 5): a release da tag `deploy-*` leva como notas as entradas NOVAS do `CHANGELOG.md` desde o deploy
+anterior (os títulos `## …` que não existiam no `commit_antes`, até 40), a migração de antes para depois, a contagem de commits e o link de
+comparação `dono/repositório/compare/<antes>...<depois>` (a URL da origem, que pode carregar credencial, nunca entra no texto). Sem
+deploy anterior, sem `CHANGELOG.md` num dos commits ou qualquer falha, cai nas notas que o `gh --generate-notes` monta, como antes.
+O texto passa por `Remove-DadosDaMaquina` (IP, `WIN-…`, `worker-…-NN`, caminho `C:\…`, e-mail, chaves `sk-`/`ghp_`/`github_pat_` e
+sequências de 40+ caracteres em base64); só os títulos sobem, nunca o corpo das entradas.
+
 **Rollback: o que muda com a migração.** Primeiro responda uma pergunta: o deploy que se quer desfazer trouxe migração
 (`migracao_antes` diferente de `migracao_depois`)? Migração aplicada não se edita, e o código antigo sobre um banco mais
 novo não é um estado testado (o `deploy.ps1` confere código e banco e recusa a subida que não bate: "o banco está em X e o código traz até Y").
@@ -394,6 +401,21 @@ estado antigo, nunca uma edição retroativa.
   parou). Veredito em `data/restore-ensaio/ultimo.json` e `historico.jsonl` (só fatos, nenhum valor de tabela); saída 0 ok,
   1 falhou, 2 pulado. **Não manda Telegram**: o canal do § 15 só aceita os tipos de aviso montados no backend; ligar o `falhou`
   ao aviso é trabalho de backend (ver o resultado do 29.167). PostgreSQL (`parque.dump`) não é ensaiado aqui.
+- **`scripts/canais-agendadas.ps1`** (29.186) — as tarefas do host para os scripts da Canais, no molde da `farm-restore-ensaio`
+  (Idle, `-Instalar` / `-Remover`, `-Instalar -Simular` só mostra o plano). `-Tarefa resumo-diario`: `farm-canais-resumo-diario`, todo
+  dia às 07:03 do horário local do host (Brasília) desde 08/10; a ação registrada leva `-Enviar` (manda o `.claude\canais\resumo_diario.py`
+  ao Telegram do dono), uma execução manual sem `-Enviar` só imprime; atrasada mais de 6 h NÃO envia (`-Forcar` ignora). `-Tarefa
+  espelho-do-deploy`: `farm-canais-espelho-deploy`, sem gatilho: quem fecha o deploy usa `-Pedir -Raiz <checkout em origin/main>
+  [-Deploy NN] [-Aplicar]`, que grava `data\canais\tarefas\espelho-pedido.json` e dispara a tarefa (sem `-Aplicar` o espelho só
+  relata; o pedido é consumido, a raiz tem de estar na pasta-pai dos checkouts). Log por execução em `data\canais\tarefas`
+  (padrões de token cobertos por `***`, 30 dias); sem segredo na linha de comando (o token vem do arquivo de ambiente da instalação, lido
+  pelos próprios scripts da Canais); saída 0 ok, 1 script falhou, 2 faltou script/python, 3 atrasada, 4 sem pedido, 5 pedido inválido.
+  O `-Instalar` real só depois que os scripts da Canais estiverem no checkout central. Mais duas tarefas (28.73 e 28.75):
+  `-Tarefa laco-de-aparelhos` (`farm-canais-laco-de-aparelhos`: `avisos_de_aparelho.py --laco --intervalo-s 120`, sobe ao ligar o host e
+  às 00:05, reinicia até 3 vezes, sem limite de tempo, log em fluxo e UM por dia) e `-Tarefa saude-dos-lacos`
+  (`farm-canais-saude-dos-lacos`: `saude_dos_lacos.py --avisar` a cada 5 min, limite de 4 min; só lê e avisa, nunca relança). Como as
+  outras, levam `-Enviar` na tarefa registrada e sem ele só imprimem. Antes de registrar o laço, parar o que roda na sessão da Canais
+  (dois laços mandariam o aviso duas vezes).
 - **Restaurar o banco regride a cerca** (`commands.fence`, usada para invalidar comando obsoleto por aparelho):
   depois de restaurar, o agente recusa comandos com "cerca N é anterior à última executada (M)" e os `start`
   ficam `failed` sem reparo automático. Procedimento: subir manualmente o `fence` do último comando do aparelho
@@ -470,8 +492,22 @@ Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06
   `data/observabilidade/host/AAAAMMDD.csv` (UTC), retenção de 7 dias só nessa pasta: `ts_utc, cpu_host_pct,
   vm_convidado_nucleos, vmmem_ws_mb, qemu_host_pct, ram_livre_mb, disco_livre_gb, processos_top` (até 3 NOMES de processo com mais
   CPU no minuto, em % do host, sem linha de comando) e `avisos_pressao` (`android-05:3;android-01:1`, lidos do banco em
-  `mode=ro`; vazio = nenhum ou não medido). É a entrada do 29.165 e da janela da prova. Na primeira leitura de teste, o topo
+  `mode=ro`; vazio = nenhum ou não medido). Desde o 29.185 há três colunas no fim: `cpu_media_pct` (CPU do host como média do
+  minuto; `cpu_host_pct` é só o instantâneo de uma janela curta e oscila de 8 % a 91 % entre minutos vizinhos), `demais_processos_pct`
+  (processos fora do topo e do qemu) e `nao_atribuido_pct` (média − todos os processos: o que nasce e morre dentro do minuto,
+  núcleo/interrupções, VM; é onde se enxerga a carga que o topo não mostra). Um arquivo do dia começado por versão antiga ganha a nova
+  linha de cabeçalho uma vez; quem lê deve ignorar linhas cujo primeiro campo não seja data. O mutex tem o nome `Global\farm-amostrador-host`
+  por padrão; `-NomeDoMutex` existe só para os testes não disputarem com o amostrador real. É a entrada do 29.165 e da janela da prova. Na primeira leitura de teste, o topo
   da CPU do host foi `python` (provavelmente os testes do funil) e o antivírus, não a VM do WSL nem os emuladores.
+- **Teto de CPU para o funil** (29.174) — `scripts/com-teto-de-cpu.ps1 -Teto 40 [-NucleosE] -Linha "<comando>"` (ou
+  `-ComandoJson '["exe","arg"]'` para argumentos exatos). Cria um Job Object com teto rígido de CPU (percentual do total de
+  threads do host) e a afinidade opcional dos núcleos E (`-NucleosE`: as threads de menor eficiência, lidas do próprio Windows;
+  `-Afinidade 0x..` fixa uma máscara; `-Simular` só mostra o plano), e roda o comando **criado já dentro do job** (suspenso, entra, retoma):
+  pytest, workers do xdist e netos ficam sob o teto; sem administrador; o job some com o comando e, se o wrapper morrer, a árvore
+  morre junto. `-Linha` passa pelo `cmd.exe /d /c`; um `pwsh -Command` NÃO serve, porque os processos que o PowerShell cria escapam do
+  job. Imprime a CPU usada pela árvore (% do total) e propaga o código de saída. Não toca `.wslconfig`, WSL, túnel nem relógio e não
+  mata processo alheio. Teste: `scripts/tests/test_com_teto_de_cpu.py`. O custo do teto é tempo de funil: compare a duração da
+  suíte sem e com teto antes de adotar.
 
 ## 11. Segurança
 
@@ -783,8 +819,10 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
 | `amostrador-host.ps1` | S | Amostrador permanente do host (CPU, RAM, disco, VM do WSL, processos que mais usam CPU, avisos de pressão por aparelho), 1 linha/min em `data\observabilidade\host`, retenção 7 dias; `-Instalar` [P] registra a tarefa `farm-amostrador-host` |
+| `com-teto-de-cpu.ps1` | S | Roda um comando sob teto rígido de CPU (Job Object) e, opcional, nos núcleos E; só limita a árvore do próprio comando |
 | `rollback-ensaio.ps1` | S | Ensaio do rollback com migração: backup da última linha de `deploys.jsonl` aberto pelo código do `commit_antes`, em pasta própria (Idle, sem tocar o checkout nem `data\poc.sqlite3`) |
 | `restore-ensaio.ps1` | S | Ensaio semanal sobre a cópia mais nova (pasta própria, Idle, não toca `data\poc.sqlite3`); `-Instalar` [P] registra a tarefa `farm-restore-ensaio` |
+| `canais-agendadas.ps1` | S | Tarefas do host para a Canais: resumo diário 07:03 (`farm-canais-resumo-diario`) e espelho do deploy sob demanda (`farm-canais-espelho-deploy`, `-Pedir`); `-Instalar` [P] registra, `-Remover` tira; `-Enviar` manda ao Telegram do dono |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central`; grava `data\deploys.jsonl` e, conferida a subida, cria a tag `deploy-AAAAMMDD-HHMM` e o release (29.159; `-SemTag` pula a tag) |
 | `eval-run.ps1` (sem `-Yes`) | S | Só imprime o plano da bateria; nenhuma conexão, nenhum adb (26/09: antes, mesmo "simulado" fazia POST no backend vivo e rodava adb) |
 | `eval-run.ps1 -Yes` | P/T | POST no backend vivo e adb nos aparelhos, mesmo com provedor simulado; com provedor real gasta API |

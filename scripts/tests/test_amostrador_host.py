@@ -11,6 +11,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -21,14 +22,26 @@ SCRIPTS = ROOT / "scripts"
 PWSH = shutil.which("pwsh")
 AMOSTRADOR = SCRIPTS / "amostrador-host.ps1"
 CABECALHO = ("ts_utc,cpu_host_pct,vm_convidado_nucleos,vmmem_ws_mb,qemu_host_pct,ram_livre_mb,disco_livre_gb,"
-             "processos_top,avisos_pressao")
+             "processos_top,avisos_pressao,cpu_media_pct,demais_processos_pct,nao_atribuido_pct")
 
 precisa_pwsh = pytest.mark.skipif(PWSH is None or sys.platform != "win32", reason="precisa de pwsh no Windows")
 
 
+_mutex_do_teste = ""
+
+
+@pytest.fixture(autouse=True)
+def _mutex_proprio():
+    """Nome de mutex só deste teste: o amostrador real do host (`Global\\farm-amostrador-host`) nunca pode fazer um teste sair com 3."""
+    global _mutex_do_teste
+    _mutex_do_teste = f"Local\\farm-amostrador-teste-{uuid.uuid4().hex}"
+    yield
+    _mutex_do_teste = ""
+
+
 def _rodar(saida: Path, *extra: str, amostras: int = 2, timeout: int = 120) -> subprocess.CompletedProcess:
     return subprocess.run([PWSH, "-NoProfile", "-File", str(AMOSTRADOR), "-Saida", str(saida), "-Amostras", str(amostras),
-                           "-IntervaloS", "3", "-JanelaS", "1", "-Python", sys.executable, *extra],
+                           "-IntervaloS", "3", "-JanelaS", "1", "-Python", sys.executable, "-NomeDoMutex", _mutex_do_teste, *extra],
                           capture_output=True, text=True, timeout=timeout)
 
 
@@ -48,11 +61,33 @@ class TestAmostrador:
         for linha in linhas[1:]:
             assert not linha.split(",")[1] == "erro", linha
             colunas = linha.split(",")
-            assert len(colunas) == 9, linha
+            assert len(colunas) == 12, linha
             assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", colunas[0])
             assert re.fullmatch(r"\d+\.\d", colunas[1]), "decimal com ponto, em qualquer cultura do host"
             assert re.fullmatch(r"\d+\.\d", colunas[6])
         assert linhas[1].split(",")[4] == "", "qemu_host_pct vazio na 1ª linha (sem referência anterior)"
+
+    def test_colunas_da_media_do_minuto_e_do_que_o_topo_nao_mostra(self, tmp_path):
+        r = _rodar(tmp_path / "s", amostras=3)
+        assert r.returncode == 0, r.stderr + r.stdout
+        linhas = _linhas(tmp_path / "s")
+        assert linhas[1].split(",")[9:] == ["", "", ""], "1ª linha sem referência anterior: colunas novas vazias"
+        for linha in linhas[2:]:
+            media, demais, nao_atrib = linha.split(",")[9:]
+            assert re.fullmatch(r"\d+\.\d", media) and 0.0 <= float(media) <= 100.0, linha
+            assert re.fullmatch(r"\d+\.\d", demais), linha
+            assert re.fullmatch(r"-?\d+\.\d", nao_atrib), linha
+
+    def test_arquivo_do_dia_de_versao_antiga_ganha_o_novo_cabecalho_uma_vez(self, tmp_path):
+        saida = tmp_path / "s"
+        saida.mkdir()
+        antigo = CABECALHO.rsplit(",", 3)[0]
+        hoje = datetime.now(timezone.utc).strftime("%Y%m%d")
+        (saida / f"{hoje}.csv").write_text(antigo + "\n2026-01-01T00:00:00Z,10.0,,,,,,,\n", encoding="utf-8")
+        r = _rodar(saida, amostras=2)
+        assert r.returncode == 0, r.stderr + r.stdout
+        linhas = (saida / f"{hoje}.csv").read_text(encoding="utf-8").splitlines()
+        assert linhas[0] == antigo and linhas.count(CABECALHO) == 1 and linhas.index(CABECALHO) == 2, linhas[:4]
 
     def test_processos_top_traz_so_nomes_e_percentuais(self, tmp_path):
         _rodar(tmp_path / "s")
@@ -132,7 +167,7 @@ class TestAmostrador:
 
     def test_so_uma_instancia_por_host(self, tmp_path):
         primeiro = subprocess.Popen([PWSH, "-NoProfile", "-File", str(AMOSTRADOR), "-Saida", str(tmp_path / "a"), "-Amostras", "3",
-                                     "-IntervaloS", "4", "-JanelaS", "1", "-Python", sys.executable],
+                                     "-IntervaloS", "4", "-JanelaS", "1", "-Python", sys.executable, "-NomeDoMutex", _mutex_do_teste],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             time.sleep(4)  # o pwsh do primeiro já pegou o mutex
@@ -147,6 +182,11 @@ class TestAmostrador:
     def test_nome_de_processo_e_sanitizado_antes_de_ir_ao_csv(self):
         texto = AMOSTRADOR.read_text(encoding="utf-8")
         assert "-replace '[^A-Za-z0-9._-]', '_'" in texto and "-replace '^[=+@-]+', '_'" in texto
+
+    def test_o_mutex_padrao_continua_global_e_so_o_parametro_o_troca(self):
+        texto = AMOSTRADOR.read_text(encoding="utf-8")
+        assert "[string]$NomeDoMutex = 'Global\\farm-amostrador-host'" in texto
+        assert "New-Object Threading.Mutex($false, $NomeDoMutex)" in texto
 
     def test_o_script_baixa_a_propria_prioridade(self):
         texto = AMOSTRADOR.read_text(encoding="utf-8")

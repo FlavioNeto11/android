@@ -102,12 +102,89 @@ function Add-RegistroDeDeploy {
   [System.IO.File]::AppendAllText($Caminho, $linha + "`n", [System.Text.UTF8Encoding]::new($false))
 }
 
+# Notas de release do deploy (29.156, fatia 5): o que o CHANGELOG registrou desde o deploy anterior, em vez da lista de PRs que o
+# `gh --generate-notes` monta (os cortes entram por commit direto e a lista sai pobre). Texto SEM dado de máquina nem segredo.
+function Remove-DadosDaMaquina {
+  param([string]$Texto)
+  $t = [string]$Texto
+  $t = [regex]::Replace($t, '\b\d{1,3}(\.\d{1,3}){3}\b', '<ip>')
+  $t = [regex]::Replace($t, '\bWIN-[A-Za-z0-9]{6,}\b', '<máquina>')
+  $t = [regex]::Replace($t, '\bworker-[a-z]+-\d+\b', '<worker>')
+  $t = [regex]::Replace($t, '\b[A-Za-z]:\\[^\s`''")]+', '<caminho>')
+  $t = [regex]::Replace($t, '[\w.+-]+@[\w-]+(\.[\w-]+)+', '<e-mail>')
+  $t = [regex]::Replace($t, '\b(sk-|ghp_|gho_|ghs_|github_pat_|xox[abp]-|AIza)[A-Za-z0-9_\-]{10,}', '<segredo>')
+  # Sequência longa com maiúscula, minúscula E dígito (chave em base64/base64url); um SHA de commit (hex puro) e um nome de branch
+  # em minúsculas (`feat/adr-081-...`) são públicos e ficam.
+  $t = [regex]::Replace($t, '[A-Za-z0-9+/_\-]{40,}={0,2}', {
+      param($m)
+      if ($m.Value -cmatch '[A-Z]' -and $m.Value -cmatch '[a-z]' -and $m.Value -match '\d') { '<token>' } else { $m.Value }
+    })
+  return $t
+}
+
+function New-NotasDeRelease {
+  param(
+    [Parameter(Mandatory)][string]$Raiz,
+    [Parameter(Mandatory)][string]$Tag,
+    [Parameter(Mandatory)][string]$Commit,
+    [string]$CommitAnterior,
+    [string]$Migracao,
+    [string]$MigracaoAnterior
+  )
+  # Sem o deploy anterior não há o que comparar: devolve $null e o chamador usa as notas geradas pelo `gh`.
+  if (-not $CommitAnterior) { return $null }
+  $saidaAntes = [Console]::OutputEncoding
+  try {
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $antigos = @(& git -C $Raiz show "${CommitAnterior}:CHANGELOG.md" 2>$null | Where-Object { $_ -like '## *' })
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $atuais = @(& git -C $Raiz show "${Commit}:CHANGELOG.md" 2>$null | Where-Object { $_ -like '## *' })
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $jaTinha = [System.Collections.Generic.HashSet[string]]::new([string[]]$antigos)
+    $novos = @($atuais | Where-Object { -not $jaTinha.Contains($_) })
+    $nCommits = (& git -C $Raiz rev-list --count "${CommitAnterior}..${Commit}" 2>$null)
+    $curto = $Commit.Substring(0, [math]::Min(8, $Commit.Length))
+    $curtoAntes = $CommitAnterior.Substring(0, [math]::Min(8, $CommitAnterior.Length))
+    $migracaoTexto = if ($MigracaoAnterior -and $Migracao -and $MigracaoAnterior -ne $Migracao) { "migração ``$MigracaoAnterior`` → ``$Migracao``" }
+                     elseif ($Migracao) { "migração ``$Migracao`` (sem migração nova)" } else { 'migração desconhecida' }
+    $l = [System.Collections.Generic.List[string]]::new()
+    $l.Add("Deploy ``$Tag`` · commit ``$curto`` · $migracaoTexto")
+    $l.Add('')
+    $l.Add("### Registrado no CHANGELOG desde o deploy anterior ($($novos.Count))")
+    $l.Add('')
+    if ($novos.Count -eq 0) { $l.Add('Nenhuma entrada nova no CHANGELOG nesta subida; o que mudou está nos commits abaixo.') }
+    foreach ($h in ($novos | Select-Object -First 40)) {
+      $t = Remove-DadosDaMaquina (($h -replace '^##\s+', '').Trim())
+      if ($t.Length -gt 220) { $t = $t.Substring(0, 220) + '…' }
+      $l.Add("- $t")
+    }
+    if ($novos.Count -gt 40) { $l.Add("- … e mais $($novos.Count - 40) entradas") }
+    $l.Add('')
+    $l.Add('### Commits')
+    $l.Add('')
+    $linhaDosCommits = "$nCommits commits desde ``$curtoAntes``."
+    # Só `dono/repositório`: a URL da origem pode trazer credencial e nunca vai ao texto.
+    $origem = (& git -C $Raiz remote get-url origin 2>$null)
+    if ($origem -match 'github\.com[:/]([^/\s@]+)/([^/\s]+?)(\.git)?\s*$') {
+      $linhaDosCommits += " Comparar: https://github.com/$($Matches[1])/$($Matches[2])/compare/$CommitAnterior...$Commit"
+    }
+    $l.Add($linhaDosCommits)
+    return ($l -join "`n")
+  } catch {
+    return $null
+  } finally {
+    [Console]::OutputEncoding = $saidaAntes
+  }
+}
+
 function Publish-TagDeDeploy {
   param(
     [Parameter(Mandatory)][string]$Raiz,
     [Parameter(Mandatory)][string]$Commit,
     [string]$Migracao,
-    [datetime]$UtcAgora = (Get-Date).ToUniversalTime()
+    [datetime]$UtcAgora = (Get-Date).ToUniversalTime(),
+    [string]$CommitAnterior,
+    [string]$MigracaoAnterior
   )
   $resultado = [ordered]@{ tag = $null; empurrada = $false; release = $false; aviso = $null }
   try {
@@ -121,9 +198,23 @@ function Publish-TagDeDeploy {
     $resultado.empurrada = $true
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { $resultado.aviso = "sem gh: tag $tag enviada, sem release"; return $resultado }
     # `--verify-tag`: a release usa a tag que acabou de subir, não cria outra. `--latest=false`: não vira a "última".
+    # Notas do CHANGELOG quando há deploy anterior para comparar; senão, as que o `gh` gera (comportamento de antes).
+    $notas = New-NotasDeRelease -Raiz $Raiz -Tag $tag -Commit $Commit -CommitAnterior $CommitAnterior -Migracao $Migracao -MigracaoAnterior $MigracaoAnterior
+    $arquivoDeNotas = $null
     Push-Location $Raiz
-    try { & gh release create $tag --generate-notes --verify-tag --latest=false --title $tag 2>&1 | Out-Null }
-    finally { Pop-Location }
+    try {
+      if ($notas) {
+        $arquivoDeNotas = Join-Path ([IO.Path]::GetTempPath()) ("notas-$tag-" + [Guid]::NewGuid().ToString('N') + '.md')
+        [IO.File]::WriteAllText($arquivoDeNotas, $notas, [System.Text.UTF8Encoding]::new($false))
+        & gh release create $tag --notes-file $arquivoDeNotas --verify-tag --latest=false --title $tag 2>&1 | Out-Null
+      } else {
+        & gh release create $tag --generate-notes --verify-tag --latest=false --title $tag 2>&1 | Out-Null
+      }
+    }
+    finally {
+      Pop-Location
+      if ($arquivoDeNotas) { Remove-Item -LiteralPath $arquivoDeNotas -Force -ErrorAction SilentlyContinue }
+    }
     if ($LASTEXITCODE -ne 0) { $resultado.aviso = "tag $tag enviada; o release pelo gh falhou" } else { $resultado.release = $true }
   } catch {
     $resultado.aviso = "tag e release no melhor esforço: $($_.Exception.Message)"
