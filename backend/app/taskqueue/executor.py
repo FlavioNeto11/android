@@ -1329,6 +1329,15 @@ class StepExecutor:
             return          # já estava no estado final (K-004): não houve caminho — nem concordância nem divergência
         try:
             would = rr.replayer.next(obs.tree)
+        except AlvoAusente as exc:
+            if rr.replayer.idx == 0 and rr.replayer.scrolls == 0:
+                # 31.262: o alvo da AÇÃO 1 não está na tela de partida (sem a receita ter rolado com a IA até aqui) (a folha de comentários que a operação anterior
+                # deixou aberta, o app fechado): a receita não se aplica aqui, e a IA começar por outro lugar não é
+                # caminho diferente do dela. Como o 30.80 na reprodução: sem comparação, sem veredito nesta execução.
+                rr.partida_diferente = True
+                return
+            rr.diverged = str(exc)
+            return
         except RecipeDiverged as exc:
             rr.diverged = str(exc)
             return
@@ -1787,8 +1796,23 @@ class StepExecutor:
         ações da receita e nada além (nem declarou pronta antes do fim dela), e a etapa foi comprovada — pela IA ou
         pela prova local depois do efeito, que encerra a etapa sem outra decisão. A divergência conta sempre que foi
         vista — também numa tentativa que vai se repetir: segurar a promoção é o lado seguro. Sem nenhuma comparação
-        conclusiva (a etapa falhou antes, ou o aparelho já estava no estado final) não há veredito."""
+        conclusiva (a etapa falhou antes, ou o aparelho já estava no estado final) não há veredito.
+
+        31.262: a candidata que não se aplicou na tela de partida (`partida_diferente`) e a etapa comprovada pela IA
+        também não têm veredito: nem a prova zera, nem o caminho da IA a substitui (`_after_step` só troca a que
+        divergiu). A `NAO_APLICAVEL_CONTA_APOS`-ésima seguida conta como divergência, como na reprodução."""
         rep = rr.replayer
+        if rr.partida_diferente and not rr.diverged:
+            if not ok:
+                return
+            if not self.recipes.nao_aplicavel_em_prova(rr.row["id"]):
+                texto = (f"{iid} · {step.title}: receita v{rr.row['version']} em prova não se aplicou: tela de partida "
+                         "diferente; não conta contra ela, e a prova continua")
+                self.repo.bus.emit("decision", texto, run_id=run_id, instance_id=iid, step_id=step.id,
+                                   data={"text": texto, "kind": "receita_nao_aplicavel", "recipe_id": int(rr.row["id"]),
+                                         "step_id": step.id, "contou_como_falha": False, "em_prova": True})
+                return
+            rr.diverged = f"tela de partida diferente {NAO_APLICAVEL_CONTA_APOS} vezes seguidas"
         if ok and not rr.diverged and rep is not None and 0 < rep.idx < len(rep.actions):
             # Comprovada no meio da receita: reproduzida, ela faria ações a mais depois do fim da etapa. É outro
             # caminho — e marcado como divergência para o caminho da IA poder substituí-la (`_after_step`); sem isso
@@ -2911,7 +2935,8 @@ class StepExecutor:
                 if encadeada is None and not step.side_effect:
                     fila_encadeada, arvore_da_fila, chamada_da_fila = (
                         _fila_encadeada(decision.extras), obs.tree, chamada_do_ator)
-                if rr.mode == "shadow" and rr.replayer is not None and not rr.diverged:
+                if (rr.mode == "shadow" and rr.replayer is not None and not rr.diverged
+                        and not rr.partida_diferente):
                     self._shadow_compare(rr, obs, decision)     # aprende-se a confiar na receita antes de deixá-la agir
             # ---------- validar
             try:
