@@ -21,16 +21,17 @@ class LeitorDeFatosDoLivro:
     def __init__(self, db: Database):
         self.db = db
 
-    def da_operacao(self, operacao_id: str) -> tuple[FatoDoLivro, ...]:
+    def da_operacao(self, operacao_id: str, assunto: str | None = None) -> tuple[FatoDoLivro, ...]:
         """A porta da pesquisa da operação (`PesquisaDaOperacao.fatos_do_livro`). Sem a 124, sem a operação, sem
-        assunto ou sem pacote: nada (a pesquisa paga roda)."""
+        assunto ou sem pacote: nada (a pesquisa paga roda). 31.248: `assunto` é o do pedido (o guardado ou o da leitura
+        do alvo) e vale quando a operação não guarda um."""
         if "operacoes" not in self.db.tables() or "assunto" not in self.db.columns("operacoes"):
             return ()
         linha = self.db.one("SELECT o.assunto, a.package AS pacote FROM operacoes o LEFT JOIN apps a ON a.id = o.app_id"
                             " WHERE o.id=?", (operacao_id,))
         if linha is None:
             return ()
-        return self.do_assunto(str(linha["assunto"] or ""), str(linha["pacote"] or ""))
+        return self.do_assunto(str(linha["assunto"] or "").strip() or (assunto or ""), str(linha["pacote"] or ""))
 
     def do_assunto(self, assunto: str, pacote: str) -> tuple[FatoDoLivro, ...]:
         canonico = assunto_canonico(assunto)
