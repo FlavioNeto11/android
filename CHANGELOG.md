@@ -29,6 +29,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   não muda. `ai.imagem_quando_alvo_fora_da_arvore: false` volta ao de antes.
 - Prova `simulated`: `backend/tests/test_imagem_do_alvo_fora_da_arvore.py` (6). `real`: `not_run`.
 
+## 2026-10-07 — 31.233: a receita ativa que diverge ensina a candidata (branch feat/31-233-candidata-da-ativa-que-divergiu)
+
+- Leitura real da onda 2 (07/10, `op-20261007100755-096a28`, só leitura): US$ 0,9249 nos 3 alvos (0,3083 por alvo)
+  contra 0,2894 da onda 1. As decisões do comentário no Opus somam 43 %, e o 31.223 as corta quando entrar no ar.
+  O `open_post` pela IA depois que a receita 111 divergiu nos 3 alvos é 15 % (39 % da fase preparada), e nada se
+  aprendeu, porque o executor só aprendia quando quem divergia era uma candidata.
+- Agora, quando a receita ATIVA diverge, cai em quarentena nessa tentativa e a IA completa a etapa, o caminho que
+  rodou (o trecho feito da receita e o da IA) vira candidata, em prova como qualquer outra. Antes da quarentena, a
+  ativa segue segurando a chave. `ai.candidata_da_ativa_que_divergiu: false` volta ao de antes.
+- Prova `simulated`: `backend/tests/test_candidata_da_ativa_que_divergiu.py` (5). `real`: a leitura acima; o corte,
+  `not_run`.
+
 ## 2026-10-07 — 31.231: a pesquisa reaproveita o Livro (branch feat/31-231-pesquisa-reaproveita-o-livro)
 
 - A 2ª operação do mesmo assunto pagava a pesquisa de novo (US$ 0,043 na onda 1) pelo que o Livro já sabia.
