@@ -21,6 +21,7 @@ const usd = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 
 const CONFERENCIAS: readonly Conferencia[] = ['sim', 'nao', 'nao_conferida', 'sem_acao'];
 const ESTADOS_DO_CRITERIO: readonly NonNullable<CriterioDoRelatorio['estado']>[] = ['implementado', 'testado_em_simulacao', 'provado_real', 'bloqueado', 'nao_implementado'];
+const AMBIENTES = ['real', 'simulado', 'nao_medido'] as const;
 const NESTA: readonly CriterioDoRelatorio['nesta_operacao'][] = ['sim', 'nao', 'nao_medido'];
 
 /** A etapa em palavras: o estágio conhecido vira o rótulo; o que o painel não conhece fica como o central disse. */
@@ -59,7 +60,7 @@ function lerAgente(v: unknown, posicao: number): AgenteDoRelatorio | null {
     conhecimento_ids: null,
     texto: texto(o.texto),
     evidencia_id: null,
-    acao_final: acao ? { tipo: texto(acao.tipo), verificada, evidencia_id: null } : null,
+    acao_final: acao ? { tipo: texto(acao.tipo), verificada, evidencia_id: inteiro(acao.evidencia_id) } : null,
     custo_usd: usd(o.custo_usd),
     duracao_ms: inteiro(o.duracao_ms),
     espera_do_liberar_ms: inteiro(o.espera_do_liberar_ms),
@@ -104,6 +105,7 @@ export function relatorioDoServidor(v: unknown): RelatorioDaOperacao | null {
   const status = typeof op.status === 'string' && op.status in ROTULO_DO_STATUS ? ROTULO_DO_STATUS[op.status as StatusDaOperacao] : limpo(op.status);
   return {
     gerado_em: texto(o.gerado_em) ?? '', fonte: 'servidor',
+    ambiente: AMBIENTES.find((a) => a === (o.ambiente ?? op.ambiente)) ?? null,
     operacao: {
       id, comando: limpo(op.comando) ?? '', app_id: texto(op.app_id), acao_final: texto(op.acao_final), status,
       criada_em: texto(op.criada_em), encerrada_em: texto(op.encerrada_em), assunto: limpo(op.assunto),

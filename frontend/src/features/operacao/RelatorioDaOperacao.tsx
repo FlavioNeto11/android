@@ -7,7 +7,7 @@ import styles from './Operacao.module.css';
 import { apiOperacoes } from './api';
 import { type LeituraDoAprendizado } from './aprendizadoDaOperacao';
 import { type Operacao } from './modelo';
-import { montarRelatorio, relatorioEmMarkdown, type RelatorioDaOperacao as Relatorio } from './relatorio';
+import { ROTULO_DO_AMBIENTE, montarRelatorio, relatorioEmMarkdown, type RelatorioDaOperacao as Relatorio } from './relatorio';
 
 /** O nome do arquivo sem nada que um sistema de arquivos estranhe (o id da operação vem do servidor). */
 export const nomeDoArquivo = (id: string, extensao: 'md' | 'json'): string => `operacao-${id.replace(/[^A-Za-z0-9_-]+/g, '_')}.${extensao}`;
@@ -38,6 +38,7 @@ function ResumoDoRelatorio({ r, motivoDaReserva }: { r: Relatorio; motivoDaReser
       <p className={styles.mudo} data-fonte={r.fonte} role="status">
         {r.fonte === 'servidor' ? 'Relatório montado pelo central.' : `Relatório montado pelo painel, do estado da operação: ${motivoDaReserva ?? 'o central não o entregou'}`}
       </p>
+      {r.ambiente ? <p className={styles.mudo} data-ambiente={r.ambiente}>Ambiente: {ROTULO_DO_AMBIENTE[r.ambiente]}.</p> : null}
       {r.identidades && r.identidades.executam_hoje !== null && r.identidades.solicitadas !== null ? (
         <p data-identidades><strong>{r.identidades.executam_hoje} de {r.identidades.solicitadas}</strong> identidades executam hoje.</p>
       ) : null}

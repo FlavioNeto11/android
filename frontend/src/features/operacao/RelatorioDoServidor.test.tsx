@@ -102,6 +102,16 @@ describe('relatorioDoServidor (o leitor do rascunho v1.111)', () => {
     expect(nd.aprendizado).toMatchObject({ disponivel: false, motivo: 'A operação ainda não tem execução.' });
   });
 
+  it('v1.111: ambiente (real/simulado/não medido) e a evidência da ação final; ambiente fora do vocabulário é null, nunca "real"', () => {
+    const x = relatorioDoServidor({ ...RELATORIO, ambiente: 'simulado', agentes: [agente(1, { acao_final: { tipo: 'CREATE_COMMENT', verificada: 'sim', evidencia_id: 204 } })] })!;
+    expect(x.ambiente).toBe('simulado');
+    expect(x.agentes[0]!.acao_final).toEqual({ tipo: 'CREATE_COMMENT', verificada: 'sim', evidencia_id: 204 });
+    expect(relatorioDoServidor({ ...RELATORIO, ambiente: 'producao' })!.ambiente).toBeNull();
+    expect(relatorioDoServidor(RELATORIO)!.ambiente).toBeNull();
+    expect(relatorioEmMarkdown(x)).toContain('- **Ambiente:** simulado');
+    expect(relatorioEmMarkdown({ ...x, ambiente: null })).not.toContain('**Ambiente:**');
+  });
+
   it('resposta que não é o relatório (sem operação ou sem agentes) é null: erro de leitura, nunca relatório vazio', () => {
     expect(relatorioDoServidor(null)).toBeNull();
     expect(relatorioDoServidor({ operacao: { id: 'x' } })).toBeNull();

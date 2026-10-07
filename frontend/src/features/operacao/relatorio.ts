@@ -79,6 +79,8 @@ export interface RelatorioDaOperacao {
   gerado_em: string;
   /** De onde vem o relatório: o central (`GET /api/operacoes/{id}/relatorio`, v1.111) ou a montagem do painel (reserva). */
   fonte: 'servidor' | 'painel';
+  /** v1.111: a operação rodou em aparelho de verdade ou em simulação; `nao_medido` e `null` (o painel não sabe) nunca viram "real". */
+  ambiente: 'real' | 'simulado' | 'nao_medido' | null;
   operacao: {
     id: string; comando: string; app_id: string | null; acao_final: string | null; status: string | null;
     criada_em: string | null; encerrada_em: string | null; assunto: string | null; fontes: string[]; fontes_da_pesquisa: string[];
@@ -191,7 +193,7 @@ export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendiz
   const agentes = op.alvos.map(agenteDe);
   const c = op.capacidade;
   return {
-    gerado_em: agora.toISOString(), fonte: 'painel',
+    gerado_em: agora.toISOString(), fonte: 'painel', ambiente: null,
     operacao: {
       id: op.id, comando: op.command, app_id: op.app_id, acao_final: op.acao_final, status: op.status ? ROTULO_DO_STATUS[op.status] : null,
       criada_em: op.created_at, encerrada_em: op.finished_at, assunto: op.assunto, fontes: op.fontes, fontes_da_pesquisa: [],
@@ -220,6 +222,7 @@ const duracao = (ms: number | null | undefined): string => {
 const ROTULO_DO_CRITERIO: Record<NonNullable<CriterioDoRelatorio['estado']>, string> = {
   implementado: 'implementado', testado_em_simulacao: 'testado em simulação', provado_real: 'provado de verdade', bloqueado: 'bloqueado', nao_implementado: 'não implementado',
 };
+export const ROTULO_DO_AMBIENTE: Record<NonNullable<RelatorioDaOperacao['ambiente']>, string> = { real: 'real (aparelhos de verdade)', simulado: 'simulado', nao_medido: 'não medido' };
 const ROTULO_NESTA: Record<CriterioDoRelatorio['nesta_operacao'], string> = { sim: 'sim', nao: 'não', nao_medido: 'não medido' };
 const num = (n: number | null): string => (n === null ? 'não informado' : String(n));
 /** O texto numa citação, linha a linha, para uma quebra de linha do texto não virar título do Markdown. */
@@ -274,6 +277,7 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
   if (o.assunto) linhas.push(`- **Assunto:** ${o.assunto}`);
   if (o.fontes.length) linhas.push(`- **Fontes indicadas:** ${o.fontes.join(', ')}`);
   if (o.fontes_da_pesquisa.length) linhas.push(`- **Fontes da pesquisa:** ${o.fontes_da_pesquisa.join(', ')}`);
+  if (r.ambiente) linhas.push(`- **Ambiente:** ${ROTULO_DO_AMBIENTE[r.ambiente]}`);
   linhas.push(`- **Montado por:** ${r.fonte === 'servidor' ? 'o central (GET /api/operacoes/{id}/relatorio)' : 'o painel, do estado da operação (o central não entregou o relatório)'}`);
   if (r.identidades) {
     const i = r.identidades;
