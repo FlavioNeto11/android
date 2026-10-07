@@ -13,7 +13,7 @@ import { Tooltip } from '../../components/Tooltip';
 import { toast, toastError } from '../../store/toasts';
 import { abaDoPedido, type Aba } from './abas';
 import { estadoComposto, type EstadoComposto } from './filtroPersonas';
-import { handleDe, idsDosAparelhos, nomeDe, resumoDe } from './pessoa';
+import { compartilhadoEmPalavras, handleDe, idsDosAparelhos, nomeDe, resumoDe } from './pessoa';
 import styles from './Profiles.module.css';
 
 /** Remover, marcar bloqueada e reativar: o mesmo comportamento no cartão e na linha da tabela. */
@@ -118,10 +118,17 @@ function SeloDeEstado({ estado }: { estado: EstadoComposto }) {
   );
 }
 
-function textoAparelhos(pessoa: PersonaDTO): string {
+function textoAparelhos(pessoa: PersonaDTO, compartilhado: readonly number[] = []): string {
   const aparelhos = idsDosAparelhos(pessoa);
   if (aparelhos.length === 0) return 'não vinculado';
-  return aparelhos.map((id) => (aparelhos.length > 1 && id === pessoa.instance_id ? `${id} (principal)` : id)).join(' · ');
+  const base = aparelhos.map((id) => (aparelhos.length > 1 && id === pessoa.instance_id ? `${id} (principal)` : id)).join(' · ');
+  return compartilhado.length ? `${base} · ${compartilhadoEmPalavras(compartilhado)}` : base;
+}
+
+/** O Nº por ordem de criação (31.245): o rótulo curto para falar da persona; sem número (lista sem data), não aparece. */
+function NumeroDaPersona({ numero }: { numero: number | undefined }) {
+  if (numero === undefined) return null;
+  return <span className={styles.numeroPersona} title="Número por ordem de criação" data-numero-da-persona={numero}>Nº {numero}</span>;
 }
 
 /**
@@ -130,8 +137,11 @@ function textoAparelhos(pessoa: PersonaDTO): string {
  * conteúdo inteiro no tooltip, então todos têm a mesma altura e nada se sobrepõe. Senha, sessão e Conectar moram na
  * guia Contas e acesso.
  */
-export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecionar }: {
+export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecionar, numero, compartilhado = [] }: {
   pessoa: PersonaDTO;
+  /** Nº por ordem de criação e os Nº das outras personas que dividem o aparelho (calculados sobre a lista inteira). */
+  numero?: number;
+  compartilhado?: readonly number[];
   onChanged: () => Promise<void>;
   onOpen: (aba?: Aba) => void;
   selecionada: boolean;
@@ -156,6 +166,7 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
           <h2 className={styles.cartaoNome}><Truncado texto={nome} /></h2>
           <Truncado texto={handle ? `@${handle}` : 'sem conta de cadastro'} className={styles.cartaoHandle} />
         </div>
+        <NumeroDaPersona numero={numero} />
         {/* Pelo NOME, não pelo @: pessoa sem conta também entra no lote, e o leitor de tela distingue os cartões. */}
         <Checkbox aria-label={`Selecionar ${nome}`} checked={selecionada} onChange={onSelecionar} />
       </div>
@@ -168,7 +179,7 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
           </div>
           <div className={styles.row}>
             <dt><Smartphone size={14} aria-hidden /> {aparelhos.length > 1 ? 'Aparelhos' : 'Aparelho'}</dt>
-            <dd>{aparelhos.length === 0 ? <span className={styles.muted}>não vinculado</span> : <Truncado texto={textoAparelhos(pessoa)} />}</dd>
+            <dd>{aparelhos.length === 0 ? <span className={styles.muted}>não vinculado</span> : <Truncado texto={textoAparelhos(pessoa, compartilhado)} />}</dd>
           </div>
           {/* Onde os DADOS vivem (E9). Sem aparelho não há localidade a afirmar: a linha fica, com um traço, para
               o cartão ter a mesma altura dos outros. */}
@@ -215,8 +226,11 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
  * A mesma lista em tabela (tarefa UX 05): uma linha por pessoa, para comparar muitas de uma vez. A seleção é a
  * mesma dos cartões (vive na página), então alternar a visão não a perde.
  */
-export function TabelaPersonas({ pessoas, selecionadas, onSelecionar, onOpen, onChanged }: {
+export function TabelaPersonas({ pessoas, selecionadas, onSelecionar, onOpen, onChanged, numeros, compartilhadoDe }: {
   pessoas: readonly PersonaDTO[];
+  /** Nº por ordem de criação por id e, por persona, os Nº de quem divide o aparelho (31.245). */
+  numeros?: ReadonlyMap<string, number>;
+  compartilhadoDe?: (p: PersonaDTO) => readonly number[];
   selecionadas: ReadonlySet<string>;
   onSelecionar: (id: string) => void;
   onOpen: (id: string, aba?: Aba) => void;
@@ -229,6 +243,7 @@ export function TabelaPersonas({ pessoas, selecionadas, onSelecionar, onOpen, on
         <thead>
           <tr>
             <th scope="col"><span className="sr-only">Seleção</span></th>
+            {numeros ? <th scope="col" className={styles.num}>Nº</th> : null}
             <th scope="col">Persona</th>
             <th scope="col">Conta (@)</th>
             <th scope="col" className={styles.num}>Contas</th>
@@ -246,6 +261,7 @@ export function TabelaPersonas({ pessoas, selecionadas, onSelecionar, onOpen, on
             return (
               <tr key={p.id} className={selecionadas.has(p.id) ? styles.linhaSelecionada : undefined}>
                 <td><Checkbox aria-label={`Selecionar ${nome}`} checked={selecionadas.has(p.id)} onChange={() => onSelecionar(p.id)} /></td>
+                {numeros ? <td className={styles.num} data-numero-da-persona={numeros.get(p.id)}>{numeros.get(p.id) ?? '—'}</td> : null}
                 <td>
                   <span className={styles.tabelaPessoa}>
                     <Avatar src={profileAvatarUrl(p.id, p.has_avatar)} name={nome} size={28} />
@@ -254,7 +270,7 @@ export function TabelaPersonas({ pessoas, selecionadas, onSelecionar, onOpen, on
                 </td>
                 <td>{handle ? <Truncado texto={`@${handle}`} /> : <span className={styles.muted}>sem conta</span>}</td>
                 <td className={styles.num}>{p.accounts_count ?? 0}</td>
-                <td>{idsDosAparelhos(p).length ? <Truncado texto={textoAparelhos(p)} /> : <span className={styles.muted}>—</span>}</td>
+                <td>{idsDosAparelhos(p).length ? <Truncado texto={textoAparelhos(p, compartilhadoDe?.(p))} /> : <span className={styles.muted}>—</span>}</td>
                 <td><SeloDeEstado estado={estado} /></td>
                 <td>{p.policy_group_name ? <Truncado texto={p.policy_group_name} /> : <span className={styles.muted}>—</span>}</td>
                 <td>

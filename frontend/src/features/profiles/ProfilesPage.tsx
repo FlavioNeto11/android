@@ -35,6 +35,7 @@ import {
   type FiltroPersonas, type OrdemPersona, type Situacao,
 } from './filtroPersonas';
 import { PersonaCard, TabelaPersonas } from './ListaDePersonas';
+import { compartilhadoCom, numerosDasPersonas, personasPorAparelho } from './pessoa';
 import { ProfileDetail } from './ProfileDetail';
 import styles from './Profiles.module.css';
 import { homonimosDoSegmento, resolverPersona, slugsDasPersonas } from './slugPersona';
@@ -220,6 +221,9 @@ export function ProfilesPage() {
     trocarQuery(queryDoFiltro(parcial), 'replace');
   };
   const visiveis = ordenarPersonas(filtrarPersonas(pessoas, filtro), filtro.ordem);
+  // O Nº e o aparelho dividido vêm da lista INTEIRA: o filtro esconde linhas, não muda quem é a persona 15.
+  const numeros = numerosDasPersonas(pessoas);
+  const porAparelho = personasPorAparelho(pessoas);
   const contagem = contagemPorSituacao(pessoas, filtro);
   const escondeAlguem = filtroAtivo(filtro);
   const appsConhecidos = [...new Set(pessoas.flatMap(appsDe))].sort();
@@ -321,11 +325,13 @@ export function ProfilesPage() {
                         actions={<Button variant="outline" onClick={() => trocarQuery(LIMPAR_FILTROS, 'replace')}>Limpar filtros</Button>} />
           ) : filtro.visao === 'tabela' ? (
             <TabelaPersonas pessoas={visiveis} selecionadas={selecionadas} onSelecionar={alternarSelecao}
-                            onOpen={abrir} onChanged={load} />
+                            onOpen={abrir} onChanged={load} numeros={numeros}
+                            compartilhadoDe={(p) => compartilhadoCom(p, porAparelho, numeros)} />
           ) : (
             <AutoGrid min="320px">
               {visiveis.map((p) => (
                 <PersonaCard key={p.id} pessoa={p} onChanged={load} selecionada={selecionadas.has(p.id)}
+                             numero={numeros.get(p.id)} compartilhado={compartilhadoCom(p, porAparelho, numeros)}
                              onSelecionar={() => alternarSelecao(p.id)}
                              onOpen={(aba) => abrir(p.id, aba)} />
               ))}

@@ -1099,7 +1099,7 @@ describe('busca, filtros e visão em tabela', () => {
     await waitFor(() => document.querySelector('table') !== null);
     expect(window.location.hash).toBe('#/personas?visao=tabela');
     const cabecalhos = [...document.querySelectorAll('thead th')].map((th) => th.textContent);
-    expect(cabecalhos).toEqual(['Seleção', 'Persona', 'Conta (@)', 'Contas', 'Aparelho', 'Situação', 'Grupo', 'Ações']);
+    expect(cabecalhos).toEqual(['Seleção', 'Nº', 'Persona', 'Conta (@)', 'Contas', 'Aparelho', 'Situação', 'Grupo', 'Ações']);
     expect((byRole('checkbox', /^Selecionar Quillon Teixeira$/) as HTMLInputElement).checked).toBe(true);
     expect((byRole('checkbox', /^Selecionar Luciana Bastos$/) as HTMLInputElement).checked).toBe(false);
     await click(byRole('button', /^Cartões$/));
@@ -1164,5 +1164,38 @@ describe('busca, filtros e visão em tabela', () => {
     await click(byRole('button', /Mais ações de Luciana Bastos/));
     expect(byRole('button', /^Marcar bloqueada$/)).toBeTruthy();
     expect(byRole('button', /Remover persona/)).toBeTruthy();
+  });
+});
+
+describe('Nº da persona e aparelho dividido (31.245)', () => {
+  const binding = (instance_id: string) => ({ instance_id, app_id: 'instagram', is_primary: true, state: 'online', worker_id: null, bound_at: null, session: null });
+  const TRES = () => [
+    pessoa({ id: 'ig-b', name: 'Bruno Ferreira', username: 'bruno.f', created_at: '2026-09-18T10:00:00Z', instance_id: 'android-04', devices: [binding('android-04')] }),
+    pessoa({ id: 'ig-a', name: 'Ana Souza', username: 'ana.s', created_at: '2026-09-17T10:00:00Z', instance_id: 'android-01', devices: [binding('android-01')] }),
+    pessoa({ id: 'ig-c', name: 'Carla Dias', username: 'carla.d', created_at: '2026-09-19T10:00:00Z', instance_id: 'android-04', devices: [binding('android-04')] }),
+  ];
+
+  it('cada cartão traz o Nº por ordem de criação, não pela ordem da lista; quem divide o aparelho diz com quem', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(TRES()));
+    await render();
+    await waitFor(() => text().includes('Carla Dias'));
+    const rotulos = [...document.querySelectorAll('[data-numero-da-persona]')].map((e) => e.textContent);
+    expect(rotulos.sort()).toEqual(['Nº 1', 'Nº 2', 'Nº 3']);
+    expect(text()).toContain('android-04 · compartilhado com Nº 3');   // Bruno (2) divide com Carla (3)
+    expect(text()).toContain('android-04 · compartilhado com Nº 2');   // e Carla (3) com Bruno (2)
+    expect(text()).not.toContain('android-01 · compartilhado');        // Ana está sozinha
+  });
+
+  it('na tabela há a coluna Nº e o filtro não renumera: a persona 3 continua 3 com a lista filtrada', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(TRES()));
+    await render();
+    await waitFor(() => text().includes('Carla Dias'));
+    await click(byRole('button', /^Tabela$/));
+    await waitFor(() => document.querySelector('table') !== null);
+    const linhas = [...document.querySelectorAll('tbody tr')].map((tr) => [tr.querySelector('[data-numero-da-persona]')?.textContent, tr.textContent?.includes('Carla Dias')]);
+    expect(linhas.find(([, ehCarla]) => ehCarla)?.[0]).toBe('3');
+    await act(async () => useUiStore.getState().navegar({ tela: 'personas', query: { visao: 'tabela', q: 'carla' } }, 'replace'));
+    await waitFor(() => document.querySelectorAll('tbody tr').length === 1);
+    expect(document.querySelector('tbody tr [data-numero-da-persona]')?.textContent).toBe('3');
   });
 });

@@ -885,6 +885,10 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 .cartaoIdentidade { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .cartaoNome { margin: 0; font-size: var(--fs-lg); font-weight: 600; line-height: var(--lh-tight); min-width: 0; }
 .cartaoHandle { color: var(--text-2); font-size: var(--fs-sm); }
+.numeroPersona {
+  flex: none; padding: 1px 8px; border: 1px solid var(--border-2); border-radius: var(--radius-lg); background: var(--surface-2);
+  color: var(--text-2); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 .cartaoCorpo { flex: 1; display: flex; flex-direction: column; min-width: 0; padding-top: var(--sp-3); }
 .cartaoCorpo .cardResumo { min-height: 1.5em; }
 /* O rótulo da linha cede espaço ao valor: com 7.5rem, "Bloqueada pela plataforma" não cabia num cartão de 320 px. */
