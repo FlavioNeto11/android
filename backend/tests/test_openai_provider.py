@@ -291,10 +291,12 @@ def test_chave_por_nome_declarado_apelido_e_ambiente(monkeypatch: pytest.MonkeyP
     declarado, `os.environ`. Nome vazio = sem chave, o certo para um endpoint local."""
     monkeypatch.setenv("CHAVE_LOCAL_DE_TESTE", "valor-de-teste")
     env = EnvSettings(_env_file=None, GOOGLE_API_KEY="apelido-de-teste",  # type: ignore[call-arg]
-                      DEEPSEEK_API_KEY="declarada-de-teste")
+                      DEEPSEEK_API_KEY="declarada-de-teste", VENICE_API_KEY="venice-de-teste")
     assert env.chave("GEMINI_API_KEY") == "apelido-de-teste"
     assert env.chave("GOOGLE_API_KEY") == "apelido-de-teste"
     assert env.chave("DEEPSEEK_API_KEY") == "declarada-de-teste"
+    assert env.chave("VENICE_API_KEY") == "venice-de-teste"
+    assert "venice-de-teste" not in repr(env)  # SecretStr: a chave não aparece em repr nem em log
     assert env.chave("DASHSCOPE_API_KEY") == ""
     assert env.chave("CHAVE_LOCAL_DE_TESTE") == "valor-de-teste"
     assert env.chave(None) == "" and env.chave("") == ""
