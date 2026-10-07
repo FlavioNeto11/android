@@ -7811,12 +7811,17 @@ A correção ensinada a partir de uma falha (31.149) vira lição do planejador 
 
 ## Adendo v1.122 (07/10/2026; número da orquestradora; item 31.223) — o modelo forte só no commit
 
-Sem rota nova. A exposição por passo (modelo que decidiu, custo, commit) é da Jev, no 31.229 (v1.124).
+Sem rota nova (só dois campos de leitura no `GET /api/ai`). A exposição por passo (modelo que decidiu, custo, commit) é da Jev, no 31.229 (v1.124).
 
 - **`ai.strong_model_only_on_commit`** (`config.yaml`, padrão `true`; vale na subida): quando a etapa com efeito sobe
   ao modelo de escalonamento (`ai.strong_model_for_side_effect`), ele decide SÓ o commit. A etapa começa no modelo de
   ação. A primeira decisão que dispararia o efeito é descartada e refeita no forte, que segue até o fim da tentativa.
   `false` = a etapa inteira no forte, o modo de antes.
+- **`GET /api/ai`** (`AiStatus`, aditivo e só leitura) ganha dois campos opcionais, com os valores em vigor na subida:
+  - `strong_model_for_side_effect`: `by_risk`, `true` ou `false`;
+  - `strong_model_only_on_commit`: booleano.
+
+  Os dois mudam no `config.yaml` e valem na subida da farm-central. Nada muda em `PUT /api/settings`.
 - **O que muda no registro, sem campo novo:**
   - a decisão de commit descartada fica em `ai_calls` como `decide` tier 0, sem ação ligada (`actions.ai_call_id`);
   - a refeita é `decide` tier 1 com `escalate=efeito`, e a ação dela leva `side_effect`;

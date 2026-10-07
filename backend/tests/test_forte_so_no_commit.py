@@ -10,6 +10,8 @@ O que estes testes protegem:
 * a navegação dentro da etapa com efeito (o toque no campo) decide no tier 0; a decisão de commit do tier 0 NÃO age
   (a mensagem sai uma vez só) e é refeita no tier 1, com a linha "só a decisão do commit (31.223)";
 * com a chave em `false`, a etapa inteira decide no tier 1, como antes;
+* `GET /api/ai` mostra a política em vigor (só leitura): `strong_model_for_side_effect` e
+  `strong_model_only_on_commit`;
 * o registro que a Jev lê por passo (31.229, sem campo novo): na etapa de envio, `ai_calls` tem a navegação no tier 0
   (com ação, sem efeito), o commit do tier 0 descartado (sem ação) e o commit no tier 1 (`escalate=efeito`, ação com
   `side_effect`).
@@ -23,6 +25,7 @@ from typing import Any
 from app.planning.provider import Decision, Usage
 
 from .conftest import Harness
+from .test_perfil_bloqueado_e_capacidades import _cliente
 from .test_cost_levers import _eventos_de_escalonamento
 
 
@@ -77,3 +80,13 @@ async def test_desligado_a_etapa_inteira_no_forte(harness: Harness) -> None:
     assert harness.ai.count("decide", step="send_message", tier=0) == 0
     assert harness.ai.count("decide", step="send_message", tier=1) == 2
     assert len(harness.fakes["android-01"].messages) == 1
+
+
+async def test_o_get_da_ia_mostra_a_politica_em_vigor(harness: Harness) -> None:
+    async with _cliente(harness) as c:
+        padrao = (await c.get("/api/ai")).json()
+        harness.cfg.file.ai.strong_model_for_side_effect = True
+        harness.cfg.file.ai.strong_model_only_on_commit = False
+        mudado = (await c.get("/api/ai")).json()
+    assert (padrao["strong_model_for_side_effect"], padrao["strong_model_only_on_commit"]) == ("by_risk", True)
+    assert (mudado["strong_model_for_side_effect"], mudado["strong_model_only_on_commit"]) == ("true", False)
