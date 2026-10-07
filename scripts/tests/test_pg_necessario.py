@@ -57,14 +57,18 @@ class Decidir(unittest.TestCase):
                     compare, **kw)
 
     def test_so_docs_e_scripts_mudaram_pula(self) -> None:
-        rodar, motivo = mod.decidir(REPO, "schedule", HEAD, "9", self.gh(comparacao("docs/x.md", "scripts/y.py", "frontend/src/a.ts", ".github/workflows/pr-leve.yml")))
+        rodar, motivo = mod.decidir(REPO, "schedule", HEAD, "9", self.gh(comparacao("docs/x.md", "README.md", ".claude/handoff-current.md", "frontend/src/a.ts", ".github/workflows/pr-leve.yml")))
         self.assertFalse(rodar)
         self.assertIn("nenhum que o PostgreSQL teste", motivo)
 
     def test_arquivo_relevante_roda(self) -> None:
-        for arq in ("backend/app/api.py", "backend/tests/test_x.py", "backend/migrations/001_a.sql", "backend/requirements.txt",
+        for arq in ("scripts/y.py", "config/config.example.yaml", "frontend/src/lib/rotas.ts", "arquivo-novo-e-desconhecido.bin", "backend/app/api.py", "backend/tests/test_x.py", "backend/migrations/001_a.sql", "backend/requirements.txt",
                     "backend/app/conhecimento/apps/x/catalogo.yaml", ".github/workflows/ci.yml", ".github/actions/python-isolado/action.yml"):
             self.assertTrue(mod.decidir(REPO, "schedule", HEAD, "9", self.gh(comparacao("docs/x.md", arq)))[0], arq)
+
+    def test_arquivo_movido_de_backend_para_fora_roda_pelo_nome_antigo(self) -> None:
+        cmp = {"status": "ahead", "total_commits": 1, "files": [{"filename": "docs/velho.py", "previous_filename": "backend/app/velho.py"}]}
+        self.assertTrue(mod.decidir(REPO, "schedule", HEAD, "9", self.gh(cmp))[0])
 
     def test_mesmo_commit_do_ultimo_verde_pula(self) -> None:
         self.assertFalse(mod.decidir(REPO, "schedule", VERDE, "9", self.gh(comparacao()))[0])
@@ -77,6 +81,11 @@ class Decidir(unittest.TestCase):
     def test_sem_corrida_verde_recente_roda(self) -> None:
         self.assertTrue(mod.decidir(REPO, "schedule", HEAD, "9", self.gh(comparacao("docs/x.md"), verde=False))[0])
 
+    def test_busca_so_corridas_da_main(self) -> None:
+        gh = self.gh(comparacao("docs/x.md"))
+        mod.decidir(REPO, "schedule", HEAD, "9", gh)
+        self.assertTrue(any("branch=main" in c[1] for c in gh.chamadas if "/workflows/ci.yml/runs" in c[1]))
+
     def test_a_corrida_atual_nao_conta_como_verde_e_pr_nao_conta(self) -> None:
         gh = Fake([run(9, "d" * 40), run(5, "e" * 40, "pull_request"), run(1, VERDE)], {9: [job("success")], 5: [job("success")], 1: [job("success")]}, comparacao("docs/x.md"))
         self.assertEqual(mod.ultima_verde(REPO, "9", gh), VERDE)
@@ -88,6 +97,7 @@ class Decidir(unittest.TestCase):
             self.gh(comparacao(*[f"docs/{i}.md" for i in range(300)])),
             self.gh(comparacao("docs/x.md", commits=900)),
             self.gh(comparacao("docs/x.md", status="behind")),
+            self.gh(comparacao("docs/x.md", status="diverged")),
             self.gh(comparacao("docs/x.md", status="algo-novo")),
             self.gh({"files": "quebrado"}),
         ]

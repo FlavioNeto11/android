@@ -6,11 +6,13 @@ noite); numa noite em que nada que ele testa mudou desde a última corrida VERDE
 
 Regra (qualquer dúvida roda; nunca pula por incerteza):
   - disparo manual (`workflow_dispatch`): roda sempre (quem dispara quer rodar);
-  - procura, nas últimas corridas do `ci.yml` (cron e manual), a mais recente em que o job `backend · pytest (PostgreSQL)` terminou
+  - procura, nas últimas corridas do `ci.yml` na `main` (cron e manual), a mais recente em que o job `backend · pytest (PostgreSQL)` terminou
     em sucesso, e compara o commit dela com o de hoje pela API de comparação (`compare`);
-  - sem corrida verde recente, comparação com erro, resposta truncada (300 arquivos) ou qualquer erro do `gh`: roda;
-  - com arquivo mudado sob `backend/` (código, testes, migrações, dependências, configuração e conhecimento de apps), `.github/actions/`
-    ou no próprio `ci.yml`: roda; só se TODOS os arquivos mudados ficarem de fora: não roda.
+  - sem corrida verde recente, comparação com erro, resposta truncada (300 arquivos), verde que não seja ancestral do commit de hoje
+    (`diverged`/`behind`) ou qualquer erro do `gh`: roda;
+  - só pula se TODO arquivo mudado (inclusive o nome antigo de um arquivo movido) for de `docs/`, `.claude/`, `frontend/` (menos
+    `frontend/src/lib/rotas.ts`, que um teste do backend lê), dos outros workflows e de modelos de issue, ou for `.md`; o `ci.yml`
+    e todo o resto (`backend/`, `scripts/`, `config/`, `.github/actions/`, arquivo novo e desconhecido) fazem rodar.
 
 Só LEITURA (`gh api`). Não imprime nome de conta nem de repositório; erro do `gh` vira só o código de saída.
 """
@@ -25,7 +27,11 @@ import sys
 from collections.abc import Callable
 
 JOB = "backend · pytest (PostgreSQL)"
-PREFIXOS = ("backend/", ".github/actions/", ".github/workflows/ci.yml")
+# O que NÃO exige o PostgreSQL: documentação, frontend, estado das sessões e os outros workflows. O resto é relevante (lista do que é
+# irrelevante, não do que é relevante: os testes do backend leem scripts/, config/ e até frontend/src/lib/rotas.ts, e um arquivo
+# novo e desconhecido tem de rodar). As exceções valem mesmo dentro de um prefixo irrelevante.
+IRRELEVANTES = ("docs/", ".claude/", "frontend/", ".github/ISSUE_TEMPLATE/", ".github/workflows/", ".github/agents/")
+EXCECOES = ("frontend/src/lib/rotas.ts", ".github/workflows/ci.yml")
 RUNS_LIDOS = 14
 LIMITE_COMPARE = 300
 Gh = Callable[..., str]
@@ -38,13 +44,19 @@ def gh_real(*args: str) -> str:
     return r.stdout
 
 
+def irrelevante(arquivo: str) -> bool:
+    if arquivo in EXCECOES:
+        return False
+    return arquivo.endswith(".md") or arquivo.startswith(IRRELEVANTES)
+
+
 def relevantes(arquivos: list[str]) -> list[str]:
-    return [a for a in arquivos if a.startswith(PREFIXOS)]
+    return [a for a in arquivos if not irrelevante(a)]
 
 
 def ultima_verde(repo: str, run_atual: str, gh: Gh) -> str | None:
     """Commit da corrida mais recente (cron ou manual) em que o job do PostgreSQL passou; None se não achar nas últimas."""
-    runs = json.loads(gh("api", f"repos/{repo}/actions/workflows/ci.yml/runs?per_page=30&status=completed"))["workflow_runs"]
+    runs = json.loads(gh("api", f"repos/{repo}/actions/workflows/ci.yml/runs?per_page=30&status=completed&branch=main"))["workflow_runs"]
     vistos = 0
     for r in runs:
         if str(r.get("id")) == run_atual or r.get("event") not in ("schedule", "workflow_dispatch"):
@@ -72,18 +84,21 @@ def decidir(repo: str, evento: str, head: str, run_atual: str, gh: Gh | None = N
         if base == head:
             return False, "o commit é o mesmo da última corrida verde do PostgreSQL: nada mudou"
         cmp = json.loads(gh("api", f"repos/{repo}/compare/{base}...{head}"))
-        arquivos = [f["filename"] for f in cmp.get("files") or []]
-        if cmp.get("status") not in ("ahead", "identical", "behind", "diverged"):
-            return True, "comparação com estado inesperado: roda"
+        arquivos = []
+        for f in cmp.get("files") or []:
+            arquivos.append(f["filename"])
+            if f.get("previous_filename"):  # arquivo movido para fora da pasta continua sendo mudança da pasta de origem
+                arquivos.append(f["previous_filename"])
+        if cmp.get("status") not in ("ahead", "identical"):
+            # só vale como "já passou" um commit que seja ANCESTRAL do de hoje: "diverged" (outra linha de código) e "behind" rodam
+            return True, f"o último verde não é ancestral do commit de hoje (comparação {str(cmp.get('status'))[:20]}): roda"
         if len(arquivos) >= LIMITE_COMPARE or int(cmp.get("total_commits", 0)) > 250:
             return True, "comparação grande demais (resposta truncada): roda"
-        if cmp.get("status") == "behind":
-            return True, "o commit de hoje está atrás do último verde: roda"
         achados = relevantes(arquivos)
         if achados:
             return True, f"{len(achados)} arquivo(s) relevante(s) mudaram desde o último verde (ex.: {achados[0]}): roda"
         return False, f"{len(arquivos)} arquivo(s) mudaram desde o último verde, nenhum que o PostgreSQL teste: pula"
-    except (RuntimeError, ValueError, KeyError, TypeError, json.JSONDecodeError) as erro:
+    except (RuntimeError, ValueError, KeyError, TypeError, OSError, json.JSONDecodeError) as erro:
         return True, f"não consegui decidir ({type(erro).__name__}): roda"
 
 
