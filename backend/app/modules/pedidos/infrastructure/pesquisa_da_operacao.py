@@ -33,6 +33,8 @@ from app.db import Database, loads
 from app.modules.learning.domain.reaproveitamento_da_pesquisa import FatoDoLivro, cobertura
 from app.modules.pedidos.domain import memoria as dominio_memoria
 from app.modules.pedidos.domain.observacao import curto, sha256_do_valor
+from app.modules.pedidos.domain.resumo_da_pesquisa import (CHAVE_DO_ESTADO, ESTADO_FALHOU, ESTADO_REAPROVEITADO,
+                                                           MARCA_DO_CRITERIO, PREFIXO_DO_LIVRO)
 from app.modules.pedidos.infrastructure.conhecimento_da_operacao import ConhecimentoDaOperacao
 from app.modules.pedidos.infrastructure.relatorios import parece_segredo
 from app.modules.pedidos.infrastructure.repositorio_memoria import NovaObservacao, RepositorioDeMemoria
@@ -41,7 +43,6 @@ from app.planning.pesquisa import PesquisaBruta, PesquisaConsolidada, PesquisaRe
 
 log = logging.getLogger(__name__)
 
-CHAVE_DO_ESTADO = "pesquisa.estado"
 #: Depois de uma tentativa sem resultado, quanto esperar antes de outra na mesma operação.
 ESPERA_APOS_FALHA_S = 3600
 FONTES_INDICADAS_MAX = 5
@@ -130,7 +131,7 @@ class PesquisaDaOperacao:
             bruta = await chamar(req)
         except Exception as exc:  # noqa: BLE001 - pesquisa é contexto: a falha marca a espera e o texto segue
             log.info("operação %s: a pesquisa falhou (%s)", operacao_id, type(exc).__name__)
-            self._marcar_estado(operacao_id, "a pesquisa falhou; nova tentativa depois da espera", run_id,
+            self._marcar_estado(operacao_id, f"{ESTADO_FALHOU}; nova tentativa depois da espera", run_id,
                                 frescor_s=ESPERA_APOS_FALHA_S)
             return None
         consolidada = fatos_consolidados(bruta, max_fatos=self.cfg.max_fatos)
@@ -153,11 +154,11 @@ class PesquisaDaOperacao:
             log.info("operação %s: o Livro não cobre o pedido (%s); a pesquisa paga roda", operacao_id, c.motivo)
             return None
         with self.db.tx():
-            gravados = sum(self._escrever(operacao_id, f"livro.{f.ref}", "descoberta", f.texto, confianca="confirmado",
+            gravados = sum(self._escrever(operacao_id, f"{PREFIXO_DO_LIVRO}{f.ref}", "descoberta", f.texto, confianca="confirmado",
                                           evidencia=(), frescor_ate=f.frescor_ate, run_id=run_id) for f in c.usados)
             itens = ", ".join(f.ref for f in c.usados)
-            self._marcar_estado(operacao_id, f"reaproveitado do Livro (31.231): {len(c.usados)} fato(s), itens {itens}; "
-                                             f"frescor até {c.frescor_ate}; critério: {c.motivo}",
+            self._marcar_estado(operacao_id, f"{ESTADO_REAPROVEITADO} (31.231): {len(c.usados)} fato(s), itens {itens}; "
+                                             f"frescor até {c.frescor_ate}; {MARCA_DO_CRITERIO}{c.motivo}",
                                 run_id, frescor_s=None, prazo=c.frescor_ate)
         return Feito(fatos=gravados, confirmados=gravados, fontes=0, buscas=0, descartados=0, reaproveitados=gravados)
 

@@ -7828,3 +7828,28 @@ Sem rota nova (só dois campos de leitura no `GET /api/ai`). A exposição por p
   - a linha de escalonamento da execução ganha "; só a decisão do commit (31.223)".
 - **Prova:** `simulated` (`backend/tests/test_forte_so_no_commit.py`). `real`: `not_run`; o custo por alvo da primeira
   operação depois do deploy 61, contra a onda 2.
+
+## Adendo (07/10/2026; número a definir pela orquestradora; item 31.235) — a pesquisa da operação no GET
+
+Sem rota nova. O `GET /api/operacoes/{id}` ganha um campo aditivo e só de leitura. O contrato é o mesmo combinado com o
+Portal (31.234, `.claude/handoffs/jev-para-portal-31-234.md`).
+
+- **`OperacaoDetalhe.pesquisa`**: objeto ou `null`.
+  - `null` quando a operação não pediu pesquisa (sem `assunto`), e também no central anterior a este campo.
+  - Os campos do objeto:
+    - `estado`: `reaproveitada_do_livro` (o Livro cobriu o pedido, sem chamada paga, 31.231), `paga`, `falhou` (a
+      última tentativa falhou e espera para tentar de novo) ou `nao_rodou` (pediu, mas nada rodou ainda: desligada,
+      teto, antes da execução);
+    - `criterio`: o texto por extenso. No reaproveitamento, é o critério de cobertura. Na paga, as contagens (fatos,
+      fontes, buscas), precedidas de "o Livro não cobriu o pedido" quando o reaproveitamento está ligado. Na falha, a
+      espera. Em `nao_rodou`, se a pesquisa está desligada;
+    - `minimo_fatos`: `ai.pesquisa.reaproveitar_min_fatos` em vigor (`0` = reaproveitamento desligado);
+    - `frescor_ate`: o menor frescor dos fatos usados (do Livro ou da paga); `null` na falha e em `nao_rodou`;
+    - `custo_usd`: o mesmo valor de `custo.pesquisa_usd`;
+    - `fatos`: no reaproveitamento, um elemento `{item, origem, frescor_ate, confianca}` por fato do Livro usado, com
+      `item` igual ao id do item do Livro; vazio nos outros estados (as fontes da paga seguem em `fontes_da_pesquisa`).
+- **Fonte:** só a memória da operação: `pesquisa.estado`, `livro.<item>` e os fatos `pesquisa.<hash>`.
+- **O que não entra:** nem o texto de um fato nem uma URL.
+- **Código:** `backend/app/modules/pedidos/domain/resumo_da_pesquisa.py` e `ServicoDeOperacoes._pesquisa`.
+- **Prova:** `simulated` (`backend/tests/test_pesquisa_no_get_da_operacao.py`, os quatro estados escritos pela própria
+  pesquisa da operação). `real`: `not_run`, até o GET da primeira operação com assunto depois do deploy.
