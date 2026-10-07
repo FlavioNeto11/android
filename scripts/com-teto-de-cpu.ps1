@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Roda um comando (e tudo o que ele criar) debaixo de um TETO DE CPU do Windows, para o funil não competir com os emuladores
   de conta real (29.174). Não toca o `.wslconfig`, o túnel, o relógio nem processo nenhum que não seja descendente do comando.
@@ -28,6 +28,12 @@
   A cada quantos segundos imprimir a CPU que a árvore já usou ("com-teto-de-cpu: 30 s: árvore 14,2 s de CPU ..."); 0 desliga (padrão 60).
   Serve para conferir, ainda no primeiro minuto, que o comando está DENTRO do job: se a árvore marca 0 s depois de `-ZeroAposS` s (padrão
   20), o wrapper avisa (o comando provavelmente escapou, como o `pwsh` 7).
+.PARAMETER PermitirPwsh
+  O wrapper RECUSA (código 125) comando que usa `pwsh` (PowerShell 7, app MSIX do host): ele escapa do job e o teto não valeria. Esta
+  chave ignora a trava (só para teste).
+.PARAMETER ArquivoDeTeto
+  Arquivo de uma linha com o percentual de teto (1 a 100) que vale AGORA. A cada 2 s o wrapper o lê e, se mudou, troca o teto do job
+  que já roda (teto por etapa: quem encadeia as etapas escreve o número novo antes de cada uma). Valor inválido é ignorado com aviso.
 .PARAMETER ZeroAposS
   Segundos antes de o batimento acusar árvore com 0 s de CPU (padrão 20).
 .PARAMETER Simular
@@ -47,7 +53,9 @@ param(
   [string]$Linha = '',
   [string]$ComandoJson = '',
   [ValidateRange(0, 3600)][int]$BatimentoS = 60,
-  [ValidateRange(1, 3600)][int]$ZeroAposS = 20
+  [ValidateRange(1, 3600)][int]$ZeroAposS = 20,
+  [switch]$PermitirPwsh,
+  [string]$ArquivoDeTeto = ''
 )
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.Platform -and $PSVersionTable.Platform -ne 'Win32NT') { throw 'o teto de CPU por Job Object só existe no Windows.' }
@@ -153,6 +161,17 @@ public static class TetoDeCpu {
     return job;
   }
 
+  // Troca o teto de um job que já roda (a árvore em andamento passa a valer o novo percentual na hora).
+  public static void AjustarTeto(IntPtr job, int tetoPercentual) {
+    IntPtr taxa = Marshal.AllocHGlobal(8);
+    try {
+      Marshal.WriteInt32(taxa, 0, (int)(TaxaLigada | TaxaTeto));
+      Marshal.WriteInt32(taxa, 4, tetoPercentual * 100);
+      if (!SetInformationJobObject(job, InfoTaxaDeCpu, taxa, 8))
+        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "SetInformationJobObject(ajuste da taxa)");
+    } finally { Marshal.FreeHGlobal(taxa); }
+  }
+
   // Roda `linha` (já com aspas de CreateProcess) debaixo do job: o processo nasce SUSPENSO, entra no job e só então roda, de modo que
   // nem ele nem nenhum descendente passa um instante fora do teto. Devolve o código de saída do comando; espera o processo acabar.
   public static int Rodar(IntPtr job, string linha, int cadaMs, Action aoPassar) {
@@ -245,27 +264,63 @@ Write-Host ("com-teto-de-cpu: teto {0} % (≈ {1} de {2} threads), afinidade {3}
 $textoDoComando = if ($Linha) { $Linha } else { $cmd -join ' ' }
 $usaPwsh = $textoDoComando -match '(?i)(^|[\s"\\/&|;(])pwsh(\.exe)?(["\s]|$)'
 if ($usaPwsh) {
-  Write-Host 'com-teto-de-cpu: AVISO: o comando usa `pwsh` (PowerShell 7, app MSIX): ele escapa do job e o teto NÃO vale para ele nem para os filhos. Use `powershell` (5.1) ou chame o python direto.'
+  if (-not $PermitirPwsh) {
+    # Recusa: um funil inteiro já rodou "sob teto" sem teto nenhum (58). `-PermitirPwsh` existe só para teste e para quem sabe o que faz.
+    Write-Host 'com-teto-de-cpu: RECUSADO: o comando usa `pwsh` (PowerShell 7, app MSIX): ele escapa do job e o teto NÃO valeria para ele nem para os filhos. Use `powershell` (5.1) ou chame o python direto (-PermitirPwsh ignora esta trava).'
+    exit 125
+  }
+  Write-Host 'com-teto-de-cpu: AVISO: o comando usa `pwsh` (-PermitirPwsh): o teto NÃO vale para ele nem para os filhos.'
 }
 $relogio = [Diagnostics.Stopwatch]::StartNew()
 $zeroAvisado = $false
+$tetoAtual = $Teto
+$ultimaBatida = 0.0
+$arquivoRuimAvisado = $false
+$falhaDeTeto = $false
 $batimento = [Action]{
-  $cpuAgora = [TetoDeCpu]::CpuDoJob($job); $tAgora = $relogio.Elapsed.TotalSeconds
-  Write-Host ('com-teto-de-cpu: {0:F0} s: árvore {1:F1} s de CPU ({2:F1} % do total; teto {3} %)' -f $tAgora, $cpuAgora, (100 * $cpuAgora / ($tAgora * $total)), $Teto)
+  $tAgora = $relogio.Elapsed.TotalSeconds
+  if ($ArquivoDeTeto -and (Test-Path -LiteralPath $ArquivoDeTeto)) {
+    # Teto por etapa: quem encadeia as etapas escreve o percentual novo neste arquivo; vale na hora, inclusive para o que já roda.
+    $lido = ''
+    try { $lido = (Get-Content -LiteralPath $ArquivoDeTeto -TotalCount 1 -ErrorAction Stop) } catch { }
+    $novo = 0
+    if ([int]::TryParse(([string]$lido).Trim(), [ref]$novo) -and $novo -ge 1 -and $novo -le 100) {
+      if ($novo -ne $script:tetoAtual) {
+        try {
+          [TetoDeCpu]::AjustarTeto($job, $novo)
+          Write-Host ('com-teto-de-cpu: {0:F0} s: teto agora {1} % (era {2} %)' -f $tAgora, $novo, $script:tetoAtual)
+          $script:tetoAtual = $novo
+        } catch {
+          # O teto pedido NAO foi aplicado: o comando segue sob o teto anterior e a execução não pode sair verde.
+          $script:falhaDeTeto = $true
+          Write-Host ('com-teto-de-cpu: REPROVADO: não consegui trocar o teto para {0} % ({1}); o comando segue com {2} % e o código de saída será 124.' -f $novo, $_.Exception.Message, $script:tetoAtual)
+        }
+      }
+    } elseif (-not $script:arquivoRuimAvisado -and ([string]$lido).Trim()) {
+      $script:arquivoRuimAvisado = $true
+      Write-Host 'com-teto-de-cpu: AVISO: o arquivo de teto não tem um percentual de 1 a 100; ignorado.'
+    }
+  }
+  if ($BatimentoS -le 0 -or ($tAgora - $script:ultimaBatida) -lt $BatimentoS - 0.5) { return }
+  $script:ultimaBatida = $tAgora
+  $cpuAgora = [TetoDeCpu]::CpuDoJob($job)
+  Write-Host ('com-teto-de-cpu: {0:F0} s: árvore {1:F1} s de CPU ({2:F1} % do total; teto {3} %)' -f $tAgora, $cpuAgora, (100 * $cpuAgora / ($tAgora * $total)), $script:tetoAtual)
   if (-not $script:zeroAvisado -and $tAgora -ge $ZeroAposS -and $cpuAgora -ge 0 -and $cpuAgora -lt 0.2) {
     $script:zeroAvisado = $true
     Write-Host ('com-teto-de-cpu: AVISO: a árvore marca 0 s de CPU depois de {0:F0} s: o comando provavelmente está FORA do job (pwsh 7?) e roda SEM teto.' -f $tAgora)
   }
 }
-try { $codigo = [TetoDeCpu]::Rodar($job, $linhaDeComando, ($BatimentoS * 1000), $batimento) }
+$tique = if ($ArquivoDeTeto) { 2000 } elseif ($BatimentoS -gt 0) { $BatimentoS * 1000 } else { 0 }
+try { $codigo = [TetoDeCpu]::Rodar($job, $linhaDeComando, $tique, $batimento) }
 catch { Write-Host ("com-teto-de-cpu: o comando não rodou ({0})" -f $_.Exception.Message); $codigo = 126 }
 $parede = $relogio.Elapsed.TotalSeconds
 $cpuDaArvore = [TetoDeCpu]::CpuDoJob($job)
 if ($cpuDaArvore -ge 0 -and $parede -gt 0) {
   Write-Host ("com-teto-de-cpu: a árvore usou {0:F1} s de CPU em {1:F1} s de relógio = {2:F1} % do total de {3} threads (teto {4} %); código de saída {5}" -f `
-              $cpuDaArvore, $parede, (100 * $cpuDaArvore / ($parede * $total)), $total, $Teto, $codigo)
+              $cpuDaArvore, $parede, (100 * $cpuDaArvore / ($parede * $total)), $total, $tetoAtual, $codigo)
 }
 if ($cpuDaArvore -ge 0 -and $parede -gt 10 -and $cpuDaArvore -lt 0.5) {
   Write-Host 'com-teto-de-cpu: AVISO: a árvore quase não usou CPU: o comando provavelmente escapou do job (pwsh 7?) e rodou SEM teto.'
 }
+if ($falhaDeTeto -and $codigo -eq 0) { $codigo = 124 }
 exit $codigo

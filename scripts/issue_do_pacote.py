@@ -104,7 +104,7 @@ def montar(item: str, pacote: dict[str, object]) -> tuple[str, str]:
     corpo = "\n".join([
         marca(item), "",
         f"Gerada a partir do pacote do item {item} por `scripts/issue_do_pacote.py` (29.177). **Não está atribuída ao agente de nuvem**: "
-        "a atribuição é manual e depende do sim do dono (orçamento do Copilot).", "",
+        "a atribuição só sai de `scripts/agente_nuvem.py`, pedida pela orquestradora (orçamento do Copilot).", "",
         "## Item do plano", item + (f" · tamanho {pacote['tamanho']}" if pacote["tamanho"] else ""), "",
         "## O que fazer", trabalho, "",
         "## Arquivos de posse (do índice do plano)",
@@ -125,12 +125,14 @@ def ja_existe(repo: str, item: str, gh: Gh) -> tuple[int, str] | None:
     return None
 
 
-def rotulos_da_issue(pacote: dict[str, object], frente: str | None, agente: bool) -> list[str]:
+def rotulos_da_issue(pacote: dict[str, object], frente: str | None, agente: bool, agente_nuvem: bool = False) -> list[str]:
     r = [f"tamanho:{pacote['tamanho']}"] if pacote["tamanho"] else []
     if frente:
         r.append(f"frente:{frente}")
     if agente:
         r.append("agente")
+    if agente_nuvem:
+        r.append("agente-nuvem")
     return r
 
 
@@ -140,6 +142,8 @@ def main(argv: list[str] | None = None, gh: Gh | None = None, pacotes: Path | No
     ap.add_argument("--repo", required=True)
     ap.add_argument("--frente", choices=FRENTES)
     ap.add_argument("--agente", action="store_true", help="põe o rótulo `agente` (NÃO atribui a issue; a atribuição é manual)")
+    ap.add_argument("--agente-nuvem", action="store_true", dest="agente_nuvem",
+                    help="põe a etiqueta `agente-nuvem` (item liberado pela orquestradora; também NÃO atribui: quem atribui é scripts/agente_nuvem.py)")
     ap.add_argument("--aplicar", action="store_true", help="cria a issue (padrão: ensaio)")
     ap.add_argument("--pacotes", type=Path, help="pasta dos pacotes (padrão: .claude/plano-100/pacotes deste checkout; fica fora do Git)")
     a = ap.parse_args(argv)
@@ -157,7 +161,7 @@ def main(argv: list[str] | None = None, gh: Gh | None = None, pacotes: Path | No
         if existente:
             print(f"já existe a issue #{existente[0]} ({existente[1].lower()}) com a marca do item {a.item}: nada criado")
             return 0
-        pedidos = rotulos_da_issue(pacote, a.frente, a.agente)
+        pedidos = rotulos_da_issue(pacote, a.frente, a.agente, a.agente_nuvem)
         existentes = {str(x.get("name")) for x in json.loads(gh("label", "list", "--repo", a.repo, "--limit", "200", "--json", "name"))}
         rotulos = [r for r in pedidos if r in existentes]
         for r in pedidos:

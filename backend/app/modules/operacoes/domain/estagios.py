@@ -83,6 +83,9 @@ class Leitura:
     #: Onde o alvo PAROU, quando parou (`bloqueado`/`cancelado`): o estágio que não foi alcançado. Na criação é o da
     #: conferência (`conta`, `sessao`…); na execução, o seguinte ao último alcançado, pulando os marcáveis de fora.
     parou_em: str | None = None
+    #: Quando a ação final voltou a rodar depois do pedido de aprovação (o início da etapa com efeito liberada). Não é
+    #: estágio: separa a espera pela pessoa da latência da ação executada (`domain/latencia.py`).
+    liberado_em: str | None = None
 
 
 _OBJETIVO_FECHADO = {"succeeded", "failed", "cancelled", "uncertain"}
@@ -115,6 +118,7 @@ def derivar(f: FatosDoAlvo) -> Leitura:
     if inicio:
         alcancados[f.abertura] = inicio
     efeito_bloqueado: str | None = None
+    liberado_em: str | None = None
     for e in f.etapas:
         estagio = f.estagio_por_capability.get(e.capability or "")
         if estagio and e.status == "succeeded" and e.terminou_em:
@@ -125,6 +129,8 @@ def derivar(f: FatosDoAlvo) -> Leitura:
         # do liberar é a da liberação). O rascunho fecha antes do pedido de aprovação, ou dentro da etapa que roda sem
         # pedido; o efeito e a verificação, no fim da etapa.
         rascunho = e.pedido_em or e.comecou_em or e.terminou_em or f.objetivo_comecou_em or f.criado_em
+        if e.pedido_de_aprovacao is not None and e.comecou_em:
+            liberado_em = e.comecou_em
         if e.tem_texto:
             alcancados["resposta_gerada"] = rascunho
         if e.tem_texto and (e.pedido_de_aprovacao is not None or e.status in ("running", "succeeded", "failed")):
@@ -152,7 +158,7 @@ def derivar(f: FatosDoAlvo) -> Leitura:
     if estado in ("bloqueado", "cancelado"):
         parou = "acao_bloqueada" if ultimo == "acao_bloqueada" else _seguinte(ultimo, f.abertura)
     return Leitura(estagio=ultimo, estado=estado, motivo=motivo, estagios=_em_ordem(alcancados, f.abertura),
-                   parou_em=parou)
+                   parou_em=parou, liberado_em=liberado_em)
 
 
 def _seguinte(estagio: str, abertura: str) -> str | None:

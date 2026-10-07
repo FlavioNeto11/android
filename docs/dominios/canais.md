@@ -337,7 +337,20 @@ avisos depois da faxina"), e a trava cai no TTL.
     nunca vira o dono. Fora das listas de perguntas o app não muda nada, e o comentário que autorize efeito fora da
     máquina segue pedindo a confirmação no Telegram (28.30), com ou sem app reconhecido. Dentro das listas de perguntas
     nenhum código pede o 28.30: a resposta vai à orquestradora sem Telegram, e quem barra o efeito externo é ela, ao ler
-    a resposta (comentário nunca autoriza efeito em conta real).
+    a resposta (comentário nunca autoriza efeito em conta real). **Superado em parte pelo 28.77 (abaixo):** a conferência
+    de autoria deste item (28.54) e do 28.30 deixa de ser trava para REGISTRAR a resposta; fica como informação.
+  - **Regra de 07/10 01:47Z, sem trava de autoria nem confirmação (28.77):** o dono respondeu no Trello e mandou no
+    Telegram, literal: "acabei de responder no trello, a partir de agora nao precisa checar novamente por aqui do trello pra
+    ca no app ou na web, respondeu la ja tome como verdade". A orquestradora ampliou: a resposta dele num cartão de
+    pergunta (P-NNN), pelo app OU pela web, é REGISTRADA e o cartão MOVIDO na hora, SEM confirmação no Telegram nem no chat,
+    inclusive para apagar dado ou efeito externo. **Supera:** a checagem de autoria (28.30 e 28.54: `autoria=app_do_dono`,
+    `digitado` ou ausente valem igual; vira só uma informação no bloco "RESPOSTA DO DONO") e a confirmação em bloco de
+    06/10 (28.71). **Continua:** (a) as condições escritas no próprio cartão (por exemplo, "2ª pasta só depois de conferir")
+    valem e a Canais as lê antes de agir; (b) a resposta AMBÍGUA (vazia, com "?", que cita outra pergunta, ou curta sem
+    sim, não ou escolha reconhecível) NÃO é registrada: volta como pergunta nova no Trello; (c) o comentário do dono
+    FORA das listas de perguntas segue pelo 28.30 (cartão de plano não é pergunta); (d) `autoria=app` e `nao_confirmada`
+    continuam não sendo o dono. Os dois scripts (`registrar_resposta.py` e `resposta_pronta.py`) já seguem a regra; a
+    Central não muda aqui (a classificação do 28.52/28.54 segue gravando a autoria em `responde_a`, agora só como dado).
   - **Alvo desconhecido (28.55):** o comentário num cartão FORA das listas de perguntas e sem fato (um cartão que a Central
     não conhece) escrito por um app que o dono não reconheceu (o app da Central, um script, uma sessão) deixa de valer como
     digitado: vira `outro`, sem texto, e a linha leva `responde_a = alvo_desconhecido;autoria=app`. O comentário sem
@@ -415,6 +428,30 @@ avisos depois da faxina"), e a trava cai no TTL.
 | Métrica, custo, risco | Programa | Canais e orquestradora | A cada deploy refaz o que tem fonte automática (aparelhos e testes); o resto, na rodada semanal. A primeira linha é `Leitura de DD/MM HH:MMZ`, e a leitura com mais de 3 dias é listada |
 | Registro de rotina, estudo ou análise | Execução, Concluído nesta semana | Canais | Na virada da semana vai para a lista "Rotina, estudos e registros" do Histórico |
 
+- **Regra, o procedimento da resposta do dono a uma pergunta (28.65):** a Canais não escreve mais script avulso. Depois de
+  conferir a resposta no banco, roda `.claude/trello/registrar_resposta.py --cartao <id> --entrada <N> --canal trello|telegram
+  --quando "DD/MM HH:MMZ" --literal "<texto exato>" [--leitura "..."] [--autoria app_do_dono] [--nota "..."]` (sem `--aplicar`
+  é ensaio; `--confirmacao` é descontinuado desde o 28.77: não é exigido e, se vier, só aparece como nota). Com
+  `--aplicar` ele põe o bloco "RESPOSTA DO DONO" no topo da descrição, move o cartão para Perguntas respondidas (no topo, com
+  " · respondida em DD/MM" no nome) e cria "⚖️ <nome>" em Programa › Decisões do dono com o link da pergunta. É idempotente
+  (descrição já registrada não se reescreve; decisão de mesmo nome não se duplica). O literal do dono vai como está e o
+  redator só avisa se mudaria algo; leitura e nota passam por `redacao.redigir`.
+- **Regra, a resposta pronta (28.71, sem confirmação desde o 28.77):** a resposta do dono num cartão de pergunta, por app ou
+  pela web, vale como dada e se registra na hora; NÃO há "ok" em bloco no Telegram nem no chat (regra de 07/10 01:47Z, em C-24).
+  Em vez do vigia e de um `registrar_resposta.py` por cartão, a Canais roda
+  `.claude/trello/resposta_pronta.py --base <id da última entrada vista> [--aplicar]` (sem `--aplicar` é ensaio e só lê; o
+  `--ok-no-chat` foi removido). Ele lê as entradas do dono em `canal_entradas`, liga cada `pergunta:P-NNN` (com
+  `autoria=app_do_dono`, `digitado` ou ausente: só informação; `app` e `nao_confirmada` não são ele) ao cartão `P-NNN` ABERTO
+  de "Perguntas para você" (a resposta mais recente por pergunta; `P-NNN` já em Perguntas respondidas é ignorada; sem cartão
+  aberto sai "sem cartão" e nada se inventa) e imprime, por pendente pronta, o comando do `registrar_resposta.py` (o literal
+  sai cortado em 80 caracteres e redigido, sem handle, e-mail nem telefone; o `--aplicar` daqui usa o texto inteiro). **Regra
+  do texto:** clara = só "sim", "não", "ok", "pode", "siga/pode seguir a recomendação" ou uma escolha explícita ("A", "opção
+  B", "B fica"); livre = texto longo sem "?" (ou curto começando por sim/não/ok com ressalva), registrado LITERAL e marcado
+  "ler (Canais)", porque as condições escritas valem; ambígua = vazio, com "?", que cita outra `P-NNN`, "sim e não" juntos,
+  ou curto sem sim, não ou escolha reconhecível, e NÃO é aplicada: sai "ambígua: voltar como pergunta nova no Trello". Com
+  `--aplicar`, todas as prontas (claras e livres), uma por uma, pela função `registrar` do `registrar_resposta.py`
+  (idempotente; uma linha por pendente: registrada, já registrada ou faltou, sem a mensagem do erro). Nunca comenta em
+  cartão. Prova: `simulated` (fakes de banco e Trello); `real`: `not_run`.
 - **Regra, a reconciliação total:** a cada espelho de deploy e a cada `claude-plan-100.py aplicar`, a Canais roda
   `.claude/trello/reconciliar.py` (primeiro sem `--aplicar`, que só relata, depois com ele). O script confere **todos** os
   cartões do quadro Execução com o estado do plano e o deploy de cada item (commit "merge: ID na suíte N"; sem ele, o id
@@ -438,8 +475,70 @@ avisos depois da faxina"), e a trava cai no TTL.
   leitura nova troca o prefixo `**Leitura de ...**` da antiga. M8 e M9 só mudam quando o deploy é o mais recente do
   CHANGELOG. Sem `--aplicar` só imprime (a rede do ensaio é só leitura); `--offline` não usa rede. Testes:
   `.claude/trello/test_marco.py` (simulated, trechos fictícios no formato do CHANGELOG).
+- **Como fechar um deploy (28.67):** um comando só, no lugar dos scripts soltos: a Canais prepara a raiz
+  (`git fetch -q origin` e `git -C <raiz> checkout --detach origin/main`, porque o checkout central pode estar atrás) e roda
+  `python .claude/trello/espelho_do_deploy.py --raiz <raiz> [--deploy NN] [--aplicar]` (sem `--aplicar` só relata). Ele
+  confere que a raiz é o `origin/main` mais recente (se não for, para sem tentar trocar de ramo), cria em Próximas o cartão
+  de cada ID do plano sem cartão aberto nos 3 quadros (texto pela `redacao.redigir`, com `android-NN`, `emulator-NN` e
+  `worker-NN` trocados por "aparelho"), faz a reconciliação TOTAL (a decisão é a do `reconciliar.py`), cria ou atualiza o
+  marco e as leituras M8 e M9 (`marco.py`) e imprime UMA linha de contagens (plano, cartões, sem cartão, nasceram, para
+  Concluído, para Em validação, só linha, marco, M8, M9, falhas). Cada passo para no primeiro erro de rede e diz qual foi;
+  os três são idempotentes, então repetir o comando depois de uma queda só faz o que faltou. Testes:
+  `.claude/trello/test_espelho_do_deploy.py` (simulated, dados fictícios). Prova `real`: o fechamento do primeiro deploy
+  com este comando (`not_run` até lá).
+- **Um cartão por aparelho com conta real (28.69):** `python .claude/trello/cartoes_de_aparelho.py [--base URL | --arquivo
+  instancias.json] [--aplicar]` (sem `--aplicar` é ensaio: só lê e imprime as ações). Lê `GET /api/instances` (`locked_account`,
+  `repair_pause`, `state`) e `GET /api/instances/{id}/personas` (a `session` de cada vínculo); tem conta real o aparelho com
+  vínculo ativo ou conta travada (ADR-055). Um cartão por aparelho no quadro Execução, achado pela linha `Aparelho: <rótulo>`
+  da descrição (só nas listas Em execução, Em validação e Concluído; cartão de item do plano nunca casa). Texto: só o rótulo
+  (o id da API, `android-01`), o estado (pronta, vencida, com erro, em pausa de reparo), o motivo em vocabulário fixo, `Desde:`
+  (data de início, não idade: "há 3 h" mudaria a descrição a cada rodada) e o próximo passo. Nunca entram handle, nome de
+  persona, e-mail, telefone, IP, serial, o `reason` livre da pausa, `attention` nem `detail`; o texto ainda passa por
+  `_sem_contato` e `redacao.redigir`. Pronta → Em execução; vencida, com erro e em pausa → Em validação; o aparelho que
+  perde a conta real (ou some da central) → Concluído. Nome, descrição e lista só mudam quando mudam; a segunda rodada tem 0
+  ações; rótulo com mais de um cartão não é tocado (`duplicados`); leitura que falhou pula o aparelho (`falhas`) em vez de
+  concluí-lo; central sem aparelho nenhum recusa. NUNCA comenta em cartão (entra como "do dono"): só a descrição. Testes:
+  `.claude/trello/test_cartoes_de_aparelho.py` (simulated, Trello e central falsos). Prova `real`: `not_run` (o `--aplicar`
+  nunca foi rodado).
+- **Critérios da prova no cartão-pai (28.70):** `python .claude/trello/pai_da_prova.py --operacao op-... | --arquivo
+  relatorio.json [--ler-cartao] [--aplicar]` escreve na DESCRIÇÃO do cartão-pai da prova de 07/10 (quadro Execução; nunca
+  em comentário, que pela API entra como "do dono") um bloco entre `<!-- criterios-da-prova:inicio -->` e `...:fim -->`
+  com os critérios lidos de `GET /api/operacoes/<id>/relatorio` (adendo v1.111, Jev 31.195), no lugar de copiados à mão.
+  O contrato lido é o FINAL do adendo (19 critérios: os 16 do dono mais 2b, 3b e 11b), isolado em `ler_relatorio`:
+  se o adendo mudar, o ajuste é só ali. Uma linha por critério (✅ provado real, ⚠️ implementado ou testado em simulação,
+  ⬜ o resto, com "nesta operação: sim/não/não medido"), mais hora do relatório (`gerado_em`, nunca a de agora), id curto
+  da operação, status, ambiente, capacidade, identidades e custo. **Não medido** (ausente, `null` ou `nao_medido`) sai
+  "não medido", nunca "sim" nem zero. A evidência em texto livre não vai ao Trello (só "com evidência" ou "sem
+  evidência"), e o corpo passa por `_sem_contato` e `redacao.redigir`. Só o trecho entre os marcadores muda (sem marcadores,
+  o bloco vai ao fim); marcadores quebrados, relatório sem `criterios` e cartão fora do quadro Execução são RECUSADOS sem
+  gravar. Repetir com o mesmo relatório é 0 ações. Sem `--aplicar` é ensaio (imprime o bloco; `--ler-cartao` só lê). Testes:
+  `.claude/trello/test_pai_da_prova.py` (simulated, relatório e Trello falsos). Prova `real`: `not_run` até a rota do
+  relatório estar implantada (corte 60) e o primeiro `--aplicar` autorizado.
+- **Auditoria diária de coerência dos 3 quadros (28.72):** `python .claude/trello/auditoria_dos_quadros.py [--json] [--raiz
+  <checkout>]`, SÓ LEITURA (6 GETs; um guarda recusa qualquer método que não seja GET; nunca escreve no Trello nem avisa
+  ninguém). Seis verificações, cada uma com contagem e até 5 exemplos, SÓ com o ID (`NN.NN`, `P-NNN` ou o rótulo
+  `android-NN`; nunca nome de cartão nem texto da descrição, e tudo passa por `_sem_contato` e `redacao.redigir`): (1)
+  duplicados (dois cartões abertos do mesmo quadro com o mesmo ID de plano como começo exato do nome e o mesmo sufixo de subitem `-C`/`F5`, tirado só o `🙋`; `[A]` e `#NNN ·` nunca duplicam; o mesmo P-NNN no Execução também conta); (2) item de `docs/plano-100.md` sem cartão em nenhum
+  quadro (a conta do `espelho_do_deploy`, com a leitura de ID do `reconciliar`); (3) pergunta com a resposta do dono no topo
+  ainda em "Perguntas para você", ou em "Perguntas respondidas" sem nenhum bloco datado no topo; (4) cartão de aparelho
+  (`Aparelho: <rótulo>`) duplicado, fora das 3 listas de aparelho ou em lista diferente do "Estado da sessão" escrito nele;
+  (5) item implementado e implantado ainda em lista de trabalho (a decisão é a do `reconciliar.decidir`, que aqui só
+  reporta; o Git só é consultado se há candidato); (6) cartão em lista fechada ou desconhecida (no Execução; Programa e
+  Histórico têm listas próprias, só se confere que a lista existe). Os cartões da lista "Prova 07/10" ficam fora, como no
+  `reconciliar`. Plano ilegível: 2 e 5 saem "não lidas"; quadro ilegível: `ok: false`, e o resumo diz "não consegui ler",
+  nunca "nada fora do lugar". `--json` imprime o resultado para outro script; `secao_do_resumo(resultado)` devolve UMA
+  linha HTML do Telegram, que o `canais/resumo_diario.py` mostra entre os cartões movidos e o `Crítico` (import protegido e
+  opcional: se a auditoria falhar, o resumo sai como antes com "não consegui ler"; a coerência não entra em `Crítico`).
+  Testes: `.claude/trello/test_auditoria_dos_quadros.py` e `.claude/canais/test_resumo_diario.py` (simulated, cartões e
+  Trello falsos). Prova `real` (ensaio só-GET, 07/10/2026 00:46Z): 389 cartões no Execução, 145 no Programa, 461 no
+  Histórico; 0 achados. A primeira versão da verificação 1 contou 5 "duplicados" que eram subitens, cartões de pergunta
+  (`[A]`) e de PR (`#NNN ·`); a regra do mesmo ID, mesmo sufixo e mesmo quadro os separou.
+- **Aviso de mudança de estado de aparelho de conta real (28.73):** `python .claude/canais/avisos_de_aparelho.py [--ciclo | --enviar | --laco --intervalo-s 120] [--estado <json>] [--cooldown-min 10]`.
+  Reaproveita a leitura e a classificação do 28.69 (`trello/cartoes_de_aparelho.py`: `GET /api/instances` e `/personas`, só GET; estados pronta, vencida, com erro, em pausa de reparo; aparelho sem conta real é ignorado). Compara cada aparelho com o ÚLTIMO estado AVISADO, guardado em `--estado` (padrão `.claude/handoffs/canais/estado-avisos-de-aparelho.json`, fora do Git; só rótulo, estado, motivo fixo e hora) e manda UMA mensagem HTML do Telegram por ciclo, no molde dos avisos ("Aparelhos de conta real: N mudaram de estado", uma linha `• android-NN: de <antigo> para <novo> (motivo)`, `Crítico:` e `Espera você: nada`). Crítico só quando um aparelho que estava pronto passou a ter erro (sessão caiu). O primeiro ciclo (sem arquivo de estado, ou com arquivo ilegível) só grava o retrato e não avisa; aparelho que aparece depois também só entra no retrato. Cooldown por aparelho (10 min): a mudança dentro do cooldown do último aviso daquele aparelho fica pendente e só entra no aviso seguinte se o estado ainda diferir do último avisado, então a oscilação que volta ao mesmo estado não avisa. Leitura da central que falha não avisa nem zera o retrato; na 3ª falha seguida sai UM aviso "não consegui ler os aparelhos", sem repetir até a leitura voltar (a flag só sobe com `message_id`). Falha de envio não avança o retrato: o ciclo seguinte tenta de novo. Texto: só o rótulo `android-NN` e o vocabulário fixo; nunca handle, nome de persona, e-mail, telefone, IP nem serial, e o corpo passa por `_sem_contato` e `redacao.redigir`; no máximo 12 linhas ("e mais N aparelho(s)"). Modos: o padrão é ENSAIO de um ciclo (lê, compara, imprime; não grava nem envia); `--ciclo` grava e imprime; `--enviar` grava e envia pelo `telegram_status.py` (só com o sinal da orquestradora; não vale com `--arquivo`); `--laco` repete `--ciclo --enviar` até Ctrl+C (a Canais roda em segundo plano e um ciclo que quebra não derruba o laço). Testes: `.claude/canais/test_avisos_de_aparelho.py` (25, `simulated`: central, Telegram e relógio falsos). Prova `real`: ensaio só-GET em 07/10/2026 00:53Z (15 aparelhos, 5 com conta real, 0 mudanças, primeiro ciclo só retrato, estado não gravado); o laço com `--enviar` é `not_run` até a Canais ligá-lo.
 - **Hoje:** `.claude/trello/reconciliar.py` (testes em `.claude/trello/test_reconciliar.py`), a rotina da skill `trello` e o
   aviso no fim do `aplicar` do plano. As exceções acima (sem estado, "Espera você") ficam num relato para o dono ver.
+- **Saúde dos processos de segundo plano (28.75):** `python .claude/canais/saude_dos_lacos.py [--json | --avisar | --religar] [--estado <json>] [--cooldown-min 30] [--base <id>]`. Checagem SÓ LEITURA do vigia das respostas do dono (`vigia_dono.py`, que sai de propósito a cada recado novo) e do laço de avisos de aparelho (28.73). Lista os processos Python do Windows (`Get-CimInstance Win32_Process` por subprocess; só nome do script e PID, nunca a linha de comando; o filho do lançador do venv não conta em dobro) e confere: vigia = existe processo (ausente com recado novo do dono pendente, isto é, id mais novo de `canal_entradas` do_dono=1 maior que a base do último vigia visto, é esperado SÓ até o cooldown: o estado guarda `vigia_saiu_em`, a 1ª checagem com ele ausente, que some quando ele volta; passado o cooldown vira problema, "parado há mais de 30 min com recado do dono pendente", e entra no aviso; ausente sem pendência, ou sem saber a base ou sem ler o banco, é problema ou "não verificado", nunca saudável); laço = carimbo `atualizado_em` do `estado-avisos-de-aparelho.json` mais novo que 3 x o intervalo (senão "parado ou preso"); central = `GET /api/health` 200 (senão "não respondeu"). Saída no estilo `vigia: ativo (1 processo)`, `laço de aparelhos: ativo, último ciclo há 1 min`, `central: 200`. O padrão é ensaio (não grava nem envia). `--avisar` manda UM aviso ao Telegram do dono (pelo `telegram_status.py`, como o `resumo_diario.py`) só quando algo está parado, com cooldown de 30 min (estado em `--estado`, padrão `.claude/handoffs/canais/estado-saude-dos-lacos.json`, fora do Git) e UM aviso "voltou ao normal" quando tudo normaliza (só se o problema chegou a ser avisado); molde dos avisos (`Crítico:` = o que parou, `Espera você: nada`), sem caminho, PID, comando nem nome de persona. `--religar` NÃO executa nada: só imprime os comandos exatos para a Canais relançar o que parou (o do vigia leva a base de `--base` ou o maior id lido de `canal_entradas`). **Gancho do 29.186 (não criado aqui):** a tarefa do host rodaria `saude_dos_lacos.py --avisar` a cada 5 minutos e relançaria o laço; o ponto de encaixe é `comandos_de_religar()`, que devolve os `argv` sem executar. Sem migração e sem `backend/app`.
+- **Um cartão por alvo da operação da prova (28.76):** `python .claude/trello/cartoes_por_alvo.py --operacao op-... [--operacao op-...] | --arquivo operacao.json [--aplicar | --laco --intervalo-s 120]`. Mantém UM cartão por alvo (persona) da operação no quadro Execução, só nas listas Em execução, Em validação e Concluído (nunca nas listas "Prova 07/10" nem em cartão com ID de plano no nome). Fonte: `GET /api/operacoes/<id>` (formato de `ServicoDeOperacoes.ler`: `alvos[]` com `estagio`, `estado`, `motivo`, `parou_em`, `estagios[{estagio, em}]`, `resultado.acao_final{tipo, verificada}`); não depende do relatório consolidado do corte 60. Lista: pendente ou em curso = Em execução; bloqueado, cancelado ou concluído SEM a ação verificada (só preparou e espera a liberação) = Em validação; concluído com a ação verificada = Concluído. Nome `Prova 07/10 · P03 · <estágio em palavras> (op-xxxxxx)` (parou: `parou em <estágio>`); descrição com a chave `Alvo da operação: <op-id>/P03` (idempotência, como `Aparelho:` do 28.69), a situação, o estágio, a hora UTC da ÚLTIMA MUDANÇA (a do último estágio alcançado, nunca a de agora, para a segunda rodada ter 0 ações), o motivo em vocabulário fixo e o próximo passo quando precisa de olhar, a ação final, se foi verificada (sim, não, não conferida, sem ação) e `Aparelho usado: android-NN` (não `Aparelho:`, que é a chave do 28.69 e da auditoria). A persona é só o rótulo `P01`, `P02`...: a posição na lista `alvos` (o servidor a ordena por `seq`, fixo desde a criação), estável DENTRO da operação e sem relação entre operações. Nunca entram nome, handle, ids de persona, conta ou execução, e-mail, telefone, IP, serial, comando, assunto, fontes, texto de comentário, legenda ou DM, custo, nem o texto livre do motivo (o que o dicionário não conhece vira "motivo não classificado"); nome e descrição ainda passam por `_sem_contato` e `redigir`. Idempotente: acha o cartão pela chave, só grava nome, descrição ou lista quando mudam, nunca cria duplicata (chave com mais de um cartão não se toca), nunca comenta (o comentário entra como "do dono") e só mexe em cartão das operações PEDIDAS. Modos: o padrão é ENSAIO de um ciclo (lê a central e o quadro, só GET, imprime as ações); `--aplicar` grava; `--laco` repete `--aplicar` a cada `--intervalo-s` (mínimo 120 s: `GET /api/operacoes/<id>` GRAVA ao ler e pode fechar a operação, então só se lêem as operações pedidas) até todas estarem encerradas num ciclo limpo e roda UM ciclo a mais de confirmação (deve ter 0 ações) antes de sair; leitura que falha num ciclo (de uma operação ou do quadro) pula só o que não leu, não mexe em cartão e não derruba o laço; alvo com `estado` desconhecido é pulado e contado, sem prender o laço. Última linha: `operações <n> (encerradas <n>); alvos <n>; criar|criados <n>; atualizar|atualizados <n>; movidos <n>; duplicados <n>; falhas <n|nenhuma>`. Testes: `.claude/trello/test_cartoes_por_alvo.py` (44, `simulated`: central e Trello falsos, operação fabricada, `comentar` falha o teste). Prova `real`: `not_run` até a rodada de 07/10 (10:00Z); o `--aplicar` e o laço reais são da Canais, com o sinal da orquestradora. Sem migração e sem `backend/app`.
 - **No produto:** nada ainda. A Central só tem o espelho dos avisos; levar a reconciliação para dentro dela é decisão a
   tomar com a orquestradora (item novo).
 - **Prova:** `simulated` (`.claude/trello/test_reconciliar.py`, 17 testes com dados fictícios). `real`: ensaio e aplicação
@@ -1004,6 +1103,40 @@ Os scripts da operação provisória ficam versionados em `.claude/canais/`, e o
       importa (a âncora do 28.48 também): o deploy vem antes do uso. O script e o backend moram no mesmo checkout e
       chegam juntos no merge; a janela só existe se o script for usado de um worktree contra o central antigo;
 - `resumo_laco.py`: o resumo de hora em hora, com `--carimbar` e `--ensaio`;
+- `resumo_rodada.py` (28.66): UM resumo consolidado de uma operação encerrada (31.154) para o Telegram do dono, em até 12
+  linhas no molde do aviso de deploy (assunto, resultado com números, `Crítico:` e `Espera você:`):
+  - lê `GET /api/operacoes/<id>` (ou `--arquivo operacao.json`, offline) e recusa a operação em curso;
+  - mostra solicitados, com conta, com sessão, concluídos, bloqueados, o bloqueio por motivo (contagem), as ações por tipo,
+    o custo em US$ contra o teto e a duração;
+  - nunca leva nome ou @handle de persona ou conta, id, comando, assunto, fontes nem o texto de comentário, legenda ou DM;
+    o motivo (texto livre) sai sem os nomes do próprio JSON e o corpo passa por `redacao.redigir`; o único link é o do
+    painel, posto depois da redação;
+  - o modo padrão só imprime o HTML (ensaio); `--enviar` usa o `telegram_status.py` e imprime o `message_id`, só com o sinal
+    da orquestradora. Prova `simulated` (`.claude/canais/test_resumo_rodada.py`); a `real` espera uma operação encerrada;
+- `resumo_diario.py`: UM resumo por dia ao dono (para as 07:00 de Brasília), em até 12 linhas no mesmo molde (assunto,
+  resultado com números, `Crítico:` e `Espera você:`). Quatro leituras independentes; a que falha sai como "não consegui
+  ler" (nunca zero) e entra no `Crítico:`, e "Espera você: nada" só sai com as perguntas lidas e nenhuma aberta:
+  - plano: `claude-plan-100.py check` (total) e `estado.json` (implementados, parciais, bloqueados);
+  - deploys em 24 h: as entradas `## <data> — Deploy NN` mais recentes do CHANGELOG, com a hora do commit do Git que as
+    escreveu; só número e hora;
+  - perguntas abertas: contagem e ids `P-NNN` dos cartões da lista "Perguntas para você" (nada de nome inteiro nem
+    descrição);
+  - cartões movidos em 24 h, por lista de destino, nos 3 quadros: pelas actions `updateCard:idList` do Trello (`listAfter`),
+    contando cada cartão pelo último movimento. Escolhida no lugar do `dateLastActivity`, que também muda por comentário
+    e etiqueta e não diz a lista de destino;
+  - custo do dia (28.74, linha opcional, só GET no loopback do central), em DUAS medidas que a linha rotula e não soma:
+    (a) por operação e no total das execuções, o `custo.total_usd` que `GET /api/operacoes/<id>` já devolve (vem de
+    `planning.costs.spent_usd`, tokens x preços, nunca de `ai_calls.usd`) das operações em curso ou criadas/encerradas em
+    24 h; é o custo acumulado da operação, não só o das 24 h; no máximo 3 listadas (as mais caras, id curto `op-xxxxxx`) e
+    "e mais N"; campo ausente = "não medido", nunca zero; (b) "chamadas de IA (livro-caixa)": `GET /api/ai/balances`,
+    soma de `spent_since_usd` + `external_usd` das contas em uso com âncora de até 26 h (consumo total de IA desde a
+    âncora diária, de qualquer origem; sem âncora recente = "não medido"). Metade que falha diz "não consegui ler"; só se as
+    duas falham a linha diz "não consegui ler a central"; nunca entra em `Crítico:`. Trade-off: `GET /api/operacoes/<id>`
+    é uma leitura por operação (teto de 40; o excedente sai "não medido"), e o relatório do servidor (`custo.por_peca_usd`)
+    ainda não existe (corte 60);
+  - o corpo passa por `_sem_contato` e `redacao.redigir`, como os outros resumos. O modo padrão só imprime (ensaio);
+    `--arquivo situacao.json` ensaia offline; `--enviar` usa o `telegram_status.py`, só com o sinal da orquestradora. Prova
+    `simulated` (`.claude/canais/test_resumo_diario.py`); a `real` e o agendamento das 07:00 ficam `not_run`;
 - `url_painel.py`: grava ou recua o `avisos.url_painel` do `config.yaml`, com backup.
 
 As ferramentas do Trello ficam em `.claude/trello/`.

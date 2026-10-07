@@ -94,6 +94,56 @@ def coletar(repo: str, desde: datetime, gh: Gh) -> tuple[dict[str, dict[str, int
     return {k: dict(v) for k, v in por.items()}, len(runs)
 
 
+_RESUMO = re.compile(r"\*\*(?P<job>[^*]{1,60})\*\*: .*soma das etapas (?P<soma>\d+) s(?P<resto>.*)")
+_COBRADOS = re.compile(r"~?(\d+) min cobrados")
+_TESTES = re.compile(r"(pytest|vitest) (\d+) passed")
+WORKFLOWS_COM_RESUMO = ("CI leve do PR", "CI")
+MAX_LOGS = 40
+
+
+def resumos_da_semana(repo: str, desde: datetime, gh: Gh) -> tuple[dict[str, dict[str, int]], int, int]:
+    """Lê as linhas `Resumo do job` (29.184) dos logs dos runs da janela. ({job: contadores}, runs com resumo, runs lidos)."""
+    runs = _itens(gh("api", "--paginate", f"repos/{repo}/actions/runs?per_page=100&created=%3E%3D{desde.strftime('%Y-%m-%d')}",
+                     "--jq", ".workflow_runs[] | select(.status==\"completed\") | {id, name, created_at}"))
+    runs = [r for r in runs if r.get("name") in WORKFLOWS_COM_RESUMO and (c := _hora(r.get("created_at"))) is not None and c >= desde][:MAX_LOGS]
+    por: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    com_resumo = 0
+    for r in runs:
+        try:
+            log = gh("run", "view", str(int(str(r["id"]))), "--repo", repo, "--log")
+        except RuntimeError:
+            continue
+        achou = False
+        for linha in log.splitlines():
+            m = _RESUMO.search(linha)
+            if not m:
+                continue
+            achou = True
+            d = por[m["job"].strip()]
+            d["corridas"] += 1
+            d["soma_s"] += int(m["soma"])
+            c = _COBRADOS.search(m["resto"])
+            d["cobrados_min"] += int(c[1]) if c else 0
+            for ferramenta, n in _TESTES.findall(m["resto"]):
+                d[f"testes_{ferramenta}"] = max(d.get(f"testes_{ferramenta}", 0), int(n))
+        com_resumo += achou
+    return {k: dict(v) for k, v in por.items()}, com_resumo, len(runs)
+
+
+def relatorio_resumos(por: dict[str, dict[str, int]], com_resumo: int, lidos: int) -> str:
+    linhas = ["", "### Resumos por corrida (linha `Resumo do job`, 29.184)", "",
+              f"- Runs lidos: {lidos}; com resumo: {com_resumo} (os anteriores ao 29.184 não têm a linha)."]
+    if not por:
+        return "\n".join(linhas) + "\n"
+    linhas += ["", "| job | corridas | soma média das etapas (s) | min cobrados (soma, estimado) | testes (maior contagem) |", "|---|---|---|---|---|"]
+    for job in sorted(por):
+        d = por[job]
+        testes = " · ".join(f"{k.split('_')[1]} {v}" for k, v in sorted(d.items()) if k.startswith("testes_")) or "-"
+        nome = re.sub(r"[^\w .\-/·()+]", " ", job)  # o nome vem do log: sem #N, link, imagem, HTML, menção nem barra de tabela
+        linhas.append(f"| {nome} | {d['corridas']} | {d['soma_s'] // d['corridas']} | {d['cobrados_min']} | {testes} |")
+    return "\n".join(linhas) + "\n"
+
+
 def billing_legivel(repo: str, gh: Gh) -> str:
     try:
         gh("api", f"users/{repo.split('/')[0]}/settings/billing/actions")
@@ -138,6 +188,7 @@ def main(argv: list[str] | None = None, gh: Gh | None = None, agora: datetime | 
     ap.add_argument("--repo", required=True)
     ap.add_argument("--dias", type=int, default=7)
     ap.add_argument("--anexar", type=Path, help="acrescenta o relatório a este arquivo (nunca sobrescreve)")
+    ap.add_argument("--resumos", action="store_true", help="lê também as linhas `Resumo do job` dos logs do CI leve e do CI (29.184; baixa até 40 logs)")
     a = ap.parse_args(argv)
     for f in (sys.stdout, sys.stderr):
         if hasattr(f, "reconfigure"):
@@ -150,6 +201,8 @@ def main(argv: list[str] | None = None, gh: Gh | None = None, agora: datetime | 
     try:
         por, lidos = coletar(a.repo, agora - timedelta(days=a.dias), gh)
         texto = relatorio(por, lidos, agora, a.dias, billing_legivel(a.repo, gh))
+        if a.resumos:
+            texto += relatorio_resumos(*resumos_da_semana(a.repo, agora - timedelta(days=a.dias), gh))
     except (RuntimeError, ValueError, KeyError, TypeError, AttributeError) as e:
         print(f"erro: {e}", file=sys.stderr)
         return 1

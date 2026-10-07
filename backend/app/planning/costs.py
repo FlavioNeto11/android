@@ -10,6 +10,7 @@ de graça. Sem isso, o destino de um fallback não cadastrado (o caso do achado 
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Iterable
 
 from ..db import Database
@@ -110,6 +111,32 @@ def spent_usd(db: Any, prices: dict[str, list[float]], *, run_id: str | None = N
         f" SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) output_tokens,"
         f" SUM(COALESCE(usd, 0)) usd_declarado FROM ai_calls WHERE {where} GROUP BY model", params)
     return round(sum(row_usd(prices, linha) + float(linha["usd_declarado"] or 0) for linha in linhas), 6)
+
+
+def spent_usd_por_run(db: Database, prices: dict[str, list[float]], run_ids: Sequence[str], *,
+                      origem: str | None = None) -> dict[str, float]:
+    """`spent_usd(run_id=…)` de várias execuções numa consulta só (o GET da operação com 30 alvos fazia 90). A conta é
+    a mesma, execução por execução: agrupa por execução e modelo, com o mesmo filtro do simulado e o mesmo `usd`
+    declarado. A execução sem linha fica de fora do dicionário (o chamador lê 0)."""
+    if not run_ids:
+        return {}
+    marcas = ",".join("?" * len(run_ids))
+    where, params = f"run_id IN ({marcas}) AND COALESCE(provider,'') <> 'simulated'", tuple(run_ids)
+    if origem is not None:
+        where += " AND origem=?"
+        params = (*params, origem)
+    linhas = db.query(
+        f"SELECT run_id, model, SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) input_tokens,"
+        f" SUM(CASE WHEN usd IS NULL THEN cache_read ELSE 0 END) cache_read,"
+        f" SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) cache_write,"
+        f" SUM(CASE WHEN usd IS NULL THEN COALESCE(cache_write_1h, 0) ELSE 0 END) cache_write_1h,"
+        f" SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) output_tokens,"
+        f" SUM(COALESCE(usd, 0)) usd_declarado FROM ai_calls WHERE {where} GROUP BY run_id, model", params)
+    somas: dict[str, float] = {}
+    for linha in linhas:
+        rid = str(linha["run_id"])
+        somas[rid] = somas.get(rid, 0.0) + row_usd(prices, linha) + float(linha["usd_declarado"] or 0)
+    return {rid: round(v, 6) for rid, v in somas.items()}
 
 
 def spent_today_usd(db: Any, prices: dict[str, list[float]], *, origem: str | None = None) -> float:

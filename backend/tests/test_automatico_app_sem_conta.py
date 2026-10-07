@@ -17,8 +17,10 @@ from __future__ import annotations
 import secrets as pysecrets
 
 import pytest
+from pydantic import SecretStr
 
 from app.models import PersonaDeviceBody, ProfileCreate
+from app.modules.identity.presentation.schemas import CredentialUpdate
 from app.taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody
 
 from .conftest import Harness
@@ -74,6 +76,10 @@ async def test_sem_aparelho_sem_conta_apto_o_de_conta_real_entra_e_a_previa_diz(
 
 async def test_contraprova_app_de_conta_segue_para_a_persona(harness: Harness) -> None:
     sueli = _persona(harness, "Sueli", "android-02", outlook=True)
+    # ADR-085: o Outlook tem login gerenciado; sem sessão pronta a automação só entra com a senha guardada com consentimento
+    conta = next(c for c in harness.state.social.list_accounts(sueli) if c.app_id == "outlook")
+    harness.state.social.set_account_credential(
+        sueli, conta.id, CredentialUpdate(password=SecretStr(pysecrets.token_hex(8)), consent=True), by="teste")
     s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="leia o último e-mail no Outlook"))
     assert s.modo == "ia" and [e.profile_id for e in s.escolhidas] == [sueli]
     assert [(t.instance_id, t.profile_id) for t in s.targets] == [("android-02", sueli)]

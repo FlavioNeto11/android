@@ -9,7 +9,7 @@ import { formatDecimal, formatGb, formatInt, formatMb, formatPercent, plural } f
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { formatClock } from '../../lib/time';
 import { apiHost, JANELAS_EM_HORAS, type AmostraDoHost, type AmostrasDoHost, type JanelaEmHoras } from './contratoDoHost';
-import { defasagemEmMinutos, LIMITE_DE_DEFASAGEM_MIN, pressaoPorAparelho, processosNoTopo, resumoDaJanela, trechosDaSerie } from './resumo';
+import { defasagemEmMinutos, LIMITE_DE_DEFASAGEM_MIN, paraOndeFoiACpu, pressaoPorAparelho, processosNoTopo, resumoDaJanela, trechosDaSerie } from './resumo';
 import styles from './Host.module.css';
 
 /**
@@ -51,15 +51,18 @@ function Corpo({ dado, horas }: { dado: AmostrasDoHost; horas: number }) {
   const r = useMemo(() => resumoDaJanela(amostras), [amostras]);
   const processos = useMemo(() => processosNoTopo(amostras), [amostras]);
   const pressao = useMemo(() => pressaoPorAparelho(amostras), [amostras]);
+  const ondeFoi = useMemo(() => paraOndeFoiACpu(amostras), [amostras]);
   const atraso = defasagemEmMinutos(r.ultima?.ts_utc, Date.now());
   if (!r.ultima) {
     return <EmptyState icon={TriangleAlert} title="Nenhuma amostra do host na janela" hint="O amostrador do host grava uma linha por minuto; sem linha, ele está parado ou o central ainda não o lê." />;
   }
   const u = r.ultima;
   const celulas: [string, string][] = [
-    ['CPU agora', formatPercent(u.cpu_host_pct)],
+    ['CPU agora (instantâneo)', formatPercent(u.cpu_host_pct)],
+    ['CPU média do último minuto', formatPercent(r.cpuMedia.agora)],
     [`CPU média na janela`, formatPercent(r.cpu.media)],
     ['Pico de CPU', r.cpu.pico === null ? '—' : `${formatPercent(r.cpu.pico)} às ${formatClock(r.cpu.picoEm)}`],
+    ['Maior CPU média de um minuto', r.cpuMedia.pico === null ? '—' : `${formatPercent(r.cpuMedia.pico)} às ${formatClock(r.cpuMedia.picoEm)}`],
     ['RAM livre agora', formatMb(u.ram_livre_mb)],
     ['Menor RAM livre na janela', formatMb(r.ramLivreMinimaMb)],
     ['Disco livre', formatGb(u.disco_livre_gb)],
@@ -86,6 +89,7 @@ function Corpo({ dado, horas }: { dado: AmostrasDoHost; horas: number }) {
         <h2 id="host-series" className={styles.subtitulo}>{rotuloDaJanela(horas)}</h2>
         <div className={styles.series}>
           <Serie titulo="CPU do host (%)" amostras={amostras} valor={(a) => a.cpu_host_pct} max={100} formato={formatPercent} />
+          <Serie titulo="CPU média do minuto (%)" amostras={amostras} valor={(a) => a.cpu_media_pct} max={100} formato={formatPercent} />
           <Serie titulo="CPU dos emuladores (% do host)" amostras={amostras} valor={(a) => a.qemu_host_pct} max={100} formato={formatPercent} />
           <Serie titulo="RAM livre" amostras={amostras} valor={(a) => a.ram_livre_mb} formato={formatMb} />
           <Serie titulo="Núcleos usados pelas VMs" amostras={amostras} valor={(a) => a.vm_convidado_nucleos} formato={formatDecimal} />
@@ -112,6 +116,32 @@ function Corpo({ dado, horas }: { dado: AmostrasDoHost; horas: number }) {
         )}
         <p className={styles.mudo}>Só o nome do processo e a CPU; os emuladores (qemu) têm a série própria acima.</p>
       </section>
+      <section aria-labelledby="host-onde" className={styles.secao} data-onde-foi-a-cpu>
+        <h2 id="host-onde" className={styles.subtitulo}>Para onde foi a CPU</h2>
+        {ondeFoi === null ? (
+          <p className={styles.mudo} role="status">Nenhum minuto da janela tem as colunas novas do amostrador (média do minuto, demais processos e não atribuído): ele ainda não as grava ou só começou agora.</p>
+        ) : (
+          <>
+            <div className={styles.rolagem}>
+              <table className={styles.tabela}>
+                <caption className="sr-only">Média da CPU do host por parte, em % do host, nos minutos da janela com tudo medido.</caption>
+                <thead><tr><th scope="col">Parte</th><th scope="col">Média (% do host)</th></tr></thead>
+                <tbody>
+                  <tr data-parte="emuladores"><th scope="row" className={styles.nome}>Emuladores (qemu)</th><td>{formatDecimal(ondeFoi.emuladores)}%</td></tr>
+                  <tr data-parte="topo"><th scope="row" className={styles.nome}>Os 3 processos que mais pesam</th><td>{formatDecimal(ondeFoi.topo)}%</td></tr>
+                  <tr data-parte="demais"><th scope="row" className={styles.nome}>Demais processos</th><td>{formatDecimal(ondeFoi.demais)}%</td></tr>
+                  <tr data-parte="nao_atribuido"><th scope="row" className={styles.nome}>Não atribuído</th><td>{formatDecimal(ondeFoi.naoAtribuido)}%</td></tr>
+                  <tr data-parte="total"><th scope="row" className={styles.nome}>CPU média do host</th><td><strong>{formatDecimal(ondeFoi.total)}%</strong></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p className={styles.mudo}>
+              Média de {plural(ondeFoi.minutos, 'minuto', 'minutos')} com tudo medido. “Não atribuído” é o que nasce e morre dentro do minuto, o núcleo, as interrupções
+              e o tempo das VMs: é onde aparece a carga que a lista de processos não mostra. Pode dar uns décimos negativos por arredondamento.
+            </p>
+          </>
+        )}
+      </section>
       <section aria-labelledby="host-pressao" className={styles.secao}>
         <h2 id="host-pressao" className={styles.subtitulo}>Avisos de pressão por aparelho</h2>
         {pressao.length === 0 ? (
@@ -120,13 +150,14 @@ function Corpo({ dado, horas }: { dado: AmostrasDoHost; horas: number }) {
           <div className={styles.rolagem}>
             <table className={styles.tabela}>
               <caption className="sr-only">Avisos “Convidado sob pressão de CPU” por aparelho na janela.</caption>
-              <thead><tr><th scope="col">Aparelho</th><th scope="col">Avisos</th><th scope="col">Minutos com aviso</th><th scope="col">Último</th></tr></thead>
+              <thead><tr><th scope="col">Aparelho</th><th scope="col">Avisos</th><th scope="col">Minutos com aviso</th><th scope="col">Da janela</th><th scope="col">Último</th></tr></thead>
               <tbody>
                 {pressao.map((p) => (
                   <tr key={p.instanceId} data-aparelho={p.instanceId}>
                     <th scope="row" className={styles.nome}>{p.instanceId}</th>
                     <td>{formatInt(p.avisos)}</td>
                     <td>{formatInt(p.minutos)}</td>
+                    <td>{formatDecimal(p.pctDaJanela)}%</td>
                     <td>{formatClock(p.ultimoEm)}</td>
                   </tr>
                 ))}

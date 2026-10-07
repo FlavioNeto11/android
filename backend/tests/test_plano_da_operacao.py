@@ -245,3 +245,110 @@ def test_chave_normalizada_fora_do_formato_nao_renomeia_nada() -> None:
     plano = Plan(summary="x", planner=PLANEJADOR, steps=[_etapa("abrir", "ABRIR_" + "X" * 40, "p")])
     p, motivo = pdo.normalizar_chaves(plano, ["ABRIR_" + "X" * 40])
     assert p == plano and motivo is not None and "fora do formato" in motivo
+
+
+# ------------------------------------------------------------------ 31.224: o parâmetro confere com o app
+@pytest.mark.parametrize(("parametros", "motivo", "posicao"), [
+    ({"usernmae": "loja.exemplo"}, "parametro_desconhecido", 1),
+    ({"caption_contains": "Setembro Amarelo", "username": "@loja.exemplo"}, "username_com_arroba", 2),
+    ({"username": "loja exemplo"}, "username_com_espaco", 1),
+    # 31.227: a forma e o tamanho vêm da declaração do catálogo (`parametros` no YAML do app)
+    ({"username": "loja.exemplo", "post_author": "@autor"}, "post_author_com_arroba", 2),
+    ({"username": "a" * 31}, "username_longo", 1),
+])
+async def test_parametro_que_nao_casa_com_o_app_e_recusado_antes_de_qualquer_execucao(
+        harness: Harness, parametros: dict[str, str], motivo: str, posicao: int) -> None:
+    """31.224: um erro de digitação na prova não pode custar chamada paga. No app com catálogo (o Instagram), a chave
+    fora dele é recusada com a lista dos aceitos; `username` vai sem arroba e sem espaço. Nada é gravado e nenhuma
+    execução nasce. A recusa diz a posição e o motivo, nunca o nome que veio."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Prova")
+    runs, ops = st.db.scalar("SELECT COUNT(*) FROM runs"), st.db.scalar("SELECT COUNT(*) FROM operacoes")
+    with pytest.raises(OperacaoError) as exc:
+        _servico(harness).criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-app", app_id="instagram",
+                                        parametros=parametros))
+    assert (exc.value.code, exc.value.status) == ("pedido_invalido", 422)
+    assert exc.value.extra["motivo"] == motivo and exc.value.extra["posicao"] == posicao
+    if motivo == "parametro_desconhecido":
+        assert "usernmae" not in exc.value.message
+        assert {"username", "caption_contains"} <= set(exc.value.extra["aceitos"])  # type: ignore[arg-type]
+    else:
+        assert exc.value.extra["campo"] == list(parametros)[posicao - 1]
+    if motivo.endswith("_longo"):
+        assert exc.value.extra["max"] == 30
+    assert st.db.scalar("SELECT COUNT(*) FROM runs") == runs and st.db.scalar("SELECT COUNT(*) FROM operacoes") == ops
+
+
+async def test_parametros_do_catalogo_passam_e_o_app_sem_catalogo_segue_livre(harness: Harness) -> None:
+    pid = _persona(harness, "Livre")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-ok", app_id="instagram",
+                         parametros={"username": "loja.exemplo", "caption_contains": "Setembro Amarelo"}))
+    assert op["parametros"] == {"username": "loja.exemplo", "caption_contains": "Setembro Amarelo"}
+    # o QA Messenger não tem catálogo: a chave e a forma seguem livres, só com o teto genérico (31.227)
+    assert s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-livre", parametros={"contato": "QA-001"}))["id"]
+    assert s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-livre2", parametros={"username": "@qa"}))["id"]
+    # o declarado no limite passa: 30 caracteres no username do Instagram
+    assert s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-30", app_id="instagram",
+                           parametros={"username": "a" * 30}))["id"]
+
+
+@pytest.mark.parametrize(("declaracao", "trecho"), [
+    ({"nome_que_nenhuma_acao_usa": {"forma": "handle", "max": 30}}, "nenhuma ação usa"),
+    ({"username": {"forma": "arroba", "max": 30}}, "forma"),
+    ({"username": {"forma": "handle", "max": 301}}, "max"),
+    ({"username": {"forma": "handle"}}, "esperava"),
+    (["username"], "esperava um mapa"),
+])
+def test_a_declaracao_errada_do_parametro_e_recusada_na_carga(declaracao: object, trecho: str) -> None:
+    """31.227: a declaração do parâmetro no catálogo é conferida na CARGA, como o resto do catálogo."""
+    import yaml
+
+    from app.planning.capabilities import CONHECIMENTO_DE_APPS, CatalogoInvalido, catalogo_de_dados
+
+    dados = yaml.safe_load((CONHECIMENTO_DE_APPS / "com.instagram.android" / "catalogo.yaml").read_text(
+        encoding="utf-8"))
+    assert dados["parametros"]["username"] == {"forma": "handle", "max": 30}
+    with pytest.raises(CatalogoInvalido, match=trecho):
+        catalogo_de_dados({**dados, "parametros": declaracao})
+    assert catalogo_de_dados({k: v for k, v in dados.items() if k != "parametros"}).parametros == {}
+
+
+async def test_rota_devolve_o_motivo_e_a_posicao_no_422(harness: Harness) -> None:
+    import httpx
+
+    from app.main import create_app
+
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Rota")
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    corpo = {"command": COMMAND, "app_id": "instagram", "alvos": [{"profile_id": pid}],
+             "idempotency_key": "teste-op-param-http", "max_usd": 0.5, "parametros": {"nome_do_perfil": "loja.exemplo"}}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post("/api/operacoes", json=corpo)
+    assert r.status_code == 422, r.text
+    d = r.json()["detail"]
+    assert (d["code"], d["motivo"], d["posicao"]) == ("pedido_invalido", "parametro_desconhecido", 1)
+    assert "username" in d["aceitos"] and "nome_do_perfil" not in d["message"]
+
+
+async def test_a_repeticao_da_operacao_aceita_antes_da_regra_devolve_a_mesma(harness: Harness,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """Achados do Codex nos PRs 495 e 503: a operação criada antes da conferência com o app (ou antes de o catálogo
+    mudar), repetida com o mesmo corpo e a mesma chave, devolve a que existe; a chave nova com o mesmo corpo é recusada."""
+    from app.modules.operacoes.infrastructure import servico as mod
+
+    pid = _persona(harness, "Antiga")
+    s = _servico(harness)
+    corpo = {"username": "@loja.exemplo", "post_author": "loja.exemplo.de.roupas.femininas.sp.br"}
+    with monkeypatch.context() as m:              # como era antes do 31.224
+        m.setattr(mod, "_conferir_contra_o_app", lambda *_a, **_k: None)
+        antiga = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-antiga", app_id="instagram", parametros=corpo))
+    assert s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-antiga", app_id="instagram",
+                           parametros=corpo))["id"] == antiga["id"]
+    with pytest.raises(OperacaoError) as exc:
+        s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-nova", app_id="instagram", parametros=corpo))
+    assert exc.value.extra["motivo"] == "username_com_arroba"

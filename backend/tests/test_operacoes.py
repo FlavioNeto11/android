@@ -13,6 +13,9 @@ O que se prova:
 """
 from __future__ import annotations
 
+import asyncio
+import json
+
 import secrets as pysecrets
 from dataclasses import dataclass, field
 from typing import Any
@@ -695,6 +698,322 @@ async def test_conta_com_sessao_em_dois_aparelhos_executa_so_no_vinculo_principa
         "bloqueado", "sessão fora do aparelho principal", "sessao", None)
 
 
+async def test_o_get_traz_a_latencia_por_estagio_por_alvo_e_da_operacao(harness: Harness) -> None:
+    """Latência por estágio e por alvo no GET (métrica de primeira classe do dono, ao lado de custo e sucesso): cada estágio
+    com `etapa_ms`, o alvo com a duração e a espera pelo liberar à parte, e a operação com n/p50/p95/máx por estágio."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Lia", "android-01")
+    _conta(harness, pid, "qa-user-71", sessao_em="android-01")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-latencia"))
+    st.db.execute("UPDATE operacoes SET created_at=? WHERE id=?", ("2026-10-07T10:00:00.000Z", op["id"]))
+    lida_do_alvo = Leitura("resultado_verificado", "concluido", None,
+                           (("persona", "2026-10-07T10:00:00.000Z"), ("aparelho", "2026-10-07T10:00:30.000Z"),
+                            ("acao_preparada", "2026-10-07T10:02:00.000Z"),
+                            ("acao_executada", "2026-10-07T10:09:00.000Z"),
+                            ("resultado_verificado", "2026-10-07T10:09:00.000Z")),
+                           liberado_em="2026-10-07T10:08:00.000Z")
+    s._ler_alvo = lambda op_, a, d: (lida_do_alvo, None)  # type: ignore[method-assign]
+    lida = s.ler(op["id"])
+    alvo = lida["alvos"][0]  # type: ignore[index]
+    assert [(e["estagio"], e["etapa_ms"]) for e in alvo["estagios"]] == [
+        ("persona", 0), ("aparelho", 30_000), ("acao_preparada", 90_000), ("acao_executada", 60_000),
+        ("resultado_verificado", 0)]
+    assert alvo["latencia"] == {"duracao_ms": 540_000, "espera_do_liberar_ms": 360_000}
+    assert lida["latencia_por_estagio"]["acao_executada"] == {"n": 1, "p50_ms": 60_000, "p95_ms": 60_000,  # type: ignore[index]
+                                                              "max_ms": 60_000}
+
+
+async def test_cancelar_alvos_por_filtro_cancela_so_os_que_casam_e_a_operacao_segue(harness: Harness) -> None:
+    """Rodada de 30 alvos: cancelar é tudo ou nada; `cancelar_alvos` cancela só os que casam com TODOS os filtros
+    (perfil, estado, estágio, aparelho), pula a execução terminada e deixa a operação seguir com os outros."""
+    st = harness.state
+    assert st is not None
+    pids = []
+    for i, iid in enumerate(("android-01", "android-02", "android-03")):
+        pid = _persona(harness, f"Zoe{i}", iid)
+        _conta(harness, pid, f"qa-user-8{i}", sessao_em=iid)
+        pids.append(pid)
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-cancelar-alvos"))
+    runs = [_alvo(op, p)["run_id"] for p in pids]
+    st.db.execute("UPDATE runs SET status='completed' WHERE id=?", (runs[0],))
+    for vazio in ({}, {"estados": []}):
+        with pytest.raises(OperacaoError) as exc:
+            s.cancelar_alvos(op["id"], **vazio)
+        assert exc.value.code == "filtro_vazio" and exc.value.status == 422
+    with pytest.raises(OperacaoError) as exc:
+        s.cancelar_alvos(op["id"], estados=["travado"])
+    assert exc.value.code == "estado_desconhecido"
+    # o filtro por aparelho pega o 1º (já terminado: ignorado) e o 2º; o 3º fica de fora
+    feito = s.cancelar_alvos(op["id"], instance_ids=["android-01", "android-02"], quem="Flavio")
+    assert feito["cancelados"] == [pids[1]]
+    assert feito["ignorados"] == [{"profile_id": pids[0], "motivo": "ja_terminou"}]
+    r1 = st.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (runs[1],))
+    assert r1["cancel_requested"] == 1 or r1["status"] == "cancelled"
+    assert st.db.scalar("SELECT status FROM runs WHERE id=?", (runs[2],)) not in ("cancelled",)
+    assert st.db.scalar("SELECT cancel_requested FROM runs WHERE id=?", (runs[2],)) in (0, None)
+    assert feito["operacao"]["status"] != "cancelada"  # type: ignore[index]
+    # os filtros se somam: perfil certo com aparelho errado não casa com ninguém
+    nada = s.cancelar_alvos(op["id"], profile_ids=[pids[2]], instance_ids=["android-01"])
+    assert (nada["cancelados"], nada["ignorados"]) == ([], [])
+    st.db.execute("UPDATE operacoes SET status='cancelada' WHERE id=?", (op["id"],))
+    with pytest.raises(OperacaoError) as exc:
+        s.cancelar_alvos(op["id"], profile_ids=[pids[2]])
+    assert exc.value.code == "ja_encerrada"
+
+
+async def test_rota_http_cancelar_alvos(harness: Harness) -> None:
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Ivy", "android-01")
+    _conta(harness, pid, "qa-user-91", sessao_em="android-01")
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    op = _servico(harness).criar(_pedido([AlvoPedido(pid)], chave="teste-op-http-cancelar-alvos"))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post(f"/api/operacoes/{op['id']}/cancelar-alvos", json={})
+        assert r.status_code == 422 and r.json()["detail"]["code"] == "filtro_vazio"
+        r = await c.post(f"/api/operacoes/{op['id']}/cancelar-alvos", json={"perfis": [pid]})
+        assert r.status_code == 422                                  # campo desconhecido
+        r = await c.post(f"/api/operacoes/{op['id']}/cancelar-alvos", json={"profile_ids": [pid]})
+        assert r.status_code == 200 and r.json()["cancelados"] == [pid]
+        r = await c.post("/api/operacoes/nao-existe/cancelar-alvos", json={"profile_ids": [pid]})
+        assert r.status_code == 404
+
+
+async def test_o_get_com_lote_e_o_mesmo_sem_lote(harness: Harness) -> None:
+    """31.194: o GET busca de uma vez, para todos os alvos, execução, objetivo, persona, conta, sessão, trava do aparelho
+    e custo (com 30 alvos eram 278 consultas por leitura). A resposta tem de ser a MESMA da leitura de um alvo por vez:
+    custo com pesquisa separada, aparelho travado, execução terminada e alvo sem sessão no mesmo exemplo."""
+    st = harness.state
+    assert st is not None
+    pids = []
+    for i, iid in enumerate(("android-01", "android-02", "android-03")):
+        pid = _persona(harness, f"Lote{i}", iid)
+        _conta(harness, pid, f"qa-user-7{i}", sessao_em=iid if i < 2 else None)
+        pids.append(pid)
+    s = _servico(harness)
+    # Teto alto: o gasto inserido abaixo não pode disparar o corte suave do teto (31.205) no meio da comparação.
+    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-lote", max_usd=1000.0))
+    runs = [_alvo(op, p)["run_id"] for p in pids]
+    modelo = next(iter(st.cfg.file.ai.prices))
+    for rid, origem, tokens in ((runs[0], None, 120_000), (runs[0], "pesquisa", 40_000), (runs[1], None, 7_000)):
+        st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, input_tokens, output_tokens, ok, origem)"
+                      " VALUES (?,?,?,?,?,?,?,?)", (now_iso(), rid, "plan", modelo, tokens, tokens // 10, 1, origem))
+    st.db.execute("UPDATE runs SET status='completed' WHERE id=?", (runs[1],))
+    st.db.execute("INSERT INTO device_locked_accounts(instance_id, handle, origin, since, created_at, resolved_at)"
+                  " VALUES (?,?,?,?,?,?)", ("android-02", "qa-user-71", "declarado", now_iso(), now_iso(), None))
+    s.ler(op["id"])                                   # a 1ª leitura anota os estágios; as seguintes só leem
+    com = s.ler(op["id"])
+    s.com_lote = False
+    sem = s.ler(op["id"])
+    assert com == sem
+    assert com["custo"]["pesquisa_usd"] > 0 and com["capacidade"]["contas_disponiveis"] < 2  # type: ignore[index,operator]
+
+
+async def test_o_relatorio_consolidado_da_operacao(harness: Harness) -> None:
+    """31.195 (adendo v1.111): a mesma leitura para a Canais e a Portal. Os 19 critérios (os 16 do dono com 2b, 3b e
+    11b), quantas identidades executam hoje, textos repetidos, latência, custo por peça e o aprendizado; "não medido" é
+    None ou "nao_medido", nunca zero; nenhum @ de conta sai."""
+    st = harness.state
+    assert st is not None
+    pids = []
+    for i, iid in enumerate(("android-01", "android-02")):
+        pid = _persona(harness, f"Rel{i}", iid)
+        _conta(harness, pid, f"qa-user-6{i}", sessao_em=iid)
+        pids.append(pid)
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-relatorio"))
+    st.db.execute("UPDATE operacoes SET created_at=? WHERE id=?", ("2026-10-07T10:00:00.000Z", op["id"]))
+    run0 = _alvo(op, pids[0])["run_id"]
+    st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, input_tokens, output_tokens, ok, provider)"
+                  " VALUES (?,?,?,?,?,?,?,?)", (now_iso(), run0, "plan", "simulado", 10, 1, 1, "simulated"))
+    feito = Leitura("resultado_verificado", "concluido", None,
+                    (("persona", "2026-10-07T10:00:00.000Z"), ("post_localizado", "2026-10-07T10:01:00.000Z"),
+                     ("resposta_gerada", "2026-10-07T10:02:00.000Z"), ("acao_executada", "2026-10-07T10:03:00.000Z")))
+    parado = Leitura("post_localizado", "bloqueado", "a conta @alguem.real não abriu", (
+        ("persona", "2026-10-07T10:00:00.000Z"), ("post_localizado", "2026-10-07T10:05:00.000Z")),
+        parou_em="conteudo_lido")
+    resultados = {pids[0]: (feito, {"texto": "Que bom ver isso, @alguem.real!", "conhecimento_ids": [],
+                                    "evidencia_id": 7, "acao_final": {"tipo": "CREATE_COMMENT", "verificada": True,
+                                                                      "evidencia_id": 8}}),
+                  pids[1]: (parado, None)}
+    s._ler_alvo = lambda op_, a, d: resultados[str(a["profile_id"])]  # type: ignore[method-assign]
+    r = s.relatorio(op["id"], None)
+    assert r["ambiente"] == "simulado"
+    assert "@alguem.real" not in str(r)
+    criterios = {c["id"]: c for c in r["criterios"]}  # type: ignore[attr-defined]
+    assert len(criterios) == 19 and {"2b", "3b", "11b"} <= set(criterios)
+    assert criterios["13"]["nesta_operacao"] == "sim" and criterios["13"]["estado"] == "testado_em_simulacao"
+    # a base do diagnóstico não desce: o 9 já foi provado em ambiente real, e uma operação simulada não o rebaixa
+    assert criterios["9"]["nesta_operacao"] == "sim" and criterios["9"]["estado"] == "provado_real"
+    assert criterios["5"]["estado"] == "nao_implementado" and r["criterios_base"].startswith("diagnóstico")  # type: ignore[union-attr]
+    assert criterios["2"]["nesta_operacao"] == "nao"                 # 2 alvos, não 20
+    assert criterios["12"]["nesta_operacao"] == "nao_medido"         # um texto só não mede diferença
+    assert criterios["16"] == {"id": "16", "nome": "Preservar aprendizado", "estado": "testado_em_simulacao",
+                               "nesta_operacao": "nao_medido", "evidencia": None}
+    assert r["identidades"]["solicitadas"] == 2  # type: ignore[index]
+    assert r["identidades"]["deficit"] == 2 - r["identidades"]["executam_hoje"]  # type: ignore[index,operator]
+    agentes = {a["profile_id"]: a for a in r["agentes"]}  # type: ignore[attr-defined]
+    assert agentes[pids[0]]["acao_final"]["verificada"] == "sim" and agentes[pids[0]]["conhecimento_ids"] == []
+    assert agentes[pids[1]]["acao_final"] is None and agentes[pids[1]]["texto"] is None
+    assert r["falhas_por_motivo"] == [{"motivo": "a conta @[omitido] não abriu", "parou_em": "conteudo_lido",
+                                       "agentes": 1}]
+    assert r["latencia"]["mais_lento"] == {"profile_id": pids[1], "duracao_ms": 300_000}  # type: ignore[index]
+    assert r["latencia"]["duracao_mediana_ms"] == 240_000  # type: ignore[index]
+    assert r["custo"]["por_peca_usd"] == 0.0 and r["custo"]["teto_usd"] == op["max_usd"]  # type: ignore[index]
+    assert r["aprendizado"]["disponivel"] is False  # type: ignore[index]
+    sem_texto = s.relatorio(op["id"], {"disponivel": True, "perguntas": []})
+    assert sem_texto["aprendizado"]["disponivel"] is True  # type: ignore[index]
+    assert {c["id"]: c for c in sem_texto["criterios"]}["16"]["nesta_operacao"] == "sim"  # type: ignore[attr-defined]
+
+
+async def test_rota_http_do_relatorio(harness: Harness) -> None:
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Ana", "android-01")
+    _conta(harness, pid, "qa-user-95", sessao_em="android-01")
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    op = _servico(harness).criar(_pedido([AlvoPedido(pid)], chave="teste-op-http-relatorio"))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get(f"/api/operacoes/{op['id']}/relatorio")
+        assert r.status_code == 200, r.text
+        corpo = r.json()
+        assert corpo["operacao"]["id"] == op["id"] and len(corpo["criterios"]) == 19
+        assert set(corpo) >= {"gerado_em", "ambiente", "capacidade", "identidades", "agentes", "falhas_por_motivo",
+                              "textos", "aprendizado", "latencia", "custo"}
+        r = await c.get("/api/operacoes/nao-existe/relatorio")
+        assert r.status_code == 404
+
+
+async def test_teto_da_operacao_com_corte_suave_o_alvo_seguinte_nem_comeca(harness: Harness) -> None:
+    """Rodada de 30 alvos: com a operação já no `max_usd`, a execução de alvo que ainda vai planejar é recusada antes de
+    qualquer chamada de IA ou toque no aparelho, e o alvo fica em `acao_bloqueada` com o motivo "teto da operação".
+    Antes ela nascia, abria o app e só parava na primeira chamada (o `_budget`), com o texto do erro como motivo."""
+    from app.modules.operacoes.infrastructure import servico as mod
+
+    st = harness.state
+    assert st is not None
+    pids = []
+    for i, iid in enumerate(("android-01", "android-02")):
+        pid = _persona(harness, f"Teto{i}", iid)
+        _conta(harness, pid, f"qa-user-4{i}", sessao_em=iid)
+        pids.append(pid)
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-teto-suave", max_usd=0.01))
+    runs = [_alvo(op, p)["run_id"] for p in pids]
+    modelo = next(iter(st.cfg.file.ai.prices))
+    st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, input_tokens, output_tokens, ok) VALUES (?,?,?,?,?,?,?)",
+                  (now_iso(), runs[0], "plan", modelo, 2_000_000, 100_000, 1))
+    # Sem `await` entre criar e gravar o gasto: o planejamento (pelo agendador, como sempre) já encontra o teto.
+    for _ in range(100):
+        if st.db.scalar("SELECT status FROM runs WHERE id=?", (runs[1],)) == "failed":
+            break
+        await asyncio.sleep(0.05)
+    assert st.db.scalar("SELECT status FROM runs WHERE id=?", (runs[1],)) == "failed"
+    assert st.db.scalar("SELECT COUNT(*) FROM objectives WHERE run_id=?", (runs[1],)) == 0   # nada planejado
+    recusa = st.db.one("SELECT data FROM events WHERE kind='plan.refused' AND run_id=? ORDER BY id DESC LIMIT 1",
+                       (runs[1],))
+    assert recusa is not None and json.loads(recusa["data"])["motivo"] == "teto_da_operacao"
+    alvo = {a["profile_id"]: a for a in s.ler(op["id"])["alvos"]}[pids[1]]  # type: ignore[attr-defined]
+    assert (alvo["estagio"], alvo["estado"], alvo["motivo"]) == ("acao_bloqueada", "bloqueado", mod.TETO_DA_OPERACAO)
+    # o alvo cortado no MEIO pela conferência do roteador cai no mesmo motivo, para a contagem por motivo
+    assert mod._motivo("Teto de custo da operação atingido: US$ 0.02 de US$ 0.01.") == mod.TETO_DA_OPERACAO
+    assert mod._motivo("Teto de custo da execução atingido") != mod.TETO_DA_OPERACAO
+
+
+async def test_o_get_traz_a_fila_do_aparelho_do_alvo_pendente(harness: Harness) -> None:
+    """31.206 (adendo v1.114): o alvo pendente traz a posição na fila do aparelho, contando o trabalho de OUTRA operação
+    que já roda nele, e a previsão pela mediana de trabalho dos alvos terminados desta operação. O alvo que não está
+    pendente vem com `fila` None."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Fila", "android-01")
+    _conta(harness, pid, "qa-user-55", sessao_em="android-01")
+    outra = _persona(harness, "Feita", "android-02")
+    _conta(harness, outra, "qa-user-56", sessao_em="android-02")
+    s = _servico(harness)
+    antes = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-fila-antes"))
+    op = s.criar(_pedido([AlvoPedido(pid), AlvoPedido(outra)], chave="teste-op-fila"))
+    roda, minha = _alvo(antes, pid)["run_id"], _alvo(op, pid)["run_id"]
+    st.db.execute("UPDATE runs SET status='running' WHERE id IN (?,?)", (roda, minha))
+    st.db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version) VALUES (?,?,?,?,?)",
+                  ("obj-fila-roda", roda, "android-01", "running", 1))
+    pendente = Leitura("sessao", "pendente", None, (("persona", "2026-10-07T10:00:00.000Z"),))
+    feito = Leitura("acao_preparada", "concluido", None, (("persona", "2026-10-07T10:00:00.000Z"),
+                                                          ("aparelho", "2026-10-07T10:00:00.000Z"),
+                                                          ("acao_preparada", "2026-10-07T10:02:00.000Z")))
+    s._ler_alvo = lambda op_, a, d: ((pendente if a["profile_id"] == pid else feito), None)  # type: ignore[method-assign]
+    lida = {a["profile_id"]: a for a in s.ler(op["id"])["alvos"]}  # type: ignore[attr-defined]
+    fila = lida[pid]["fila"]
+    assert (fila["posicao"], fila["a_frente"], fila["base_ms"]) == (2, 1, 120_000)
+    assert fila["previsao_inicio_em"] is not None and fila["previsao_inicio_em"].endswith("Z")
+    assert lida[outra]["fila"] is None
+
+
+async def test_a_lista_filtrada_por_persona_ou_aparelho_traz_so_as_operacoes_dela_com_o_resumo_do_alvo(
+        harness: Harness) -> None:
+    """31.213 (adendo v1.116): o histórico da persona sem ler o detalhe das 20 mais recentes. Com `profile_id` e/ou
+    `instance_id`, só as operações com alvo deles, com o resumo DESSES alvos; sem filtro, a lista de sempre."""
+    st = harness.state
+    assert st is not None
+    p1 = _persona(harness, "Hist1", "android-01")
+    _conta(harness, p1, "qa-user-31", sessao_em="android-01")
+    p2 = _persona(harness, "Hist2", "android-02")
+    _conta(harness, p2, "qa-user-32", sessao_em="android-02")
+    s = _servico(harness)
+    so_p2 = s.criar(_pedido([AlvoPedido(p2)], chave="teste-op-hist-a"))
+    as_duas = s.criar(_pedido([AlvoPedido(p1), AlvoPedido(p2)], chave="teste-op-hist-b"))
+    da_p1 = s.listar(profile_id=p1)["items"]
+    assert [i["id"] for i in da_p1] == [as_duas["id"]]  # type: ignore[index]
+    assert [a["profile_id"] for a in da_p1[0]["alvos"]] == [p1]  # type: ignore[index]
+    assert set(da_p1[0]["alvos"][0]) == {"profile_id", "instance_id", "estado", "estagio", "motivo",  # type: ignore[index]
+                                         "parou_em", "acao_verificada", "custo_usd", "duracao_ms"}
+    assert {i["id"] for i in s.listar(instance_id="android-02")["items"]} == {so_p2["id"], as_duas["id"]}  # type: ignore[index]
+    assert s.listar(profile_id=p1, instance_id="android-02")["items"] == []
+    assert "alvos" not in s.listar()["items"][0]  # type: ignore[index,operator]
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/operacoes", params={"profile_id": p1})
+        assert r.status_code == 200 and [i["id"] for i in r.json()["items"]] == [as_duas["id"]]
+        r = await c.get("/api/operacoes", params={"profile_id": ""})
+        assert r.status_code == 422
+
+
+async def test_ler_varias_vezes_nao_grava_de_novo_nem_avisa_de_novo(harness: Harness) -> None:
+    """31.216 (achado da Canais, 28.74): o resumo diário e o painel fazem muitos GETs. A leitura grava só o que mudou
+    desde a anterior (o estágio derivado e o fechamento, com o aviso de cada um), e a mesma leitura repetida não grava
+    nada nem avisa de novo: o banco e os eventos ficam iguais. O estado gravado começa atrasado de propósito, para a
+    primeira leitura ter o que gravar."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Repete")
+    _conta(harness, pid, "qa-user-51")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-releitura"))
+    st.db.execute("UPDATE operacao_alvos SET estagio='persona', estado='pendente', motivo=NULL WHERE operacao_id=?",
+                  (op["id"],))
+    st.db.execute("UPDATE operacoes SET status='em_curso', finished_at=NULL WHERE id=?", (op["id"],))
+
+    def retrato() -> tuple[object, ...]:
+        return (dict(st.db.one("SELECT * FROM operacoes WHERE id=?", (op["id"],))),
+                [dict(r) for r in st.db.query("SELECT * FROM operacao_alvos WHERE operacao_id=?", (op["id"],))],
+                st.db.scalar("SELECT COUNT(*) FROM events"))
+
+    antes = retrato()
+    primeira = s.ler(op["id"])
+    depois = retrato()
+    assert depois != antes and depois[2] > antes[2]  # type: ignore[operator]
+    assert primeira["status"] == "concluida_com_bloqueios" and primeira["finished_at"]
+    for _ in range(5):
+        assert s.ler(op["id"]) == primeira
+    assert retrato() == depois
+
+
 async def test_o_get_traz_a_hora_da_ultima_verificacao_da_sessao_do_alvo(harness: Harness) -> None:
     """31.173: o que a pessoa olha antes da onda: quando a sessão da conta do alvo naquele aparelho foi vista na tela."""
     st = harness.state
@@ -802,3 +1121,72 @@ async def test_rota_do_pool_elegivel_vem_antes_do_id_da_operacao(harness: Harnes
         assert r.status_code == 200 and r.json()["app_id"] == APP and "contagem" in r.json()
         assert (await c.get("/api/operacoes/elegiveis", params={"app_id": "nao-existe"})).status_code == 404
         assert (await c.get("/api/operacoes/elegiveis")).status_code == 422
+
+
+@pytest.mark.parametrize("declara", [False, True])
+async def test_n_personas_no_mesmo_aparelho_so_quando_o_app_declara_a_troca(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch, declara: bool) -> None:
+    """31.207 (J0, ADR-080): no app que declara a troca de conta, a persona vinculada ao aparelho entra na operação sem
+    sessão aberta ali (a porta de sessão da execução troca para a conta dela) e o despacho serializa os alvos no mesmo
+    aparelho. Sem a declaração (o Instagram), quem não tem sessão segue parado em `sessao`. Persona que não serve ao app
+    naquele aparelho para em `sessao` nos dois casos, e também a que não tem senha guardada com consentimento ou cuja
+    sessão ali parou num desafio (achado do Codex no PR 493: são os pré-requisitos da porta de sessão)."""
+    from app.modules.operacoes.infrastructure import servico as mod
+    from app.social import repository as social_repo
+    st = harness.state
+    assert st is not None
+    # Os vínculos nascem como no app que declara (o D2-a do repositório não recusa a segunda persona); o que varia
+    # entre os dois casos é só a declaração que a operação lê.
+    monkeypatch.setattr(social_repo, "_troca_declarada", lambda _db, app_id: app_id == APP)
+    monkeypatch.setattr(mod, "troca_declarada", lambda _db, app_id: declara and app_id == APP)
+    pids = []
+    contas = []
+    for n, (iid, sessao, consente) in enumerate((("android-02", True, True), ("android-02", False, True),
+                                                 ("android-02", False, True), ("android-03", False, True),
+                                                 ("android-02", False, False), ("android-02", False, True)), start=1):
+        pid = _persona(harness, f"Troca{n}")
+        st.social_repo.bind(pid, iid, app_id=APP, primary=True)
+        conta = _conta(harness, pid, f"qa-user-4{n}", sessao_em=iid if sessao else None)
+        # valores de teste: a referência não aponta para cofre nenhum; o que a operação lê é o consentimento
+        st.social_repo.set_account_credential(pid, conta, login_identifier=f"qa-user-4{n}", secret_ref="ref-de-teste",
+                                              key_id="chave-de-teste", consent_by="teste" if consente else None)
+        pids.append(pid)
+        contas.append(conta)
+    aberta, fechada, pelo_principal, de_fora, sem_consentimento, no_desafio = pids
+    st.social_repo.set_account_session(no_desafio, contas[5], "android-02", status=SessionStatus.auth_challenge)
+    op = _servico(harness).criar(_pedido(
+        [AlvoPedido(aberta), AlvoPedido(fechada, instance_id="android-02"), AlvoPedido(pelo_principal),
+         AlvoPedido(de_fora, instance_id="android-02"), AlvoPedido(sem_consentimento),
+         AlvoPedido(no_desafio)], chave=f"teste-op-troca-{int(declara)}"))
+    a, b, c, d, e, f = (_alvo(op, p) for p in (aberta, fechada, pelo_principal, de_fora, sem_consentimento, no_desafio))
+    assert a["run_id"] and a["instance_id"] == "android-02"
+    for parado in (d, e, f):
+        assert (parado["estado"], parado["parou_em"], parado["run_id"]) == ("bloqueado", "sessao", None)
+    if declara:
+        for alvo in (b, c):
+            assert alvo["run_id"] and alvo["instance_id"] == "android-02" and alvo["estado"] in ("pendente", "em_curso")
+        assert len({a["run_id"], b["run_id"], c["run_id"]}) == 3
+        assert op["capacidade"]["sessoes_validas"] == 3
+    else:
+        for alvo in (b, c):
+            assert (alvo["estado"], alvo["motivo"], alvo["parou_em"], alvo["run_id"]) == (
+                "bloqueado", "sem sessão", "sessao", None)
+        assert op["capacidade"]["sessoes_validas"] == 1
+
+
+async def test_cancelar_alvos_na_operacao_fechada_com_execucao_aberta(harness: Harness) -> None:
+    """Achado do Codex no PR 493: com todos os alvos restantes à espera do liberar, a leitura fecha a operação (eles contam
+    como bloqueados), e é aí que se descartam as ações preparadas. O cancelar por filtro só recusa a cancelada, como o
+    liberar; a execução ainda aberta é cancelada."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Fechada", "android-01")
+    _conta(harness, pid, "qa-user-71", sessao_em="android-01")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-cancelar-fechada"))
+    run_id = _alvo(op, pid)["run_id"]
+    st.db.execute("UPDATE operacoes SET status='concluida_com_bloqueios', finished_at=? WHERE id=?", (now_iso(), op["id"]))
+    feito = s.cancelar_alvos(op["id"], profile_ids=[pid])
+    assert feito["cancelados"] == [pid]
+    r = st.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (run_id,))
+    assert r["cancel_requested"] == 1 or r["status"] == "cancelled"

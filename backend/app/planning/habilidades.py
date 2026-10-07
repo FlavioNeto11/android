@@ -9,25 +9,31 @@ planejador recebe esses fluxos como habilidades conhecidas: a referência públi
 apps. O valor demonstrado nunca vai (o nome do fluxo, que pode trazê-lo, também não). O modelo produz o plano de sempre
 e, se uma habilidade faz exatamente o pedido, diz qual e os valores tirados do comando. Quem decide se a escolha vale é
 o código (`escolha_valida`): referência oferecida, todos os parâmetros e só eles, e cada valor presente no comando.
+
+31.210 (P-032, decisão do dono em 07/10: "sim executa direto"): a execução pedida com `execute` cujo plano veio por
+semelhança segue direto, sem parar em `planned` para a prévia. As portas de aprovação de efeito externo continuam: são
+da etapa, no despacho, e não deste módulo.
 """
 from __future__ import annotations
 
 import json
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..models import PlanStep
 
 #: A nota mínima do `parecidos` para o fluxo ir ao planejador. Bem mais baixa que a da sugestão no painel (0,9): aqui
-#: quem decide é o modelo, o código confere os valores e, até a decisão do dono, a prévia é aprovada por uma pessoa.
+#: quem decide é o modelo, o código confere os valores, e a etapa com efeito segue pela aprovação de sempre.
 #: Medido em 06/10: a paráfrase do item ("procure wifi nas configurações" × "abra as configurações e pesquise por
 #: {termo}") dá 0,333, porque só "configurações" é palavra fixa parecida. A calibrar com a medida real.
 NOTA_MINIMA = 0.3
 #: Quantos fluxos vão ao prompt.
 MAXIMO = 3
-#: Decisão do dono pendente no plano (31.151): a escolha por semelhança roda sem confirmação, ou só com a prévia
-#: aprovada. Até ele decidir, a execução que pediu `execute` para em `planned` e espera o início por uma pessoa.
-SEM_CONFIRMACAO = False
 
 _MARCADOR = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 #: Os nomes que o APARELHO resolve na materialização (`flows.RESERVED`): nunca são oferecidos ao modelo como parâmetro.
@@ -119,5 +125,23 @@ def escolha_valida(escolha: Escolha, oferecidas: Mapping[str, HabilidadeConhecid
     return None
 
 
-__all__ = ["MAXIMO", "NOTA_MINIMA", "RESERVADOS", "SEM_CONFIRMACAO", "Escolha", "HabilidadeConhecida", "bloco",
+def acoes_finais_fora(livre: Sequence[PlanStep], do_fluxo: Sequence[PlanStep]) -> list[str]:
+    """31.222: as etapas com efeito do plano livre (efeito externo ou trava de commit) que o plano do fluxo não cobre,
+    pela ação do catálogo (senão pela chave). A escolha por semelhança troca o plano INTEIRO: com uma delas fora, o
+    fluxo de leitura derrubaria a ação final do comando (o comentário da operação). Só a ação ou a chave, nunca valor."""
+    # pela MULTIPLICIDADE (achado da revisão do PR 504): dois envios no plano livre e um no fluxo deixam um de fora
+    cobertas = Counter(s.capability or s.key for s in do_fluxo)
+    fora: list[str] = []
+    for s in livre:
+        if not (s.side_effect or s.commit_guard):
+            continue
+        acao = s.capability or s.key
+        if cobertas[acao] > 0:
+            cobertas[acao] -= 1
+        else:
+            fora.append(acao)
+    return list(dict.fromkeys(fora))
+
+
+__all__ = ["MAXIMO", "NOTA_MINIMA", "RESERVADOS", "Escolha", "acoes_finais_fora", "HabilidadeConhecida", "bloco",
            "escolha_do_json", "escolha_valida", "molde_oferecivel", "parametros_do_molde"]

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aiFeatureRows, aiModelRows, aiProfileRows, aiRoleLabel, aiRoleRows, decisaoFechadaConsumidoresLabel, effortLabel,
+  aiEscaladaRows, aiFeatureRows, aiModelRows, aiProfileRows, aiRoleLabel, aiRoleRows, decisaoFechadaConsumidoresLabel, effortLabel,
   esquemaDoPlanoLabel, flowsLabel, hubRoleLabel, imagePolicyLabel, leituraVisualLabel, recipesModeLabel, thinkingLabel,
 } from './aiLabels';
 
@@ -119,5 +119,21 @@ describe('polimento do deploy 10: os consumidores da decisão fechada (v0.90)', 
     expect(decisaoFechadaConsumidoresLabel(bloco({}))).toBeNull();
     expect(decisaoFechadaConsumidoresLabel({ decisao_fechada: null })).toBeNull();
     expect(decisaoFechadaConsumidoresLabel({})).toBeNull();
+  });
+});
+
+describe('31.223: a política de escalada do modelo forte', () => {
+  it('sem os campos não há linha (central anterior); cada campo vira uma linha em palavras', () => {
+    expect(aiEscaladaRows({})).toEqual([]);
+    expect(aiEscaladaRows({ strong_model_only_on_commit: null, strong_model_for_side_effect: null })).toEqual([]);
+    expect(aiEscaladaRows({ strong_model_only_on_commit: true }).map((r) => r.key)).toEqual(['strong_model_only_on_commit']);
+    expect(aiEscaladaRows({ strong_model_for_side_effect: 'by_risk' })[0]!.value).toBe('pelo risco da etapa');
+  });
+  it('o valor de strong_model_for_side_effect em palavras: verdadeiro, falso, por risco e um texto novo cru', () => {
+    const v = (x: string | boolean) => aiEscaladaRows({ strong_model_for_side_effect: x })[0]!.value;
+    expect(v(true)).toBe('sempre que a etapa tem efeito');
+    expect(v('false')).toContain('nunca');
+    expect(v('by_risk')).toBe('pelo risco da etapa');
+    expect(v('politica_nova')).toBe('politica_nova');
   });
 });

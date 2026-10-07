@@ -114,6 +114,7 @@ it('J1: backend anterior (sem os campos) não mostra o grupo nem campo vazio', a
   delete sem.orquestracao_max_escolhidas;
   delete sem.orquestracao_max_candidatas;
   delete sem.operacao_max_acoes_executadas;
+  delete sem.operacao_laco_s;
   useAppStore.setState({ settings: sem as Settings });
   await act(async () => { root.render(<LimitsSection />); });
   expect(container.textContent).not.toContain('Orquestração de operações');
@@ -248,4 +249,15 @@ it('31.263: backend anterior ao corte 61 (sem a chave): o interruptor não apare
   await act(async () => { root.render(<LimitsSection />); });
   await waitFor(() => expect(caixaDoGrupo().disabled).toBe(false));
   expect(container.textContent).not.toContain(CHAVE_LIBERADO);
+});
+
+it('31.225: o laço do sistema das operações aparece com o padrão desligado (0) e vai no PUT de /api/settings', async () => {
+  backend.on('PUT', /^\/api\/settings$/, () => json({ ...useAppStore.getState().settings!, operacao_laco_s: 15 }));
+  await act(async () => { root.render(<LimitsSection />); });
+  expect(campo('Laço do sistema nas operações').value).toBe('0');
+  expect(container.textContent).toContain('0 desliga (padrão); vai de 0 a 3600');
+  await setValue(campo('Laço do sistema nas operações'), '15');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ operacao_laco_s: 15 });
 });

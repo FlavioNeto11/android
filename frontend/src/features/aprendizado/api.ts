@@ -11,6 +11,7 @@ import { lerMetricas, lerPaginaDeRevisoes, type MetricasDoAprendizado, type Pagi
 import type { RespostaDoPedido } from './parecer';
 import { lerListaDeValidacoes, type ListaDeValidacoes } from './validacao';
 import { lerRelatorioDaAprovacao, type RelatorioDaAprovacao } from './aprovacaoAutomatica';
+import { lerEnsinoDaExecucao, type EnsinoDaExecucao } from '../runs/ensinoLido';
 
 /**
  * As rotas do aprendizado (ADR-054). Ficam aqui, e não no objeto `api` do cliente, porque são de UM contexto e
@@ -28,6 +29,8 @@ export interface FiltroDoLivro {
   rotulo?: Rotulo;
   /** 31.131: `so_prova` só os fluxos nascidos de uma prova; `sem_prova` o que sobra (uso real). Sem o campo, tudo. */
   prova?: 'so_prova' | 'sem_prova';
+  /** 31.209 (v1.113): o assunto das lições; o servidor canoniza e compara por igualdade (até 200 caracteres). */
+  assunto?: string;
 }
 
 export const PROVAS_DO_LIVRO: readonly NonNullable<FiltroDoLivro['prova']>[] = ['so_prova', 'sem_prova'];
@@ -72,8 +75,20 @@ export const apiAprendizado = {
     const fluxos = await apiRequest<{ nascido_de_prova?: boolean }[]>('GET', '/flows', { query: { nascido_de_prova: 'true' }, signal });
     return (Array.isArray(fluxos) ? fluxos : []).filter((f) => f?.nascido_de_prova === true).length;
   },
+  /** 31.226 (v1.120, 31.221): por etapa da execução, a receita candidata que nasceu dela ou o motivo de não ter nascido. 404 `execucao_desconhecida`. */
+  ensinoDaExecucao: async (runId: string, signal?: AbortSignal): Promise<EnsinoDaExecucao> => {
+    const r = lerEnsinoDaExecucao(await apiRequest<unknown>('GET', `/aprendizado/execucao/${enc(runId)}/ensino`, { signal }));
+    if (!r) throw new ApiError(502, 'resposta_invalida', 'A resposta do ensino da execução veio em formato inesperado.');
+    return r;
+  },
+  /** 31.226: promove as candidatas ensináveis pelo Livro (candidate → validated → published). Sem corpo; devolve o mesmo corpo do GET, relido, mais promovidas e recusadas. */
+  ensinarDaExecucao: (runId: string): Promise<EnsinoDaExecucao> => decisao((async () => {
+    const r = lerEnsinoDaExecucao(await apiRequest<unknown>('POST', `/aprendizado/execucao/${enc(runId)}/ensino`));
+    if (!r) throw new ApiError(502, 'resposta_invalida', 'A resposta do ensino da execução veio em formato inesperado.');
+    return r;
+  })()),
   livro: (f: FiltroDoLivro = {}, signal?: AbortSignal) =>
-    apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem, rotulo: f.rotulo,
+    apiRequest<ListaDoLivro>('GET', '/aprendizado', { query: { kind: f.kind, state: f.state, app: f.app || undefined, origem: f.origem, rotulo: f.rotulo, assunto: f.assunto || undefined,
                                            nascido_de_prova: f.prova === 'so_prova' ? 'true' : f.prova === 'sem_prova' ? 'false' : undefined }, signal }),
   /** A visão por aplicativo (Global): um resumo por app, o balde `nao_resolvido` e o que não tem eixo de app. */
   apps: async (signal?: AbortSignal): Promise<VisaoDeApps> =>

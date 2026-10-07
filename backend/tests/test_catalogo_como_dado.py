@@ -138,6 +138,9 @@ MUDANCAS: dict[tuple[str, str], object] = {
                                            "saiu do campo de escrita, que volta vazio — e não há marca de falha (como "
                                            "'Not delivered' ou 'Tap to retry'). Ainda com 'Sending…'/'Enviando…' na "
                                            "tela a mensagem está pendente, e pendente não conta como enviada."),
+    # 31.239: o comentário publicado comprovado pela árvore (autor e texto) e "Posting…" como efeito a caminho.
+    ("CREATE_COMMENT", "local_proof"): "comentario:{account_label}",
+    ("CREATE_COMMENT", "pending_marks"): ["Posting…", "Posting...", "Publicando…", "Publicando..."],
 }
 
 

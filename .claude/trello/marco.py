@@ -129,6 +129,8 @@ def itens_de(texto: str) -> list[str]:
     """IDs citados (do plano, ADR e C-número), sem repetir, na ordem em que aparecem. Se há "Itens:" só vale o que vem depois."""
     i = texto.find("Itens:")
     trecho = texto[i + len("Itens:"):] if i >= 0 else texto
+    # "(28.62, 28.60 e 28.58 ficaram fora ... vão no 59)": o que a frase diz que NÃO entrou não é item do deploy.
+    trecho = re.sub(r"\([^()]*ficaram fora[^()]*\)", "", trecho)
     vistos: list[str] = []
     for m in _ITEM.finditer(trecho):
         item = next(g for g in m.groups() if g)
@@ -362,7 +364,10 @@ def _ler_aparelhos() -> list[dict[str, object]]:
     return [i for i in dados if isinstance(i, dict)]
 
 
-async def _principal(d: Deploy, e_recente: bool, aplicar: bool, offline: bool) -> int:
+async def _principal(d: Deploy, e_recente: bool, aplicar: bool, offline: bool, resultado: dict | None = None) -> int:
+    """`resultado`, se dado, recebe o que o espelho do deploy (28.67) mostra na linha final: `marco` (url ou o que faria),
+    `m8` e `m9` (a leitura nova ou por que não foi tocada)."""
+    resultado = resultado if resultado is not None else {}
     from redacao import redigir  # noqa: PLC0415 - lê o banco ro na importação
 
     titulo, corpo = redigir(titulo_marco(d)), redigir(corpo_marco(d))
@@ -383,12 +388,16 @@ async def _principal(d: Deploy, e_recente: bool, aplicar: bool, offline: bool) -
             r = await cl.criar_cartao(LISTA_MARCOS, titulo, corpo)
             await cl._pedir("PUT", f"/1/cards/{r['id']}", corpo={"pos": "top"})
             print("marco criado:", r.get("shortUrl"))
+            resultado["marco"] = f"criado {r.get('shortUrl')}"
         else:
-            await cl.atualizar_cartao(str(cartao), nome=titulo, desc=corpo)
+            r = await cl.atualizar_cartao(str(cartao), nome=titulo, desc=corpo)
             print("marco atualizado:", cartao)
+            resultado["marco"] = f"atualizado {r.get('shortUrl') or cartao}"
 
+    resultado.setdefault("marco", f"ensaio: {'criaria' if acao == 'criar' else 'atualizaria ' + str(cartao)}")
     if not e_recente:
         print(f"M8 e M9 não tocados: o deploy {d.numero} não é o mais recente do CHANGELOG.")
+        resultado["m8"] = resultado["m9"] = "não tocado (deploy não é o mais recente)"
         return 0
     leituras: list[tuple[str, str, str]] = []
     m9 = montar_m9(d, rotulo)
@@ -396,13 +405,17 @@ async def _principal(d: Deploy, e_recente: bool, aplicar: bool, offline: bool) -
         leituras.append((CARTAO_M9, *m9))
     else:
         print(f"M9 não tocado: o registro do deploy {d.numero} não traz contagem da suíte.")
+        resultado["m9"] = "não tocado (sem contagem no registro)"
     if cl is not None:
         try:
             leituras.append((CARTAO_M8, *montar_m8(d, contar_aparelhos(_ler_aparelhos()), rotulo)))
         except Exception as erro:  # noqa: BLE001 - central fora do ar: M8 fica como está, o resto segue
             print(f"M8 não tocado: não consegui ler {API_CENTRAL} ({type(erro).__name__}).")
+            resultado["m8"] = "não tocado (central não respondeu)"
     for cid, nome, topo in leituras:
         nome, topo = redigir(nome), redigir(topo)
+        lida = re.search(r"atual: (.*?)(?: \(suíte \d+\))?$", nome)
+        resultado["m8" if cid == CARTAO_M8 else "m9"] = f"{'' if aplicar else 'ensaio '}{lida.group(1) if lida else nome}"
         print(f"== leitura ({cid}) ==\n{nome}\n{topo.removesuffix(SEPARADOR)}\n")
         if aplicar and cl is not None:
             atual = await cl._pedir("GET", f"/1/cards/{cid}", params={"fields": "desc"})

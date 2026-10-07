@@ -84,6 +84,10 @@ export interface EntradaDoLivro {
    *  (`OPEN_PROFILE` → "Abrir o perfil"). Ausentes no backend anterior; `null` quando não se sabe. */
   capability?: string | null;
   capability_nome?: string | null;
+  /** 31.209 (v1.113): o assunto da lição, UM só, já canônico (minúsculas, sem acento, sem pontuação); `null` sem assunto. Ausente no backend anterior. */
+  assunto?: string | null;
+  /** 31.214 (Aprendizado, a abrir): o `source_kind` do item (`operation_fact` = fato da pesquisa de uma operação). Ausente hoje. */
+  source_kind?: string | null;
   origin: Origem;
   side_effect: boolean;
   human_origin: boolean;
@@ -223,6 +227,8 @@ export interface DetalheDoLivro {
    *  Ausentes em backend antigo; `curador: null` sem curador composto. */
   pareceres?: ParecerDaIA[];
   curador?: BlocoDoCurador | null;
+  /** 31.214 (Aprendizado, a abrir): de onde o fato da operação veio (`operacao`, `assunto`, `fontes`, `frescor_ate`, `usado_em`, `execucoes`, `confianca`); só no modelo `fato_da_operacao`. */
+  proveniencia?: unknown;
 }
 
 // ---------------------------------------------------------------- o detalhe rico (30.16): o que o backend manda

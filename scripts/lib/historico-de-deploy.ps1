@@ -64,7 +64,10 @@ function New-RegistroDeDeploy {
     [string[]]$Opcoes = @(),
     [System.Collections.IDictionary]$EtapasS,
     [ValidateSet('ok', 'falhou', 'pulado')][string]$EnsaioDeRollback,
-    [string]$EnsaioDeRollbackMotivo
+    [string]$EnsaioDeRollbackMotivo,
+    [ValidateSet('reinstalado', 'falhou')][string]$Amostrador,
+    [string]$AmostradorMotivo,
+    [double]$AmostradorLacunaS = -1
   )
   # A mensagem de falha não pode virar canal de saída de comando: uma linha, no máximo 300 caracteres.
   $curto = if ($Motivo) { (($Motivo -replace '\s+', ' ').Trim()) } else { $null }
@@ -95,6 +98,14 @@ function New-RegistroDeDeploy {
     $m = if ($EnsaioDeRollbackMotivo) { (($EnsaioDeRollbackMotivo -replace '\s+', ' ').Trim()) } else { $null }
     if ($m -and $m.Length -gt 200) { $m = $m.Substring(0, 200) }
     $registro['ensaio_de_rollback_motivo'] = $m
+  }
+  # 29.198: só quando o deploy mexeu no amostrador do host. `lacuna_s` = segundos entre a última linha do CSV antes da troca e a primeira depois.
+  if ($Amostrador) {
+    $registro['amostrador'] = $Amostrador
+    $am = if ($AmostradorMotivo) { (($AmostradorMotivo -replace '\s+', ' ').Trim()) } else { $null }
+    if ($am -and $am.Length -gt 200) { $am = $am.Substring(0, 200) }
+    $registro['amostrador_motivo'] = $am
+    if ($AmostradorLacunaS -ge 0) { $registro['amostrador_lacuna_s'] = [math]::Round($AmostradorLacunaS, 0) }
   }
   return $registro
 }

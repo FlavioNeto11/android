@@ -13,11 +13,15 @@ import json
 from datetime import timedelta
 from typing import Any
 
+import pytest
+
 from app.models import (InteractionStatus, InteractionType, Plan, PlannerInfo, PlanStep, Postcondition,
                         ProfileCreate)
 from app.util import now, to_iso
 
-from .test_capabilities import IG, SENHA
+from .apoio_politica import IG, SENHA
+
+pytestmark = pytest.mark.skip(reason="ADR-083: teto por hora e coordenação entre contas nossas saíram da política")
 
 TADEU = "tadeu.quintela4821"
 
@@ -54,6 +58,7 @@ async def _portas(state: Any, n: int) -> list[Any]:
     run = db.one("SELECT * FROM runs WHERE id='run-l'")
     return [await state._policy_gate(obj, db.one("SELECT * FROM steps WHERE id=?",
                                                   (f"run-l:android-01:v1:reply_i{i}",)), run)
+
             for i in range(1, n + 1)]
 
 

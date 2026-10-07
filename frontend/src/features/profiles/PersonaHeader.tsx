@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, MonitorSmartphone, Smartphone } from 'lucide-react';
+import { ArrowLeft, ArrowRight, MonitorSmartphone, Smartphone, Workflow } from 'lucide-react';
 import { profileAvatarUrl } from '../../api/client';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
@@ -7,6 +7,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { PROFILE_STATUS, metaOf } from '../../lib/status';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { useUiStore } from '../../store/ui';
+import { guardarRascunho, rascunhoDaPersona } from '../operacao/criar';
 import type { Aba } from './abas';
 import { estadoDaSessao } from './estadoSessao';
 import { handleDe, idsDosAparelhos, nomeDe, type Pessoa } from './pessoa';
@@ -25,6 +26,7 @@ export function PersonaHeader({ profile, onBack, irPara }: {
 }) {
   const now = useNow();
   const openFocus = useUiStore((s) => s.openFocus);
+  const navegar = useUiStore((s) => s.navegar);
   const nome = nomeDe(profile);
   const handle = handleDe(profile);
   const aparelhos = idsDosAparelhos(profile);
@@ -68,6 +70,10 @@ export function PersonaHeader({ profile, onBack, irPara }: {
                   disabledReason={principal ? null : 'Vincule um aparelho a esta persona (guia Contas e aparelhos).'}
                   onClick={() => principal && openFocus(principal)}>
             Abrir no aparelho
+          </Button>
+          <Button variant="outline" icon={Workflow} disabledReason={profile.status === 'active' ? null : 'A persona não está ativa: só uma persona ativa entra numa operação.'}
+                  onClick={() => { guardarRascunho(rascunhoDaPersona(profile.id)); navegar({ tela: 'operacoes', segmentos: ['nova'] }); }}>
+            Operar com esta persona
           </Button>
         </div>
       </div>

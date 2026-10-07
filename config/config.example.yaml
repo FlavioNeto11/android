@@ -209,6 +209,9 @@ limits:
   ai_max_calls_per_objective: 60
   # 28.61: id do grupo de política cujas personas não passam pela aprovação de política (vazio = desligado).
   grupo_sem_aprovacao: ""
+  # 31.253 / ADR-082: na operação com acao_final executar, o alvo cuja persona está nesse grupo nasce com o teto agir (sem
+  # aprovação, sem Telegram, sem liberar). false volta ao teto preparar para todos (28.23).
+  operacao_grupo_liberado_executa: true
   # 30.60 (N4): publicar no feed passa por uma pessoa mesmo com perfil ou grupo autônomo. true só se o dono decidir.
   publicar_sem_aprovacao: false
   # Item 17.12: num for_each, cada item além do primeiro soma ai_max_calls_per_item ao teto acima, até ai_max_calls_absolute
@@ -259,8 +262,18 @@ ai:
                                           # Opus, até curtir com seletor de commit); by_risk = só risco alto do
                                           # catálogo, risco médio sem seletor de commit, ou app sem catálogo (menos o app
                                           # de prova, builtin e category 'qa', que fica no modelo barato); false = nunca
+  espera_do_plano_irmao_s: 60       # (60) 31.237: o plano de um alvo de operação espera o 1º plano da mesma operação
+                                    # para ler o cache do prompt; vencido o teto, segue; 0 desliga
+  strong_model_only_on_commit: true   # 31.223: quando a etapa com efeito sobe (acima), o modelo de ação navega e só a
+                                      # decisão que dispararia o efeito é refeita no forte; false = a etapa inteira
+  imagem_quando_alvo_fora_da_arvore: true  # (true) 31.232: o commit refeito no forte e o rejulgamento do efeito levam a
+                                      # imagem quando o alvo não está na árvore (toque por coordenada); false = como antes
   cascade_blocked_to_tier1: true  # (true) 17.10: step_blocked do modelo de ação sobe UMA vez ao de escalonamento antes de pedir uma
                                   # pessoa (não vale para challenge, auth_required e wrong_account); false = como antes
+  rejulgamento_dispensado_por_app: true  # (true) 31.238: com a prova local do app no efeito e o app com >= mínimo
+                                        # rejulgamentos sim_com_efeito na janela sem discordância, o rejulgamento sai
+  rejulgamento_dispensa_minimo: 30      # (30)
+  rejulgamento_dispensa_janela_dias: 7  # (7)
   rejudge_yes_on_side_effect: true  # (true) 17.10: o "sim" do verificador barato em etapa com efeito externo (ou que confirma o
                                     # nível de entrega) é conferido UMA vez pelo modelo de escalonamento; só age se os modelos diferem
   sent_text_dispensa_primeiro_juiz: true  # (true) 31.26 A: nível `sent` com a prova local `sent_text` (SEND_MESSAGE do
@@ -274,6 +287,8 @@ ai:
   recipes: replay                 # (off) aprende a etapa uma vez e repete por seletores; shadow = só compara
   recipes_heranca: true           # RA-20: sem receita na chave, herda da mesma etapa noutra versão/variante, como
                                   # candidata (só com recipes_promote_after > 0)
+  candidata_da_ativa_que_divergiu: true  # (true) 31.233: a ativa que diverge e cai em quarentena com a IA completando
+                                         # a etapa: o caminho que rodou vira candidata; false = como antes
   recipes_promote_after: 2        # receita aprendida nasce candidata (a IA decide, ela só é comparada) e vira ativa
                                   # depois de N execuções seguidas em que a IA fez o caminho dela; 0 = nasce ativa
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
@@ -305,6 +320,8 @@ ai:
     max_buscas: 3                 # (3) buscas por pesquisa
     teto_usd_por_operacao: 0.25   # (0.25) tokens + buscas, somados por operação
     frescor_h: 24                 # (24) quanto o fato pesquisado vale
+    reaproveitar_min_fatos: 2     # (2) 31.231: fatos confirmados e frescos do Livro, do mesmo assunto, que dispensam a
+                                  # pesquisa paga (todas as fontes indicadas cobertas); 0 desliga
   # Página de faturamento de cada conta de IA (ADR-051), a que o painel linka em "Abrir console". Sem o parâmetro
   # `billing`, o AI Studio abre a PRIMEIRA conta de faturamento, que pode não ser a pré-paga.
   # balance_consoles:

@@ -28,7 +28,7 @@ from app.modules.learning.domain.vocabulario import LivroKind
 from app.planning.provider import Decision
 from app.planning.simulated_provider import SimulatedProvider
 from app.taskqueue.executor import _RecipeRun
-from app.taskqueue.recipes import RecipeStore, Replayer
+from app.taskqueue.recipes import NAO_APLICAVEL_CONTA_APOS, RecipeStore, Replayer
 
 from .conftest import CountingProvider, Harness
 from .fake_device import FakeQaDevice, Node
@@ -273,9 +273,11 @@ async def test_sombra_compara_a_rolagem_pela_direcao_e_nao_pelo_conteiner(harnes
     # para o outro lado: reproduzida, a receita rolaria para baixo
     assert _compara_em_telas(harness, _ACOES_COM_ROLAGEM,
                              [(_NO_TOPO, _d("scroll", direction="up", element_id=None))]).diverged
-    # rolar onde a receita não rola (ação gravada sem rolagem) continua divergência
+    # rolar onde a receita não rola (ação gravada sem rolagem): o alvo da ação 1 não está nesta tela, então a receita
+    # não se aplica aqui (31.262, o 30.80 na sombra): sem veredito nesta execução; a 3ª seguida conta como divergência
     sem_rolagem = [{k: v for k, v in _ACOES_COM_ROLAGEM[0].items() if k != "scroll"}]
-    assert _compara_em_telas(harness, sem_rolagem, [(_NO_TOPO, _d("scroll", direction="down", element_id="e1"))]).diverged
+    rr = _compara_em_telas(harness, sem_rolagem, [(_NO_TOPO, _d("scroll", direction="down", element_id="e1"))])
+    assert rr.partida_diferente and not rr.diverged
     # rolar além do teto da receita também
     assert _compara_em_telas(harness, _ACOES_COM_ROLAGEM,
                              [(_NO_TOPO, _d("scroll", direction="down", element_id="e1"))] * 5).diverged
@@ -402,6 +404,9 @@ async def test_candidata_que_diverge_e_substituida_pelo_caminho_que_a_ia_comprov
     acoes[0]["selectors"] = [{"kind": "rid", "rid": "app:id/nao_existe_mais"}]     # a tela mudou para a candidata
     acoes[0].pop("scroll", None)
     db.execute("UPDATE recipes SET actions=? WHERE id=?", (dumps(acoes), v1["id"]))
+    # 31.262: o alvo da ação 1 ausente é "não se aplicou" na sombra; a troca vem na 3ª seguida (as duas de antes, aqui
+    # postas direto na série, deixavam a candidata em prova: `test_sombra_partida_diferente.py`)
+    db.execute("UPDATE recipes SET nao_aplicavel_seguidas=? WHERE id=?", (NAO_APLICAVEL_CONTA_APOS - 1, v1["id"]))
 
     r2 = await harness.wait_run(harness.run(["android-02"]).id)
     assert r2.status == "completed"

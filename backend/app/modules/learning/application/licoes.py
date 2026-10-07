@@ -203,13 +203,14 @@ class ServicoDeLicoes:
             self._contar("licao.exposta", 1, papel=papel, braco=(e.braco or Braco.WITH).value)
         return list(escolha.textos)
 
-    def previa(self, *, app: str, papel: Papel, acao: str = "", etapa: str = "") -> Previa:
+    def previa(self, *, app: str, papel: Papel, acao: str = "", etapa: str = "", persona: str = "") -> Previa:
         """`GET /api/aprendizado/licoes/previa`: o bloco EXATO (todas as que cabem, como se estivessem no braço
-        `with`) e os tokens. No planejador, a ação e a etapa não entram (a lição dele é do app)."""
+        `with`) e os tokens. No planejador, a ação e a etapa não entram (a lição dele é do app). `persona` (31.218):
+        sem ela, a lição de uma persona não aparece, como no planejamento de várias."""
         ator = papel is Papel.ACTOR
         pedido = Pedido(papel=papel, unidade="previa", run_id="", app=app,
                         capability=(acao or ("*" if etapa else "")) if ator else "",
-                        step_hash=etapa if ator else "", simulated=True)
+                        step_hash=etapa if ator else "", simulated=True, profile_id=persona)
         teto = self._ajustes().teto(papel)
         escolha = escolher(self._repo.publicadas(papel, app), pedido, teto,
                            holdout_publicada=self._ajustes().holdout_publicada, sortear=False)

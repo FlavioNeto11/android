@@ -35,12 +35,14 @@ from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro,
 from app.modules.learning.infrastructure.ensinado_sql import LeitorDoEnsinadoSql
 from app.modules.learning.infrastructure.eventos import (Barramento, EventosNoBarramento, RiscoDoRegistro,
                                                          TitulosDoRegistro)
+from app.modules.learning.infrastructure.fatos_da_operacao_sql import FatosDaOperacaoParaOLivro
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.metricas_sql import FontesDeMetricasSql
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, SqlBacklogRepository
 from app.modules.learning.infrastructure.resultado_posterior_sql import ResultadoPosteriorSql
 from app.modules.learning.infrastructure.risco_do_conteudo import RiscoDoConteudo
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
+from app.modules.learning.infrastructure.sombra_da_quarentena_sql import SombraDaQuarentena
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from app.taskqueue.aproveitamento import aproveitamento
@@ -115,17 +117,19 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
                        decidir: Decidir | None = None, relogio: Callable[[], datetime] = now,
                        commit: Callable[[], str | None] | None = None,
                        eventos: Barramento | None = None,
-                       curador_de_ia: CuradorDeIA | None = None) -> LearningService:
+                       curador_de_ia: CuradorDeIA | None = None,
+                       necessarias_da_receita: Callable[[], int] | None = None) -> LearningService:
     """`fluxos`/`receitas`: as lojas do scheduler, que passam a nascer e mudar de status com o D1 e a trilha.
     `decidir(texto, run_id)`: a linha do tempo da execução (cada transição do sistema vira uma decisão nela).
     `commit`: o commit que este processo carregou — o MESMO que o `/api/health` mostra; a prova da correção do
     backlog o registra ao começar. Sem ele, lido do `.git` da raiz do projeto (sem chamar `git`).
     `eventos`: o barramento do central (`EventBus`): com ele, o livro publica `learning.needs_person` (30.21). Sem ele,
-    nada é publicado. `curador_de_ia`: o adaptador do curador por IA (30.11); sem ele, o simulado (o do hub: 30.12)."""
+    nada é publicado. `curador_de_ia`: o adaptador do curador por IA (30.11); sem ele, o simulado (o do hub: 30.12).
+    `necessarias_da_receita` (31.271): `ai.recipes_promote_after`, o total da prova da candidata no Livro."""
     repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades) if habilidades else None,
                                  precos=precos)
     risco = RiscoDoRegistro()
-    fontes = FontesSql(db, pacotes_do_registro=pacotes_do_registro)
+    fontes = FontesSql(db, pacotes_do_registro=pacotes_do_registro, necessarias=necessarias_da_receita)
     # 30.33: o aviso `learning.needs_person` lê a receita e o fluxo pelo mesmo leitor do dossiê do curador.
     lido = RiscoDoConteudo(db, risco)
     # 30.83: o fluxo sai do central pela referência pública (o `ref` e o `href` do aviso de espera)
@@ -158,6 +162,12 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     ligar_telas.ligar(servico, repo, db, config=lambda: config().telas, relogio=relogio)
     # 30.14: o rótulo `obsoleto_provavel` e o rebaixamento `catalogo_sem_efeito` (passo da curadoria, sem IA).
     ligar_obsolescencia.ligar(servico, repo, db, fontes=FontesSql(db, pacotes_do_registro=pacotes_do_registro))
+    # 31.190: o fato confirmado da pesquisa de uma operação encerrada vira candidata do escritor (passo, sem IA).
+    servico.registrar_passo(FatosDaOperacaoParaOLivro(servico, repo, db))
+    # 31.202: o rendimento da receita ensinada sugere, em SOMBRA, liberar ou prender de volta (passo, sem IA; nada se
+    # aplica). Precisa da régua da loja de receitas (30.81); sem a loja, o passo não entra.
+    if receitas is not None:
+        servico.registrar_passo(SombraDaQuarentena(servico, db, liberada=receitas.liberada_fora_do_ensino))
     # 30.35: o desfecho medido das revisões do curador 14 dias depois (o rótulo 2 do Jev; passo da curadoria, sem IA).
     servico.registrar_passo(GravadorDoResultadoPosterior(ResultadoPosteriorSql(db), lambda: servico.ajustes.saude))
     # 30.11: o curador por IA (laço próprio sob a trava de líder; `off` de fábrica; adaptador simulado até o 30.12).

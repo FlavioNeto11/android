@@ -19,6 +19,7 @@ export const SETTINGS: Settings = {
   preview_mode: 'on_demand',
   orquestracao_max_escolhidas: 30, orquestracao_max_candidatas: 60, operacao_max_acoes_executadas: 3,
   operacao_grupo_liberado_executa: true,
+  operacao_laco_s: 0,
 };
 
 export const APPS: AppConfig[] = [

@@ -142,6 +142,19 @@ class ApprovalStore:
                           (step_id,))
         return self._dto(row) if row else None
 
+    def for_steps(self, step_ids: list[str]) -> dict[str, Approval]:
+        """`for_step` de várias etapas numa consulta só (o GET da operação, 31.194): o pedido mais novo de cada uma. A
+        etapa sem pedido fica de fora do dicionário."""
+        if not step_ids:
+            return {}
+        marcas = ",".join("?" * len(step_ids))
+        mais_novo: dict[str, Approval] = {}
+        for row in self.db.query(f"SELECT * FROM pending_approvals WHERE step_id IN ({marcas}) ORDER BY created_at DESC",
+                                 tuple(step_ids)):
+            if str(row["step_id"]) not in mais_novo:
+                mais_novo[str(row["step_id"])] = self._dto(row)
+        return mais_novo
+
     def acompanhar_revisao(self, step_id: str, *, profile_id: str | None, acao: Capability | None, target: str | None,
                            content: str | None, disparou: Callable[[str], bool]) -> Approval | None:
         """A decisão já tomada sobre ESTA etapa numa versão anterior do plano, quando ela vale para a etapa revisada.
@@ -353,6 +366,27 @@ def definir_texto(db: Database, step_id: str, texto: str) -> None:
             novos = {k: (texto if v == antigo else v) for k, v in params.items()}
             if novos != params:
                 db.execute("UPDATE objectives SET parameters=? WHERE id=?", (dumps(novos), row["objective_id"]))
+
+
+def fixar_post_em_foco(db: Database, step_id: str, trecho: str) -> None:
+    """31.260 (b): o post por posição ganha a identidade do post EM FOCO quando o texto é escrito. O trecho da legenda
+    vira `caption_contains` da etapa e entra na guarda de commit: o comentário só sai com aquele post na tela, a chave
+    da aprovação e o objeto do 30.64 passam a dizer QUAL post. Só preenche o vazio: a legenda citada no pedido vence.
+
+    Na rodada de 07/10 12:55Z (android-06) o texto falou de um post e a tela mostrava outro; quem segurou foi o
+    julgamento do ator. Agora o executor recusa pela guarda, sem depender dele."""
+    trecho = (trecho or "").strip()
+    row = db.one("SELECT bindings, commit_guard FROM steps WHERE id=?", (step_id,))
+    if row is None or not trecho:
+        return
+    bindings = loads(row["bindings"], {}) or {}
+    if str(bindings.get("caption_contains") or "").strip():
+        return
+    bindings["caption_contains"] = trecho
+    guardas = [g for g in (loads(row["commit_guard"], []) or []) if g]
+    if trecho not in guardas:
+        guardas.append(trecho)
+    db.execute("UPDATE steps SET bindings=?, commit_guard=? WHERE id=?", (dumps(bindings), dumps(guardas), step_id))
 
 
 def guardar_rascunho(db: Database, step_id: str, meta: dict[str, Any]) -> None:

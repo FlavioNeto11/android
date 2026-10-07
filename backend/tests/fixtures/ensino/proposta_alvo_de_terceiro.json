@@ -1,0 +1,21 @@
+{
+ "summary": "abrir uma página pública de terceiro, a primeira publicação e os comentários, só lendo",
+ "command_template": "abra o perfil de {username}, a primeira publicação e os comentários",
+ "app_id": "instagram",
+ "parameters": [
+  {"name": "username", "example": "pagina.publica.de.teste",
+   "description": "o @ (sem a arroba) da página pública de terceiro, alvo da operação; nunca a conta da persona"}
+ ],
+ "steps": [
+  {"key": "abrir_perfil", "title": "Abrir o perfil de {username}", "goal": "Abrir o perfil de {username} pela busca.",
+   "capability": "OPEN_PROFILE", "bindings": [{"name": "username", "value": "{username}"}], "side_effect": false},
+  {"key": "abrir_primeira_publicacao", "title": "Abrir a primeira publicação",
+   "goal": "Abrir a primeira publicação da grade do perfil de {username}.", "capability": "OPEN_POST",
+   "bindings": [{"name": "target", "value": "a primeira publicação da grade"},
+                {"name": "post_author", "value": "{username}"}], "side_effect": false},
+  {"key": "abrir_comentarios", "title": "Abrir os comentários", "goal": "Abrir a lista de comentários da publicação.",
+   "capability": "OPEN_COMMENTS", "bindings": [], "side_effect": false}
+ ],
+ "discarded": [],
+ "questions": []
+}

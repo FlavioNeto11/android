@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { FakeBackend, apiError, byRole, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { amostrasDeExemplo, lerAmostra, lerAmostras } from './contratoDoHost';
 import { HostPage, PERIODO_DA_RELEITURA_MS } from './HostPage';
-import { defasagemEmMinutos, pressaoPorAparelho, processosNoTopo, resumoDaJanela, trechosDaSerie } from './resumo';
+import { defasagemEmMinutos, paraOndeFoiACpu, pressaoPorAparelho, processosNoTopo, resumoDaJanela, trechosDaSerie } from './resumo';
 
 /**
  * 31.180: o painel do host. Prova `simulated`: servidor falso e amostras inventadas no formato proposto (colunas do CSV do
@@ -70,8 +70,8 @@ describe('o resumo da janela', () => {
   });
   it('pressão: somada por aparelho, o de mais avisos primeiro, com os minutos e o último', () => {
     expect(pressaoPorAparelho(l)).toEqual([
-      { instanceId: 'android-01', avisos: 4, minutos: 1, ultimoEm: '2026-10-07T10:02:00Z' },
-      { instanceId: 'android-05', avisos: 3, minutos: 2, ultimoEm: '2026-10-07T10:02:00Z' },
+      { instanceId: 'android-01', avisos: 4, minutos: 1, ultimoEm: '2026-10-07T10:02:00Z', pctDaJanela: (1 / 3) * 100 },
+      { instanceId: 'android-05', avisos: 3, minutos: 2, ultimoEm: '2026-10-07T10:02:00Z', pctDaJanela: (2 / 3) * 100 },
     ]);
   });
   it('defasagem em minutos inteiros; sem amostra ou data torta, null', () => {
@@ -127,7 +127,7 @@ describe('a tela Host', () => {
     expect(t).toMatch(/2,0 GBMenor RAM livre na janela/);
     expect(container.querySelector('tr[data-processo="python"]')).not.toBeNull();
     expect(text(container.querySelector('tr[data-aparelho="android-05"]')!)).toContain('4');  // 3 + 1 avisos
-    expect(container.querySelectorAll('svg[role="img"]').length).toBe(4);
+    expect(container.querySelectorAll('svg[role="img"]').length).toBe(5);
     expect(container.querySelectorAll('button').length).toBe(0);
     expect(backend.callsTo('GET', /host\/amostras/)[0]!.query.get('horas')).toBe('1');
   });
@@ -182,5 +182,82 @@ describe('a tela Host', () => {
     await waitFor(() => expect(backend.callsTo('GET', /host\/amostras/)).toHaveLength(2));
     expect(container.querySelector('[aria-label="Medidas do host"]')).not.toBeNull();
     expect(byRole('combobox', /Janela/, container)).toBeTruthy();
+  });
+});
+
+/**
+ * 31.211: as colunas do amostrador v2 (29.185, devops/29-156-mutex-hermetico 98a99dd1): `cpu_media_pct`, `demais_processos_pct` e
+ * `nao_atribuido_pct`, e os avisos de pressão por aparelho com a fatia da janela. Prova `simulated`: amostras no formato do CSV.
+ */
+const v2 = (ts: string, over: Record<string, unknown> = {}) => amostra(ts, { cpu_media_pct: 40, demais_processos_pct: 3, nao_atribuido_pct: 7, qemu_host_pct: 20, processos_top: 'python:10', ...over });
+
+describe('as colunas do amostrador v2', () => {
+  it('o leitor lê as três (também como texto do CSV); ausente, vazia ou torta é "não medido", nunca zero; o negativo de arredondamento fica', () => {
+    const a = lerAmostra({ ts_utc: '2026-10-07T10:00:00Z', cpu_media_pct: '41,5', demais_processos_pct: '3.2', nao_atribuido_pct: '-0.3' })!;
+    expect([a.cpu_media_pct, a.demais_processos_pct, a.nao_atribuido_pct]).toEqual([41.5, 3.2, -0.3]);
+    const b = lerAmostra({ ts_utc: '2026-10-07T10:01:00Z', cpu_media_pct: '', demais_processos_pct: 'x' })!;
+    expect([b.cpu_media_pct, b.demais_processos_pct, b.nao_atribuido_pct]).toEqual([null, null, null]);    // amostrador anterior: nada
+  });
+
+  it('paraOndeFoiACpu: médias dos minutos com TUDO medido; a 1ª linha da execução e o amostrador antigo não entram', () => {
+    const l = lerAmostras({ items: [
+      v2('2026-10-07T10:00:00Z', { cpu_media_pct: null, demais_processos_pct: null, nao_atribuido_pct: null, qemu_host_pct: null }),     // 1ª linha: vazia
+      v2('2026-10-07T10:01:00Z'),
+      v2('2026-10-07T10:02:00Z', { cpu_media_pct: 60, qemu_host_pct: 40, processos_top: 'python:10;node:5', demais_processos_pct: 1, nao_atribuido_pct: 4 }),
+      amostra('2026-10-07T10:03:00Z'),                                                                                                  // sem as colunas novas
+    ] })!.amostras;
+    const o = paraOndeFoiACpu(l)!;
+    expect(o.minutos).toBe(2);
+    expect(o).toMatchObject({ total: 50, emuladores: 30, topo: 12.5, demais: 2, naoAtribuido: 5.5 });                                   // 20+10+3+7 = 40; 40+15+1+4 = 60
+    expect(paraOndeFoiACpu([])).toBeNull();
+    expect(paraOndeFoiACpu(lerAmostras({ items: [amostra('2026-10-07T10:00:00Z')] })!.amostras)).toBeNull();
+  });
+
+  it('resumoDaJanela: a CPU média do minuto tem o agora, a média e o pico próprios, sem misturar com o instantâneo', () => {
+    const r = resumoDaJanela(lerAmostras({ items: [
+      v2('2026-10-07T10:00:00Z', { cpu_host_pct: 90, cpu_media_pct: 30 }), v2('2026-10-07T10:01:00Z', { cpu_host_pct: 10, cpu_media_pct: 50 }), v2('2026-10-07T10:02:00Z', { cpu_media_pct: null }),
+    ] })!.amostras);
+    expect(r.cpu.pico).toBe(90);
+    expect(r.cpuMedia).toEqual({ agora: 50, media: 40, pico: 50, picoEm: '2026-10-07T10:01:00Z' });
+    expect(resumoDaJanela(lerAmostras({ items: [amostra('2026-10-07T10:00:00Z')] })!.amostras).cpuMedia).toEqual({ agora: null, media: null, pico: null, picoEm: null });
+  });
+
+  it('o exemplo traz as colunas, coerentes: a média é a soma das partes; a 1ª linha vem vazia', () => {
+    const e = amostrasDeExemplo(1, Date.parse('2026-10-07T12:00:30Z')).amostras;
+    expect([e[0]!.cpu_media_pct, e[0]!.demais_processos_pct, e[0]!.nao_atribuido_pct]).toEqual([null, null, null]);
+    const x = e[30]!;
+    const soma = x.qemu_host_pct! + x.processos_top.reduce((s, p) => s + p.pct, 0) + x.demais_processos_pct! + x.nao_atribuido_pct!;
+    expect(Math.abs(x.cpu_media_pct! - soma)).toBeLessThan(0.15);
+  });
+});
+
+describe('a tela Host com o amostrador v2', () => {
+  it('mostra a CPU média do minuto, a série própria e "Para onde foi a CPU" com as partes e o total; o instantâneo é rotulado como tal', async () => {
+    backend.on('GET', /^\/api\/host\/amostras$/, () => json({ items: [v2(minutosAtras(1)), v2(agora(), { cpu_host_pct: 12, cpu_media_pct: 44, qemu_host_pct: 22, demais_processos_pct: 4, nao_atribuido_pct: 8, processos_top: 'python:10' })] }));
+    await abrir();
+    await waitFor(() => expect(container.querySelector('[data-onde-foi-a-cpu] tr[data-parte]')).not.toBeNull());
+    const parte = (p: string) => text(container.querySelector(`tr[data-parte="${p}"] td`)!);
+    expect([parte('emuladores'), parte('topo'), parte('demais'), parte('nao_atribuido'), parte('total')]).toEqual(['21,0%', '10,0%', '3,5%', '7,5%', '42,0%']);
+    const t = text(container);
+    expect(t).toContain('CPU agora (instantâneo)');
+    expect(t).toMatch(/44%CPU média do último minuto/);
+    expect(text(container.querySelector('[data-onde-foi-a-cpu]')!)).toContain('Média de 2 minutos com tudo medido');
+    expect(container.querySelectorAll('svg[role="img"]').length).toBe(5);
+  });
+
+  it('amostrador anterior (sem as colunas): a seção diz que ainda não as grava, e a CPU média fica "—", nunca 0%', async () => {
+    backend.on('GET', /^\/api\/host\/amostras$/, () => json({ items: [amostra(agora())] }));
+    await abrir();
+    await waitFor(() => expect(text(container)).toContain('Nenhum minuto da janela tem as colunas novas do amostrador'));
+    expect(container.querySelector('tr[data-parte]')).toBeNull();
+    expect(text(container)).toMatch(/—CPU média do último minuto/);
+  });
+
+  it('a pressão por aparelho diz a fatia da janela', async () => {
+    backend.on('GET', /^\/api\/host\/amostras$/, () => json({ items: [amostra(minutosAtras(3)), amostra(minutosAtras(2), { avisos_pressao: 'android-05:3' }), amostra(minutosAtras(1)), amostra(agora(), { avisos_pressao: 'android-05:1' })] }));
+    await abrir();
+    await waitFor(() => expect(container.querySelector('tr[data-aparelho="android-05"]')).not.toBeNull());
+    expect(Array.from(container.querySelectorAll('[aria-labelledby="host-pressao"] thead th')).map((h) => text(h))).toEqual(['Aparelho', 'Avisos', 'Minutos com aviso', 'Da janela', 'Último']);
+    expect(text(container.querySelector('tr[data-aparelho="android-05"]')!)).toContain('50,0%');          // 2 de 4 minutos
   });
 });

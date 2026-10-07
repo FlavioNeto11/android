@@ -15,7 +15,7 @@ from app.planning.provider import AppContext
 from app.social.service import SocialError
 
 from .conftest import Harness
-from .test_capabilities import build, perfil
+from .apoio_politica import build, perfil
 
 SENHA_OUTLOOK = "outlook-Segredo-42!"
 

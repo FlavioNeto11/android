@@ -2,11 +2,12 @@ import { BookOpen, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
-import { Field, Select } from '../../components/Field';
+import { Field, Select, TextInput } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { cx, formatInt } from '../../lib/format';
 import { useUiStore } from '../../store/ui';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
+import { assuntoDoItem, assuntosDasLicoes, buscarNoLivro, filtrarPorAssunto } from './assunto';
 import { apiAprendizado, PROVAS_DO_LIVRO, PROVA_LABEL, type FiltroDoLivro } from './api';
 import { lerFiltroDoEndereco, PARAMS_DO_FILTRO, queryDoFiltro } from './filtroNoEndereco';
 import { hashDe } from '../../lib/rotas';
@@ -105,8 +106,11 @@ export function AprendidoTab() {
   const qOrigem = useUiStore((s) => s.rota.query[PARAMS_DO_FILTRO.origem]);
   const qProva = useUiStore((s) => s.rota.query[PARAMS_DO_FILTRO.prova]);
   const qVisao = useUiStore((s) => s.rota.query[PARAMS_DO_FILTRO.rotulo]);
-  const outros = useMemo(() => lerFiltroDoEndereco({ tipo: qTipo, estado: qEstado, origem: qOrigem, prova: qProva, visao: qVisao }),
-    [qTipo, qEstado, qOrigem, qProva, qVisao]);
+  const qAssunto = useUiStore((s) => s.rota.query[PARAMS_DO_FILTRO.assunto]);
+  // 31.209: a busca por trecho é do painel (o servidor só filtra por assunto exato); vive no endereço, sem empilhar histórico.
+  const busca = useUiStore((s) => s.rota.query.busca) ?? '';
+  const outros = useMemo(() => lerFiltroDoEndereco({ tipo: qTipo, estado: qEstado, origem: qOrigem, prova: qProva, visao: qVisao, assunto: qAssunto }),
+    [qTipo, qEstado, qOrigem, qProva, qVisao, qAssunto]);
   // O app vem do link (`?aba=aprendido&app=<pacote>`), para a navegação do detalhe do app ao catálogo e de volta.
   const app = useUiStore((s) => s.rota.query.app) || undefined;
   const trocarQuery = useUiStore((s) => s.trocarQuery);
@@ -123,8 +127,8 @@ export function AprendidoTab() {
   }, [outros.rotulo, app, visaoVale, trocarQuery]);
   const rotuloVale = visaoVale ? outros.rotulo : undefined;
   // Os campos, não o objeto: soltar o `visao` que não vale não relê o livro à toa.
-  const filtro = useMemo<FiltroDoLivro>(() => ({ kind: outros.kind, state: outros.state, origem: outros.origem, prova: outros.prova, app, rotulo: rotuloVale }),
-    [outros.kind, outros.state, outros.origem, outros.prova, app, rotuloVale]);
+  const filtro = useMemo<FiltroDoLivro>(() => ({ kind: outros.kind, state: outros.state, origem: outros.origem, prova: outros.prova, assunto: outros.assunto, app, rotulo: rotuloVale }),
+    [outros.kind, outros.state, outros.origem, outros.prova, outros.assunto, app, rotuloVale]);
   const [visao, setVisao] = useState<VisaoDeApps | null>(null);
   const [lista, setLista] = useState<ListaDoLivro | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
@@ -139,8 +143,10 @@ export function AprendidoTab() {
       if (minha !== vez.current) return;
       // 31.131: o servidor filtra pela marca; a guarda aqui cobre o backend que ainda ignora o parâmetro (a marca vem em cada linha).
       const todos = Array.isArray(res?.itens) ? res.itens : [];
-      const itens = f.prova === 'so_prova' ? todos.filter((i) => i.nascido_de_prova === true)
+      const porProva = f.prova === 'so_prova' ? todos.filter((i) => i.nascido_de_prova === true)
         : f.prova === 'sem_prova' ? todos.filter((i) => i.nascido_de_prova !== true) : todos;
+      // 31.209: o servidor filtra pelo assunto; a guarda cobre o backend que ainda ignora o parâmetro (o assunto vem em cada lição).
+      const itens = f.assunto ? filtrarPorAssunto(porProva, f.assunto) : porProva;
       setLista({ itens, total: res?.total ?? 0, contagem: res?.contagem,
                  rotulo: res?.rotulo, ocultos: res?.ocultos });
       setErro(null);
@@ -181,6 +187,16 @@ export function AprendidoTab() {
     return o;
   }, [visao, app]);
   const titulos = useMemo(() => titulosDaLista(lista?.itens ?? []), [lista]);
+  // 31.209: os assuntos que o painel já viu nas lições carregadas (o servidor não tem rota que os liste). Só acumulam: ao escolher um,
+  // a lista encolhe para ele e os outros continuam na escolha. O que vem do link entra também, para o campo mostrar o filtro ligado.
+  const [assuntosVistos, setAssuntosVistos] = useState<string[]>([]);
+  useEffect(() => {
+    const novos = assuntosDasLicoes(lista?.itens ?? []).map((o) => o.assunto);
+    if (novos.length) setAssuntosVistos((v) => (novos.every((a) => v.includes(a)) ? v : [...new Set([...v, ...novos])].sort((x, y) => x.localeCompare(y, 'pt-BR'))));
+  }, [lista]);
+  const opcoesDeAssunto = useMemo(() => (filtro.assunto && !assuntosVistos.includes(filtro.assunto) ? [...assuntosVistos, filtro.assunto] : assuntosVistos), [assuntosVistos, filtro.assunto]);
+  const itensVisiveis = useMemo(() => buscarNoLivro(lista?.itens ?? [], busca, titulos), [lista, busca, titulos]);
+  const filtrarAssunto = (a: string) => setFiltro((f) => ({ ...f, assunto: a }));
   // RA-19: o conjunto que valeu é o escolhido, senão o que o servidor aplicou (sem app, o padrão esconde o de teste).
   const rotulo = filtro.rotulo ?? lista?.rotulo ?? (app ? 'todos' : 'produto');
   const ocultos = textoDosOcultos(rotulo, lista?.ocultos);
@@ -237,6 +253,20 @@ export function AprendidoTab() {
             </Select>
           )}
         </Field>
+        {opcoesDeAssunto.length > 0 ? (
+          <Field label="Assunto" className={styles.filtro}>
+            {({ id }) => (
+              <Select id={id} small value={filtro.assunto ?? ''}
+                      onChange={(e) => setFiltro((f) => ({ ...f, assunto: e.target.value || undefined }))}>
+                <option value="">Todos</option>
+                {opcoesDeAssunto.map((a) => <option key={a} value={a}>{a}</option>)}
+              </Select>
+            )}
+          </Field>
+        ) : null}
+        <Field label="Buscar no livro" className={styles.filtro}>
+          {({ id }) => <TextInput id={id} small value={busca} placeholder="título, assunto, etapa…" onChange={(e) => trocarQuery({ busca: e.target.value || undefined })} />}
+        </Field>
         <div className={styles.filtroDeApps}>
           <span id={idDosApps} className={styles.filtroDeAppsNome}>Apps</span>
           <div className={styles.segmentado}>
@@ -273,16 +303,25 @@ export function AprendidoTab() {
                       deProva={{ n: quantosDeProva, ativo: filtro.prova === 'so_prova',
                                  alternar: () => setFiltro((f) => ({ ...f, prova: f.prova === 'so_prova' ? undefined : 'so_prova' })) }} />
           ) : null}
+          {busca.trim() && lista.itens.length > 0 ? (
+            <p className={styles.secaoLead} role="status" data-busca>
+              {formatInt(itensVisiveis.length)} de {formatInt(lista.itens.length)} itens com “{busca.trim()}”.
+              {lista.total > lista.itens.length ? ` A busca olha os ${formatInt(lista.itens.length)} itens carregados, de ${formatInt(lista.total)}.` : ''}
+            </p>
+          ) : null}
           {lista.itens.length === 0 ? (
             <EmptyState icon={BookOpen} compact title="Nada aprendido com este filtro"
                         hint={ocultos ? `Há ${ocultos} pelo filtro de apps: escolha "Todos" para vê-los.` : undefined} />
+          ) : itensVisiveis.length === 0 ? (
+            <EmptyState icon={BookOpen} compact title="Nenhum item com esta busca" hint="Apague a busca ou use menos palavras: todas precisam aparecer no item." />
           ) : (
             <ul className={styles.lista} aria-label="Catálogo do aprendizado">
-              {lista.itens.map((e) => (
+              {itensVisiveis.map((e) => (
                 <ItemDoLivro
                   key={chaveDoItem(e)}
                   entrada={e}
                   titulo={titulos.get(e)}
+                  onFiltrarAssunto={assuntoDoItem(e) ? filtrarAssunto : undefined}
                   acoes={acoesDoItem(e)}
                   onMudou={() => void carregar(filtro)}
                   extra={e.kind === 'habilidade' ? <AvisoDaHabilidade naFila={false} /> : null}

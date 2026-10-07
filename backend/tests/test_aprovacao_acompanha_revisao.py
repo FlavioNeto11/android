@@ -22,7 +22,7 @@ from app.planning.capabilities import load_catalog
 from app.social.approvals import Approval, ApprovalStore, definir_texto
 
 from .conftest import Harness, make_config
-from .test_capabilities import IG, SENHA
+from .apoio_politica import IG, SENHA
 from .test_recuperacao_preserva_estado import PRAZO, _falhar
 
 OID = "run-v:android-01"

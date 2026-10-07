@@ -30,7 +30,7 @@ from ..taskqueue.flows import PLACEHOLDER, RESERVED, ensinado_em_prova
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..security.redaction import redact
 from ..util import now_iso
-from . import correcao, dado_da_persona, lancador, partida
+from . import conta_propria, correcao, dado_da_persona, lancador, partida
 from .reparo_da_gravacao import marcar_telas
 from .recorder import TrainingError
 from .arraste import arrastes_finais, confirmou, pode_ser_receita
@@ -494,6 +494,7 @@ class TrainingSkills:
                                                 description=post.get("description") or st.get("goal") or "")))
         passos = em_sequencia(passos, [st.get("independente") is True for st in p["steps"]])
         avisos = [*avisos, *self.s.scheduler.flows.colisoes(comando, exemplos)]            # 31.89 F4: só avisa
+        avisos = [*avisos, *conta_propria.aviso(p)]          # 31.182: a etapa que mira a conta da própria persona
         # 31.122: a pós-condição que já vale na tela em que a etapa começa deixaria a etapa passar sem agir
         # Nenhum dado da persona (nem o que não foi digitado) entra nas sugestões nem no texto (marca, como no 31.87 F2)
         dados = self.s.repo.variaveis_da_persona(sess.get("profile_id"))
@@ -630,7 +631,7 @@ class TrainingSkills:
             app=str(pacote or ""), chave=chave, caminho=tuple(destiladas[i].passo.key for i in indices),
             sessao=session_id, run_id=str(etapa["run_id"]), step_id=str(origem.get("step_id")),
             side_effect=bool(etapa["side_effect"]) or any(destiladas[i].passo.side_effect for i in indices),
-            valores=tuple(valores), simulated=bool(etapa["simulated"])))
+            valores=tuple(valores), simulated=bool(etapa["simulated"]), persona=str(etapa["profile_id"] or "")))
         if isinstance(proposta, Recusa):
             return {"id": None, "motivo": f"a lição foi recusada ({proposta.motivo.value})"}
         try:

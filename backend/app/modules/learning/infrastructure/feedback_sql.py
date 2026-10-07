@@ -134,10 +134,11 @@ class LeituraDoVotoSql:
             sql += " AND kind=?"
             params.append(kind.value)
         else:
-            # Os casos das sombras da autopublicação (30.34) e da aprovação automática (30.55) são marcas do sistema, não
-            # gestos: ficam fora da aba Sinais.
-            sql += " AND kind NOT IN (?, ?)"
-            params.extend((SignalKind.AUTOPUBLICARIA.value, SignalKind.APROVARIA.value))
+            # Os casos das sombras da autopublicação (30.34), da aprovação automática (30.55) e da quarentena (31.202)
+            # são marcas do sistema, não gestos: ficam fora da aba Sinais.
+            sql += " AND kind NOT IN (?, ?, ?)"
+            params.extend((SignalKind.AUTOPUBLICARIA.value, SignalKind.APROVARIA.value,
+                           SignalKind.SOMBRA_DA_QUARENTENA.value))
         if app:
             sql += " AND app_package=?"
             params.append(app)

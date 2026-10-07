@@ -88,6 +88,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-080](#adr-080--troca-de-conta-declarada-pelo-app-o-motor-sai-da-conta-aberta-e-entra-na-esperada-pelo-cofre) | Troca de conta declarada pelo app: o motor sai da conta aberta e entra na esperada pelo cofre (item 31.155) | proposto (Jev, 06/10; mecanismo implementado, nenhum app do parque o declara) | 06/10 |
 
 | [ADR-081](#adr-081--regra-da-frota-configurável-até-n-contas-por-alvo-e-conta-nossa-viva-fora-da-contagem) | Regra da frota configurável: até N contas por alvo e conta nossa viva fora da contagem; emenda ao ADR-055 (P-030) | aceito (dono, 06/10) | 06/10 |
+| [ADR-082](#adr-082--operação-que-executa-a-persona-do-grupo-sem-aprovação-age-sem-pedir-aprovação) | Operação que executa: a persona do grupo sem aprovação age sem pedir aprovação; substitui em parte o 28.23 (item 31.253) | aceito (dono, 07/10) | 07/10 |
 
 ---
 
@@ -5784,6 +5785,33 @@ alvo ("o perfil alvo"), e a recusa da porta vira o estágio `acao_bloqueada` (ad
 `backend/tests/test_interacao_entre_contas_nossas.py` (`test_adr081_*`) e `backend/tests/test_excecao_de_politica.py`,
 com a regra antiga como precondição. `not_run`: o central, até o deploy 56.
 
+## ADR-082 — Operação que executa: a persona do grupo sem aprovação age sem pedir aprovação
+
+**Data:** 07/10/2026 · **Estado:** aceito. Decisão do dono no chat da orquestradora, repassada às 13:05Z: ele já tinha
+pedido um grupo "que libera tudo para não precisar de permissão pra nada", e as execuções continuavam travadas. Item
+31.253. Substitui em parte o 28.23 (todo alvo de operação nasce com o teto `preparar`) e amplia o 28.61.
+
+**Contexto.** O 28.61 criou `LimitsCfg.grupo_sem_aprovacao`, mas a dispensa era só da aprovação de POLÍTICA. O teto
+`preparar` da execução de cada alvo de operação continuava pedindo aprovação para todo efeito. Na rodada de 07/10 12:55Z
+(`op-20261007125539-22ef67`), as três ações ficaram em `acao_preparada` até as aprovações chegarem pelo Telegram e pelas
+Pendências.
+
+**Decisão.**
+- Na operação com `acao_final=executar`, o alvo cuja persona está no grupo `grupo_sem_aprovacao` nasce com o teto `agir`.
+  Não há pedido de aprovação, nem pergunta ao dono pelo Telegram, nem passagem pelo liberar para ele.
+- Fora do grupo, ou com `acao_final=preparar`, segue o teto `preparar` e o liberar, como antes.
+- `LimitsCfg.operacao_grupo_liberado_executa` (padrão `true`) volta atrás: `false` devolve todos os alvos ao `preparar`.
+  É lido na criação de cada alvo; a execução já criada mantém o teto com que nasceu.
+- Continua valendo na porta: as recusas (frota, retirada, repetido), o espaçamento entre contas e a reserva de frota
+  (31.240), os tetos por hora e por dia, a conduta, a proteção de conta e a regra 30.64 do objeto ambíguo (que o grupo já
+  tornava `autonomous`).
+- `operacao_max_acoes_executadas` limita só o liberar; a ação do alvo `agir` não passa por ele.
+
+**Consequências.** Com o grupo configurado, uma operação que executa age nas contas reais do grupo sem nenhuma pessoa
+olhar o texto antes. Quem quiser revisar volta a `acao_final=preparar` ou desliga a chave. Prova `simulated`:
+`backend/tests/test_grupo_liberado_executa.py` (persona no grupo com `executar` nasce `agir` e passa a porta de verdade
+sem pedido de aprovação; fora do grupo, com `preparar` ou com a chave desligada, segue `preparar`). `real`: `not_run`
+até o deploy e a primeira operação que executa com o grupo.
 ## ADR-083 — Tetos por hora e por dia, aquecimento e coordenação de frota saem do código
 
 **Data:** 07/10/2026 · **Estado:** aceito. Decisão do dono, executada por ele mesmo fora das sessões (commits `76672bea`,

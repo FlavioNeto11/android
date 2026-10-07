@@ -77,11 +77,9 @@ jobs:
         run: npm ci
       - name: typecheck
         run: npm run typecheck
-      # AnexosTab.test.tsx falha só em Linux/Node 22 (5 testes esperando <img> da miniatura; passa no Windows do central): fora do check
-      # leve até a Canais corrigir o teste (achado 29.175); o resto do vitest roda inteiro.
       - name: vitest
         shell: bash   # bash explícito liga o pipefail: o `tee` não esconde a falha do vitest
-        run: npm test -- --maxWorkers=2 --exclude src/features/canais/AnexosTab.test.tsx 2>&1 | tee "$RUNNER_TEMP/vitest.out"
+        run: npm test -- --maxWorkers=2 2>&1 | tee "$RUNNER_TEMP/vitest.out"
       - name: build
         run: npm run build
       - name: Resumo do job

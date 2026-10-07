@@ -23,7 +23,7 @@ from app.social.contas_nossas import MARCADOR, emails_so_desta_conta, handle_viv
 from app.social.memory import fingerprint, reescrever_memoria, reescrever_memoria_das_retiradas
 from app.util import now_iso
 
-from .test_capabilities import SENHA, build, perfil
+from .apoio_politica import SENHA, build, perfil
 
 ANA = "ana.exemplo01"
 BETO = "beto.exemplo02"

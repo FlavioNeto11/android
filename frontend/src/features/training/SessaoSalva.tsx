@@ -19,6 +19,7 @@ import { plural } from '../../lib/format';
 import { textoComMarcadores } from '../../lib/marcadores';
 import { FluxoNoLivro } from './FluxoNoLivro';
 import { OrigemDoTreino } from './OrigemDoTreino';
+import { RendimentoDoEnsinoSecao } from './RendimentoDoEnsino';
 import { DescricaoEntrada, agruparTeclas, falhaDe } from './TrainingReview';
 import styles from './Training.module.css';
 
@@ -53,7 +54,8 @@ export function SessaoSalva({ sessionId, onClose }: { sessionId: string; onClose
 
   const persona = sessao?.profile_id ? pessoas.find((p) => p.profile_id === sessao.profile_id) : undefined;
   const nome = persona ? persona.display_name || persona.name : null;
-  const proposta = sessao?.proposal ?? null;
+  // 31.189: a cópia mascarada (v1.109) é a que se exibe; sem ela (backend anterior), a proposta de sempre.
+  const proposta = sessao?.proposal_exibicao ?? sessao?.proposal ?? null;
   const entradas = sessao?.inputs ?? [];
   const descartadas = new Set((proposta?.discarded ?? []).map((d) => d.seq));
 
@@ -134,6 +136,13 @@ export function SessaoSalva({ sessionId, onClose }: { sessionId: string; onClose
               ) : null}
             </div>
           ) : <p className={styles.hint}>Esta sessão não chegou a ter proposta.</p>}
+
+          {sessao.status === 'saved' ? (
+            <>
+              <h4 className={styles.sub}>Rendimento</h4>
+              <RendimentoDoEnsinoSecao sessionId={sessionId} />
+            </>
+          ) : null}
         </div>
       )}
     </Dialog>

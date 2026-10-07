@@ -347,12 +347,43 @@ escrita (`security/mascara_da_persona.py`, camada irmã de `redact` e de `endere
   e o `status_detail` da etapa;
 - todo evento com execução, objetivo, etapa ou tentativa, pela máscara que o `Repository` liga no `EventBus`.
 
-O mapa é por objetivo: os dados que identificam a persona (nome, sobrenome, nome de exibição, e-mail, nascimento)
-sempre, os outros só quando o plano os cita (senão "Brasil" sumiria de todo texto). Entra também o dado que o ator
+O mapa é por objetivo: os dados que identificam a persona (nome, sobrenome, nome de exibição, e-mail, nascimento e,
+desde o 31.243, o usuário de cada conta, `{conta_<app>_usuario}`, com e sem a arroba) sempre, os outros só quando o plano os cita (senão "Brasil" sumiria de todo texto). Entra também o dado que o ator
 digitou INTEIRO, de qualquer chave. Regras do ensino: o valor mais longo primeiro, no mínimo 3 caracteres, palavra
 inteira, sem diferença de maiúscula. O valor que está num parâmetro do comando fica, porque o parâmetro vence (regra do
 F2) e a receita aprendida da execução continua guardando `{param}`. O `actions.target` fica com o valor: é o seletor da
 receita e da lição (o elemento da tela), e o evento não o leva.
+
+**A nota do juiz na evidência leva também o usuário da conta e o texto da etapa (31.242).** Achado da leitura das
+evidências da onda 2 de 07/10: a nota do juiz repete o usuário da conta ("@fulano said …") e o texto do comentário,
+que o mapa acima não leva. A nota passa pelo mapa da NOTA (`Repository.trocas_da_nota`), que soma três coisas:
+- o mapa do registro, que desde o 31.243 leva o usuário de cada conta da persona (com e sem a arroba, porque a borda
+  da palavra não casa depois de `@`);
+- os textos da etapa que o juiz repete (`content`, `username`, `post_author`, `target`; a legenda `caption_contains`
+  fica, porque é o texto público do alvo e a evidência diz qual legenda conferiu), como
+  `{chave}`.
+
+O valor curto demais ou que já é marcador fica de fora. Vale na gravação e na saída (`Repository.nota_para_fora`:
+detalhe da execução no painel e na API, e o evento `evidence.added`). Assim, a nota gravada antes sai mascarada sem
+reescrever o banco.
+
+Limites:
+- só o valor INTEIRO: o trecho ou a paráfrase do comentário fica;
+- na saída vale o usuário de AGORA: a conta trocada ou retirada deixa o antigo na nota velha;
+- o contexto da falha no treino (`training/origem.py`) lê o banco direto; desde o 31.243 ele mascara pelo barramento
+  (`EventBus.mascara` e `mascara_da_nota`, que o `Repository` liga), inclusive a linha antiga gravada em claro.
+
+As leituras e o treino seguem casando pela chave: o marcador volta ao valor com as variáveis da persona
+(`resolver_texto`), como o nome desde o 31.113 F3. O usuário digitado sem a arroba já era mascarado (o dado digitado
+inteiro); com a arroba, agora também.
+
+**A receita aceita o marcador da persona já gravado (31.244).** A destilação lê o `type_text` do banco, que traz o
+marcador (`{perfil_nome}`, `@{conta_<app>_usuario}`) e não o valor. Antes, esse texto não ficava 100 % coberto por
+parâmetros e a etapa não virava receita: era o custo do 31.113 F1 e do 31.243. Agora `recipes.distill(..., persona=)`
+recebe os NOMES das variáveis da persona do objetivo (`_RecipeRun.persona`, sem valor). O marcador cuja variável a
+persona tem conta como coberto, e a arroba logo antes dele não sobra como literal. A reprodução digita o valor da persona
+da vez, porque o replayer já recebe `{**persona, **rr.variables}` (31.87 F2). O marcador que nem a etapa nem a persona
+resolvem segue recusado (a reprodução falharia). Sem `persona`, a destilação é a de antes.
 
 A F1 não cobre o texto das etapas (`steps.postcondition`/`goal`/`title` e `plan_versions.steps`): a materialização ainda
 grava o valor resolvido. Isso é a F2 (o molde na linha e a resolução em memória no executor, combinada com a Android).

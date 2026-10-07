@@ -23,11 +23,13 @@ import secrets as pysecrets
 from typing import Any
 
 import pytest
+from pydantic import SecretStr
 
 from app.models import (PersonaDeviceBody, Plan, PlannerInfo, PlanStep, Postcondition, ProfileCreate, RunCreate,
                         RunTarget, SessionStatus)
 from app.modules.execution.application.alvos import (AlvoPedido, DicasDoTexto, Mundo, PedidoDeAlvos, Vinculo,
                                                      resolver_alvos)
+from app.modules.identity.presentation.schemas import CredentialUpdate
 from app.taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody
 from app.taskqueue.scheduler import _Desbravador
 from app.taskqueue.service import RunError
@@ -285,6 +287,11 @@ async def test_automatico_so_sugere_quem_tem_conta_em_todos_os_apps(harness: Har
     _outlook(harness)
     alice = _persona(harness, "Alice", "android-01")                    # só o Instagram; pelo nome, viria primeiro
     sueli = _persona(harness, "Sueli", "android-02", outlook=True)
+    # ADR-085: os dois apps têm login gerenciado; sem sessão pronta a automação só entra com a senha guardada com
+    # consentimento em cada conta (sem ela a persona é descartada por código, e este teste não é sobre isso).
+    for conta in st.social.list_accounts(sueli):
+        st.social.set_account_credential(
+            sueli, conta.id, CredentialUpdate(password=SecretStr(pysecrets.token_hex(8)), consent=True), by="teste")
     orq = Orquestrador(st.runs, st.social_repo)
     s = await orq.sugerir(RunTargetsSuggestBody(command=ENTRE_APPS))
     assert s.modo == "ia" and s.app_ids == ["outlook", "instagram"] and s.app_id == "outlook"

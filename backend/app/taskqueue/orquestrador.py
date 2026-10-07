@@ -31,6 +31,7 @@ from ..modules.execution.application.target_extractor import TargetExtractor
 from ..modules.execution.domain.orquestracao import (MAX_CANDIDATAS, CartaoDePersona, OrquestracaoInvalida,
                                                      OrquestracaoOut, PedidoDeOrquestracao, normalizar)
 from ..modules.identity.domain.persona import CRENCAS_MINIMAS, lacunas_da_biografia, valor_no_caminho
+from ..planning.catalog import capabilities_of
 from ..planning.provider import AIError
 from ..security.redaction import redact
 from ..social.context import linhas_de_crencas, persona_dto
@@ -41,6 +42,15 @@ log = logging.getLogger(__name__)
 
 MENSAGEM_CREDENCIAL = ("O comando contém uma credencial (ex.: \"Senha: …\"). Ele iria ao provedor de IA: tire a senha. "
                        "Ela fica guardada na conta da persona, e a automação a digita de lá sem passar pela IA.")
+
+#: ADR-085: o que a automação NÃO resolve sozinha e por isso descarta, com o motivo dito e o que fazer. Sem nome de
+#: persona nem dado de conta: o painel mostra o nome ao lado.
+MOTIVO_CONTA_BLOQUEADA = "conta bloqueada: ela saiu da plataforma e não recebe tarefa"
+MOTIVO_SEM_SENHA = ("senha não guardada com consentimento: guarde a senha e dê o consentimento na ficha da persona "
+                    "(a automação digita sem passar pela IA)")
+MOTIVO_SEM_CONSENTIMENTO = ("senha guardada sem consentimento: dê o consentimento na ficha da persona para a automação "
+                            "poder digitá-la")
+MOTIVO_SENHA_RECUSADA = "a senha guardada foi recusada pelo app: atualize a senha na ficha da persona"
 
 _APARELHOS_NO_TEXTO = re.compile(r"\b(\d{1,2})\s+(?:aparelhos?|celulares?|dispositivos?|emuladores?)\b", re.I)
 #: O que do perfil vai ao cartão (caminho na biografia → rótulo), além de idade, gênero, resumo e voz.
@@ -68,6 +78,9 @@ class PersonaEscolhida(BaseModel):
     servidor: str | None = None
     #: O aviso de atenção do aparelho escolhido (convidado sob pressão…), para a pessoa ver ANTES de confirmar.
     atencao: str | None = None
+    #: ADR-085: o que a AUTOMAÇÃO fará antes de agir ("vai ligar o aparelho android-02", "vai conferir a sessão no
+    #: preparo"). Aviso do que vai acontecer, nunca pedido à pessoa. Vazio = nada a preparar.
+    preparo: list[str] = Field(default_factory=list)
 
 
 class PersonaDescartada(BaseModel):
@@ -136,8 +149,12 @@ class Orquestrador:
         apps = runs._app_do_comando(texto, []) or runs._apps_citados(texto)  # noqa: SLF001
         mundo = runs._mundo(apps)  # noqa: SLF001
         candidatas = self._candidatas(mundo, apps)
+        # ADR-085: só o impossível sai, por código e com o motivo dito (não é opinião do modelo).
+        impossiveis = self._impossiveis(candidatas, mundo, apps)
         if not candidatas:
-            return self._sem_persona(texto, apps, mundo)
+            vazia = self._sem_persona(texto, apps, mundo)
+            vazia.descartadas = self._descartadas_por_codigo(impossiveis, mundo)
+            return vazia
         status = runs.provider.status()
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
@@ -160,15 +177,17 @@ class Orquestrador:
             out = normalizar(bruto, pedido)
         except OrquestracaoInvalida as exc:
             raise RunError("ai_error", str(exc), 503, {"kind": "invalid_output", "retryable": True}) from exc
-        return self._montar(out, texto, apps, mundo)
+        return self._montar(out, texto, apps, mundo, impossiveis)
 
     # ------------------------------------------------------------------ montagem
-    def _montar(self, out: OrquestracaoOut, texto: str, apps: list[str], mundo: Mundo) -> RunTargetsSuggestion:
+    def _montar(self, out: OrquestracaoOut, texto: str, apps: list[str], mundo: Mundo,
+                impossiveis: dict[str, str] | None = None) -> RunTargetsSuggestion:
         nome = mundo.nome
         base = RunTargetsSuggestion(
             modo="ia", app_ids=apps, command_sem_destinos=texto, resumo=out.resumo, perguntas=out.perguntas,
-            descartadas=[PersonaDescartada(profile_id=d.profile_id, nome=nome(d.profile_id), motivo=d.motivo)
-                         for d in out.descartadas],
+            descartadas=[*self._descartadas_por_codigo(impossiveis or {}, mundo),
+                         *(PersonaDescartada(profile_id=d.profile_id, nome=nome(d.profile_id), motivo=d.motivo)
+                           for d in out.descartadas)],
             nao_avaliaveis=[PersonaNaoAvaliavel(profile_id=n.profile_id, nome=nome(n.profile_id), falta=n.falta)
                             for n in out.nao_avaliaveis])
         if not out.escolhidas:
@@ -185,10 +204,79 @@ class Orquestrador:
                                             aderencia=e.aderencia,  # type: ignore[arg-type]
                                             instance_id=onde.get(e.profile_id, (None, None))[0],
                                             servidor=onde.get(e.profile_id, (None, None))[1],
-                                            atencao=self._atencao(onde.get(e.profile_id, (None, None))[0]))
+                                            atencao=self._atencao(onde.get(e.profile_id, (None, None))[0]),
+                                            preparo=self._preparo(e.profile_id, onde.get(e.profile_id, (None, None))[0],
+                                                                  mundo, apps))
                            for e in out.escolhidas]
         base.warnings = self._avisos_de_saude(base.targets, nome)
         return base
+
+    # ------------------------------------------------------------------ o que a automação resolve e o que não
+    @staticmethod
+    def _descartadas_por_codigo(impossiveis: dict[str, str], mundo: Mundo) -> list[PersonaDescartada]:
+        return [PersonaDescartada(profile_id=pid, nome=mundo.nome(pid), motivo=motivo)
+                for pid, motivo in impossiveis.items()]
+
+    def _motivo_de_login(self, profile_id: str, app_id: str) -> str | None:
+        """Por que a automação NÃO consegue entrar nesta conta (ADR-040), ou `None` se consegue: a senha tem de estar
+        guardada, com o consentimento, e não recusada pelo app."""
+        conta = self.social.account_by_app(profile_id, app_id)
+        cred = self.social.account_credential_row(profile_id, str(conta["id"])) if conta is not None else None
+        if cred is None:
+            return MOTIVO_SEM_SENHA
+        if not cred["consent_at"]:
+            return MOTIVO_SEM_CONSENTIMENTO
+        return MOTIVO_SENHA_RECUSADA if str(cred["status"] or "active") == "invalid" else None
+
+    def _impossiveis(self, candidatas: dict[str, list[str]], mundo: Mundo, apps: list[str]) -> dict[str, str]:
+        """ADR-085: tira de `candidatas` (no lugar) SÓ o que a automação não resolve sozinha, e devolve `{persona:
+        motivo}`: conta bloqueada e app de login gerenciado sem senha guardada com consentimento onde a sessão ainda não
+        está pronta. Aparelho desligado, sessão não conferida e app fechado NÃO entram: a execução os prepara."""
+        motivos: dict[str, str] = {}
+        pacote = self.runs._pacote_por_app(apps)  # noqa: SLF001
+        gerenciados = [a for a in apps if capabilities_of(pacote.get(a)).session_provider]
+        for pid in list(candidatas):
+            linha = self.social.persona_row(pid)
+            if linha is not None and str(linha["status"]) == "blocked":
+                motivos[pid] = MOTIVO_CONTA_BLOQUEADA
+                del candidatas[pid]
+                continue
+            falhas = [m for a in gerenciados if (m := self._motivo_de_login(pid, a))]
+            if not falhas:
+                continue
+            # Sem como entrar sozinha, só serve o aparelho em que a sessão desse par já está pronta.
+            prontos = [iid for iid in candidatas[pid] if (pid, iid) in mundo.sessoes_prontas]
+            if prontos:
+                candidatas[pid] = prontos
+            else:
+                motivos[pid] = falhas[0]
+                del candidatas[pid]
+        return motivos
+
+    def _preparo(self, profile_id: str, instance_id: str | None, mundo: Mundo, apps: list[str]) -> list[str]:
+        """As frases do que a automação fará antes de agir neste aparelho (ADR-085). Só descreve o estado real: aparelho
+        fora de `online` e sessão do par ainda não pronta. Sem religamento automático, diz o contrário em vez de
+        prometer."""
+        if not instance_id:
+            return []
+        sched = self.runs.scheduler
+        frases: list[str] = []
+        cands = sched.candidatos_de([instance_id])
+        cand = cands[0] if cands else None
+        if cand is not None and not cand.ligado:
+            if not cand.acordavel:
+                frases.append(f"o aparelho {instance_id} está desligado e o religamento automático não o liga: ligue-o")
+            else:
+                servidor = sched.servidores().get(cand.servidor)
+                if servidor is not None and servidor.vagas_livres <= 0:
+                    frases.append(f"vai esperar vaga para ligar o aparelho {instance_id}")
+                else:
+                    frases.append(f"vai ligar o aparelho {instance_id}")
+        pacote = self.runs._pacote_por_app(apps)  # noqa: SLF001
+        gerenciado = any(capabilities_of(pacote.get(a)).session_provider for a in apps)
+        if gerenciado and (profile_id, instance_id) not in mundo.sessoes_prontas:
+            frases.append("vai conferir a sessão no preparo")
+        return frases
 
     def _atencao(self, instance_id: str | None) -> str | None:
         """O aviso do cartão do aparelho, numa linha e com teto (vai ao modelo e à tela da sugestão)."""
@@ -317,7 +405,6 @@ class Orquestrador:
             # As crenças como o modelo social as lê, sem a linha de conduta (ela vai uma vez, no sistema).
             perfil += [c for c in linhas_de_crencas(pessoa.biography.beliefs) if not c.startswith("conduta")]
             cands = sched.candidatos_de(aparelhos, com_trabalho=com_trabalho)
-            ligados = sum(1 for c in cands if c.ligado)
             ocupados = sum(1 for c in cands if c.ocupado)
             prontas = sum(1 for iid in aparelhos if (pid, iid) in mundo.sessoes_prontas)
             n_fila = fila.get(pid, 0)
@@ -327,7 +414,7 @@ class Orquestrador:
             atencoes = {iid: texto for iid in aparelhos if (texto := self._atencao(iid))}
             partes = [f"{len(aparelhos)} aparelho(s) com " + ("os apps" if len(apps) > 1 else "o app") if apps
                       else f"{len(aparelhos)} aparelho(s)",
-                      f"{ligados} ligado(s)", f"{prontas} com sessão pronta"]
+                      "a automação liga o aparelho e confere a sessão se precisar"]
             if atencoes:
                 partes.insert(0, f"atenção em {', '.join(atencoes)}")
             if n_fila:
@@ -343,6 +430,7 @@ class Orquestrador:
                 atencao=_curto("; ".join(f"{iid}: {texto}" for iid, texto in atencoes.items()), 600)))
         # A saúde ORDENA, não filtra: a de aparelho com aviso continua candidata, e a preferência é do orquestrador,
         # pelo cartão. Fica depois de `livre` para não mudar quem cabe no teto de candidatas por um aviso só.
+        # `sessao_pronta` e `livre` só desempatam a ordem (ADR-085): nunca tiram ninguém.
         cartoes.sort(key=lambda c: (not c.livre, not c.aparelho_saudavel, not c.sessao_pronta, c.tarefas_na_fila,
                                     c.nome))
         return cartoes[:max_candidatas]

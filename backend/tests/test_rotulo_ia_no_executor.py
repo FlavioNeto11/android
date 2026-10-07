@@ -33,7 +33,7 @@ from app.taskqueue.repository import Repository
 
 from .conftest import CountingProvider, Harness
 from .fake_instagram import PKG, AtorDoInstagram, FakeInstagram, Node
-from .test_capabilities import SENHA
+from .apoio_politica import SENHA
 
 IID = "android-01"
 LEGENDA = "Fim de tarde na praia"
@@ -221,7 +221,9 @@ async def test_com_o_rotulo_pedido_e_o_interruptor_desligado_o_share_nao_e_tocad
         notas = [r["note"] for r in _estado(h).db.query("SELECT note FROM evidence WHERE step_id=?", (etapa["id"],))]
         assert sum(1 for n in notas if (n or "").startswith("Efeito recusado antes do toque")) == 2
         assert not any("Conferência antes do efeito externo" in (n or "") for n in notas)   # a guarda não foi dada
-        assert h.ai.count("decide") == 2                           # a 2ª recusa não consulta o modelo de novo
+        # 31.223: o commit do modelo de ação é descartado antes da guarda e refeito no forte (1 decisão a mais); a 2ª
+        # recusa continua sem consultar o modelo de novo
+        assert h.ai.count("decide") == 3
 
 
 async def test_a_primeira_recusa_entra_no_historico_do_ator(tmp_path: Path) -> None:
@@ -236,9 +238,12 @@ async def test_a_primeira_recusa_entra_no_historico_do_ator(tmp_path: Path) -> N
     async with _parque(tmp_path, "true", ligado=False, ator=Espiao("true")) as h:
         etapa = await _publicar(h)
         assert etapa["status"] == "waiting_user"
-        assert len(historicos) >= 2
+        assert len(historicos) >= 3
         assert not any("REJEITADA" in x for x in historicos[0])
-        assert any("REJEITADA pelo executor" in x and "Add AI label" in x for x in historicos[1])
+        # 31.223: a 2ª consulta é o commit refeito no modelo forte; a recusa da guarda chega na seguinte
+        assert any("sobe ao modelo de escalonamento" in x for x in historicos[1])
+        assert not any("REJEITADA" in x for x in historicos[1])
+        assert any("REJEITADA pelo executor" in x and "Add AI label" in x for x in historicos[2])
 
 
 # ==================================================================== o interruptor ligado e o rótulo não pedido

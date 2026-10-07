@@ -19,7 +19,7 @@ from app.modules.learning.domain.conteudo import (PREFIXO_DE_TREINO, EtapaDeOrig
                                                   capability_da_linha_da_receita, capability_da_receita,
                                                   fluxo_legivel, habilidade_legivel, receita_legivel)
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa, run_valida
-from app.modules.learning.domain.livro import (EntradaDoLivro, apps_na_ordem_do_plano, escopo_da_receita,
+from app.modules.learning.domain.livro import (EntradaDoLivro, ProvaDaCandidata, apps_na_ordem_do_plano, escopo_da_receita,
                                                escopo_do_fluxo, estado_nativo, fluxo_tem_efeito, hash_da_receita,
                                                receita_tem_efeito, ref_da_trilha)
 from app.modules.learning.domain.relacoes import Sucessora
@@ -67,10 +67,14 @@ def _de_app(pacote: str | None, bruto: str | None) -> tuple[str, str | None]:
 
 
 class FontesSql:
-    def __init__(self, db: Database, *, pacotes_do_registro: Callable[[], Iterable[str]] = lambda: ()) -> None:
-        """`pacotes_do_registro`: os pacotes do registro de apps (a composição passa o real; os testes, um falso)."""
+    def __init__(self, db: Database, *, pacotes_do_registro: Callable[[], Iterable[str]] = lambda: (),
+                 necessarias: Callable[[], int] | None = None) -> None:
+        """`pacotes_do_registro`: os pacotes do registro de apps (a composição passa o real; os testes, um falso).
+        `necessarias` (31.271): `ai.recipes_promote_after`, lido a cada leitura; sem ele, a prova da candidata sai sem
+        o total (`None`, que o painel trata como "o central não diz", nunca zero)."""
         self._db = db
         self._registro = pacotes_do_registro
+        self._necessarias = necessarias
 
     def pacotes_de_teste(self) -> frozenset[str]:
         return frozenset(p for r in self._db.query("SELECT package FROM apps WHERE category='qa'")
@@ -115,7 +119,11 @@ class FontesSql:
 
     # ------------------------------------------------------------------ receita
     def receitas(self) -> list[EntradaDoLivro]:
-        return [_receita(r) for r in self._db.query(_RECEITAS + " ORDER BY r.app_package, r.step_key, r.version")]
+        rows = self._db.query(_RECEITAS + " ORDER BY r.app_package, r.step_key, r.version")
+        # 31.271: a ativa de cada chave sai do próprio lote (todas as receitas já estão aqui), sem consulta por candidata.
+        ativas = {_chave(r): r for r in rows if linhas.texto(r, "status") == "active"}
+        necessarias = self._lidas_necessarias()
+        return [_receita(r, necessarias=necessarias, ativa=ativas.get(_chave(r))) for r in rows]
 
     def receita(self, ref: str) -> EntradaDoLivro | None:
         try:
@@ -123,7 +131,17 @@ class FontesSql:
         except ValueError:
             return None
         row = self._db.one(_RECEITAS + " WHERE r.id=?", (recipe_id,))
-        return _receita(row) if row else None
+        if not row:
+            return None
+        ativa = None
+        if linhas.texto(row, "status") == "candidate":
+            ativa = self._db.one("SELECT id, version FROM recipes WHERE app_package=? AND app_version=? AND"
+                                 " app_signature=? AND variant=? AND step_hash=? AND status='active'"
+                                 " ORDER BY version DESC, id DESC LIMIT 1", _chave(row))
+        return _receita(row, necessarias=self._lidas_necessarias(), ativa=ativa)
+
+    def _lidas_necessarias(self) -> int | None:
+        return None if self._necessarias is None else int(self._necessarias())
 
     # ------------------------------------------------------------------ conteúdo legível (30.3)
     def conteudo(self, kind: LivroKind, ref: str) -> JsonObject | None:
@@ -389,7 +407,23 @@ _RECEITAS = ("SELECT r.*, s.title AS etapa_titulo, ru.prova_fluxo_id AS origem_p
              " FROM recipes r LEFT JOIN steps s ON s.id = r.learned_from_step LEFT JOIN runs ru ON ru.id = s.run_id")
 
 
-def _receita(r: Row) -> EntradaDoLivro:
+def _chave(r: Row) -> tuple[str, str, str, str, str]:
+    """A identidade da receita (pacote, versão, assinatura, variante e etapa), a mesma de `RecipeStore.find`."""
+    return (linhas.texto(r, "app_package"), linhas.texto(r, "app_version"), linhas.texto(r, "app_signature"),
+            linhas.texto(r, "variant"), linhas.texto(r, "step_hash"))
+
+
+def _prova_da_candidata(r: Row, necessarias: int | None, ativa: Row | None) -> ProvaDaCandidata:
+    return ProvaDaCandidata(
+        concordancias=linhas.inteiro(r, "shadow_agree"), necessarias=necessarias,
+        ultima_consulta_em=linhas.texto_ou_nulo(r, "ultima_consulta_em"),
+        ultima_consulta_resultado=linhas.texto_ou_nulo(r, "ultima_consulta_resultado"),
+        substitui_ref=None if ativa is None else str(linhas.inteiro(ativa, "id")),
+        substitui_versao=None if ativa is None else linhas.inteiro(ativa, "version"))
+
+
+def _receita(r: Row, *, necessarias: int | None = None, ativa: Row | None = None) -> EntradaDoLivro:
+    """`necessarias` e `ativa` (a ativa da mesma chave) só servem à prova da candidata (31.271)."""
     status = linhas.texto(r, "status")
     acoes = linhas.json_legado(linhas.texto(r, "actions"))
     aprendida = linhas.texto_ou_nulo(r, "learned_from_step") or ""
@@ -408,7 +442,8 @@ def _receita(r: Row) -> EntradaDoLivro:
                                     linhas.texto(r, "step_hash")),
         app_version=linhas.texto(r, "app_version"), falhas_seguidas=linhas.inteiro(r, "consecutive_fail"),
         nasceu_de=run_da_etapa(aprendida), etapa=linhas.texto_ou_nulo(r, "etapa_titulo"),
-        nasceu_em=_nasceu_em(r))
+        nasceu_em=_nasceu_em(r),
+        prova_da_candidata=_prova_da_candidata(r, necessarias, ativa) if status == "candidate" else None)
 
 
 def _nasceu_em(r: Row) -> str | None:

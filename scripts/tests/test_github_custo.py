@@ -46,6 +46,11 @@ class FakeGh:
         self.chamadas.append(args)
         if self.falha:
             raise RuntimeError("o gh falhou (código 1)")
+        if args[:2] == ("run", "view"):
+            if args[2] == "2":  # o run do CI leve tem resumo; o do CI (1) é de antes do 29.184 e não tem
+                return ("2026-10-06T22:33:00Z **docs-check + scripts/tests**: a 4 s · soma das etapas 188 s · ~3 min cobrados · pytest 820 passed, 11 skipped\n"
+                        "2026-10-06T22:33:01Z **frontend · typecheck + vitest + build**: b 3 s · soma das etapas 190 s · ~4 min cobrados · vitest 1941 passed\n")
+            return "log sem resumo\n"
         rota = args[1] if args[1] != "--paginate" else args[2]
         if "/settings/billing/" in rota:
             if self.billing_ok:
@@ -124,6 +129,29 @@ class Custo(unittest.TestCase):
         codigo, _, err = rodar(FakeGh(), "--anexar", str(arq))
         self.assertEqual(codigo, 1)
         self.assertIn("não foi possível anexar", err)
+
+    def test_resumos_da_semana_somam_corridas_cobrados_e_maior_contagem(self) -> None:
+        por, com_resumo, lidos = mod.resumos_da_semana("dono/repo", datetime(2026, 9, 30, tzinfo=timezone.utc), FakeGh())
+        self.assertEqual((com_resumo, lidos), (1, 2))  # CI (1) e CI leve (2) da janela; só o 2 tem a linha
+        d = por["docs-check + scripts/tests"]
+        self.assertEqual((d["corridas"], d["soma_s"], d["cobrados_min"], d["testes_pytest"]), (1, 188, 3, 820))
+        self.assertEqual(por["frontend · typecheck + vitest + build"]["testes_vitest"], 1941)
+
+    def test_relatorio_dos_resumos_e_a_flag(self) -> None:
+        _, out, _ = rodar(FakeGh(), "--resumos")
+        self.assertIn("Resumos por corrida", out)
+        self.assertIn("| docs-check + scripts/tests | 1 | 188 | 3 | pytest 820 |", out)
+        self.assertIn("com resumo: 1", out)
+        self.assertNotIn("Resumos por corrida", rodar(FakeGh())[1])
+
+    def test_log_que_falha_nao_derruba_o_relatorio(self) -> None:
+        class SemLog(FakeGh):
+            def __call__(self, *args, **kw):
+                if args[:2] == ("run", "view"):
+                    raise RuntimeError("o gh falhou (código 1)")
+                return super().__call__(*args, **kw)
+        _, com_resumo, lidos = mod.resumos_da_semana("dono/repo", datetime(2026, 9, 30, tzinfo=timezone.utc), SemLog())
+        self.assertEqual((com_resumo, lidos), (0, 2))
 
     def test_texto_nao_leva_nome_de_conta_nem_repo(self) -> None:
         _, out, _ = rodar(FakeGh())

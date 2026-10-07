@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Literal, TypeVar
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -152,7 +152,23 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
             "saude": _saude(saude), "nasceu_de": e.nasceu_de, "nasceu_em": e.nasceu_em, "reaprendido": _reaprendido(e.reaprendido),
             "nascido_de_prova": e.nascido_de_prova,                 # 31.143 (v1.92): o selo e o filtro "Prova" (31.131)
             "em_uso_real_desde": e.em_uso_real_desde,               # 31.150: o selo "em uso real desde"
-            **_do_legado(e, legado), **_da_espera(e, servico)}
+            "source_kind": e.source_kind,                           # v1.117: a origem do item de learning_items
+            "assunto": e.assunto,                                   # 31.200 (v1.113): o escopo de assunto do item
+            **_da_prova(e), **_do_legado(e, legado), **_da_espera(e, servico)}
+
+
+def _da_prova(e: EntradaDoLivro) -> JsonObject:
+    """31.271: `prova_da_candidata`, SÓ na receita candidata (ausente no resto), na forma que a aba Aprendido lê
+    (31.270): a sequência de concordâncias, as necessárias, a última consulta e a ativa que ela substitui."""
+    p = e.prova_da_candidata
+    if p is None:
+        return {}
+    consulta = None if p.ultima_consulta_resultado is None else {
+        "em": p.ultima_consulta_em, "resultado": p.ultima_consulta_resultado}
+    substitui = None if p.substitui_ref is None else {
+        "ref": p.substitui_ref, "versao": p.substitui_versao, "estado": "active"}
+    return {"prova_da_candidata": {"concordancias": p.concordancias, "necessarias": p.necessarias,
+                                   "ultima_consulta": consulta, "substitui": substitui}}
 
 
 def _da_espera(e: EntradaDoLivro, servico: LearningService | None) -> JsonObject:
@@ -268,6 +284,7 @@ def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
                        for e in sorted(d.evidencias, key=lambda e: e.observed_at or "", reverse=True)],
         "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
         "conteudo": d.conteudo, "versao": d.versao, "relacoes": list(d.relacoes),
+        "proveniencia": d.proveniencia,                          # v1.117: só no fato da operação (31.190)
         "invalidar_evidencia": None if a_invalidar is None else {"run_id": a_invalidar},
         "pareceres": [], "curador": None}
     pareceres = _pareceres(servico)
@@ -340,13 +357,14 @@ class CorpoDaConfirmacao(BaseModel):
 @router.get("", response_model=None)
 async def ler_livro(request: Request, kind: LivroKind | None = None, state: SkillState | None = None,
                     app: str | None = None, origem: Origem | None = None, rotulo: Rotulo | None = None,
-                    nascido_de_prova: bool | None = None) -> JsonObject:
+                    nascido_de_prova: bool | None = None,
+                    assunto: str | None = Query(default=None, max_length=200)) -> JsonObject:
     servico = _servico(request)
     # RA-19: sem `rotulo`, a lista padrão esconde os apps de teste. Com um app escolhido, vale o que ele tiver: o QA
     # Messenger escolhido no filtro de app não pode voltar vazio por causa de um padrão que a pessoa não escolheu.
     efetivo = rotulo or (Rotulo.TODOS if app else Rotulo.PRODUTO)
     livro = servico.livro(kind=kind, state=state, app=app, origem=origem, rotulo=efetivo,
-                          nascido_de_prova=nascido_de_prova)
+                          nascido_de_prova=nascido_de_prova, assunto=assunto)
     contagem: JsonObject = {k: {estado: n for estado, n in v.items()} for k, v in livro.contagem.items()}
     capabilities = servico.capabilities(livro.itens)
     nomes = servico.nomes_das_capabilities(livro.itens, capabilities)

@@ -21,10 +21,11 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db import loads
+from app.modules.applications.infrastructure.registry import definition_of
 from app.models import (CustosExecucao, DistributeSpec, Plan, ResolveBody, RunCreate, RunDetail, RunSummary,
                         RunTargetsPreview, RunTargetsResolveBody)
 from app.modules.execution.presentation.comum import autor_do_sinal, run_error
-from app.planning import costs
+from app.planning import costs, custo_por_passo
 from app.porta_do_plano import (AprovarPlanoBody, PortaIndisponivel, PreviaDoItemBody, aprovar_plano, previa_da_porta,
                                 previa_do_item, renovar_plano)
 from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
@@ -167,6 +168,12 @@ async def get_run(request: Request, run_id: str) -> RunDetail:
         spent_usd=costs.spent_usd(s.db, s.cfg.file.ai.prices, run_id=run_id),
         calls=int(s.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE run_id=?", (run_id,))),
     )
+    # 31.229 (adendo v1.124): o estágio de cada passo vem dos apps da execução (`operacao.estagios` do app.yaml).
+    estagios: dict[str, str] = {}
+    for app_id in detail.app_ids:
+        pacote = s.db.scalar("SELECT package FROM apps WHERE id=?", (app_id,))
+        estagios.update(definition_of(pacote).operation_stages)
+    detail.custo_por_passo = custo_por_passo.por_execucao(s.db, s.cfg.file.ai.prices, [run_id], estagios).get(run_id)
     return detail
 
 
