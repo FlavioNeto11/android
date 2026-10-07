@@ -2600,3 +2600,24 @@ commit descartado) e Opus 0,031. O alvo executado vai de cerca de 0,28 para cerc
 **Prova.** `simulated`: `backend/tests/test_forte_so_no_commit.py` (2). A navegação fica no tier 0; o commit do tier 0
 não age e é refeito no tier 1; desligado, a etapa inteira vai ao tier 1. `real`: `not_run`; o custo por alvo da
 primeira operação depois do deploy 61, contra a onda 2.
+
+## A receita sem o "voltar" inicial (31.230)
+
+Achado da onda 1 (07/10): a IA começou o `open_profile` por voltar (`press_back`). Como o voltar depende da tela de
+quem aprendeu, o destilador recusava a tentativa inteira, e nenhuma receita nascia. Na onda 2, sem isto, o POST do
+31.221 podia não ter candidata para promover.
+
+Agora:
+- **Anotação.** Para cada ação da IA, o executor anota se a tela de onde ela partiu era o estado conhecido DECLARADO do
+  app (`conhecimento/apps/<pacote>/telas.yaml`, `estado_conhecido.telas`; no Instagram, `feed` e `profile`). Só a
+  anotação fica em memória, nunca a tela. As telas aprendidas ficam de fora.
+- **Destilação.** O prefixo de `press_back` antes da 1ª ação gravada é descartado quando essa ação partiu do estado
+  conhecido. Ela leva a marca `ancora: estado_conhecido`. Fora do estado conhecido, sem conhecimento do app ou com
+  `press_back` no meio do caminho, a tentativa segue recusada como antes.
+- **Reprodução.** Antes da 1ª ação, a receita ancorada confere a tela. Fora do estado conhecido, ou sem quem confira,
+  é "alvo ausente": não se aplicou (30.80), e a IA assume. Nunca reproduz às cegas a partir de uma tela errada.
+
+A receita nascida assim é candidata como qualquer outra. A sombra a prova, ou a pessoa a promove pelo 31.221.
+
+**Prova.** `simulated`: `backend/tests/test_receita_sem_voltar_inicial.py` (6, com o `telas.yaml` real do Instagram).
+`real`: `not_run`; a 1ª operação depois do deploy 61 com `open_profile` que comece por voltar.

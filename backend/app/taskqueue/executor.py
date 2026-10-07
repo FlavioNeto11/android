@@ -799,6 +799,9 @@ class StepExecutor:
         # Item 31.24 (C-4): o juiz e a evidência de cada tentativa EM CURSO, somados enquanto ela roda e gravados uma
         # vez no fim (`_registrar_estrategia`). Some no fim da tentativa, saia ela como sair.
         self._tempos_da_tentativa: dict[str, TemposDaTentativa] = {}
+        #: 31.230: por tentativa, a ação da IA (id) → a tela antes dela era o estado conhecido do app? Lida pela
+        #: destilação no fim da tentativa; só a anotação, nunca a tela.
+        self._em_casa_antes: dict[str, dict[int, bool]] = {}
         # Disjuntor de conta de IA (achado #90): por execução, a PRIMEIRA falha de cobrança/credencial represa
         # as etapas seguintes sem gastar tentativa — os aparelhos seguintes nem chegam a chamar o provedor.
         self._tripped_runs: dict[str, AiBreakerTrip] = {}
@@ -1435,6 +1438,7 @@ class StepExecutor:
                     # 31.87 F2: a receita ensinada digita `{perfil_email}`; os dados da persona do objetivo entram
                     # só na REPRODUÇÃO (os do objetivo vencem). A destilação na execução segue com `rr.variables`.
                     rr.replayer = self.recipes.replayer(rr.row, {**persona, **rr.variables})
+                    rr.replayer.em_casa = self._conferidor_de_casa(app.package)       # 31.230: a âncora
                     if rr.row["status"] == "candidate":
                         rr.mode = "shadow"      # em prova: a IA decide a etapa e a receita só é comparada
             except Exception as exc:  # noqa: BLE001 - receita é otimização: nunca derruba a etapa
@@ -1691,7 +1695,7 @@ class StepExecutor:
         if not ok or (rr.row is not None and substitui is None) or not (app.package and rr.app_version and rr.step_hash):
             return
         rows = repo.db.query("SELECT * FROM actions WHERE attempt_id=? ORDER BY seq", (attempt_id,))
-        actions, why = distill(rows, rr.variables)
+        actions, why = distill(rows, rr.variables, em_casa_antes=self._em_casa_antes.pop(attempt_id, None))
         if actions is None:
             log.info("%s: etapa %s não virou receita: %s", iid, step.key, why)
             return
@@ -1762,6 +1766,35 @@ class StepExecutor:
             self.repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} promovida a ativa — a IA fez "
                                "exatamente o caminho dela em execuções seguidas; as próximas execuções desta etapa "
                                "dispensam a IA enquanto a tela casar", run_id=run_id, instance_id=iid, step_id=step.id)
+
+    def _em_casa(self, pacote: str | None, arvore: UiTree) -> bool | None:
+        """31.230: a tela é o estado conhecido DECLARADO do app (`telas.yaml`, `estado_conhecido.telas`)? `None` sem
+        conhecimento do app. As telas aprendidas ficam de fora de propósito (dependem do modo do livro)."""
+        if not pacote:
+            return None
+        k = telas_do_app.da_pasta(CONHECIMENTO_DE_APPS / pacote)
+        if k is None:
+            return None
+        frente = next((p for p in arvore.packages if p != "com.android.systemui"), None)
+        return k.em_casa(telas_do_app.classificar(k, arvore, package=frente).tela)
+
+    def _anotar_casa(self, attempt_id: str, aid: int, pacote: str | None, arvore: UiTree) -> None:
+        """31.230: anota, para a destilação, se a ação `aid` da IA partiu do estado conhecido. Anotação nunca derruba
+        a etapa; sem conhecimento do app, nada é anotado (e o voltar inicial segue recusado)."""
+        try:
+            casa = self._em_casa(pacote, arvore)
+        except Exception:  # noqa: BLE001 - a anotação é otimização da receita
+            log.exception("estado conhecido não conferido para a receita (%s)", pacote)
+            return
+        if casa is None:
+            return
+        if len(self._em_casa_antes) > 256 and attempt_id not in self._em_casa_antes:   # a tentativa que não destilou
+            self._em_casa_antes.pop(next(iter(self._em_casa_antes)))
+        self._em_casa_antes.setdefault(attempt_id, {})[aid] = casa
+
+    def _conferidor_de_casa(self, pacote: str | None) -> Callable[[UiTree], bool]:
+        """31.230: o que a reprodução usa para conferir a âncora: só `True` quando o app declara e a tela é ele."""
+        return lambda arvore: bool(self._em_casa(pacote, arvore))
 
     def _installed_signature(self, instance_id: str, package: str) -> str:
         """Assinatura do APK que está NESTE aparelho, quando ele veio de uma release catalogada.
@@ -2029,10 +2062,16 @@ class StepExecutor:
         # C-1 (31.24): a linha de `ai_calls` do decide desta volta; `None` quando quem decide é a receita ou o executor.
         chamada_do_ator: int | None = None
 
+        #: 31.230: a árvore da última observação de decisão (a tela de onde parte a próxima ação da IA)
+        arvore_da_decisao: list[UiTree | None] = [None]
+
         def intencao(tool: str, args: dict[str, object], rationale: str | None, *, side_effect: bool,
                      source: str = "ai") -> int:
-            return repo.log_intent(attempt_id, tool, args, rationale, side_effect=side_effect, source=source,
-                                   ai_call_id=chamada_do_ator)
+            aid = repo.log_intent(attempt_id, tool, args, rationale, side_effect=side_effect, source=source,
+                                  ai_call_id=chamada_do_ator)
+            if source == "ai" and arvore_da_decisao[0] is not None:
+                self._anotar_casa(attempt_id, aid, app.package, arvore_da_decisao[0])     # 31.230
+            return aid
 
         async def evidence(obs: Observation | None, note: str, kind: str = "screenshot") -> None:
             # C-4 (31.24): o tempo das capturas e gravações de evidência da tentativa (`attempts.evidencia_ms`).
@@ -2377,6 +2416,7 @@ class StepExecutor:
                                                  imagem=lambda t: not receita_decide and self._want_image(t, **pede),
                                                  tolerar_falha_da_imagem=True),
                     prazo=deadline, quem=iid)
+                arvore_da_decisao[0] = obs.tree                  # 31.230: a tela de onde parte a próxima ação
                 if obs.image_omitted == "capture_failed":
                     # 31.76: a falha foi SÓ da imagem (a árvore saiu e o tamanho da tela se sabe): nada de `_stuck`,
                     # de erro seguido nem de sessão recriada. A decisão segue pela árvore; a captura nunca vira prova.
