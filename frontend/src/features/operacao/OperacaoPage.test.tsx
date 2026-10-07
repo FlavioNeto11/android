@@ -7,11 +7,14 @@ import { useAppStore } from '../../store/app';
 import { useToastStore } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { SETTINGS } from '../../test/fixtures';
-import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, byRole, click, esperarElemento, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import {
   agregadoPorApp, contarPorEstado, ESTAGIOS, estagioDeParada, estagiosAlcancados, lerAlvo, lerCapacidade, lerEstagio, lerOperacao, verificacaoDoAlvo,
 } from './modelo';
 import { OPERACAO_DE_EXEMPLO } from './operacaoDeExemplo';
+import { commitEmPalavras, lerCustoPorPasso, rotuloDoModelo } from './custoPorPasso';
+import { modelosDoAlvo } from './modelosLidos';
+import { rotuloDoEstagioDoCusto } from './rotuloDoEstagioDoCusto';
 import { OperacaoPage } from './OperacaoPage';
 
 /**
@@ -464,5 +467,197 @@ describe('31.225: o laço do sistema na lista de operações', () => {
     await ir([]);
     await waitFor(() => expect(text(container)).toContain('Nenhuma operação ainda'));
     expect(indicador()).toBeNull();
+  });
+});
+
+describe('31.228: modelos e custo no detalhe do agente', () => {
+  const OP = {
+    id: 'op-m', command: 'Comentar no post', app_id: 'instagram', acao_final: 'executar', status: 'em_curso', created_at: '2026-10-07T10:00:00Z', finished_at: null,
+    capacidade: { solicitados: 2, contas_existentes: 2, sessoes_validas: 2, contas_disponiveis: 2, concluidas: 0, bloqueadas: 0, em_curso: 2, motivos: {} },
+    alvos: [
+      { profile_id: 'p1', persona_nome: 'Ana', app_id: 'instagram', account_id: 'a1', conta: 'c1', instance_id: 'android-01', run_id: 'r-m1', estagio: 'conteudo_lido', estagios: [], estado: 'em_curso', motivo: null, resultado: null },
+      { profile_id: 'p2', persona_nome: 'Bia', app_id: 'instagram', account_id: 'a2', conta: 'c2', instance_id: 'android-03', run_id: null, estagio: 'conta', estagios: [], estado: 'bloqueado', motivo: 'sem sessão', resultado: null },
+    ],
+  };
+  const GRUPO = (role: string, model: string, tier: 0 | 1, calls: number, usd: number | null, errors = 0) =>
+    ({ role, model, tier, calls, fresh: 1, cache_read: 0, cache_write: 0, output: 1, with_image: 0, errors, avg_ms: 10, usd });
+  const USO = (groups: unknown[], total = 0.12) => ({ scope: { run_id: 'r-m1', days: null }, groups, total_usd: total, objectives_with_ai: 1, calls_per_objective: 5, usd_per_objective: total, steps_driven_by: {}, unpriced_models: [] });
+  const abrirAlvo = async (nome: string) => {
+    backend.on('GET', /^\/api\/operacoes\/op-m$/, () => json(OP));
+    await ir(['op-m']);
+    await waitFor(() => expect(linhas()).toHaveLength(2));
+    await click(byRole('button', new RegExp(`^Abrir o detalhe de ${nome}$`), container));
+  };
+
+  it('modelosLidos: soma por função, o total só do que tem preço (parcial) e a divisão das decisões entre os modelos', () => {
+    const m = modelosDoAlvo({ groups: [GRUPO('verify', 'claude-opus', 1, 1, 0.05), GRUPO('decide', 'claude-sonnet', 0, 6, 0.04), GRUPO('decide', 'claude-opus', 1, 2, 0.06), GRUPO('plan', 'claude-sonnet', 0, 1, null)] as never });
+    expect(m.linhas.map((l) => `${l.funcao}:${l.modelo}`)).toEqual(['plan:claude-sonnet', 'decide:claude-opus', 'decide:claude-sonnet', 'verify:claude-opus']);   // Planejar, Decidir, Verificar
+    expect(m.somas.find((s) => s.funcao === 'decide')).toMatchObject({ chamadas: 8, parcial: false });
+    expect(m.somas.find((s) => s.funcao === 'decide')!.usd).toBeCloseTo(0.1, 6);
+    expect(m.somas.find((s) => s.funcao === 'plan')).toMatchObject({ usd: null, parcial: false });         // modelo sem preço: nunca zero
+    expect(m.usd).toBeCloseTo(0.15, 6);
+    expect(m.parcial).toBe(true);
+    expect(m.chamadas).toBe(10);
+    expect(m.decisoes).toEqual([{ modelo: 'claude-sonnet', chamadas: 6, parte: 0.75 }, { modelo: 'claude-opus', chamadas: 2, parte: 0.25 }]);
+    expect(modelosDoAlvo({ groups: [] as never })).toMatchObject({ linhas: [], usd: null, chamadas: 0, decisoes: [] });
+    expect(modelosDoAlvo({ groups: [{ role: 3 }, null, GRUPO('decide', 'm', 0, -2, Number.NaN)] as never }).linhas).toMatchObject([{ chamadas: 0, usd: null }]);   // campo torto
+  });
+
+  it('abrir o detalhe lê GET /api/usage?run_id= desse agente e mostra função, modelo, chamadas, custo e a divisão das decisões', async () => {
+    backend.on('GET', /^\/api\/usage$/, () => json(USO([GRUPO('decide', 'claude-sonnet-5-5', 0, 6, 0.04), GRUPO('decide', 'claude-opus-5-5', 1, 2, 0.06, 1), GRUPO('verify', 'claude-opus-5-5', 0, 1, 0.02)], 0.12)));
+    await abrirAlvo('Ana');
+    const bloco = await esperarElemento('[data-modelos-do-alvo]', container);
+    expect(backend.callsTo('GET', /^\/api\/usage$/)[0]!.query.get('run_id')).toBe('r-m1');
+    expect(text(bloco)).toContain('claude-sonnet-5-5');
+    expect(text(bloco.querySelector('tr[data-funcao="decide"]:nth-child(1)')!)).toContain('claude-opus-5-5');
+    expect(text(bloco)).toContain('escalonado');
+    expect(text(bloco)).toContain('(1 com erro)');
+    expect(text(bloco.querySelector('[data-soma-da-funcao="decide"]')!)).toContain('8');
+    expect(text(bloco.querySelector('[data-soma-total]')!)).toContain('US$ 0,12');
+    expect(text(bloco.querySelector('[data-divisao-das-decisoes]')!)).toBe('Quem decidiu: claude-sonnet-5-5 6 (75%) · claude-opus-5-5 2 (25%).');
+    expect(bloco.textContent).not.toMatch(/\bdecide\b|\bverify\b/);                          // nenhuma função em código cru
+  });
+
+  it('só um modelo decidiu: não há divisão a mostrar; sem chamada de IA, diz isso; sem execução, nada é lido', async () => {
+    backend.on('GET', /^\/api\/usage$/, () => json(USO([GRUPO('decide', 'claude-sonnet-5-5', 0, 3, 0.03)])));
+    await abrirAlvo('Ana');
+    const bloco = await esperarElemento('[data-modelos-do-alvo]', container);
+    expect(bloco.querySelector('[data-divisao-das-decisoes]')).toBeNull();
+    await click(byRole('button', /^Fechar o detalhe de Ana$/, container));
+    backend.on('GET', /^\/api\/usage$/, () => json(USO([], 0)));
+    await click(byRole('button', /^Abrir o detalhe de Ana$/, container));
+    await esperarElemento('[data-modelos-vazio]', container);
+    const antes = backend.callsTo('GET', /^\/api\/usage$/).length;
+    await click(byRole('button', /^Abrir o detalhe de Bia$/, container));
+    await waitFor(() => expect(text(container)).toContain('Este agente não tem execução'));
+    expect(backend.callsTo('GET', /^\/api\/usage$/)).toHaveLength(antes);
+  });
+
+  it('falha ao ler o uso: o detalhe segue, com o aviso; nunca zero', async () => {
+    backend.on('GET', /^\/api\/usage$/, () => apiError(500, 'erro_interno', 'Falhou.'));
+    await abrirAlvo('Ana');
+    const aviso = await esperarElemento('[data-modelos-erro]', container);
+    expect(text(aviso)).toContain('Não foi possível ler os modelos desta execução');
+    expect(text(container)).toContain('Resposta gerada');
+  });
+});
+
+describe('31.228 (parte 2): a linha do tempo do agente por passo (v1.124, 31.229)', () => {
+  const PASSOS = {
+    passos: [
+      { step_id: 's1', seq: 1, key: 'open_profile', capability: 'OPEN_PROFILE', efeito: false, estagio: 'target_localizado', modelo: 'claude-sonnet-5-5', commit: null,
+        chamadas: 3, custo_usd: 0.0123, por_modelo: [{ modelo: 'claude-sonnet-5-5', chamadas: 3, custo_usd: 0.0123 }] },
+      { step_id: 's2', seq: 2, key: 'comentar', capability: 'COMMENT', efeito: true, estagio: 'acao_preparada', modelo: 'claude-sonnet-5-5',
+        commit: { fonte: 'ai', modelo: 'claude-opus-5-5', tier: 1, escalate: 'efeito' }, chamadas: 4, custo_usd: 0.11, por_modelo: [{ modelo: 'claude-sonnet-5-5', chamadas: 3, custo_usd: 0.03 }, { modelo: 'claude-opus-5-5', chamadas: 1, custo_usd: 0.08 }] },
+      { step_id: 's3', seq: 3, key: 'ver', capability: null, efeito: false, estagio: null, modelo: null, commit: null, chamadas: 0, custo_usd: 0, por_modelo: [] },
+      { step_id: 's4', seq: 4, key: 'curtir', capability: 'LIKE', efeito: true, estagio: 'nova_etapa_do_futuro', modelo: 'claude-haiku-4-5-20251001', commit: { fonte: 'recipe', modelo: null, tier: null, escalate: null }, chamadas: 1, custo_usd: null, por_modelo: [] },
+      { step_id: 's5', seq: 5, key: 'enviar', capability: 'SEND', efeito: true, estagio: null, modelo: 'claude-sonnet-5-5', commit: null, chamadas: 1, custo_usd: 0.01, por_modelo: [] },
+    ],
+    sem_passo: { chamadas: 1, custo_usd: 0.004, por_modelo: [{ modelo: 'claude-sonnet-5-5', chamadas: 1, custo_usd: 0.004 }] },
+    por_modelo: [{ modelo: 'claude-sonnet-5-5', chamadas: 8, custo_usd: 0.0563 }, { modelo: 'claude-opus-5-5', chamadas: 1, custo_usd: 0.08 }],
+    por_estagio: { target_localizado: { chamadas: 3, custo_usd: 0.0123 }, acao_preparada: { chamadas: 4, custo_usd: 0.11 }, sem_estagio: { chamadas: 2, custo_usd: 0.01 }, sem_passo: { chamadas: 1, custo_usd: 0.004 } },
+  };
+  const OP = {
+    id: 'op-p', command: 'Comentar no post', app_id: 'instagram', acao_final: 'executar', status: 'em_curso', created_at: '2026-10-07T10:00:00Z', finished_at: null,
+    capacidade: { solicitados: 2, contas_existentes: 2, sessoes_validas: 2, contas_disponiveis: 2, concluidas: 0, bloqueadas: 0, em_curso: 2, motivos: {} },
+    custo: { pesquisa_usd: 0.01, alvos_usd: 0.14, total_usd: 0.15 }, max_usd: 2,
+    custo_por_modelo: [{ modelo: 'claude-sonnet-5-5', chamadas: 14, custo_usd: 0.09 }, { modelo: 'claude-opus-5-5', chamadas: 2, custo_usd: 0.16 }],
+    custo_por_estagio: { acao_preparada: { chamadas: 6, custo_usd: 0.2 }, sem_passo: { chamadas: 2, custo_usd: 0.01 } },
+    alvos: [
+      { profile_id: 'p1', persona_nome: 'Ana', app_id: 'instagram', account_id: 'a1', conta: 'c1', instance_id: 'android-01', run_id: 'r-p1', estagio: 'acao_preparada', estagios: [], estado: 'em_curso', motivo: null, resultado: null, custo_por_passo: PASSOS },
+      { profile_id: 'p2', persona_nome: 'Bia', app_id: 'instagram', account_id: 'a2', conta: 'c2', instance_id: 'android-03', run_id: 'r-p2', estagio: 'conta', estagios: [], estado: 'em_curso', motivo: null, resultado: null, custo_por_passo: null },
+    ],
+  };
+  const abrir = async (nome: string, op: unknown = OP) => {
+    backend.on('GET', /^\/api\/operacoes\/op-p$/, () => json(op));
+    await ir(['op-p']);
+    await waitFor(() => expect(linhas()).toHaveLength(2));
+    await click(byRole('button', new RegExp(`^Abrir o detalhe de ${nome}$`), container));
+  };
+
+  it('os leitores: o exemplo do contrato; um passo inválido invalida o objeto; a chave ausente não entra, a nula vira null', () => {
+    const c = lerCustoPorPasso(PASSOS)!;
+    expect(c.passos.map((p) => p.chave)).toEqual(['open_profile', 'comentar', 'ver', 'curtir', 'enviar']);
+    expect(c.passos[1]!.commit).toEqual({ fonte: 'ai', modelo: 'claude-opus-5-5', tier: 1, escalate: 'efeito' });
+    expect(c.passos[3]!.custoUsd).toBeNull();                                                   // sem preço: nunca zero
+    expect(c.semPasso).toMatchObject({ chamadas: 1, custoUsd: 0.004 });
+    expect(c.porEstagio.map((e) => e.estagio)).toEqual(['target_localizado', 'acao_preparada', 'sem_estagio', 'sem_passo']);   // ordem do servidor
+    expect(lerCustoPorPasso({ passos: [PASSOS.passos[0], { key: 'sem_step_id' }] })).toBeNull();
+    expect(lerCustoPorPasso({ passos: 'x' })).toBeNull();
+    expect(lerCustoPorPasso(null)).toBeNull();
+    const base = { profile_id: 'p', run_id: 'r' };
+    expect('custo_por_passo' in lerAlvo(base, 0)!).toBe(false);
+    expect(lerAlvo({ ...base, custo_por_passo: null }, 0)!.custo_por_passo).toBeNull();
+    expect(lerAlvo({ ...base, custo_por_passo: PASSOS }, 0)!.custo_por_passo!.passos).toHaveLength(5);
+    const op = lerOperacao({ id: 'o', command: 'c', alvos: [], custo_por_modelo: OP.custo_por_modelo, custo_por_estagio: OP.custo_por_estagio })!;
+    expect(op.custo_por_modelo).toHaveLength(2);
+    expect(op.custo_por_estagio).toHaveLength(2);
+    expect('custo_por_modelo' in lerOperacao({ id: 'o', command: 'c', alvos: [] })!).toBe(false);
+  });
+
+  it('os rótulos: modelo em palavras (o cru no title), estágio, e quem executou o commit', () => {
+    expect(rotuloDoModelo('claude-sonnet-5-5')).toBe('Sonnet 5.5');
+    expect(rotuloDoModelo('claude-opus-5')).toBe('Opus 5');
+    expect(rotuloDoModelo('claude-haiku-4-5-20251001')).toBe('Haiku 4.5');
+    expect(rotuloDoModelo('gpt-novo')).toBe('gpt-novo');                                        // fora do padrão: como veio
+    expect(rotuloDoEstagioDoCusto('acao_preparada')).toBe('Ação preparada');
+    expect(rotuloDoEstagioDoCusto('sem_estagio')).toBe('Sem estágio');
+    expect(rotuloDoEstagioDoCusto('sem_passo')).toBe('Planejamento e chamadas sem etapa');
+    expect(rotuloDoEstagioDoCusto('estagio_do_futuro')).toBe('estagio_do_futuro');
+    const p = (efeito: boolean, commit: unknown) => ({ efeito, commit: commit as never });
+    expect(commitEmPalavras(p(true, null))).toBe('não chegou ao commit');
+    expect(commitEmPalavras(p(false, null))).toBeNull();
+    expect(commitEmPalavras(p(true, { fonte: 'recipe', modelo: null, tier: null, escalate: null }))).toBe('por receita, sem modelo');
+    expect(commitEmPalavras(p(true, { fonte: 'ai', modelo: 'claude-opus-5-5', tier: 1, escalate: 'efeito' }))).toBe('Opus 5.5, escalonado pelo efeito (forte)');
+    expect(commitEmPalavras(p(true, { fonte: 'ai', modelo: 'claude-sonnet-5-5', tier: 0, escalate: null }))).toBe('Sonnet 5.5');
+    expect(commitEmPalavras(p(true, { fonte: 'ai', modelo: null, tier: null, escalate: null }))).toBe('modelo não informado');
+  });
+
+  it('o detalhe do agente mostra, passo a passo, o estágio, o modelo que decidiu, o commit, as chamadas e o custo; sem GET /api/usage', async () => {
+    await abrir('Ana');
+    const bloco = await esperarElemento('[data-linha-do-tempo-do-alvo]', container);
+    expect(backend.callsTo('GET', /^\/api\/usage$/)).toHaveLength(0);                           // o custo por passo dispensa a segunda leitura
+    const linha = (k: string) => bloco.querySelector(`tr[data-passo="${k}"]`) as HTMLElement;
+    expect(text(linha('open_profile'))).toContain('1. open_profile');
+    expect(text(linha('open_profile'))).toContain('Perfil-alvo localizado');
+    expect(text(linha('open_profile'))).toContain('Sonnet 5.5');
+    expect(text(linha('open_profile'))).toContain('US$ 0,0123');
+    expect(linha('open_profile').getAttribute('data-efeito')).toBe('nao');
+    expect(text(linha('comentar'))).toContain('com efeito');
+    expect(text(linha('comentar').querySelector('[data-commit]')!)).toBe('Opus 5.5, escalonado pelo efeito (forte)');   // o forte só no commit
+    expect(linha('comentar').querySelector('td:nth-child(3) span')!.getAttribute('title')).toBe('claude-sonnet-5-5');
+    expect(text(linha('ver'))).toContain('só receita');
+    expect(text(linha('curtir').querySelector('[data-commit]')!)).toBe('por receita, sem modelo');
+    expect(text(linha('curtir'))).toContain('Haiku 4.5');
+    expect(text(linha('curtir'))).toContain('não informado');                                    // sem preço: nunca zero
+    expect(text(linha('curtir'))).toContain('nova_etapa_do_futuro');                            // estágio que o painel não conhece: cru
+    expect(text(linha('enviar').querySelector('[data-commit]')!)).toBe('não chegou ao commit');
+    expect(text(bloco.querySelector('tr[data-sem-passo]')!)).toContain('Planejamento e chamadas sem etapa');
+    expect(text(bloco.querySelector('[data-por-modelo]')!)).toBe('Neste agente, por modelo: Sonnet 5.5 8 chamadas, US$ 0,0563 · Opus 5.5 1 chamada, US$ 0,08');
+    expect(text(bloco.querySelector('[data-por-estagio]')!)).toContain('Ação preparada 4 chamadas, US$ 0,11');
+    expect(text(bloco.querySelector('[data-por-estagio]')!)).toContain('Planejamento e chamadas sem etapa 1 chamada, US$ 0,004');
+    expect(bloco.textContent).not.toMatch(/\bsem_estagio\b|\bsem_passo\b|\bclaude-/);           // nenhum id cru à vista (só no title)
+  });
+
+  it('alvo sem custo_por_passo (null ou central anterior) cai no uso por função e modelo', async () => {
+    backend.on('GET', /^\/api\/usage$/, () => json({ scope: { run_id: 'r-p2', days: null }, groups: [], total_usd: 0, objectives_with_ai: 0, calls_per_objective: 0, usd_per_objective: 0, steps_driven_by: {}, unpriced_models: [] }));
+    await abrir('Bia');
+    await esperarElemento('[data-modelos-vazio]', container);
+    expect(backend.callsTo('GET', /^\/api\/usage$/)[0]!.query.get('run_id')).toBe('r-p2');
+  });
+
+  it('a operação mostra o custo somado por modelo e por estágio; sem os campos, a faixa de custo fica como era', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-p$/, () => json(OP));
+    await ir(['op-p']);
+    await waitFor(() => expect(linhas()).toHaveLength(2));
+    const faixa = container.querySelector('section[aria-label="Custo e assunto"]') as HTMLElement;
+    expect(text(faixa.querySelector('[data-por-modelo]')!)).toBe('Na operação, por modelo: Sonnet 5.5 14 chamadas, US$ 0,09 · Opus 5.5 2 chamadas, US$ 0,16');
+    expect(text(faixa.querySelector('[data-por-estagio]')!)).toContain('Ação preparada 6 chamadas, US$ 0,2');
+    await act(async () => { root.unmount(); root = createRoot(container); });
+    const { custo_por_modelo: _m, custo_por_estagio: _e, ...semSomas } = OP;
+    backend.on('GET', /^\/api\/operacoes\/op-p$/, () => json(semSomas));
+    await ir(['op-p']);
+    await waitFor(() => expect(linhas()).toHaveLength(2));
+    expect(container.querySelector('[data-somas-do-custo]')).toBeNull();
   });
 });
