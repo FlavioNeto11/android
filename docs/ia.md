@@ -239,7 +239,8 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   43 % das chamadas do Opus no tier 1, cerca de US$ 0,20 por dia, e uma bateria de prova distorcida. A regra lê o dado
   do app, nunca o nome (ADR-052). `strong_model_for_side_effect: true` continua subindo toda etapa com efeito (escolha explícita; com
   `strong_model_only_on_commit: true`, o padrão desde o 31.223, sobe só a decisão do commit, e com `false` a etapa
-  inteira; com `imagem_quando_alvo_fora_da_arvore: true`, o padrão desde o 31.232, o forte que confere o efeito, no
+  inteira; com `espera_do_plano_irmao_s` (31.237, padrão 60), o 1º plano de uma operação aquece o cache do prompt e
+  os planos irmãos esperam por ele; com `imagem_quando_alvo_fora_da_arvore: true`, o padrão desde o 31.232, o forte que confere o efeito, no
   commit refeito e no rejulgamento do "sim" com efeito, recebe a imagem quando o alvo não está na árvore, como num
   toque por coordenada), etapa com
   capability segue o risco do catálogo, e app real sem catálogo continua no tier 1. Retentativa, erros seguidos e ciclo

@@ -269,6 +269,8 @@ ai:
                                           # Opus, até curtir com seletor de commit); by_risk = só risco alto do
                                           # catálogo, risco médio sem seletor de commit, ou app sem catálogo (menos o app
                                           # de prova, builtin e category 'qa', que fica no modelo barato); false = nunca
+  espera_do_plano_irmao_s: 60       # (60) 31.237: o plano de um alvo de operação espera o 1º plano da mesma operação
+                                    # para ler o cache do prompt; vencido o teto, segue; 0 desliga
   strong_model_only_on_commit: true   # 31.223: quando a etapa com efeito sobe (acima), o modelo de ação navega e só a
                                       # decisão que dispararia o efeito é refeita no forte; false = a etapa inteira
   imagem_quando_alvo_fora_da_arvore: true  # (true) 31.232: o commit refeito no forte e o rejulgamento do efeito levam a

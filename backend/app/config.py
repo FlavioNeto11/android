@@ -785,6 +785,10 @@ class AiCfg(BaseModel):
     # onda 1 (07/10): o Opus decidia os 2 passos do comentário (US$ 0,112 de 0,279 do alvo). A trava de commit, a
     # política de risco e o rejulgamento do "sim" com efeito não mudam. `false` = a etapa inteira no forte (o de antes).
     strong_model_only_on_commit: bool = True
+    # 31.237: quanto o plano de um alvo de operação espera o 1º plano da MESMA operação, para ler o prefixo do prompt do
+    # cache em vez de gravá-lo de novo (onda 2, 07/10: 3 planos paralelos, 3 gravações, US$ 0,018 contra 0,0113). Vencido
+    # o teto, segue como antes. 0 desliga.
+    espera_do_plano_irmao_s: float = Field(60.0, ge=0, le=600)
     # 31.232: o modelo forte que confere o efeito (a decisão do commit refeita, 31.223, e o rejulgamento do "sim" com
     # efeito, 17.10) recebe a imagem quando o alvo do efeito NÃO está na árvore (toque por coordenada, elemento ausente
     # ou ferramenta sem elemento). Com o alvo na árvore, a régua de sempre decide (na onda 1, sem imagem). Só acrescenta
