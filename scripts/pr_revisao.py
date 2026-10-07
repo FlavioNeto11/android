@@ -45,8 +45,8 @@ _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _CREDENCIAL = re.compile(r"(?i)\b(authorization|bearer|senha|password|passwd|token|secret|api[_-]?key)\b\s*[:=]\s*(?:bearer\s+)?[\w\-.~+/=]{6,}")
 # sequência longa de aparência aleatória: mistura letra e dígito, ou 40+ alfanuméricos sem separador. Nome de teste em snake_case
-# (só letras e "_") não é segredo e não pode barrar o PR.
-_LONGO = re.compile(r"\b(?=[A-Za-z0-9_\-]*\d)(?=[A-Za-z0-9_\-]*[A-Za-z])[A-Za-z0-9_\-]{40,}\b|\b[A-Za-z0-9]{40,}\b")
+# (começa por `test_`, com ou sem dígito) não é segredo e não pode barrar o PR.
+_LONGO = re.compile(r"\b(?!test_)(?=[A-Za-z0-9_\-]*\d)(?=[A-Za-z0-9_\-]*[A-Za-z])[A-Za-z0-9_\-]{40,}\b|\b[A-Za-z0-9]{40,}\b")
 _PREFIXO_TITULO = "[revisão] "
 
 

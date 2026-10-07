@@ -140,7 +140,7 @@ class Plano(unittest.TestCase):
             self.assertEqual(gh.escritas(), [])
 
     def test_nome_de_teste_em_snake_case_nao_e_sequencia_longa_mas_chave_aleatoria_e(self) -> None:
-        nome = "+def test_a_primeira_leitura_agenda_a_pesquisa_e_dois_alvos_pagam_uma_vez(self):\n"
+        nome = "+def test_a_primeira_leitura_agenda_a_pesquisa_e_dois_alvos_pagam_uma_vez(self):\n+def test_os_criterios_5_e_6_seguem_o_estado_da_pesquisa(self):\n"
         self.assertEqual(rodar(Fake(comparacao(patch=nome)))[0], 0)
         for aleatoria in ("+x = 'Zk3pQ9vL2mN8xR5tY7wB4cD6fH1jG0aS9eU3iO5kM2nP'\n", "+y = 'abcdefghijklmnopqrstuvwxyzabcdefghijklmnop'\n"):
             codigo, _, err = rodar(Fake(comparacao(patch=aleatoria)))
