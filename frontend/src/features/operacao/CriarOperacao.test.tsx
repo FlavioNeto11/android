@@ -372,6 +372,21 @@ describe('31.224/31.225: o motivo da recusa dos parâmetros vai no campo certo',
     expect(recusaDeParametros(new Error('x'), ENVIADAS)).toBeNull();
   });
 
+  it('31.227: o motivo é por parâmetro declarado (_longo, _com_arroba de outro nome); campo que o formulário não oferece vira aviso sem campo', async () => {
+    const e = (detail: Record<string, unknown>) => new ApiError(422, 'pedido_invalido', String(detail.message), detail);
+    expect(recusaDeParametros(e({ message: 'O perfil alvo vai até 30 caracteres.', motivo: 'username_longo', campo: 'username', posicao: 1, max: 30 }), ['username']))
+      .toEqual({ chave: 'username', campo: 'username', motivo: 'O perfil alvo vai até 30 caracteres.' });
+    expect(recusaDeParametros(e({ message: 'O autor do post não leva @.', motivo: 'post_author_com_arroba', campo: 'post_author', posicao: 2 }), ['username', 'caption_contains']))
+      .toEqual({ chave: 'post_author', campo: null, motivo: 'O autor do post não leva @.' });
+    expect(recusaDeParametros(e({ message: 'm', motivo: 'Username_com_arroba', posicao: 1 }), ['username'])).toBeNull();   // fora do formato do motivo
+    backend.on('POST', /^\/api\/operacoes$/, () => recusa422('username_longo', 'O perfil alvo vai até 30 caracteres.', { campo: 'username', posicao: 1, max: 30 }));
+    await abrir();
+    await preencher();
+    await setValue(campo<HTMLInputElement>(/^Perfil alvo/), 'nasa');
+    await enviar();
+    await waitFor(() => expect(text(erroDe(/^Perfil alvo/)!)).toContain('vai até 30 caracteres'));
+  });
+
   it('o 422 do username (posicao 1) aparece no campo Perfil alvo e não no aviso geral; mexer no campo limpa só ele', async () => {
     backend.on('POST', /^\/api\/operacoes$/, () => recusa422('username_com_arroba', 'O perfil alvo não leva @.', { campo: 'username', posicao: 1 }));
     await abrir();

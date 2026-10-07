@@ -217,13 +217,16 @@ export type CampoDeParametro = 'username' | 'caption_contains';
 export interface RecusaDeParametro { chave: string | null; campo: CampoDeParametro | null; motivo: string }
 
 const texto = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
-const MOTIVOS_DO_SERVIDOR = new Set(['username_com_arroba', 'username_com_espaco', 'parametro_desconhecido']);
+// 31.227: o motivo é por parâmetro declarado no catálogo do app (`<nome>_com_arroba`, `<nome>_com_espaco`, `<nome>_longo`), além do `parametro_desconhecido`.
+const MOTIVO_POR_PARAMETRO = /^[a-z][a-z0-9_]*_(com_arroba|com_espaco|longo)$/;
+const motivoConhecido = (m: string): boolean => m === 'parametro_desconhecido' || MOTIVO_POR_PARAMETRO.test(m);
 
 /**
  * Lê a recusa de parâmetros do `POST /api/operacoes` (422 do 31.224, Jev): `detail = {code: "pedido_invalido", message, motivo, posicao}`,
- * com `motivo` = `username_com_arroba` | `username_com_espaco` | `parametro_desconhecido` e `posicao` contada de 1 na ordem das chaves de
- * `parametros` que o formulário mandou (`chavesEnviadas`); `campo: "username"` só vem nos dois motivos de username. Em
- * `parametro_desconhecido` vem também `aceitos` (nomes do catálogo do app), que entram na frase para sugerir a correção. A recusa para no
+ * com `motivo` = `<nome>_com_arroba` | `<nome>_com_espaco` | `<nome>_longo` (por parâmetro declarado: hoje `username` e `post_author`) ou
+ * `parametro_desconhecido`, e `posicao` contada de 1 na ordem das chaves de `parametros` que o formulário mandou (`chavesEnviadas`);
+ * `campo` (o nome declarado) vem em todos menos no desconhecido, e o `_longo` traz `max`. Um `campo` que o formulário não oferece (ex.:
+ * `post_author`) vira aviso sem campo. Em `parametro_desconhecido` vem também `aceitos` (nomes do catálogo do app), que entram na frase para sugerir a correção. A recusa para no
  * primeiro problema (não há lista). Os 422 genéricos (só `code` e `message`) e qualquer outro erro dão `null`: quem chama mostra a
  * frase no topo do formulário, como sempre.
  */
@@ -231,7 +234,7 @@ export function recusaDeParametros(e: unknown, chavesEnviadas: readonly string[]
   if (!(e instanceof ApiError) || e.status !== 422 || e.code !== 'pedido_invalido' || !e.detail) return null;
   const d = e.detail;
   const motivo = texto(d.motivo);
-  if (!motivo || !MOTIVOS_DO_SERVIDOR.has(motivo)) return null;
+  if (!motivo || !motivoConhecido(motivo)) return null;
   let frase = texto(d.message) ?? texto(e.message);
   if (!frase) return null;
   const aceitos = Array.isArray(d.aceitos) ? d.aceitos.filter((a): a is string => typeof a === 'string' && a.trim() !== '') : [];
