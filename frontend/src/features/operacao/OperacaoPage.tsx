@@ -1,11 +1,11 @@
-import { CircleCheck, CircleX, Copy, FlaskConical, Hourglass, Play, Plus, ShieldCheck, ShieldQuestion, Workflow, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CircleX, Columns2, Copy, FlaskConical, Hourglass, Play, Plus, ShieldCheck, ShieldQuestion, Workflow, type LucideIcon } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
 import { EmptyState } from '../../components/EmptyState';
-import { Field, Select, TextInput } from '../../components/Field';
+import { Checkbox, Field, Select, TextInput } from '../../components/Field';
 import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
@@ -23,6 +23,7 @@ import { CriarOperacao } from './CriarOperacao';
 import { guardarRascunho, rascunhoDaOperacao } from './criar';
 import { latenciaDaOperacao, latenciaDoAlvo } from './latencia';
 import { CancelarAlvos } from './CancelarAlvos';
+import { CompararOperacoes } from './CompararOperacoes';
 import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
@@ -42,6 +43,8 @@ import {
 
 /** O segmento da rota que abre o formulário de criação (`#/operacoes/nova`); os ids de operação nunca têm esta forma. */
 const ROTA_NOVA = 'nova';
+const ROTA_COMPARAR = 'comparar';
+const MAX_COMPARADAS = 2;
 
 const TOM_DO_ESTADO: Record<EstadoDoAlvo, Tone> = { pendente: 'muted', em_curso: 'info', concluido: 'success', bloqueado: 'warning', cancelado: 'muted' };
 const ICONE_DO_ESTADO: Record<EstadoDoAlvo, LucideIcon> = { pendente: Hourglass, em_curso: Play, concluido: CircleCheck, bloqueado: ShieldQuestion, cancelado: CircleX };
@@ -454,6 +457,7 @@ function ListaDeOperacoes() {
   const { dado, erro, carregando, recarregar } = useCarga<ListaDeOperacoes>((s) => apiOperacoes.lista(s), 'lista');
   const [estado, setEstado] = useState<StatusDaOperacao | ''>('');
   const [busca, setBusca] = useState('');
+  const [marcadas, setMarcadas] = useState<string[]>([]);
   if (carregando && !dado) return <Page title="Operação"><LoadingRegion label="Lendo as operações"><Skeleton height={120} /></LoadingRegion></Page>;
   if (erro && !dado) return <Page title="Operação"><LoadErrorState what="as operações" error={erro} onRetry={recarregar} /></Page>;
   const todas: ResumoDaOperacao[] = dado?.itens ?? [];
@@ -462,8 +466,13 @@ function ListaDeOperacoes() {
   return (
     <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim."
           actions={(
-            <Button size="sm" variant="primary" icon={Plus} disabledReason={dado?.exemplo ? 'O central ainda não oferece o módulo de operações.' : null}
-                    onClick={() => useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_NOVA] })}>Nova operação</Button>
+            <>
+              <Button size="sm" icon={Columns2}
+                      disabledReason={marcadas.length === MAX_COMPARADAS ? null : `Marque ${MAX_COMPARADAS} operações na lista para compará-las (${marcadas.length} marcada${marcadas.length === 1 ? '' : 's'}).`}
+                      onClick={() => useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_COMPARAR], query: { a: marcadas[0] ?? '', b: marcadas[1] ?? '' } })}>Comparar as marcadas</Button>
+              <Button size="sm" variant="primary" icon={Plus} disabledReason={dado?.exemplo ? 'O central ainda não oferece o módulo de operações.' : null}
+                      onClick={() => useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_NOVA] })}>Nova operação</Button>
+            </>
           )}>
       {erro && dado ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {dado?.exemplo ? AVISO_DE_EXEMPLO : null}
@@ -493,6 +502,9 @@ function ListaDeOperacoes() {
         <ul className={styles.lista} aria-label="Operações">
           {itens.map((o) => (
             <li key={o.id} className={styles.itemDaLista}>
+              <Checkbox label="Comparar" aria-label={`Comparar: ${o.command || o.id}`} checked={marcadas.includes(o.id)}
+                        disabled={!marcadas.includes(o.id) && marcadas.length >= MAX_COMPARADAS}
+                        onChange={() => setMarcadas((m) => (m.includes(o.id) ? m.filter((x) => x !== o.id) : m.length < MAX_COMPARADAS ? [...m, o.id] : m))} />
               <a className={styles.link} href={hashDe('operacoes', { segmentos: [o.id] })}>{o.command || o.id}</a>
               <span className={styles.mudo} data-meta>{descricaoDaOperacao(o, formatQuando)}</span>
               <span className={styles.mudo}>
@@ -511,5 +523,6 @@ export function OperacaoPage() {
   useEffect(() => { document.title = 'Operação · Central de Aparelhos'; }, []);
   const id = useUiStore((s) => s.rota.segmentos[0]);
   if (id === ROTA_NOVA) return <CriarOperacao />;
+  if (id === ROTA_COMPARAR) return <CompararOperacoes />;
   return id ? <DetalheDaOperacao key={id} id={id} /> : <ListaDeOperacoes />;
 }
