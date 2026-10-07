@@ -1,4 +1,4 @@
-"""31.220: o laço do sistema que avança a operação sem depender de leitura externa.
+"""31.220 (adendo v1.119): o laço do sistema que avança a operação sem depender de leitura externa.
 
 Antes dele, só a leitura (o GET do painel, o laço da Canais, a resposta de um POST) derivava o estágio de cada alvo e
 fechava a operação: sem ninguém lendo, ela não fechava e o `operacao.encerrada` não saía. O laço lê as operações abertas

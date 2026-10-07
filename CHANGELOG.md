@@ -22,8 +22,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-07 — 31.220: o laço do sistema que avança a operação sem leitura externa (branch feat/31-220-laco-da-operacao, corte 61)
 
-- `LacoDasOperacoes` lê as operações abertas a cada `operacao_laco_s` (novo em `LimitsCfg`, padrão 0 = desligado neste
-  corte). Antes, só uma leitura (o painel, a Canais ou a resposta de um POST) fechava a operação e emitia
+- `LacoDasOperacoes` lê as operações abertas a cada `operacao_laco_s` (novo em `LimitsCfg`, adendo v1.119; padrão 0 =
+  desligado neste corte). Antes, só uma leitura (o painel, a Canais ou a resposta de um POST) fechava a operação e emitia
   `operacao.encerrada`.
 - O estágio do alvo (`_anotar`) passa a ser gravado por `UPDATE` condicional, e o `_fechar` passa a ler o `.rowcount`. A
   comparação antiga do cursor com 0 nunca era verdadeira, e dois fechamentos juntos emitiam o evento duas vezes.

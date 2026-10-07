@@ -7613,7 +7613,7 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
 - **Vizinhos:** contam as etapas de planos LIVRES (sem fluxo e sem prova de fluxo) que aceitaram o pacote.
 - **Prova:** `simulated` (`backend/tests/test_rendimento_do_ensino.py`, 2 testes). `real`: `not_run`.
 
-## Nota do 31.220 (07/10/2026; sem número; o número fica com a orquestradora) — o laço que avança a operação
+## Adendo v1.119 (07/10/2026; número da orquestradora; item 31.220) — o laço que avança a operação
 
 `Settings.operacao_laco_s` (inteiro, 0 a 3600, padrão **0 = desligado**): de quanto em quanto tempo o laço do sistema lê
 as operações abertas (sem `finished_at`) e as avança sem leitura externa, pelo mesmo `ServicoDeOperacoes.ler` do
