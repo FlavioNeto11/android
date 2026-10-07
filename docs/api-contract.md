@@ -7623,6 +7623,9 @@ nome, tamanho do valor, até 10 parâmetros):
 - no app com catálogo de ações (hoje o Instagram e o Outlook), a chave tem de ser uma das que as ações do catálogo usam
   (`bindings`, `optional_bindings` e `inherited_bindings`). O app sem catálogo (o QA Messenger) segue com a chave livre.
 
+A conferência vem DEPOIS da repetição: o mesmo corpo com a mesma `idempotency_key` de uma operação já criada (antes
+desta regra, ou antes de o catálogo mudar) devolve a operação que existe, e não um 422.
+
 A recusa é 422, e o corpo para no primeiro problema:
 
 `{"detail": {"code": "pedido_invalido", "message": "...", "motivo": "username_com_arroba" | "username_com_espaco" |

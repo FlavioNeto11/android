@@ -193,7 +193,6 @@ class ServicoDeOperacoes:
         app = self.db.one("SELECT id, package FROM apps WHERE id=?", (pedido.app_id,))
         if app is None:
             raise OperacaoError("app_inexistente", f"O app {pedido.app_id!r} não está registrado.", 404)
-        _conferir_contra_o_app(pedido.parametros, str(app["package"] or ""))
         sha = _sha(pedido)
         existente = self.db.one("SELECT id, corpo_sha256 FROM operacoes WHERE idempotency_key=?",
                                 (pedido.idempotency_key,))
@@ -202,6 +201,9 @@ class ServicoDeOperacoes:
                 raise OperacaoError("chave_em_uso", "Esta chave de idempotência já criou outra operação.", 409,
                                     operacao_id=existente["id"])
             return self.ler(str(existente["id"]))
+        # Depois da repetição (achados do Codex nos PRs 495 e 503): a operação aceita antes desta regra, ou antes de o
+        # catálogo mudar, mandada de novo com o mesmo corpo e a mesma chave, devolve a que existe, e não um 422.
+        _conferir_contra_o_app(pedido.parametros, str(app["package"] or ""))
         op_id = f"op-{now_iso()[:19].replace('-', '').replace(':', '').replace('T', '')}-{secrets.token_hex(3)}"
         agora = now_iso()
         self.db.execute(

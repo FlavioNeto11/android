@@ -333,3 +333,22 @@ async def test_rota_devolve_o_motivo_e_a_posicao_no_422(harness: Harness) -> Non
     d = r.json()["detail"]
     assert (d["code"], d["motivo"], d["posicao"]) == ("pedido_invalido", "parametro_desconhecido", 1)
     assert "username" in d["aceitos"] and "nome_do_perfil" not in d["message"]
+
+
+async def test_a_repeticao_da_operacao_aceita_antes_da_regra_devolve_a_mesma(harness: Harness,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """Achados do Codex nos PRs 495 e 503: a operação criada antes da conferência com o app (ou antes de o catálogo
+    mudar), repetida com o mesmo corpo e a mesma chave, devolve a que existe; a chave nova com o mesmo corpo é recusada."""
+    from app.modules.operacoes.infrastructure import servico as mod
+
+    pid = _persona(harness, "Antiga")
+    s = _servico(harness)
+    corpo = {"username": "@loja.exemplo", "post_author": "loja.exemplo.de.roupas.femininas.sp.br"}
+    with monkeypatch.context() as m:              # como era antes do 31.224
+        m.setattr(mod, "_conferir_contra_o_app", lambda *_a, **_k: None)
+        antiga = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-antiga", app_id="instagram", parametros=corpo))
+    assert s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-antiga", app_id="instagram",
+                           parametros=corpo))["id"] == antiga["id"]
+    with pytest.raises(OperacaoError) as exc:
+        s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-nova", app_id="instagram", parametros=corpo))
+    assert exc.value.extra["motivo"] == "username_com_arroba"
