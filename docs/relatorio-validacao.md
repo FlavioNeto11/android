@@ -2512,3 +2512,80 @@ deixar para depois.
 no checkout central (o worktree não tem os pacotes gerados): passou. Os números do 28.12 vêm de leitura só do banco do
 central (`pedido_ocorrencias`, `pedido_relatorios`, `pedido_avisos`, `pedido_observacoes`) e do `GET /api/health`.
 Nenhum teste de produto foi rodado, de propósito: o item é documental.
+
+## 31. Venice como provedor de IA: análise de custo e validação do `verify` por imagem (07/10/2026)
+
+Pedido do dono (sessão "VSCode Insiders Venice AI setup"): avaliar a troca das APIs de IA do parque por modelos sem
+censura da Venice, com custo-benefício e validação real. Autorização em chat do dono para os itens (a) e (b) abaixo e,
+condicionado à janela da orquestradora, para o item (c). Nenhum arquivo do repositório mudou além desta seção;
+`config.yaml` e `.env` intactos (o `.env` não foi lido). Horas em UTC. Base: `6ff6176b`.
+
+**Gasto medido (`GET /api/usage?days=7`, 07/10): US$ 28,57**, 99 % na Anthropic — `decide` nível 0 (Sonnet 5) 13,17;
+escalonamento (Opus 5.5) 4,79; `plan` 6,32; `verify` (Haiku) 1,48; rejulgamento (Opus) 2,41; imagem, leitura, Jev e
+`social` 0,39. Em `ai_calls` desde 23/09: **4.110 chamadas, 0 com `error_kind=refusal`**, 0 trocas de modelo por recusa
+no servidor da Anthropic, 0 recusas da persona no `social`. Logo, "sem censura" não é necessidade comprovada; o que a
+Venice oferece é custo e retenção zero (tier "Private", contratual segundo a documentação dela; jurisdição da
+inferência não informada — decisão do dono).
+
+**Sondagem da API (`real`, ~US$ 0,01).** Os candidatos aceitam o corpo que `openai_provider.py` já monta. Três
+achados que mudam a configuração: (1) `venice_parameters.include_venice_system_prompt` é verdadeiro por padrão e
+injeta um system prompt da Venice — em produção, `false`, junto com `disable_thinking: true`; (2) `response_format:
+json_object` está obsoleto lá: o Gemma 4 devolve o esquema preenchido (`{"properties": …}`), inválido para o
+`parsing.py`, e só funciona com `structured_output: json_schema`; (3) o cache de prefixo é automático e reportado em
+`prompt_tokens_details.cached_tokens`, mas só desconta nos modelos com preço de cache (Qwen 3.6 Plus: 2.900/2.924 em
+cache, custo 11× menor; Qwen 3.8 Flash); o GLM 5.3 Flash não cacheou e o Gemma 4 Unc. e o Venice Unc. 1.2 reportam
+cache e cobram cheio. Limite de taxa (429) frequente em paralelo; `ai.roles.<papel>.max_retries` resolve.
+
+**Item (a) — referência (`real`, Anthropic).** A referência de 19–20/09 (`data/eval-rejudge.jsonl`) não existe mais no
+banco. Nova referência: 133 capturas de pós-condição com veredito do Opus 5.5 gravado pela produção (rejulgamento
+tier 1, `ai_calls`) + 18 capturas que o Haiku julgou não/incerto, julgadas pelo Opus 5.5 nesta rodada (sim 15, incerto
+1, não 2). Total 151 — 149 sim, 1 incerto, 1 não. Conferido antes do envio: todas `redacted=0`, nenhuma do
+aparelho-loja (android-11), etapas de mensagem, perfil e navegação. Custo: 18 chamadas, 90.010 tokens de entrada,
+**≤ US$ 0,435**.
+
+**Item (b) — candidatos (`real`, `scripts/eval_rejudge.py --sobrepor`, Venice).** 151 capturas por candidato, só
+imagem (`elements=[]`), `temperature: 0`, `disable_thinking`, sem system prompt da Venice.
+
+| Candidato | Concordam com o Opus | Falso positivo | Falso negativo | Erros | US$ por captura (real) | p50 / p95 |
+|---|---|---|---|---|---|---|
+| Haiku 4.5 (nota da produção, mesmas 151) | 138/151 | 0 | 13 | 0 | ~0,0039 (`ai_calls`) | 2,7 s / — |
+| **Gemma 4 Uncensored** (`json_schema`) | **138/151** | **0** | 13 | 0 | **0,00043** | 1,9 s / 2,2 s |
+| **Qwen 3.6 Plus Uncensored** (`json_object`) | 134/151 | **0** | 17 | 0 | 0,00242 | 4,6 s / 6,9 s |
+| Qwen 3.8 Flash (controle, com censura) | 150/151 | **1** | 0 | 0 | 0,00037 | 3,4 s / 34 s |
+| GLM 5.3 Flash (controle, com censura) | 137/138 | 0 | 1 | **13 truncadas** | 0,00083 | 4,9 s / 48 s |
+| Venice Uncensored 1.2 | 82/144 | 0 | **62** | 7 truncadas | 0,00079 | 2,5 s / — |
+| Gemma 4 Uncensored (`json_object`) | 5/5 | — | — | **146 inválidas** | — | — |
+
+Critério (ADR-049): falso positivo ≤ Haiku e sem erros. **Passam Gemma 4 Uncensored (`json_schema`) e Qwen 3.6
+Plus**; os dois acertaram os dois negativos da referência. Reprovam Qwen 3.8 Flash (disse "sim" no único "incerto"),
+GLM 5.3 Flash (9 % de respostas truncadas: o raciocínio vaza para a saída) e Venice Uncensored 1.2 (43 % de falso
+negativo — mandaria metade das etapas ao rejulgamento pago). Os falsos negativos do Gemma e do Qwen 3.6 são do mesmo
+tipo: tela que não corresponde ao app esperado ou campo de mensagem vazio sem bolha nova. Custo do item (b) com as
+sondagens: **≈ US$ 0,73** na conta Venice do dono.
+
+**Leitura obrigatória da linha do Haiku:** a coluna dele vem da nota de evidência da produção, onde julgou quase
+sempre **só pela árvore** (568 de 627 chamadas em 14 dias); os candidatos julgaram **só pela imagem**. É o método de
+§18, não uma repetição controlada.
+
+**Custo e teto.** Os dois gastos ficaram **fora da contabilidade do hub**: `eval_rejudge.py` chama o provedor direto e
+não grava `ai_calls`; `/api/usage`, `spend_today_usd` e o teto de US$ 10/dia não os viram. `spend_today_usd` às
+18:57Z = 2,08; o gasto real da Anthropic hoje é ~2,5 de 10.
+
+**O que esta seção NÃO prova:** o `verify` por árvore (91 % das chamadas), o `decide`, o `plan` e o `social` — só o
+braço (c) mede o ator. `not_run`: bateria `eval-run.ps1` com perfil `venice-ator` (decide → `venice/qwen-3-6-plus`,
+`fallback_provider: anthropic`), 1 braço de 14 casos QA, ~US$ 1,5–2,5 Anthropic + <0,5 Venice, dentro do hub. Janela
+da orquestradora: depois do deploy 60 no ar e antes do funil 61, com backup do `config.yaml`, reinício só pela tarefa
+`farm-central`, restauração e conferência do `/api/health` ao fim.
+
+**Pré-requisito de código para (c) e para qualquer adoção:** `EnvSettings` tem `extra="ignore"` e `chave()` só lê do
+`.env` os nomes declarados; `VENICE_API_KEY` escrito no `.env` sem campo declarado cai em `os.environ` e dá 401 (o
+mesmo achado da Fase 17). Falta um campo `venice_api_key` em `EnvSettings` (padrão do `DEEPSEEK_API_KEY`), com teste,
+implantado antes da bateria. A chave em si é o dono quem escreve no `.env`.
+
+**Recomendação (a decidir pelo dono):** (1) `verify` → Gemma 4 Uncensored com `structured_output: json_schema`
+(mesmo placar do Haiku a 1/9 do preço; o rejulgamento no Opus continua); (2) `decide` → Qwen 3.6 Plus só se a bateria
+(c) mantiver sucesso e escalonamento; projeção do nível 0: 13,17 → 4,14/semana com cache ou 9,6 sem — nenhum medido;
+(3) `plan`, `social`, imagem (a Venice cobra US$ 0,27 pelo gpt-image-2 contra 0,055 na OpenAI), leitura e Jev:
+manter. Se adotar, registrar preços (K-046), ADR e `ia.md` §13; `fallback_provider: anthropic` no `verify` cai no
+`fallback_model` Sonnet 5, não no Haiku — instabilidade da Venice encarece o `verify` enquanto durar. Vereditos por
+captura: `out-*.jsonl` no scratchpad da sessão (fora do Git; sem imagem nem handle).
