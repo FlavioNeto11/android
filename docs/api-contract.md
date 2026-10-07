@@ -1183,6 +1183,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `learning.ensinado_sem_receita` | sim | o mesmo, quando nada ativo ficou no lugar (a etapa voltou para a IA); `warn`; 30.80 B; ver o adendo v1.61 |
 | `learning.ensinado_espera_decisao` | sim | `ServicoDeValidacao` (a volta da validação), via `LearningService.avisar_espera_do_ensinado`. O fluxo ensinado que a prova automática não cobre espera a decisão de uma pessoa; `warn`; 30.81; ver o adendo v1.65 |
 | `learning.ensinado_decidido` | sim | `LearningService` (`confirmar_que_fica`, `_mover_nativo`): uma pessoa decidiu o ensinado que esperava; `info`; 30.81; ver o adendo v1.65 |
+| `aprendizado.curadoria_da_operacao` | sim | `state.py::_curadoria_da_operacao`, ao ouvir `operacao.encerrada` (só no líder da trava `curadoria`): `data` `{operacao_id, fatos_da_operacao: {operacao, app, nascidas: [ids], ja_no_livro, recusadas: {motivo: n}, vetadas, vencidas_no_livro: [ids]}}`; só ids e contagens; `info`; 31.217 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `training.input.undone` | sim | `training/recorder.py` (`desfazer_a_ultima`): a última entrada saiu da gravação viva; `data: {training_session_id, seq, type}`; 31.90-D |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
