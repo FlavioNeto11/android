@@ -1,4 +1,5 @@
-"""31.217: curadoria por operação encerrada: o passo do 31.190 roda para a operação assim que ela encerra, com o relatório.
+"""31.217: curadoria por operação encerrada: o passo do 31.190 roda para a operação assim que ela encerra, com o
+relatório.
 
 Antes, o fato da pesquisa só chegava ao Livro na volta periódica da curadoria (`aprendizado.curadoria_s`, 15 min), e
 ninguém sabia o que ela tinha promovido ou recusado.
