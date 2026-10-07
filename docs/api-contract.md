@@ -7786,3 +7786,25 @@ A correção ensinada a partir de uma falha (31.149) vira lição do planejador 
   persona. A mesma correção ensinada a partir de duas personas são dois itens, cada um publicado pelo dono.
 - **Prova:** `simulated` (`backend/tests/test_licao_do_planejador_por_persona.py`). `real`: `not_run`, pede o deploy e
   uma correção ensinada de uma falha real.
+
+## Adendo v1.120 (07/10/2026; próximo livre da reserva; item 31.221) — o ensino a partir da execução
+
+- **`GET /api/aprendizado/execucao/{run_id}/ensino`**: `{run_id, status, simulada, ensinaveis, etapas}`. Cada etapa traz:
+  - `step_id`, `key`, `capability`, `status`, `driven_by`;
+  - `persona`: o id, nunca o nome;
+  - `receita`: `{id, status, replay_ok}` da mais nova nascida dela, ou `null`;
+  - `ensinavel`;
+  - `motivo`: `null` ou um destes: `execucao_simulada`, `com_efeito`, `nao_concluida`, `ja_por_receita`, `sem_ator`,
+    `caminho_nao_reproduzivel`, `sem_receita`, `receita_ja_vale`, `receita_fora_de_circulacao`;
+  - `ferramentas_nao_reproduziveis`: só com ferramenta da tentativa que a receita não reproduz.
+
+  Nenhum argumento de ação nem texto de trava sai. 404 `execucao_desconhecida`.
+- **`POST /api/aprendizado/execucao/{run_id}/ensino`** (sem corpo; decide o operador da sessão): promove as candidatas
+  ensináveis a `active` pelo Livro (candidate → validated → published), com o motivo
+  `ensino_da_execucao:<run> persona:<id>`. Responde o mesmo corpo do GET, relido depois, mais:
+  - `promovidas`: `[{recipe_id, step_key}]`;
+  - `recusadas`: `[{recipe_id, step_key, code, message}]`.
+
+  Sem candidata: 200 com `promovidas` vazio.
+- **Prova:** `simulated` (`backend/tests/test_ensino_da_execucao.py`). `real`: `not_run`, pede o deploy e uma execução
+  real da onda 2.

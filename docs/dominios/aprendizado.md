@@ -2515,7 +2515,49 @@ deve salvar:
 **Na operação (onda 2), o fluxo não substitui o plano.** A escolha por semelhança (31.151, que executa direto pelo
 31.210) troca o plano INTEIRO pelo do fluxo e só confere se `{username}` está no comando (`habilidades.escolha_valida`).
 Não confere se o fluxo cobre o comando todo. Este fluxo só lê; a ação final da operação (o comentário com aprovação)
-ficaria de fora. Na operação, o que serve são as ETAPAS ensinadas (31.153): o planejador livre monta o plano com a
-ação final, e cada etapa de leitura que tiver receita estável troca o ator pela receita. Sem ensino feito antes da
-onda, o planejador vai livre nos alvos.
+ficaria de fora (a guarda é o 31.222). Sem ensino feito antes da onda, o planejador vai livre nos alvos.
 
+Correção (31.221): as etapas ensinadas do 31.153 também NÃO servem à operação. A operação planeja com ações do catálogo
+(`OPEN_PROFILE`, `OPEN_POST`, `OPEN_COMMENTS`), e o 31.153 exclui de propósito a etapa com ação do catálogo. O que
+reaproveita a etapa do catálogo é a receita pela identidade da etapa, e o caminho para ensiná-la a partir de uma
+execução que deu certo é o da seção seguinte.
+
+## O ensino a partir da execução (31.221)
+
+P-014, para a execução que deu CERTO. Medido em 07/10 na onda 1, lido em `mode=ro`:
+- a operação do Instagram planeja com ações do catálogo;
+- `open_post` e `open_comments` já rodaram sem IA (`driven_by=recipe`), pelas receitas que a IA aprendeu em execuções
+  anteriores;
+- só `open_profile` e o comentário foram pela IA. No `open_profile`, a IA começou por voltar (`press_back`), que a
+  receita não reproduz, e nenhuma receita nasceu.
+
+A receita que a IA aprende numa execução real nasce candidata e só vira ativa depois de `ai.recipes_promote_after`
+execuções que concordem (2 no central; fica assim nesta prova). Agora a pessoa olha a execução que deu certo e promove
+num gesto as candidatas das etapas de leitura dela, sem tempo de aparelho:
+
+- `GET /api/aprendizado/execucao/{run_id}/ensino` (adendo v1.120): por etapa, a candidata ou o motivo fechado
+  (`domain/ensino_da_execucao.Motivo`):
+  - `execucao_simulada`: a simulada não publica;
+  - `com_efeito`: efeito externo ou trava de commit, que seguem pela aprovação;
+  - `nao_concluida`;
+  - `ja_por_receita`;
+  - `sem_ator`;
+  - `caminho_nao_reproduzivel`, com `ferramentas_nao_reproduziveis` (`press_back`, `press_home`, `drag`,
+    `type_secret`, `open_url`, a lista do executor);
+  - `sem_receita`: a IA conduziu e a loja não gravou, por outro motivo;
+  - `receita_ja_vale`;
+  - `receita_fora_de_circulacao`.
+- `POST` na mesma rota: a pessoa promove as candidatas pelo caminho do Livro (candidate → validated → published, com a
+  trilha), com o motivo `ensino_da_execucao:<run> persona:<id>`. O que o Livro recusar volta em `recusadas`; o resto
+  segue.
+
+**Escopo.** A receita não tem escopo por persona, então a persona que executou fica na trilha como proveniência, não
+como trava: a receita promovida vale para o app, como as que já rodam no catálogo. Uma trava por persona pediria
+migração.
+
+**Achado para a onda 2.** Se a IA começar o `open_profile` por voltar, de novo não nasce candidata, e o GET mostra
+`caminho_nao_reproduzivel` com `press_back`. O primeiro gesto do ator numa tela já certa não deveria ser voltar; isso
+fica para o 31.223 ou para um item próprio.
+
+**Prova.** `simulated`: `backend/tests/test_ensino_da_execucao.py`. `real`: a segunda execução com
+`open_profile` `driven_by=recipe` depois do POST sobre uma execução real da onda 2; `not_run` até o deploy e a onda.

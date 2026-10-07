@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.221: o ensino a partir da execução (branch feat/31-221-ensino-da-execucao, adendo v1.120)
+
+- A operação do Instagram planeja com ações do catálogo, que as etapas ensinadas do 31.153 não cobrem. O que as
+  reaproveita é a receita, que nasce candidata e só vira ativa após 2 execuções que concordem.
+- Agora `GET /api/aprendizado/execucao/{run}/ensino` diz, por etapa, a candidata ou o motivo fechado (inclusive
+  `caminho_nao_reproduzivel` com `press_back`, o achado da onda 1). O `POST` na mesma rota deixa a pessoa promover as
+  candidatas num gesto, pelo Livro, com `ensino_da_execucao:<run> persona:<id>` na trilha.
+- Corrigida a ressalva do 31.219: as etapas do 31.153 também não servem à operação.
+- Prova `simulated`: `backend/tests/test_ensino_da_execucao.py` (2). `real`: `not_run`, pede o deploy e uma execução
+  real da onda 2.
+
 ## 2026-10-07 — 31.219: o ensino do fluxo para alvo de terceiro, preparado (branch feat/31-219-ensino-alvo-de-terceiro)
 
 - O alvo da onda 2 é o primeiro post de uma página pública de terceiro (P-029), e a única receita ensinada do Instagram
