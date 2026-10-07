@@ -22,6 +22,7 @@ import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
 import { CriarOperacao } from './CriarOperacao';
 import { guardarRascunho, rascunhoDaOperacao } from './criar';
 import { LiberarAcoes } from './LiberarAcoes';
+import { ModelosDoAlvo } from './ModelosDoAlvo';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
 import {
@@ -153,6 +154,10 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
             {alvo.estagios.map((e) => <li key={e.estagio}>{rotuloDoEstagio(e.estagio)}{e.em ? <span className={styles.mudo}> · {formatClock(e.em)}</span> : null}</li>)}
           </ol>
         ) : <p className={styles.mudo}>O backend não informou a hora de cada estágio.</p>}
+      </div>
+      <div className={styles.blocoDeModelos}>
+        <h4 className={styles.subtitulo}>Modelos e custo</h4>
+        {alvo.run_id ? <ModelosDoAlvo runId={alvo.run_id} /> : <p className={styles.mudo}>Este agente não tem execução: não há chamada de IA a mostrar.</p>}
       </div>
     </div>
   );
