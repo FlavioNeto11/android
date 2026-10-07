@@ -42,6 +42,7 @@ from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql, 
 from app.modules.learning.infrastructure.resultado_posterior_sql import ResultadoPosteriorSql
 from app.modules.learning.infrastructure.risco_do_conteudo import RiscoDoConteudo
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
+from app.modules.learning.infrastructure.sombra_da_quarentena_sql import SombraDaQuarentena
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from app.taskqueue.aproveitamento import aproveitamento
@@ -161,6 +162,10 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     ligar_obsolescencia.ligar(servico, repo, db, fontes=FontesSql(db, pacotes_do_registro=pacotes_do_registro))
     # 31.190: o fato confirmado da pesquisa de uma operação encerrada vira candidata do escritor (passo, sem IA).
     servico.registrar_passo(FatosDaOperacaoParaOLivro(servico, repo, db))
+    # 31.202: o rendimento da receita ensinada sugere, em SOMBRA, liberar ou prender de volta (passo, sem IA; nada se
+    # aplica). Precisa da régua da loja de receitas (30.81); sem a loja, o passo não entra.
+    if receitas is not None:
+        servico.registrar_passo(SombraDaQuarentena(servico, db, liberada=receitas.liberada_fora_do_ensino))
     # 30.35: o desfecho medido das revisões do curador 14 dias depois (o rótulo 2 do Jev; passo da curadoria, sem IA).
     servico.registrar_passo(GravadorDoResultadoPosterior(ResultadoPosteriorSql(db), lambda: servico.ajustes.saude))
     # 30.11: o curador por IA (laço próprio sob a trava de líder; `off` de fábrica; adaptador simulado até o 30.12).

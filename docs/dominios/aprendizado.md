@@ -2329,3 +2329,27 @@ pela proveniência, pela interação ou inferida) está no topo de `infrastructu
 A confiança fica numa régua só (`confirmado`/`hipotese`) e o valor original aparece ao lado, em `estado`. O que a rota
 não responde aparece em `nao_coberto`. Contrato: adendo v1.96. O relatório da operação da Portal (31.162) lê esta rota.
 
+## A sombra da quarentena pelo rendimento (31.202)
+
+Um passo da curadoria, sem IA, lê o uso REAL de cada receita ensinada ativa e diz o que faria. **Nada se aplica**: a
+loja de receitas, a quarentena (3 falhas seguidas) e o 30.81 seguem iguais. Ligar de verdade é uma pergunta ao dono.
+
+- **"liberaria"**: a receita ainda vale só para quem ensinou e rendeu no uso real dessa persona.
+  - O limiar: 3 usos sem IA, em 2 execuções distintas, e nenhuma falha nas 3 últimas tentativas dela.
+  - O uso de outra persona não conta.
+- **"prenderia de volta"**: a receita já liberada falhou nas 2 últimas tentativas reais fora de quem ensinou. Falhar
+  aqui é a receita não conduzir sozinha (`recipe>…` ou falha).
+- **"nenhuma"**: o resto, com o motivo e as contagens.
+- **Nunca "liberaria"** para a receita com efeito externo (ação `commit`) nem para a que mira a conta da própria persona
+  (o parâmetro `{conta_<app>_usuario}`, o mesmo do aviso do 31.182). A receita 221 do Instagram é deste caso.
+- **O uso real** segue a régua do rendimento (`domain/rendimento.tipo_de_uso`): nem simulada, nem prova, nem lote. A
+  persona de cada tentativa é a do objetivo da etapa (`objectives.profile_id`). A liberação usa a régua da loja
+  (`RecipeStore.liberada_fora_do_ensino`).
+- **Onde fica**: um sinal por receita em `learning_signals`, sobrescrito a cada passo.
+  - `kind` é `sombra_da_quarentena` e `source_ref` é `receita:<id>`, com `created_by` sistema.
+  - `reason` é a sugestão e `note` o motivo. `data` leva as contagens, a regra (`31.202-v1`) e se está liberada.
+  - Como as sombras do 30.34 e do 30.55, o sinal não é gesto de pessoa: fica fora da aba Sinais. Lê-se por
+    `GET /api/aprendizado/sinais?kind=sombra_da_quarentena`.
+- Código: `domain/sombra_da_quarentena.py` e `infrastructure/sombra_da_quarentena_sql.py`. A montagem só registra o
+  passo quando há a loja de receitas.
+- A pergunta ao dono (o que muda com sim e com não) está em `.claude/handoffs/aprendizado-pergunta-31-202.md`.

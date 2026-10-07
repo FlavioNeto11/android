@@ -7656,3 +7656,16 @@ inteiro. O painel passa a exibir a cópia no 31.189 (Portal).
 - `404 receita_desconhecida`.
 - **Prova:** `simulated` (`backend/tests/test_rendimento_por_receita.py`). `real`: `not_run`, pede o deploy.
 
+## Adendo v1.115 (07/10/2026; número da orquestradora; item 31.202) — a sombra da quarentena nos sinais
+
+`GET /api/aprendizado/sinais` aceita um valor novo em `?kind=`: `sombra_da_quarentena`. Nada mais muda na rota.
+
+- Um sinal por receita ensinada ativa, gravado pelo passo da curadoria e sobrescrito a cada passo.
+  - `source_ref` é `receita:<id>` e `created_by` é `sistema`.
+  - `reason`: `liberaria`, `prenderia_de_volta` ou `nenhuma`. `note` é o motivo, em português, só com contagens.
+  - `polarity`: `positive` em liberaria, `negative` em prenderia de volta e `neutral` em nenhuma.
+- **Fora da lista padrão:** sem `kind`, a rota não traz este sinal, como os das sombras do 30.34 (`autopublicaria`) e do
+  30.55 (`aprovaria`). Não é gesto de pessoa.
+- **Nada se aplica:** a sugestão não muda a receita, a quarentena nem a regra do 30.81.
+- **Prova:** `simulated` (`backend/tests/test_sombra_da_quarentena.py`). `real`: `not_run`, pede o deploy.
+
