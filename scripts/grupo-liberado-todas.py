@@ -20,7 +20,8 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-DESFAZER_EM = Path(__file__).resolve().parent.parent / ".claude" / "handoffs"
+#: O desfazer fica nos handoffs do checkout central: num worktree, `<raiz>/.claude/handoffs` não existe.
+DESFAZER_EM = Path("C:/git/android/.claude/handoffs")
 
 
 def _pedir(url: str, metodo: str = "GET", corpo: dict[str, object] | None = None) -> object:
@@ -47,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--url", default="http://127.0.0.1:8000")
     ap.add_argument("--grupo", help="id do grupo; sem ele, o `grupo_sem_aprovacao` em vigor")
+    ap.add_argument("--desfazer-em", type=Path, default=DESFAZER_EM, help="pasta do arquivo de desfazer")
     modo = ap.add_mutually_exclusive_group()
     modo.add_argument("--aplicar", action="store_true")
     modo.add_argument("--desfazer", type=Path)
@@ -61,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     ajustes = _pedir(f"{base}/api/settings")
-    grupo = a.grupo or str((ajustes or {}).get("grupo_sem_aprovacao") or "") if isinstance(ajustes, dict) else a.grupo
+    grupo = a.grupo or (str(ajustes.get("grupo_sem_aprovacao") or "") if isinstance(ajustes, dict) else "")
     if not grupo:
         print("sem grupo: passe --grupo ou configure grupo_sem_aprovacao", file=sys.stderr)
         return 2
@@ -71,7 +73,8 @@ def main(argv: list[str] | None = None) -> int:
                                 "a_mover": len(fora), "aplicado": False}
     if a.aplicar and fora:
         quando = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        arquivo = DESFAZER_EM / f"grupo-liberado-desfazer-{quando}.json"
+        a.desfazer_em.mkdir(parents=True, exist_ok=True)
+        arquivo = a.desfazer_em / f"grupo-liberado-desfazer-{quando}.json"
         arquivo.write_text(json.dumps({"grupo": grupo, "em": quando, "grupo_anterior": fora}, indent=1),
                            encoding="utf-8")
         for pid in fora:

@@ -19,6 +19,24 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.260 (parte a): o rascunho lê só o post em foco no feed "Posts" (branch feat/31-260-post-em-foco)
+
+- O defeito, na rodada de 07/10 12:55Z (android-06, r-20261007125539-542a75): o feed "Posts" abriu com o post tocado no
+  alto e o cabeçalho do cartão seguinte à vista. O conteúdo da tela que vai ao rascunho levava os dois, e o texto aprovado
+  misturou os dois posts. O executor recusou comentar duas vezes: nenhum comentário saiu, e o alvo custou US$ 0,357.
+- Agora o app declara o cabeçalho de cartão (`leitura.conteudo.cartao: row_feed_profile_header`, medido em 07/10 13:46Z
+  pela hierarquia do android-06, só leitura), e `visible_content` lê só o cartão em foco: do primeiro cabeçalho visível
+  ao seguinte.
+- Na dúvida, a tela inteira, como antes: sem cabeçalho, ou com conteúdo acima do primeiro cabeçalho (o cartão de cima
+  rolou). A leitura da operação (`recorte_do_alvo`) passa a ser a do post em foco.
+- Ficam para o 31.260 seguinte:
+  - (b) a identidade do post guardada no texto e conferida no commit;
+  - (c) não replanejar o mesmo caminho depois de "outro post" (hoje `MAX_PLAN_REVISIONS` = 1 limita a uma revisão).
+- `scripts/grupo-liberado-todas.py`: o desfazer vai aos handoffs do checkout central (`--desfazer-em`). Num worktree,
+  a pasta não existia.
+- Prova `simulated`: `backend/tests/test_post_em_foco.py` (8), sobre a árvore real com os textos trocados por texto
+  inventado. `real`: `not_run` até a próxima rodada com post por posição.
+
 ## 2026-10-07 — 31.259: a pesquisa no relatório consolidado e os critérios 5 e 6 pelo estado dela (adendo v1.127; branch feat/pesquisa-no-relatorio)
 
 - `GET /api/operacoes/{id}/relatorio` ganha `pesquisa`: o mesmo resumo do GET (31.235), com o critério passado pelo

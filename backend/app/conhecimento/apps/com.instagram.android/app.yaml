@@ -48,6 +48,10 @@ leitura:
     ignorar: '^\s*(curtir|curtidas?|comentar|coment[áa]rios?|compartilhar|enviar|salvar|seguir|seguindo|seguidores?|publica[çc][õo]es|in[íi]cio|pesquisa|explorar|reels|perfil|mais|op[çc][õo]es|voltar|fechar|adicionar|ver tradu[çc][ãa]o|ver mais|ver todos.*|responder|h[áa] \d+.*|\d+ ?[a-z]?|like[sd]?|comments?|share|send|save|follow(ing)?|followers?|posts?|home|search|explore|profile|more|options|back|close|add|reply|see translation|see more|view all.*|\d+ ?[wdhm]|now|agora)\s*$'
     # Texto curto demais é rótulo: uma legenda ou comentário de verdade não cabe em 15 caracteres.
     minimo: 15
+    # 31.260: o cabeçalho de cada cartão do feed. Medido em 07/10 13:46Z (GET /api/instances/android-06/hierarchy, feed
+    # "Posts" aberto pela grade): um `row_feed_profile_header` por cartão, e o do post tocado é o primeiro. Com ele, o
+    # rascunho lê só o cartão em foco; antes, o cabeçalho do cartão seguinte entrava junto e o texto misturou dois posts.
+    cartao: row_feed_profile_header
   # A linha de um comentário chega como "autor said texto…" (a mesma forma que COLLECT_COMMENTS recorta). Vale a
   # PRIMEIRA: há um comentário sendo respondido.
   comentario:

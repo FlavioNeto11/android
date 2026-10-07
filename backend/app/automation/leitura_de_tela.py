@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .hierarchy import UiTree
+from .hierarchy import UiElement, UiTree
 
 AUTOR = "{autor}"
 
@@ -46,17 +46,44 @@ class LeituraDeclarada:
     minimo: int
     comentario: RegraDeFala | None
     mensagem: RegraDeFala | None
+    #: 31.260: o resource-id do cabeçalho de cada cartão num feed (`conteudo.cartao`). Com ele, o conteúdo é só o do
+    #: cartão EM FOCO, o do primeiro cabeçalho visível; sem ele, a tela inteira, como antes.
+    cartao: str | None = None
+
+    def _conteudo(self, texto: str) -> bool:
+        return len(texto) >= self.minimo and not (self.ignorar is not None and self.ignorar.match(texto))
+
+    def em_foco(self, tree: UiTree) -> list[UiElement]:
+        """31.260: os elementos do cartão em foco, do topo do primeiro cabeçalho visível ao topo do seguinte (ou ao fim
+        da tela). Na rodada de 07/10 o feed "Posts" abriu com o post tocado no alto e o cabeçalho do seguinte à vista,
+        e o rascunho misturou os dois. Na dúvida, a tela inteira, como antes: sem cabeçalho, ou com conteúdo ACIMA do
+        primeiro cabeçalho (o cartão de cima rolou e o cabeçalho dele saiu da tela; não dá para dizer qual é o foco)."""
+        if not self.cartao:
+            return list(tree.elements)
+        cabecalhos = sorted({e.bounds[1] for e in tree.find(resource_id=self.cartao)})
+        if not cabecalhos:
+            return list(tree.elements)
+        topo = cabecalhos[0]
+        fim = cabecalhos[1] if len(cabecalhos) > 1 else None
+
+        def meio(e: UiElement) -> int:
+            return (e.bounds[1] + e.bounds[3]) // 2
+
+        if any(meio(e) < topo and self._conteudo((e.text or "").strip()) for e in tree.elements):
+            return list(tree.elements)
+        return [e for e in tree.elements if topo <= meio(e) and (fim is None or meio(e) < fim)]
 
     def visible_content(self, tree: UiTree, *, limite: int = 600, max_linhas: int = 8) -> str:
         """O que está ESCRITO na tela: sem os rótulos de interface declarados e sem texto curto demais para ser
-        conteúdo. Heurística de propósito: ids de app mudam a cada versão; rótulo e tamanho envelhecem melhor."""
+        conteúdo. Heurística de propósito: ids de app mudam a cada versão; rótulo e tamanho envelhecem melhor. Num feed
+        com o cabeçalho de cartão declarado, só o cartão em foco (`em_foco`)."""
         if tree.sensitive:
             return ""
         linhas: list[str] = []
         vistos: set[str] = set()
-        for e in tree.elements:
+        for e in self.em_foco(tree):
             texto = (e.text or "").strip()
-            if len(texto) < self.minimo or (self.ignorar is not None and self.ignorar.match(texto)):
+            if not self._conteudo(texto):
                 continue
             if texto.lower() in vistos:
                 continue
@@ -118,8 +145,8 @@ def _regra(bruto: object, onde: str) -> RegraDeFala | None:
 
 
 def de_dados(dados: object) -> LeituraDeclarada:
-    """A seção `leitura` do pacote: `conteudo.ignorar` (regex de rótulos), `conteudo.minimo`, `comentario` e
-    `mensagem` (cada um com `padroes`, `campos` e `escolher`)."""
+    """A seção `leitura` do pacote: `conteudo.ignorar` (regex de rótulos), `conteudo.minimo`, `conteudo.cartao`
+    (31.260), `comentario` e `mensagem` (cada um com `padroes`, `campos` e `escolher`)."""
     if not isinstance(dados, dict):
         raise LeituraInvalida("`leitura` precisa ser um mapa")
     conteudo = dados.get("conteudo") or {}
@@ -133,5 +160,9 @@ def de_dados(dados: object) -> LeituraDeclarada:
     minimo = conteudo.get("minimo", 15)
     if not isinstance(minimo, int) or minimo < 1:
         raise LeituraInvalida("leitura.conteudo.minimo: inteiro positivo")
+    cartao = conteudo.get("cartao")
+    if cartao is not None and (not isinstance(cartao, str) or not cartao.strip() or "|" in cartao or "=" in cartao):
+        raise LeituraInvalida("leitura.conteudo.cartao: o resource-id do cabeçalho do cartão (só o id)")
     return LeituraDeclarada(ignorar=ignorar, minimo=minimo, comentario=_regra(dados.get("comentario"), "comentario"),
-                            mensagem=_regra(dados.get("mensagem"), "mensagem"))
+                            mensagem=_regra(dados.get("mensagem"), "mensagem"),
+                            cartao=cartao.strip() if isinstance(cartao, str) else None)
