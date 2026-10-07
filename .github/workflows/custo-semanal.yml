@@ -53,6 +53,7 @@ jobs:
             echo >> relatorio-custo.md
             cat custo-por-pr.md >> relatorio-custo.md
           else
+            echo "::warning::custo por PR: a leitura dos PRs falhou nesta semana"
             {
               echo
               echo "## Custo por PR"
