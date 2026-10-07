@@ -428,7 +428,10 @@ async def _cartoes(cl, board: str) -> list[dict]:
     return [{"id": c["id"], "nome": c["name"], "lista": listas.get(c["idList"], ""), "desc": c.get("desc", "")} for c in cs]
 
 
-async def _principal(aplicar: bool) -> int:
+async def _principal(aplicar: bool, raiz: Path | None = None, resultado: dict | None = None) -> int:
+    """`raiz`: checkout de onde vêm o estado do plano, o CHANGELOG e o Git (o espelho do deploy passa um checkout em
+    origin/main, porque o central pode estar atrás). `resultado`, se dado, recebe as contagens para quem chama (28.67)."""
+    raiz = raiz or RAIZ
     from app.config import EnvSettings  # noqa: PLC0415 - só no modo de rede
     from app.modules.avisos.adapters.trello import ClienteTrello  # noqa: PLC0415
     from redacao import redigir  # noqa: PLC0415
@@ -443,13 +446,13 @@ async def _principal(aplicar: bool) -> int:
     cartoes = [{"id": c["id"], "nome": c["name"], "lista": listas.get(c["idList"], ""), "desc": c.get("desc", "")} for c in cs]
     hl = await cl._pedir("GET", f"/1/boards/{ident['historico']}/lists", params={"fields": "name", "filter": "open"})
     hist = {x["name"]: x["id"] for x in hl}
-    estado = json.loads((RAIZ / ".claude/plano-100/estado.json").read_text(encoding="utf-8"))
+    estado = json.loads((raiz / ".claude/plano-100/estado.json").read_text(encoding="utf-8"))
     agora = datetime.now(timezone.utc)
-    changelog = (RAIZ / "CHANGELOG.md").read_text(encoding="utf-8")
-    rel = decidir(cartoes, estado, agora=agora, horas=horas_dos_deploys(), suite_de=suite_do_commit,
+    changelog = (raiz / "CHANGELOG.md").read_text(encoding="utf-8")
+    rel = decidir(cartoes, estado, agora=agora, horas=horas_dos_deploys(raiz), suite_de=lambda pid: suite_do_commit(pid, raiz),
                   listas_do_historico=hist, redigir=redigir, citados=ids_citados_por_deploy(changelog),
                   por_commit=deploys_por_commit(changelog),
-                  deploy_git=lambda pid: deploy_pelo_git(pid, deploys_por_commit(changelog)))
+                  deploy_git=lambda pid: deploy_pelo_git(pid, deploys_por_commit(changelog), raiz))
     outros = auditar_historico_e_programa(await _cartoes(cl, ident["historico"]), await _cartoes(cl, ident["programa"]),
                                           estado, agora=agora)
     print("Execução:", len(cartoes), "cartões; ações:", rel.contagem() or "nenhuma")
@@ -458,6 +461,8 @@ async def _principal(aplicar: bool) -> int:
         print(f"  listar {a.de} | {a.nome[:60]} | {a.motivo}")
     for a in rel.acoes:
         print(f"  {a.tipo:7} {a.de} → {a.para or '-'} | {a.nome[:60]} | {a.motivo}")
+    if resultado is not None:
+        resultado.update(cartoes=len(cartoes), acoes=[(a.tipo, a.para) for a in rel.acoes], falhas=0)
     if not aplicar:
         return 0
     selo = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%MZ")
@@ -478,6 +483,8 @@ async def _principal(aplicar: bool) -> int:
         except Exception as ex:  # noqa: BLE001 - relata e segue com os outros cartões
             falhas.append((a.nome[:40], type(ex).__name__))
     print("falhas:", falhas or "nenhuma")
+    if resultado is not None:
+        resultado["falhas"] = len(falhas)
     return 1 if falhas else 0
 
 
