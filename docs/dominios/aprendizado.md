@@ -2629,9 +2629,11 @@ viram itens do Livro com o assunto canônico no escopo (31.190, 31.200), mas a 2
 novo pelo que o Livro já sabia.
 
 Agora, depois da lacuna e antes do gasto, a pesquisa consulta o Livro:
-- **Leitura** (`learning/infrastructure/fatos_do_livro_sql.py`, lado do Aprendizado): os itens `operation_fact` do
-  assunto canônico, vivos (`candidate`, `validated`, `published`), com o texto do conteúdo e o frescor e os domínios da
-  proveniência v1.117. O rejeitado e o desligado ficam fora.
+- **Leitura** (`learning/infrastructure/fatos_do_livro_sql.py`, lado do Aprendizado): pelo id da operação, os itens
+  `operation_fact` do assunto canônico E do pacote do app dela (`scope_app`; o mesmo assunto em outro app não cobre),
+  vivos (`candidate`, `validated`, `published`), com o texto do conteúdo e o frescor e os domínios da proveniência
+  v1.117. O rejeitado e o desligado ficam fora. O `candidate` conta porque o minerador do 31.190 só faz nascer item de
+  descoberta confirmada.
 - **Critério** (`learning/domain/reaproveitamento_da_pesquisa.py`, puro): cobre o pedido com pelo menos
   `ai.pesquisa.reaproveitar_min_fatos` (padrão 2) fatos vivos e dentro do frescor (sem frescor não conta; só o fato
   confirmado nasce no Livro). Havendo fontes indicadas, cada domínio indicado tem de estar entre os desses fatos. `0`
@@ -2646,4 +2648,5 @@ A chave `livro.` não volta ao Livro: o minerador do 31.190 só lê `pesquisa.*`
 
 **Prova.** `simulated`: `backend/tests/test_pesquisa_reaproveita_o_livro.py` (4: critério, serviço que não paga e
 registra, serviço que paga quando não cobre ou quando a leitura falha, leitor do Livro no harness). `real`: `not_run`;
-a 1ª operação de assunto repetido depois do deploy.
+a 1ª operação de assunto repetido depois do deploy. Contrato com a Jev aceito em 07/10 com dois pontos (filtro por app;
+o `candidate` só por ter vindo confirmado), os dois aplicados.

@@ -32,7 +32,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-07 — 31.231: a pesquisa reaproveita o Livro (branch feat/31-231-pesquisa-reaproveita-o-livro)
 
 - A 2ª operação do mesmo assunto pagava a pesquisa de novo (US$ 0,043 na onda 1) pelo que o Livro já sabia.
-- Agora, antes da chamada paga, a lacuna lê os fatos do Livro do mesmo assunto canônico. Cobrem o pedido quando há
+- Agora, antes da chamada paga, a lacuna lê os fatos do Livro do mesmo assunto canônico e do mesmo app. Cobrem o pedido quando há
   pelo menos `ai.pesquisa.reaproveitar_min_fatos` (padrão 2) vivos, confirmados e dentro do frescor, e, havendo fontes
   indicadas, cada domínio indicado entre os desses fatos. Cobrindo, os fatos entram na memória como `livro.<item>` e a
   `pesquisa.estado` registra itens, frescor e critério; não cobrindo, a pesquisa paga roda como antes, com o motivo no log.
