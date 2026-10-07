@@ -40,11 +40,12 @@ function ResumoDoRelatorio({ r, motivoDaReserva }: { r: Relatorio; motivoDaReser
       </p>
       {r.ambiente ? <p className={styles.mudo} data-ambiente={r.ambiente}>Ambiente: {ROTULO_DO_AMBIENTE[r.ambiente]}.</p> : null}
       {r.identidades && r.identidades.executam_hoje !== null && r.identidades.solicitadas !== null ? (
-        <p data-identidades><strong>{r.identidades.executam_hoje} de {r.identidades.solicitadas}</strong> identidades executam hoje.</p>
+        <p data-identidades><strong>{r.identidades.executam_hoje} de {r.identidades.solicitadas}</strong> identidades executam hoje{r.identidades.deficit ? ` (faltam ${r.identidades.deficit})` : ''}.</p>
       ) : null}
       {crit ? (
         <p className={styles.mudo} data-criterios>
           Critérios do diagnóstico: {crit.length}; valeram nesta operação {conta('sim')}, não valeram {conta('nao')}, {conta('nao_medido')} não medidos.
+          {r.criterios_base ? ` Base do estado: ${r.criterios_base}` : ''}
         </p>
       ) : null}
       {r.latencia ? (

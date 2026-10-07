@@ -56,8 +56,8 @@ function lerAgente(v: unknown, posicao: number): AgenteDoRelatorio | null {
       const x = doCentral.get(e.id);
       return { estagio: e.id, rotulo: e.rotulo, em: x?.em ?? null, alcancado: x !== undefined || i <= ate, ...(x ? { etapa_ms: x.etapa_ms } : {}) };
     }),
-    // O relatório do central não traz o conhecimento nem a evidência da tela por agente: "não informado", nunca "nenhum".
-    conhecimento_ids: null,
+    // Sem a lista (central anterior), "não informado", nunca "nenhum". A evidência da tela lida não vem no relatório do central.
+    conhecimento_ids: Array.isArray(o.conhecimento_ids) ? o.conhecimento_ids.filter((k): k is string => typeof k === 'string' && k.trim() !== '') : null,
     texto: texto(o.texto),
     evidencia_id: null,
     acao_final: acao ? { tipo: texto(acao.tipo), verificada, evidencia_id: inteiro(acao.evidencia_id) } : null,
@@ -112,7 +112,8 @@ export function relatorioDoServidor(v: unknown): RelatorioDaOperacao | null {
       fontes: lista(op.fontes).filter((f): f is string => typeof f === 'string' && f.trim() !== ''),
       fontes_da_pesquisa: lista(op.fontes_da_pesquisa).filter((f): f is string => typeof f === 'string' && f.trim() !== ''),
     },
-    identidades: ident ? { solicitadas: inteiro(ident.solicitadas), executam_hoje: inteiro(ident.executam_hoje), nao_executam: motivos(ident.nao_executam) } : null,
+    identidades: ident ? { solicitadas: inteiro(ident.solicitadas), executam_hoje: inteiro(ident.executam_hoje), deficit: inteiro(ident.deficit), nao_executam: motivos(ident.nao_executam) } : null,
+    criterios_base: limpo(o.criterios_base),
     capacidade: {
       solicitados: inteiro(cap.solicitados), contas_existentes: inteiro(cap.contas_existentes), sessoes_validas: inteiro(cap.sessoes_validas),
       contas_disponiveis: inteiro(cap.contas_disponiveis), concluidas: inteiro(cap.concluidas), bloqueadas: inteiro(cap.bloqueadas), em_curso: inteiro(cap.em_curso),

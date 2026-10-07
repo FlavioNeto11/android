@@ -86,8 +86,10 @@ export interface RelatorioDaOperacao {
     criada_em: string | null; encerrada_em: string | null; assunto: string | null; fontes: string[]; fontes_da_pesquisa: string[];
   };
   /** A resposta objetiva: quantas das N identidades pedidas executam hoje e por que as outras não. `null` = o relatório do painel não tem. */
-  identidades: { solicitadas: number | null; executam_hoje: number | null; nao_executam: { motivo: string; n: number }[] } | null;
+  identidades: { solicitadas: number | null; executam_hoje: number | null; /** v1.111 final: quantas faltam para as pedidas. */ deficit: number | null; nao_executam: { motivo: string; n: number }[] } | null;
   criterios: CriterioDoRelatorio[] | null;
+  /** v1.111 final: de onde vem o estado dos critérios (a base do diagnóstico § 1a, que a operação só sobe, nunca rebaixa); `null` = não dito. */
+  criterios_base: string | null;
   latencia: {
     por_estagio: { estagio: string; rotulo: string; n: number; p50_ms: number | null; p95_ms: number | null; max_ms: number | null }[];
     duracao_mediana_ms: number | null;
@@ -198,7 +200,7 @@ export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendiz
       id: op.id, comando: op.command, app_id: op.app_id, acao_final: op.acao_final, status: op.status ? ROTULO_DO_STATUS[op.status] : null,
       criada_em: op.created_at, encerrada_em: op.finished_at, assunto: op.assunto, fontes: op.fontes, fontes_da_pesquisa: [],
     },
-    identidades: null, criterios: null, latencia: null,
+    identidades: null, criterios: null, criterios_base: null, latencia: null,
     capacidade: { ...c, motivos: c.motivos.map((m) => ({ ...m, motivo: semArroba(m.motivo) })) },
     custo: {
       pesquisa_usd: op.custo?.pesquisa_usd ?? null, alvos_usd: op.custo?.alvos_usd ?? null, total_usd: op.custo?.total_usd ?? null, teto_usd: op.max_usd, por_peca_usd: null,
@@ -222,7 +224,7 @@ const duracao = (ms: number | null | undefined): string => {
 const ROTULO_DO_CRITERIO: Record<NonNullable<CriterioDoRelatorio['estado']>, string> = {
   implementado: 'implementado', testado_em_simulacao: 'testado em simulação', provado_real: 'provado de verdade', bloqueado: 'bloqueado', nao_implementado: 'não implementado',
 };
-export const ROTULO_DO_AMBIENTE: Record<NonNullable<RelatorioDaOperacao['ambiente']>, string> = { real: 'real (aparelhos de verdade)', simulado: 'simulado', nao_medido: 'não medido' };
+export const ROTULO_DO_AMBIENTE: Record<NonNullable<RelatorioDaOperacao['ambiente']>, string> = { real: 'real (houve IA de um provedor real)', simulado: 'simulado (só o provedor simulado)', nao_medido: 'não medido (nenhuma chamada de IA)' };
 const ROTULO_NESTA: Record<CriterioDoRelatorio['nesta_operacao'], string> = { sim: 'sim', nao: 'não', nao_medido: 'não medido' };
 const num = (n: number | null): string => (n === null ? 'não informado' : String(n));
 /** O texto numa citação, linha a linha, para uma quebra de linha do texto não virar título do Markdown. */
@@ -281,7 +283,7 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
   linhas.push(`- **Montado por:** ${r.fonte === 'servidor' ? 'o central (GET /api/operacoes/{id}/relatorio)' : 'o painel, do estado da operação (o central não entregou o relatório)'}`);
   if (r.identidades) {
     const i = r.identidades;
-    linhas.push('', '## Identidades', '', `**${num(i.executam_hoje)} de ${num(i.solicitadas)}** identidades solicitadas executam hoje.`);
+    linhas.push('', '## Identidades', '', `**${num(i.executam_hoje)} de ${num(i.solicitadas)}** identidades solicitadas executam hoje${i.deficit !== null && i.deficit > 0 ? ` (faltam ${i.deficit})` : ''}.`);
     for (const n of i.nao_executam) linhas.push(`- Não executam: ${n.motivo}: ${n.n}`);
   }
   linhas.push(
@@ -313,7 +315,9 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
     }
   }
   if (r.criterios) {
-    linhas.push('', '## Critérios do diagnóstico', '', '| critério | estado | nesta operação | evidência |', '|---|---|---|---|');
+    linhas.push('', '## Critérios do diagnóstico', '');
+    if (r.criterios_base) linhas.push(`Base do estado: ${r.criterios_base}`, '');
+    linhas.push('| critério | estado | nesta operação | evidência |', '|---|---|---|---|');
     for (const c of r.criterios) linhas.push(`| ${c.id}. ${c.nome} | ${c.estado ? ROTULO_DO_CRITERIO[c.estado] : 'não informado'} | ${ROTULO_NESTA[c.nesta_operacao]} | ${c.evidencia ?? 'nenhuma'} |`);
   }
   linhas.push(...aprendizadoEmMarkdown(r.aprendizado));

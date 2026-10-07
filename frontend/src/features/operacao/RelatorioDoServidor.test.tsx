@@ -27,9 +27,10 @@ const RELATORIO = {
     criada_em: '2026-10-07T18:00:00Z', encerrada_em: '2026-10-07T19:00:00Z', assunto: 'A embalagem nova.', fontes: ['https://exemplo.com.br/a'], fontes_da_pesquisa: ['https://exemplo.com.br/b'],
   },
   capacidade: { solicitados: 5, contas_existentes: 3, sessoes_validas: 3, contas_disponiveis: 3, concluidas: 3, bloqueadas: 2, em_curso: 0, motivos: [{ motivo: 'sem conta', n: 2 }] },
-  identidades: { solicitadas: 5, executam_hoje: 3, nao_executam: [{ motivo: 'sem conta', n: 2 }] },
+  identidades: { solicitadas: 5, executam_hoje: 3, deficit: 2, nao_executam: [{ motivo: 'sem conta', n: 2 }] },
+  criterios_base: 'diagnóstico § 1a (06/10), revisto no código do corte 60; a operação só sobe o estado.',
   agentes: [
-    agente(1), agente(2, { texto: 'texto  1.' }),
+    agente(1, { conhecimento_ids: ['fluxo:f1', 'licao:voz'] }), agente(2, { texto: 'texto  1.' }),
     agente(3, { estado: 'bloqueado', estagio: 'conta', parou_em: 'conta', motivo: 'conta(s) da frota já mexeram com @fulano', texto: null, acao_final: null, custo_usd: null, duracao_ms: null, espera_do_liberar_ms: null }),
   ],
   falhas_por_motivo: [{ motivo: 'conta(s) da frota já mexeram com @fulano', parou_em: 'conta', agentes: 1 }],
@@ -53,17 +54,18 @@ describe('relatorioDoServidor (o leitor do rascunho v1.111)', () => {
     expect(r.fonte).toBe('servidor');
     expect(r.operacao).toMatchObject({ id: 'op-1', comando: 'Comentar no post da loja', status: 'Concluída com bloqueios', fontes_da_pesquisa: ['https://exemplo.com.br/b'] });
     expect(r.custo).toEqual({ pesquisa_usd: 0.07, alvos_usd: 0.3, total_usd: 0.37, teto_usd: 4.5, por_peca_usd: 0.185 });
-    expect(r.identidades).toEqual({ solicitadas: 5, executam_hoje: 3, nao_executam: [{ motivo: 'sem conta', n: 2 }] });
+    expect(r.identidades).toEqual({ solicitadas: 5, executam_hoje: 3, deficit: 2, nao_executam: [{ motivo: 'sem conta', n: 2 }] });
     expect(r.capacidade.motivos).toEqual([{ motivo: 'sem conta', n: 2 }]);
   });
 
-  it('o agente: 14 estágios com a hora e a etapa; o que o central não traz (conhecimento, evidência) é não informado, nunca "nenhum"', () => {
+  it('o agente: 14 estágios com a hora e a etapa; conhecimento só quando o central o traz (senão não informado, nunca "nenhum")', () => {
     const a = r.agentes[0]!;
     expect(a.estagios).toHaveLength(14);
     expect(a.estagios[1]).toMatchObject({ estagio: 'conta', em: hora(0, 2), alcancado: true, etapa_ms: 2000 });
     expect(a.estagios[2]).toMatchObject({ estagio: 'sessao', em: null, alcancado: true, etapa_ms: null });   // alcançado, hora ilegível
     expect(a.estagios[3]).toMatchObject({ alcancado: false });
-    expect(a.conhecimento_ids).toBeNull();
+    expect(a.conhecimento_ids).toEqual(['fluxo:f1', 'licao:voz']);
+    expect(r.agentes[1]!.conhecimento_ids).toBeNull();                                       // sem a lista: não informado, nunca "nenhum"
     expect(a.evidencia_id).toBeNull();
     expect(a.acao_final).toEqual({ tipo: 'CREATE_COMMENT', verificada: 'sim', evidencia_id: null });
     expect(a).toMatchObject({ duracao_ms: 90_000, espera_do_liberar_ms: 12_000, custo_usd: 0.1 });
@@ -120,12 +122,15 @@ describe('relatorioDoServidor (o leitor do rascunho v1.111)', () => {
 
   it('o Markdown traz as seções novas e diz que o central o montou; o relatório do painel não tem identidades nem critérios', () => {
     const md = relatorioEmMarkdown(r);
-    for (const s of ['## Identidades', '**3 de 5** identidades solicitadas executam hoje.', '## Latência', '## Critérios do diagnóstico', '| 2b. Texto sem repetição | testado em simulação | não medido | nenhuma |']) {
+    for (const s of ['## Identidades', '**3 de 5** identidades solicitadas executam hoje (faltam 2).', '## Latência', '## Critérios do diagnóstico', '| 2b. Texto sem repetição | testado em simulação | não medido | nenhuma |']) {
       expect(md).toContain(s);
     }
     expect(md).toContain('Por peça (o total dividido pelas ações executadas e verificadas): US$ 0.1850');
     expect(md).toContain('**Montado por:** o central');
+    expect(md).toContain('- **Conhecimento usado:** fluxo:f1, licao:voz');
     expect(md).toContain('- **Conhecimento usado:** não informado pelo relatório do central');
+    expect(md).toContain('Base do estado: diagnóstico § 1a');
+    expect(md).toContain('(faltam 2)');
     expect(md).toContain('| Conta | 2026-10-07T18:00:02Z (+2 s) |');
     expect(md).toContain('- **Duração:** 1 min 30 s · **Espera pela aprovação:** 12 s');
     expect(md).not.toContain('@fulano');
@@ -177,8 +182,9 @@ describe('o botão Relatório', () => {
     backend.on('GET', /^\/api\/operacoes\/op-1\/relatorio$/, () => json(RELATORIO));
     const d = await abrir();
     await waitFor(() => expect(d.querySelector('[data-fonte="servidor"]')).not.toBeNull());
-    expect(text(d.querySelector('[data-identidades]')!)).toBe('3 de 5 identidades executam hoje.');
+    expect(text(d.querySelector('[data-identidades]')!)).toBe('3 de 5 identidades executam hoje (faltam 2).');
     expect(text(d.querySelector('[data-criterios]')!)).toContain('Critérios do diagnóstico: 3; valeram nesta operação 1, não valeram 1, 1 não medidos.');
+    expect(text(d.querySelector('[data-criterios]')!)).toContain('Base do estado: diagnóstico § 1a');
     expect(text(d.querySelector('[data-latencia-do-relatorio]')!)).toContain('Duração mediana por agente: 1 min 30 s; o mais lento, Persona 02, levou 2 min 00 s.');
     expect(text(d.querySelector('[data-custo-por-peca]')!)).toContain('US$ 0.1850');
     expect(backend.callsTo('GET', /operacoes\/op-1\/aprendizado/)).toHaveLength(0);              // o aprendizado já vem no relatório
