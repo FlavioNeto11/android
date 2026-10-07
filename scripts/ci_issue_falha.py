@@ -1,7 +1,7 @@
-"""Frente GitHub (29.155, C2): quando a corrida diária do CI não passa, abre UMA issue por noite com o que quebrou.
+"""Frente GitHub (29.155, C2; 29.187): quando a corrida diária do CI não passa, abre ou atualiza UMA issue única; quando volta a verde, fecha.
 
 Quem chama: `.github/workflows/ci-aviso-de-falha.yml` (gatilho `workflow_run` do workflow "CI", só do evento `schedule`,
-em runner HOSPEDADO; nunca no runner `central`). Também roda na mão: `python scripts/ci_issue_falha.py --run-id N --ensaio`
+em runner HOSPEDADO; nunca no runner próprio do dono). Também roda na mão: `python scripts/ci_issue_falha.py --run-id N --ensaio`
 só LÊ o GitHub e imprime a issue que abriria (nada é escrito).
 
 O que faz, na ordem:
@@ -10,11 +10,16 @@ O que faz, na ordem:
      (linhas "UNKNOWN STEP", que são o log do PostgreSQL) e guarda só os destaques e as últimas linhas;
   3. limpa cada linha POR FORMATO (cor ANSI, hora, `Authorization: ...`, `senha=...`, token do GitHub, IPv4, e-mail e
      pasta de usuário do Windows) e corta em 300 caracteres: nunca por lista de valores conhecidos;
-  4. procura uma issue ABERTA do mesmo dia (rótulo `ci`, título "CI noturno AAAA-MM-DD: ..."): se há, comenta nela em vez de
-     abrir outra; se não há, abre com o rótulo `ci`.
+  4. (29.187) lê o log inteiro e junta as linhas "Resumo do job" (29.184: tempo por etapa, minutos cobrados, contagem de
+     testes) e lista TODOS os jobs do run com resultado e duração, para a issue dizer onde o tempo foi e o que caiu;
+  5. procura uma issue ABERTA do cron (rótulo `ci`, título começando por "CI noturno"): se há, comenta nela com a noite nova
+     em vez de abrir outra; se não há, abre com o rótulo `ci`. Nunca atribui ninguém nem põe rótulo de agente (a decisão de
+     chamar o agente é do dono);
+  6. se o run do cron terminou em SUCESSO e há issue aberta do cron, comenta que voltou a verde e FECHA a issue (só para run
+     do evento `schedule`: disparo manual verde não fecha nada).
 
 Falha ou incerteza nunca viram "tudo certo": erro do `gh` derruba o script com código 1 e a mensagem do `gh`. Run que passou
-(ou foi pulado) não abre issue. O script não lê segredo nem `.env`; o único token é o `GH_TOKEN` do próprio workflow.
+(ou foi pulado) não abre issue; só run do cron em sucesso fecha. O script não lê segredo nem `.env`; o único token é o `GH_TOKEN` do próprio workflow.
 """
 from __future__ import annotations
 
@@ -34,6 +39,8 @@ CONCLUSOES_RUINS = ("failure", "cancelled", "timed_out", "startup_failure")
 LINHAS_PADRAO = 40
 LIMITE_LINHA = 300
 LIMITE_DESTAQUES = 15
+LIMITE_RESUMOS = 20
+PREFIXO_ISSUE = "CI noturno"  # título de toda issue do cron: a antiga, por noite ("CI noturno AAAA-MM-DD: ..."), e a única
 LIMITE_CORPO = 40_000  # o GitHub aceita 65.536; sobra folga para o cabeçalho e as cercas
 
 # a cor vem como ESC real ou, nos logs de job do GitHub, em notação de acento circunflexo ("^[[31m")
@@ -70,6 +77,8 @@ _DESTAQUE = re.compile(
     r"|##\[error\]"
 )
 _RESUMO_PYTEST = re.compile(r"\b\d+ (failed|passed|error)\b.* in \d")
+# linha do passo "Resumo do job" (scripts/pr_leve_resumo.py e os passos do ci.yml): "**job**: etapa 3 s · ... · soma das etapas 156 s"
+_RESUMO_JOB = re.compile(r"^\*\*[^*]{1,60}\*\*: .*soma das etapas \d+ s")
 _RUN_ID = re.compile(r"^\d{1,20}$")
 _NOME_PERIGOSO = re.compile(r"[@#<>`\r\n\x00-\x1f]")
 LIMITE_ANTES_DA_LIMPEZA = 4000  # a linha é cortada ANTES dos regex (custo limitado) e de novo depois, em LIMITE_LINHA
@@ -218,16 +227,54 @@ def secao_do_job(job: dict[str, object], saida_log_failed: str, n_linhas: int) -
     return "\n".join(partes)
 
 
-def corpo(run: dict[str, object], ruins: list[dict[str, object]], logs: str, n_linhas: int, aviso_log: str = "") -> str:
+def resumos_do_log(log_inteiro: str) -> list[str]:
+    """As linhas "Resumo do job" (29.184) do log inteiro do run, limpas por formato, sem repetir, na ordem em que aparecem."""
+    achadas: list[str] = []
+    for bruta in log_inteiro.splitlines():
+        texto = _HORA.sub("", bruta.split("\t", 2)[-1]).strip()
+        if _RESUMO_JOB.match(texto):
+            limpa = re.sub(r"[@#<>`]", " ", limpar_linha(texto))  # sem menção, link para issue, HTML nem crase
+            if limpa not in achadas:
+                achadas.append(limpa)
+    return achadas[:LIMITE_RESUMOS]
+
+
+def secao_dos_jobs(jobs: list[dict[str, object]], resumos: list[str], aviso: str = "") -> str:
+    """Todos os jobs do run (nome, resultado, duração) e, abaixo, os resumos de etapa dos que imprimiram o 29.184."""
+    linhas = [
+        f"- {nome_seguro(str(j.get('name', '?')))}: {j.get('conclusion')} "
+        f"({duracao(str(j.get('started_at') or ''), str(j.get('completed_at') or ''))})"
+        for j in sorted(jobs, key=lambda j: str(j.get("name", "")))
+    ] or ["- nenhum job começou"]
+    partes = ["## Jobs da corrida", "", *linhas]
+    if resumos:
+        partes += ["", "Resumo dos jobs (tempo por etapa, minutos cobrados, testes):", "", *[f"- {r}" for r in resumos]]
+    elif aviso:
+        partes += ["", f"Sem linhas de resumo: {limpar_linha(aviso)}."]
+    else:
+        partes += ["", "Sem linhas de resumo no log (job que não chegou ao passo de resumo, ou run de antes do 29.184)."]
+    return "\n".join(partes)
+
+
+def corpo(
+    run: dict[str, object],
+    ruins: list[dict[str, object]],
+    logs: str,
+    n_linhas: int,
+    aviso_log: str = "",
+    jobs: list[dict[str, object]] | None = None,
+    log_inteiro: str = "",
+    aviso_resumo: str = "",
+) -> str:
     sha = str(run.get("head_sha", ""))[:7]
     abertura = (
         f"A corrida diária do CI de {data_da_noite(run)} terminou em **{run.get('conclusion')}** "
         f"([run {run.get('id')}]({run.get('html_url')}), tentativa {run.get('run_attempt', 1)}, commit `{sha}`)."
     )
     nota = (
-        "Issue aberta sozinha por `.github/workflows/ci-aviso-de-falha.yml`: uma por noite; se a corrida for repetida no mesmo "
-        "dia, o resultado novo entra como comentário aqui. Os logs vêm cortados e limpos por formato "
-        "(`scripts/ci_issue_falha.py`); o log inteiro está no run."
+        "Issue aberta sozinha por `.github/workflows/ci-aviso-de-falha.yml`: uma só para o cron; cada noite que continua "
+        "vermelha entra como comentário aqui, e a issue fecha sozinha quando o cron volta a verde. Os logs vêm cortados e "
+        "limpos por formato (`scripts/ci_issue_falha.py`); o log inteiro está no run."
     )
     if aviso_log:
         nota += (
@@ -237,7 +284,10 @@ def corpo(run: dict[str, object], ruins: list[dict[str, object]], logs: str, n_l
     secoes = [secao_do_job(j, logs, n_linhas) for j in ruins] or [
         "Nenhum job terminou reprovado: o run falhou antes de começar os jobs (ver o run)."
     ]
-    texto = "\n\n".join([abertura, nota, "## Jobs que não passaram", *secoes])
+    blocos = [abertura, nota]
+    if jobs is not None:
+        blocos.append(secao_dos_jobs(jobs, resumos_do_log(log_inteiro), aviso_resumo))
+    texto = "\n\n".join([*blocos, "## Jobs que não passaram", *secoes])
     if len(texto) > LIMITE_CORPO:
         texto = texto[: LIMITE_CORPO - 80].rstrip() + "\n\n(corpo cortado no limite; o log inteiro está no run)"
     return texto
@@ -251,19 +301,57 @@ def gh_real(*args: str, entrada: str | None = None) -> str:
     return r.stdout
 
 
+def abertas_do_cron(gh: Gh, repo: str) -> list[dict[str, object]]:
+    """Issues ABERTAS do cron (rótulo `ci`, título "CI noturno ..."), a mais antiga primeiro."""
+    abertas = json.loads(
+        gh("issue", "list", "--repo", repo, "--label", ROTULO, "--state", "open", "--limit", "100", "--json", "number,title")
+    )
+    achadas = [i for i in abertas if str(i.get("title", "")).startswith(PREFIXO_ISSUE)]
+    return sorted(achadas, key=lambda i: int(i["number"]))
+
+
+def voltou_a_verde(repo: str, run: dict[str, object], *, ensaio: bool, gh: Gh) -> tuple[str, str | None, str | None]:
+    """Run do cron em sucesso: comenta e fecha a(s) issue(s) aberta(s) do cron; sem issue aberta, não faz nada."""
+    run_id = str(run.get("id"))
+    if run.get("event") != "schedule":
+        return "nada", f"run {run_id} verde, mas não é do cron (evento {run.get('event')}): nada fechado", None
+    abertas = abertas_do_cron(gh, repo)
+    if not abertas:
+        return "nada", f"run {run_id} terminou em success: nada a avisar", None
+    # reexecução de um run antigo em verde não pode fechar a issue de uma noite mais nova que está vermelha
+    ultimo = json.loads(gh("api", f"repos/{repo}/actions/workflows/ci.yml/runs?event=schedule&per_page=1"))["workflow_runs"]
+    if not ultimo or str(ultimo[0].get("id")) != run_id:
+        return "nada", f"run {run_id} verde, mas não é o cron mais recente: nada fechado", None
+    sha = str(run.get("head_sha", ""))[:7]
+    texto = (
+        f"O cron do CI de {data_da_noite(run)} voltou a **success** "
+        f"([run {run_id}]({run.get('html_url')}), tentativa {run.get('run_attempt', 1)}, commit `{sha}`). "
+        "Fechada sozinha por `.github/workflows/ci-aviso-de-falha.yml`; se o cron cair de novo, abre outra."
+    )
+    numeros = ", ".join(str(i["number"]) for i in abertas)
+    if ensaio:
+        return "ensaio", f"FECHARIA {numeros}\n\n{texto}", None
+    for i in abertas:
+        gh("issue", "close", str(i["number"]), "--repo", repo, "--comment", texto)
+    return f"fechada {numeros}", texto, None
+
+
 def avisar(
     repo: str, run_id: str, *, ensaio: bool, n_linhas: int = LINHAS_PADRAO, gh: Gh | None = None
 ) -> tuple[str, str | None, str | None]:
-    """Devolve (o que fez, texto, erro ao ler o log). O que fez: 'nada', 'ensaio', 'aberta N' ou 'comentada N'.
+    """Devolve (o que fez, texto, erro ao ler o log). O que fez: 'nada', 'ensaio', 'aberta N', 'comentada N' ou 'fechada N'.
 
     Se o log não puder ser lido (job cancelado ou estourado pode não ter log de passo), a issue sai assim mesmo, dizendo que o
     log faltou, e o erro volta no terceiro item para o chamador terminar com código de erro: o aviso não pode sumir por isso.
+    O log INTEIRO (só para as linhas de resumo do 29.184) é opcional: se faltar, a issue diz isso e o aviso segue sem erro.
     """
     gh = gh or gh_real  # resolvido na chamada, para o teste poder trocar o `gh_real` do módulo
     run = json.loads(gh("api", f"repos/{repo}/actions/runs/{run_id}"))
     if run.get("name") != "CI":
         raise ValueError(f"o run {run_id} é do workflow {run.get('name')!r}, não do CI: nada foi escrito")
     conclusao = str(run.get("conclusion"))
+    if conclusao == "success":
+        return voltou_a_verde(repo, run, ensaio=ensaio, gh=gh)
     if conclusao not in CONCLUSOES_RUINS:
         return "nada", f"run {run_id} terminou em {conclusao}: nada a avisar", None
     jobs = json.loads(gh("api", f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"))["jobs"]
@@ -274,19 +362,21 @@ def avisar(
             logs = gh("run", "view", run_id, "--repo", repo, "--log-failed")
         except RuntimeError as erro:
             erro_log = str(erro)
+    log_inteiro, aviso_resumo = "", ""
+    try:
+        log_inteiro = gh("run", "view", run_id, "--repo", repo, "--log")
+    except RuntimeError as erro:
+        aviso_resumo = f"log inteiro indisponível: {erro}"
     data = data_da_noite(run)
     titulo_novo = titulo(data, ruins, conclusao)
-    texto = corpo(run, ruins, logs, n_linhas, erro_log or "")
+    texto = corpo(run, ruins, logs, n_linhas, erro_log or "", jobs, log_inteiro, aviso_resumo)
     if ensaio:
         return "ensaio", f"TÍTULO: {titulo_novo}\n\n{texto}", erro_log
     gh("label", "create", ROTULO, "--repo", repo, "--color", ROTULO_COR, "--description", ROTULO_DESCRICAO, "--force")
-    abertas = json.loads(
-        gh("issue", "list", "--repo", repo, "--label", ROTULO, "--state", "open", "--limit", "100", "--json", "number,title")
-    )
-    do_dia = [i for i in abertas if str(i.get("title", "")).startswith(prefixo_do_dia(data))]
-    if do_dia:
-        numero = min(int(i["number"]) for i in do_dia)
-        gh("issue", "comment", str(numero), "--repo", repo, "--body-file", "-", entrada=f"Nova corrida do mesmo dia.\n\n{texto}")
+    abertas = abertas_do_cron(gh, repo)
+    if abertas:
+        numero = int(abertas[0]["number"])  # a mais antiga: a issue única do cron
+        gh("issue", "comment", str(numero), "--repo", repo, "--body-file", "-", entrada=f"Cron de {data} ainda vermelho.\n\n{texto}")
         return f"comentada {numero}", titulo_novo, erro_log
     url = gh(
         "issue", "create", "--repo", repo, "--title", titulo_novo, "--label", ROTULO, "--body-file", "-", entrada=texto
@@ -295,7 +385,7 @@ def avisar(
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Abre (ou comenta) a issue da noite em que o cron do CI não passou.")
+    ap = argparse.ArgumentParser(description="Abre ou atualiza a issue única do cron do CI que não passou; fecha quando ele volta a verde.")
     ap.add_argument("--run-id", required=True, help="id numérico do run do CI")
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""), help="dono/nome (padrão: GITHUB_REPOSITORY)")
     ap.add_argument("--ensaio", action="store_true", help="só lê e imprime a issue; não escreve nada no GitHub")
