@@ -8051,9 +8051,8 @@ Portal (31.234, `.claude/handoffs/jev-para-portal-31-234.md`).
 
 Sem rota nova. O `GET /api/operacoes/{id}` ganha campos aditivos e só de leitura; ausentes no central anterior.
 
-- **`alvos[].retomada_em`**: ISO ou `null`. Preenchido só no alvo `em_curso` cuja execução tem etapa em `retry_wait`
-  pelo espaçamento entre contas sobre o mesmo alvo (31.240); é o `next_retry_at` mais cedo. Nesse caso
-  `alvos[].motivo = "espaçamento da frota"` (vocabulário fixo; o motivo da etapa, que cita o alvo, não sai).
+- **`alvos[].retomada_em`**: sempre `null` desde o ADR-083, que tirou o espaçamento entre contas sobre o mesmo alvo
+  (31.240). O campo fica para não quebrar quem já o lê; o motivo "espaçamento da frota" não sai mais.
 - **`alvos[].aguarda_resposta`**: `{pergunta, desde}` ou `null`. Preenchido quando a execução do alvo está em
   `needs_input`: `pergunta` é o `status_detail` da execução, redigido e cortado em 300 caracteres; `desde` é o último
   `run.updated` dela (`null` se não houver).

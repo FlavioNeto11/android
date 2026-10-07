@@ -164,7 +164,7 @@ def mensagens_da_porta(previa: Mapping[str, object], curta: str, leitura: Leitur
     fora = set(leitura.fora_do_canal)
     blocos = [_bloco(i, item, str(item.get("step_id")) in fora, nomes, redigir) for i, item in enumerate(itens, 1)]
     na_exec = previa.get("na_execucao") if isinstance(previa.get("na_execucao"), Mapping) else {}
-    rodape = ["Desafio, 2FA e CAPTCHA seguem com você na execução."]
+    rodape: list[str] = []
     for_each = int(na_exec.get("itens_for_each") or 0) if isinstance(na_exec, Mapping) else 0
     if for_each:
         rodape.append(f"{for_each} {'etapa nasce' if for_each == 1 else 'etapas nascem'} da coleta; o sim é pedido na "

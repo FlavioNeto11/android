@@ -2,8 +2,7 @@
 
 Só biblioteca padrão: quem gera a imagem (simulado com Pillow, OpenAI por HTTP) mora nos adaptadores; aqui fica o
 que os dois recebem igual — o que da pessoa entra na foto, como a semente nasce, quais eixos variam e o prompt
-determinístico em inglês. O nome da persona NUNCA entra no prompt: só atributos; e "fictional adult, no text, no
-logo, no watermark" vai em toda receita. Abaixo da maioridade não há receita: `MenorDeIdade`.
+determinístico em inglês. O nome da persona NUNCA entra no prompt: só atributos. Abaixo da maioridade não há receita: `MenorDeIdade`.
 
 A semente é `sha256(f"{persona_id}:{indice}:{SPEC_VERSION}")[:4] & 0x7FFFFFFF` (31 bits: cabe em INTEGER dos dois
 bancos). Mesma pessoa, mesmo índice, mesma versão → a mesma receita, sempre; mudar `SPEC_VERSION` muda tudo de
@@ -92,8 +91,7 @@ class PersonaImageSpec:
     pose: str
     production: str
     aspect: str
-    #: Pós-processamento honesto (variação, não disfarce): JPEG 55–92, ruído leve, desfoque leve, redução e
-    #: deslocamento do recorte. Nada de EXIF falso.
+    #: Pós-processamento (variação): JPEG 55–92, ruído leve, desfoque leve, redução e deslocamento do recorte.
     jpeg_quality: int
     noise_sigma: float
     blur_radius: float
@@ -150,11 +148,11 @@ def montar_spec(identity: PersonaIdentity, persona_id: str, indice: int) -> Pers
 
 
 def prompt_de(spec: PersonaImageSpec) -> str:
-    """Inglês, determinístico, sem o nome da persona e sem pessoa real. Tudo que é texto da pessoa é atributo."""
+    """Inglês, determinístico, sem o nome da persona. Tudo que é texto da pessoa é atributo."""
     p = spec.identity
     quem = {"feminino": "woman", "masculino": "man"}.get((p.gender or "").lower(), "person")
     idade = f"{p.age}-year-old " if p.age is not None else ""
-    partes = [f"Candid amateur photo of a fictional {idade}adult {quem}"]
+    partes = [f"Candid amateur photo of a {idade}adult {quem}"]
     if p.profession:
         partes[0] += f" who works as a {_limpo(p.profession)}"
     if p.appearance:
@@ -167,7 +165,7 @@ def prompt_de(spec: PersonaImageSpec) -> str:
     partes.append(f"setting: {onde}")
     partes.append(f"{spec.framing}, {spec.pose}")
     partes.append(f"{spec.camera}, {spec.light}, {spec.era}, {spec.production}")
-    partes.append("realistic, unretouched, natural skin, no text, no logo, no watermark, no caption, not a real person")
+    partes.append("realistic, unretouched, natural skin, no text, no logo, no watermark, no caption")
     return ". ".join(partes) + "."
 
 

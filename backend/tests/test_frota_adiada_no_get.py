@@ -1,18 +1,16 @@
-"""O alvo adiado pelo espaçamento da frota aparece no GET da operação com o motivo e a hora da retomada.
+"""O GET da operação: `alvos[].retomada_em` e a pergunta da execução que aguarda resposta.
 
-Com o 31.240, as contas aprovadas juntas sobre o mesmo alvo saem em série (120 s + jitter cada); o painel via o alvo só
-"em curso" durante a espera. Agora `alvos[].motivo` = "espaçamento da frota" e `alvos[].retomada_em` = a retomada da
-etapa represada. O motivo da etapa traz o @ do alvo: do GET só sai o vocabulário fixo e a hora.
+O 31.258 fazia o alvo represado pelo espaçamento da frota (31.240) dizer o motivo e a hora da retomada. O ADR-083 tirou
+o espaçamento: nada mais represa o alvo, e `retomada_em` (adendo v1.126) fica sempre nulo, até com etapa em espera por
+outro motivo. Continua o `aguarda_resposta` do 31.251.
 
 Nível de prova: `simulated` (harness na porta 5640; a leitura do alvo trocada no teste).
 """
 from __future__ import annotations
 
-import json
 
 from app.modules.operacoes.domain.estagios import Leitura
-from app.modules.operacoes.infrastructure.servico import ESPACAMENTO_DA_FROTA, AlvoPedido
-from app.social.policy import ESPACO_DA_FROTA
+from app.modules.operacoes.infrastructure.servico import AlvoPedido
 from app.util import now_iso
 
 from .conftest import Harness
@@ -40,26 +38,6 @@ def _etapa_represada(st: object, run_id: str, instancia: str, detalhe: str) -> N
         " next_retry_at) VALUES (?,?,?,?,1,1,'c1','Comentar','comentar','[]',1,'[]',"
         "'{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,'retry_wait','CREATE_COMMENT',?,?)",
         (f"{oid}:v1:c1", run_id, oid, instancia, detalhe, RETOMADA))
-
-
-async def test_o_alvo_represado_pela_frota_diz_o_motivo_e_a_retomada(harness: Harness) -> None:
-    st = harness.state
-    assert st is not None
-    pid = _persona(harness, "Olivia", "android-02")
-    _conta(harness, pid, "qa-user-81", sessao_em="android-02")
-    s = _servico(harness)
-    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-frota-adiada", acao_final="executar"))
-    s._ler_alvo = lambda op_, a, d: (Leitura("acao_preparada", "em_curso", None, ()), None)  # type: ignore[method-assign]
-    run_id = str(_alvo(op, pid)["run_id"])
-    _aprovada(st, pid, run_id)
-    assert (s.ler(op["id"])["alvos"][0]["motivo"], s.ler(op["id"])["alvos"][0]["retomada_em"]) == (None, None)
-    _etapa_represada(st, run_id, "android-02",
-                     f"outra conta da frota está agindo sobre @pagina.alvo agora; {ESPACO_DA_FROTA} (31.240)")
-    lida = s.ler(op["id"])
-    alvo = lida["alvos"][0]
-    assert (alvo["estado"], alvo["motivo"], alvo["retomada_em"]) == ("em_curso", ESPACAMENTO_DA_FROTA, RETOMADA)
-    assert lida["status"] == "em_curso"
-    assert "pagina.alvo" not in json.dumps(lida, ensure_ascii=False)        # o @ do motivo da etapa não sai
 
 
 async def test_a_espera_por_outro_limite_nao_vira_espacamento_da_frota(harness: Harness) -> None:

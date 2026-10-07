@@ -164,26 +164,6 @@ export const LIMIT_GROUPS: LimitGroup[] = [
   },
   {
     soSeOServidorManda: true,
-    title: 'Regra da frota sobre o mesmo alvo',
-    description: 'Quantas contas nossas podem agir sobre o mesmo perfil e por quantos dias a regra lembra disso (ADR-055 e ADR-081). Vale na hora, sem reiniciar.',
-    toggles: [
-      {
-        key: 'frota_conta_nossa_fora_da_regra',
-        label: 'Alvo que é conta nossa fica fora da regra',
-        hint: 'Ligado (padrão): quando o alvo é uma conta nossa ativa, ela não entra na contagem de contas (várias contas nossas podem comentar no mesmo post nosso). Desligado: conta nossa conta como qualquer perfil. Pessoa real sempre entra.',
-      },
-    ],
-    fields: [
-      int('frota_max_contas_por_alvo', 'Contas da frota que podem agir sobre o mesmo alvo', 'contas',
-         'Quantas contas diferentes da frota podem seguir, mandar mensagem ou comentar para a mesma pessoa ou perfil dentro da janela; passando disso, a próxima é recusada. Era 1. As curtidas têm teto próprio, logo abaixo. Padrão 10; vai de 1 a 64.', 1, 64),
-      int('fleet_max_accounts_per_target', 'Contas da frota que podem curtir o mesmo alvo', 'contas',
-         'Só para curtidas: acima disso, a próxima conta que quiser curtir o mesmo perfil é recusada. Padrão 3; vai de 1 a 50.', 1, 50),
-      int('fleet_target_window_days', 'Janela da regra da frota', 'dias',
-         'Por quantos dias a ação de outra conta sobre o mesmo perfil conta para a regra (o "nos últimos 30 dias" do motivo de parada). Padrão 30; vai de 1 a 365.', 1, 365),
-    ],
-  },
-  {
-    soSeOServidorManda: true,
     title: 'Aprovação de política',
     description: 'Por padrão, a ação de uma persona que a política deixa sob aprovação espera o dono. Aqui um grupo de política fica dispensado dessa espera (28.61); vale na hora, sem reiniciar.',
     grupos: [
@@ -197,13 +177,10 @@ export const LIMIT_GROUPS: LimitGroup[] = [
   },
   {
     title: 'Sinais e limites do Instagram',
-    description: 'Quando parar de insistir sozinho e como a frota se coordena sobre o mesmo alvo (item 8.3).',
+    description: 'Quando parar de insistir sozinho.',
     fields: [
       int('session_unknown_retry_cap', 'Reobservações antes de pedir uma pessoa', 'tentativas',
          'Tela não reconhecida repetidas vezes seguidas vira "precisa de pessoa" em vez de insistir a cada tick.', 1, 20),
-      int('fleet_min_spacing_between_accounts_s', 'Espaçamento mínimo entre contas no mesmo alvo', 'segundos', '', 0, 3600),
-      int('fleet_spacing_jitter_s', 'Variação aleatória do espaçamento', 'segundos',
-         'Soma ao espaçamento mínimo, para não virar um padrão regular.', 0, 3600),
     ],
   },
 ];
