@@ -560,7 +560,7 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.cache_ttl_do_plano` (31.30) | ausente (= `1h`) | `1h` (`config.py`); validade do cache do prefixo do plano da execução (os três planejamentos). `5m` volta ao pedido de antes, sem `ttl`; ator, verificador e curador seguem em 5 min |
 | `ai.flows` | `true` | `false` (`config.py`) |
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
-| `android.auto_start_devices` | `true` | `false` (`config.py`) |
+| `android.auto_start_devices` | `true` | `true` (`config.py`, desde o ADR-085) |
 | `android.max_online_devices` | 2 — comentado como vagas desta máquina | 10 (`config.py`, teto do host; cada worker traz o próprio `max_slots`) |
 
 Prazo da etapa livre (a conduzida pelo ator de IA): o `timeout_s` vem do modelo, preso entre `PISO_DA_ETAPA_COM_IA_S`

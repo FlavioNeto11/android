@@ -8139,3 +8139,18 @@ v1.121, onde a regra do `username` valia em qualquer app. Os motivos do 422 são
 Código: `FormaDoParametro` e `_parametros` em `planning/capabilities.py`, e `_conferir_contra_o_app` em
 `modules/operacoes/infrastructure/servico.py`. Testes em `backend/tests/test_plano_da_operacao.py` (recusa por
 `post_author` com arroba e por `username` acima de 30; os 30 exatos passam; declaração errada recusada na carga).
+
+## Adendo v1.129 (07/10/2026; número da orquestradora; item 31.274 parte 2, ADR-085) — o que a automação prepara na sugestão
+
+Sem rota nova. `POST /api/runs/targets/suggest` ganha um campo aditivo; a forma do resto não muda.
+
+- **`escolhidas[].preparo`**: `string[]`, vazio por padrão. Uma frase curta por item, no futuro do presente, dizendo o que
+  A AUTOMAÇÃO fará antes de agir: "vai ligar o aparelho android-02", "vai esperar vaga para ligar o aparelho android-02",
+  "vai conferir a sessão no preparo". Com `auto_start_devices` desligado, a frase diz o contrário ("o aparelho … está
+  desligado e o religamento automático não o liga: ligue-o"), em vez de prometer. É aviso, nunca pedido à pessoa.
+- **`descartadas[].motivo`**: texto como antes, mas agora só o impossível sai por código, com o motivo dito e o que fazer:
+  conta bloqueada; senha não guardada com consentimento, senha guardada sem consentimento ou senha recusada pelo app
+  (ADR-040: o app tem login gerenciado e a sessão do par ainda não está pronta). Aparelho desligado, sessão não conferida
+  e app fechado deixam de ser motivo de descarte, do código e do modelo.
+- O padrão de `limits.auto_start_devices` passa a `true`.
+- **Prova:** `simulated` (`backend/tests/test_automacao_prepara_o_que_falta.py`). `real`: `not_run`, pede o deploy.

@@ -422,7 +422,9 @@ class LimitsCfg(BaseModel):
     evidence_retention_days: int = Field(14, ge=1, le=365)
     # Rodízio: N contas sobre K vagas de RAM. O scheduler liga o aparelho quando há tarefa para ele e desliga um
     # ocioso quando falta vaga; `idle_stop_s` > 0 também desliga por ociosidade mesmo sem disputa.
-    auto_start_devices: bool = False
+    # ADR-085 (dono, 07/10): a automação liga o aparelho de que o trabalho precisa. Padrão `true`; `false` só em
+    # instalação que quer o religamento na mão (a sugestão automática então avisa, em vez de prometer).
+    auto_start_devices: bool = True
     max_online_devices: int = Field(10, ge=1, le=64)   # vagas DESTE host; cada worker traz as dele (`max_slots`)
     min_online_dwell_s: int = Field(60, ge=0, le=3600)      # anti-vaivém: tempo mínimo ligado antes de ceder a vaga
     idle_stop_s: int = Field(0, ge=0, le=86400)             # 0 = só desliga para ceder vaga

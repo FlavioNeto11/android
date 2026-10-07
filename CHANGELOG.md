@@ -547,6 +547,36 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   de 07/10 encerrada.
 
 
+## 2026-10-07 — 31.277: o Automático volta a sugerir a persona sem crenças quando o pedido não depende delas (branch fix/31-277-automatico-sem-crenca)
+
+- O funil 60 e a main reprovavam `test_automatico_app_sem_conta::test_contraprova_app_de_conta_segue_para_a_persona` e
+  `test_roteamento_por_conjunto_de_apps::test_automatico_so_sugere_quem_tem_conta_em_todos_os_apps`. Causa: o refactor do
+  ADR-083 (`76672bea`/`a5897880`), ao tirar o alerta de conduta, trocou `if de_crenca and c.sem_crencas` por
+  `if c.sem_crencas` em `orquestracao_simulada`. Toda persona sem crenças registradas virava "não avaliável", mesmo para
+  "leia o último e-mail".
+- Volta só a condição (o pedido de fé ou de política), sem alerta de conduta nem descarte por religião. O prompt do modelo
+  real já dizia isso e não mudou.
+- Os dois testes também precisaram da senha guardada com consentimento na persona: com o ADR-085 (31.274), o app de login
+  gerenciado sem senha nem sessão pronta é descarte por código. A contraprova não ganha mais as crenças que eu tinha
+  posto antes para fazê-la passar (era remendo; a regra é a causa).
+- Prova `simulated`: 132 passed (os dois testes, `test_orquestracao`, `test_automacao_prepara_o_que_falta`,
+  `test_sugestao*`, arquitetura, catracas). `real`: `not_run`.
+
+## 2026-10-07 — 31.274 parte 2 (ADR-085): a sugestão automática prepara o que falta e só descarta o impossível (branch feat/31-274-automacao-prepara)
+
+- Caso real do dono: persona apta (aparelho parado, sessão `unknown`) ia para "descartadas" por "aparelho desligado e sem
+  sessão pronta", enquanto por nome no comando ela resolvia. O cartão dizia "0 ligado(s), 0 com sessão pronta" e o prompt
+  mandava preferir a "livre" e de aparelho ligado; o modelo escrevia isso como descarte.
+- O cartão e o prompt do orquestrador agora dizem que ligar o aparelho e conferir a sessão são da automação: só desempate
+  entre personas igualmente aderentes. `normalizar` ignora descarte do modelo que cita aparelho desligado ou sessão.
+- O impossível sai por código, com o motivo dito: conta bloqueada; senha não guardada, sem consentimento ou recusada onde o
+  app tem login gerenciado e a sessão do par não está pronta. O painel lê `descartadas[].motivo` como antes.
+- Novo `escolhidas[].preparo` (adendo v1.129): "vai ligar o aparelho X", "vai esperar vaga…", "vai conferir a sessão no
+  preparo"; sem religamento automático o aviso diz o contrário. `auto_start_devices` passa a `true` por padrão.
+- Teste: `backend/tests/test_automacao_prepara_o_que_falta.py` (9). A contraprova de `test_automatico_app_sem_conta.py`
+  (já falhava na main por falta das crenças da persona) agora guarda a senha com consentimento.
+- Prova `simulated`; `real`: `not_run` até o deploy. Não coberto: política `disabled` do perfil (depende da ação, que o
+  comando livre não revela) e app ausente com motivo próprio (hoje o aparelho sem o app já fica fora dos aptos).
 ## 2026-10-07 — 31.272: a suíte volta a coletar depois do refactor do dono (ADR-083; branch fix/31-272-coleta-da-suite)
 
 - O refactor de 07/10 (`76672bea..ac2f6bba`) renomeou dez arquivos para `_skip_test_*.py`. Dezesseis módulos importavam
