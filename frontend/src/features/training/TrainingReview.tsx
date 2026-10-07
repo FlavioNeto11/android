@@ -25,7 +25,9 @@ import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextInput } from '../../components/Field';
 import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { AvisoDaPosCondicao, lerPosCondicoes, motivoDaPosCondicao } from './PosCondicaoQueJaVale';
+import { CampoMascarado } from './CampoMascarado';
 import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
+import { paraExibir, refs, semExibicao, type Exibicao } from './exibicao';
 import { descartarSessaoConcluida } from './descartarSessao';
 import { temMarcadorDaPersona, textoComMarcadores } from '../../lib/marcadores';
 import { FluxoNoLivro } from './FluxoNoLivro';
@@ -266,6 +268,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   // chegou: descartar e devolver a mesma entrada volta ao que era, e aí não há o que perder.
   const [original, setOriginal] = useState<TrainingProposal | null>(null);
   const editado = proposta !== null && JSON.stringify(proposta) !== JSON.stringify(original);
+  // 31.189: a cópia mascarada da proposta (adendo v1.109) para EXIBIR; o que vai na prévia e no salvar é sempre `proposta`.
+  const [copia, setCopia] = useState<TrainingProposal | null | undefined>(null);
+  const exibicao: Exibicao = useMemo(() => (copia ? { original, copia } : semExibicao()), [original, copia]);
+  const vista = useMemo(() => (proposta ? paraExibir(proposta, exibicao) : null), [proposta, exibicao]);
   const [escopoMudou, setEscopoMudou] = useState(false);
   // 31.88 F2: "Vale para". O padrão é o do contrato: todos, depois de provado.
   const [vale, setVale] = useState<ModoDoEscopo>('todos');
@@ -313,6 +319,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       setSessao(s);
       setProposta(s.proposal);
       setOriginal(s.proposal);
+      setCopia(s.proposal_exibicao);
       if (s.profile_id) setEscolhidosP(new Set([s.profile_id]));
     }).catch((e) => { if (vivo) setFalhaSessao(falhaDe(e)); });
     return () => { vivo = false; };
@@ -426,6 +433,17 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       setErroResposta(null);
       setProposta(s.proposal);
       setOriginal(s.proposal);
+      // 31.189: a cópia para exibir pode não vir na resposta do pedido; a releitura traz a da proposta que valeu (e, se falhar, a tela
+      // fica com a proposta como veio, sem a máscara, e o salvar segue mandando a proposta original).
+      setCopia(s.proposal_exibicao);
+      if (s.proposal_exibicao === undefined) {
+        try {
+          const lida = await api.getTraining(sessionId);
+          if (JSON.stringify(lida.proposal) === JSON.stringify(s.proposal)) setCopia(lida.proposal_exibicao);
+        } catch {
+          /* sem a cópia: a tela mostra a proposta como veio */
+        }
+      }
       setDestino({});
       setAviso('');
     } catch (e) {
@@ -442,6 +460,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           setSessao(s);
           setProposta(s.proposal);
           setOriginal(s.proposal);
+          setCopia(s.proposal_exibicao);
         } catch {
           /* a releitura falhou: a tela fica com a proposta que tinha, e o próximo pedido confere de novo */
         }
@@ -473,7 +492,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       delete n[seq];
       return n;
     });
-    setAviso(`#${seq} voltou à etapa ${etapa + 1}${proposta?.steps[etapa] ? ` (${proposta.steps[etapa].title})` : ''}.`);
+    setAviso(`#${seq} voltou à etapa ${etapa + 1}${vista?.steps[etapa] ? ` (${vista.steps[etapa].title})` : ''}.`);
     setFocar(`etapa-${seq}`);
   }
 
@@ -565,7 +584,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   function motivoNaoSalvar(): string | null {
     const local = motivoLocal();
     if (local) return local;
-    const daPosCondicao = motivoDaPosCondicao(jaValem, (k) => proposta?.steps.find((s) => s.key === k)?.title ?? null);
+    const daPosCondicao = motivoDaPosCondicao(jaValem, (k) => vista?.steps.find((s) => s.key === k)?.title ?? null);
     if (daPosCondicao) return daPosCondicao;
     if (recusa) return CODIGOS_DO_COMANDO.has(recusa.code) ? 'Corrija o comando: o motivo está no campo.' : recusa.message;
     return null;
@@ -614,7 +633,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                   aria-label={`Devolver a entrada #${seq} à etapa`} value={destino[seq] ?? ''}
                   onChange={(ev) => { const v = ev.target.value; setDestino((d) => ({ ...d, [seq]: v })); }}>
             <option value="">Escolha a etapa…</option>
-            {proposta.steps.map((s, i) => <option key={s.key} value={i}>{`${i + 1}. ${s.title}`}</option>)}
+            {(vista ?? proposta).steps.map((s, i) => <option key={s.key} value={i}>{`${i + 1}. ${s.title}`}</option>)}
           </Select>
           <Button size="sm" variant="ghost" label={`Devolver a entrada #${seq}`}
                   disabledReason={destino[seq] ? null : 'Escolha a etapa primeiro.'}
@@ -672,7 +691,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           {resultado.scope ? (
             <p className={styles.muted}>Vale para {textoDoEscopo(resultado.scope, escopo.perfis, escopo.grupos)}.{resultado.ensinado_em_prova ? '' : ` ${ATE_A_PROVA}`}</p>
           ) : null}
-          <code className={styles.command}>{proposta?.command_template}</code>
+          <code className={styles.command}>{vista?.command_template}</code>
           <ul className={styles.stepReport}>
             {resultado.steps.map((s) => (
               <li key={s.key}>
@@ -757,23 +776,23 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                 <Field label="Comando (o que varia fica entre chaves)"
                        error={recusa && CODIGOS_DO_COMANDO.has(recusa.code) ? recusa.message : null}>
                   {({ id, describedBy, invalid }) => (
-                    <TextInput id={id} value={proposta.command_template} aria-describedby={describedBy} invalid={invalid}
-                               onChange={(e) => mudarProposta({ command_template: e.target.value })} />
+                    <CampoMascarado id={id} rotulo="Comando (o que varia fica entre chaves)" valor={proposta.command_template} aria-describedby={describedBy} invalid={invalid}
+                                    referencia={refs.comando(exibicao)} onChange={(v) => mudarProposta({ command_template: v })} />
                   )}
                 </Field>
                 {proposta.parameters.length ? (
                   <>
                     <p className={styles.params}>
-                      {proposta.parameters.map((p) => <Badge key={p.name} size="sm" tone="accent">{`{${p.name}}`} = {p.example}</Badge>)}
+                      {(vista ?? proposta).parameters.map((p) => <Badge key={p.name} size="sm" tone="accent">{`{${p.name}}`} = {p.example}</Badge>)}
                     </p>
-                    <EditorDosParametros parametros={proposta.parameters} onChange={(parameters) => mudarProposta({ parameters })} />
+                    <EditorDosParametros parametros={proposta.parameters} exibicao={exibicao} onChange={(parameters) => mudarProposta({ parameters })} />
                   </>
                 ) : null}
                 {proposta.questions.length ? (
                   <section className={styles.questions} aria-label="Perguntas da IA">
                     <p className={styles.muted}>Responda o que souber; a resposta vai para a IA. Não escreva senha nem código.</p>
-                    {proposta.questions.map((q) => (
-                      <Field key={q} label={q} error={erroResposta && (erroResposta.question === null || erroResposta.question === q) && (respostas[q] ?? '').trim()
+                    {proposta.questions.map((q, qi) => (
+                      <Field key={q} label={vista?.questions[qi] ?? q} error={erroResposta && (erroResposta.question === null || erroResposta.question === q) && (respostas[q] ?? '').trim()
                         ? erroResposta.message : null}>
                         {({ id, describedBy, invalid }) => (
                           <TextInput id={id} aria-describedby={describedBy} invalid={invalid} maxLength={MAX_RESPOSTA} value={respostas[q] ?? ''}
@@ -785,17 +804,17 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                 ) : null}
                 {proposta.answers?.length ? (
                   <ul className={styles.questions} aria-label="Respostas já dadas">
-                    {proposta.answers.map((a) => <li key={a.question}>{a.question} <strong>{a.answer}</strong></li>)}
+                    {proposta.answers.map((a, ai) => <li key={a.question}>{vista?.answers?.[ai]?.question ?? a.question} <strong>{vista?.answers?.[ai]?.answer ?? a.answer}</strong></li>)}
                   </ul>
                 ) : null}
                 <ol className={styles.steps}>
                   {proposta.steps.map((s, i) => (
                     <li key={s.key} className={styles.step}>
                       <div className={styles.stepHead}>
-                        <TextInput aria-label={`Título da etapa ${i + 1}`} value={s.title} onChange={(e) => mudarEtapa(i, { title: e.target.value })} />
+                        <CampoMascarado rotulo={`Título da etapa ${i + 1}`} valor={s.title} referencia={refs.titulo(exibicao, s.key)} onChange={(v) => mudarEtapa(i, { title: v })} />
                         {s.side_effect ? <Badge size="sm" tone="warning">efeito externo</Badge> : null}
                       </div>
-                      <TextInput aria-label={`Objetivo da etapa ${i + 1}`} value={s.goal} onChange={(e) => mudarEtapa(i, { goal: e.target.value })} />
+                      <CampoMascarado rotulo={`Objetivo da etapa ${i + 1}`} valor={s.goal} referencia={refs.objetivo(exibicao, s.key)} onChange={(v) => mudarEtapa(i, { goal: v })} />
                       {s.inputs.length ? (
                         <ul className={styles.entryList} aria-label={`Entradas da etapa ${i + 1}`}>
                           {s.inputs.map((n, k) => (
@@ -807,7 +826,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                           ))}
                         </ul>
                       ) : null}
-                      <p className={styles.muted}>Confere: {textoDoConfere(s.postcondition)}
+                      <p className={styles.muted}>Confere: {textoDoConfere(vista?.steps[i]?.postcondition ?? s.postcondition)}
                         {s.inputs.map((n) => porSeq.get(n)).filter(Boolean).length ? '' : ' · sem entradas: a IA conduz esta etapa'}</p>
                       {/* 31.141: o que a IA propôs vale; sem isso, o que a prévia calcula para a etapa. */}
                       <PacotesAceitos pacotes={s.pacotes_aceitos?.length ? s.pacotes_aceitos : previaPorEtapa.get(s.key)?.pacotes_aceitos} />
@@ -815,7 +834,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                         <AvisoDaPosCondicao key={j.valor} item={j}
                                             onUsar={(p) => mudarEtapa(i, { postcondition: { ...s.postcondition, kind: p.kind as typeof s.postcondition.kind, value: p.value } })} />
                       ))}
-                      <EditorDaPosCondicao indice={i} etapa={s} onChange={(postcondition) => mudarEtapa(i, { postcondition })} />
+                      <EditorDaPosCondicao indice={i} etapa={s} exibicao={exibicao} onChange={(postcondition) => mudarEtapa(i, { postcondition })} />
                       {previaPorEtapa.get(s.key) ? (
                         <p className={styles.muted}>
                           <Badge size="sm" tone={previaPorEtapa.get(s.key)!.recipe ? 'success' : 'neutral'}>
@@ -847,7 +866,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       {descarteUnico.map((d) => (
                         <li key={d.seq}>
                           <span className={styles.seq}>#{d.seq}</span>
-                          <span className={styles.entryText}>{linhaDaEntrada(d.seq)} <span className={styles.muted}>— {d.why}</span></span>
+                          <span className={styles.entryText}>{linhaDaEntrada(d.seq)} <span className={styles.muted}>— {vista?.discarded.find((x) => x.seq === d.seq)?.why ?? d.why}</span></span>
                           {acoesDaEntrada(d.seq, 'descartada')}
                         </li>
                       ))}

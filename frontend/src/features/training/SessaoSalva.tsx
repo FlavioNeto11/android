@@ -53,7 +53,8 @@ export function SessaoSalva({ sessionId, onClose }: { sessionId: string; onClose
 
   const persona = sessao?.profile_id ? pessoas.find((p) => p.profile_id === sessao.profile_id) : undefined;
   const nome = persona ? persona.display_name || persona.name : null;
-  const proposta = sessao?.proposal ?? null;
+  // 31.189: a cópia mascarada (v1.109) é a que se exibe; sem ela (backend anterior), a proposta de sempre.
+  const proposta = sessao?.proposal_exibicao ?? sessao?.proposal ?? null;
   const entradas = sessao?.inputs ?? [];
   const descartadas = new Set((proposta?.discarded ?? []).map((d) => d.seq));
 
