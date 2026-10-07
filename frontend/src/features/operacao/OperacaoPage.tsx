@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, Copy, FlaskConical, Hourglass, Play, Plus, ShieldCheck, ShieldQuestion, Workflow, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CircleX, Copy, FlaskConical, Hourglass, MessageCircleQuestion, Play, Plus, ShieldCheck, ShieldQuestion, Workflow, type LucideIcon } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -25,7 +25,7 @@ import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
 import {
-  acoesDaOperacao, acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
+  acoesDaOperacao, acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, esperasDaOperacao, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
   ROTULO_DA_VERIFICACAO, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, rotuloDaAcao, rotuloDoEstagio, verificacaoDoAlvo, type Alvo, type EstadoDoAlvo,
   type EstagioId, type Operacao, type ResumoDaOperacao, type StatusDaOperacao, type Verificacao,
 } from './modelo';
@@ -172,12 +172,19 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
         <td>{alvo.instance_id ?? <span className={styles.mudo}>sem aparelho</span>}</td>
         <td><Pipeline alvo={alvo} /></td>
         <td>
-          {estado && Icone ? <Badge tone={TOM_DO_ESTADO[estado]} icon={Icone} size="sm">{ROTULO_DO_ESTADO[estado]}</Badge> : <span className={styles.mudo}>não informado</span>}
+          {/* Execução parada numa pergunta não está "na fila" nem "em andamento": nada avança sem a resposta (31.246). */}
+          {alvo.aguarda_resposta ? <span data-aguardando-resposta><Badge tone="warning" icon={MessageCircleQuestion} size="sm">Aguardando resposta</Badge></span>
+            : estado && Icone ? <Badge tone={TOM_DO_ESTADO[estado]} icon={Icone} size="sm">{ROTULO_DO_ESTADO[estado]}</Badge> : <span className={styles.mudo}>não informado</span>}
         </td>
         <td className={styles.acao}>
-          {alvo.motivo ? <span><strong>Parou em {rotuloDoEstagio(estagioDeParada(alvo))}:</strong> {alvo.motivo}</span> : null}
-          {!alvo.motivo && alvo.resultado?.texto ? <span>{alvo.resultado.texto}</span> : null}
-          {!alvo.motivo && !alvo.resultado?.texto ? <span className={styles.mudo}>—</span> : null}
+          {alvo.aguarda_resposta ? (
+            <span data-pergunta-do-alvo>
+              <strong>A IA pergunta:</strong> {alvo.aguarda_resposta.pergunta ?? <span className={styles.mudo}>o central não mandou a pergunta</span>}
+            </span>
+          ) : null}
+          {!alvo.aguarda_resposta && alvo.motivo ? <span><strong>Parou em {rotuloDoEstagio(estagioDeParada(alvo))}:</strong> {alvo.motivo}</span> : null}
+          {!alvo.aguarda_resposta && !alvo.motivo && alvo.resultado?.texto ? <span>{alvo.resultado.texto}</span> : null}
+          {!alvo.aguarda_resposta && !alvo.motivo && !alvo.resultado?.texto ? <span className={styles.mudo}>—</span> : null}
           {alvo.resultado ? <span className={styles.mudo}> · {formatInt(alvo.resultado.conhecimento_ids.length)} itens de conhecimento</span> : null}
         </td>
         <td>
@@ -219,9 +226,25 @@ const AVISO_DE_EXEMPLO = (
 );
 
 /** O custo (total, teto e a divisão pesquisa × agentes), o assunto e as fontes que o operador indicou. */
+/** O selo do cabeçalho: quantos agentes esperam resposta e a(s) pergunta(s) literal(is); nada quando o central não diz. */
+function EsperaDeResposta({ op }: { op: Operacao }) {
+  const { quantos, perguntas } = esperasDaOperacao(op);
+  if (quantos === 0) return null;
+  return (
+    <div data-espera-de-resposta>
+      <Banner tone="warning" icon={MessageCircleQuestion} role="status" compact
+              title={quantos === 1 ? '1 agente aguarda resposta' : `${formatInt(quantos)} agentes aguardam resposta`}>
+        {perguntas.length ? <>A execução parou e pergunta: {perguntas.map((p, i) => <span key={p}>{i > 0 ? ' · ' : ''}“{p}”</span>)}. </> : null}
+        Nada avança sem a resposta.
+      </Banner>
+    </div>
+  );
+}
+
 function CustoEAssunto({ op }: { op: Operacao }) {
-  const { custo, max_usd: teto, assunto, fontes } = op;
-  if (!custo && teto === null && !assunto && fontes.length === 0) return null;
+  const { custo, max_usd: teto, assunto, fontes, parametros } = op;
+  const perfilAlvo = parametros?.username ? `@${parametros.username.replace(/^@/, '')}` : null;
+  if (!custo && teto === null && !assunto && fontes.length === 0 && !perfilAlvo) return null;
   return (
     <section aria-label="Custo e assunto" className={styles.faixa}>
       {custo || teto !== null ? (
@@ -232,6 +255,7 @@ function CustoEAssunto({ op }: { op: Operacao }) {
         </p>
       ) : null}
       {assunto ? <p className={styles.objetivo}><strong>Assunto:</strong> {assunto}</p> : null}
+      {perfilAlvo ? <p className={styles.objetivo} data-perfil-alvo><strong>Perfil alvo:</strong> {perfilAlvo}</p> : null}
       {fontes.length ? (
         <p className={styles.objetivo}>
           <strong>Fontes indicadas:</strong>{' '}
@@ -324,6 +348,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
           </span>
         ) : null}
       </p>
+      <EsperaDeResposta op={op} />
       <CustoEAssunto op={op} />
       <FaixaDeCapacidade op={op} />
       <PorApp op={op} />

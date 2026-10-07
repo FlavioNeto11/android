@@ -432,3 +432,72 @@ describe('o que a tela nunca mostra', () => {
     expect(t).not.toMatch(/\b(em_curso|pendente|acao_preparada|interface_de_comentario_alcancada|resultado_verificado|conhecimento_ids|evidencia_id)\b/);
   });
 });
+
+describe('31.246: o alvo que espera resposta não parece fila nem andamento', () => {
+  const PERGUNTA = 'Qual é o @ da página alvo em que devo comentar no primeiro post?';
+  const alvo = (id: string, extra: Record<string, unknown> = {}) => ({
+    profile_id: `p-${id}`, persona_nome: `Persona ${id}`, app_id: 'instagram', account_id: `a-${id}`, conta: `conta${id}`, instance_id: `android-0${id}`,
+    run_id: `r-${id}`, estagio: 'sessao', estado: 'pendente', motivo: null, resultado: null, ...extra,
+  });
+  const BASE = {
+    id: 'op-w', command: 'Comentar no primeiro post da página alvo', app_id: 'instagram', acao_final: 'executar', status: 'em_curso',
+    created_at: '2026-10-07T10:00:00Z', finished_at: null, max_usd: 2, parametros: { username: 'nasa' },
+    capacidade: { solicitados: 2, contas_existentes: 2, sessoes_validas: 2, contas_disponiveis: 2, concluidas: 0, bloqueadas: 0, em_curso: 2, motivos: {} },
+  };
+  const abrir = async (op: unknown) => {
+    backend.on('GET', /^\/api\/operacoes\/op-w$/, () => json(op));
+    await ir(['op-w']);
+    await waitFor(() => expect(linhas().length).toBeGreaterThan(0));
+  };
+
+  it('o leitor: objeto = espera (com ou sem pergunta), null = não espera, chave ausente = o central não diz', () => {
+    expect(lerAlvo(alvo('1', { aguarda_resposta: { pergunta: PERGUNTA, desde: '2026-10-07T10:00:25Z' } }), 0)!.aguarda_resposta).toEqual({ pergunta: PERGUNTA, desde: '2026-10-07T10:00:25Z' });
+    expect(lerAlvo(alvo('1', { aguarda_resposta: {} }), 0)!.aguarda_resposta).toEqual({ pergunta: null, desde: null });
+    expect(lerAlvo(alvo('1', { aguarda_resposta: null }), 0)!.aguarda_resposta).toBeNull();
+    expect('aguarda_resposta' in lerAlvo(alvo('1'), 0)!).toBe(false);
+    expect(lerCapacidade({ aguardando_resposta: 3 }).aguardando_resposta).toBe(3);
+    expect(lerCapacidade({ aguardando_resposta: 'x' }).aguardando_resposta).toBeNull();
+    expect('aguardando_resposta' in lerCapacidade({})).toBe(false);
+  });
+
+  it('o central que manda a espera: "Aguardando resposta" na linha com a pergunta literal e o selo no cabeçalho com o perfil alvo', async () => {
+    const espera = { pergunta: PERGUNTA, desde: '2026-10-07T10:00:25Z' };
+    await abrir({ ...BASE, alvos: [alvo('1', { aguarda_resposta: espera }), alvo('2', { aguarda_resposta: espera })] });
+    const selo = container.querySelector('[data-espera-de-resposta]') as HTMLElement;
+    expect(text(selo)).toContain('2 agentes aguardam resposta');
+    expect(text(selo)).toContain(`“${PERGUNTA}”`);                       // as duas perguntas iguais viram uma só
+    expect(text(selo).match(/Qual é o @/g)).toHaveLength(1);
+    expect(text(selo)).toContain('Nada avança sem a resposta.');
+    for (const l of linhas()) {
+      expect(text(l.querySelector('[data-aguardando-resposta]')!)).toBe('Aguardando resposta');
+      expect(text(l)).not.toContain('Na fila');
+      expect(text(l.querySelector('[data-pergunta-do-alvo]')!)).toBe(`A IA pergunta: ${PERGUNTA}`);
+    }
+    expect(text(container.querySelector('[data-perfil-alvo]')!)).toBe('Perfil alvo: @nasa');
+  });
+
+  it('só um alvo espera: o singular, e os outros seguem com o estado deles', async () => {
+    await abrir({ ...BASE, alvos: [alvo('1', { aguarda_resposta: { pergunta: PERGUNTA, desde: null } }), alvo('2', { aguarda_resposta: null, estado: 'em_curso', estagio: 'instagram_aberto' })] });
+    expect(text(container.querySelector('[data-espera-de-resposta]')!)).toContain('1 agente aguarda resposta');
+    const [a, b] = linhas();
+    expect(a!.querySelector('[data-aguardando-resposta]')).not.toBeNull();
+    expect(b!.querySelector('[data-aguardando-resposta]')).toBeNull();
+    expect(text(b!)).toContain('Em andamento');
+  });
+
+  it('o central sem o campo: nada afirmado, a tela segue como antes (Na fila) e sem selo', async () => {
+    await abrir({ ...BASE, alvos: [alvo('1'), alvo('2')] });
+    expect(container.querySelector('[data-espera-de-resposta]')).toBeNull();
+    expect(container.querySelector('[data-aguardando-resposta]')).toBeNull();
+    expect(text(linhas()[0]!)).toContain('Na fila');
+  });
+
+  it('espera sem a pergunta: diz que espera e que o central não mandou a pergunta, sem inventar; só a contagem da capacidade vale como selo', async () => {
+    await abrir({ ...BASE, alvos: [alvo('1', { aguarda_resposta: {} }), alvo('2')] });
+    expect(text(container.querySelector('[data-pergunta-do-alvo]')!)).toContain('o central não mandou a pergunta');
+    await act(async () => { root.unmount(); root = createRoot(container); });
+    await abrir({ ...BASE, capacidade: { ...BASE.capacidade, aguardando_resposta: 2 }, alvos: [alvo('1'), alvo('2')] });
+    expect(text(container.querySelector('[data-espera-de-resposta]')!)).toContain('2 agentes aguardam resposta');
+    expect(container.querySelector('[data-aguardando-resposta]')).toBeNull();   // sem o detalhe por alvo, a linha não afirma
+  });
+});
