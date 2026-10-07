@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 29.189: CI leve do PR volta a rodar o vitest inteiro (AnexosTab não é mais excluído)
+
+- `.github/workflows/pr-leve.yml`: sai o `--exclude src/features/canais/AnexosTab.test.tsx` (a Canais tornou o teste independente de plataforma em 60ba96e8, já na `main`; 20/20 em Linux no run 37541449598). Prova `real` em runner hospedado: ver o run do dispatch no commit.
+
 ## 2026-10-07 — 29.188: medida semanal de custo automática, em artifact e numa issue única (branch ci/29-188-custo-semanal)
 
 - `.github/workflows/custo-semanal.yml` (hospedado, `ubuntu-latest`; `schedule` toda segunda 06:00Z e `workflow_dispatch`; token do workflow com `actions: read` e `issues: write`): roda `scripts/github_custo.py --dias 7 --resumos`, grava o relatório no job summary e como artifact `relatorio-custo` (90 dias) e, por `scripts/custo_semanal_issue.py`, o publica como comentário na issue ABERTA com o rótulo `custo` e o título fixo (abre na primeira vez; rótulo criado só ali). Sem atribuir ninguém nem rótulo de agente. O artifact sobe ANTES da publicação: se a issue falhar, o relatório fica no run.
