@@ -20,7 +20,7 @@ import json
 import logging
 import re
 import unicodedata
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -263,15 +263,30 @@ def eh_generica(actions: Sequence[Mapping[str, object]], post_value: str | None,
 
 
 # ------------------------------------------------------------------ des-templatização
-def detemplate(text: str, variables: dict[str, str]) -> tuple[str, bool, bool]:
+def detemplate(text: str, variables: dict[str, str], *,
+               marcadores: Collection[str] = ()) -> tuple[str, bool, bool]:
     """Troca valores conhecidos por {nome} (o mais longo primeiro), com a MESMA borda do fluxo-modelo e do hash da
     receita (31.109, `flows._sub_values`): o valor só vale inteiro, então "nasal" não vira `{perfil}l` e "v10" não vira
     `v{n}`. Antes era `str.replace` sem borda, e a ação aprendida divergia da identidade da etapa.
-    Devolve (texto, usou_alguma_variável, ficou_100%_coberto_por_variáveis)."""
+    Devolve (texto, usou_alguma_variável, ficou_100%_coberto_por_variáveis).
+
+    31.244 (`marcadores`, os nomes das variáveis da persona que a REPRODUÇÃO resolve): o registro grava o dado da
+    persona já como marcador (31.113 F1: `{perfil_nome}`; 31.243: `@{conta_<app>_usuario}`). Esse marcador conta como
+    variável usada, e a arroba logo antes dele não sobra como literal. Um marcador gravado que nem a etapa nem a persona
+    resolvem não cobre (a reprodução falharia). Sem `marcadores`, tudo como antes."""
     valores = {n: v for n, v in variables.items() if v and len(v) >= 3}
     out = trocar_valores_por_nomes(text, valores) or text
     used = out != text
-    covered = used and not TEMPLATE_RE.sub("", out).strip(" \t\r\n.,;:!?-—()[]\"'“”")
+    resto = out
+    gravados = TEMPLATE_RE.findall(text)
+    if marcadores and gravados:
+        if not all(m in variables or m in marcadores for m in gravados):
+            return out, used, False
+        da_persona = [m for m in gravados if m in marcadores]
+        used = used or bool(da_persona)
+        if da_persona:
+            resto = re.sub(r"@(?=\{(?:" + "|".join(map(re.escape, da_persona)) + r")\})", "", out)
+    covered = used and not TEMPLATE_RE.sub("", resto).strip(" \t\r\n.,;:!?-—()[]\"'“”")
     return out, used, covered
 
 
@@ -483,7 +498,8 @@ ANCORA_ESTADO_CONHECIDO = "estado_conhecido"
 
 def distill(action_rows: list[Row], variables: dict[str, str], *,
             em_casa_antes: Mapping[int, bool] | None = None,
-            com_trecho_da_receita: bool = False) -> tuple[list[dict[str, Any]] | None, str]:
+            com_trecho_da_receita: bool = False,
+            persona: Collection[str] = ()) -> tuple[list[dict[str, Any]] | None, str]:
     """Ações executadas pela IA numa tentativa limpa → receita. Devolve (ações | None, motivo).
 
     31.230: o `press_back` ANTES da 1ª ação gravada é a IA voltando a um lugar conhecido (na onda 1, o `open_profile`
@@ -494,7 +510,11 @@ def distill(action_rows: list[Row], variables: dict[str, str], *,
 
     31.233 (`com_trecho_da_receita`): a tentativa em que uma receita ATIVA rodou um trecho, divergiu e a IA completou. As
     ações da receita feitas (`done`) entram como as da IA: são o caminho que de fato levou à tela de onde a IA seguiu. A
-    que não chegou ao aparelho (`rejected`) fica fora; qualquer outro estado recusa, como antes."""
+    que não chegou ao aparelho (`rejected`) fica fora; qualquer outro estado recusa, como antes.
+
+    31.244 (`persona`): os NOMES das variáveis da persona do objetivo. O `type_text` que o registro gravou com o marcador
+    dela (`{perfil_nome}`, `@{conta_<app>_usuario}`) vira receita com o marcador; a reprodução o resolve pelas variáveis
+    da persona (31.87 F2). Sem a variável na persona, segue recusado."""
     secret_values = {v for k, v in variables.items() if v and SENSITIVE_PARAM.search(k)}
     out: list[dict[str, Any]] = []
     pending_scrolls: list[str] = []
@@ -525,7 +545,7 @@ def distill(action_rows: list[Row], variables: dict[str, str], *,
             text = str(args.get("text", ""))
             if any(s and s in text for s in secret_values):
                 return None, "texto digitado contém parâmetro sensível"
-            templ, _, covered = detemplate(text, variables)
+            templ, _, covered = detemplate(text, variables, marcadores=persona)
             if not covered:
                 return None, "texto digitado não é 100 % coberto por parâmetros"
             item["args"] = {"text": templ, "clear_first": bool(args.get("clear_first", True)),

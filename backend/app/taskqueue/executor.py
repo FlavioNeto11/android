@@ -1440,6 +1440,9 @@ class StepExecutor:
                                                        step.variables.get("item_index"),
                                                        self.repo.saidas_visuais(objective["id"])),
                                 **step.variables}
+                # 31.244: os NOMES das variáveis da persona (sem valor), para a destilação aceitar o marcador dela que o
+                # registro gravou no `type_text`; a reprodução o resolve com `{**persona, **rr.variables}` (abaixo).
+                rr.persona = frozenset(persona)
                 rr.signature = self._installed_signature(rt.id, app.package)
                 rr.variant = await self.devices.variant_of(rt)
                 rr.row = self.recipes.find(app.package, rr.app_version, rr.step_hash,
@@ -1719,7 +1722,7 @@ class StepExecutor:
             return
         rows = repo.db.query("SELECT * FROM actions WHERE attempt_id=? ORDER BY seq", (attempt_id,))
         actions, why = distill(rows, rr.variables, em_casa_antes=self._em_casa_antes.pop(attempt_id, None),
-                               com_trecho_da_receita=da_divergencia)
+                               com_trecho_da_receita=da_divergencia, persona=rr.persona)
         if actions is None:
             log.info("%s: etapa %s não virou receita: %s", iid, step.key, why)
             return
@@ -4913,6 +4916,8 @@ class _RecipeRun:
     row: Any = None
     replayer: Replayer | None = None
     variables: dict[str, str] = field(default_factory=dict)
+    #: 31.244: os nomes das variáveis da persona do objetivo (sem valor): a destilação aceita o marcador dela.
+    persona: frozenset[str] = frozenset()
     app_version: str | None = None
     step_hash: str | None = None
     #: RA-20 B: a chave sem a pós-condição escrita (`hash_generico_da_linha`); None = a etapa só tem a específica.

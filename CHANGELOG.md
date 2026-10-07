@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.244: a receita aceita o marcador da persona já gravado no texto digitado (branch feat/31-244-distill-aceita-marcador-da-persona)
+
+- O registro grava o dado da persona como marcador (31.113 F1, `{perfil_nome}`; 31.243, `@{conta_<app>_usuario}`). A
+  destilação o lia do banco, não achava parâmetro que o cobrisse e recusava a receita.
+- Agora `recipes.distill(..., persona=)` recebe os nomes das variáveis da persona do objetivo. O marcador que a persona
+  resolve conta como coberto, e a arroba logo antes dele não sobra. A reprodução digita o valor da persona da vez
+  (31.87 F2). Sem a variável na persona, segue recusado.
+- Prova `simulated`: `backend/tests/test_receita_com_marcador_da_persona.py` (5). `real`: `not_run` (a 1ª receita
+  destilada de passo com nome ou usuário depois do deploy).
+- Correções achadas pela bateria deste item:
+  - a nota do juiz volta a citar a legenda conferida (`caption_contains` saiu do mapa da nota do 31.242: é o texto
+    público do alvo; `test_alvo_por_legenda.py`);
+  - `test_legenda_rola_e_fecha_a_folha.py` desliga `ai.strong_model_only_on_commit` no teste da folha entre a guarda e
+    o Share. Com o 31.223, a 1ª decisão de efeito é refeita e a folha é vista na reobservação; o teste protege a
+    releitura antes do toque (29.90). Quebrava desde `1e2c6220`, sem efeito no comportamento: nada caía na folha.
+
 ## 2026-10-07 — 31.243: o usuário da conta da persona fora do registro inteiro e do contexto do treino (branch feat/31-243-usuario-da-conta-no-registro)
 
 - O mapa do registro (31.113 F1, `mascara_da_persona.mapa`) passa a levar o usuário de cada conta da persona
