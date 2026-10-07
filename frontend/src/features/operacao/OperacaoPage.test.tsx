@@ -9,8 +9,9 @@ import { useUiStore } from '../../store/ui';
 import { SETTINGS } from '../../test/fixtures';
 import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import {
-  agregadoPorApp, contarPorEstado, ESTAGIOS, estagioDeParada, estagiosAlcancados, lerAlvo, lerCapacidade, lerEstagio, lerOperacao, verificacaoDoAlvo,
+  adiadosDaOperacao, agregadoPorApp, contarPorEstado, ESTAGIOS, estagioDeParada, estagiosAlcancados, lerAlvo, lerCapacidade, lerEstagio, lerOperacao, verificacaoDoAlvo,
 } from './modelo';
+import { formatClock } from '../../lib/time';
 import { OPERACAO_DE_EXEMPLO } from './operacaoDeExemplo';
 import { OperacaoPage } from './OperacaoPage';
 
@@ -658,5 +659,78 @@ describe('31.257: liberar pela linha do agente (um) ou marcar todos no diálogo,
     const b = byRole('button', /^Liberar o texto de Ana/, linhas()[0]!);
     expect(b.getAttribute('aria-disabled')).toBe('true');
     expect(b.getAttribute('aria-label') ?? text(b)).toContain('limite');
+  });
+});
+
+
+describe('31.264: o alvo adiado pelo espaçamento da frota diz quando retoma e não parece falha nem fila', () => {
+  const CEDO = '2026-10-07T10:30:00Z';
+  const TARDE = '2026-10-07T11:15:00Z';
+  const hora = (iso: string) => formatClock(iso).slice(0, 5);
+  const alvo = (id: string, extra: Record<string, unknown> = {}) => ({
+    profile_id: `p-${id}`, persona_nome: `Persona ${id}`, app_id: 'instagram', account_id: `a-${id}`, conta: `conta${id}`, instance_id: `android-0${id}`,
+    run_id: `r-${id}`, estagio: 'sessao', estado: 'em_curso', motivo: null, resultado: null, ...extra,
+  });
+  const BASE = {
+    id: 'op-f', command: 'Comentar no primeiro post da página alvo', app_id: 'instagram', acao_final: 'executar', status: 'em_curso',
+    created_at: '2026-10-07T10:00:00Z', finished_at: null, max_usd: 2, parametros: { username: 'nasa' },
+    capacidade: { solicitados: 2, contas_existentes: 2, sessoes_validas: 2, contas_disponiveis: 2, concluidas: 0, bloqueadas: 0, em_curso: 2, motivos: {} },
+  };
+  const abrir = async (op: unknown) => {
+    backend.on('GET', /^\/api\/operacoes\/op-f$/, () => json(op));
+    await ir(['op-f']);
+    await waitFor(() => expect(linhas().length).toBeGreaterThan(0));
+  };
+
+  it('o leitor: ISO = adiado, null = não adiado, lixo vira null (sem inventar hora), chave ausente = o central não diz', () => {
+    expect(lerAlvo(alvo('1', { retomada_em: CEDO }), 0)!.retomada_em).toBe(CEDO);
+    expect(lerAlvo(alvo('1', { retomada_em: null }), 0)!.retomada_em).toBeNull();
+    expect(lerAlvo(alvo('1', { retomada_em: 'amanhã' }), 0)!.retomada_em).toBeNull();
+    expect(lerAlvo(alvo('1', { retomada_em: 12 }), 0)!.retomada_em).toBeNull();
+    expect('retomada_em' in lerAlvo(alvo('1'), 0)!).toBe(false);
+  });
+
+  it('a contagem: só os alvos com hora, e o primeiro a retomar é o mais cedo, não o primeiro da lista', () => {
+    const op = lerOperacao({ ...BASE, alvos: [alvo('1', { retomada_em: TARDE }), alvo('2', { retomada_em: CEDO }), alvo('3', { retomada_em: null }), alvo('4')] })!;
+    expect(adiadosDaOperacao(op)).toEqual({ quantos: 2, primeiraRetomada: CEDO });
+    expect(adiadosDaOperacao(lerOperacao({ ...BASE, alvos: [alvo('1')] })!)).toEqual({ quantos: 0, primeiraRetomada: null });
+  });
+
+  it('o central que manda a hora: selo "Adiado pela frota" e "retoma às HH:MM" na linha, e a contagem no cabeçalho com a primeira hora', async () => {
+    const motivo = 'espaçamento da frota';
+    await abrir({ ...BASE, alvos: [alvo('1', { retomada_em: TARDE, motivo }), alvo('2', { retomada_em: CEDO, motivo }), alvo('3', { retomada_em: null })] });
+    const cab = container.querySelector('[data-adiados-pela-frota]') as HTMLElement;
+    expect(text(cab)).toContain('2 agentes adiados pelo espaçamento da frota');
+    expect(text(cab)).toContain(`O primeiro retoma às ${hora(CEDO)} (hora local).`);
+    expect(text(cab)).toContain('Não é falha');
+    const [a, b, c] = linhas();
+    expect(text(a!.querySelector('[data-adiado-pela-frota]')!)).toBe('Adiado pela frota');
+    expect(text(a!.querySelector('[data-retomada-em]')!)).toContain(`retoma às ${hora(TARDE)} (hora local)`);
+    expect(text(b!.querySelector('[data-retomada-em]')!)).toContain(`retoma às ${hora(CEDO)} (hora local)`);
+    // adiado não "parou": o motivo do espaçamento não vira "Parou em …"
+    expect(text(a!)).not.toContain('Parou em');
+    expect(a!.querySelector('[data-motivo-do-alvo]')).toBeNull();
+    expect(c!.querySelector('[data-adiado-pela-frota]')).toBeNull();
+    expect(c!.querySelector('[data-retomada-em]')).toBeNull();
+  });
+
+  it('um só alvo adiado: o singular; o selo da espera de resposta (31.246) tem prioridade na linha', async () => {
+    await abrir({ ...BASE, alvos: [alvo('1', { retomada_em: CEDO }), alvo('2', { retomada_em: CEDO, aguarda_resposta: { pergunta: 'Qual página?', desde: null } })] });
+    expect(text(container.querySelector('[data-adiados-pela-frota]')!)).toContain('2 agentes adiados');
+    const [, b] = linhas();
+    expect(b!.querySelector('[data-aguardando-resposta]')).not.toBeNull();
+    expect(b!.querySelector('[data-adiado-pela-frota]')).toBeNull();
+    expect(b!.querySelector('[data-retomada-em]')).toBeNull();
+    await act(async () => { root.unmount(); root = createRoot(container); });
+    await abrir({ ...BASE, alvos: [alvo('1', { retomada_em: CEDO }), alvo('2')] });
+    expect(text(container.querySelector('[data-adiados-pela-frota]')!)).toContain('1 agente adiado pelo espaçamento da frota');
+  });
+
+  it('null ou chave ausente = nada: sem selo, sem cabeçalho e a linha segue como antes', async () => {
+    await abrir({ ...BASE, alvos: [alvo('1', { retomada_em: null }), alvo('2')] });
+    expect(container.querySelector('[data-adiados-pela-frota]')).toBeNull();
+    expect(container.querySelector('[data-adiado-pela-frota]')).toBeNull();
+    expect(container.querySelector('[data-retomada-em]')).toBeNull();
+    expect(text(linhas()[0]!)).toContain('Em andamento');
   });
 });
