@@ -144,6 +144,18 @@ class Workflow(unittest.TestCase):
         for uso in re.findall(r"uses: (\S+)", WORKFLOW):
             self.assertRegex(uso, r"@[0-9a-f]{40}$")
 
+    def test_custo_por_pr_entra_no_relatorio_antes_da_conferencia_e_nao_some_em_silencio(self) -> None:
+        """29.207: o passo roda depois do relatório e antes da checagem de formato; a falha vira 'NÃO lido', nunca omissão."""
+        passo = WORKFLOW.index("- name: custo por PR")
+        self.assertLess(WORKFLOW.index("github_custo.py"), passo)
+        self.assertLess(passo, WORKFLOW.index("--arquivo relatorio-custo.md --ensaio"))
+        corpo = WORKFLOW[passo:WORKFLOW.index("# Confere o formato")]
+        self.assertIn("custo_por_pr.py", corpo)
+        self.assertIn("NÃO lido nesta semana", corpo)
+        self.assertIn("pull-requests: read", WORKFLOW)
+        self.assertNotIn("pull-requests: write", WORKFLOW)
+        self.assertNotIn("--aplicar", corpo)  # só leitura
+
     def test_artifact_antes_de_publicar_e_sem_atribuicao(self) -> None:
         conferir = WORKFLOW.index("--arquivo relatorio-custo.md --ensaio")
         self.assertLess(conferir, WORKFLOW.index("GITHUB_STEP_SUMMARY"))  # checagem de formato antes de summary e artifact

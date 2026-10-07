@@ -8,7 +8,7 @@ name: Custo · medida semanal
 # runner próprio é a máquina do dono. Sem segredo novo: usa o token do próprio workflow (`actions: read`, `issues: write`).
 # O que o token não alcança (billing da conta) o relatório diz como "NÃO lido"; os créditos reais continuam sendo lidos pelo dono
 # ou pela frente na página de uso da conta.
-# O código é `scripts/github_custo.py` e `scripts/custo_semanal_issue.py` (testes: `scripts/tests/test_custo_semanal_issue.py`).
+# O código é `scripts/github_custo.py`, `scripts/custo_por_pr.py` (29.207) e `scripts/custo_semanal_issue.py` (testes: `scripts/tests/test_custo_semanal_issue.py`).
 
 on:
   schedule:
@@ -19,6 +19,7 @@ permissions:
   contents: read
   actions: read
   issues: write
+  pull-requests: read  # 29.207: custo_por_pr.py lê PRs e revisões
 
 concurrency:
   group: custo-semanal
@@ -41,6 +42,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/github_custo.py --repo "$GITHUB_REPOSITORY" --dias 7 --resumos > relatorio-custo.md
+      # 29.207: custo por PR (créditos do Copilot estimados, revisões do Codex contadas, pico de PRs de revisão em 5 h). Só leitura. Se a
+      # leitura falhar, o relatório diz "NÃO lido" (nunca some em silêncio) e o resto da medida segue.
+      - name: custo por PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if python scripts/custo_por_pr.py --repo "$GITHUB_REPOSITORY" --dias 7 > custo-por-pr.md; then
+            echo >> relatorio-custo.md
+            cat custo-por-pr.md >> relatorio-custo.md
+          else
+            {
+              echo
+              echo "## Custo por PR"
+              echo
+              echo "NÃO lido nesta semana: a leitura dos PRs falhou (ver o log do job)."
+            } >> relatorio-custo.md
+          fi
       # Confere o formato ANTES de o texto ir para o summary e para o artifact (retido 90 dias): se tiver dado que não pode sair, o job cai aqui.
       - name: confere o relatório
         run: python scripts/custo_semanal_issue.py --repo "$GITHUB_REPOSITORY" --arquivo relatorio-custo.md --ensaio

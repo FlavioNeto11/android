@@ -464,6 +464,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   de 07/10 encerrada.
 
 
+## 2026-10-07 — 29.207: a medida semanal de custo passa a trazer o custo por PR (branch ci/29-207-custo-por-pr-semanal, sobre integ/suite-61 + github/integ-62)
+
+- `.github/workflows/custo-semanal.yml` (29.188; segunda 06:00Z, runner hospedado, só o token do workflow, sem segredo novo) ganha o passo `custo por PR`, que roda `scripts/custo_por_pr.py` (29.202)
+  e acrescenta o resultado ao `relatorio-custo.md` antes da checagem de formato, do summary, do artifact e da issue de custo. Se a leitura falhar, o relatório diz "NÃO lido nesta semana" (nunca some em silêncio). A permissão nova é só `pull-requests: read`.
+- Prova `simulated`: `scripts/tests/test_custo_semanal_issue.py::test_custo_por_pr_entra_no_relatorio_antes_da_conferencia_e_nao_some_em_silencio` (66 testes dirigidos passam). `real` parcial (07/10, `date -u` 13:03Z, esta máquina, API): `github_custo.py` +
+  `custo_por_pr.py` sobre 1 dia, juntos, passaram na checagem de formato (`custo_semanal_issue.py --ensaio`). O primeiro disparo no GitHub (`workflow_dispatch`) só é possível com o workflow na `main`: `not_run` até o corte.
+
 ## 2026-10-07 — 29.200: `pr_revisao.py` abre o PR de revisão do corte com base certa e dentro das ondas (branch ci/29-200-pr-revisao)
 
 - `scripts/pr_revisao.py --repo dono/nome --id 31.241 --titulo "…" --head <branch> --frente jev [--base main] [--aplicar]` faz o que a frente
