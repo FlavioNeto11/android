@@ -210,6 +210,11 @@ class Scheduler:
         # entrega pendente; `(motivo, trabalho)` quando dá para resolver instalando; `(motivo, None)` quando só uma
         # pessoa resolve. Injetado pelo AppState: o scheduler não conhece o domínio de release.
         self.app_resolver: Callable[[DeviceRuntime, str, Any], tuple[str, Callable[[], Any] | None] | None] | None = None
+        # 31.267: o preparo do alvo de uma operação, depois da porta de sessão aberta: (aparelho, pacote, objetivo) →
+        # `None` quando nada a fazer; `(motivo, trabalho)` quando o app precisa voltar ao estado conhecido ANTES da 1ª
+        # etapa (sem IA). Injetado pelo AppState: o scheduler não conhece operação nem motor de sessão.
+        self.preparo_do_alvo: Callable[[DeviceRuntime, str | None, Any],
+                                       tuple[str, Callable[[], Any]] | None] | None = None
         # Pré-voo do APP, sem efeito nenhum: `{code, motivo, acao}` quando o aplicativo daquele aparelho impede a
         # tarefa e só uma pessoa resolve; `None` quando não impede — inclusive quando não se sabe. Serve à recusa
         # explicada ANTES de planejar, e por isso é síncrona e não toca em aparelho. Injetado pelo AppState. O segundo
@@ -520,6 +525,14 @@ class Scheduler:
             elif self.run_device_job(rt, trabalho, label=f"autenticação — {rotulo}") or no_worker:
                 self.repo.note_waiting(obj["id"], f"verificando a sessão em {rotulo} — {motivo}", wait_reason="device_slot")
             return True                       # este tick é do login; a tarefa espera a sessão ficar pronta
+        # 31.267: o alvo de operação começa no estado conhecido do app. Na rodada de 07/10 12:55Z os três aparelhos
+        # abriram com a folha de comentários da operação anterior, e a IA gastou 2 a 5 decisões só para voltar.
+        preparo = self.preparo_do_alvo(rt, pacote_do_item, obj) if self.preparo_do_alvo else None
+        if preparo is not None:
+            motivo, trabalho = preparo
+            if self.run_device_job(rt, trabalho, label="estado conhecido do app") or no_worker:
+                self.repo.note_waiting(obj["id"], motivo, wait_reason="device_slot")
+            return True                       # este tick é do preparo; a 1ª etapa espera o app em casa
         return False
 
     def _pacotes_do_objetivo(self, obj: Any, rt: DeviceRuntime) -> list[str]:

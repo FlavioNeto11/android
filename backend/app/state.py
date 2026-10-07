@@ -227,6 +227,7 @@ class AppState:
     social_repo: SocialRepository
     _releituras_do_teto: dict[tuple[str, str, str], str]
     _releituras_falhas: dict[tuple[str, str], int]
+    _alvos_preparados: set[str]
     persona_images: PersonaImageService
     social: SocialService
     lotes_de_persona: LotesDePersona
@@ -863,6 +864,53 @@ class AppState:
         sufixo = f" (tentativa {falhas + 1} de {TETO_DE_RELEITURAS_DA_SESSAO})" if falhas else ""
         return ("a verificação desta sessão passou da validade; o aparelho vai ser relido antes da tarefa" + sufixo,
                 reler)
+
+    def _preparo_do_alvo(self, rt: DeviceRuntime, package: str | None,
+                         obj: Any) -> tuple[str, Callable[[], Awaitable[None]]] | None:
+        """31.267: antes da 1ª etapa de um alvo de operação, o app volta ao estado conhecido pelo motor de sessão
+        (`ensure_session(observe_only=True)`: voltar, reabrir o app e ler a conta; sem IA, sem digitar, sem efeito).
+
+        Achado do Aprendizado (31.262, leitura real da rodada de 07/10 12:55Z): os três aparelhos começaram com a folha
+        de comentários da operação anterior aberta e gastaram 2 a 5 decisões de IA (US$ 0,03 a 0,08 por alvo) só para
+        voltar. O motor sabia voltar, mas só roda quando a sessão vence, e ela estava fresca.
+
+        Uma vez por objetivo, e só antes da 1ª tentativa: o objetivo retomado no meio (depois de uma aprovação) já está
+        na tela certa, e voltar o tiraria dela. Sessão lida depois de a execução nascer já deixou o app em casa."""
+        oid = str(obj["id"])
+        if oid in self._alvos_preparados or not obj["profile_id"]:
+            return None
+        run = self.repo.run_row(obj["run_id"])
+        operacao_id = run["operacao_id"] if run is not None and "operacao_id" in run.keys() else None
+        provedor = self.sessoes.for_package(package) if package is not None else None
+        if not operacao_id or provedor is None:
+            return None
+        if self.db.scalar("SELECT 1 FROM attempts a JOIN steps s ON s.id=a.step_id WHERE s.objective_id=? LIMIT 1",
+                          (oid,)):
+            self._alvos_preparados.add(oid)
+            return None
+        profile_id = str(obj["profile_id"])
+        conta = self.social_repo.conta_do_pacote(profile_id, package)
+        conta_id = str(conta["id"]) if conta is not None else None
+        sessao = (self.social_repo.account_session_row(profile_id, conta_id, rt.id)
+                  if conta_id is not None else None)
+        if sessao is not None and sessao["verified_at"] and str(sessao["verified_at"]) >= str(run["created_at"]):
+            self._alvos_preparados.add(oid)
+            return None
+
+        async def preparar() -> None:
+            inicio = time.monotonic()
+            pronto: bool | None = None
+            try:
+                pronto = (await provedor.ensure_session(rt, profile_id, account_id=conta_id, observe_only=True)).ready
+            finally:
+                self._alvos_preparados.add(oid)
+                self.bus.emit("preparo.estado_conhecido",
+                              f"{rt.id}: app devolvido ao estado conhecido antes do alvo da operação",
+                              run_id=str(obj["run_id"]), instance_id=rt.id, objective_id=oid,
+                              data={"operacao_id": str(operacao_id), "sessao_pronta": pronto,
+                                    "ms": round((time.monotonic() - inicio) * 1000)})
+
+        return "devolvendo o app ao estado conhecido antes do alvo da operação (31.267)", preparar
 
     def sessao_vencida(self, session: Any) -> bool:
         """A sessão `session_ready` passou da validade? Verificação sem data conta como vencida.
