@@ -66,7 +66,7 @@ async def test_cobrindo_nao_paga_e_registra(banco: Database) -> None:  # noqa: F
 
     operacoes: list[str] = []
 
-    def da_operacao(operacao_id: str) -> list[FatoDoLivro]:
+    def da_operacao(operacao_id: str, _assunto: str) -> list[FatoDoLivro]:
         operacoes.append(operacao_id)
         return [_f("11"), _f("12", frescor="2098-01-01T00:00:00.000Z")]
 
@@ -94,10 +94,10 @@ async def test_nao_cobrindo_ou_falhando_a_pesquisa_paga_roda(banco: Database) ->
         pedidos.append(req.assunto)
         return _bruta(("tecido reciclado", ["https://loja.exemplo.com/outono", "https://www.jornal.exemplo.org/m"]))
 
-    def quebrado(operacao_id: str) -> list[FatoDoLivro]:
+    def quebrado(operacao_id: str, _assunto: str) -> list[FatoDoLivro]:
         raise RuntimeError("banco")
 
-    so_um = PesquisaDaOperacao(banco, PesquisaCfg(enabled=True), PRECOS, fatos_do_livro=lambda a: [_f("11")])
+    so_um = PesquisaDaOperacao(banco, PesquisaCfg(enabled=True), PRECOS, fatos_do_livro=lambda _op, _assunto: [_f("11")])
     feito = await so_um.pesquisar_se_preciso("op-1", run_id="r-a", contexto="", chamar=chamar)
     assert feito is not None and feito.reaproveitados == 0 and pedidos == ["coleção de outono da loja"]
     assert not any(e.chave.startswith("livro.") for e in so_um.repo.entradas_da_operacao("op-1"))

@@ -679,6 +679,10 @@ class PesquisaCfg(BaseModel):
     #: 31.231: quantos fatos confirmados e frescos do Livro, do mesmo assunto, cobrem o pedido e dispensam a pesquisa
     #: paga (critério em `learning/domain/reaproveitamento_da_pesquisa.py`). 0 desliga o reaproveitamento.
     reaproveitar_min_fatos: int = Field(2, ge=0, le=20)
+    #: 31.248: a operação sem assunto pesquisa com o da leitura do alvo (o recorte público da publicação, sem menção a
+    #: conta nem endereço; `reaproveitamento_da_pesquisa.assunto_da_leitura`), agendada quando o 1º agente lê o alvo.
+    #: `false` = sem assunto, sem pesquisa (o de antes).
+    assunto_da_leitura: bool = True
 
 
 class AiCfg(BaseModel):

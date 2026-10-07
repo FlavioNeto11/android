@@ -26,11 +26,12 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from app.config import PesquisaCfg
 from app.db import Database, loads
-from app.modules.learning.domain.reaproveitamento_da_pesquisa import FatoDoLivro, cobertura
+from app.modules.learning.domain.reaproveitamento_da_pesquisa import (CHAVE_DA_LEITURA, FatoDoLivro, assunto_da_leitura,
+                                                                      cobertura)
 from app.modules.pedidos.domain import memoria as dominio_memoria
 from app.modules.pedidos.domain.observacao import curto, sha256_do_valor
 from app.modules.pedidos.infrastructure.conhecimento_da_operacao import ConhecimentoDaOperacao
@@ -57,6 +58,8 @@ class Feito:
     descartados: int
     #: 31.231: fatos do Livro reaproveitados no lugar da pesquisa paga (0 quando a pesquisa rodou)
     reaproveitados: int = 0
+    #: 31.248: o assunto veio da leitura do alvo (a operação não trazia um)
+    assunto_da_leitura: bool = False
 
 
 def _hash(texto: str) -> str:
@@ -65,26 +68,45 @@ def _hash(texto: str) -> str:
 
 class PesquisaDaOperacao:
     def __init__(self, db: Database, cfg: PesquisaCfg, prices: dict[str, list[float]],
-                 fatos_do_livro: Callable[[str], Sequence[FatoDoLivro]] | None = None):
+                 fatos_do_livro: Callable[[str, str], Sequence[FatoDoLivro]] | None = None):
         self.db = db
         self.cfg = cfg
         self.prices = prices
         self.repo = RepositorioDeMemoria(db)
-        #: 31.231: os fatos do Livro do assunto e do app de uma operação, pelo id dela (a porta do aprendizado);
-        #: `None` = sem reaproveitamento
+        #: 31.231: os fatos do Livro do assunto e do app de uma operação, pelo id dela e pelo assunto do pedido (o
+        #: guardado ou, 31.248, o da leitura do alvo); `None` = sem reaproveitamento
         self.fatos_do_livro = fatos_do_livro
 
     # ------------------------------------------------------------------ o que a operação pede
     def assunto_e_fontes(self, operacao_id: str) -> tuple[str, tuple[str, ...]] | None:
-        """`operacoes.assunto` e `operacoes.fontes` (124). Sem a tabela, sem a coluna ou sem assunto: `None`."""
+        """`operacoes.assunto` e `operacoes.fontes` (124). Sem a tabela, sem a coluna ou sem a operação: `None`. Sem
+        assunto guardado, 31.248: o da leitura do alvo (`assunto_da_leitura_do_alvo`), ou `None`."""
         if "operacoes" not in self.db.tables() or "assunto" not in self.db.columns("operacoes"):
             return None
         linha = self.db.one("SELECT assunto, fontes FROM operacoes WHERE id=?", (operacao_id,))
-        if linha is None or not (linha["assunto"] or "").strip():
+        if linha is None:
             return None
         brutas = loads(linha["fontes"], []) or []
         fontes = tuple(str(u).strip() for u in brutas if isinstance(u, str) and u.strip().startswith(("http://", "https://")))
-        return " ".join(str(linha["assunto"]).split()), fontes[:FONTES_INDICADAS_MAX]
+        assunto = " ".join(str(linha["assunto"] or "").split()) or self.assunto_da_leitura_do_alvo(operacao_id)
+        return (assunto, fontes[:FONTES_INDICADAS_MAX]) if assunto else None
+
+    def sem_assunto(self, operacao_id: str) -> bool:
+        """31.248: a operação não guarda assunto (a 124 existe e a coluna está vazia)."""
+        if "operacoes" not in self.db.tables() or "assunto" not in self.db.columns("operacoes"):
+            return False
+        return not " ".join(str(self.db.scalar("SELECT assunto FROM operacoes WHERE id=?", (operacao_id,)) or "").split())
+
+    def assunto_da_leitura_do_alvo(self, operacao_id: str) -> str | None:
+        """31.248: sem assunto no pedido, o da leitura do alvo VÁLIDA da operação (`alvo.conteudo`, o recorte público da
+        publicação, gravado pelo primeiro agente que a leu), pela regra `assunto_da_leitura`. Desligado
+        (`ai.pesquisa.assunto_da_leitura`) ou sem leitura: `None`."""
+        if not self.cfg.assunto_da_leitura:
+            return None
+        agora = self.db.agora_iso()
+        leitura = next((e for e in self.repo.entradas_da_operacao(operacao_id)
+                        if e.chave == CHAVE_DA_LEITURA and e.vale(agora)), None)
+        return assunto_da_leitura(leitura.valor) if leitura is not None else None
 
     def lacuna(self, operacao_id: str) -> bool:
         """Não há fato de pesquisa válido nem marca de tentativa recente."""
@@ -123,6 +145,7 @@ class PesquisaDaOperacao:
                      self.cfg.teto_usd_por_operacao)
             return None
         assunto, fontes = pedido
+        da_leitura = self.sem_assunto(operacao_id)
         req = PesquisaRequest(operacao_id=operacao_id, run_id=run_id, assunto=assunto, fontes_indicadas=fontes,
                               contexto=contexto, max_buscas=self.cfg.max_buscas, ferramenta=self.cfg.ferramenta,
                               max_fatos=self.cfg.max_fatos, preco_por_busca_usd=self.cfg.preco_por_busca_usd)
@@ -134,16 +157,17 @@ class PesquisaDaOperacao:
                                 frescor_s=ESPERA_APOS_FALHA_S)
             return None
         consolidada = fatos_consolidados(bruta, max_fatos=self.cfg.max_fatos)
-        return self._gravar(operacao_id, consolidada, buscas=bruta.buscas, run_id=run_id)
+        feito = self._gravar(operacao_id, consolidada, buscas=bruta.buscas, run_id=run_id)
+        return replace(feito, assunto_da_leitura=da_leitura) if feito is not None else None
 
     def _reaproveitar(self, operacao_id: str, pedido: tuple[str, tuple[str, ...]], *, run_id: str) -> Feito | None:
         """31.231: os fatos do Livro do assunto no lugar da pesquisa paga, quando cobrem o pedido; `None` = pesquisar.
         A leitura do Livro que falha nunca derruba a pesquisa: ela segue paga, como antes."""
         if self.fatos_do_livro is None:
             return None
-        _, fontes = pedido
+        assunto, fontes = pedido
         try:
-            fatos = self.fatos_do_livro(operacao_id)
+            fatos = self.fatos_do_livro(operacao_id, assunto)
         except Exception:  # noqa: BLE001 - o Livro é atalho: sem ele, a pesquisa paga roda
             log.exception("operação %s: fatos do Livro não lidos; a pesquisa segue", operacao_id)
             return None

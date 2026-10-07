@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.248: o assunto da operação nasce da leitura do alvo quando o pedido não traz um (branch feat/31-248-assunto-da-leitura-do-alvo)
+
+- A onda 2 não pesquisou porque a operação não tinha assunto: a lacuna (critério 5) nem era consultada.
+- Agora o assunto vem da leitura do alvo: o recorte público, sem menção a conta nem endereço
+  (`reaproveitamento_da_pesquisa.assunto_da_leitura`).
+- A 1ª leitura agenda a pesquisa, uma vez por operação. O Livro (31.231) é consultado com esse assunto antes de pagar,
+  e o minerador leva o mesmo assunto ao fato. `ai.pesquisa.assunto_da_leitura: false` volta ao de antes.
+- Prova `simulated`: `backend/tests/test_assunto_da_leitura_do_alvo.py` (6). `real`: `not_run` (a 1ª operação sem
+  assunto depois do deploy; chamada paga até o teto da operação, com o sim do dono).
+
 ## 2026-10-07 — 31.244: a receita aceita o marcador da persona já gravado no texto digitado (branch feat/31-244-distill-aceita-marcador-da-persona)
 
 - O registro grava o dado da persona como marcador (31.113 F1, `{perfil_nome}`; 31.243, `@{conta_<app>_usuario}`). A

@@ -23,6 +23,7 @@ from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import ErroDeAprendizado
 from app.modules.learning.domain.fatos_da_operacao import (PREFIXO_DO_FATO, FatoDaOperacao, candidata, recusa,
                                                            vencida)
+from app.modules.learning.domain.reaproveitamento_da_pesquisa import CHAVE_DA_LEITURA, assunto_da_leitura
 from app.modules.learning.domain.vocabulario import SourceKind
 from app.modules.skills.domain.document import JsonObject, JsonValue
 
@@ -52,9 +53,16 @@ class FatosDaOperacaoParaOLivro:
             return []
         filtro, params = ((" AND o.id=?", (operacao,)) if operacao is not None
                           else (" AND o.finished_at >= ?", (desde,)))
-        return [(str(r["id"]), str(r["pacote"] or ""), str(r["assunto"] or "")) for r in self.db.query(
-            "SELECT o.id, a.package AS pacote, o.assunto FROM operacoes o LEFT JOIN apps a ON a.id = o.app_id"
-            f" WHERE o.finished_at IS NOT NULL{filtro} ORDER BY o.finished_at, o.id", params)]
+        return [(str(r["id"]), str(r["pacote"] or ""), str(r["assunto"] or "").strip() or self._assunto_da_leitura(str(r["id"])))
+                for r in self.db.query(
+                    "SELECT o.id, a.package AS pacote, o.assunto FROM operacoes o LEFT JOIN apps a ON a.id = o.app_id"
+                    f" WHERE o.finished_at IS NOT NULL{filtro} ORDER BY o.finished_at, o.id", params)]
+
+    def _assunto_da_leitura(self, operacao: str) -> str:
+        """31.248: a operação sem assunto guardado pesquisou com o da leitura do alvo; o fato que ela deixa leva o MESMO
+        assunto ao Livro (a mesma regra, sobre a mesma leitura), para a próxima operação daquela publicação o reusar."""
+        valor = self.db.scalar("SELECT valor FROM pedido_memoria WHERE operacao_id=? AND chave=?", (operacao, CHAVE_DA_LEITURA))
+        return assunto_da_leitura(str(valor) if valor else None) or ""
 
     def _dominios(self, evidencia: object) -> tuple[str, ...]:
         ids = [str(i) for i in (evidencia if isinstance(evidencia, list) else [])][:20]
