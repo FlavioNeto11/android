@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.229: o custo e o modelo por passo no GET da execução e no do alvo (adendo v1.124, branch feat/31-229-custo-por-passo, corte 61)
+
+- `custo_por_passo` em `GET /api/runs/{id}` e em `alvos[]` de `GET /api/operacoes/{id}`. Por passo: o modelo do último
+  decide, o commit (a ação com efeito não rejeitada, com o modelo, o tier e o escalate do decide que a escolheu), as
+  chamadas, o custo e o custo por modelo. Na operação, `custo_por_modelo` e `custo_por_estagio`. Sem migração: o vínculo
+  `ai_calls.step_id` e `actions.ai_call_id` já existia. Só expõe; a política de modelos (31.223) não muda.
+- Prova `simulated`: `backend/tests/test_custo_por_passo.py` (2 testes: a trilha da decisão descartada e da refeita, e
+  a soma que fecha com `spent_usd`). Uma mutação que deixa a ação rejeitada contar como commit é pega. Real: not_run.
+
 ## 2026-10-07 — 31.216: a leitura repetida da operação não grava nem avisa de novo (branch feat/operacao-latencia-por-estagio, corte 60)
 
 - O `GET /api/operacoes/{id}` grava só o que mudou desde a leitura anterior (o estágio derivado, a reabertura e o

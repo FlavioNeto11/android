@@ -30,7 +30,7 @@ from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain import fila as filas, latencia, relatorio as rel
 from app.modules.operacoes.domain.estagios import ESTADOS, EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
-from app.planning import costs
+from app.planning import costs, custo_por_passo
 from app.social.repository import sessao_vencida
 from app.social.service import SocialError
 from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS, normal
@@ -369,6 +369,9 @@ class ServicoDeOperacoes:
             leitura, resultado = self._ler_alvo(op, a, definicao)
             alvos.append((a, leitura, resultado))
         saida = []
+        # 31.229 (adendo v1.124): o custo e o modelo por passo de cada alvo, numa leitura só para todos.
+        por_passo = custo_por_passo.por_execucao(self.db, self.precos, [str(a["run_id"]) for a in linhas
+                                                                         if a["run_id"]], definicao[1])
         for a, lt, resultado in alvos:
             estado, motivo, parou = lt.estado, lt.motivo, lt.parou_em
             # Só o alvo SEM a ação aprovada aguarda liberação; o liberado segue o estado da execução dele (em curso
@@ -394,17 +397,21 @@ class ServicoDeOperacoes:
                                        for (e, em), ms in zip(lt.estagios, lat.etapas_ms, strict=True)],
                           "latencia": {"duracao_ms": lat.duracao_ms, "espera_do_liberar_ms": lat.espera_do_liberar_ms},
                           "resultado": resultado, "custo_usd": custo,
-                          "sessao_verificada_em": self._sessao_verificada_em(a)})
+                          "sessao_verificada_em": self._sessao_verificada_em(a),
+                          "custo_por_passo": por_passo.get(str(a["run_id"])) if a["run_id"] else None})
         self._anotar_filas(saida)
         capacidade = self._capacidade(saida)
         status = self._status(op, saida)
+        custo_por_modelo, custo_por_estagio = custo_por_passo.somar(
+            a["custo_por_passo"] for a in saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
                 "max_usd": op["max_usd"], "assunto": op["assunto"], "fontes": loads(op["fontes"], []),
                 "parametros": loads(op["parametros"], None), "fontes_da_pesquisa": self._fontes_da_pesquisa(op_id),
                 "status": status, "created_at": op["created_at"],
                 "finished_at": self._fechar(op, status, capacidade, fim=self._fim_real(saida)),
                 "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id),
-                "latencia_por_estagio": latencia.por_estagio(saida)}
+                "latencia_por_estagio": latencia.por_estagio(saida),
+                "custo_por_modelo": custo_por_modelo, "custo_por_estagio": custo_por_estagio}
 
     def relatorio(self, op_id: str, aprendizado: Mapping[str, object] | None) -> dict[str, object]:
         """O relatório consolidado (31.195, adendo v1.111): o GET da operação (com a latência do v1.108) arrumado para a

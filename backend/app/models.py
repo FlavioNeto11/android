@@ -2039,6 +2039,8 @@ class CustosExecucao(BaseModel):
 
 class RunDetail(RunSummary):
     costs: CustosExecucao = Field(default_factory=CustosExecucao)
+    #: 31.229 (adendo v1.124): o custo e o modelo por passo, montado pela rota (`planning/custo_por_passo.py`).
+    custo_por_passo: dict[str, object] | None = None
     plan: Plan | None = None
     objectives: list[ObjectiveDTO] = []
     steps: list[StepDTO] = []

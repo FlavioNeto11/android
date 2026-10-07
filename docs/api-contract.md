@@ -7946,9 +7946,12 @@ O planejamento (`plan`) não tem etapa e entra em `sem_passo`.
     "efeito": true,                       // a etapa declara efeito externo (steps.side_effect)
     "estagio": "post_localizado" | null,  // o estágio da operação que a capability marca (app.yaml operacao.estagios)
     "modelo": "claude-sonnet-..." | null, // id CRU do modelo do último decide ok da etapa; null = só receita
-    "commit": {"fonte": "ai" | "recipe", "modelo": "claude-opus-..." | null} | null,
-                                          // a última ação com efeito (actions.side_effect) e o modelo do decide que a
-                                          // escolheu (actions.ai_call_id); null = a etapa não chegou ao commit
+    "commit": {"fonte": "ai" | "recipe", "modelo": "claude-opus-..." | null, "tier": 1 | null,
+               "escalate": "efeito" | null} | null,
+                                          // a última ação com efeito NÃO rejeitada (actions.side_effect=1 e
+                                          // status<>'rejected') e o decide que a escolheu (actions.ai_call_id): o
+                                          // modelo, o tier e o escalate dele; a decisão descartada fica sem ação
+                                          // ligada; null = a etapa não chegou ao commit
     "chamadas": 4, "custo_usd": 0.0123,
     "por_modelo": [{"modelo": "...", "chamadas": 3, "custo_usd": 0.01}]
   }],
@@ -7963,3 +7966,8 @@ declarado onde há, tokens vezes o preço do modelo onde não há, e a chamada s
 inclusive as simuladas e as que falharam. Na operação, `custo_por_modelo` é a lista `por_modelo` somada entre os alvos,
 e `custo_por_estagio` o mapa `por_estagio` somado. O modelo vem sempre como o id cru gravado em `ai_calls.model`; o
 rótulo para pessoa fica com a tela.
+
+Código: `backend/app/planning/custo_por_passo.py` (`por_execucao`, com quatro consultas para qualquer número de execuções,
+e `somar`), chamado pela rota `GET /api/runs/{id}` e por `ServicoDeOperacoes.ler`. Testes:
+`backend/tests/test_custo_por_passo.py` (a trilha do 31.223 com a decisão descartada e a refeita; a soma fecha com
+`spent_usd`; o GET do alvo igual ao da execução; o alvo sem execução vem `null`).
