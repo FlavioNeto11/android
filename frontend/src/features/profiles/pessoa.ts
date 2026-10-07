@@ -103,3 +103,40 @@ export function personasPorAparelho(pessoas: readonly Pessoa[]): Map<string, Per
   }
   return mapa;
 }
+
+/**
+ * O Nº da persona na tela: a posição por ORDEM DE CRIAÇÃO (`created_at`, desempate pelo id), contada sobre a lista inteira e
+ * não sobre o que o filtro deixa ver. É estável (uma persona nova ganha o próximo número; a remoção de uma antiga reordena só
+ * as seguintes) e dá aos humanos um rótulo curto para falar de uma frota de 30: a API só traz um id opaco.
+ */
+export function numerosDasPersonas(pessoas: readonly Pick<Pessoa, 'id' | 'created_at'>[]): Map<string, number> {
+  const ordem = [...pessoas].sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id));
+  return new Map(ordem.map((p, i) => [p.id, i + 1]));
+}
+
+/**
+ * Os Nº das OUTRAS personas que usam algum aparelho desta. A relação persona-aparelho é N:N (ADR-041), então dividir um
+ * aparelho não é erro: é informação, para quem planeja uma operação não escolher dois alvos no mesmo aparelho sem saber.
+ */
+export function compartilhadoCom(
+  p: Pick<Pessoa, 'id' | 'instance_id' | 'session' | 'devices'>,
+  porAparelho: ReadonlyMap<string, readonly PersonaOnDevice[]>,
+  numeros: ReadonlyMap<string, number>,
+): number[] {
+  const outros = new Set<number>();
+  for (const aparelho of idsDosAparelhos(p)) {
+    for (const o of porAparelho.get(aparelho) ?? []) {
+      const n = numeros.get(o.profile_id);
+      if (o.profile_id !== p.id && n !== undefined) outros.add(n);
+    }
+  }
+  return [...outros].sort((a, b) => a - b);
+}
+
+/** "compartilhado com Nº 14", "…com Nº 14 e Nº 16", "…com Nº 14, Nº 16 e Nº 18"; vazio quando ninguém divide. */
+export function compartilhadoEmPalavras(numeros: readonly number[]): string {
+  const rotulos = numeros.map((n) => `Nº ${n}`);
+  if (rotulos.length === 0) return '';
+  const lista = rotulos.length === 1 ? rotulos[0]! : `${rotulos.slice(0, -1).join(', ')} e ${rotulos[rotulos.length - 1]}`;
+  return `compartilhado com ${lista}`;
+}

@@ -1099,7 +1099,7 @@ describe('busca, filtros e visão em tabela', () => {
     await waitFor(() => document.querySelector('table') !== null);
     expect(window.location.hash).toBe('#/personas?visao=tabela');
     const cabecalhos = [...document.querySelectorAll('thead th')].map((th) => th.textContent);
-    expect(cabecalhos).toEqual(['Seleção', 'Persona', 'Conta (@)', 'Contas', 'Aparelho', 'Situação', 'Grupo', 'Ações']);
+    expect(cabecalhos).toEqual(['Seleção', 'Nº', 'Persona', 'Conta (@)', 'Contas', 'Aparelho', 'Situação', 'Capacidade', 'Sessão', 'Cofre', 'Último uso', 'Grupo', 'Ações']);
     expect((byRole('checkbox', /^Selecionar Quillon Teixeira$/) as HTMLInputElement).checked).toBe(true);
     expect((byRole('checkbox', /^Selecionar Luciana Bastos$/) as HTMLInputElement).checked).toBe(false);
     await click(byRole('button', /^Cartões$/));
@@ -1164,5 +1164,84 @@ describe('busca, filtros e visão em tabela', () => {
     await click(byRole('button', /Mais ações de Luciana Bastos/));
     expect(byRole('button', /^Marcar bloqueada$/)).toBeTruthy();
     expect(byRole('button', /Remover persona/)).toBeTruthy();
+  });
+});
+
+describe('Nº da persona e aparelho dividido (31.245)', () => {
+  const binding = (instance_id: string) => ({ instance_id, app_id: 'instagram', is_primary: true, state: 'online', worker_id: null, bound_at: null, session: null });
+  const TRES = () => [
+    pessoa({ id: 'ig-b', name: 'Bruno Ferreira', username: 'bruno.f', created_at: '2026-09-18T10:00:00Z', instance_id: 'android-04', devices: [binding('android-04')] }),
+    pessoa({ id: 'ig-a', name: 'Ana Souza', username: 'ana.s', created_at: '2026-09-17T10:00:00Z', instance_id: 'android-01', devices: [binding('android-01')] }),
+    pessoa({ id: 'ig-c', name: 'Carla Dias', username: 'carla.d', created_at: '2026-09-19T10:00:00Z', instance_id: 'android-04', devices: [binding('android-04')] }),
+  ];
+
+  it('cada cartão traz o Nº por ordem de criação, não pela ordem da lista; quem divide o aparelho diz com quem', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(TRES()));
+    await render();
+    await waitFor(() => text().includes('Carla Dias'));
+    const rotulos = [...document.querySelectorAll('[data-numero-da-persona]')].map((e) => e.textContent);
+    expect(rotulos.sort()).toEqual(['Nº 1', 'Nº 2', 'Nº 3']);
+    expect(text()).toContain('android-04 · compartilhado com Nº 3');   // Bruno (2) divide com Carla (3)
+    expect(text()).toContain('android-04 · compartilhado com Nº 2');   // e Carla (3) com Bruno (2)
+    expect(text()).not.toContain('android-01 · compartilhado');        // Ana está sozinha
+  });
+
+  it('na tabela há a coluna Nº e o filtro não renumera: a persona 3 continua 3 com a lista filtrada', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json(TRES()));
+    await render();
+    await waitFor(() => text().includes('Carla Dias'));
+    await click(byRole('button', /^Tabela$/));
+    await waitFor(() => document.querySelector('table') !== null);
+    const linhas = [...document.querySelectorAll('tbody tr')].map((tr) => [tr.querySelector('[data-numero-da-persona]')?.textContent, tr.textContent?.includes('Carla Dias')]);
+    expect(linhas.find(([, ehCarla]) => ehCarla)?.[0]).toBe('3');
+    await act(async () => useUiStore.getState().navegar({ tela: 'personas', query: { visao: 'tabela', q: 'carla' } }, 'replace'));
+    await waitFor(() => document.querySelectorAll('tbody tr').length === 1);
+    expect(document.querySelector('tbody tr [data-numero-da-persona]')?.textContent).toBe('3');
+  });
+});
+
+describe('capacidade por persona (31.255)', () => {
+  const SEM_SENHA = () => pessoa({ id: 'ig-7', name: 'Marta Sem Senha', username: 'marta.s', instance_id: 'android-07',
+    credential: { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null, updated_at: null, last_used_at: null } });
+  const PRONTA = () => pessoa({ id: 'ig-8', name: 'Paulo Pronto', username: 'paulo.p', instance_id: 'android-08',
+    credential: { configured: true, login_identifier: 'paulo@exemplo.com', status: 'active', failed_attempts: 0, blocked_until: null, updated_at: null, last_used_at: '2026-10-07T10:00:00Z', consent_at: '2026-10-06T09:00:00Z' },
+    session: { status: 'session_ready', instance_id: 'android-08', observed_username: 'paulo.p', verified_at: '2026-10-07T09:00:00Z', detail: null, stale: false } });
+
+  it('o cartão diz se a pessoa está pronta ou o que falta, com o atalho para a guia certa, sem o identificador de login', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([PRONTA(), SEM_SENHA(), SEM_CONTA]));
+    await render();
+    await waitFor(() => text().includes('Marta Sem Senha'));
+    const selos = [...document.querySelectorAll('[data-capacidade]')].map((e) => e.getAttribute('data-capacidade')).sort();
+    expect(selos).toEqual(['pronta', 'sem_conta', 'sem_senha']);
+    expect(text()).toContain('Pronta para operar');
+    expect(text()).toContain('Falta guardar a senha');
+    expect(() => byRole('button', /^Guardar senha: abrir Marta Sem Senha/)).not.toThrow();
+    expect(text()).not.toMatch(/paulo@exemplo\.com|luciana@exemplo\.com/);
+  });
+
+  it('o filtro Capacidade mostra só quem falta resolver aquilo, com a contagem no chip; sem conta, sem senha e prontas somam a lista', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([PRONTA(), SEM_SENHA(), SEM_CONTA]));
+    await render();
+    await waitFor(() => text().includes('Marta Sem Senha'));
+    await click(byRole('button', /^Sem senha guardada/));
+    await waitFor(() => !text().includes('Paulo Pronto'));
+    expect(text()).toContain('Marta Sem Senha');
+    expect(text()).not.toContain('Elaine Prado');
+    expect(window.location.hash).toContain('capacidade=sem-senha');
+  });
+
+  it('a tabela traz Capacidade, Sessão, Cofre e Último uso, e o botão do que falta', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([PRONTA(), SEM_SENHA()]));
+    await render();
+    await click(byRole('button', /^Tabela$/));
+    await waitFor(() => document.querySelector('table') !== null);
+    const linha = (nome: string) => [...document.querySelectorAll('tbody tr')].find((tr) => tr.textContent?.includes(nome)) as HTMLElement;
+    const paulo = linha('Paulo Pronto');
+    expect(paulo.querySelector('[data-sessao-da-persona="pronta"]')?.textContent).toBe('Pronta');
+    expect(paulo.querySelector('[data-cofre-da-persona="pronto"]')?.textContent).toBe('Senha e consentimento');
+    const marta = linha('Marta Sem Senha');
+    expect(marta.querySelector('[data-cofre-da-persona="sem_senha"]')?.textContent).toBe('Sem senha guardada');
+    expect(marta.textContent).toContain('nunca');
+    expect(marta.querySelector('button[aria-label^="Guardar senha"]')).not.toBeNull();
   });
 });

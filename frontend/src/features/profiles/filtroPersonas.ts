@@ -1,4 +1,5 @@
 import type { PersonaDTO } from '../../api/types';
+import { casaCapacidade, CAPACIDADES, ROTULO_DO_RECORTE, type RecorteDeCapacidade } from './capacidadeDaPersona';
 import { handleDe, nomeDe } from './pessoa';
 
 /**
@@ -10,6 +11,7 @@ import { handleDe, nomeDe } from './pessoa';
  *   "N personas bloqueadas" da saúde do ambiente) | `pausada` | `sem-conta` (sem conta de cadastro) | `atencao`
  *   (ativa, mas a cadeia aparelho → app → sessão tem um problema que alguém precisa resolver).
  * - `vinculo`: `com` | `sem` (tem ou não aparelho vinculado).
+ * - `capacidade` (31.255): `prontas` | `sem-conta` | `sem-senha` | `sem-consentimento` | `sem-aparelho` | `sessao` (o que falta para a persona operar).
  * - `grupo`: id do grupo de acesso, ou `nenhum`.
  * - `app`: id do app de algum vínculo da persona (`instagram`, `outlook`…).
  * - `q`: texto; casa com nome e @ (sem acento, sem caixa, com ou sem o "@").
@@ -44,6 +46,7 @@ export interface FiltroPersonas {
   q: string;
   situacao: Situacao | null;
   vinculo: 'com' | 'sem' | null;
+  capacidade: RecorteDeCapacidade | null;
   grupo: string | null;
   app: string | null;
   ordem: OrdemPersona;
@@ -51,7 +54,7 @@ export interface FiltroPersonas {
 }
 
 export const FILTRO_VAZIO: FiltroPersonas = {
-  q: '', situacao: null, vinculo: null, grupo: null, app: null, ordem: 'nome', visao: 'cards',
+  q: '', situacao: null, vinculo: null, capacidade: null, grupo: null, app: null, ordem: 'nome', visao: 'cards',
 };
 
 function umDe<T extends string>(lista: readonly T[], v: string | undefined): T | null {
@@ -67,6 +70,7 @@ export function lerFiltroPersonas(query: Readonly<Record<string, string>>, prefe
     q: (query.q ?? '').trim() ? query.q ?? '' : '',
     situacao: umDe(SITUACOES, query.situacao),
     vinculo: umDe(['com', 'sem'] as const, query.vinculo),
+    capacidade: umDe(CAPACIDADES, query.capacidade),
     grupo: query.grupo || null,
     app: query.app || null,
     ordem: umDe(ORDENS_PERSONA, query.ordem) ?? 'nome',
@@ -83,6 +87,7 @@ export function queryDoFiltro(f: Partial<FiltroPersonas>): Record<string, string
   if ('q' in f) out.q = f.q || undefined;
   if ('situacao' in f) out.situacao = f.situacao ?? undefined;
   if ('vinculo' in f) out.vinculo = f.vinculo ?? undefined;
+  if ('capacidade' in f) out.capacidade = f.capacidade ?? undefined;
   if ('grupo' in f) out.grupo = f.grupo ?? undefined;
   if ('app' in f) out.app = f.app ?? undefined;
   if ('ordem' in f) out.ordem = f.ordem && f.ordem !== 'nome' ? f.ordem : undefined;
@@ -92,12 +97,12 @@ export function queryDoFiltro(f: Partial<FiltroPersonas>): Record<string, string
 
 /** Algum filtro que esconde gente está ligado? (Ordem e visão não escondem ninguém.) */
 export function filtroAtivo(f: FiltroPersonas): boolean {
-  return !!(f.q.trim() || f.situacao || f.vinculo || f.grupo || f.app);
+  return !!(f.q.trim() || f.situacao || f.vinculo || f.capacidade || f.grupo || f.app);
 }
 
 /** Limpa só o que filtra; ordem e visão são preferência de leitura e ficam. */
 export const LIMPAR_FILTROS: Record<string, undefined> = {
-  q: undefined, situacao: undefined, vinculo: undefined, grupo: undefined, app: undefined,
+  q: undefined, situacao: undefined, vinculo: undefined, capacidade: undefined, grupo: undefined, app: undefined,
 };
 
 /** Sem acento e sem caixa: "Vinícius" acha com "vinicius". */
@@ -215,6 +220,7 @@ export function filtrarPersonas(pessoas: readonly PersonaDTO[], f: FiltroPersona
     (excluir === 'q' || casaBusca(p, f.q))
     && (excluir === 'situacao' || !f.situacao || casaSituacao(p, f.situacao))
     && (excluir === 'vinculo' || !f.vinculo || (f.vinculo === 'com') === temAparelho(p))
+    && (excluir === 'capacidade' || !f.capacidade || casaCapacidade(p, f.capacidade))
     && (excluir === 'grupo' || !f.grupo || (f.grupo === 'nenhum' ? !p.policy_group_id : p.policy_group_id === f.grupo))
     && (excluir === 'app' || !f.app || appsDe(p).includes(f.app)));
 }
@@ -267,7 +273,16 @@ export function textoSemResultado(f: FiltroPersonas): string {
   };
   if (f.situacao) partes.push(porSituacao[f.situacao]);
   if (f.vinculo) partes.push(f.vinculo === 'com' ? 'com aparelho' : 'sem aparelho');
+  if (f.capacidade) partes.push(ROTULO_DO_RECORTE[f.capacidade].toLowerCase());
   if (f.q.trim()) partes.push(`com "${f.q.trim()}" no nome ou no @`);
   const base = `Nenhuma persona ${partes.join(', ')}`.trim();
   return partes.length || f.grupo || f.app ? `${base}${f.grupo || f.app ? ' nesse recorte' : ''}.` : 'Nenhuma persona.';
+}
+
+/** Quantas personas cada recorte de capacidade mostraria, com os OUTROS filtros aplicados (o número do chip é o que se vê ao clicar). */
+export function contagemPorCapacidade(pessoas: readonly PersonaDTO[], f: FiltroPersonas): Record<RecorteDeCapacidade | 'todas', number> {
+  const base = filtrarPersonas(pessoas, f, 'capacidade');
+  const out = { todas: base.length } as Record<RecorteDeCapacidade | 'todas', number>;
+  for (const r of CAPACIDADES) out[r] = base.filter((p) => casaCapacidade(p, r)).length;
+  return out;
 }

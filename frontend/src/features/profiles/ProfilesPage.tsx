@@ -30,11 +30,13 @@ import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
 import { abaDoPedido, type Aba } from './abas';
 import {
-  appsDe, CHAVE_VISAO, contagemPorSituacao, filtrarPersonas, filtroAtivo, lerFiltroPersonas, LIMPAR_FILTROS, nomeDoApp,
+  appsDe, CHAVE_VISAO, contagemPorCapacidade, contagemPorSituacao, filtrarPersonas, filtroAtivo, lerFiltroPersonas, LIMPAR_FILTROS, nomeDoApp,
   ordenarPersonas, queryDoFiltro, ROTULO_SITUACAO, SITUACOES, textoSemResultado, VISOES,
   type FiltroPersonas, type OrdemPersona, type Situacao,
 } from './filtroPersonas';
 import { PersonaCard, TabelaPersonas } from './ListaDePersonas';
+import { CAPACIDADES, ROTULO_DO_RECORTE, type RecorteDeCapacidade } from './capacidadeDaPersona';
+import { compartilhadoCom, numerosDasPersonas, personasPorAparelho } from './pessoa';
 import { ProfileDetail } from './ProfileDetail';
 import styles from './Profiles.module.css';
 import { homonimosDoSegmento, resolverPersona, slugsDasPersonas } from './slugPersona';
@@ -220,7 +222,11 @@ export function ProfilesPage() {
     trocarQuery(queryDoFiltro(parcial), 'replace');
   };
   const visiveis = ordenarPersonas(filtrarPersonas(pessoas, filtro), filtro.ordem);
+  // O Nº e o aparelho dividido vêm da lista INTEIRA: o filtro esconde linhas, não muda quem é a persona 15.
+  const numeros = numerosDasPersonas(pessoas);
+  const porAparelho = personasPorAparelho(pessoas);
   const contagem = contagemPorSituacao(pessoas, filtro);
+  const contagemCapacidade = contagemPorCapacidade(pessoas, filtro);
   const escondeAlguem = filtroAtivo(filtro);
   const appsConhecidos = [...new Set(pessoas.flatMap(appsDe))].sort();
   // Selecionadas que o filtro escondeu continuam no lote: a barra diz quantas, para ninguém agir sem ver.
@@ -286,6 +292,10 @@ export function ProfilesPage() {
               { chave: 'situacao', rotulo: 'Situação', tipo: 'chips', rotuloTodos: 'Todas', contagemTodos: contagem.todas,
                 valor: filtro.situacao ?? '', onChange: (v) => mudarFiltro({ situacao: (v || null) as Situacao | null }),
                 opcoes: SITUACOES.map((s) => ({ valor: s, rotulo: ROTULO_SITUACAO[s], contagem: contagem[s] })) },
+              // Quem falta resolver o quê para operar (31.255): conta, senha, consentimento, aparelho, sessão. Cada chip é um recorte.
+              { chave: 'capacidade', rotulo: 'Capacidade', tipo: 'chips', rotuloTodos: 'Todas', contagemTodos: contagemCapacidade.todas,
+                valor: filtro.capacidade ?? '', onChange: (v) => mudarFiltro({ capacidade: (v || null) as RecorteDeCapacidade | null }),
+                opcoes: CAPACIDADES.map((r) => ({ valor: r, rotulo: ROTULO_DO_RECORTE[r], contagem: contagemCapacidade[r] })) },
               { chave: 'vinculo', rotulo: 'Aparelho vinculado', tipo: 'lista', rotuloTodos: 'Com e sem aparelho',
                 valor: filtro.vinculo ?? '', onChange: (v) => mudarFiltro({ vinculo: (v || null) as 'com' | 'sem' | null }),
                 opcoes: [{ valor: 'com', rotulo: 'Com aparelho' }, { valor: 'sem', rotulo: 'Sem aparelho' }] },
@@ -321,11 +331,13 @@ export function ProfilesPage() {
                         actions={<Button variant="outline" onClick={() => trocarQuery(LIMPAR_FILTROS, 'replace')}>Limpar filtros</Button>} />
           ) : filtro.visao === 'tabela' ? (
             <TabelaPersonas pessoas={visiveis} selecionadas={selecionadas} onSelecionar={alternarSelecao}
-                            onOpen={abrir} onChanged={load} />
+                            onOpen={abrir} onChanged={load} numeros={numeros}
+                            compartilhadoDe={(p) => compartilhadoCom(p, porAparelho, numeros)} />
           ) : (
             <AutoGrid min="320px">
               {visiveis.map((p) => (
                 <PersonaCard key={p.id} pessoa={p} onChanged={load} selecionada={selecionadas.has(p.id)}
+                             numero={numeros.get(p.id)} compartilhado={compartilhadoCom(p, porAparelho, numeros)}
                              onSelecionar={() => alternarSelecao(p.id)}
                              onOpen={(aba) => abrir(p.id, aba)} />
               ))}
