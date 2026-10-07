@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — o alvo adiado pela frota e o que espera resposta aparecem no GET da operação (ID a reservar pela orquestradora; branch feat/frota-adiada-no-get)
+
+- Com a reserva de frota (31.240), as contas aprovadas juntas sobre o mesmo alvo saem em série, e o painel via o alvo
+  só "em curso" durante a espera. Agora o alvo em curso com etapa em `retry_wait` pelo espaçamento traz
+  `motivo = "espaçamento da frota"` e `retomada_em` (a retomada mais cedo). A espera por outro limite não ganha esse
+  rótulo, e o @ que está no motivo da etapa não sai no GET.
+- Pedido do Portal (op-20261007100019-681b9b, três execuções em `needs_input` exibidas como "Em andamento"):
+  `alvos[].aguarda_resposta = {pergunta, desde}` (a pergunta da execução, redigida e cortada em 300 caracteres;
+  `desde` = o último `run.updated`) ou `null`, e `capacidade.aguardando_resposta` com a contagem.
+- Prova `simulated`: `backend/tests/test_frota_adiada_no_get.py` (3). `real`: `not_run` até o deploy.
+
 ## 2026-10-07 — 31.241: a operação com executar reabre depois da aprovação feita fora do liberar (branch feat/31-241-reabre-apos-aprovacao)
 
 - Na onda 2 de 07/10 (op-20261007100755-096a28), a operação fechou às 10:09:29Z em "aguarda liberação". As aprovações
