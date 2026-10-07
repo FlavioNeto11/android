@@ -159,6 +159,7 @@ export const LIMIT_GROUPS: LimitGroup[] = [
       int('orquestracao_max_escolhidas', 'Personas escolhidas por operação', 'personas', 'O teto da sugestão de alvos: a operação não passa disto. Padrão 30; vai de 1 a 64.', 1, 64),
       int('orquestracao_max_candidatas', 'Candidatas avaliadas pela IA', 'personas', 'As mais disponíveis que vão ao modelo para a escolha; nunca menos que as escolhidas. Padrão 60; vai de 1 a 120.', 1, 120),
       int('operacao_max_acoes_executadas', 'Contas que executam a ação final', 'contas', 'Quantas contas comentam de verdade no post nosso; as outras param até alguém liberar. Padrão 3; vai de 1 a 64.', 1, 64),
+      int('operacao_laco_s', 'Laço do sistema nas operações', 's', 'De quanto em quanto tempo o sistema lê as operações abertas e as faz andar, sem ninguém abrir a tela. 0 desliga (padrão); vai de 0 a 3600. Vale na hora, sem reiniciar.', 0, 3600),
     ],
   },
   {
