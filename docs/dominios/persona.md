@@ -359,7 +359,8 @@ evidências da onda 2 de 07/10: a nota do juiz repete o usuário da conta ("@ful
 que o mapa acima não leva. A nota passa pelo mapa da NOTA (`Repository.trocas_da_nota`), que soma três coisas:
 - o mapa do registro, que desde o 31.243 leva o usuário de cada conta da persona (com e sem a arroba, porque a borda
   da palavra não casa depois de `@`);
-- os textos da etapa que o juiz repete (`content`, `username`, `post_author`, `caption_contains`, `target`), como
+- os textos da etapa que o juiz repete (`content`, `username`, `post_author`, `target`; a legenda `caption_contains`
+  fica, porque é o texto público do alvo e a evidência diz qual legenda conferiu), como
   `{chave}`.
 
 O valor curto demais ou que já é marcador fica de fora. Vale na gravação e na saída (`Repository.nota_para_fora`:
@@ -374,8 +375,15 @@ Limites:
 
 As leituras e o treino seguem casando pela chave: o marcador volta ao valor com as variáveis da persona
 (`resolver_texto`), como o nome desde o 31.113 F3. O usuário digitado sem a arroba já era mascarado (o dado digitado
-inteiro); com a arroba, agora também. A receita que destila esse `type_text` não fica 100 % coberta e é recusada, como
-o nome digitado desde o F1 — a não ser que o usuário seja parâmetro do comando, que vence.
+inteiro); com a arroba, agora também.
+
+**A receita aceita o marcador da persona já gravado (31.244).** A destilação lê o `type_text` do banco, que traz o
+marcador (`{perfil_nome}`, `@{conta_<app>_usuario}`) e não o valor. Antes, esse texto não ficava 100 % coberto por
+parâmetros e a etapa não virava receita: era o custo do 31.113 F1 e do 31.243. Agora `recipes.distill(..., persona=)`
+recebe os NOMES das variáveis da persona do objetivo (`_RecipeRun.persona`, sem valor). O marcador cuja variável a
+persona tem conta como coberto, e a arroba logo antes dele não sobra como literal. A reprodução digita o valor da persona
+da vez, porque o replayer já recebe `{**persona, **rr.variables}` (31.87 F2). O marcador que nem a etapa nem a persona
+resolvem segue recusado (a reprodução falharia). Sem `persona`, a destilação é a de antes.
 
 A F1 não cobre o texto das etapas (`steps.postcondition`/`goal`/`title` e `plan_versions.steps`): a materialização ainda
 grava o valor resolvido. Isso é a F2 (o molde na linha e a resolução em memória no executor, combinada com a Android).
