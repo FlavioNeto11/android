@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 29.204: `scripts/funil.ps1` não reusa o nome do parâmetro `-ExigirCommit` com outra caixa (correção da Android, DevOps fechada na semana)
+
+- A variável local `$exigirCommit` (linha 281) era a mesma variável do parâmetro `$ExigirCommit` (o PowerShell não distingue caixa) e o `test_nenhum_ps1_atribui_a_um_parametro_com_outra_caixa` reprovava no funil 61. Renomeada para `$exigeCommit` nas três linhas que a usam; o comportamento não muda. Prova `simulated`: `scripts/tests/test_deploy_portao_do_ensaio.py`.
+
 ## 2026-10-07 — código morto removido pelo ADR-083 na jev/integ-62 (remerge sobre a main do refactor dos tetos)
 
 - O refactor do dono (`76672bea..ac2f6bba`, ADR-083) tirou o espaçamento entre contas, os tetos por hora e por dia, o

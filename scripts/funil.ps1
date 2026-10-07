@@ -278,7 +278,7 @@ function Get-NomesQueFalharam([string]$texto) {
 $commit = ''
 try { $commit = [string](& git -C $Raiz rev-parse --short HEAD 2>$null); if ($LASTEXITCODE -ne 0) { $commit = '' } } catch { $commit = '' }
 $commit = $commit.Trim()
-$exigirCommit = if ($ComandosDeTeste) { [bool]$ExigirCommit } else { $true }
+$exigeCommit = if ($ComandosDeTeste) { [bool]$ExigirCommit } else { $true }
 $tetoDeclarado = if ($SemTeto) { 'sem' } else { [string]$Teto }
 Add-Run ('FUNIL inicio={0} raiz={1} commit={2} teto={3} teto_por_etapa={4} hospedeiro={5} sobrepor={6}' -f (Get-Agora), $Raiz, $(if ($commit) { $commit } else { 'desconhecido' }), $tetoDeclarado, $(if ($TetoPorEtapa) { $TetoPorEtapa } else { 'nenhum' }), $PSVersionTable.PSVersion.ToString(2), $(if ($sobreporAtivo) { 'sim' } else { 'nao' }))
 $ok = 0; $falhas = 0; $puladas = 0; $naoRodou = 0; $parou = $false
@@ -293,7 +293,7 @@ if ($sobreporAtivo) {
   if ($ParalelosPg -gt 1) { $argsDoFilho += @('-ParalelosPg', [string]$ParalelosPg) }
   if ($WorkersPg -gt 0) { $argsDoFilho += @('-WorkersPg', [string]$WorkersPg) }
   if ($ComandosDeTeste) { $argsDoFilho += @('-ComandosDeTeste', $ComandosDeTeste) }
-  if ($ExigirCommit) { $argsDoFilho += '-ExigirCommit' }
+  if ($exigeCommit) { $argsDoFilho += '-ExigirCommit' }
   try {
     $filho = Start-Process -FilePath $hospedeiroInterno -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "' + $esteScript + '" ' + (Join-Citado $argsDoFilho)) -PassThru -WindowStyle Hidden
     $null = $filho.Handle   # no 5.1 o ExitCode some se o Handle nao foi pego antes do fim do processo
@@ -369,7 +369,7 @@ if ($sobreporAtivo) {
     Add-Run ("ETAPA $rotuloPg status=falhou motivo=`"$m`" sobreposta=sim"); $falhas++
   }
 }
-if (-not $commit -and $exigirCommit) {
+if (-not $commit -and $exigeCommit) {
   Add-Run 'FUNIL status=reprovado motivo="commit nao identificado (git rev-parse falhou ou sem .git): o resultado nao tem vinculo verificavel com o corte"'
   $falhas++
 }
