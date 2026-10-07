@@ -20,6 +20,7 @@ cada execução sai de `objectives.profile_id`.
 """
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 
@@ -48,6 +49,11 @@ def _resumo(texto: object) -> str:
     return (redact(" ".join(str(texto or "").split())) or "")[:RESUMO_MAX]
 
 
+#: Os parâmetros que a execução põe no objetivo (o aparelho, a execução, a conta da persona): não são da operação e não
+#: entram no resumo do fluxo.
+_DA_EXECUCAO = frozenset({"instance_id", "run_id", "account_label"})
+
+
 def _marcas(n: int) -> str:
     return ",".join("?" * n)
 
@@ -64,6 +70,23 @@ class LeitorDoAprendizadoDaOperacao:
         linhas = self.db.query("SELECT r.id, MIN(o.profile_id) AS persona FROM runs r LEFT JOIN objectives o"
                                " ON o.run_id = r.id WHERE r.operacao_id=? GROUP BY r.id ORDER BY r.id", (operacao_id,))
         return {str(r["id"]): (str(r["persona"]) if r["persona"] else None) for r in linhas}
+
+    def personas(self, operacao_id: str) -> list[str]:
+        """As personas das execuções da operação (`profile_id`, ordenadas): o filtro `persona` do painel (achado da
+        Portal no 57: sem isto, ela montava a lista pelo rótulo dos alvos)."""
+        return sorted({p for p in (self.execucoes(operacao_id) or {}).values() if p})
+
+    def _valores(self, runs: dict[str, str | None]) -> dict[str, str]:
+        """Os parâmetros dos objetivos da operação que têm UM valor só (os da operação, iguais em todo alvo). O que
+        varia por alvo fica fora: o resumo segue com o marcador."""
+        vistos: dict[str, set[str]] = {}
+        for o in self.db.query(f"SELECT parameters FROM objectives WHERE run_id IN ({_marcas(len(runs))})", tuple(runs)):
+            params = loads(o["parameters"], {}) or {}
+            for k, v in (params.items() if isinstance(params, dict) else ()):
+                if (k not in _DA_EXECUCAO and isinstance(v, (str, int, float)) and not isinstance(v, bool)
+                        and str(v).strip()):
+                    vistos.setdefault(str(k), set()).add(str(v).strip())
+        return {k: next(iter(vs)) for k, vs in vistos.items() if len(vs) == 1}
 
     def ler(self, operacao_id: str, *, simulados: bool = False) -> list[Item] | None:
         """Os itens da operação; None se ela é desconhecida (sem execução e sem memória)."""
@@ -194,12 +217,16 @@ class LeitorDoAprendizadoDaOperacao:
             sql += f" OR id IN ({_marcas(len(ids))})"
             args += ids
         itens = []
+        valores = self._valores(runs) if runs else {}
         for f in self.db.query(sql, tuple(args)):
             ref = f"fluxo:{f['id']}"
             nasceu_aqui = f["source_run_id"] in runs
             a, c, ult, ev = self._favor(ref, evid)
             estado = str(f["status"])
-            itens.append(Item(ref=ref, tipo="fluxo", escopo="processo", resumo=_resumo(f["command_template"]),
+            # Achado da Portal no 57: o resumo mostrava o marcador cru (`{caption_contains}`). Com o valor da operação;
+            # o parâmetro que varia por alvo, ou que a operação não tem, segue como marcador. `_resumo` redige depois.
+            comando = re.sub(r"\{(\w+)\}", lambda m: valores.get(m.group(1), m.group(0)), str(f["command_template"] or ""))
+            itens.append(Item(ref=ref, tipo="fluxo", escopo="processo", resumo=_resumo(comando),
                               origem="execucao" if nasceu_aqui else "reforco", confianca=confianca_do_livro(estado),
                               estado=estado, evidencia=(str(f["source_run_id"]),) if nasceu_aqui and not ev else ev,
                               persona=runs.get(str(f["source_run_id"])) if nasceu_aqui else None,

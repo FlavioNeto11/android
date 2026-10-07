@@ -20,6 +20,85 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
+
+- Medido no percurso real da Portal no 57 (06/10 23:20Z): o resumo do fluxo na aba Aprendizado da operação mostrava o
+  marcador cru (`{caption_contains}`), e o `GET /api/operacoes/{id}/aprendizado` não dizia as personas da operação.
+- O resumo do fluxo leva o valor do parâmetro quando a operação tem UM valor só para ele em todos os objetivos. O que
+  varia por alvo, ou que a operação não tem, segue como marcador. `instance_id`, `run_id` e `account_label` ficam fora,
+  e o resumo continua redigido.
+- A resposta ganha `personas`: os `profile_id` das execuções da operação, ordenados, para o filtro do painel (adendo v1.106).
+- Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py` (8 testes, 1 novo); operação, pedidos e
+  arquitetura: 722 passaram; mypy 257. `real`: `not_run` (a aba da Portal após o deploy).
+
+## 2026-10-06 — K-107 (do 31.160): a gravação crua do ensino sai mascarada na leitura (branch feat/31-160-gravacao-mascarada)
+
+- Medido em 06/10 (ensino do 31.160, alvo = o perfil da própria persona): o fluxo, a receita e o Livro saíram limpos,
+  mas o `GET /api/training/{id}` devolvia o @ e o nome dela no `target.text`, no `target.desc` e nas linhas da tela.
+- `TrainingRecorder.get` mascara as entradas por padrão (`dado_da_persona.na_gravacao`): todo dado da persona (3+
+  caracteres) vira o marcador no texto do alvo tocado (`text`, `desc`, `content_desc`, `hint`, `label`), nas linhas e no
+  título da tela, nos `filhos` do alvo e no texto digitado, por palavra, sem diferença de caixa, também logo depois
+  de um @ e com qualquer espaço entre as partes do valor. Limite: casa o valor inteiro (o primeiro nome sozinho fica). Vale para o GET
+  da sessão e para as respostas que a devolvem (iniciar, gravar, desfazer, proposta, salvar, reproduzir). As quatro
+  leituras internas do ensino (proposta, salvar, prévia e reproduzir) usam `get(..., crua=True)`: a destilação segue
+  igual. O formato da resposta não muda.
+- A proposta guardada (títulos e resumo) não é mascarada além do que já era: o painel a devolve na prévia e no salvar,
+  e o marcador no título faria a etapa mirar a persona de cada aparelho em vez do alvo visto.
+- A prévia e o salvar avisam quando um parâmetro do comando sai porque o exemplo é o dado da própria persona que
+  ensinou: "{param} saiu do comando: … a etapa vai usar {marcador} de cada aparelho".
+- Prova `simulated`: `backend/tests/test_treino_gravacao_mascarada.py` (3 testes). Ensino, receitas, personas e
+  arquitetura: 925 passaram (antes da correção da revisão) e 699 do ensino, personas e arquitetura depois dela; mypy 257, docs-check 0. `real`: `not_run` (um GET de sessão de ensino gravada com o perfil da própria persona, após o
+  deploy).
+
+## 2026-10-06 — 31.153: as etapas ensinadas como ações conhecidas do app no plano livre (branch feat/31-153-etapas-ensinadas)
+
+- Medido em 06/10: a receita ensinada só era achada pela chave da etapa (o `template_hash`). O plano livre gerava outro
+  texto e outro hash, e as 27 receitas ensinadas só serviam aos próprios fluxos, quase todos desligados.
+- Cada etapa de fluxo ensinado (ligado ou não) que tem receita do ensino ativa, com 1 ou mais reproduções boas, vira
+  oferta ao planejador livre (`planning/etapas_ensinadas.py`, `FlowStore.etapas_ensinadas`). Ficam de fora a etapa com
+  efeito, a com `commit_guard`, a do catálogo e o nome fora do formato.
+  - As ofertas são dos apps do aparelho e dos citados no comando: uma por (app, nome), a mais reproduzida, até 12.
+  - O bloco `<etapas_ensinadas>` vai no texto de usuário com nome, app e nomes dos parâmetros. O título fica de fora,
+    porque pode trazer o valor demonstrado.
+- Quando o plano livre tem uma etapa com esse nome no mesmo app e declara os parâmetros dela, o código a troca pela
+  etapa-molde do ensino, mantendo as dependências. A etapa materializada ganha o MESMO `template_hash` da receita, e o
+  executor a roda sem IA, caindo na IA se divergir. A trilha diz qual receita. Faltando parâmetro, fica a etapa do
+  plano, com o motivo.
+- Revisão de segredos (médio e baixos corrigidos): a etapa do plano com efeito, trava, ação do catálogo ou `bindings`
+  não é trocada pelo molde (perderia a marca que a leva à aprovação); a etapa de sessão ou login (`ACAO_DE_SESSAO`) e a
+  chave que carrega uma palavra de um valor demonstrado do fluxo não são oferecidas.
+- O esquema de saída do plano não muda. O escopo da receita segue o 30.81; a decisão do dono (a ação ensinada serve a
+  todas as personas ou só ao escopo de quem ensinou) fica pendente.
+- Prova `simulated`: `backend/tests/test_etapas_ensinadas_no_plano_livre.py` (2 testes; a etapa materializada tem o
+  hash da receita). Planejamento, receitas, fluxos e arquitetura: 4801 passaram; mypy 257 (no teto). `real`: `not_run` (um comando livre do
+  Configurações em que a etapa de busca roda pela receita ensinada com 0 decisões de IA).
+
+## 2026-10-06 — 31.151: o pedido parecido chega ao fluxo pelo planejador (branch feat/31-151-fluxo-por-semelhanca)
+
+- Medido em 06/10: 8 de 275 execuções foram planejadas por fluxo ensinado, todas lote de prova; 0 uso real. `match` só
+  casava o texto inteiro do molde e o planejador não conhecia fluxo nenhum.
+- No ramo livre do `_plan`, os fluxos ativos e no escopo que o comando PARECE vão ao planejador como habilidades
+  conhecidas (`planning/habilidades.py`). O bloco `<habilidades_conhecidas>` vai no texto de usuário e leva:
+  - a referência pública, o molde, os nomes dos parâmetros e os apps;
+  - nunca o valor demonstrado nem o nome do fluxo.
+
+  Vão no máximo 3, com nota mínima de 0,3. A paráfrase do item dá 0,333; o valor é a calibrar.
+- O planejador devolve o plano de sempre e o campo `habilidade` (`{ref, valores: [{nome, valor}]}` ou `null`), nos
+  5 formatos de saída do plano. É lista de pares porque o esquema estrito fecha todo objeto.
+- O código confere a escolha: a referência foi oferecida, os parâmetros são exatamente os do molde, e cada valor está
+  no comando. Valendo, o plano é o do fluxo, como no `match`:
+  - `planner.model = fluxo:<id>`, `runs.flow_id` gravado e `flows.uses` sobe;
+  - a trilha diz "Plano do fluxo X por semelhança, nota N".
+
+  Recusada, fica o plano livre, com o motivo na trilha; sem escolha, a trilha lista o que foi oferecido.
+- Decisão do dono pendente (roda sem confirmação ou só com a prévia aprovada): até ela, `habilidades.SEM_CONFIRMACAO =
+  False`. A execução `execute` planejada por semelhança para em `planned` e espera o início por uma pessoa.
+- `Plan.escolha_por_semelhanca` é só de passagem (`exclude=True`): o plano gravado não muda. Adendo v1.103.
+- Prova `simulated`: `backend/tests/test_fluxo_por_semelhanca.py` (5 testes: casa, parece e é escolhido, parece e é
+  recusado, não escolhido; o valor demonstrado não vai ao prompt; o JSON do provedor real). Planejamento, parsing,
+  prompts, fluxos e arquitetura: 3373 passaram; as 2 falhas da rodada (o teste novo do provedor real e a catraca de Any) foram corrigidas e rerodadas (48 passaram). Revisor de segredos: sem alto; o médio (molde com literal de alvo, como @, endereço ou número longo, não vai ao prompt) e três baixos (referência fora do oferecido não vai à trilha; parâmetros reservados fora; uses só sobe ao aprovar) corrigidos. `real`: `not_run` (um pedido parafraseado no android-04 planejado pelo
+  fluxo ensinado, cerca de US$ 0,02, com o sim do dono).
+
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 
 - Na onda 1 (06/10), a pesquisa da operação deixou 6 de 8 fatos como `hipotese` (uma fonte só), e nada os

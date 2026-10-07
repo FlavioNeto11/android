@@ -171,6 +171,76 @@ def com_marcador(texto: str, persona: Mapping[str, str]) -> str:
                            if isinstance(v, str) and len(v.strip()) >= MINIMO})
 
 
+def _na_leitura(texto: str, persona: Mapping[str, str]) -> str:
+    """O texto mostrado com o dado da persona trocado pelo marcador: como `com_marcador`, mas sem diferença de caixa e
+    também logo depois de um @ (o "@ana_souza" do resultado de busca tocado), e o espaço do valor casa com qualquer
+    espaço (o NBSP e a quebra de linha do `content_desc`). Só para a LEITURA: nada que a etapa digite ou confira passa
+    por aqui. Limite conhecido: casa o valor INTEIRO; o primeiro nome sozinho de "Ana Lopes", ou o telefone em outro
+    formato, fica."""
+    for nome, valor in sorted(persona.items(), key=lambda kv: -len(kv[1].strip())):
+        v = valor.strip().lstrip("@")
+        if len(v) >= MINIMO:
+            padrao = r"\s+".join(re.escape(parte) for parte in v.split())
+            texto = re.sub(r"(?<![\w.])" + padrao + r"(?![\w@])", "{" + nome + "}", texto, flags=re.IGNORECASE)
+    return texto
+
+
+#: O que a leitura da gravação mostra de cada entrada e pode trazer o dado da persona (o texto do elemento tocado, a
+#: descrição dele, o título e as linhas da tela, o texto digitado).
+_CAMPOS_DO_ALVO = ("text", "desc", "content_desc", "hint", "label")
+
+
+def _no_alvo(alvo: Mapping[str, object], persona: Mapping[str, str]) -> dict[str, object]:
+    """O alvo tocado e os `filhos` dele (o @ e o nome de uma linha de resultado costumam estar no filho)."""
+    d = {k: _na_leitura(v, persona) if k in _CAMPOS_DO_ALVO and isinstance(v, str) else v for k, v in alvo.items()}
+    if isinstance(alvo.get("filhos"), list):
+        d["filhos"] = [_no_alvo(f, persona) if isinstance(f, dict) else f for f in _lista(alvo.get("filhos"))]
+    return d
+
+
+def na_gravacao(entradas: Iterable[Mapping[str, object]], persona: Mapping[str, str]) -> list[dict[str, object]]:
+    """K-pendente do 31.160: a gravação crua com o dado da persona trocado pelo marcador, para o GET da sessão. O painel
+    não precisa do valor, e a gravação do ensino com o alvo = o perfil da própria persona devolvia o @ e o nome dela no
+    `target.text`, no `target.desc` ("Photo by …") e nas linhas da tela. Por palavra, sem diferença de caixa, com TODOS
+    os dados da persona (não só os digitados): é leitura, e trocar a mais só esconde uma palavra. A destilação lê a
+    gravação crua (`TrainingRecorder.get(..., crua=True)`)."""
+    persona = {n: v for n, v in persona.items() if isinstance(v, str) and len(v.strip().lstrip("@")) >= MINIMO}
+    saida: list[dict[str, object]] = []
+    for e in entradas:
+        d = dict(e)
+        if persona:
+            alvo = d.get("target")
+            if isinstance(alvo, dict):
+                d["target"] = _no_alvo(alvo, persona)
+            d["screen_lines"] = [_na_leitura(x, persona) if isinstance(x, str) else x
+                                 for x in _lista(d.get("screen_lines"))]
+            for campo in ("screen_title", "text"):
+                if isinstance(d.get(campo), str):
+                    d[campo] = _na_leitura(str(d[campo]), persona)
+        saida.append(d)
+    return saida
+
+
+def parametros_da_persona(p: Mapping[str, object], persona: Mapping[str, str]) -> list[tuple[str, str]]:
+    """`(parâmetro, marcador)` de cada parâmetro do comando que `na_proposta` tira porque o exemplo É o dado da persona
+    que ensina (K-pendente do 31.160): a etapa passa a mirar o dado de cada persona, não um alvo dito no pedido."""
+    por_valor = {valor.strip().casefold(): nome for nome, valor in persona.items()}
+    saida = []
+    for x in _lista(p.get("parameters")):
+        if isinstance(x, dict) and x.get("name"):
+            marcador = por_valor.get(str(x.get("example") or "").strip().casefold())
+            if marcador is not None:
+                saida.append((str(x["name"]), marcador))
+    return saida
+
+
+def aviso_dos_parametros(trocados: Iterable[tuple[str, str]]) -> list[str]:
+    """A linha da prévia e do salvar para cada parâmetro que saiu do comando por ser o dado da própria persona."""
+    return [f"{{{nome}}} saiu do comando: o exemplo é o dado da própria persona que ensinou, e a etapa vai usar "
+            f"{{{marcador}}} de cada aparelho. Para um alvo dito no pedido, ensine com um exemplo que não seja a persona."
+            for nome, marcador in trocados]
+
+
 def aviso(usados: Iterable[str]) -> list[str]:
     """A linha que o painel mostra no salvar e na prévia: o que vem do perfil da persona de cada aparelho."""
     marcadores = ", ".join("{" + n + "}" for n in usados)
@@ -178,4 +248,5 @@ def aviso(usados: Iterable[str]) -> list[str]:
             ] if marcadores else []
 
 
-__all__ = ["MINIMO", "aviso", "com_marcador", "com_valores", "demonstrados", "marcas_das_entradas", "na_proposta", "nas_perguntas"]
+__all__ = ["MINIMO", "aviso", "aviso_dos_parametros", "com_marcador", "com_valores", "demonstrados", "marcas_das_entradas",
+           "na_gravacao", "na_proposta", "nas_perguntas", "parametros_da_persona"]

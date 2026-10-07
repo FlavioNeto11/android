@@ -7495,6 +7495,7 @@ Código: `backend/app/modules/operacoes/` e `backend/app/state.py::_releitura_da
 Código: `ServicoDeOperacoes.elegiveis` e `backend/app/modules/operacoes/presentation/router.py`. Testes:
 `backend/tests/test_operacoes.py`.
 
+
 ## Adendo v1.97 (06/10/2026; número da orquestradora; item 31.150, K-106) — o fluxo de prova religado para uso real
 
 Todo fluxo de prova (`nascido_de_prova`, 31.130) termina desligado. A volta era o `PUT /api/flows/{id}` genérico, com o
@@ -7613,3 +7614,42 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
   - `liberada`: vale fora da persona que ensinou (30.81).
 - **Vizinhos:** contam as etapas de planos LIVRES (sem fluxo e sem prova de fluxo) que aceitaram o pacote.
 - **Prova:** `simulated` (`backend/tests/test_rendimento_do_ensino.py`, 2 testes). `real`: `not_run`.
+
+## Adendo v1.103 (06/10/2026; número da orquestradora; item 31.151) — o pedido parecido chega ao fluxo pelo planejador
+
+- **`POST /api/runs` com planejamento livre:** os fluxos ativos e no escopo que o comando PARECE (até 3, nota mínima
+  0,3) vão ao planejador como habilidades conhecidas.
+  - Vão a referência pública, o molde, os nomes dos parâmetros (sem os reservados) e os apps.
+  - O molde com literal de alvo (um @, um endereço, um número longo) não vai.
+  - Nunca vão o valor demonstrado nem o nome do fluxo.
+- **Escolha:** o planejador pode devolver, com o plano, a habilidade e os valores tirados do comando. O código confere
+  a referência oferecida, os parâmetros exatos e que cada valor está no comando.
+  - Valendo, o plano gravado é o do fluxo: `plan.planner.model = "fluxo:<id>"` e `runs.flow_id` = o fluxo. A trilha
+    (`decision`) diz "Plano do fluxo <ref> “<molde>” por semelhança, nota N".
+  - Recusada, fica o plano livre, com o motivo na trilha.
+  - Sem escolha, a trilha lista as oferecidas.
+- **Mudança de comportamento:** a execução pedida com `mode: "execute"` cujo plano veio por semelhança termina o
+  planejamento em `planned`, não em `running`. Ela espera o início por uma pessoa (a prévia aprovada) até a decisão do
+  dono (P-032). `flows.uses` só sobe quando ela é aprovada.
+- **O plano gravado não muda de forma:** a escolha não é gravada nele.
+- **Prova:** `simulated` (`backend/tests/test_fluxo_por_semelhanca.py`, 5 testes). `real`: `not_run` (pede o deploy
+  que leve o 31.151).
+
+## Adendo v1.106 (06/10/2026; número da orquestradora; item 31.157) — as personas e o valor no resumo do fluxo
+
+Este adendo estende o `GET /api/operacoes/{operacao_id}/aprendizado` do adendo v1.96. Ele corrige dois achados do
+percurso real da Portal no 57.
+
+- **`personas`:** campo novo no topo da resposta, com a lista dos `profile_id` das execuções da operação, ordenados e
+  sem repetição. É o filtro `persona` do painel. Sem execução, a lista vem vazia.
+- **O resumo do item `fluxo:<id>`:** passa a trazer o valor do parâmetro quando a operação tem UM valor só para ele em
+  todos os objetivos. Fica como marcador `{nome}` o parâmetro que:
+  - varia por alvo;
+  - a operação não tem;
+  - é da execução (`instance_id`, `run_id`, `account_label`).
+
+  O resumo continua redigido e com até 200 caracteres.
+- Nada mais muda na forma da resposta.
+- **Prova:** `simulated` (`backend/tests/test_aprendizado_da_operacao.py`). `real`: `not_run`, pede o deploy do corte
+  59.
+
