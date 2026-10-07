@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.253 (ADR-082): na operação que executa, a persona do grupo sem aprovação age sem pedir aprovação (branch feat/31-253-grupo-liberado-executa)
+
+- Decisão do dono em 07/10: as personas ficam num grupo que libera tudo, sem pedir permissão. Até aqui o grupo do 28.61 só
+  dispensava a aprovação de política, e o teto `preparar` do 28.23 seguia travando o efeito de todo alvo de operação.
+- Agora, com `acao_final=executar`, o alvo cuja persona está em `grupo_sem_aprovacao` nasce com o teto `agir`: sem pedido
+  de aprovação, sem pergunta no Telegram e sem liberar. Fora do grupo ou com `preparar`, segue como antes.
+- `operacao_grupo_liberado_executa` (padrão `true`, lido ao vivo na criação do alvo) volta atrás.
+- Recusas, frota, reserva de frota, tetos, conduta e proteção de conta seguem na porta.
+- Prova `simulated`: `backend/tests/test_grupo_liberado_executa.py` (3, um deles pela `_policy_gate` de verdade). `real`:
+  `not_run` até o deploy.
+
 ## 2026-10-07 — 31.241: a operação com executar reabre depois da aprovação feita fora do liberar (branch feat/31-241-reabre-apos-aprovacao)
 
 - Na onda 2 de 07/10 (op-20261007100755-096a28), a operação fechou às 10:09:29Z em "aguarda liberação". As aprovações

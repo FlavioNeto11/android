@@ -417,6 +417,11 @@ class LimitsCfg(BaseModel):
     # do despacho (o mesmo pedido a várias contas, a repetição e a família vistas depois do rascunho), a conduta e a
     # proteção de conta. Vazio = desligado. Lido ao vivo; desfazer é `PUT /api/settings {"grupo_sem_aprovacao": ""}`.
     grupo_sem_aprovacao: str = Field("", max_length=80)
+    # 31.253 / ADR-082 (dono, 07/10: "colocar todas as personas em um grupo que libera tudo para não precisar de
+    # permissão pra nada"; substitui em parte o 28.23): na operação com `acao_final=executar`, o alvo cuja persona está
+    # no grupo acima nasce com o teto `agir`, e não `preparar` — sem pedido de aprovação, sem pergunta no Telegram e sem
+    # passar pelo liberar. Fora do grupo, ou com isto desligado, segue `preparar`. Lido na criação de cada alvo.
+    operacao_grupo_liberado_executa: bool = True
     # 30.60 (N4): publicar no feed (balde `posts`) passa por uma pessoa mesmo com perfil ou grupo `autonomous`, como a DM
     # fria do ADR-055. Só a instalação afrouxa, aqui; um perfil não tem esse poder.
     publicar_sem_aprovacao: bool = False

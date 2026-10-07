@@ -219,6 +219,9 @@ limits:
   # 28.61: id do grupo de política cujas personas não passam pela aprovação de política (vazio = desligado). As recusas,
   # os tetos, a conduta, a proteção de conta, o teto preparar e o liberar da operação continuam.
   grupo_sem_aprovacao: ""
+  # 31.253 / ADR-082: na operação com acao_final executar, o alvo cuja persona está nesse grupo nasce com o teto agir (sem
+  # aprovação, sem Telegram, sem liberar). false volta ao teto preparar para todos (28.23).
+  operacao_grupo_liberado_executa: true
   # 30.60 (N4): publicar no feed passa por uma pessoa mesmo com perfil ou grupo autônomo. true só se o dono decidir.
   publicar_sem_aprovacao: false
   # Item 17.12: num for_each, cada item além do primeiro soma ai_max_calls_per_item ao teto acima, até ai_max_calls_absolute

@@ -10,6 +10,10 @@ Toda execução de alvo nasce com o teto de autonomia `preparar` (28.23): o efei
 de aprovação que carrega o texto — esse É o estágio `acao_preparada`, sem gancho novo no despacho. `liberar` aprova esses
 pedidos pelo serviço de aprovações de sempre, só com o eco do texto que a pessoa leu (31.49) e só até
 `LimitsCfg.operacao_max_acoes_executadas`. Nenhuma aprovação é automática.
+
+A exceção (31.253, ADR-082, decisão do dono em 07/10): na operação com `acao_final=executar`, o alvo cuja persona está no
+grupo `LimitsCfg.grupo_sem_aprovacao` nasce com o teto `agir`. Não há pedido de aprovação nem liberar para ele; a porta
+segue com as recusas, a frota, os tetos e a proteção de conta. Desliga em `operacao_grupo_liberado_executa`.
 """
 from __future__ import annotations
 
@@ -21,7 +25,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from app.contracts.origem import PREFIXO_OPERACAO
 from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
@@ -275,7 +279,7 @@ class ServicoDeOperacoes:
             chave = f"{PREFIXO_OPERACAO}{op_id}:{hashlib.sha256(alvo.profile_id.encode()).hexdigest()[:24]}"
             try:
                 resumo = self.runs.create(RunCreate(
-                    command=pedido.command, idempotency_key=chave, teto_de_autonomia="preparar",
+                    command=pedido.command, idempotency_key=chave, teto_de_autonomia=self._teto(alvo, pedido),
                     targets=[RunTarget(profile_id=alvo.profile_id, instance_ids=[aparelho or ""],
                                        app_id=pedido.app_id)]))
                 run_id = resumo.id
@@ -289,6 +293,16 @@ class ServicoDeOperacoes:
             " motivo, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (op_id, seq, alvo.profile_id, conta, aparelho, run_id, parada or "sessao",
              "bloqueado" if parada else "pendente", motivo, now_iso()))
+
+    def _teto(self, alvo: AlvoPedido, pedido: PedidoDeOperacao) -> Literal["preparar", "agir"]:
+        """31.253 / ADR-082: `agir` para a persona do grupo sem aprovação numa operação que executa (decisão do dono em
+        07/10); `preparar` (28.23) para as demais. As recusas, a frota, os tetos e a proteção de conta seguem na porta."""
+        cfg = self.limites()
+        grupo = str(getattr(cfg, "grupo_sem_aprovacao", "") or "").strip()
+        if pedido.acao_final != "executar" or not grupo or not getattr(cfg, "operacao_grupo_liberado_executa", False):
+            return "preparar"
+        persona = self.social.persona_row(alvo.profile_id)
+        return "agir" if persona is not None and persona["policy_group_id"] == grupo else "preparar"
 
     def _conferir(self, alvo: AlvoPedido, app_id: str) -> tuple[str | None, str | None, str | None, str | None]:
         """Persona → conta → sessão → aparelho, na ordem do dono. Devolve (parada, motivo, conta, aparelho)."""
