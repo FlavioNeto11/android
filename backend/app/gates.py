@@ -574,6 +574,10 @@ class Portoes:
                     identidade=conhecimento_dominio.identidade_do_alvo(autor, legenda))
                 if leitura is not None:
                     _registrar_estagio(self._st.db, run_id, "conteudo_lido")
+                    if leitura == conhecimento_dominio.PRIMEIRA and self._pesquisa.sem_assunto(operacao_id):
+                        # 31.248: a pesquisa da criação não rodou (sem assunto); agora há leitura, e o assunto sai dela.
+                        # A tarefa pega a trava da operação depois deste texto: os próximos agentes já leem os fatos.
+                        self.agendar_pesquisa_da_operacao(operacao_id)
             fatos = self._conhecimento.fatos(operacao_id, leitura=leitura)
         except Exception:  # noqa: BLE001 - ver acima
             log.exception("operação %s: o conhecimento comum não entrou no texto da execução %s", operacao_id, run_id)
@@ -631,7 +635,8 @@ class Portoes:
                     self._st.bus.emit("log", f"operação {operacao_id}: pesquisa reaproveitada do Livro: "
                                              f"{feito.reaproveitados} fato(s), sem chamada paga", run_id=str(run_id))
                     return
-                self._st.bus.emit("log", f"operação {operacao_id}: pesquisa na criação: {feito.fatos} fato(s) "
+                quando = "com o assunto da leitura do alvo" if feito.assunto_da_leitura else "na criação"
+                self._st.bus.emit("log", f"operação {operacao_id}: pesquisa {quando}: {feito.fatos} fato(s) "
                                          f"({feito.confirmados} confirmado(s)), {feito.fontes} fonte(s), "
                                          f"{feito.buscas} busca(s)", run_id=str(run_id))
 

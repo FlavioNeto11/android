@@ -16,6 +16,7 @@ Não cobre: a pesquisa paga roda como hoje, com o motivo no log.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -70,3 +71,29 @@ def cobertura(fatos: Sequence[FatoDoLivro], *, fontes_indicadas: Sequence[str], 
 
 
 __all__ = ["ESTADOS_VIVOS", "Cobertura", "FatoDoLivro", "cobertura", "dominio"]
+
+
+# ------------------------------------------------------------------ 31.248: o assunto que nasce da leitura do alvo
+#: A chave da leitura do alvo na memória da operação (`pedidos/domain/conhecimento_da_operacao.CHAVE_DO_CONTEUDO`).
+CHAVE_DA_LEITURA = "alvo.conteudo"
+ASSUNTO_DA_LEITURA_MAX = 160
+#: Abaixo disto o que sobra da leitura não é assunto que valha uma busca (só emoji, só menções, uma palavra).
+ASSUNTO_DA_LEITURA_MIN_PALAVRAS = 3
+_URL = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
+_MENCAO = re.compile(r"(?<![\w@])@[\w.]+")
+_PALAVRA = re.compile(r"[^\W\d_]{2,}")
+
+
+def assunto_da_leitura(texto: str | None) -> str | None:
+    """31.248: o assunto da pesquisa quando a operação não traz um: a leitura do alvo (o recorte PÚBLICO da publicação,
+    `alvo.conteudo`) sem menção a conta (`@fulano`: nome de terceiro não vai à busca externa) e sem endereço, com a
+    hashtag virando palavra, em uma linha e cortado na palavra. `None` quando sobra pouco para buscar."""
+    if not texto:
+        return None
+    limpo = _MENCAO.sub(" ", _URL.sub(" ", str(texto))).replace("#", " ")
+    limpo = " ".join(limpo.split())
+    if len(_PALAVRA.findall(limpo)) < ASSUNTO_DA_LEITURA_MIN_PALAVRAS:
+        return None
+    if len(limpo) > ASSUNTO_DA_LEITURA_MAX:
+        limpo = limpo[:ASSUNTO_DA_LEITURA_MAX].rsplit(" ", 1)[0]
+    return limpo or None
