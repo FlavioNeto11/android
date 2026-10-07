@@ -118,6 +118,18 @@ def normalizar_chaves(plan: Plan, capabilities: Iterable[str]) -> tuple[Plan, st
     return plan.model_copy(update={"steps": steps}), None
 
 
+def sem_perguntas_dos_fixos(plan: Plan, fixos: Mapping[str, str]) -> tuple[Plan, list[str]]:
+    """31.236: (plano, campos respondidos). A pergunta (`missing`) cujo campo é o NOME de um fixo da operação já tem
+    resposta: o valor fixo, que `fixar_parametros` põe em `plan.parameters`. Sem isto a execução ia a `needs_input`
+    perguntando o que a operação já sabia. Só o nome casa (sem caixa); a pergunta de outro campo continua."""
+    nomes = {n.strip().casefold() for n in fixos}
+    respondidos = [m.field for m in plan.missing if m.field.strip().casefold() in nomes]
+    if not respondidos:
+        return plan, []
+    restantes = [m for m in plan.missing if m.field.strip().casefold() not in nomes]
+    return plan.model_copy(update={"missing": restantes}), respondidos
+
+
 def ajustar(plan: Plan, fixos: Mapping[str, str], capabilities: Iterable[str]) -> tuple[Plan, str | None]:
     pulados = colisoes(plan, fixos)
     ajustado, motivo = normalizar_chaves(fixar_parametros(plan, fixos), capabilities)
