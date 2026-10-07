@@ -528,8 +528,13 @@ class TrainingRecorder:
         s["nascido_de_prova"] = bool(s.get("nascido_de_prova"))          # 31.130: nulo = uso real
         s["origin"] = origin_da_linha(self.db, s)
         if s["origin"]:                       # 31.111 F2: o contexto só na leitura de UMA sessão (a lista fica leve)
-            s["origin"]["context"] = contexto_da_falha(self.db, s["origin"]["run_id"], s["origin"]["step_id"],
-                                                       s["origin"]["attempt_id"])
+            o = s["origin"]
+            # 31.243: os mapas do registro e da nota, pelo barramento que o `Repository` liga (sem ele, sem máscara)
+            mascara, da_nota = getattr(self.bus, "mascara", None), getattr(self.bus, "mascara_da_nota", None)
+            s["origin"]["context"] = contexto_da_falha(
+                self.db, o["run_id"], o["step_id"], o["attempt_id"],
+                trocas=mascara(o["run_id"], None, o["step_id"], o["attempt_id"]) if mascara else None,
+                trocas_da_nota=da_nota(o["run_id"], o["step_id"], o["attempt_id"]) if da_nota else None)
             # 31.111 F4: a causa provável (30.13) da tentativa que falhou, com a pergunta do que mostrar. Sem IA.
             aid = s["origin"]["attempt_id"]
             diagnostico = (self.diagnostico_da_falha(str(aid))
