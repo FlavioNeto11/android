@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
+
 from app.config import LimitsCfg
 from app.modules.operacoes.infrastructure.servico import AlvoPedido
 from app.util import now_iso
@@ -73,7 +75,7 @@ async def _comentario(harness: Any, run_id: str, instancia: str, usuario: str, t
     `pause_requested=1` o despacho não pega o objetivo: quem passa pela porta é o teste."""
     from app.models import PersonaCreate, PersonaTraits, Plan, PlannerInfo, PlanStep, Postcondition, ProfileCreate, \
         ProfilePatch
-    from .test_capabilities import IG, SENHA
+    from .apoio_politica import IG, SENHA
     state = harness.state
     db = state.db
     if db.one("SELECT id FROM apps WHERE id='ig'") is None:
@@ -104,6 +106,7 @@ async def _comentario(harness: Any, run_id: str, instancia: str, usuario: str, t
     return oid, sid
 
 
+@pytest.mark.skip(reason="ADR-083: a dispensa de aprovação de política pelo grupo (28.61) saiu de policy.py")
 async def test_pela_porta_o_teto_agir_do_grupo_libera_o_efeito_sem_pedido_de_aprovacao(harness: Any) -> None:
     state = harness.state
     state.settings.update({"grupo_sem_aprovacao": GRUPO})
