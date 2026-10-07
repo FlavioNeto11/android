@@ -6,7 +6,8 @@ comentário de fora.
 
 O que estes testes protegem:
 * `acoes_finais_fora`: a etapa do plano livre com efeito ou trava de commit que o fluxo não cobre (pela ação do
-  catálogo, senão pela chave) sai na lista, sem repetir; a que o fluxo cobre não sai; a de leitura não conta;
+  catálogo, senão pela chave, e pela quantidade: dois envios no livre e um no fluxo deixam um de fora) sai na lista,
+  sem repetir; a que o fluxo cobre não sai; a de leitura não conta;
 * no planejamento: o fluxo de leitura escolhido para um comando com ação final é recusado, fica o plano livre com a
   etapa de efeito, `runs.flow_id` e `flows.uses` não andam, e a trilha diz o motivo (31.222);
 * sem ação final no plano livre, a escolha segue valendo (o 31.151 e o 31.210 não mudam).
@@ -38,6 +39,8 @@ def test_as_acoes_finais_fora_do_fluxo() -> None:
     livre = [*leitura, _p("comentar", efeito=True, cap="CREATE_COMMENT"),
              _p("comentar_2", efeito=True, cap="CREATE_COMMENT")]
     assert hab.acoes_finais_fora(livre, leitura) == ["CREATE_COMMENT"]
+    um_comentario = [*leitura, _p("comentar", efeito=True, cap="CREATE_COMMENT")]
+    assert hab.acoes_finais_fora(livre, um_comentario) == ["CREATE_COMMENT"]     # dois no livre, um no fluxo
     assert hab.acoes_finais_fora(livre, livre) == []
     assert hab.acoes_finais_fora(leitura, leitura[:1]) == []                       # leitura a mais não conta
     assert hab.acoes_finais_fora([_p("mandar", trava=["algo"])], leitura) == ["mandar"]    # só a trava já conta

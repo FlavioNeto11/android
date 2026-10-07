@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -128,9 +129,17 @@ def acoes_finais_fora(livre: Sequence[PlanStep], do_fluxo: Sequence[PlanStep]) -
     """31.222: as etapas com efeito do plano livre (efeito externo ou trava de commit) que o plano do fluxo não cobre,
     pela ação do catálogo (senão pela chave). A escolha por semelhança troca o plano INTEIRO: com uma delas fora, o
     fluxo de leitura derrubaria a ação final do comando (o comentário da operação). Só a ação ou a chave, nunca valor."""
-    cobertas = {s.capability or s.key for s in do_fluxo}
-    fora = [s.capability or s.key for s in livre if (s.side_effect or s.commit_guard)
-            and (s.capability or s.key) not in cobertas]
+    # pela MULTIPLICIDADE (achado da revisão do PR 504): dois envios no plano livre e um no fluxo deixam um de fora
+    cobertas = Counter(s.capability or s.key for s in do_fluxo)
+    fora: list[str] = []
+    for s in livre:
+        if not (s.side_effect or s.commit_guard):
+            continue
+        acao = s.capability or s.key
+        if cobertas[acao] > 0:
+            cobertas[acao] -= 1
+        else:
+            fora.append(acao)
     return list(dict.fromkeys(fora))
 
 
