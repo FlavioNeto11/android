@@ -22,6 +22,7 @@ import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
 import { CriarOperacao } from './CriarOperacao';
 import { guardarRascunho, rascunhoDaOperacao } from './criar';
 import { latenciaDaOperacao, latenciaDoAlvo } from './latencia';
+import { CancelarAlvos } from './CancelarAlvos';
 import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
@@ -321,6 +322,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
   const [cancelando, setCancelando] = useState(false);
   const [abrirLiberar, setAbrirLiberar] = useState(false);
+  const [abrirCancelarAlvos, setAbrirCancelarAlvos] = useState(false);
   const [abrirRelatorio, setAbrirRelatorio] = useState(false);
   const [aba, setAba] = useState<AbaDaOperacao>('agentes');
   const limiteDeAcoes = useAppStore((s) => s.settings?.operacao_max_acoes_executadas);
@@ -368,12 +370,17 @@ function DetalheDaOperacao({ id }: { id: string }) {
                       onClick={() => { guardarRascunho(rascunhoDaOperacao(op)); useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_NOVA] }); }}>Repetir como nova</Button>
               <Button size="sm" variant="outline" disabledReason={op.exemplo ? 'É um exemplo: não há o que relatar.' : null} onClick={() => setAbrirRelatorio(true)}>Relatório</Button>
               <Button size="sm" variant="primary" disabledReason={motivoSemLiberar} onClick={() => setAbrirLiberar(true)}>Liberar</Button>
+              <Button size="sm" variant="outline" disabledReason={motivoSemCancelar ?? (op.alvos.length === 0 ? 'A operação não tem alvos.' : null)} onClick={() => setAbrirCancelarAlvos(true)}>Cancelar alvos</Button>
               <Button size="sm" variant="danger" loading={cancelando} disabledReason={motivoSemCancelar} onClick={() => void cancelar()}>Cancelar a operação</Button>
             </>
           )}>
       {erro ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {op.exemplo ? AVISO_DE_EXEMPLO : null}
       {abrirRelatorio ? <RelatorioDaOperacao op={op} onFechar={() => setAbrirRelatorio(false)} /> : null}
+      {abrirCancelarAlvos ? (
+        <CancelarAlvos operacaoId={op.id} alvos={op.alvos} onFechar={() => setAbrirCancelarAlvos(false)}
+                       onFeito={() => { setAbrirCancelarAlvos(false); recarregar(); }} />
+      ) : null}
       {abrirLiberar ? (
         <LiberarAcoes operacaoId={op.id} preparados={preparados} vagas={vagas} onFechar={() => setAbrirLiberar(false)}
                       onLiberado={() => { setAbrirLiberar(false); recarregar(); }} />
