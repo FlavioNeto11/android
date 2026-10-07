@@ -14,6 +14,8 @@ from app.modules.learning.domain.rendimento import (Contagem, RendimentoDaReceit
 from app.planning.costs import row_usd
 
 PREFIXO_DO_TREINO = "training:"
+#: Quantas tentativas recentes conduzidas pela IA, na mesma etapa, dão o custo médio que a receita evita (31.191).
+AMOSTRA_DO_CUSTO = 200
 
 
 def _uso(r: Row) -> Uso:
@@ -57,8 +59,41 @@ class LeitorDoRendimento:
         return RendimentoDoEnsino(sessao=sessao, fluxo=dados_do_fluxo, execucoes_do_fluxo=execucoes,
                                   receitas=receitas, licoes=licoes, vizinhos=self._vizinhos(fluxo))
 
+    def da_receita(self, recipe_id: int) -> dict[str, object] | None:
+        """31.191 (`GET /api/aprendizado/receitas/{id}/rendimento`): o rendimento de UMA receita, do ensino ou de
+        execução, com as reproduções, o último uso e o custo de IA evitado. None: a receita não existe."""
+        linha = self._db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
+        if linha is None:
+            return None
+        (r,) = self._das([linha])
+        origem = str(linha["learned_from_step"] or "")
+        medio = self._custo_medio_da_ia(str(linha["step_hash"] or ""))
+        return {**r.como_dict(),
+                "origem": "ensino" if origem.startswith(PREFIXO_DO_TREINO) else "execucao",
+                "sessao": origem[len(PREFIXO_DO_TREINO):] if origem.startswith(PREFIXO_DO_TREINO) else None,
+                "reproducoes": {"ok": int(linha["replay_ok"] or 0), "falha": int(linha["replay_fail"] or 0)},
+                "custo_medio_ia_por_etapa_usd": None if medio is None else round(medio, 6),
+                "custo_evitado_usd": None if medio is None else round(medio * r.sem_ia.real, 6),
+                "ultimo_uso_em": linha["last_used_at"] or None}
+
+    def _custo_medio_da_ia(self, step_hash: str) -> float | None:
+        """O US$ médio de IA por tentativa conduzida pela IA (sem receita) numa etapa com a MESMA identidade da receita
+        (`steps.template_hash`), das chamadas ainda em `ai_calls`, em execução não simulada. As mais recentes
+        (`AMOSTRA_DO_CUSTO`). Sem nenhuma: None (sem referência, o custo evitado não é inventado)."""
+        if not step_hash:
+            return None
+        tentativas = [str(t["id"]) for t in self._db.query(
+            "SELECT a.id FROM attempts a JOIN steps s ON s.id = a.step_id JOIN runs r ON r.id = s.run_id"
+            " WHERE s.template_hash=? AND r.simulated=0 AND (a.strategy IS NULL OR a.strategy NOT LIKE 'recipe%')"
+            " ORDER BY a.id DESC LIMIT ?", (step_hash, AMOSTRA_DO_CUSTO))]
+        usd = self._usd_por_tentativa(tentativas)
+        com_ia = [v for v in usd.values() if v > 0]
+        return sum(com_ia) / len(com_ia) if com_ia else None
+
     def _receitas(self, origem: str) -> tuple[RendimentoDaReceita, ...]:
-        linhas = self._db.query("SELECT * FROM recipes WHERE learned_from_step=? ORDER BY id", (origem,))
+        return self._das(self._db.query("SELECT * FROM recipes WHERE learned_from_step=? ORDER BY id", (origem,)))
+
+    def _das(self, linhas: Sequence[Row]) -> tuple[RendimentoDaReceita, ...]:
         if not linhas:
             return ()
         ids = [int(r["id"]) for r in linhas]

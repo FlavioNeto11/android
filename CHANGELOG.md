@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.191: o rendimento de uma receita, com o custo de IA evitado (branch feat/31-191-rendimento-por-receita)
+
+- O rendimento do ensino (31.177) era por sessão. A tela do Livro (31.196, Portal) mostra cada receita, também as de
+  execução.
+- `GET /api/aprendizado/receitas/{id}/rendimento` (adendo v1.110) usa o leitor do 31.177
+  (`LeitorDoRendimento.da_receita`). Ele dá:
+  - a contagem por uso: sem IA, caiu na IA, outras;
+  - as reproduções, a origem, a sessão e o último uso;
+  - o custo evitado: etapas reais sem IA × o US$ médio da IA na mesma etapa (`template_hash`), em execução não
+    simulada.
+
+  Sem referência de custo na retenção, os dois campos de custo vêm `null`.
+- A branch leva também o `fix/31-177-prefixo-do-lote` (6f21669a): o rendimento usa o `PREFIXO_LOTE` do contrato.
+- Prova `simulated`: `backend/tests/test_rendimento_por_receita.py`. Rendimento do ensino, arquitetura, ordem e
+  cobertura de rotas, avisos de rajada e fatos da operação: 39 passaram. mypy 257. `real`: `not_run`, pede o deploy.
+
 ## 2026-10-07 — 31.190: o fato confirmado da pesquisa da operação vira candidata do escritor no Livro (branch feat/31-190-curadoria-memoria)
 
 - A memória da operação já decidia a confiança por código: dois domínios na pesquisa ou a leitura do alvo (31.179). O

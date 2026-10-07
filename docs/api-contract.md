@@ -7592,3 +7592,26 @@ percurso real da Portal no 57.
 - **Prova:** `simulated` (`backend/tests/test_aprendizado_da_operacao.py`). `real`: `not_run`, pede o deploy do corte
   59.
 
+## Adendo v1.110 (07/10/2026; número da orquestradora; item 31.191) — o rendimento de uma receita
+
+`GET /api/aprendizado/receitas/{id}/rendimento`: só leitura, sem IA. Usa o leitor e a régua do uso real do
+`GET /api/training/{id}/rendimento` (31.177) e vale para receita do ensino e de execução.
+
+- `200 {id, step_key, app, status, liberada, sem_ia, caiu_na_ia, outras, usd_da_ia_na_retencao, origem, sessao,
+  reproducoes, custo_medio_ia_por_etapa_usd, custo_evitado_usd, ultimo_uso_em, gerado_em}`.
+- Os campos:
+  - `app` é o pacote. `liberada` diz se a receita vale fora da persona que ensinou (30.81); na de execução é sempre
+    `true`.
+  - `sem_ia`, `caiu_na_ia` e `outras` são `{real, prova, simulada}`. `sem_ia` conta as etapas que a receita conduziu
+    e comprovou. `caiu_na_ia` conta as em que divergiu e a IA assumiu.
+  - `origem` é `ensino` ou `execucao`. `sessao` é a sessão de ensino, ou `null`.
+  - `reproducoes` é `{ok, falha}`, da loja de receitas.
+  - `usd_da_ia_na_retencao` é o US$ de IA das tentativas dela, das chamadas ainda guardadas.
+  - `custo_medio_ia_por_etapa_usd` é o US$ médio de IA por tentativa conduzida pela IA, sem receita. Conta só as etapas
+    com a mesma identidade da receita (`steps.template_hash`), em execução não simulada, nas 200 mais recentes.
+  - `custo_evitado_usd` = `sem_ia.real` × esse médio.
+- **Sem dado:** as contagens vêm `0`, nunca `null`. Os dois campos de custo vêm `null` quando não há referência de
+  custo na retenção: o custo evitado não é inventado. `ultimo_uso_em` vem `null` na receita nunca usada.
+- `404 receita_desconhecida`.
+- **Prova:** `simulated` (`backend/tests/test_rendimento_por_receita.py`). `real`: `not_run`, pede o deploy.
+
