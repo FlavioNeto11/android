@@ -56,10 +56,14 @@ def test_so_o_fato_confirmado_de_pesquisa_dentro_do_frescor() -> None:
     agora = "2026-10-07T00:00:00.000Z"
     item = candidata(FatoDaOperacao(**base), agora)                                   # type: ignore[arg-type]
     assert item is not None and item.escopo.role == "writer" and item.escopo.app == PACOTE
-    assert item.content == {"modelo": "fato_da_operacao", "fato": FATO} and not item.human_origin
+    assert item.content == {"modelo": "fato_da_operacao", "fato": FATO}
+    assert item.human_origin                                       # trava do D1: só o dono publica (revisão de segredos)
+    com_arroba = FatoDaOperacao(**{**base, "assunto": "o post de @fulano"})                # type: ignore[arg-type]
+    assert candidata(com_arroba, agora).provenance["assunto"] == ""                     # type: ignore[union-attr]
     for troca in ({"confianca": "hipotese"}, {"frescor_ate": "2026-10-06T00:00:00.000Z"},
                   {"chave": "alvo.conteudo"}, {"chave": "pesquisa.estado"}, {"tipo": "fonte"},
-                  {"pacote": ""}, {"texto": "x" * 300}):
+                  {"pacote": ""}, {"texto": "x" * 300}, {"texto": "A conta @fulano.oficial anunciou o festival."},
+                  {"texto": "Contato do festival: festival@exemplo.org."}):
         assert candidata(FatoDaOperacao(**{**base, **troca}), agora) is None, troca   # type: ignore[arg-type]
 
 
@@ -85,7 +89,7 @@ async def test_o_passo_leva_ao_livro_uma_vez_e_so_a_candidata(harness: Harness) 
     (linha,) = db.query("SELECT * FROM learning_items WHERE source_kind='operation_fact'")
     assert (linha["kind"], linha["state"], linha["scope_role"], linha["scope_app"]) == ("licao", "candidate",
                                                                                        "writer", PACOTE)
-    assert linha["summary"] == FATO and linha["human_origin"] == 0
+    assert linha["summary"] == FATO and linha["human_origin"] == 1
     prov = json.loads(linha["provenance"])
     assert prov["operacao"] == "op-1" and prov["assunto"] == "festival de inverno" and prov["usado_em"] == 1
     assert prov["fontes"] == ["exemplo.org", "outro.exemplo.net"] and prov["frescor_ate"] == FUTURO

@@ -53,7 +53,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - o estado da pesquisa;
   - a operação aberta.
 - **Só uma pessoa publica.** O Livro não tem escopo de assunto, e a lição ativa do escritor iria a todo texto do app.
-  O item nasce sem evidência de repetição, então a esteira das lições não o valida nem o expõe ao prompt.
+  A origem entra em `FONTES_HUMANAS` (trava do D1: `requires_owner`), e não só pela falta de evidência (revisão de
+  segredos). O fato com @ ou e-mail não vai, e o assunto com identificador sai da proveniência.
 - **Sem duplicata.** O conteúdo é só o texto do fato. O mesmo fato em outra operação cai no mesmo item, e o passo é
   idempotente.
 - **Prova `simulated`:** `backend/tests/test_fatos_da_operacao_no_livro.py`, com 2 testes. As baterias de aprendizado,

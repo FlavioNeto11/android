@@ -43,14 +43,16 @@ class SourceKind(StrEnum):
     #: 31.149: a correção ensinada que não virou receita na etapa que falhou vira lição do planejador (o caminho é de
     #: uma pessoa: só o dono a publica)
     CORRECAO_ENSINADA = "teaching_correction"
-    #: 31.190: o fato da pesquisa de uma operação encerrada (2 domínios), candidato do escritor. Texto de máquina, mas
-    #: sem evidência de repetição: fica `candidate` até uma pessoa decidir no Livro.
+    #: 31.190: o fato da pesquisa de uma operação encerrada (2 domínios), candidato do escritor. O texto é de fonte
+    #: externa (a web): entra em `FONTES_HUMANAS` para só o dono o publicar (D1), não por ser de pessoa.
     FATO_DA_OPERACAO = "operation_fact"
 
 
-#: Origens em que o TEXTO veio de uma pessoa: o item nasce com `human_origin=1` e só o dono o publica (D1).
+#: Origens em que o TEXTO veio de uma pessoa: o item nasce com `human_origin=1` e só o dono o publica (D1). O fato da
+#: operação (31.190) entra pela mesma trava: o texto é de fonte externa, e a lição ativa do escritor iria a todo texto
+#: do app (revisão de segredos: "só a falta de evidência" não é trava).
 FONTES_HUMANAS = frozenset({SourceKind.APPROVAL_EDIT, SourceKind.ANSWER, SourceKind.FEEDBACK_NOTE,
-                            SourceKind.MANUAL, SourceKind.CORRECAO_ENSINADA})
+                            SourceKind.MANUAL, SourceKind.CORRECAO_ENSINADA, SourceKind.FATO_DA_OPERACAO})
 
 
 class Papel(StrEnum):
