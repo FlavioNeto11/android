@@ -118,6 +118,63 @@ def test_situacao_que_nao_e_objeto_e_recusada() -> None:
         d.montar([], AGORA)  # type: ignore[arg-type]
 
 
+# ------------------------------------------------------------------------- 28.72: linha da coerência dos quadros
+def _coerencia(**achados: int) -> dict:
+    chaves = ("duplicados", "sem_cartao", "pergunta_incoerente", "aparelho_incoerente", "concluido_fora", "sem_lista")
+    v = {k: {"n": achados.get(k, 0), "exemplos": []} for k in chaves}
+    return {"ok": True, "quadros": {"execucao": 1, "programa": 1, "historico": 1}, "verificacoes": v, "nao_lidas": [],
+            "total": sum(achados.values())}
+
+
+def test_linha_da_coerencia_sem_achado_diz_nada_fora_do_lugar() -> None:
+    texto = d.montar(_situacao(coerencia=_coerencia()), AGORA)
+    assert "• <b>Coerência dos quadros:</b> nada fora do lugar." in texto
+    assert len(texto.splitlines()) <= d.MAX_LINHAS and texto.count("<b>") == texto.count("</b>")
+    assert "Crítico: 2 itens bloqueados no plano." in _sem_tags(texto)  # a coerência não entra em Crítico
+
+
+def test_linha_da_coerencia_com_achados_conta_por_verificacao() -> None:
+    puro = _sem_tags(d.montar(_situacao(coerencia=_coerencia(duplicados=2, sem_cartao=1)), AGORA))
+    assert "Coerência dos quadros: 3 achados (duplicados 2, sem cartão 1)." in puro
+
+
+def test_coerencia_que_falhou_ou_sem_o_modulo_diz_nao_consegui_ler_e_o_resto_segue(monkeypatch: pytest.MonkeyPatch) -> None:
+    com_none = d.montar(_situacao(coerencia=None), AGORA)
+    assert "Coerência dos quadros:</b> não consegui ler o Trello." in com_none
+    assert "Plano: 714 itens" in _sem_tags(com_none) and "Crítico: 2 itens bloqueados no plano." in _sem_tags(com_none)
+    monkeypatch.setattr(d, "secao_do_resumo", None)  # o import protegido falhou
+    sem_modulo = d.montar(_situacao(coerencia=_coerencia()), AGORA)
+    assert "Coerência dos quadros:</b> não consegui ler o Trello." in sem_modulo and "nada fora do lugar" not in sem_modulo
+    monkeypatch.setattr(d, "secao_do_resumo", lambda _r: 1 / 0)  # a função quebra: o resumo sai igual
+    assert "não consegui ler" in d.montar(_situacao(coerencia=_coerencia()), AGORA)
+
+
+def test_situacao_sem_a_chave_coerencia_sai_como_antes() -> None:
+    texto = d.montar(_situacao(), AGORA)
+    assert "Coerência" not in texto and len(texto.splitlines()) == 7
+
+
+def test_ler_coerencia_nao_levanta_e_devolve_none_quando_a_leitura_falha(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    assert d.ler_coerencia(None, tmp_path, AGORA) is None
+    assert d.ler_coerencia(object(), tmp_path, AGORA) is None  # cliente sem `_pedir`: a auditoria devolve ok=False
+
+    async def quebra(*_a: object, **_k: object) -> dict:
+        raise RuntimeError("fora")
+
+    monkeypatch.setattr(d, "auditar_tudo", quebra)
+    assert d.ler_coerencia(object(), tmp_path, AGORA) is None
+    monkeypatch.setattr(d, "auditar_tudo", None)
+    assert d.ler_coerencia(object(), tmp_path, AGORA) is None
+
+
+def test_ler_coerencia_devolve_o_resultado_quando_ok(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    async def ok(_cl: object, _raiz: Path, _agora: datetime) -> dict:
+        return _coerencia(sem_lista=1)
+
+    monkeypatch.setattr(d, "auditar_tudo", ok)
+    assert d.ler_coerencia(object(), tmp_path, AGORA)["total"] == 1
+
+
 # -------------------------------------------------------------------------------------------- leituras (fakes)
 class FakeTrello:
     """Só os dois métodos que o resumo usa; nenhuma rede."""
@@ -201,7 +258,7 @@ def test_ler_situacao_sem_credencial_do_trello_marca_as_duas_leituras_como_falha
 
     monkeypatch.setattr(d, "_novo_cliente", sem_chave)
     s = d.ler_situacao(AGORA, tmp_path)
-    assert s == {"plano": None, "deploys": None, "perguntas": None, "movidos": None}
+    assert s == {"plano": None, "deploys": None, "perguntas": None, "movidos": None, "coerencia": None}
 
 
 def test_plano_conta_pelo_estado_e_pelo_check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

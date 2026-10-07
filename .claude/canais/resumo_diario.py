@@ -1,7 +1,7 @@
 """Resumo diário ao dono pelo Telegram, para as 07:00 de Brasília: UM texto curto (HTML do Telegram, até 12 linhas, no
 molde dos avisos: assunto, resultado com números, `Crítico:` e `Espera você:`).
 
-Quatro leituras, cada uma independente das outras. Leitura que falha aparece como "não consegui ler"; nunca vira zero nem
+Quatro leituras (mais a auditoria opcional dos quadros, abaixo), cada uma independente das outras. Leitura que falha aparece como "não consegui ler"; nunca vira zero nem
 é inventada, e "Espera você: nada" só sai quando as perguntas foram lidas e não há nenhuma.
 
 1. Plano-100: `scripts/claude-plan-100.py check` para o total (como o `resumo_laco.py`) e `.claude/plano-100/estado.json`
@@ -15,6 +15,10 @@ Quatro leituras, cada uma independente das outras. Leitura que falha aparece com
    (`acoes_do_quadro`, `since` = 24 h atrás), com `data.listAfter.name`. É a única fonte que diz PARA ONDE o cartão foi;
    `dateLastActivity` também muda por comentário e etiqueta e não traz a lista de origem nem a de destino da mudança.
    Cada cartão conta uma vez só, pelo último movimento da janela; mover para a mesma lista não conta.
+
+5. (28.72, opcional) Coerência dos quadros: a linha de `trello/auditoria_dos_quadros.py` (duplicados, itens sem cartão,
+   perguntas e aparelhos em lista incoerente...), lida só por GET. Import protegido: se a auditoria falhar ou não existir,
+   a linha diz "não consegui ler" e o resto do resumo sai igual; não entra em `Crítico`.
 
 O corpo inteiro passa por `_sem_contato` e por `redacao.redigir` (o filtro do Trello, com os nomes relidos do banco do
 central), como o `resumo_laco.py` e o `resumo_rodada.py`. O envio é o `telegram_status.py`, que lê token e chat do `.env`
@@ -68,6 +72,11 @@ sys.path.insert(0, str(SCRIPTS))
 import redacao  # noqa: E402
 from redacao import redigir  # noqa: E402
 from resumo_laco import _sem_contato  # noqa: E402
+
+try:  # 28.72: a auditoria de coerência é OPCIONAL; sem ela o resumo sai como antes, com a linha "não consegui ler"
+    from auditoria_dos_quadros import auditar_tudo, secao_do_resumo  # noqa: E402
+except Exception:  # noqa: BLE001 - qualquer falha de import (módulo ausente, dependência) não derruba o resumo
+    auditar_tudo = secao_do_resumo = None
 
 
 class Recusa(Exception):
@@ -197,6 +206,18 @@ def _novo_cliente() -> Any:
     return ClienteTrello(e.trello_api_key.get_secret_value().strip(), e.trello_token.get_secret_value().strip())
 
 
+def ler_coerencia(cliente: Any, raiz: Path, agora: datetime) -> dict | None:
+    """28.72: o resultado da auditoria dos 3 quadros (só leitura). `None` = não consegui ler (sem cliente, módulo ausente
+    ou qualquer erro): a linha do resumo diz isso e o resto do resumo segue como sempre."""
+    if cliente is None or auditar_tudo is None:
+        return None
+    try:
+        resultado = asyncio.run(auditar_tudo(cliente, raiz, agora))
+    except Exception:  # noqa: BLE001
+        return None
+    return resultado if isinstance(resultado, dict) and resultado.get("ok") is True else None
+
+
 def ler_situacao(agora: datetime, raiz: Path = RAIZ, cliente: Any = None) -> dict:
     """O retrato de agora, medido na hora. É a única parte com leitura de fora; `montar` é pura."""
     try:
@@ -210,7 +231,8 @@ def ler_situacao(agora: datetime, raiz: Path = RAIZ, cliente: Any = None) -> dic
         return await ler_perguntas(cliente), await ler_movidos(cliente, agora)
 
     perguntas, movidos = asyncio.run(_trello())
-    return {"plano": ler_plano(raiz), "deploys": deploys_do_dia(agora, raiz), "perguntas": perguntas, "movidos": movidos}
+    return {"plano": ler_plano(raiz), "deploys": deploys_do_dia(agora, raiz), "perguntas": perguntas, "movidos": movidos,
+            "coerencia": ler_coerencia(cliente, raiz, agora)}
 
 
 # --------------------------------------------------------------------------------------------------------- texto
@@ -266,15 +288,29 @@ def _linha_movidos(m: object) -> str:
     return f"• <b>Cartões movidos em 24 h:</b> {sum(por_lista.values())} ({_e('; '.join(partes))})."
 
 
+def _linha_coerencia(situacao: dict) -> str | None:
+    """A linha da auditoria dos quadros (28.72). Chave AUSENTE (situação de arquivo antigo) = sem linha; presente com `null`,
+    ou sem o módulo, = "não consegui ler". Nunca entra em `Crítico`: o resumo diz o que há, o dono vê no Trello."""
+    if "coerencia" not in situacao:
+        return None
+    if secao_do_resumo is None:
+        return "• <b>Coerência dos quadros:</b> não consegui ler o Trello."
+    try:
+        return secao_do_resumo(situacao["coerencia"])
+    except Exception:  # noqa: BLE001
+        return "• <b>Coerência dos quadros:</b> não consegui ler o Trello."
+
+
 def montar(situacao: dict, agora: datetime) -> str:
     """O HTML do Telegram. Pura. `situacao` (o mesmo formato do `--arquivo`):
 
         {"plano": {"total", "implementados", "parciais", "bloqueados"} | null,
          "deploys": [{"n": 57, "hora": "2026-10-06T21:00:00Z"}] | null,
          "perguntas": {"n": 3, "ids": ["P-026"]} | null,
-         "movidos": {"Concluído": 5} | null}
+         "movidos": {"Concluído": 5} | null,
+         "coerencia": <resultado de `auditoria_dos_quadros`> | null}   (opcional; ausente = sem a linha)
 
-    `null` (ou a chave ausente) é leitura que falhou: sai "não consegui ler", nunca zero."""
+    `null` (ou a chave ausente, nas quatro primeiras) é leitura que falhou: sai "não consegui ler", nunca zero."""
     if not isinstance(situacao, dict):
         raise Recusa("a situação não é um objeto JSON")
     plano, bloqueados = _linha_plano(situacao.get("plano"))
@@ -294,8 +330,9 @@ def montar(situacao: dict, agora: datetime) -> str:
     if falhas:
         criticos.append("sem leitura de " + ", ".join(falhas))
     quando = agora.astimezone(BRASILIA)
+    coerencia = _linha_coerencia(situacao)
     linhas = [f"<b>Resumo diário da Central</b> ({quando:%d/%m}, {quando:%H:%M} de Brasília)", plano, deploys, perguntas,
-              movidos, "• <b>Crítico:</b> " + ("; ".join(criticos) if criticos else "nada") + ".",
+              movidos, *([coerencia] if coerencia else []), "• <b>Crítico:</b> " + ("; ".join(criticos) if criticos else "nada") + ".",
               "• <b>Espera você:</b> " + espera + "."]
     corpo = redigir(_sem_contato("\n".join(linhas)))  # defesa em profundidade, sobre o corpo inteiro
     if len(corpo.splitlines()) > MAX_LINHAS or len(corpo) > LIMITE:
