@@ -24,6 +24,7 @@ UMA_CONTA_POR_ALVO: frozenset[str] = frozenset()
 UMA_VEZ_POR_ALVO: frozenset[str] = frozenset()
 _ROTULO_DO_BALDE = {"follows": "seguir", "dms": "mensagem direta", "comments": "comentário", "likes": "curtida",
                    "posts": "publicação"}
+MOTIVO_CITA_A_FAMILIA = ""
 
 
 @dataclass(slots=True)
@@ -139,6 +140,23 @@ class PolicyEngine:
 
     def limits_origin(self, profile_id: str) -> dict[str, str]:
         return {}
+
+    def mensagem_repetida(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None, *,
+                          app_id: str | None = None, step_id: str | None = None,
+                          desde: Any = None) -> str | None:
+        return None
+
+    def mesmo_objeto_na_familia(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None, *,
+                                counterparty: str | None, app_id: str | None, step_id: str | None,
+                                pedido: ContextoDoPedido | None) -> tuple[bool, str, str] | None:
+        return None
+
+    def cita_a_familia(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None,
+                       pedido: ContextoDoPedido | None) -> str | None:
+        return None
+
+    def tem_conversa(self, profile_id: str, counterparty: str | None, app_id: str | None = None) -> bool:
+        return False
 
     def check(self, profile_id: str, cap: Capability, *, run_id: str | None = None,
               counterparty: str | None = None, app_id: str | None = None, package: str | None = None,
