@@ -593,7 +593,9 @@ interface Flow { id: string; name: string; command_template: string; app_id: str
   // no digest o publica sozinho quando não tem efeito externo; com efeito, para em `validated` e espera o dono.
   status: 'candidate' | 'validated' | 'active' | 'disabled'; uses: number; created_at: string; last_used_at: string | null;
   // 29.42: ids dos apps que o fluxo exige, na ordem em que o plano os usa ("QA Messenger → Chrome"). Opcional: servidor antigo.
-  required_apps?: string[] }
+  required_apps?: string[];
+  // 31.150 (adendo v1.97): quando uma pessoa religou o fluxo de prova para uso real; `null` enquanto está desligado. Backend anterior não manda.
+  em_uso_real_desde?: string | null }
 interface Recipe { id: number; app_package: string; app_version: string; step_key: string; step_hash: string;
   // `candidate`: aprendida e ainda em prova — a IA conduz a etapa e a receita só é comparada (modo sombra); vira
   // `active` depois de `ai.recipes_promote_after` execuções seguidas em que a IA fez exatamente o caminho dela.
@@ -1830,7 +1832,15 @@ export interface RunPage { runs: RunSummary[]; total: number; limit: number; off
 export type UsageQuery = { run_id: string } | { days: number };
 
 /** Corpo de `PUT /api/flows/{id}` (v0.2). */
-export interface FlowStatusUpdate { status: 'active' | 'disabled' }
+/**
+ * Corpo de `PUT /api/flows/{id}`. `motivo` (1 a 500 caracteres) vai à trilha e é OBRIGATÓRIO ao ligar um fluxo nascido de prova
+ * (400 `motivo_obrigatorio`); `escopo` só vale nesse mesmo gesto (31.150, adendo v1.97): fora dele, `PUT /flows/{id}/scope`.
+ */
+export interface FlowStatusUpdate {
+  status: 'active' | 'disabled';
+  motivo?: string;
+  escopo?: { profile_ids: string[]; group_ids: string[] };
+}
 
 /** Corpo de `PUT /api/recipes/{id}` (v0.2) — `superseded` só o backend atribui. */
 export interface RecipeStatusUpdate { status: 'active' | 'quarantined' }

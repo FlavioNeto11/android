@@ -183,8 +183,8 @@ def test_a_retrocarga_completa_o_que_o_digest_nao_viu_e_e_idempotente(mundo: Mun
     r = mundo.receita()
     mundo.execucao("run-velha")
     mundo.etapa("run-velha", 1, driven_by="recipe", receita=r, fim="2026-09-20T10:00:00.000Z")
-    mundo.execucao("run-andando", status="running")                                 # ainda não assentou: fica de fora
-    mundo.etapa("run-andando", 1, driven_by="recipe", receita=r)
+    mundo.execucao("run-andando", status="running")       # ainda não assentou: o "contra" fica de fora (31.178)
+    mundo.etapa("run-andando", 1, driven_by="recipe+ai", receita=r, status="failed")
     passo = next(p for p in mundo.servico._passos if isinstance(p, RetrocargaDaReceita))
     assert passo.executar(AGORA) == 1
     assert passo.executar(AGORA) == 0
@@ -275,3 +275,24 @@ def test_o_detalhe_do_item_lista_a_evidencia_na_ordem_do_acontecido(mundo: Mundo
     assert d is not None
     saida = _detalhe(d, mundo.servico)["evidencias"]
     assert isinstance(saida, list) and [x["run_id"] for x in saida] == ["run-nova", "run-velha"]   # type: ignore[index]
+
+
+# ------------------------------------------------------------------ 31.178: o "a favor" da execução aberta
+def test_a_execucao_parada_ja_da_o_a_favor_e_o_contra_espera_ela_assentar(mundo: Mundo) -> None:
+    """Na onda 1 (06/10) a execução parou em `awaiting_person` e o aprendizado dela deu 0: a evidência só saía quando
+    ela assentava. A etapa comprovada pela receita é final; a que falhou pode voltar no "tentar de novo"."""
+    r = mundo.receita()
+    mundo.execucao("run-parada", status="awaiting_person")
+    mundo.etapa("run-parada", 1, driven_by="recipe", receita=r)
+    mundo.etapa("run-parada", 2, driven_by="recipe+ai", receita=r, status="failed")
+    mundo.etapa("run-parada", 3, driven_by="recipe", receita=r, status="waiting_user")
+    passo = next(p for p in mundo.servico._passos if isinstance(p, RetrocargaDaReceita))
+    assert passo.executar(AGORA) == 1
+    [x] = mundo.linhas(r)
+    assert (x["origin_ref"], x["stance"]) == ("reproducao:run-parada", "for")
+    assert passo.executar(AGORA) == 0                                              # idempotente
+    mundo.db.execute("UPDATE runs SET status='completed_with_issues' WHERE id='run-parada'")
+    assert passo.executar(AGORA) == 1                                              # assentou: agora o contra
+    assert sorted(x["stance"] for x in mundo.linhas(r)) == ["against", "for"]
+    mundo.digerir("run-parada")                                                    # o digest não repete o a favor
+    assert sorted(x["stance"] for x in mundo.linhas(r)) == ["against", "for"]

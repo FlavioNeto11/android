@@ -4,7 +4,7 @@ import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { SeloEmProva } from '../../components/SeloEmProva';
-import { SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
+import { SeloEmUsoReal, SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { textoDosApps } from '../../lib/appsDoFluxo';
@@ -20,6 +20,7 @@ import { lerOrigemDoTreino, linkDaSessaoDeTreino, type OrigemDoTreino } from './
 import { EscopoDoFluxo } from './EscopoDoFluxo';
 import { DecisaoInline } from './DecisaoInline';
 import { SOURCE_KIND_DO_FATO, acaoDePublicarOFato, confiancaEmPalavras, fatoDaOperacaoDe, frescorEmPalavras, type FatoDaOperacao } from './fatoDaOperacao';
+import { ReligarFluxoDeProva } from './ReligarFluxoDeProva';
 import { SecaoDoParecer } from './ParecerDaIA';
 import {
   SEM_DADO, destinoDaRelacao, metaDeSaude, metaDeVersao, rotuloDaDimensao, rotuloDaFerramenta, rotuloDaRelacao,
@@ -110,6 +111,7 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
           {rotuloDoEstado(item.state)}
           {item.kind === 'fluxo' && item.ensinado_em_prova ? <> <SeloEmProva ensinado={item.ensinado_em_prova} /></> : null}
           {item.kind === 'fluxo' && item.nascido_de_prova ? <> <SeloNascidoDeProva nascido={item.nascido_de_prova} /></> : null}
+          {item.kind === 'fluxo' && item.state !== 'disabled' ? <> <SeloEmUsoReal desde={item.em_uso_real_desde} /></> : null}
         </Fato>
         <Fato rotulo="Origem">{ORIGEM_LABEL[item.origin] ?? item.origin}</Fato>
       </dl>
@@ -772,6 +774,9 @@ export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onM
                         curador={detalhe.curador} onMudou={onMudou} />
         {item.kind === 'fluxo' && conteudo?.tipo === 'fluxo' && conteudo.origem.tipo === 'treino' ? (
           <Secao slug="escopo" titulo="A quem vale"><EscopoDoFluxo flowId={item.ref} /></Secao>
+        ) : null}
+        {item.kind === 'fluxo' && item.nascido_de_prova === true && item.state === 'disabled' ? (
+          <Secao slug="religar" titulo="Religar para uso real"><ReligarFluxoDeProva flowId={item.ref} onMudou={onMudou} /></Secao>
         ) : null}
         <Acoes item={item} invalidar={detalhe.invalidar_evidencia?.run_id ?? null} onMudou={onMudou} />
       </div>

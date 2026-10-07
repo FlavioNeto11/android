@@ -123,6 +123,7 @@ class Portoes:
         self._st = state
         self._conhecimento_cache: ConhecimentoDaOperacao | None = None
         self._pesquisa_cache: PesquisaDaOperacao | None = None
+        self._tarefas_da_pesquisa: set[asyncio.Task[None]] = set()     # 31.169: referência viva até a tarefa acabar
 
     @property
     def _conhecimento(self) -> ConhecimentoDaOperacao:
@@ -570,7 +571,6 @@ class Portoes:
                     identidade=conhecimento_dominio.identidade_do_alvo(autor, legenda))
                 if leitura is not None:
                     _registrar_estagio(self._st.db, run_id, "conteudo_lido")
-            await self._pesquisar_se_preciso(operacao_id, obj, srow, recorte)
             fatos = self._conhecimento.fatos(operacao_id, leitura=leitura)
         except Exception:  # noqa: BLE001 - ver acima
             log.exception("operação %s: o conhecimento comum não entrou no texto da execução %s", operacao_id, run_id)
@@ -586,25 +586,47 @@ class Portoes:
                 fatos = replace(fatos, ids_gravados=False)
         return fatos, leitura
 
-    async def _pesquisar_se_preciso(self, operacao_id: str, obj: Row, srow: Row, contexto: str) -> None:
-        """A pesquisa externa da operação (31.158), pelo caminho de IA da execução: tetos, vaga e custo no run certo.
-        A consulta leva o assunto da operação e, como contexto, a leitura do alvo; nunca nada da persona."""
-        executor = self._st.scheduler.executor
-        provedor = self._st.provider
-        if not hasattr(provedor, "pesquisar"):
-            return
+    def agendar_pesquisa_da_operacao(self, operacao_id: str) -> asyncio.Task[None] | None:
+        """31.169: a pesquisa externa da operação roda UMA vez, ao criá-la, antes de qualquer alvo. A tarefa pega a trava da
+        operação (a mesma da porta de escrita) no próximo giro do laço, e o primeiro alvo só chega à escrita segundos
+        depois: quando chega, a lacuna já foi coberta e ele só reusa. Os alvos não pesquisam mais. `None` quando não há o
+        que agendar (pesquisa desligada ou provedor sem a ferramenta)."""
+        if not self._pesquisa.cfg.enabled or not hasattr(self._st.provider, "pesquisar"):
+            return None
+        trava = self._st._draft_locks.setdefault(operacao_id, asyncio.Lock())  # noqa: SLF001
+        tarefa = asyncio.get_running_loop().create_task(self._pesquisar_na_criacao(operacao_id, trava))
+        self._tarefas_da_pesquisa.add(tarefa)
+        tarefa.add_done_callback(self._tarefas_da_pesquisa.discard)
+        return tarefa
 
-        async def chamar(req: PesquisaRequest) -> PesquisaBruta:
-            return await executor._ai(str(obj["run_id"]), str(obj["id"]),  # noqa: SLF001
-                                      lambda: provedor.pesquisar(req), step_id=str(srow["id"]), role="plan")
+    async def _pesquisar_na_criacao(self, operacao_id: str, trava: asyncio.Lock) -> None:
+        """Pelo caminho de IA da execução do PRIMEIRO alvo (tetos, vaga e custo no run dele, que é o que
+        `custo.pesquisa_usd` da operação soma), sem objetivo e sem contexto de tela: a consulta leva só o assunto e as
+        fontes indicadas. Sem alvo com execução, não pesquisa (ninguém usaria e o custo não teria onde morar)."""
+        async with trava:
+            run_id = self._st.db.scalar("SELECT run_id FROM operacao_alvos WHERE operacao_id=? AND run_id IS NOT NULL"
+                                        " ORDER BY seq, profile_id LIMIT 1", (operacao_id,))
+            if not run_id:
+                log.info("operação %s: sem alvo com execução; a pesquisa não roda", operacao_id)
+                return
+            executor = self._st.scheduler.executor
+            provedor = self._st.provider
 
-        feito = await self._pesquisa.pesquisar_se_preciso(operacao_id, run_id=str(obj["run_id"]), contexto=contexto,
-                                                          chamar=chamar)
-        if feito is not None:
-            # Só contagens: os fatos e as fontes moram na memória da operação.
-            self._st.bus.emit("log", f"{obj['instance_id']}: pesquisa da operação: {feito.fatos} fato(s) "
-                                     f"({feito.confirmados} confirmado(s)), {feito.fontes} fonte(s), {feito.buscas} busca(s)",
-                              run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=obj["id"])
+            async def chamar(req: PesquisaRequest) -> PesquisaBruta:
+                return await executor._ai(str(run_id), None, lambda: provedor.pesquisar(req),  # noqa: SLF001
+                                          role="plan")
+
+            try:
+                feito = await self._pesquisa.pesquisar_se_preciso(operacao_id, run_id=str(run_id), contexto="",
+                                                                  chamar=chamar)
+            except Exception:  # noqa: BLE001 - pesquisa é contexto: nunca derruba a operação
+                log.exception("operação %s: a pesquisa na criação falhou", operacao_id)
+                return
+            if feito is not None:
+                # Só contagens: os fatos e as fontes moram na memória da operação.
+                self._st.bus.emit("log", f"operação {operacao_id}: pesquisa na criação: {feito.fatos} fato(s) "
+                                         f"({feito.confirmados} confirmado(s)), {feito.fontes} fonte(s), "
+                                         f"{feito.buscas} busca(s)", run_id=str(run_id))
 
     async def _ler_tela(self, rt: Any, pacote: str | None) -> Any:
         """O que está escrito na tela do aparelho agora — para o texto falar do que está ali.

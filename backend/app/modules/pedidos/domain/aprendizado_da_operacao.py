@@ -122,7 +122,9 @@ def a_revisar(item: Item, agora: str) -> str | None:
     if item.escopo in ("app", "processo") and item.estado in REVISAR_NO_LIVRO:
         return f"no Livro em {item.estado}"
     if item.confianca == "hipotese" and item.tipo in ("fato", "memoria"):
-        return "hipótese: não confirmada"
+        # 31.179: a da pesquisa diz por quê (uma fonte, e a leitura do alvo não trouxe as âncoras dela)
+        return ("hipótese: uma fonte só, e a leitura do alvo não a confirmou" if item.origem == "pesquisa"
+                else "hipótese: não confirmada")
     return None
 
 
@@ -130,13 +132,20 @@ def _sustentacao(itens: Sequence[Item]) -> list[dict[str, object]]:
     """Cada conhecimento (fato da operação, item do Livro, memória da persona) com o que o sustenta. A evidência de um
     fato é o id da observação; a fonte que cita essa mesma observação dá o título e a URL."""
     fonte_da_obs = {e: f for f in itens if f.tipo == "fonte" for e in f.evidencia}
+    # 31.179: a hipótese da pesquisa confirmada pela leitura do alvo cita a observação da leitura: ela aparece como o
+    # fato da leitura (a fonte é a tela do alvo), não como um id solto
+    for f in itens:
+        if f.origem == "leitura" and f.tipo != "observacao":
+            for e in f.evidencia:
+                fonte_da_obs.setdefault(e, f)
     saida: list[dict[str, object]] = []
     for i in itens:
         if i.tipo in NAO_E_CONHECIMENTO or i.tipo == "fonte" or not i.evidencia:
             continue
         saida.append({"ref": i.ref, "confianca": i.confianca,
                       "fontes": [{"ref": fonte_da_obs[e].ref, "resumo": fonte_da_obs[e].resumo, "observacao": e}
-                                 if e in fonte_da_obs else {"ref": e} for e in i.evidencia]})
+                                 if e in fonte_da_obs and fonte_da_obs[e] is not i else {"ref": e}
+                                 for e in i.evidencia]})
     return saida
 
 

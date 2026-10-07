@@ -171,7 +171,9 @@ def _estado(f: FatosDoAlvo, alcancados: Mapping[str, str], efeito_bloqueado: str
     if f.objetivo_status in _OBJETIVO_FECHADO or f.objetivo_status == "waiting_user":
         return "bloqueado", f.objetivo_motivo or f.objetivo_status
     if f.objetivo_status == "pending" and "aparelho" not in alcancados:
-        return "pendente", None
+        # 31.173: o motivo da ESPERA (a porta de sessão relendo o aparelho, a vaga), e não só "pendente": era o que a
+        # onda 2 precisava ver num alvo parado na sessão.
+        return "pendente", f.objetivo_motivo
     return "em_curso", None
 
 

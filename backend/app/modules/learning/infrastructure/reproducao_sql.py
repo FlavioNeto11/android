@@ -13,6 +13,13 @@ consultada para decidir: `exerceu(StrategyKind.recipe)`, só em modo `replay`; a
   e o `recipe+ai` só é gravado num desfecho com veredito (`succeeded`, `failed`, `uncertain`), que não reabre a etapa.
   Então `recipe+ai` com `cancelled`/`skipped` só nasce da espera gravada antes do conserto.
 
+31.178: a retrocarga também lê a execução ainda ABERTA, mas só o "a favor": a etapa `succeeded` conduzida pela receita.
+Na onda 1 da prova (06/10) a execução parou em `awaiting_person` e as 10 perguntas do 31.163 deram 0, porque a evidência
+só saía quando a execução assentava. `succeeded` é o único estado final da etapa (a máquina não a reabre); `failed` e
+`uncertain` voltam a `ready` no "tentar de novo", então o "contra" espera a execução assentar, como antes. A linha
+gravada cedo não se repete no digest (a chave única é item, origem e posição); o detalhe dela conta as etapas que já
+tinham comprovado naquela hora.
+
 Várias etapas da mesma receita na mesma execução (o `for_each`, uma receita reaproveitada em duas etapas) viram UMA
 linha por posição: a chave única do livro é (item, origem, posição) e a origem é a execução.
 
@@ -86,8 +93,10 @@ class ReproducoesSql:
 
     def faltantes(self) -> list[ReproducaoDaReceita]:
         terminais = tuple(sorted(str(x.value) for x in RUN_TERMINAL))
+        # 31.178: da execução aberta, só a etapa que a receita levou até o fim comprovada (estado final da etapa)
         achadas = agrupar(self._db.query(
-            _ETAPAS + f" AND r.status IN ({linhas.marcas(len(terminais))})" + _SEM_LINHA + _ORDEM, terminais))
+            _ETAPAS + f" AND (r.status IN ({linhas.marcas(len(terminais))})"
+            " OR (s.status = 'succeeded' AND s.driven_by = 'recipe'))" + _SEM_LINHA + _ORDEM, terminais))
         # as mais novas primeiro, sem data por último: é com elas que o passo gasta a folga da retenção
         return sorted(achadas, key=lambda x: x.em or "", reverse=True)
 
