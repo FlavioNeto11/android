@@ -21,10 +21,15 @@ const MOTIVO_DA_RECUSA: Record<string, string> = {
  * mudou no servidor (409 `texto_divergente`), nada é liberado e a lista recarrega. Nenhuma aprovação automática: começa tudo
  * desmarcado.
  */
-export function LiberarAcoes({ operacaoId, preparados, vagas, onFechar, onLiberado }: {
+export function LiberarAcoes({ operacaoId, preparados, vagas, onFechar, onLiberado, iniciais = [] }: {
   operacaoId: string; preparados: AlvoPreparado[]; vagas: number; onFechar: () => void; onLiberado: () => void;
+  /**
+   * Quem já vem marcado: só quando a pessoa clicou em "Liberar" na LINHA de um agente (31.257), que é o ato de escolher aquele; o texto
+   * continua à vista e o envio continua pedindo o clique final aqui. Sem `iniciais`, começa tudo desmarcado (nenhuma aprovação automática).
+   */
+  iniciais?: readonly string[];
 }) {
-  const [marcados, setMarcados] = useState<ReadonlySet<string>>(new Set());
+  const [marcados, setMarcados] = useState<ReadonlySet<string>>(new Set(iniciais.slice(0, vagas)));
   const [enviando, setEnviando] = useState(false);
   const cheio = marcados.size >= vagas;
   const escolhidos = useMemo(() => preparados.filter((p) => marcados.has(p.profile_id)), [preparados, marcados]);
@@ -64,6 +69,14 @@ export function LiberarAcoes({ operacaoId, preparados, vagas, onFechar, onLibera
         Leia o texto de cada agente. Os marcados seguem até a ação final e a verificação, com exatamente este texto; se ele mudar, nada é
         liberado. Ainda cabem <strong>{vagas}</strong> {vagas === 1 ? 'conta' : 'contas'} no limite configurado.
       </p>
+      {preparados.length > 1 ? (
+        <p>
+          <Button size="sm" variant="outline" disabledReason={vagas === 0 ? 'O limite de contas que executam a ação final já foi atingido.' : null}
+                  onClick={() => setMarcados(new Set(preparados.slice(0, vagas).map((p) => p.profile_id)))}>
+            Marcar todos{vagas < preparados.length ? ` (os ${vagas} que cabem)` : ''}
+          </Button>
+        </p>
+      ) : null}
       <ul className={styles.liberar}>
         {preparados.map((p) => {
           const marcado = marcados.has(p.profile_id);

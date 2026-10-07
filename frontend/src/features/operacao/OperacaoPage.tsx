@@ -28,7 +28,7 @@ import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
 import {
   acoesDaOperacao, acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, esperasDaOperacao, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
-  ROTULO_DA_VERIFICACAO, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, rotuloDaAcao, rotuloDoEstagio, verificacaoDoAlvo, type Alvo, type EstadoDoAlvo,
+  ROTULO_DA_VERIFICACAO, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, rotuloDaAcao, rotuloDoEstagio, verificacaoDoAlvo, type Alvo, type AlvoPreparado, type EstadoDoAlvo,
   type EstagioId, type Operacao, type ResumoDaOperacao, type StatusDaOperacao, type Verificacao,
 } from './modelo';
 
@@ -160,7 +160,14 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
   );
 }
 
-function LinhaDoAlvo({ alvo, aberta, onAlternar, conhecidos }: { alvo: Alvo; aberta: boolean; onAlternar: () => void; conhecidos: readonly string[] }) {
+function LinhaDoAlvo({ alvo, aberta, onAlternar, conhecidos, preparado, onLiberar, motivoSemVaga }: {
+  alvo: Alvo; aberta: boolean; onAlternar: () => void; conhecidos: readonly string[];
+  /** O texto preparado deste agente, quando ele PARA em "ação preparada" esperando a pessoa (31.257); `null` nos demais. */
+  preparado: AlvoPreparado | null; onLiberar: () => void; motivoSemVaga: string | null;
+}) {
+  // Parado esperando liberação (e não já liberado e aguardando o espaçamento): mostra o texto preparado e o botão "Liberar" na linha.
+  // Só quando o motivo é a espera (ou não há motivo): parado no teto de ações ("limite de ações executadas") continua dizendo o motivo.
+  const espera = preparado !== null && alvo.estado === 'bloqueado' && !alvo.aguarda_resposta && (!alvo.motivo || /aguarda libera/i.test(alvo.motivo));
   const estado = alvo.estado;
   const Icone = estado ? ICONE_DO_ESTADO[estado] : null;
   const verificacao = verificacaoDoAlvo(alvo);
@@ -184,14 +191,19 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar, conhecidos }: { alvo: Alvo; abe
               <strong>A IA pergunta:</strong> {alvo.aguarda_resposta.pergunta ?? <span className={styles.mudo}>o central não mandou a pergunta</span>}
             </span>
           ) : null}
+          {espera ? (
+            <span data-texto-preparado>
+              <strong>Aguarda liberação. Texto preparado:</strong> {preparado!.texto}
+            </span>
+          ) : null}
           {/* Ação barrada não "parou em Ação executada": ela falhou ao executar (31.254); e o motivo vem do backend, que pode citar terceiros. */}
-          {!alvo.aguarda_resposta && alvo.motivo ? (
+          {!alvo.aguarda_resposta && !espera && alvo.motivo ? (
             <span data-motivo-do-alvo={alvo.acao_barrada ? 'falha' : 'parada'}>
               <strong>{alvo.acao_barrada ? 'Falhou ao executar' : `Parou em ${rotuloDoEstagio(estagioDeParada(alvo))}`}:</strong> {mascararTerceiros(alvo.motivo, conhecidos)}
             </span>
           ) : null}
-          {!alvo.aguarda_resposta && !alvo.motivo && alvo.resultado?.texto ? <span>{alvo.resultado.texto}</span> : null}
-          {!alvo.aguarda_resposta && !alvo.motivo && !alvo.resultado?.texto ? <span className={styles.mudo}>—</span> : null}
+          {!alvo.aguarda_resposta && !espera && !alvo.motivo && alvo.resultado?.texto ? <span>{alvo.resultado.texto}</span> : null}
+          {!alvo.aguarda_resposta && !espera && !alvo.motivo && !alvo.resultado?.texto ? <span className={styles.mudo}>—</span> : null}
           {alvo.resultado ? <span className={styles.mudo}> · {formatInt(alvo.resultado.conhecimento_ids.length)} itens de conhecimento</span> : null}
         </td>
         <td>
@@ -199,6 +211,9 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar, conhecidos }: { alvo: Alvo; abe
         </td>
         <td className={styles.numero}>{alvo.custo_usd === null ? <span className={styles.mudo}>—</span> : formatUsd4(alvo.custo_usd)}</td>
         <td>
+          {espera ? (
+            <Button size="sm" variant="primary" disabledReason={motivoSemVaga} onClick={onLiberar} label={`Liberar o texto de ${rotuloDaLinha}`}>Liberar</Button>
+          ) : null}
           <Button size="sm" variant="ghost" aria-expanded={aberta} onClick={onAlternar} label={`${aberta ? 'Fechar' : 'Abrir'} o detalhe de ${rotuloDaLinha}`}>
             {aberta ? 'Fechar' : 'Detalhe'}
           </Button>
@@ -292,7 +307,8 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const [parou, setParou] = useState<EstagioId | ''>('');
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
   const [cancelando, setCancelando] = useState(false);
-  const [abrirLiberar, setAbrirLiberar] = useState(false);
+  // `null` = fechado; `so` = o agente cuja linha foi clicada (vem marcado), ou `null` para o botão do cabeçalho (nada marcado).
+  const [abrirLiberar, setAbrirLiberar] = useState<{ so: string | null } | null>(null);
   const [abrirRelatorio, setAbrirRelatorio] = useState(false);
   const [aba, setAba] = useState<AbaDaOperacao>('agentes');
   const limiteDeAcoes = useAppStore((s) => s.settings?.operacao_max_acoes_executadas);
@@ -342,7 +358,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
               <Button size="sm" variant="outline" icon={Copy} disabledReason={op.exemplo ? 'É um exemplo: não há o que repetir.' : null}
                       onClick={() => { guardarRascunho(rascunhoDaOperacao(op)); useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_NOVA] }); }}>Repetir como nova</Button>
               <Button size="sm" variant="outline" disabledReason={op.exemplo ? 'É um exemplo: não há o que relatar.' : null} onClick={() => setAbrirRelatorio(true)}>Relatório</Button>
-              <Button size="sm" variant="primary" disabledReason={motivoSemLiberar} onClick={() => setAbrirLiberar(true)}>Liberar</Button>
+              <Button size="sm" variant="primary" disabledReason={motivoSemLiberar} onClick={() => setAbrirLiberar({ so: null })}>Liberar</Button>
               <Button size="sm" variant="danger" loading={cancelando} disabledReason={motivoSemCancelar} onClick={() => void cancelar()}>Cancelar a operação</Button>
             </>
           )}>
@@ -350,8 +366,9 @@ function DetalheDaOperacao({ id }: { id: string }) {
       {op.exemplo ? AVISO_DE_EXEMPLO : null}
       {abrirRelatorio ? <RelatorioDaOperacao op={op} onFechar={() => setAbrirRelatorio(false)} /> : null}
       {abrirLiberar ? (
-        <LiberarAcoes operacaoId={op.id} preparados={preparados} vagas={vagas} onFechar={() => setAbrirLiberar(false)}
-                      onLiberado={() => { setAbrirLiberar(false); recarregar(); }} />
+        <LiberarAcoes operacaoId={op.id} preparados={abrirLiberar.so ? preparados.filter((p) => p.profile_id === abrirLiberar.so) : preparados} vagas={vagas}
+                      iniciais={abrirLiberar.so ? [abrirLiberar.so] : []} onFechar={() => setAbrirLiberar(null)}
+                      onLiberado={() => { setAbrirLiberar(null); recarregar(); }} />
       ) : null}
       <p className={styles.cabecalho}>
         <a className={styles.link} href={hashDe('operacoes')}>← Todas as operações</a>
@@ -410,6 +427,8 @@ function DetalheDaOperacao({ id }: { id: string }) {
               <tbody>
                 {alvos.map((a) => (
                   <LinhaDoAlvo key={a.id} alvo={a} aberta={abertas.has(a.id)} conhecidos={usuariosConhecidosDaOperacao(op.parametros)}
+                               preparado={preparados.find((p) => p.profile_id === a.profile_id) ?? null} onLiberar={() => setAbrirLiberar({ so: a.profile_id })}
+                               motivoSemVaga={vagas === 0 ? 'O limite de contas que executam a ação final já foi atingido.' : null}
                                onAlternar={() => setAbertas((s) => { const n = new Set(s); if (n.has(a.id)) n.delete(a.id); else n.add(a.id); return n; })} />
                 ))}
               </tbody>

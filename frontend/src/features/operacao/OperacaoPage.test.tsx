@@ -593,3 +593,70 @@ describe('31.254: o motivo de falha sem usuário de terceiro e o rótulo da aç�
     expect(text(container.querySelector('#operacao-capacidade')!.parentElement!)).toContain('com o post de [usuário omitido] em foco');
   });
 });
+
+describe('31.257: liberar pela linha do agente (um) ou marcar todos no diálogo, com o eco do texto', () => {
+  const alvo = (p: string, nome: string, extra: Record<string, unknown>) => ({
+    profile_id: p, persona_nome: nome, app_id: 'instagram', account_id: `a-${p}`, conta: `c-${p}`, instance_id: `android-0${p.slice(1)}`, run_id: `r-${p}`,
+    estagio: 'acao_preparada', estado: 'bloqueado', motivo: 'aguarda liberação', ...extra,
+  });
+  const preparado = (p: string, nome: string, texto: string) => alvo(p, nome, { resultado: { texto, conhecimento_ids: [], evidencia_id: null, acao_final: null } });
+  const BASE = {
+    id: 'op-l', command: 'Comentar', app_id: 'instagram', acao_final: 'executar', status: 'concluida_com_bloqueios', created_at: '2026-10-07T10:00:00Z', finished_at: null,
+    capacidade: { solicitados: 4, contas_existentes: 4, sessoes_validas: 4, contas_disponiveis: 4, concluidas: 1, bloqueadas: 3, em_curso: 0, motivos: { 'aguarda liberação': 3 } },
+    alvos: [
+      preparado('p1', 'Ana', 'Texto da Ana.'), preparado('p2', 'Bia', 'Texto da Bia.'), preparado('p3', 'Caio', 'Texto do Caio.'),
+      alvo('p4', 'Dani', { estagio: 'resultado_verificado', estado: 'concluido', motivo: null, resultado: { texto: 'Texto da Dani.', conhecimento_ids: [], evidencia_id: null, acao_final: { tipo: 'CREATE_COMMENT', verificada: true, evidencia_id: null } } }),
+    ],
+  };
+  const abrir = async (op: unknown = BASE) => {
+    backend.on('GET', /^\/api\/operacoes\/op-l$/, () => json(op));
+    backend.on('POST', /^\/api\/operacoes\/op-l\/liberar$/, () => json({ liberados: ['p2'], recusados: [], operacao: BASE }));
+    await ir(['op-l']);
+    await waitFor(() => expect(linhas()).toHaveLength(4));
+  };
+  const posts = () => backend.callsTo('POST', /liberar$/);
+
+  it('o agente que espera mostra o texto preparado e o botão Liberar na linha; o que já executou não', async () => {
+    await abrir();
+    const [ana, , , dani] = linhas();
+    expect(text(ana!.querySelector('[data-texto-preparado]')!)).toBe('Aguarda liberação. Texto preparado: Texto da Ana.');
+    expect(ana!.textContent).not.toContain('Parou em');
+    expect(byRole('button', /^Liberar o texto de Ana$/, ana!)).toBeTruthy();
+    expect(dani!.querySelector('[data-texto-preparado]')).toBeNull();
+    expect(() => byRole('button', /^Liberar o texto de Dani$/, dani!)).toThrow();
+  });
+
+  it('o clique na linha abre o diálogo só com aquele agente, já marcado e com o texto à vista; nada é enviado até o clique final, e o corpo é o eco do texto', async () => {
+    await abrir();
+    await click(byRole('button', /^Liberar o texto de Bia$/, linhas()[1]!));
+    const d = await waitFor(() => byRole('dialog', /Liberar as ações paradas\?/));
+    expect(text(d)).toContain('Texto da Bia.');
+    expect(text(d)).not.toContain('Texto da Ana.');
+    expect((allByRole('checkbox', /./, d) as HTMLInputElement[]).map((c) => c.checked)).toEqual([true]);
+    expect(posts()).toHaveLength(0);                                                          // abrir e olhar não libera nada
+    await click(byRole('button', /^Liberar 1$/, d));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]!.body).toEqual({ itens: [{ profile_id: 'p2', texto: 'Texto da Bia.' }] });
+  });
+
+  it('"Marcar todos" no diálogo do cabeçalho marca até o limite que sobra e envia o eco de cada texto', async () => {
+    useAppStore.setState({ settings: { ...SETTINGS, operacao_max_acoes_executadas: 3 } });   // 3 de limite, 1 já executou: cabem 2
+    await abrir();
+    await click(byRole('button', /^Liberar$/, container));
+    const d = await waitFor(() => byRole('dialog', /Liberar as ações paradas\?/));
+    expect((allByRole('checkbox', /./, d) as HTMLInputElement[]).map((c) => c.checked)).toEqual([false, false, false]);
+    await click(byRole('button', /^Marcar todos \(os 2 que cabem\)$/, d));
+    expect((allByRole('checkbox', /./, d) as HTMLInputElement[]).map((c) => c.checked)).toEqual([true, true, false]);
+    await click(byRole('button', /^Liberar 2$/, d));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]!.body).toEqual({ itens: [{ profile_id: 'p1', texto: 'Texto da Ana.' }, { profile_id: 'p2', texto: 'Texto da Bia.' }] });
+  });
+
+  it('limite atingido: o botão da linha fica desligado, com o motivo', async () => {
+    useAppStore.setState({ settings: { ...SETTINGS, operacao_max_acoes_executadas: 1 } });   // 1 de limite e 1 já executou
+    await abrir();
+    const b = byRole('button', /^Liberar o texto de Ana/, linhas()[0]!);
+    expect(b.getAttribute('aria-disabled')).toBe('true');
+    expect(b.getAttribute('aria-label') ?? text(b)).toContain('limite');
+  });
+});
