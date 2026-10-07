@@ -453,6 +453,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Medida `real` (07/10, `date -u` 01:27Z, runners `ubuntu-latest`, passos de `gh api .../jobs`): o `ci.yml` e o `pr-leve.yml` JÁ guardam o cache de download do pip e do npm (`cache: pip` e `cache: npm` do `setup-python` e `setup-node`). Job PostgreSQL do cron (run 37548654811): `pip install` 10 s e `setup-python` 3 s de ~2490 s do job (0,5 %); o `pytest` é 2450 s. CI leve (run 37556584580): docs-check + scripts/tests = instalar 9 s + python 6 s de 121 s, e `pytest scripts/tests` 103 s; frontend = `setup-node` 7 s + `npm ci` 4 s de 205 s, e `vitest` 181 s.
 - Conclusão: cachear o `.venv` e o `node_modules` inteiros pouparia, no melhor caso, ~5 s por job (restaurar o cache também custa), sem mudar nenhum minuto faturado (o arredondamento por job é para cima: 121 s e 205 s seguem em 3 e 4 min; o PostgreSQL segue em ~42 min), e traria o risco de um ambiente velho mascarar mudança de dependência (o que o `npm ci` e o `pip install` com o lock garantem hoje). NÃO implementado, por medida; nenhum workflow mudou. Onde estão os minutos: `pytest` do backend (PostgreSQL, 98 %), `vitest` (88 % do job de frontend) e `pytest scripts/tests` (85 % do job docs); só a paralelização desses testes (ex.: `-n 2` em `scripts/tests`, que depende de os testes não dividirem estado) mexeria em minuto cobrado, e isso muda COMO os testes rodam: fica como proposta com medida antes de qualquer troca.
 
+## 2026-10-07 — 29.195: limites do agente de nuvem marcados como só dele; coletor sem `<sub>` (branch ci/29-195-limites-do-agente-so-do-agente)
+
+- `AGENTS.md` e `.github/copilot-instructions.md`: aviso a quem revisa PR e marca nas listas "Nunca edite" e "um PR por tarefa"
+  de que valem **só para o agente de nuvem** (`copilot/*`); o que o agente faz não muda. Motivo: a medida do 29.194 achou 12 falsos
+  em 38, vários só repetindo essas regras num PR de sessão.
+- `scripts/coletar_achados_revisao.py` (29.170): o título do achado do Codex não leva mais a marcação `<sub>…</sub>`. Prova
+  `simulated`: `scripts/tests/test_coletar_achados_revisao.py::test_tag_html_do_selo_do_codex_nao_vai_para_o_titulo`.
+- Coletor: a regex de artefato não olha mais o link de rodapé (`AGENTS.md reference: [...]`, `[.github/copilot-instructions.md…](…)`) que o Codex põe em quase todo comentário; nos PRs 493 a 507 ela marcava 14 de 37 achados e agora marca 0 (a medida do 29.194 dava 'DESLIGAR' por esse falso sinal). Prova `simulated`: `test_rodape_agents_reference_do_codex_nao_faz_artefato`.
+- Feito (b): PRs de revisão do corte 61 só de branch de código (493 a 508), em paralelo, sem merge; 12 revisados pelo Codex em ~3 min (mediana), achados enviados às frentes donas.
+- Pendente (não feito): PR de revisão por corte só para branch de código e repetir a medida no corte 61 (esperam a lista da orquestradora).
+
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 
 - Na onda 1 (06/10), a pesquisa da operação deixou 6 de 8 fatos como `hipotese` (uma fonte só), e nada os
