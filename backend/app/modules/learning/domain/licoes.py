@@ -34,7 +34,7 @@ from enum import IntEnum, StrEnum
 
 from app.modules.learning.domain.efeito import EXPOSTAS, braco
 from app.modules.learning.domain.falhas import NUNCA_VIRA_LICAO, FailureKind
-from app.modules.learning.domain.livro import Escopo, ItemDeAprendizado, NovoItem
+from app.modules.learning.domain.livro import Escopo, ItemDeAprendizado, NovoItem, assunto_canonico
 from app.modules.learning.domain.promocao import Limiares
 from app.modules.learning.domain.tokens import Teto, caber, estimar_tokens
 from app.modules.learning.domain.vocabulario import Braco, DetalheDeEstado, LivroKind, Papel, SourceKind
@@ -515,6 +515,8 @@ class Pedido:
     simulated: bool
     objective_id: str | None = None
     step_id: str | None = None
+    #: 31.200: o assunto do texto pedido (o da operação), cru; '' = sem assunto, e a lição com assunto não vai.
+    assunto: str = ""
 
 
 class Nivel(IntEnum):
@@ -529,6 +531,9 @@ def nivel(item: ItemDeAprendizado, pedido: Pedido) -> Nivel | None:
     if item.kind is not LivroKind.LICAO or e.role != pedido.papel.value or not pedido.app:
         return None
     if e.app not in ("", pedido.app):
+        return None
+    # 31.200: a lição com assunto vale só para o MESMO assunto; sem esta porta ela iria a todo texto do papel no app
+    if e.subject and e.subject != assunto_canonico(pedido.assunto):
         return None
     if e.step_hash:
         return Nivel.ETAPA if e.step_hash == pedido.step_hash else None

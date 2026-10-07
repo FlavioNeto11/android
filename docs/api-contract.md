@@ -7656,3 +7656,18 @@ inteiro. O painel passa a exibir a cópia no 31.189 (Portal).
 - `404 receita_desconhecida`.
 - **Prova:** `simulated` (`backend/tests/test_rendimento_por_receita.py`). `real`: `not_run`, pede o deploy.
 
+## Adendo v1.113 (07/10/2026; número da orquestradora; item 31.200) — o escopo de assunto no Livro
+
+`GET /api/aprendizado` ganha um campo e um filtro. Nada mais muda na rota.
+
+- Campo `assunto` em cada item: o assunto canônico do item (minúsculas, sem acento, sem pontuação), ou `null` no item
+  sem assunto e nos tipos que não têm o eixo (receita, fluxo, habilidade, memória). Hoje só o fato da pesquisa de uma
+  operação (31.190, `source_kind` `operation_fact`) nasce com assunto.
+- Filtro `?assunto=` (até 200 caracteres; mais que isso, `422`): só os itens daquele assunto, comparado na forma
+  canônica ("Festival de Inverno!" acha "festival de inverno"). Entra antes da contagem, como os outros filtros.
+- Regra que acompanha (sem rota): a lição com assunto só vai ao prompt de quem pede o MESMO assunto; a lição sem
+  assunto segue indo a todos do papel no app. O fato da operação sem assunto, ou com identificador no assunto, não
+  nasce mais no Livro.
+- Migração 128 (`learning_items.scope_subject`).
+- **Prova:** `simulated` (`backend/tests/test_livro_escopo_de_assunto.py`, `backend/tests/test_migracao_128.py`, em
+  SQLite). PostgreSQL e `real`: `not_run`, pedem a vez da suíte e o deploy.

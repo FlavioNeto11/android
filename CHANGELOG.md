@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.200: o escopo de assunto no Livro (branch feat/31-200-escopo-de-assunto, migração 128)
+
+- O fato da pesquisa de uma operação (31.190) nascia no escopo do app inteiro. Publicado, iria a todo texto do
+  escritor no app, sobre qualquer post.
+- Migração 128: `learning_items.scope_subject`, e o índice `ux_learning_items_vivo` com o assunto. O item anterior
+  fica sem assunto, e a chave do veto dele não muda.
+- O fato nasce com o assunto canônico da operação. Sem assunto, ou com identificador no assunto, não nasce.
+- A lição com assunto só vai ao prompt de quem pede o mesmo assunto (`licoes.nivel`). Hoje nenhum pedido do escritor
+  leva assunto, então ela não vai a prompt nenhum.
+- `GET /api/aprendizado` ganha o campo `assunto` e o filtro `?assunto=` (adendo v1.113).
+- Prova `simulated`: `backend/tests/test_livro_escopo_de_assunto.py` e `backend/tests/test_migracao_128.py`, em SQLite.
+  PostgreSQL e `real`: `not_run`.
+
 ## 2026-10-07 — 31.192: o script que marca a prova da onda do aprendizado pelo commit no ar (branch feat/31-192-marcacao-da-onda)
 
 - A medida da onda 2 de 07/10 depende do commit no ar. No central lido em 06/10 23:10Z (`42cba3cd`), os cortes 58 e 59
