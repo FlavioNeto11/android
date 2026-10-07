@@ -27,6 +27,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   em 38, vários só repetindo essas regras num PR de sessão.
 - `scripts/coletar_achados_revisao.py` (29.170): o título do achado do Codex não leva mais a marcação `<sub>…</sub>`. Prova
   `simulated`: `scripts/tests/test_coletar_achados_revisao.py::test_tag_html_do_selo_do_codex_nao_vai_para_o_titulo`.
+- Coletor: a regex de artefato não olha mais o link de rodapé (`AGENTS.md reference: [...]`, `[.github/copilot-instructions.md…](…)`) que o Codex põe em quase todo comentário; nos PRs 493 a 507 ela marcava 14 de 37 achados e agora marca 0 (a medida do 29.194 dava 'DESLIGAR' por esse falso sinal). Prova `simulated`: `test_rodape_agents_reference_do_codex_nao_faz_artefato`.
+- Feito (b): PRs de revisão do corte 61 só de branch de código (493 a 508), em paralelo, sem merge; 12 revisados pelo Codex em ~3 min (mediana), achados enviados às frentes donas.
 - Pendente (não feito): PR de revisão por corte só para branch de código e repetir a medida no corte 61 (esperam a lista da orquestradora).
 
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)

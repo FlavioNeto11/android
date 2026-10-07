@@ -94,6 +94,13 @@ class Coletor(unittest.TestCase):
         self.assertTrue(mod._ARTEFATO.search("Este hunk viola a regra explícita do repositório que proíbe agentes"))
         self.assertFalse(mod._ARTEFATO.search("Apaga a branch errada"))
 
+    def test_rodape_agents_reference_do_codex_nao_faz_artefato(self) -> None:
+        # 29.195: o rodapé "AGENTS.md reference: [AGENTS.md:L52-L52](...)" estava marcando quase todo achado como artefato
+        corpo = "**P1** Propague a falha\n\nA função engole o erro.\n\nAGENTS.md reference: [AGENTS.md:L52-L52](https://x/y#L52)"
+        self.assertFalse(mod.eh_artefato(corpo))
+        self.assertFalse(mod.eh_artefato("Corrija o limite. [.github/copilot-instructions.mdL61-L61](https://x/y#L61-L61)"))
+        self.assertTrue(mod.eh_artefato("Remova: viola a regra explícita do repositório (AGENTS.md)\n\nAGENTS.md reference: [a](u)"))
+
     def test_frase_sem_trecho_de_codigo(self) -> None:
         txt = mod.resumo("Troque `x = foo(a, b)` por `nome_ok`\n```py\nsegredo()\n```")
         self.assertNotIn("foo(", txt)

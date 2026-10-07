@@ -91,6 +91,13 @@ def resumo(corpo: str) -> str:
     return "(sem texto)"
 
 
+def eh_artefato(corpo: str) -> bool:
+    """O Codex cita o AGENTS.md ou o copilot-instructions.md como LINK de rodapé em quase todo comentário: o link não é o achado."""
+    sem_rodape = re.sub(r"(?im)^.{0,40}\breference:.*$", "", corpo)
+    sem_link_de_regra = re.sub(r"\[[^\]]*(?:AGENTS\.md|copilot-instructions)[^\]]*\]\([^)]*\)", "", sem_rodape)
+    return bool(_ARTEFATO.search(_LINK.sub(r"\1", sem_link_de_regra)))
+
+
 def gravidade(corpo: str) -> str:
     m = _GRAVIDADE.search(corpo)
     return f"P{m.group(1)}" if m else "-"
@@ -121,7 +128,7 @@ def achados_do_pr(repo: str, numero: int, gh: Gh) -> list[dict[str, Any]]:
         achados.append({"pr": str(numero), "revisor": mascarar(str(login)), "gravidade": gravidade(corpo),
                         "arquivo": arquivo, "linha": linha if isinstance(linha, int) else None,
                         "onde": f"{arquivo}:{linha}" if linha else arquivo, "resumo": resumo(corpo),
-                        "artefato": bool(_ARTEFATO.search(corpo)), "url": _url(c)})
+                        "artefato": eh_artefato(corpo), "url": _url(c)})
     for r in _itens(gh("api", "--paginate", f"repos/{repo}/pulls/{numero}/reviews")):
         user = r.get("user")
         login = user.get("login") if isinstance(user, dict) else None
@@ -129,7 +136,7 @@ def achados_do_pr(repo: str, numero: int, gh: Gh) -> list[dict[str, Any]]:
         if eh_revisor(login) and corpo:
             achados.append({"pr": str(numero), "revisor": mascarar(str(login)), "gravidade": gravidade(corpo),
                             "arquivo": "", "linha": None, "onde": "(resumo da revisão)", "resumo": resumo(corpo),
-                            "artefato": bool(_ARTEFATO.search(corpo)), "url": _url(r)})
+                            "artefato": eh_artefato(corpo), "url": _url(r)})
     if achados:
         estado = estado_do_pr(repo, numero, gh)
         for a in achados:
