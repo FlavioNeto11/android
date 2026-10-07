@@ -1,7 +1,8 @@
 """Frente GitHub (29.171): põe no PR o rótulo que o PREFIXO da branch indica, e só ele.
 
-`ci/…` é da frente GitHub (`frente:github`); `copilot/…` é do agente de nuvem (`agente`). Outro prefixo não ganha rótulo: as
-outras frentes usam `feat/…` e `fix/…` para tudo, então o prefixo não diz a frente e adivinhar seria dado errado. O rótulo só é
+`ci/…` é da frente GitHub (`frente:github`); `copilot/…` é do agente de nuvem (`agente`); `devops/…`, `jev/…`, `aprendizado/…`,
+`portal/…` e `canais/…` são da frente de mesmo nome (29.203; as integrações das frentes e a branch da DevOps usam esses prefixos). Outro
+prefixo não ganha rótulo: as frentes usam `feat/…` e `fix/…` para o trabalho do item, então o prefixo não diz a frente e adivinhar seria dado errado. O rótulo só é
 posto se já existir no repositório (`scripts/github_rotulos.py --aplicar` os cria); nunca cria rótulo, nunca tira rótulo, nunca
 comenta. Qualquer dúvida deixa o PR como está e sai com 0, para não pintar de vermelho um PR por causa de etiqueta.
 
@@ -16,7 +17,8 @@ import subprocess
 import sys
 from collections.abc import Callable
 
-ROTULO_POR_PREFIXO = {"ci/": "frente:github", "copilot/": "agente"}
+ROTULO_POR_PREFIXO = {"ci/": "frente:github", "copilot/": "agente", "devops/": "frente:devops", "jev/": "frente:jev",
+                      "aprendizado/": "frente:aprendizado", "portal/": "frente:portal", "canais/": "frente:canais"}
 _BRANCH = re.compile(r"[\w./-]{1,200}")
 Gh = Callable[..., str]
 

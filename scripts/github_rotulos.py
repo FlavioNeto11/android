@@ -30,6 +30,7 @@ ROTULOS: tuple[tuple[str, str, str], ...] = (
     ("frente:canais", "006b75", "Frente Canais: quadros e Telegram"),
     ("frente:github", "24292f", "Frente GitHub: agents, Actions, issues e settings"),
     ("frente:desenho", "c5def5", "Frente Desenho: contratos e arquitetura"),
+    ("frente:devops", "bfd4f2", "Frente DevOps: plataforma, funil e deploy"),
     ("tamanho:P", "c2e0c6", "Pequeno: uma a duas horas"),
     ("tamanho:M", "fef2c0", "Médio: um arquivo de código com testes"),
     ("tamanho:G", "f9d0c4", "Grande: quebre antes de dar a um agente"),

@@ -464,6 +464,44 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   de 07/10 encerrada.
 
 
+## 2026-10-07 — 29.200: `pr_revisao.py` abre o PR de revisão do corte com base certa e dentro das ondas (branch ci/29-200-pr-revisao)
+
+- `scripts/pr_revisao.py --repo dono/nome --id 31.241 --titulo "…" --head <branch> --frente jev [--base main] [--aplicar]` faz o que a frente
+  fazia à mão: título `[revisão] <id> <título>`, corpo do modelo com a nota de que o PR fecha sem merge, rótulo `frente:<frente>` só se existir,
+  e a BASE: se a branch não nasceu da base pedida, cria `revisao/base-<id>` no merge-base (API de comparação) para o diff ficar só do item.
+  Recusa branch sem commit novo, branch que já tem PR aberto e diff com formato de e-mail, IPv4 ou credencial (diz só o formato; `--valores-falsos`
+  liberta o valor falso de teste que a pessoa conferiu); avisa diff acima de 40 arquivos; respeita as ondas (4 por hora, 20 por janela de 5 h do
+  Codex, regra do dono de 07/10) e diz a hora em que cabe (saída 2). Ensaio por padrão; só `gh`, nunca em workflow.
+- Prova `simulated`: `scripts/tests/test_pr_revisao.py` (19 testes, `gh` falso; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, `date -u` 12:45Z, esta máquina,
+  API): ensaio sobre branch inexistente (erro limpo, sem nome de repositório) e sobre `jev/integ-61` contra a `main` (merge-base 50760e86, 246 arquivos, formato sensível: recusou).
+
+## 2026-10-07 — 29.201: `fecha_pr_revisao.py` fecha sem merge os PRs de revisão cumpridos (branch ci/29-201-fecha-pr-revisao)
+
+- `scripts/fecha_pr_revisao.py --repo dono/nome [--lidos lidos.json] [--horas-minimas 2] [--aplicar]` lê os PRs abertos `[revisão] …` e classifica o que
+  o Codex fez: `com_achados` (só fecha se o número está em `--lidos`: lista, ou registro da medida com confirmados ou falsos já anotados pela frente), `sem_achado` (👍), `limite` (limite do plano),
+  `falhou` e `andamento` (não fecha). Fecha com comentário padrão, no máximo 30 por execução, só com mais de 2 h de idade; nunca mescla, nunca apaga
+  branch (a limpeza é do `limpar_branches_revisao.py`). Ensaio por padrão; só `gh`, nunca em workflow.
+- Prova `simulated`: `scripts/tests/test_fecha_pr_revisao.py` (10 testes, `gh` falso; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, `date -u` 12:48Z, esta máquina,
+  API, só ensaio): 33 PRs de revisão abertos classificados (21 fecham, 12 ficam: achados não lidos de 515 a 521 e PRs com menos de 2 h), nada fechado.
+
+## 2026-10-07 — 29.202: `custo_por_pr.py` mede o custo por PR (Copilot estimado, Codex contado) (branch ci/29-202-custo-por-pr)
+
+- `scripts/custo_por_pr.py --repo dono/nome [--dias 7] [--sem-codex] [--anexar arq.md]` lista, por PR criado na janela, o tipo (`revisão`, `agente`, `sessão`),
+  as execuções de Actions e os minutos aproximados, as revisões do Copilot e as tarefas do agente de nuvem (créditos ESTIMADOS: 146 e 31) e as revisões do
+  Codex recebidas; no fim, o pico de PRs de revisão em 5 h contra a regra de 20 (o plano do Codex, que é do dono, estourou em 07/10). A revisão do Copilot e o agente rodam
+  como `dynamic` com `pull_requests` vazio, então o elo com o PR é a branch (o PR mais recente criado antes da execução). Estimativa, não saldo; não imprime título,
+  branch, conta nem repositório; só leitura (`--anexar` acrescenta a arquivo local).
+- Prova `simulated`: `scripts/tests/test_custo_por_pr.py` (13 testes, `gh` falso; o job `docs` do `ci.yml` passa a rodá-lo). `real` (07/10, `date -u` 12:53Z, esta máquina, API, 2 dias): 98 PRs, ~885 créditos
+  estimados do Copilot, pico de 24 PRs de revisão em 5 h (acima da regra), 54 revisões do Codex contadas.
+
+## 2026-10-07 — 29.203: o rótulo do PR também sai dos prefixos das outras frentes (branch ci/29-203-rotula-prefixos)
+
+- `scripts/rotulo_do_pr.py` (workflow `rotula-pr.yml`, hospedado) passa a pôr `frente:devops`, `frente:jev`, `frente:aprendizado`, `frente:portal` e `frente:canais` em branch `devops/…`,
+  `jev/…`, `aprendizado/…`, `portal/…` e `canais/…` (as integrações de corte e a branch da DevOps); `feat/…`, `fix/…` e `revisao/…` continuam sem rótulo (o prefixo não diz a frente).
+  `scripts/github_rotulos.py` ganha o rótulo `frente:devops` (nasce no `--aplicar` logo após o deploy 60). Só rótulo existente é posto; nunca cria nem tira.
+- Prova `simulated`: `scripts/tests/test_rotulo_do_pr.py::test_prefixos_das_outras_frentes_29_203` e o teste dos prefixos que não rotulam (19 testes com `test_github_rotulos.py`). `real` (07/10, `date -u` 12:58Z, esta máquina,
+  API, ensaio): `aprendizado/integ-61` rotularia com `frente:aprendizado`; `devops/…` avisa que `frente:devops` ainda não existe.
+
 ## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
 
 - Medido no percurso real da Portal no 57 (06/10 23:20Z): o resumo do fluxo na aba Aprendizado da operação mostrava o
@@ -1698,7 +1736,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-06 — 29.155 (C5): modelos de issue e rótulos por frente e tamanho (branch ci/29-155-c5-issues)
 
-- `.github/ISSUE_TEMPLATE/tarefa-do-agente.yml` e `achado.yml` (formulários do GitHub) e `scripts/github_rotulos.py` (a lista dos 13 rótulos: `frente:*`, `tamanho:P|M|G`, `agente`, `achado`, `ci`; ensaio por padrão, `--aplicar` escreve, nunca apaga). Prova `real`: os 13 rótulos foram criados no repositório em 06/10 12:31Z pela máquina central com `--aplicar` (e a releitura disse "nada a fazer"); a lista de 23 rótulos tem os 10 padrão intactos. Prova `simulated`: `scripts/tests/test_github_rotulos.py` (9 testes, `gh` falso) e o YAML dos dois formulários lido com `yaml.safe_load`. A revisão de segredos de 06/10 pediu 3 ajustes de texto nos formulários (a issue é fonte da tarefa e não dos limites, a caixa de conferência alinhada ao `AGENTS.md`, aviso contra print e log com dado de pessoa), todos feitos; o tamanho G saiu do formulário do agente. O script de rótulos foi rodado sobre a base `2aa73973`. `not_run`: o GitHub mostrar os formulários na tela de nova issue e aceitá-los (só depois do merge na `main`).
+- `.github/ISSUE_TEMPLATE/tarefa-do-agente.yml` e `achado.yml` (formulários do GitHub) e `scripts/github_rotulos.py` (a lista dos 13 rótulos: `frente:*`, `tamanho:P|M|G`, `agente`, `achado`, `ci`; ensaio por padrão, `--aplicar` escreve, nunca apaga). Prova `real`: os 13 rótulos foram criados no repositório em 06/10 12:31Z pela máquina central com `--aplicar` (e a releitura disse "nada a fazer"); a lista de 23 rótulos tem os 10 padrão intactos. Prova `simulated`: `scripts/tests/test_github_rotulos.py` (10 testes, `gh` falso) e o YAML dos dois formulários lido com `yaml.safe_load`. A revisão de segredos de 06/10 pediu 3 ajustes de texto nos formulários (a issue é fonte da tarefa e não dos limites, a caixa de conferência alinhada ao `AGENTS.md`, aviso contra print e log com dado de pessoa), todos feitos; o tamanho G saiu do formulário do agente. O script de rótulos foi rodado sobre a base `2aa73973`. `not_run`: o GitHub mostrar os formulários na tela de nova issue e aceitá-los (só depois do merge na `main`).
 
 ## 2026-10-06 — 29.155 (C4): AGENTS.md e os perfis de agente backend, frontend e docs (branch ci/29-155-c4-agentes)
 
