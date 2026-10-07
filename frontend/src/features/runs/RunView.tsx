@@ -40,6 +40,7 @@ import { abaPadraoDaExecucao, efeitosRepetidos, type AbaDaExecucao } from './res
 import { AssistenteDoComando } from '../command/AssistenteDoComando';
 import { repeatRun, responderExecucao, retryFailed, runAction } from './runActions';
 import styles from './Runs.module.css';
+import { EnsinoDaExecucao } from './EnsinoDaExecucao';
 import { RunUsageCard } from './RunUsageCard';
 import { TextsTab, useRunApprovals } from './TextsTab';
 import { TimelineTab } from './TimelineTab';
@@ -508,6 +509,8 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
             </Banner>
           ) : null}
         </div>
+
+        <EnsinoDaExecucao run={run} />
 
         <RunUsageCard run={run} />
       </div>
