@@ -271,6 +271,8 @@ ai:
                                           # de prova, builtin e category 'qa', que fica no modelo barato); false = nunca
   strong_model_only_on_commit: true   # 31.223: quando a etapa com efeito sobe (acima), o modelo de ação navega e só a
                                       # decisão que dispararia o efeito é refeita no forte; false = a etapa inteira
+  imagem_quando_alvo_fora_da_arvore: true  # (true) 31.232: o commit refeito no forte e o rejulgamento do efeito levam a
+                                      # imagem quando o alvo não está na árvore (toque por coordenada); false = como antes
   cascade_blocked_to_tier1: true  # (true) 17.10: step_blocked do modelo de ação sobe UMA vez ao de escalonamento antes de pedir uma
                                   # pessoa (não vale para challenge, auth_required e wrong_account); false = como antes
   rejudge_yes_on_side_effect: true  # (true) 17.10: o "sim" do verificador barato em etapa com efeito externo (ou que confirma o

@@ -693,8 +693,15 @@ def _proxima_encadeada(fila: list[Decision], antes: UiTree | None, agora: UiTree
     return Decision(tool=d.tool, args={**d.args, "element_id": iguais[0].id}, raw_text=d.raw_text)
 
 
-_IMAGEM_VAI: frozenset[str] = frozenset({"politica_sempre", "pedida", "problema", "primeira_julgada",
-                                         "primeira_da_leitura", "leitura_pendente", "arvore_pobre"})
+_IMAGEM_VAI: frozenset[str] = frozenset({"politica_sempre", "alvo_fora_da_arvore", "pedida", "problema",
+                                         "primeira_julgada", "primeira_da_leitura", "leitura_pendente", "arvore_pobre"})
+
+
+def alvo_na_arvore(args: object, tree: UiTree) -> bool:
+    """31.232: o alvo do efeito foi escolhido na árvore (um `element_id` que existe nela). Toque por coordenada, elemento
+    ausente ou ferramenta sem elemento: fora, e quem confere o efeito no modelo forte recebe a imagem."""
+    element_id = getattr(args, "element_id", None)
+    return bool(element_id) and tree.by_id(str(element_id)) is not None
 #: Item 31.37: ferramentas que só LEEM a tela. Repeti-las não é ciclo sem progresso: na leitura do Outlook (d62546,
 #: e7df7c) `observe_screen` duas vezes contou como ciclo e escalou 2 ou 3 decisões para o Opus. A contagem segue
 #: valendo para toda ferramenta que age na tela.
@@ -1222,15 +1229,16 @@ class StepExecutor:
         return getattr(self.provider, "model", "") or ""
 
     def _want_image(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool, requested: bool,
-                    ai: AiCfg | None = None, le_valor: bool = False, falta_saida: bool = False) -> bool:
+                    ai: AiCfg | None = None, le_valor: bool = False, falta_saida: bool = False,
+                    alvo_fora: bool = False) -> bool:
         """Política `ai.image_policy`: se a imagem vai junto. O porquê é `_motivo_da_imagem`, a única régua."""
         return self._motivo_da_imagem(tree, judged_step=judged_step, first=first, trouble=trouble,
                                       requested=requested, ai=ai, le_valor=le_valor,
-                                      falta_saida=falta_saida) in _IMAGEM_VAI
+                                      falta_saida=falta_saida, alvo_fora=alvo_fora) in _IMAGEM_VAI
 
     def _motivo_da_imagem(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool,
                           requested: bool, ai: AiCfg | None = None, le_valor: bool = False,
-                          falta_saida: bool = False) -> MotivoDaImagem:
+                          falta_saida: bool = False, alvo_fora: bool = False) -> MotivoDaImagem:
         """Política `ai.image_policy`. A imagem custa ~1/3 dos tokens novos de cada chamada; a hierarquia quase sempre
         basta. Em `auto` a imagem vai quando a árvore é pobre (WebView/canvas), na 1ª decisão de etapa julgada por
         visão, depois de erro/ciclo, ou quando o próprio modelo pede (observe_screen.need_image).
@@ -1238,7 +1246,8 @@ class StepExecutor:
         Decide pela ÁRVORE, antes de a imagem existir (adendo v0.20, C1): o resto do que pesa aqui já se sabe antes
         de observar, então a imagem só é adquirida quando vai ser mandada. RA-10: devolve o MOTIVO (`ai_calls.
         image_reason`), na ordem em que a regra decide; vai junto quando ele está em `_IMAGEM_VAI`.
-        `ai`: o bloco da execução (17.14, `_ai_da_execucao`); vazio = o global."""
+        `ai`: o bloco da execução (17.14, `_ai_da_execucao`); vazio = o global. `alvo_fora` (31.232): esta chamada é do
+        modelo forte que confere um efeito cujo alvo não está na árvore (`alvo_na_arvore`)."""
         ai = ai or self.cfg.file.ai
         if tree.sensitive:
             return "sensivel"
@@ -1246,6 +1255,9 @@ class StepExecutor:
             return "politica_nunca"
         if ai.image_policy == "always":
             return "politica_sempre"
+        if alvo_fora and ai.imagem_quando_alvo_fora_da_arvore:
+            # 31.232: o toque por coordenada que o forte confere sem a imagem é às cegas: a árvore não diz o que há ali.
+            return "alvo_fora_da_arvore"
         if requested:
             return "pedida"
         if trouble:
@@ -2232,6 +2244,8 @@ class StepExecutor:
         so_no_commit = bool(tier_efeito) and ai_cfg.strong_model_only_on_commit
         base_tier = 1 if tier_efeito and not so_no_commit else 0
         commit_subiu = False
+        commit_alvo_fora = False           # 31.232: a decisão do commit refeita no forte confere um alvo fora da árvore
+        efeito_alvo_fora = False           # 31.232: o efeito disparado tinha o alvo fora da árvore (vai ao rejulgamento)
         # LT-12: a nova tentativa inteira subia ao modelo forte (76 decides de tentativa 2 no tier 1 em 7 d, +1,9 s cada),
         # mas ela recomeça quase sempre pelo prefixo que a anterior já acertou. Agora começa no tier 0 e sobe — até o fim
         # da tentativa — na 1ª decisão que repetir, na mesma tela estrutural, a última ação da anterior (onde ela
@@ -2408,7 +2422,7 @@ class StepExecutor:
             receita_decide = rr.mode == "replay" and not rr.diverged and not fired and rr.replayer is not None
             pede = dict(judged_step=judged_step, first=decisions == 0, trouble=errors_in_row >= 1 or same_count >= 1,
                         requested=image_requested, ai=ai_cfg, le_valor=bool(saidas_declaradas),
-                        falta_saida=bool(faltam_saidas()))
+                        falta_saida=bool(faltam_saidas()), alvo_fora=commit_alvo_fora)
             t_observacao = time.monotonic()
             try:
                 obs = last_obs = await reler_se_ocupada(
@@ -2781,7 +2795,8 @@ class StepExecutor:
                 motivo_imagem = self._motivo_da_imagem(obs.tree, judged_step=judged_step, first=decisions == 0,
                                                        trouble=trouble, requested=image_requested, ai=ai_cfg,
                                                        le_valor=bool(saidas_declaradas),
-                                                       falta_saida=bool(faltam_saidas()))
+                                                       falta_saida=bool(faltam_saidas()), alvo_fora=commit_alvo_fora)
+                commit_alvo_fora = False       # 31.232: vale só para a decisão refeita, a primeira depois da subida
                 quer_imagem = motivo_imagem in _IMAGEM_VAI
                 if quer_imagem and obs.jpeg is None and obs.image_omitted == "policy":
                     # A receita divergiu depois da observação só de árvore: a imagem vem agora, da mesma árvore,
@@ -3404,6 +3419,7 @@ class StepExecutor:
             # ---------- 31.223: na etapa com efeito, o modelo de ação navega e o commit é decidido pelo forte
             if so_no_commit and not commit_subiu and not from_recipe and tier == 0 and is_commit:
                 commit_subiu = True
+                commit_alvo_fora = not alvo_na_arvore(args, obs.tree)
                 history.append(f"(executor) {decision.tool} dispararia o efeito desta etapa: a decisão sobe ao modelo "
                                "de escalonamento antes de agir.")
                 continue
@@ -3543,6 +3559,7 @@ class StepExecutor:
                            source="recipe" if from_recipe else ("regra" if pela_regra else "ai"))
             if is_commit:
                 self._guardar_linha_de_base(step, obs.tree)      # 31.59: a tela de ANTES do toque
+                efeito_alvo_fora = not alvo_na_arvore(args, obs.tree)
                 fired = True           # a partir daqui o efeito pode ter ocorrido, aconteça o que acontecer
                 self._open_effect(objective, step, rt, cap, app.id)   # o histórico registra a INTENÇÃO, não o sucesso
             t0 = time.monotonic()
@@ -3715,6 +3732,7 @@ class StepExecutor:
                                                                                   if cap and app.package else None),
                                                                       attempt_id=attempt_id, cartao=cartao,
                                                                       pacote=app.package, imagem_forcada=bool(visuais),
+                                                                      alvo_do_efeito_fora=fired and efeito_alvo_fora,
                                                                       copias_vistas=copias_vistas,
                                                                       sobreposicoes=sobreposicoes,
                                                                       coberturas=coberturas)
@@ -3957,7 +3975,8 @@ class StepExecutor:
                       attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                       imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
                       proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None,
-                      sobreposicoes: list[bool] | None = None, coberturas: list[Cobertura] | None = None
+                      sobreposicoes: list[bool] | None = None, coberturas: list[Cobertura] | None = None,
+                      alvo_do_efeito_fora: bool = False
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """A verificação (`_verificar`), com o tempo inteiro dela somado na tentativa (31.24, C-4:
         `attempts.verificacao_ms`). Só mede: os argumentos passam como vieram."""
@@ -3985,7 +4004,7 @@ class StepExecutor:
                                          cartao=cartao, pacote=pacote, imagem_forcada=imagem_forcada,
                                          uma_rodada=uma_rodada, so_prova_local=so_prova_local, proposito=proposito,
                                          copias_vistas=copias_vistas, sobreposicoes=sobreposicoes,
-                                         coberturas=coberturas)
+                                         coberturas=coberturas, alvo_do_efeito_fora=alvo_do_efeito_fora)
         finally:
             if (tempos := self._tempos(attempt_id)) is not None:
                 tempos.verificacao_ms += ms_desde(inicio)
@@ -3997,7 +4016,8 @@ class StepExecutor:
                          attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                          imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
                          proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None,
-                         sobreposicoes: list[bool] | None = None, coberturas: list[Cobertura] | None = None
+                         sobreposicoes: list[bool] | None = None, coberturas: list[Cobertura] | None = None,
+                         alvo_do_efeito_fora: bool = False
                          ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """`uma_rodada`: uma só leitura e, se a pós-condição a exigir, um só julgamento — devolve o veredito mesmo
         negativo, sem esperar a tela mudar até o fim do orçamento. É o modo dos atalhos que conferem ANTES do ator
@@ -4220,15 +4240,33 @@ class StepExecutor:
                             f"{rt.id} · {step.title}: o verificador aprovou uma etapa com efeito externo; "
                             "conferindo com o modelo de escalonamento",
                             run_id=run_id, instance_id=rt.id, step_id=step.id)
+                        # 31.232: o efeito disparado por um alvo fora da árvore é conferido COM a imagem, a mesma
+                        # régua do commit refeito; com o alvo na árvore, a tela do 1º juiz, como antes.
+                        motivo_rejulgamento = motivo_imagem
+                        tela_rejulgamento = screen
+                        if alvo_do_efeito_fora and motivo_imagem not in _IMAGEM_VAI:
+                            motivo_rejulgamento = self._motivo_da_imagem(obs.tree, judged_step=False, first=False,
+                                                                         trouble=False, requested=False, ai=ai_cfg,
+                                                                         alvo_fora=True)
+                            if motivo_rejulgamento in _IMAGEM_VAI:
+                                try:
+                                    obs = await self.devices.completar_imagem(rt, obs, timeout=call_timeout,
+                                                                              lado_max=lado_max)
+                                    tela_rejulgamento, _ = self._screen(obs, with_image=True,
+                                                                        protect=tuple(step.commit_guard), ai=ai_cfg)
+                                except DriverTimeout:
+                                    raise
+                                except DriverError as exc:   # sem a imagem, o rejulgamento segue pela árvore (o de antes)
+                                    log.info("%s: imagem do rejulgamento indisponível (%s)", rt.id, exc)
                         verdict = await self._ai(
                             run_id, objective_id,
-                            lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
+                            lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=tela_rejulgamento,
                                                                        facts=list(facts or []), escalate=True)),
                             # 31.50 (d): SEM a dica da tela. O rejulgamento do "sim" com efeito é a segunda opinião
                             # independente; com a mesma orientação do primeiro juiz, deixava de ser.
                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="sim_com_efeito",
-                                                 image_reason=motivo_imagem))
+                                                 image_reason=motivo_rejulgamento))
                         level = verdict.delivery_level
                     if copias_vistas is not None and verdict.copias is not None:
                         copias_vistas.append(verdict.copias)

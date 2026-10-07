@@ -785,6 +785,11 @@ class AiCfg(BaseModel):
     # onda 1 (07/10): o Opus decidia os 2 passos do comentário (US$ 0,112 de 0,279 do alvo). A trava de commit, a
     # política de risco e o rejulgamento do "sim" com efeito não mudam. `false` = a etapa inteira no forte (o de antes).
     strong_model_only_on_commit: bool = True
+    # 31.232: o modelo forte que confere o efeito (a decisão do commit refeita, 31.223, e o rejulgamento do "sim" com
+    # efeito, 17.10) recebe a imagem quando o alvo do efeito NÃO está na árvore (toque por coordenada, elemento ausente
+    # ou ferramenta sem elemento). Com o alvo na árvore, a régua de sempre decide (na onda 1, sem imagem). Só acrescenta
+    # a imagem; nunca tira a que outra causa manda. `false` = como antes.
+    imagem_quando_alvo_fora_da_arvore: bool = True
     # Item 17.10 (cascata para ator barato). `step_blocked` do tier 0 (kinds que um modelo mais forte ainda pode resolver:
     # tela inesperada, informação faltando, app incompatível, outro) sobe UMA vez ao tier 1 na mesma tela antes de pedir uma
     # pessoa. `challenge`, `auth_required` e `wrong_account` NUNCA sobem: dependem de pessoa ou do autenticador.
