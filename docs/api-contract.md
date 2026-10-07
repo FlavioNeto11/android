@@ -8043,3 +8043,19 @@ Portal (31.234, `.claude/handoffs/jev-para-portal-31-234.md`).
 - **Código:** `backend/app/modules/pedidos/domain/resumo_da_pesquisa.py` e `ServicoDeOperacoes._pesquisa`.
 - **Prova:** `simulated` (`backend/tests/test_pesquisa_no_get_da_operacao.py`, os quatro estados escritos pela própria
   pesquisa da operação). `real`: `not_run`, até o GET da primeira operação com assunto depois do deploy.
+## Adendo v1.119 (07/10/2026; número da orquestradora; item 31.220) — o laço que avança a operação
+
+`Settings.operacao_laco_s` (inteiro, 0 a 3600, padrão **0 = desligado**): de quanto em quanto tempo o laço do sistema lê
+as operações abertas (sem `finished_at`) e as avança sem leitura externa, pelo mesmo `ServicoDeOperacoes.ler` do
+`GET /api/operacoes/{id}`. É relido a cada volta, e ligar é `PUT /api/settings {"operacao_laco_s": 15}`, sem reinício.
+Desligado, o laço só confere a configuração a cada 30 s. Ele roda só na réplica que hospeda (não com `ROLE=api`) e
+dispensa a trava de líder, porque a leitura é idempotente: o estágio de cada alvo e o fechamento da operação são
+gravados por `UPDATE` condicional, e só quem grava emite `operacao.alvo` ou `operacao.encerrada`. O laço e um GET que
+leem juntos avisam uma vez. Sem operação aberta, a volta é uma consulta e nada mais.
+
+No corte 61 o laço sai desligado: a prova de 07/10 usa o laço da Canais (120 s) e a tela, e ele só liga depois dela.
+
+Código: `backend/app/modules/operacoes/infrastructure/laco.py` (`LacoDasOperacoes`), montado em `bootstrap.py` e
+iniciado em `state.py` (tarefa `operacoes`). Testes: `backend/tests/test_operacoes_laco.py` (relógio falso: desligado
+não lê; ligado fecha sem GET e não repete; duas leituras ou dois fechamentos com a mesma linha velha avisam uma vez; a
+falha numa operação não para as outras).

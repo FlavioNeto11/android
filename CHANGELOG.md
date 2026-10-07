@@ -402,6 +402,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   prompts, fluxos e arquitetura: 3373 passaram; as 2 falhas da rodada (o teste novo do provedor real e a catraca de Any) foram corrigidas e rerodadas (48 passaram). Revisor de segredos: sem alto; o médio (molde com literal de alvo, como @, endereço ou número longo, não vai ao prompt) e três baixos (referência fora do oferecido não vai à trilha; parâmetros reservados fora; uses só sobe ao aprovar) corrigidos. `real`: `not_run` (um pedido parafraseado no android-04 planejado pelo
   fluxo ensinado, cerca de US$ 0,02, com o sim do dono).
 
+## 2026-10-07 — 31.220: o laço do sistema que avança a operação sem leitura externa (branch feat/31-220-laco-da-operacao, corte 61)
+
+- `LacoDasOperacoes` lê as operações abertas a cada `operacao_laco_s` (novo em `LimitsCfg`, adendo v1.119; padrão 0 =
+  desligado neste corte). Antes, só uma leitura (o painel, a Canais ou a resposta de um POST) fechava a operação e emitia
+  `operacao.encerrada`.
+- O estágio do alvo (`_anotar`) passa a ser gravado por `UPDATE` condicional, e o `_fechar` passa a ler o `.rowcount`. A
+  comparação antiga do cursor com 0 nunca era verdadeira, e dois fechamentos juntos emitiam o evento duas vezes.
+- Prova `simulated`: `backend/tests/test_operacoes_laco.py` (5 testes, relógio falso); os dois testes de corrida
+  reprovam no código anterior. Real: not_run (a operação de 07/10 fechando sem leitura externa, depois da prova e com
+  o laço ligado).
+
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 
 - Na onda 1 (06/10), a pesquisa da operação deixou 6 de 8 fatos como `hipotese` (uma fonte só), e nada os

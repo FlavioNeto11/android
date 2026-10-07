@@ -730,8 +730,12 @@ class ServicoDeOperacoes:
         """Grava o estágio lido e avisa a mudança (`operacao.alvo`); a leitura seguinte só avisa se mudou de novo."""
         if (a["estagio"], a["estado"], a["motivo"]) == (estagio, estado, motivo):
             return
-        self.db.execute("UPDATE operacao_alvos SET estagio=?, estado=?, motivo=?, updated_at=? WHERE operacao_id=? AND"
-                        " profile_id=?", (estagio, estado, motivo, now_iso(), op_id, a["profile_id"]))
+        # Condicional no SQL (31.220): o laço do sistema e um GET que leem juntos gravam e avisam uma vez só.
+        if self.db.execute("UPDATE operacao_alvos SET estagio=?, estado=?, motivo=?, updated_at=? WHERE operacao_id=?"
+                           " AND profile_id=? AND (estagio<>? OR estado<>? OR COALESCE(motivo, '')<>?)",
+                           (estagio, estado, motivo, now_iso(), op_id, a["profile_id"], estagio, estado,
+                            motivo or "")).rowcount == 0:
+            return
         self.bus.emit("operacao.alvo", f"Operação {op_id}: {a['profile_id']} em {estagio} ({estado}).",
                       run_id=a["run_id"], instance_id=a["instance_id"],
                       data={"operacao_id": op_id, "profile_id": a["profile_id"], "estagio": estagio, "estado": estado,
@@ -748,9 +752,15 @@ class ServicoDeOperacoes:
         if status == "em_curso" or op["finished_at"]:
             return str(op["finished_at"]) if op["finished_at"] else None
         agora = min(fim, now_iso()) if fim else now_iso()
+        # `.rowcount` (31.220): `execute` devolve o cursor, e a comparação com 0 nunca era verdadeira; o laço e um GET
+        # que fecham juntos emitiam o `operacao.encerrada` duas vezes. O `status` na condição (achado do Codex no PR
+        # 494): o cancelar de outra réplica, gravado depois da leitura de `op`, não pode virar `concluida*` aqui.
         if self.db.execute("UPDATE operacoes SET status=?, finished_at=?, updated_at=? WHERE id=? AND finished_at IS"
-                           " NULL", (status, agora, agora, op["id"])) == 0:
-            return None
+                           " NULL AND (status<>'cancelada' OR ?='cancelada')",
+                           (status, agora, agora, op["id"], status)).rowcount == 0:
+            # Perdeu a corrida: devolve a hora que ficou gravada (ou nenhuma, se foi o cancelar), sem avisar de novo.
+            gravada = self.db.scalar("SELECT finished_at FROM operacoes WHERE id=?", (op["id"],))
+            return str(gravada) if gravada else None
         self.bus.emit("operacao.encerrada", f"Operação {op['id']} encerrada: {status}.",
                       data={"operacao_id": op["id"], "status": status, "capacidade": capacidade})
         return agora
