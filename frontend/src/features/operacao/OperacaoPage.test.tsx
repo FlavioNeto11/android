@@ -499,6 +499,8 @@ describe('31.246: o alvo que espera resposta não parece fila nem andamento', ()
     await abrir({ ...BASE, capacidade: { ...BASE.capacidade, aguardando_resposta: 2 }, alvos: [alvo('1'), alvo('2')] });
     expect(text(container.querySelector('[data-espera-de-resposta]')!)).toContain('2 agentes aguardam resposta');
     expect(container.querySelector('[data-aguardando-resposta]')).toBeNull();   // sem o detalhe por alvo, a linha não afirma
+  });
+});
 
 describe('31.247: a operação em andamento se relê sozinha e diz de quando é o que mostra', () => {
   const alvo = (estado: string, estagio: string) => ({ profile_id: 'p1', persona_nome: 'Persona 1', app_id: 'instagram', account_id: 'a1', conta: 'c1', instance_id: 'android-01', run_id: 'r-1', estagio, estado, motivo: null, resultado: null });
@@ -543,5 +545,49 @@ describe('31.247: a operação em andamento se relê sozinha e diz de quando é 
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('31.254: o motivo de falha sem usuário de terceiro e o rótulo da ação que falhou', () => {
+  const MOTIVO = 'Etapa \'Comentar na publicação\' falhou: A tela mostra o feed "Posts" com o post de astro_jessica em foco (o de nasawebb …';
+  const alvo = (id: string, extra: Record<string, unknown>) => ({
+    profile_id: `p-${id}`, persona_nome: `Persona ${id}`, app_id: 'instagram', account_id: `a-${id}`, conta: `conta${id}`, instance_id: `android-0${id}`, run_id: `r-${id}`, ...extra,
+  });
+  const BASE = {
+    id: 'op-f', command: 'Comentar', app_id: 'instagram', acao_final: 'executar', status: 'concluida_com_bloqueios', created_at: '2026-10-07T10:00:00Z', finished_at: '2026-10-07T10:10:00Z',
+    max_usd: 2, parametros: { username: 'nasawebb' },
+    capacidade: { solicitados: 3, contas_existentes: 3, sessoes_validas: 3, contas_disponiveis: 3, concluidas: 1, bloqueadas: 2, em_curso: 0, motivos: { [MOTIVO]: 1, 'sem conta': 1 } },
+    alvos: [
+      alvo('1', { estagio: 'acao_bloqueada', estado: 'bloqueado', motivo: MOTIVO, resultado: { texto: 'Lindo!', conhecimento_ids: [], acao_final: { tipo: 'CREATE_COMMENT', verificada: false } } }),
+      alvo('2', { estagio: 'persona', estado: 'bloqueado', motivo: 'sem conta' }),
+      alvo('3', { estagio: 'resultado_verificado', estado: 'concluido', motivo: null, resultado: { texto: 'Show', conhecimento_ids: [], acao_final: { tipo: 'CREATE_COMMENT', verificada: true } } }),
+    ],
+  };
+  const abrir = async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-f$/, () => json(BASE));
+    await ir(['op-f']);
+    await waitFor(() => expect(linhas()).toHaveLength(3));
+  };
+
+  it('o leitor marca a ação barrada só quando o backend manda acao_bloqueada', () => {
+    expect(lerAlvo(BASE.alvos[0], 0)!.acao_barrada).toBe(true);
+    expect(lerAlvo(BASE.alvos[1], 1)!.acao_barrada).toBe(false);
+    expect(lerAlvo({ ...BASE.alvos[1], estagio: 'acao_executada', parou_em: 'acao_bloqueada' }, 1)!.acao_barrada).toBe(true);
+  });
+
+  it('a ação que falhou diz "Falhou ao executar" (não "Parou em Ação executada"); a que parou antes segue "Parou em …"', async () => {
+    await abrir();
+    const falha = container.querySelector('[data-motivo-do-alvo="falha"]') as HTMLElement;
+    expect(text(falha)).toContain('Falhou ao executar:');
+    expect(text(falha)).toContain('Comentar na publicação');
+    expect(text(falha)).not.toContain('Parou em Ação executada');
+    expect(text(container.querySelector('[data-motivo-do-alvo="parada"]')!)).toBe('Parou em Conta: sem conta');
+  });
+
+  it('o motivo, na linha e no bloco de motivos da capacidade, não traz o dono do post nem o perfil alvo', async () => {
+    await abrir();
+    expect(container.textContent).not.toMatch(/astro_jessica|nasawebb/);
+    expect(text(container.querySelector('[data-motivo-do-alvo="falha"]')!)).toContain('o post de [usuário omitido] em foco (o de [usuário omitido] …');
+    expect(text(container.querySelector('#operacao-capacidade')!.parentElement!)).toContain('com o post de [usuário omitido] em foco');
   });
 });

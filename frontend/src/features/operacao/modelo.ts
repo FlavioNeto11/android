@@ -83,6 +83,8 @@ export interface Alvo {
   /** O que a execução do alvo gastou em IA (US$); `null` sem execução ou com o backend anterior. */
   custo_usd: number | null;
   resultado: Resultado | null;
+  /** O backend mandou `acao_bloqueada`: a ação de efeito foi tentada e FALHOU (o alias a põe na posição de `acao_executada`, mas não executou). */
+  acao_barrada: boolean;
   /**
    * A execução do alvo parou numa PERGUNTA (`needs_input`) e nada avança sem a resposta (31.246). `undefined` = o central não manda o
    * campo (nada se afirma); `null` = ele manda e o alvo não espera resposta.
@@ -176,6 +178,7 @@ export function lerAlvo(v: unknown, posicao: number): Alvo | null {
     estagio: lerEstagio(o.estagio), estagios, estado: isEstadoDoAlvo(o.estado) ? o.estado : null, parou_em: lerEstagio(o.parou_em), motivo: texto(o.motivo),
     // `custo_usd` do alvo é o dado (existe mesmo antes do texto); o do `resultado` é só a reserva (resultado é null antes do texto).
     custo_usd: usdOuNulo(o.custo_usd) ?? usdOuNulo(registro(o.resultado)?.custo_usd), resultado: lerResultado(o.resultado),
+    acao_barrada: o.estagio === 'acao_bloqueada' || o.parou_em === 'acao_bloqueada',
     // Chave ausente (central anterior) não é `null` (o central sabe e o alvo não espera): a tela só afirma o que ele disse.
     ...('aguarda_resposta' in o ? { aguarda_resposta: lerEspera(o.aguarda_resposta) } : {}),
   };
