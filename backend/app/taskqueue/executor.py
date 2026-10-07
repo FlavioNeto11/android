@@ -539,6 +539,9 @@ class StepOutcome:
     #: login). Na execução de PROVA, o scheduler grava `objectives.blocked_kind='auth'` e o pedido de validação fecha
     #: `app_sem_sessao`, não `sem_evidencia`.
     pede_login: bool = False
+    #: 31.278: o app pediu a senha e a persona NÃO tem senha guardada para ele (sem conta ou sem credencial). O aviso ao
+    #: dono diz isso, em vez do "pediu um novo login" genérico; o scheduler leva o sinal ao `objective.updated`.
+    sem_senha_guardada: bool = False
 
 
 class OrcamentoDaEtapa(AIError):
@@ -2626,6 +2629,16 @@ class StepExecutor:
                                        needs="Marque o consentimento na conta da persona (guia Contas e acesso da persona) e "
                                              "retome o item — ou faça o login manualmente e devolva o controle.",
                                        pede_login=True)
+                if porque == MOTIVO_SENHA and senha_do_app.sem_senha_guardada:
+                    # 31.278: não há senha da persona para ESTE app (sem conta ou sem credencial). Não é falha de fluxo
+                    # (ADR-040: só se digita o que a pessoa guardou e consentiu): o item diz o que falta e onde guardar.
+                    nome = app.name or app.package or "este app"
+                    return StepOutcome(Outcome.waiting_user,
+                                       f"O app pede autenticação ({porque}) e não há senha guardada para a conta desta "
+                                       f"persona no {nome}: autenticação sem senha guardada.",
+                                       needs=f"Guarde a senha da conta no {nome} (com consentimento) na ficha da persona "
+                                             "e retome o item — ou faça o login manualmente e devolva o controle.",
+                                       pede_login=True, sem_senha_guardada=True)
                 return StepOutcome(Outcome.waiting_user, f"O app pede autenticação ({porque}).",
                                    needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.",
                                    pede_login=True)

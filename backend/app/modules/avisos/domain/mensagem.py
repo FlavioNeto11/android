@@ -200,6 +200,9 @@ MOTIVO_DA_PARADA: dict[str, str] = {
     "ai": "A IA ficou indisponível para esta etapa (chave, saldo ou recusa).",
     "policy": "A política do perfil barrou a etapa.",
 }
+#: 31.278: o app pediu a senha e a persona não tem senha guardada para ele (o executor põe o sinal no `objective.updated`).
+MOTIVO_SEM_SENHA_GUARDADA = ("O app pediu a senha e não há senha guardada para a conta desta persona nele: guarde a "
+                             "senha, com consentimento, na ficha da persona.")
 #: O motivo do encerramento (`pedidos/domain/estados.MOTIVOS_DE_ENCERRAMENTO`) dito em português.
 MOTIVO_DO_ENCERRAMENTO: dict[str, str] = {
     "prazo": "chegou ao prazo final",
@@ -557,6 +560,8 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         nome_da_acao = texto_seguro(_texto(d.get("acao_nome")), nomes, redigir) if redigir is not None else None
         etapa = nome_da_acao or (acao if acao and _CHAVE_DE_CATALOGO.match(acao) else None)
         motivo = MOTIVO_DA_PARADA.get(_texto(d.get("failure_kind")) or _texto(o.get("blocked_kind")) or "")
+        if d.get("sem_senha_guardada") is True:
+            motivo = MOTIVO_SEM_SENHA_GUARDADA        # 31.278: texto fixo, sem persona e sem app
         assunto = f"✋ {f'O objetivo no {aparelho}' if aparelho else 'Um objetivo'} parou esperando você"
         linhas = [x for x in (f"Etapa que espera: {etapa}." if etapa else None, motivo, GESTO_DO_OBJETIVO) if x]
         # A própria execução: o objetivo parado não está na caixa de Pendências. O id não aparece no texto.

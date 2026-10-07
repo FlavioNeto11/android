@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.278: o app pede a senha e a persona não tem senha guardada para ele — o item e o aviso dizem isso (branch fix/31-278-aviso-sem-senha)
+
+- Defeito do campo: a persona do android-01 tinha conta e senha com consentimento só no Instagram e no Outlook; o QA Messenger abriu na tela de
+  senha e a etapa foi a `waiting_user` em 9 s, sem `type_secret` (ADR-040: só se digita o que a pessoa guardou e consentiu), com o aviso
+  genérico "a conta pediu um novo login". O fluxo estava certo; faltava dizer o que falta.
+- `typable_secret_for` ganha `sem_senha_guardada` (a persona não tem credencial nenhuma para o app: nem senha, nem login gerenciado, nem
+  senha recusada). O executor devolve, nesse caso, o item com "não há senha guardada para a conta desta persona no <app>" e o `needs`
+  "guarde a senha na ficha da persona"; `StepOutcome.sem_senha_guardada` leva o sinal ao `dados` do `objective.updated`, e o aviso do
+  Telegram troca a linha do motivo por um texto fixo (sem persona e sem app). Consentimento pendente, login gerenciado e senha recusada
+  seguem como antes.
+- Prova `simulated`: `tests/test_aviso_sem_senha_guardada.py` (3: a regra pura, o aviso, o executor de verdade no aparelho falso de QA) e
+  mais 521 testes dirigidos verdes, catracas 89 verdes, mypy no teto (257). `real`: `not_run`. O dado do campo (QA Messenger sem sessão
+  no android-01) é do dono: guardar a credencial de teste na ficha da persona ou usar aparelho com o app logado.
+
 ## 2026-10-07 — 29.204: `scripts/funil.ps1` não reusa o nome do parâmetro `-ExigirCommit` com outra caixa (correção da Android, DevOps fechada na semana)
 
 - A variável local `$exigirCommit` (linha 281) era a mesma variável do parâmetro `$ExigirCommit` (o PowerShell não distingue caixa) e o `test_nenhum_ps1_atribui_a_um_parametro_com_outra_caixa` reprovava no funil 61. Renomeada para `$exigeCommit` nas três linhas que a usam; o comportamento não muda. Prova `simulated`: `scripts/tests/test_deploy_portao_do_ensaio.py`.
