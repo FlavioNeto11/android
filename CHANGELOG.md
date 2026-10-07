@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.222: a semelhança não derruba a ação final (branch feat/31-222-semelhanca-sem-acao-final)
+
+- A escolha por semelhança trocava o plano inteiro pelo do fluxo. Um fluxo de leitura escolhido para um comando com
+  comentário derrubava o comentário.
+- Agora, se o plano livre tem etapa com efeito ou trava que o fluxo não cobre, a escolha é recusada e fica o plano
+  livre, com o motivo na trilha.
+- Prova `simulated`: `backend/tests/test_semelhanca_sem_acao_final.py` (3). `real`: `not_run`.
+
 ## 2026-10-07 — 31.219: o ensino do fluxo para alvo de terceiro, preparado (branch feat/31-219-ensino-alvo-de-terceiro)
 
 - O alvo da onda 2 é o primeiro post de uma página pública de terceiro (P-029), e a única receita ensinada do Instagram
