@@ -51,6 +51,10 @@ SEM_SESSAO = "sem sessão"
 FORA_DO_PRINCIPAL = "sessão fora do aparelho principal"
 SEM_APARELHO = "aparelho indisponível"
 TETO_DE_CUSTO = "teto de custo"
+#: O motivo de quem parou pelo teto da OPERAÇÃO depois de criado (corte suave): recusado no planejamento, ou cortado no meio
+#: pela conferência do roteador (`Teto de custo da operação atingido: …`). Um motivo só, para a contagem por motivo.
+TETO_DA_OPERACAO = "teto da operação"
+_DO_TETO = re.compile(r"^(teto da operação:|Teto de custo da operação atingido)")
 LIMITE_DE_ACOES = "limite de ações executadas"
 AGUARDA_LIBERACAO = "aguarda liberação"
 
@@ -62,6 +66,8 @@ _ARROBA = re.compile(r"(?<![\w.])@[A-Za-z0-9._]{1,60}")
 def _motivo(texto: object) -> str | None:
     """O motivo REDIGIDO, numa linha e SEM @ de conta. O do objetivo pode trazer texto lido da tela, da pergunta à pessoa
     ou o @ do alvo (a porta de frota o cita), e vai para o banco, o evento `operacao.alvo`, a API e o relatório."""
+    if texto and _DO_TETO.match(str(texto)):
+        return TETO_DA_OPERACAO
     return motivo_curto(_ARROBA.sub("o perfil alvo", redact(str(texto)) or "") if texto else None)
 
 

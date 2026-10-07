@@ -56,6 +56,7 @@ MOTIVO_DA_RECUSA = {
                             "está no painel.",
     "acima_da_autonomia": "Motivo: o plano tinha etapas com efeito, e esta execução só podia observar. Nada foi feito.",
     "parametro_em_conflito": "Motivo: o plano usava um parâmetro fixo da operação com outro valor. Nada foi feito.",
+    "teto_da_operacao": "Motivo: a operação já tinha gasto o teto de custo dela; este alvo não começou. Nada foi feito.",
 }
 MOTIVO_DA_RECUSA_GENERICO = "Motivo: o plano foi recusado antes de começar. Nada foi executado; o detalhe está no painel."
 

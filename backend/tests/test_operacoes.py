@@ -13,6 +13,9 @@ O que se prova:
 """
 from __future__ import annotations
 
+import asyncio
+import json
+
 import secrets as pysecrets
 from dataclasses import dataclass, field
 from typing import Any
@@ -792,7 +795,8 @@ async def test_o_get_com_lote_e_o_mesmo_sem_lote(harness: Harness) -> None:
         _conta(harness, pid, f"qa-user-7{i}", sessao_em=iid if i < 2 else None)
         pids.append(pid)
     s = _servico(harness)
-    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-lote"))
+    # Teto alto: o gasto inserido abaixo não pode disparar o corte suave do teto (31.205) no meio da comparação.
+    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-lote", max_usd=1000.0))
     runs = [_alvo(op, p)["run_id"] for p in pids]
     modelo = next(iter(st.cfg.file.ai.prices))
     for rid, origem, tokens in ((runs[0], None, 120_000), (runs[0], "pesquisa", 40_000), (runs[1], None, 7_000)):
@@ -883,3 +887,39 @@ async def test_rota_http_do_relatorio(harness: Harness) -> None:
                               "textos", "aprendizado", "latencia", "custo"}
         r = await c.get("/api/operacoes/nao-existe/relatorio")
         assert r.status_code == 404
+
+
+async def test_teto_da_operacao_com_corte_suave_o_alvo_seguinte_nem_comeca(harness: Harness) -> None:
+    """Rodada de 30 alvos: com a operação já no `max_usd`, a execução de alvo que ainda vai planejar é recusada antes de
+    qualquer chamada de IA ou toque no aparelho, e o alvo fica em `acao_bloqueada` com o motivo "teto da operação".
+    Antes ela nascia, abria o app e só parava na primeira chamada (o `_budget`), com o texto do erro como motivo."""
+    from app.modules.operacoes.infrastructure import servico as mod
+
+    st = harness.state
+    assert st is not None
+    pids = []
+    for i, iid in enumerate(("android-01", "android-02")):
+        pid = _persona(harness, f"Teto{i}", iid)
+        _conta(harness, pid, f"qa-user-4{i}", sessao_em=iid)
+        pids.append(pid)
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-teto-suave", max_usd=0.01))
+    runs = [_alvo(op, p)["run_id"] for p in pids]
+    modelo = next(iter(st.cfg.file.ai.prices))
+    st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, input_tokens, output_tokens, ok) VALUES (?,?,?,?,?,?,?)",
+                  (now_iso(), runs[0], "plan", modelo, 2_000_000, 100_000, 1))
+    # Sem `await` entre criar e gravar o gasto: o planejamento (pelo agendador, como sempre) já encontra o teto.
+    for _ in range(100):
+        if st.db.scalar("SELECT status FROM runs WHERE id=?", (runs[1],)) == "failed":
+            break
+        await asyncio.sleep(0.05)
+    assert st.db.scalar("SELECT status FROM runs WHERE id=?", (runs[1],)) == "failed"
+    assert st.db.scalar("SELECT COUNT(*) FROM objectives WHERE run_id=?", (runs[1],)) == 0   # nada planejado
+    recusa = st.db.one("SELECT data FROM events WHERE kind='plan.refused' AND run_id=? ORDER BY id DESC LIMIT 1",
+                       (runs[1],))
+    assert recusa is not None and json.loads(recusa["data"])["motivo"] == "teto_da_operacao"
+    alvo = {a["profile_id"]: a for a in s.ler(op["id"])["alvos"]}[pids[1]]  # type: ignore[attr-defined]
+    assert (alvo["estagio"], alvo["estado"], alvo["motivo"]) == ("acao_bloqueada", "bloqueado", mod.TETO_DA_OPERACAO)
+    # o alvo cortado no MEIO pela conferência do roteador cai no mesmo motivo, para a contagem por motivo
+    assert mod._motivo("Teto de custo da operação atingido: US$ 0.02 de US$ 0.01.") == mod.TETO_DA_OPERACAO
+    assert mod._motivo("Teto de custo da execução atingido") != mod.TETO_DA_OPERACAO

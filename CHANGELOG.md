@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.205: teto da operação com corte suave (branch feat/operacao-latencia-por-estagio, corte 60)
+
+- Com a operação já no `max_usd`, a execução de alvo que ainda vai planejar é recusada antes de qualquer chamada de IA
+  ou toque no aparelho (`RunService._teto_da_operacao_estourado`). O alvo fica em `acao_bloqueada` com o motivo
+  "teto da operação"; o evento `plan.refused` sai com motivo `teto_da_operacao`, e a Canais o traduz
+  (`MOTIVO_DA_RECUSA`). Antes a execução ficava `awaiting_person` no planejamento. O alvo cortado no meio pela
+  conferência do roteador cai no mesmo motivo, para a contagem por motivo.
+- Prova `simulated`: `backend/tests/test_operacoes.py::test_teto_da_operacao_com_corte_suave_o_alvo_seguinte_nem_comeca`,
+  que falha no código anterior (`awaiting_person`). Dirigidos de 189 arquivos: 4775 passed, 2 skipped.
+  - 1 failed, que já falha na main e2e4a9b8 e não é desta branch: `test_prompts_licoes.py::test_os_prompts_de_sistema_ficam_iguais_byte_a_byte`.
+  - 1 erro de estado forjado no teste do lote, corrigido.
+
+  Depois: test_operacoes 29 passed; arquitetura, avisos e catracas 228; mypy 257. Real: not_run.
+
 ## 2026-10-07 — 31.193, 31.194 e 31.195: a operação para a rodada de 30 alvos (branch feat/operacao-latencia-por-estagio, corte 60)
 
 - 31.193 (adendo v1.112): `POST /api/operacoes/{id}/cancelar-alvos` `{profile_ids?, estados?, estagios?, instance_ids?}`. Os filtros se

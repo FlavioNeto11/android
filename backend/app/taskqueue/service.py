@@ -29,6 +29,7 @@ from ..models import (RUN_SEM_TRABALHO, RUN_TERMINAL, DistributeSpec, Distributi
                       ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, ResolveBody, ResolvedTargetDTO, RunCreate, RunStatus,
                       RunSummary, RunTarget, RunTargetsPreview, RunTargetsResolveBody, SessionStatus, StepResult,
                       StepStatus)
+from ..planning import costs
 from ..planning.apps_do_comando import apps_citados, pede_site
 from ..planning.capabilities import (CapabilityCatalog, atualizar_pos_condicoes, efeito_fora_do_catalogo,
                                      load_catalog)
@@ -1082,6 +1083,32 @@ class RunService:
             self.repo.decision(f"Plano da operação: {motivo}.", run_id=run_id)
         return novo, plano_da_operacao.colisoes(plan, fixos)
 
+    def _teto_da_operacao_estourado(self, run_id: str) -> str | None:
+        """O teto da operação com corte suave (rodada de 30 alvos): a execução de alvo que ainda vai planejar, com a
+        operação já no `max_usd`, nem começa. Sem isto ela nascia, abria o app e só parava na primeira chamada de IA
+        (o `_budget` do roteador), com o texto do erro como motivo. Devolve o texto da recusa, ou None."""
+        op = self.repo.db.one("SELECT o.id, o.max_usd FROM runs r JOIN operacoes o ON o.id = r.operacao_id WHERE r.id=?",
+                              (run_id,))
+        if op is None or op["max_usd"] is None:
+            return None
+        runs = [str(r["id"]) for r in self.repo.db.query("SELECT id FROM runs WHERE operacao_id=?", (op["id"],))]
+        gasto = sum(costs.spent_usd_por_run(self.repo.db, self.scheduler.cfg.file.ai.prices, runs).values())
+        if gasto < float(op["max_usd"]):
+            return None
+        return (f"teto da operação: US$ {gasto:.2f} de US$ {float(op['max_usd']):.2f} já gastos; este alvo não começa. "
+                "Nada foi feito.")
+
+    def _recusar_alvo_da_operacao(self, run_id: str, texto: str, motivo: str, **dados: object) -> None:
+        """A execução do alvo termina recusada antes de qualquer etapa; a operação lê o alvo em `acao_bloqueada` com o
+        motivo (`estagios.derivar`, `recusa_no_plano`). O `motivo` do evento é o código que a Canais traduz.
+        A execução que já terminou (cancelada pelo cancelar-alvos entre o despacho e aqui) fica como está."""
+        if self.repo.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,)) in (
+                RunStatus.completed.value, RunStatus.failed.value, RunStatus.cancelled.value):
+            return
+        self.repo.decision(f"Recusado no planejamento: {texto}", run_id=run_id)
+        self.repo.bus.emit("plan.refused", texto, level="warn", run_id=run_id, data={"motivo": motivo, **dados})
+        self.repo.set_run_status(run_id, RunStatus.failed, texto, level="warn", message=f"Execução {run_id}: {texto}")
+
     def _recusar_por_conflito(self, run_id: str, plan: Plan, nomes: list[str]) -> None:
         """Achado da revisão do PR 479: o plano usa um nome fixo da operação com OUTRO valor (`username` = A no plano,
         B na operação). Seguir mandaria a ação ao alvo do planejador; sobrescrever, ao do fixo com a referência dele
@@ -1099,6 +1126,12 @@ class RunService:
         repo = self.repo
         run = repo.run_row(run_id)
         assert run is not None
+        da_operacao = "operacao_id" in run.keys() and bool(run["operacao_id"])
+        teto = self._teto_da_operacao_estourado(run_id) if da_operacao else None
+        if teto is not None:
+            # Antes de qualquer chamada de IA ou toque no aparelho: o planejador também gasta.
+            self._recusar_alvo_da_operacao(run_id, teto, "teto_da_operacao")
+            return
         ids: list[str] = loads(run["instance_ids"], [])
         # A persona de cada aparelho vem da foto dos alvos (onda C), não de "quem está vinculado ao aparelho": com
         # duas personas num aparelho, só a resolução sabe por qual a execução foi pedida.
