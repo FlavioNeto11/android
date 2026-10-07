@@ -1,9 +1,10 @@
-"""scripts/ci_issue_falha.py (29.155, C2): a issue da noite em que o cron do CI não passou.
+"""scripts/ci_issue_falha.py (29.155, C2; 29.187): a issue única do cron do CI, aberta na falha e fechada no verde.
 
 Prova `simulated`: o `gh` é um falso que grava as chamadas; nada chega ao GitHub. O que estes testes protegem:
   1. segredo e dado de pessoa não vão para a issue: a limpeza é POR FORMATO (Authorization, senha=, token do GitHub,
      chave sk-, IPv4, e-mail, pasta de usuário do Windows), e a cor ANSI some nas duas notações do log do GitHub;
-  2. uma issue por noite: com uma ABERTA do mesmo dia o script comenta nela; de outro dia, ou fechada, abre outra;
+  2. issue ÚNICA do cron (29.187): com uma ABERTA ("CI noturno ...", de qualquer dia) o script comenta nela; sem, abre;
+     cron verde fecha a(s) aberta(s), sem atribuir ninguém e sem rótulo de agente;
   3. run que passou não abre nada, e o ensaio nunca escreve;
   4. falha do `gh` derruba o script (código 1), nunca vira "sem aviso";
   5. o log do contêiner do PostgreSQL não entra e o corte vai até o resumo do pytest.
@@ -35,6 +36,7 @@ def _run(conclusao: str = "failure", data: str = "2026-10-05") -> dict[str, obje
         "html_url": "https://github.com/dono/repo/actions/runs/777",
         "run_attempt": 1,
         "head_sha": "81f99de0000000",
+        "event": "schedule",
     }
 
 
@@ -58,6 +60,8 @@ def _jobs() -> list[dict[str, object]]:
     ]
 
 
+RESUMO_1 = "**backend · pytest (PostgreSQL)**: instalar 30 s · pytest 3200 s · soma das etapas 3230 s · ~54 min cobrados · pytest 12489 passed"
+RESUMO_2 = "**docs · docs-check**: docs-check 3 s · soma das etapas 3 s · 0 min cobrados (runner próprio)"
 LOG = "\n".join(
     [
         "frontend · typecheck + vitest\tRun npm test\t2026-10-05T06:44:12.31Z ^[[31mFAIL^[[39m src/a.test.tsx > nome",
@@ -67,6 +71,9 @@ LOG = "\n".join(
         "backend · pytest (PostgreSQL)\tUNKNOWN STEP\t2026-10-05T06:34:33.1Z  2026-10-05 06:17:35.976 UTC [10599] ERROR:  duplicate key",
         "backend · pytest (PostgreSQL)\tUNKNOWN STEP\t2026-10-05T06:34:33.2Z  waiting for server to start",
         "outro job\tRun x\t2026-10-05T06:34:33.2Z nao deve aparecer",
+        f"backend · pytest (PostgreSQL)\tResumo do job\t2026-10-05T06:34:34.0Z {RESUMO_1}",
+        f"docs · docs-check\tResumo do job\t2026-10-05T05:40:00.0Z {RESUMO_2}",
+        f"docs · docs-check\tResumo do job\t2026-10-05T05:40:01.0Z {RESUMO_2}",
     ]
 )
 
@@ -78,11 +85,14 @@ class FakeGh:
         self.run, self.jobs, self.abertas = run, jobs, abertas or []
         self.chamadas: list[tuple[tuple[str, ...], str | None]] = []
         self.erro_em: str | None = None
+        self.ultimo = 777  # id do cron mais recente
 
     def __call__(self, *args: str, entrada: str | None = None) -> str:
         self.chamadas.append((args, entrada))
         if self.erro_em and self.erro_em in args:
             raise RuntimeError(f"gh {args[0]} saiu com 1: simulado")
+        if args[0] == "api" and "/workflows/ci.yml/runs" in args[1]:
+            return json.dumps({"workflow_runs": [{"id": self.ultimo}]})
         if args[0] == "api" and args[1].endswith("/jobs?per_page=100"):
             return json.dumps({"jobs": self.jobs})
         if args[0] == "api":
@@ -96,7 +106,7 @@ class FakeGh:
         return ""
 
     def escritas(self) -> list[tuple[str, ...]]:
-        return [a for a, _ in self.chamadas if a[:2] in (("issue", "create"), ("issue", "comment"), ("label", "create"))]
+        return [a for a, _ in self.chamadas if a[:2] in (("issue", "create"), ("issue", "comment"), ("issue", "close"), ("issue", "edit"), ("label", "create"))]
 
 
 class LimpezaPorFormato(unittest.TestCase):
@@ -212,24 +222,139 @@ class UmaIssuePorNoite(unittest.TestCase):
         self.assertIn("run 777", corpo or "")
         self.assertIn(("label", "create"), [a[:2] for a, _ in gh.chamadas])  # o rótulo existe antes de usar
 
-    def test_com_issue_aberta_do_mesmo_dia_comenta_nela_em_vez_de_abrir_outra(self) -> None:
+    def test_com_issue_aberta_comenta_na_mais_antiga_em_vez_de_abrir_outra(self) -> None:
         abertas = [
             {"number": 905, "title": "CI noturno 2026-10-05: pytest (PostgreSQL)"},
-            {"number": 903, "title": "CI noturno 2026-10-05: typecheck + vitest"},
-            {"number": 880, "title": "CI noturno 2026-10-04: mypy (gradual)"},
+            {"number": 903, "title": "CI noturno 2026-10-04: typecheck + vitest"},
+            {"number": 970, "title": "Outra issue qualquer do rótulo ci"},
         ]
         gh = FakeGh(_run(), _jobs(), abertas)
         feito, _, _ = mod.avisar(REPO, "777", ensaio=False, gh=gh)
-        self.assertEqual(feito, "comentada 903")  # a mais antiga do dia
+        self.assertEqual(feito, "comentada 903")  # a mais antiga do cron, de qualquer dia
         self.assertFalse([a for a, _ in gh.chamadas if a[:2] == ("issue", "create")])
         comentario = [(a, e) for a, e in gh.chamadas if a[:2] == ("issue", "comment")]
         self.assertEqual(len(comentario), 1)
-        self.assertIn("Nova corrida do mesmo dia", comentario[0][1] or "")
+        self.assertIn("Cron de 2026-10-05 ainda vermelho", comentario[0][1] or "")
 
-    def test_issue_de_outro_dia_nao_e_reaproveitada(self) -> None:
-        gh = FakeGh(_run(data="2026-10-06"), _jobs(), [{"number": 880, "title": "CI noturno 2026-10-05: mypy (gradual)"}])
+    def test_issue_que_nao_e_do_cron_nao_e_reaproveitada(self) -> None:
+        gh = FakeGh(_run(data="2026-10-06"), _jobs(), [{"number": 880, "title": "Ajustar o rótulo ci"}])
         feito, _, _ = mod.avisar(REPO, "777", ensaio=False, gh=gh)
         self.assertEqual(feito, "aberta 901")
+
+    def test_issue_nunca_tem_responsavel_nem_rotulo_de_agente(self) -> None:
+        gh = FakeGh(_run(), _jobs(), [{"number": 903, "title": "CI noturno 2026-10-04: x"}])
+        mod.avisar(REPO, "777", ensaio=False, gh=gh)
+        gh2 = FakeGh(_run(), _jobs())
+        mod.avisar(REPO, "777", ensaio=False, gh=gh2)
+        for g in (gh, gh2):
+            for args, _ in g.chamadas:
+                for proibido in ("--assignee", "--add-assignee", "agente", "@copilot"):
+                    self.assertNotIn(proibido, args)
+
+    def test_corpo_lista_todos_os_jobs_e_as_linhas_de_resumo_sem_repetir(self) -> None:
+        gh = FakeGh(_run(), _jobs())
+        mod.avisar(REPO, "777", ensaio=False, gh=gh)
+        corpo = [e for a, e in gh.chamadas if a[:2] == ("issue", "create")][0] or ""
+        self.assertIn("- docs · docs-check: success", corpo)  # job verde também aparece
+        self.assertIn("- backend · pytest (PostgreSQL): failure (56 min 14 s)", corpo)
+        self.assertIn("soma das etapas 3230 s · ~54 min cobrados", corpo)
+        self.assertEqual(corpo.count("soma das etapas 3 s"), 1)  # duas linhas iguais no log, uma na issue
+        self.assertNotIn("2026-10-05T05:40", corpo)
+
+    def test_log_inteiro_ilegivel_nao_derruba_o_aviso_e_a_issue_diz_o_motivo(self) -> None:
+        class SemLogInteiro(FakeGh):
+            def __call__(self, *args: str, entrada: str | None = None) -> str:
+                if args[:2] == ("run", "view") and "--log" in args:
+                    self.chamadas.append((args, entrada))
+                    raise RuntimeError("gh run view saiu com 1: simulado")
+                return super().__call__(*args, entrada=entrada)
+
+        gh = SemLogInteiro(_run(), _jobs())
+        feito, _, erro_log = mod.avisar(REPO, "777", ensaio=False, gh=gh)
+        self.assertEqual(feito, "aberta 901")
+        self.assertIsNone(erro_log)  # só o log dos passos que falharam derruba o aviso
+        corpo = [e for a, e in gh.chamadas if a[:2] == ("issue", "create")][0] or ""
+        self.assertIn("log inteiro indisponível", corpo)
+
+    def test_resumo_do_log_e_limpo_por_formato(self) -> None:
+        sujo = "**x**: etapa 1 s · soma das etapas 1 s · fulano@exemplo.invalid em 10.0.0.9"
+        achadas = mod.resumos_do_log(f"x\tResumo do job\t2026-10-05T05:40:00.0Z {sujo}")
+        self.assertEqual(len(achadas), 1)
+        self.assertNotIn("fulano", achadas[0])
+        self.assertNotIn("10.0.0.9", achadas[0])
+
+    def test_cron_verde_fecha_as_issues_abertas_do_cron_com_comentario(self) -> None:
+        abertas = [
+            {"number": 905, "title": "CI noturno 2026-10-05: x"},
+            {"number": 903, "title": "CI noturno 2026-10-04: y"},
+            {"number": 970, "title": "Outra"},
+        ]
+        gh = FakeGh(_run("success", "2026-10-07"), _jobs(), abertas)
+        feito, texto, _ = mod.avisar(REPO, "777", ensaio=False, gh=gh)
+        self.assertEqual(feito, "fechada 903, 905")
+        fechos = [a for a, _ in gh.chamadas if a[:2] == ("issue", "close")]
+        self.assertEqual([a[2] for a in fechos], ["903", "905"])
+        for a in fechos:
+            self.assertIn("voltou a **success**", a[a.index("--comment") + 1])
+        self.assertIn("run 777", texto or "")
+        self.assertNotIn(("label", "create"), [a[:2] for a, _ in gh.chamadas])
+
+    def test_verde_de_run_antigo_nao_fecha_a_issue_de_noite_mais_nova(self) -> None:
+        gh = FakeGh(_run("success"), _jobs(), [{"number": 905, "title": "CI noturno 2026-10-05: x"}])
+        gh.ultimo = 800
+        self.assertEqual(mod.avisar(REPO, "777", ensaio=False, gh=gh)[0], "nada")
+        self.assertEqual(gh.escritas(), [])
+
+    def test_resumo_nao_menciona_nem_linka(self) -> None:
+        achadas = mod.resumos_do_log("x\tR\t2026-10-05T05:40:00Z **j**: a @alguem #12 `x` <b> · soma das etapas 1 s")
+        for proibido in ("@", "#", "`", "<", ">"):
+            self.assertNotIn(proibido, achadas[0])
+
+    def test_cron_verde_sem_issue_aberta_nao_escreve(self) -> None:
+        gh = FakeGh(_run("success"), _jobs(), [{"number": 970, "title": "Outra"}])
+        self.assertEqual(mod.avisar(REPO, "777", ensaio=False, gh=gh)[0], "nada")
+        self.assertEqual(gh.escritas(), [])
+
+    def test_verde_de_disparo_manual_nao_fecha_nada(self) -> None:
+        run = _run("success")
+        run["event"] = "workflow_dispatch"
+        gh = FakeGh(run, _jobs(), [{"number": 905, "title": "CI noturno 2026-10-05: x"}])
+        self.assertEqual(mod.avisar(REPO, "777", ensaio=False, gh=gh)[0], "nada")
+        self.assertEqual(gh.escritas(), [])
+
+    def test_ensaio_do_verde_diz_o_que_fecharia_e_nao_escreve(self) -> None:
+        gh = FakeGh(_run("success"), _jobs(), [{"number": 905, "title": "CI noturno 2026-10-05: x"}])
+        feito, texto, _ = mod.avisar(REPO, "777", ensaio=True, gh=gh)
+        self.assertEqual(feito, "ensaio")
+        self.assertIn("FECHARIA 905", texto or "")
+        self.assertEqual(gh.escritas(), [])
+
+    def test_run_pulado_nao_fecha_nem_abre(self) -> None:
+        gh = FakeGh(_run("skipped"), _jobs(), [{"number": 905, "title": "CI noturno 2026-10-05: x"}])
+        self.assertEqual(mod.avisar(REPO, "777", ensaio=False, gh=gh)[0], "nada")
+        self.assertEqual(gh.escritas(), [])
+
+    def test_sequencia_vermelho_vermelho_verde_abre_comenta_e_fecha(self) -> None:
+        """Ciclo inteiro com um gh que guarda as issues: 1ª noite abre, 2ª comenta na mesma, a verde fecha."""
+        issues: list[dict[str, object]] = []
+
+        class Estado(FakeGh):
+            def __call__(self, *args: str, entrada: str | None = None) -> str:
+                if args[:2] == ("issue", "list"):
+                    return json.dumps([i for i in issues if i["open"]])
+                if args[:2] == ("issue", "create"):
+                    issues.append({"number": 901, "title": args[args.index("--title") + 1], "open": True})
+                if args[:2] == ("issue", "close"):
+                    for i in issues:
+                        if str(i["number"]) == args[2]:
+                            i["open"] = False
+                return super().__call__(*args, entrada=entrada)
+
+        r1 = mod.avisar(REPO, "777", ensaio=False, gh=Estado(_run(data="2026-10-05"), _jobs()))[0]
+        r2 = mod.avisar(REPO, "778", ensaio=False, gh=Estado(_run(data="2026-10-06"), _jobs()))[0]
+        r3 = mod.avisar(REPO, "779", ensaio=False, gh=Estado(_run("success", "2026-10-07"), _jobs()))[0]
+        self.assertEqual((r1, r2, r3), ("aberta 901", "comentada 901", "fechada 901"))
+        self.assertFalse(issues[0]["open"])
 
     def test_ensaio_le_e_imprime_mas_nunca_escreve(self) -> None:
         gh = FakeGh(_run(), _jobs())

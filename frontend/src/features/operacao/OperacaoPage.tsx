@@ -1,29 +1,35 @@
-import { CircleCheck, CircleX, FlaskConical, Hourglass, Play, ShieldCheck, ShieldQuestion, Workflow, type LucideIcon } from 'lucide-react';
+import { CircleCheck, CircleX, Columns2, Copy, FlaskConical, Hourglass, Play, Plus, ShieldCheck, ShieldQuestion, Workflow, type LucideIcon } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
 import { EmptyState } from '../../components/EmptyState';
-import { Field, Select } from '../../components/Field';
+import { Checkbox, Field, Select, TextInput } from '../../components/Field';
 import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
-import { cx, formatInt, formatUsd4 } from '../../lib/format';
+import { cx, formatInt, formatUsd4, plural } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
-import { formatClock } from '../../lib/time';
+import { formatClock, formatQuando, formatSpan } from '../../lib/time';
 import { toast, toastError } from '../../store/toasts';
 import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { apiOperacoes, type ListaDeOperacoes } from './api';
 import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
+import { CriarOperacao } from './CriarOperacao';
+import { guardarRascunho, rascunhoDaOperacao } from './criar';
+import { filaEmPalavras, MOTIVO_DO_TETO } from './fila';
+import { latenciaDaOperacao, latenciaDoAlvo } from './latencia';
+import { CancelarAlvos } from './CancelarAlvos';
+import { CompararOperacoes } from './CompararOperacoes';
 import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
 import {
-  acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
+  acoesDaOperacao, acoesJaExecutadas, agregadoPorApp, alvosPreparados, contarPorEstado, contarPorStatus, descricaoDaOperacao, filtrarOperacoes, isStatusDaOperacao, STATUS_DA_OPERACAO, ESTADOS_DO_ALVO, ESTAGIOS, estagiosAlcancados, estagioDeParada, fonteComoLink, isEstadoDoAlvo, isEstagio,
   ROTULO_DA_VERIFICACAO, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, rotuloDaAcao, rotuloDoEstagio, verificacaoDoAlvo, type Alvo, type EstadoDoAlvo,
   type EstagioId, type Operacao, type ResumoDaOperacao, type StatusDaOperacao, type Verificacao,
 } from './modelo';
@@ -35,6 +41,11 @@ import {
  * déficit aparece, não se esconde. Só leitura, exceto o cancelar (com confirmação). Contrato: rascunho do adendo v1.94; até a
  * rota existir no central, a tela lê um exemplo fixo e diz isso.
  */
+
+/** O segmento da rota que abre o formulário de criação (`#/operacoes/nova`); os ids de operação nunca têm esta forma. */
+const ROTA_NOVA = 'nova';
+const ROTA_COMPARAR = 'comparar';
+const MAX_COMPARADAS = 2;
 
 const TOM_DO_ESTADO: Record<EstadoDoAlvo, Tone> = { pendente: 'muted', em_curso: 'info', concluido: 'success', bloqueado: 'warning', cancelado: 'muted' };
 const ICONE_DO_ESTADO: Record<EstadoDoAlvo, LucideIcon> = { pendente: Hourglass, em_curso: Play, concluido: CircleCheck, bloqueado: ShieldQuestion, cancelado: CircleX };
@@ -50,6 +61,7 @@ const numero = (n: number | null): string => (n === null ? 'não informado' : fo
 
 function FaixaDeCapacidade({ op }: { op: Operacao }) {
   const c = op.capacidade;
+  const teto = c.motivos.find((m) => m.motivo === MOTIVO_DO_TETO && m.n > 0) ?? null;
   const celulas: { rotulo: string; valor: number | null; tom?: Tone }[] = [
     { rotulo: 'solicitados', valor: c.solicitados ?? op.alvos.length },
     { rotulo: 'contas existentes', valor: c.contas_existentes },
@@ -70,13 +82,72 @@ function FaixaDeCapacidade({ op }: { op: Operacao }) {
           </div>
         ))}
       </dl>
+      {teto ? (
+        <div data-teto-da-operacao>
+          <Banner tone="warning" icon={ShieldQuestion} compact role="status" title={`${formatInt(teto.n)} ${teto.n === 1 ? 'agente cortado' : 'agentes cortados'} pelo teto da operação`}>
+            {op.max_usd !== null && op.custo?.total_usd != null
+              ? `O gasto de IA chegou a ${formatUsd4(op.custo.total_usd)} de um teto de ${formatUsd4(op.max_usd)}: o que passaria disso não foi planejado.`
+              : 'O gasto de IA bateu no teto de gasto da operação: o que passaria disso não foi planejado.'}
+          </Banner>
+        </div>
+      ) : null}
       {c.motivos.length ? (
         <div>
           <h3 className={styles.subtitulo}>Motivos dos bloqueios</h3>
           <ul className={styles.motivos}>
-            {c.motivos.map((m) => <li key={m.motivo}><strong>{formatInt(m.n)}</strong> {m.motivo}</li>)}
+            {c.motivos.map((m) => <li key={m.motivo} data-motivo-do-teto={m.motivo === MOTIVO_DO_TETO ? '' : undefined}><strong>{formatInt(m.n)}</strong> {m.motivo}</li>)}
           </ul>
         </div>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * 31.185: quanto tempo cada estágio levou e quanto cada agente levou no total, dos carimbos que o central já manda. Só mostra o que
+ * há: o intervalo entre duas horas iguais (hoje, as da liberação) ou fora de ordem fica de fora da mediana, e a tela diz quantos.
+ */
+function Latencia({ op }: { op: Operacao }) {
+  const l = latenciaDaOperacao(op.alvos, op.latencia_por_estagio);
+  if (l.agentes === 0) return null;
+  return (
+    <section aria-labelledby="operacao-latencia" data-latencia>
+      <h2 id="operacao-latencia" className={styles.subtitulo}>Latência</h2>
+      {l.comTempo === 0 ? (
+        <p className={styles.mudo}>Nenhum agente tem hora em pelo menos dois estágios: não há tempo a mostrar.</p>
+      ) : (
+        <>
+          <p className={styles.objetivo}>
+            Mediana por agente <strong>{l.medianaDoTotalMs === null ? '—' : formatSpan(l.medianaDoTotalMs)}</strong> ({formatInt(l.comTempo)} de {formatInt(l.agentes)} com tempo medido).
+            {l.maisLento ? <> Estágio mais lento: <strong>{rotuloDoEstagio(l.maisLento.estagio)}</strong>, mediana {formatSpan(l.maisLento.medianaMs)}.</> : <> Nenhum intervalo entre estágios pôde ser medido.</>}
+          </p>
+          {l.porEstagio.length ? (
+            <div className={styles.rolagem}>
+              <table className={styles.tabela}>
+                <caption className="sr-only">{l.fonte === 'central' ? 'Tempo de cada estágio desde o evento anterior, calculado pelo central: mediana, p95, maior e quantos agentes entram na conta.' : 'Tempo até cada estágio, desde o estágio anterior com hora: mediana, maior e quantos agentes entram na conta.'}</caption>
+                <thead><tr><th scope="col">Estágio</th><th scope="col">Mediana</th>{l.fonte === 'central' ? <th scope="col">p95</th> : null}<th scope="col">Maior</th><th scope="col">Agentes</th></tr></thead>
+                <tbody>
+                  {l.porEstagio.map((e) => (
+                    <tr key={e.estagio} data-estagio={e.estagio}>
+                      <th scope="row" className={styles.persona}>{rotuloDoEstagio(e.estagio)}</th>
+                      <td className={styles.numero}>{formatSpan(e.medianaMs)}</td>
+                      {l.fonte === 'central' ? <td className={styles.numero} data-p95>{e.p95Ms == null ? '—' : formatSpan(e.p95Ms)}</td> : null}
+                      <td className={styles.numero}>{formatSpan(e.maiorMs)}</td>
+                      <td className={styles.numero}>{formatInt(e.agentes)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </>
+      )}
+      {l.fonte === 'local' && l.mesmaHora + l.foraDeOrdem > 0 ? (
+        <p className={styles.mudo} role="status" data-fora-da-conta>
+          Ficaram de fora da conta {l.mesmaHora > 0 ? `${plural(l.mesmaHora, 'intervalo com a mesma hora do anterior', 'intervalos com a mesma hora do anterior')}` : ''}
+          {l.mesmaHora > 0 && l.foraDeOrdem > 0 ? ' e ' : ''}
+          {l.foraDeOrdem > 0 ? `${plural(l.foraDeOrdem, 'intervalo com hora fora de ordem', 'intervalos com hora fora de ordem')}` : ''}: o central carimbou esses estágios juntos ou fora da sequência.
+        </p>
       ) : null}
     </section>
   );
@@ -118,6 +189,7 @@ function Pipeline({ alvo }: { alvo: Alvo }) {
 /** O que o alvo mostra ao abrir: o texto gerado, o conhecimento, as evidências e os estágios com a hora. Só leitura. */
 function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
   const r = alvo.resultado;
+  const latencia = latenciaDoAlvo(alvo);
   const aba = (nome: string) => (alvo.run_id ? hashDe('execucoes', { segmentos: [alvo.run_id], query: { aba: nome } }) : null);
   const evidencia = (id: number | null, rotulo: string) => {
     const link = aba('evidencias');
@@ -145,9 +217,19 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
         <h4 className={styles.subtitulo}>Estágios alcançados</h4>
         {alvo.estagios.length ? (
           <ol className={styles.motivos}>
-            {alvo.estagios.map((e) => <li key={e.estagio}>{rotuloDoEstagio(e.estagio)}{e.em ? <span className={styles.mudo}> · {formatClock(e.em)}</span> : null}</li>)}
+            {alvo.estagios.map((e) => {
+              const passo = latencia.passos.find((p) => p.estagio === e.estagio);
+              return (
+                <li key={e.estagio}>{rotuloDoEstagio(e.estagio)}{e.em ? <span className={styles.mudo}> · {formatClock(e.em)}</span> : null}
+                  {passo?.situacao === 'ok' ? <span className={styles.mudo} data-passo="ok"> · +{formatSpan(passo.ms!)}</span> : null}
+                  {passo?.situacao === 'mesma_hora' ? <span className={styles.mudo} data-passo="mesma_hora"> · mesma hora {passo.deEstagio ? <>que “{rotuloDoEstagio(passo.deEstagio)}”</> : 'do evento anterior'}</span> : null}
+                  {passo?.situacao === 'fora_de_ordem' ? <span className={styles.mudo} data-passo="fora_de_ordem"> · hora anterior à de “{rotuloDoEstagio(passo.deEstagio)}”: fora de ordem</span> : null}
+                </li>
+              );
+            })}
           </ol>
         ) : <p className={styles.mudo}>O backend não informou a hora de cada estágio.</p>}
+        {latencia.esperaDoLiberarMs !== null ? <p className={styles.mudo} data-espera-do-liberar>Esperou a aprovação {formatSpan(latencia.esperaDoLiberarMs)} (da ação preparada ao liberar; não entra no tempo da ação executada).</p> : null}
       </div>
     </div>
   );
@@ -159,6 +241,8 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
   const verificacao = verificacaoDoAlvo(alvo);
   const ver = VERIFICACAO[verificacao];
   const rotuloDaLinha = alvo.persona ?? 'Persona não informada';
+  const total = latenciaDoAlvo(alvo).totalMs;
+  const fila = alvo.fila ? filaEmPalavras(alvo.fila) : null;
   return (
     <Fragment>
       <tr data-alvo={alvo.id}>
@@ -166,6 +250,7 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
         <td>{alvo.conta ?? <span className={styles.mudo}>sem conta</span>}</td>
         <td>{alvo.instance_id ?? <span className={styles.mudo}>sem aparelho</span>}</td>
         <td><Pipeline alvo={alvo} /></td>
+        <td data-fila>{fila ? <><strong>{fila.posicao}</strong>{fila.aFrente ? <span className={styles.mudo}> · {fila.aFrente}</span> : null}<br /><span className={styles.mudo}>{fila.previsao}</span></> : <span className={styles.mudo}>—</span>}</td>
         <td>
           {estado && Icone ? <Badge tone={TOM_DO_ESTADO[estado]} icon={Icone} size="sm">{ROTULO_DO_ESTADO[estado]}</Badge> : <span className={styles.mudo}>não informado</span>}
         </td>
@@ -179,13 +264,14 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
           {verificacao === 'sem_acao' ? <span className={styles.mudo}>—</span> : <Badge tone={ver.tom} icon={ver.icone} size="sm">{ROTULO_DA_VERIFICACAO[verificacao]}</Badge>}
         </td>
         <td className={styles.numero}>{alvo.custo_usd === null ? <span className={styles.mudo}>—</span> : formatUsd4(alvo.custo_usd)}</td>
+        <td className={styles.numero} data-duracao>{total === null ? <span className={styles.mudo}>—</span> : formatSpan(total)}</td>
         <td>
           <Button size="sm" variant="ghost" aria-expanded={aberta} onClick={onAlternar} label={`${aberta ? 'Fechar' : 'Abrir'} o detalhe de ${rotuloDaLinha}`}>
             {aberta ? 'Fechar' : 'Detalhe'}
           </Button>
         </td>
       </tr>
-      {aberta ? <tr className={styles.linhaDoDetalhe}><td colSpan={9}><DetalheDoAlvo alvo={alvo} /></td></tr> : null}
+      {aberta ? <tr className={styles.linhaDoDetalhe}><td colSpan={11}><DetalheDoAlvo alvo={alvo} /></td></tr> : null}
     </Fragment>
   );
 }
@@ -252,6 +338,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
   const [cancelando, setCancelando] = useState(false);
   const [abrirLiberar, setAbrirLiberar] = useState(false);
+  const [abrirCancelarAlvos, setAbrirCancelarAlvos] = useState(false);
   const [abrirRelatorio, setAbrirRelatorio] = useState(false);
   const [aba, setAba] = useState<AbaDaOperacao>('agentes');
   const limiteDeAcoes = useAppStore((s) => s.settings?.operacao_max_acoes_executadas);
@@ -264,6 +351,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const alvos = op.alvos.filter((a) => (!estado || a.estado === estado) && (!parou || estagioDeParada(a) === parou));
   const encerrada = op.status !== null && op.status !== 'em_curso';
   const preparados = alvosPreparados(op.alvos);
+  const feitas = acoesDaOperacao(op.alvos);
   // Quantas contas ainda cabem no limite configurado (as que já executaram contam); sem o limite à mão, a lista inteira.
   const vagas = typeof limiteDeAcoes === 'number' ? Math.max(0, limiteDeAcoes - acoesJaExecutadas(op.alvos)) : preparados.length;
   const motivoSemLiberar = op.exemplo ? 'É um exemplo: não há o que liberar.'
@@ -294,14 +382,21 @@ function DetalheDaOperacao({ id }: { id: string }) {
     <Page title="Operação" lead={op.command || 'Sem objetivo informado.'}
           actions={(
             <>
+              <Button size="sm" variant="outline" icon={Copy} disabledReason={op.exemplo ? 'É um exemplo: não há o que repetir.' : null}
+                      onClick={() => { guardarRascunho(rascunhoDaOperacao(op)); useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_NOVA] }); }}>Repetir como nova</Button>
               <Button size="sm" variant="outline" disabledReason={op.exemplo ? 'É um exemplo: não há o que relatar.' : null} onClick={() => setAbrirRelatorio(true)}>Relatório</Button>
               <Button size="sm" variant="primary" disabledReason={motivoSemLiberar} onClick={() => setAbrirLiberar(true)}>Liberar</Button>
+              <Button size="sm" variant="outline" disabledReason={motivoSemCancelar ?? (op.alvos.length === 0 ? 'A operação não tem alvos.' : null)} onClick={() => setAbrirCancelarAlvos(true)}>Cancelar alvos</Button>
               <Button size="sm" variant="danger" loading={cancelando} disabledReason={motivoSemCancelar} onClick={() => void cancelar()}>Cancelar a operação</Button>
             </>
           )}>
       {erro ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {op.exemplo ? AVISO_DE_EXEMPLO : null}
       {abrirRelatorio ? <RelatorioDaOperacao op={op} onFechar={() => setAbrirRelatorio(false)} /> : null}
+      {abrirCancelarAlvos ? (
+        <CancelarAlvos operacaoId={op.id} alvos={op.alvos} onFechar={() => setAbrirCancelarAlvos(false)}
+                       onFeito={() => { setAbrirCancelarAlvos(false); recarregar(); }} />
+      ) : null}
       {abrirLiberar ? (
         <LiberarAcoes operacaoId={op.id} preparados={preparados} vagas={vagas} onFechar={() => setAbrirLiberar(false)}
                       onLiberado={() => { setAbrirLiberar(false); recarregar(); }} />
@@ -310,10 +405,16 @@ function DetalheDaOperacao({ id }: { id: string }) {
         <a className={styles.link} href={hashDe('operacoes')}>← Todas as operações</a>
         {op.status ? <Badge tone={TOM_DO_STATUS[op.status]} size="sm">{ROTULO_DO_STATUS[op.status]}</Badge> : null}
         <span className={styles.mudo}>Ação final: {rotuloDaAcao(op.acao_final)}</span>
+        {feitas.executadas > 0 ? (
+          <span className={styles.mudo} data-acoes-feitas>
+            · {plural(feitas.executadas, 'ação executada', 'ações executadas')}, {plural(feitas.verificadas, 'verificada', 'verificadas')}
+          </span>
+        ) : null}
       </p>
       <CustoEAssunto op={op} />
       <FaixaDeCapacidade op={op} />
       <PorApp op={op} />
+      <Latencia op={op} />
       <Tabs tabs={ABAS} active={aba} onChange={setAba} idBase="operacao" label="Detalhe da operação" />
       <TabPanel idBase="operacao" id={aba}>
       {aba === 'aprendizado' ? <AprendizadoDaOperacaoTab op={op} /> : (
@@ -345,8 +446,8 @@ function DetalheDaOperacao({ id }: { id: string }) {
               <caption className="sr-only">Um agente por linha: persona, conta, aparelho, pipeline, estado, ação ou motivo e verificação.</caption>
               <thead>
                 <tr>
-                  <th scope="col">Persona</th><th scope="col">Conta</th><th scope="col">Aparelho</th><th scope="col">Pipeline</th>
-                  <th scope="col">Estado</th><th scope="col">Ação final ou motivo</th><th scope="col">Resultado</th><th scope="col">Custo de IA</th><th scope="col"><span className="sr-only">Detalhe</span></th>
+                  <th scope="col">Persona</th><th scope="col">Conta</th><th scope="col">Aparelho</th><th scope="col">Pipeline</th><th scope="col">Fila do aparelho</th>
+                  <th scope="col">Estado</th><th scope="col">Ação final ou motivo</th><th scope="col">Resultado</th><th scope="col">Custo de IA</th><th scope="col">Duração</th><th scope="col"><span className="sr-only">Detalhe</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -367,20 +468,58 @@ function DetalheDaOperacao({ id }: { id: string }) {
 
 function ListaDeOperacoes() {
   const { dado, erro, carregando, recarregar } = useCarga<ListaDeOperacoes>((s) => apiOperacoes.lista(s), 'lista');
+  const [estado, setEstado] = useState<StatusDaOperacao | ''>('');
+  const [busca, setBusca] = useState('');
+  const [marcadas, setMarcadas] = useState<string[]>([]);
   if (carregando && !dado) return <Page title="Operação"><LoadingRegion label="Lendo as operações"><Skeleton height={120} /></LoadingRegion></Page>;
   if (erro && !dado) return <Page title="Operação"><LoadErrorState what="as operações" error={erro} onRetry={recarregar} /></Page>;
-  const itens: ResumoDaOperacao[] = dado?.itens ?? [];
+  const todas: ResumoDaOperacao[] = dado?.itens ?? [];
+  const itens = filtrarOperacoes(todas, estado, busca);
+  const porStatus = contarPorStatus(todas);
   return (
-    <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim.">
+    <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim."
+          actions={(
+            <>
+              <Button size="sm" icon={Columns2}
+                      disabledReason={marcadas.length === MAX_COMPARADAS ? null : `Marque ${MAX_COMPARADAS} operações na lista para compará-las (${marcadas.length} marcada${marcadas.length === 1 ? '' : 's'}).`}
+                      onClick={() => useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_COMPARAR], query: { a: marcadas[0] ?? '', b: marcadas[1] ?? '' } })}>Comparar as marcadas</Button>
+              <Button size="sm" variant="primary" icon={Plus} disabledReason={dado?.exemplo ? 'O central ainda não oferece o módulo de operações.' : null}
+                      onClick={() => useUiStore.getState().navegar({ tela: 'operacoes', segmentos: [ROTA_NOVA] })}>Nova operação</Button>
+            </>
+          )}>
       {erro && dado ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {dado?.exemplo ? AVISO_DE_EXEMPLO : null}
-      {itens.length === 0 ? (
+      {todas.length === 0 ? (
         <EmptyState icon={Workflow} title="Nenhuma operação ainda" hint="Quando uma operação for criada, ela aparece aqui, da mais nova para a mais antiga." />
       ) : (
+        <>
+          <div className={styles.filtros}>
+            <Field label="Estado">
+              {({ id }) => (
+                <Select id={id} small value={estado} onChange={(e) => setEstado(isStatusDaOperacao(e.target.value) ? e.target.value : '')}>
+                  <option value="">Todos ({todas.length})</option>
+                  {STATUS_DA_OPERACAO.filter((s) => porStatus[s] > 0).map((s) => <option key={s} value={s}>{ROTULO_DO_STATUS[s]} ({porStatus[s]})</option>)}
+                </Select>
+              )}
+            </Field>
+            <Field label="Buscar no objetivo">
+              {({ id }) => <TextInput id={id} small value={busca} onChange={(e) => setBusca(e.target.value)} />}
+            </Field>
+          </div>
+          <p className={styles.mudo} role="status">{formatInt(itens.length)} de {formatInt(todas.length)} operações, da mais nova para a mais antiga.</p>
+        </>
+      )}
+      {todas.length > 0 && itens.length === 0 ? (
+        <EmptyState icon={Workflow} compact title="Nenhuma operação com este filtro" hint="Limpe o estado ou a busca para ver todas." />
+      ) : todas.length === 0 ? null : (
         <ul className={styles.lista} aria-label="Operações">
           {itens.map((o) => (
             <li key={o.id} className={styles.itemDaLista}>
+              <Checkbox label="Comparar" aria-label={`Comparar: ${o.command || o.id}`} checked={marcadas.includes(o.id)}
+                        disabled={!marcadas.includes(o.id) && marcadas.length >= MAX_COMPARADAS}
+                        onChange={() => setMarcadas((m) => (m.includes(o.id) ? m.filter((x) => x !== o.id) : m.length < MAX_COMPARADAS ? [...m, o.id] : m))} />
               <a className={styles.link} href={hashDe('operacoes', { segmentos: [o.id] })}>{o.command || o.id}</a>
+              <span className={styles.mudo} data-meta>{descricaoDaOperacao(o, formatQuando)}</span>
               <span className={styles.mudo}>
                 {o.status ? ROTULO_DO_STATUS[o.status] : 'estado não informado'} · {numero(o.capacidade.solicitados)} solicitados,{' '}
                 {numero(o.capacidade.concluidas)} concluídas, {numero(o.capacidade.bloqueadas)} bloqueadas
@@ -396,5 +535,7 @@ function ListaDeOperacoes() {
 export function OperacaoPage() {
   useEffect(() => { document.title = 'Operação · Central de Aparelhos'; }, []);
   const id = useUiStore((s) => s.rota.segmentos[0]);
+  if (id === ROTA_NOVA) return <CriarOperacao />;
+  if (id === ROTA_COMPARAR) return <CompararOperacoes />;
   return id ? <DetalheDaOperacao key={id} id={id} /> : <ListaDeOperacoes />;
 }

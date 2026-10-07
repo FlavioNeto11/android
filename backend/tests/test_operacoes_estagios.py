@@ -232,3 +232,18 @@ def test_a_fila_do_aparelho_conta_quem_roda_a_prioridade_e_a_idade_e_a_previsao_
     agora = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
     assert previsao(agora, 2, 90_000) == "2026-10-07T12:03:00.000Z"
     assert previsao(agora, 2, None) is None
+
+
+def test_o_alvo_que_espera_a_porta_de_sessao_diz_por_que() -> None:
+    """31.173: o objetivo `pending` antes do aparelho (a porta de sessão relendo a tela) era `pendente` sem motivo; agora
+    leva o motivo da espera. Sem motivo gravado, continua `pendente` sem motivo."""
+    import dataclasses
+
+    espera = "a verificação desta sessão passou da validade; o aparelho vai ser relido antes da tarefa"
+    fatos = FatosDoAlvo(parada_na_criacao=None, motivo_na_criacao=None, objetivo_status="pending",
+                        objetivo_comecou_em=None, objetivo_motivo=espera, run_status="running", etapas=[], marcas={},
+                        abertura="instagram_aberto", estagio_por_capability=IG, acao_final="preparar", criado_em=T0)
+    lida = derivar(fatos)
+    assert (lida.estado, lida.motivo, lida.estagio) == ("pendente", espera, "sessao")
+    sem = derivar(dataclasses.replace(fatos, objetivo_motivo=None))
+    assert (sem.estado, sem.motivo) == ("pendente", None)

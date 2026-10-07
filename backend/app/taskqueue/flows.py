@@ -25,11 +25,14 @@ from ..db import Database, Row
 from ..modules.learning.domain.aprovacao_automatica import PLATAFORMA
 from ..modules.learning.domain.ensinado import MOTIVO_DA_PROVA_DO_ENSINADO
 from ..modules.learning.domain.livro import CONFIRMADO_QUE_FICA, apps_na_ordem_do_plano
+from ..modules.learning.domain.uso_real import em_uso_real_desde
 from ..modules.skills.domain.document import JsonValue
 from ..modules.skills.domain.matching import specificity
 from ..models import Plan, PlannerInfo, StepResult
 from ..util import now_iso
 from .parecidos import parecidos as parecidos_do_texto
+from .vizinhos import Vizinho, pares_dos_fluxos
+from ..planning.etapas_ensinadas import EtapaEnsinada, oferecivel
 
 RESERVED = {"instance_id", "run_id", "account_label"}
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
@@ -491,14 +494,31 @@ class FlowStore:
         parecido ao menos. Só pergunta; nunca escolhe nem executa. Mesmo escopo do `match` (sem aparelhos, qualquer um).
         Um fluxo que já casa o comando não aparece. O nome do fluxo (o resumo do treino, que pode trazer o valor
         demonstrado) não sai: só a referência pública e o molde."""
+        return [{"ref": r["ref_publico"], "template": r["command_template"], "score": nota}
+                for r, nota in self.semelhantes(command, profile_ids)]
+
+    def semelhantes(self, command: str, profile_ids: list[str | None] | None = None, *,
+                    limiar: float | None = None, maximo: int | None = None) -> list[tuple[Row, float]]:
+        """As linhas dos fluxos que o comando parece, com a nota (a regra do `parecidos`). 31.151: o planejador as pede
+        com uma nota mínima mais baixa (quem decide lá é o modelo, e o código confere)."""
         linhas = [r for r in self.db.query("SELECT * FROM flows WHERE status='active' ORDER BY created_at")
                   if r["ref_publico"] and (profile_ids is None or self._no_escopo(r["id"], profile_ids))
                   and (profile_ids is None or not self._restrito_ao_ensino(r, profile_ids))]
         if any(self._extract(r["command_template"], command) is not None for r in linhas):
             return []
-        achados = parecidos_do_texto(command, [r["command_template"] for r in linhas])
-        return [{"ref": linhas[p.indice]["ref_publico"], "template": linhas[p.indice]["command_template"],
-                 "score": p.nota} for p in achados]
+        opcoes: dict[str, float | int] = {k: v for k, v in (("limiar", limiar), ("maximo", maximo)) if v is not None}
+        achados = parecidos_do_texto(command, [r["command_template"] for r in linhas], **opcoes)  # type: ignore[arg-type]
+        return [(linhas[p.indice], p.nota) for p in achados]
+
+    def plano_por_semelhanca(self, ref: str, valores: dict[str, str],
+                             profile_ids: list[str | None]) -> tuple[Row, Plan] | None:
+        """31.151: o plano do fluxo ativo de referência pública `ref` com os valores que o planejador tirou do comando,
+        com as mesmas regras do `match` (escopo, ensinado em prova). `None`: o fluxo saiu do ar ou faltou valor."""
+        row = self.db.one("SELECT * FROM flows WHERE ref_publico=? AND status='active'", (ref,))
+        if row is None or not self._no_escopo(row["id"], profile_ids) or self._restrito_ao_ensino(row, profile_ids):
+            return None
+        plan = self._plano_com_valores(row, valores, provider="fluxo")
+        return None if plan is None else (row, plan)
 
     def colisoes(self, template: str, exemplos: dict[str, str]) -> list[str]:
         """31.89 F4: avisos de colisão do molde que vai ser salvo com os fluxos ativos e candidatos. Só lê. Duas
@@ -620,6 +640,59 @@ class FlowStore:
             linha["origin"] = ({"session_id": sessao, "run_id": run, "step_id": etapa, "attempt_id": tentativa,
                                 "instance_id": aparelho, "operator": quem, "ensinado_em": quando} if sessao else None)
             saida.append(linha | {"plan": None})
+        # 31.150: o selo "em uso real desde" do fluxo de prova religado por uma pessoa; `null` nos outros.
+        selos = self.em_uso_real_desde([f["id"] for f in saida if f["nascido_de_prova"] and f["status"] == "active"])
+        for f in saida:
+            f["em_uso_real_desde"] = selos.get(f["id"])
+        return saida
+
+    def etapas_ensinadas(self) -> list[EtapaEnsinada]:
+        """31.153: as etapas dos fluxos ENSINADOS (ligados ou não: o saber é do app) que têm receita estável do ensino:
+        ativa, com 1 ou mais reproduções boas, sem efeito externo (`etapas_ensinadas.oferecivel`). Uma consulta para os
+        fluxos e uma para as receitas."""
+        receitas: dict[tuple[str, str], tuple[int, int]] = {}
+        for r in self.db.query("SELECT id, learned_from_step, step_key, replay_ok FROM recipes WHERE status='active'"
+                               " AND replay_ok >= 1 AND learned_from_step LIKE ?", (PREFIXO_DO_TREINO + "%",)):
+            chave = (str(r["learned_from_step"]), str(r["step_key"]))
+            if chave not in receitas or int(r["replay_ok"]) > receitas[chave][1]:
+                receitas[chave] = (int(r["id"]), int(r["replay_ok"]))
+        saida: list[EtapaEnsinada] = []
+        for f in self.db.query("SELECT source, app_id, plan FROM flows WHERE source LIKE ? ORDER BY created_at, id",
+                               (PREFIXO_DO_TREINO + "%",)):
+            try:
+                plano = Plan.model_validate_json(f["plan"])
+            except ValueError:
+                continue
+            for passo in plano.steps:
+                achada = receitas.get((str(f["source"]), passo.key))
+                app = passo.app_id or plano.app_id or f["app_id"]
+                if achada is None or not app or not oferecivel(passo, plano.parameters.values()):
+                    continue
+                saida.append(EtapaEnsinada(nome=passo.key, app_id=str(app), passo=passo, receita=achada[0],
+                                           reproducoes=achada[1], origem=str(f["source"])))
+        return saida
+
+    def vizinhos_conhecidos(self) -> dict[str, dict[str, Vizinho]]:
+        """31.152: `{app_id: {vizinho: Vizinho}}` dos fluxos ensinados, ligados ou não (o saber é do app). Uma consulta;
+        é a interface que uma tabela própria substituiria sem mexer no planejamento."""
+        return pares_dos_fluxos((r["source"], r["app_id"], r["plan"]) for r in self.db.query(
+            "SELECT source, app_id, plan FROM flows WHERE source LIKE ? ORDER BY created_at, id",
+            (PREFIXO_DO_TREINO + "%",)))
+
+    def em_uso_real_desde(self, flow_ids: list[str]) -> dict[str, str]:
+        """31.150: de cada fluxo, a data do religamento para uso real, se ele ainda for a última linha da trilha."""
+        if not flow_ids:
+            return {}
+        refs = [f"fluxo:{i}" for i in flow_ids]
+        por_ref: dict[str, list[tuple[str | None, str | None, str | None]]] = {}
+        for r in self.db.query("SELECT item_ref, to_state, reason, decided_at FROM learning_transitions WHERE item_ref IN"
+                               f" ({','.join('?' * len(refs))}) ORDER BY decided_at, id", tuple(refs)):
+            por_ref.setdefault(str(r["item_ref"]), []).append((r["to_state"], r["reason"], r["decided_at"]))
+        saida: dict[str, str] = {}
+        for i in flow_ids:
+            desde = em_uso_real_desde(por_ref.get(f"fluxo:{i}", []))
+            if desde:
+                saida[i] = desde
         return saida
 
 

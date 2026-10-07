@@ -54,6 +54,7 @@ beforeEach(() => {
   backend.install();
   backend.on('GET', /\/training$/, () => json([{ ...SALVA, inputs: undefined }]));
   backend.on('GET', /\/training\/trn-s$/, () => json(SALVA));
+  backend.on('GET', /\/training\/trn-s\/rendimento$/, () => json({ sessao: 'trn-s', receitas: [], resumo: { usado_de_verdade: false }, fluxo: null, execucoes_do_fluxo: { real: 0, prova: 0, simulada: 0 }, licoes: [], vizinhos: [] }));   // 31.203
   backend.on('GET', /\/instances\/android-01\/personas$/, () => json([persona]));
   container = document.createElement('div');
   document.body.append(container);
@@ -167,4 +168,14 @@ it('31.134: o confere da etapa na sessão salva troca o marcador da persona por 
   await waitFor(() => expect(d.textContent).toContain('confere: O campo mostra o texto [nome da persona]'));
   expect(d.textContent).not.toContain('{perfil_nome}');
   await flush(ATRASO_MAXIMO + 30);
+});
+
+it('31.189: com a cópia mascarada (v1.109), a leitura mostra a cópia e não a proposta crua', async () => {
+  const crua = { ...PROPOSTA, summary: 'Abre o perfil de Marina Souza.', command_template: 'abra o perfil de Marina Souza' };
+  const mascarada = { ...crua, summary: 'Abre o perfil de {contato}.', command_template: 'abra o perfil de {contato}' };
+  backend.on('GET', /\/training\/trn-s$/, () => json({ ...SALVA, proposal: crua, proposal_exibicao: mascarada }));
+  const d = await abrirSalva();
+  await waitFor(() => expect(d.textContent).toContain('Abre o perfil de {contato}.'));
+  expect(d.textContent).toContain('abra o perfil de {contato}');
+  expect(d.textContent).not.toContain('Marina Souza');
 });

@@ -40,11 +40,19 @@ class SourceKind(StrEnum):
     DISAMBIGUATION = "disambiguation"
     FEEDBACK_NOTE = "feedback_note"
     MANUAL = "manual"
+    #: 31.149: a correção ensinada que não virou receita na etapa que falhou vira lição do planejador (o caminho é de
+    #: uma pessoa: só o dono a publica)
+    CORRECAO_ENSINADA = "teaching_correction"
+    #: 31.190: o fato da pesquisa de uma operação encerrada (2 domínios), candidato do escritor. O texto é de fonte
+    #: externa (a web): entra em `FONTES_HUMANAS` para só o dono o publicar (D1), não por ser de pessoa.
+    FATO_DA_OPERACAO = "operation_fact"
 
 
-#: Origens em que o TEXTO veio de uma pessoa: o item nasce com `human_origin=1` e só o dono o publica (D1).
+#: Origens em que o TEXTO veio de uma pessoa: o item nasce com `human_origin=1` e só o dono o publica (D1). O fato da
+#: operação (31.190) entra pela mesma trava: o texto é de fonte externa, e a lição ativa do escritor iria a todo texto
+#: do app (revisão de segredos: "só a falta de evidência" não é trava).
 FONTES_HUMANAS = frozenset({SourceKind.APPROVAL_EDIT, SourceKind.ANSWER, SourceKind.FEEDBACK_NOTE,
-                            SourceKind.MANUAL})
+                            SourceKind.MANUAL, SourceKind.CORRECAO_ENSINADA, SourceKind.FATO_DA_OPERACAO})
 
 
 class Papel(StrEnum):
@@ -83,6 +91,9 @@ class SignalKind(StrEnum):
     #: 30.55: o caso da sombra da aprovação automática, a receita ou o fluxo que a plataforma decidiria (`source_ref` =
     #: `aprovaria:<item>`, `created_by` = sistema: um por item). Também não é gesto de pessoa.
     APROVARIA = "aprovaria"
+    #: 31.202: o parecer em sombra do rendimento sobre a receita ensinada (`source_ref` = `receita:<id>`, `created_by` =
+    #: sistema, sobrescrito a cada passo; `reason` = liberaria | prenderia_de_volta | nenhuma). Nada se aplica.
+    SOMBRA_DA_QUARENTENA = "sombra_da_quarentena"
 
 
 #: Sinais que contam como intervenção humana na régua diária (`learning_daily.interventions`).

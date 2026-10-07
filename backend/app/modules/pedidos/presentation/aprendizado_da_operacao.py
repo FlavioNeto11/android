@@ -34,4 +34,5 @@ def aprendizado_da_operacao(request: Request, operacao_id: str, persona: str | N
         raise HTTPException(404, detail={"code": "operacao_desconhecida",
                                          "message": "Operação sem execução nem memória (ou a 124 ainda não está no banco)."})
     return {"operacao_id": operacao_id, "gerado_em": db.agora_iso(), "simulados": simulados,
-            **responder(itens, agora=db.agora_iso(), persona=persona), "avisos": leitor.avisos(operacao_id)}
+            **responder(itens, agora=db.agora_iso(), persona=persona), "avisos": leitor.avisos(operacao_id),
+            "personas": leitor.personas(operacao_id)}

@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Literal, TypeVar
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -49,6 +49,7 @@ from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.prova import etapa_citada
 from app.modules.learning.domain.saude import Saude
+from app.modules.learning.domain.uso_real import motivo_do_religamento
 from app.modules.learning.domain.vocabulario import LivroKind, Origem, Rotulo
 from app.modules.learning.presentation.nomes import nomear_apps
 from app.modules.skills.domain.document import JsonObject, JsonValue
@@ -150,6 +151,9 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
                 "codigo": motivo.codigo, "espera_o_dono": motivo.espera_o_dono, "detalhe": motivo.detalhe},
             "saude": _saude(saude), "nasceu_de": e.nasceu_de, "nasceu_em": e.nasceu_em, "reaprendido": _reaprendido(e.reaprendido),
             "nascido_de_prova": e.nascido_de_prova,                 # 31.143 (v1.92): o selo e o filtro "Prova" (31.131)
+            "em_uso_real_desde": e.em_uso_real_desde,               # 31.150: o selo "em uso real desde"
+            "source_kind": e.source_kind,                           # v1.117: a origem do item de learning_items
+            "assunto": e.assunto,                                   # 31.200 (v1.113): o escopo de assunto do item
             **_do_legado(e, legado), **_da_espera(e, servico)}
 
 
@@ -266,6 +270,7 @@ def _detalhe(d: DetalheDoLivro, servico: LearningService) -> JsonObject:
                        for e in sorted(d.evidencias, key=lambda e: e.observed_at or "", reverse=True)],
         "trilha": [_transicao(t) for t in d.trilha], "exposicoes": list(d.exposicoes),
         "conteudo": d.conteudo, "versao": d.versao, "relacoes": list(d.relacoes),
+        "proveniencia": d.proveniencia,                          # v1.117: só no fato da operação (31.190)
         "invalidar_evidencia": None if a_invalidar is None else {"run_id": a_invalidar},
         "pareceres": [], "curador": None}
     pareceres = _pareceres(servico)
@@ -338,13 +343,14 @@ class CorpoDaConfirmacao(BaseModel):
 @router.get("", response_model=None)
 async def ler_livro(request: Request, kind: LivroKind | None = None, state: SkillState | None = None,
                     app: str | None = None, origem: Origem | None = None, rotulo: Rotulo | None = None,
-                    nascido_de_prova: bool | None = None) -> JsonObject:
+                    nascido_de_prova: bool | None = None,
+                    assunto: str | None = Query(default=None, max_length=200)) -> JsonObject:
     servico = _servico(request)
     # RA-19: sem `rotulo`, a lista padrão esconde os apps de teste. Com um app escolhido, vale o que ele tiver: o QA
     # Messenger escolhido no filtro de app não pode voltar vazio por causa de um padrão que a pessoa não escolheu.
     efetivo = rotulo or (Rotulo.TODOS if app else Rotulo.PRODUTO)
     livro = servico.livro(kind=kind, state=state, app=app, origem=origem, rotulo=efetivo,
-                          nascido_de_prova=nascido_de_prova)
+                          nascido_de_prova=nascido_de_prova, assunto=assunto)
     contagem: JsonObject = {k: {estado: n for estado, n in v.items()} for k, v in livro.contagem.items()}
     capabilities = servico.capabilities(livro.itens)
     nomes = servico.nomes_das_capabilities(livro.itens, capabilities)
@@ -380,13 +386,29 @@ async def mudar_status(request: Request, kind: LivroKind, ref: str, corpo: Corpo
     servico = _servico(request)
     ref = servico.ref_interna(kind, ref)                 # 30.83: aceita o id e a referência pública
     quem = _quem(request)
+    motivo = _motivo_do_religamento(servico, kind, ref, corpo)
     pareceres = _pareceres(servico)
     if pareceres is not None:
-        entrada = _chamar(lambda: pareceres.mudar_estado(kind, ref, corpo.to, by=quem, reason=corpo.reason,
+        entrada = _chamar(lambda: pareceres.mudar_estado(kind, ref, corpo.to, by=quem, reason=motivo,
                                                          review_id=corpo.review_id))
     else:
-        entrada = _chamar(lambda: servico.mudar_estado(kind, ref, corpo.to, by=quem, reason=corpo.reason))
+        entrada = _chamar(lambda: servico.mudar_estado(kind, ref, corpo.to, by=quem, reason=motivo))
     return _detalhe(_chamar(lambda: servico.detalhe(entrada.kind, entrada.ref)), servico)
+
+
+def _motivo_do_religamento(servico: LearningService, kind: LivroKind, ref: str, corpo: CorpoDeStatus) -> str:
+    """31.150 (achado da Portal): o "Ligar" do Livro num fluxo de prova desligado segue a regra do `PUT /api/flows/{id}`:
+    motivo de verdade (400 `motivo_obrigatorio` só com espaços) e a mesma linha de trilha, "religado para uso real:
+    <motivo>", que acende o `em_uso_real_desde`. Os outros casos passam o motivo como veio."""
+    if kind is not LivroKind.FLUXO or corpo.to is not SkillState.PUBLISHED:
+        return corpo.reason
+    atual = _chamar(lambda: servico.entrada(kind, ref))
+    if not atual.nascido_de_prova or atual.state is SkillState.PUBLISHED:
+        return corpo.reason
+    if not corpo.reason.strip():
+        raise HTTPException(400, detail={"code": "motivo_obrigatorio", "message": "Fluxo nascido de prova: diga por que "
+                                                                                  "ele volta ao uso real (motivo)."})
+    return motivo_do_religamento(corpo.reason)
 
 
 @router.post("/{kind}/{ref}/evidencia-invalida", response_model=None)

@@ -1012,3 +1012,112 @@ async def test_ler_varias_vezes_nao_grava_de_novo_nem_avisa_de_novo(harness: Har
     for _ in range(5):
         assert s.ler(op["id"]) == primeira
     assert retrato() == depois
+
+
+async def test_o_get_traz_a_hora_da_ultima_verificacao_da_sessao_do_alvo(harness: Harness) -> None:
+    """31.173: o que a pessoa olha antes da onda: quando a sessão da conta do alvo naquele aparelho foi vista na tela."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Lia", "android-02")
+    _conta(harness, pid, "qa-user-65", sessao_em="android-02")
+    sem_sessao = _persona(harness, "Mel", "android-03")
+    _conta(harness, sem_sessao, "qa-user-66")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid), AlvoPedido(sem_sessao)], chave="teste-op-sessao-verificada"))
+    lida = s.ler(op["id"])
+    assert _alvo(lida, pid)["sessao_verificada_em"]
+    assert _alvo(lida, sem_sessao)["sessao_verificada_em"] is None
+
+
+async def test_a_releitura_da_sessao_que_falha_sempre_para_no_teto_com_o_motivo(harness: Harness) -> None:
+    """31.173: a releitura da sessão vencida que falha sempre (o UiAutomator sem a árvore: android-03, 06/10) voltava a
+    cada volta do despacho. No teto, o objetivo para com o motivo, e a contagem zera para a retomada; sucesso zera."""
+    import types
+
+    from app.state import TETO_DE_RELEITURAS_DA_SESSAO
+
+    st = harness.state
+    assert st is not None
+    chamadas: list[bool] = []
+
+    class _Provedor:
+        falhar = True
+
+        async def ensure_session(self, rt: Any, profile_id: str, *, account_id: str | None = None,
+                                 observe_only: bool = False) -> None:
+            chamadas.append(observe_only)
+            if self.falhar:
+                raise RuntimeError("Timed out waiting for the root AccessibilityNodeInfo")
+
+    rt, provedor = types.SimpleNamespace(id="android-09"), _Provedor()
+    for i in range(TETO_DE_RELEITURAS_DA_SESSAO):
+        motivo, reler = st._releitura_da_sessao(rt, "p-1", "acc-1", provedor)  # type: ignore[arg-type]  # noqa: SLF001
+        assert reler is not None and ("tentativa" in motivo) == (i > 0)
+        with pytest.raises(RuntimeError):
+            await reler()
+    motivo, reler = st._releitura_da_sessao(rt, "p-1", "acc-1", provedor)  # type: ignore[arg-type]  # noqa: SLF001
+    assert reler is None and f"{TETO_DE_RELEITURAS_DA_SESSAO} tentativas seguidas" in motivo and "android-09" in motivo
+    assert all(chamadas) and len(chamadas) == TETO_DE_RELEITURAS_DA_SESSAO     # só observação, nunca login
+    # retomar: a contagem zerou no bloqueio; e a releitura boa zera também
+    motivo, reler = st._releitura_da_sessao(rt, "p-1", "acc-1", provedor)  # type: ignore[arg-type]  # noqa: SLF001
+    assert reler is not None and "tentativa" not in motivo
+    provedor.falhar = False
+    await reler()
+    assert st._releituras_falhas == {}  # noqa: SLF001
+
+
+async def test_o_pool_elegivel_e_a_conferencia_da_criacao_sem_criar_nada(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """31.174: quem pode ser alvo agora: a conferência da criação (persona, conta, sessão, aparelho) mais o aparelho
+    apto. A sessão vencida continua elegível (a porta relê a tela) e vem marcada. Só leitura: nada é criado."""
+    from app.models import SessionStatus as Sessao
+    from app.modules.operacoes.infrastructure.servico import APARELHO_INAPTO, SEM_CONTA, SEM_SESSAO
+
+    st = harness.state
+    assert st is not None
+    monkeypatch.setattr(st.social_repo, "session_max_age_s", 43_200)
+    pronta = _persona(harness, "Nara", "android-02")
+    _conta(harness, pronta, "qa-user-67", sessao_em="android-02")
+    sem_conta = _persona(harness, "Odete")
+    sem_sessao = _persona(harness, "Pia")
+    _conta(harness, sem_sessao, "qa-user-68")
+    velha = _persona(harness, "Rute", "android-01")
+    conta_velha = _conta(harness, velha, "qa-user-69")
+    st.social_repo.set_account_session(velha, conta_velha, "android-01", status=Sessao.session_ready,
+                                       verified_at="2026-01-01T00:00:00.000Z")
+    inapta = _persona(harness, "Sara", "android-03")
+    _conta(harness, inapta, "qa-user-70", sessao_em="android-03")
+    s = _servico(harness)
+    monkeypatch.setattr(s, "_aparelho_apto", lambda iid: iid in ("android-01", "android-02"))
+    antes = (st.db.scalar("SELECT COUNT(*) FROM operacoes"), st.db.scalar("SELECT COUNT(*) FROM runs"))
+    pool = s.elegiveis(APP)
+    por = {i["profile_id"]: i for i in pool["itens"]}  # type: ignore[union-attr,index]
+    assert (por[pronta]["elegivel"], por[pronta]["instance_id"], por[pronta]["sessao_vencida"]) == (True, "android-02",
+                                                                                                     False)
+    assert por[pronta]["sessao_verificada_em"]
+    assert (por[sem_conta]["elegivel"], por[sem_conta]["parou_em"], por[sem_conta]["motivo"]) == (False, "conta",
+                                                                                                   SEM_CONTA)
+    assert (por[sem_sessao]["parou_em"], por[sem_sessao]["motivo"]) == ("sessao", SEM_SESSAO)
+    assert (por[velha]["elegivel"], por[velha]["sessao_vencida"]) == (True, True)
+    assert (por[inapta]["elegivel"], por[inapta]["parou_em"], por[inapta]["motivo"]) == (False, "aparelho",
+                                                                                         APARELHO_INAPTO)
+    contagem = pool["contagem"]
+    assert contagem["elegiveis"] == sum(1 for i in por.values() if i["elegivel"])  # type: ignore[index]
+    assert contagem["com_sessao_vencida"] >= 1 and contagem["motivos"][SEM_CONTA] >= 1  # type: ignore[index]
+    assert (st.db.scalar("SELECT COUNT(*) FROM operacoes"), st.db.scalar("SELECT COUNT(*) FROM runs")) == antes
+    with pytest.raises(OperacaoError) as exc:
+        s.elegiveis("app-que-nao-existe")
+    assert (exc.value.code, exc.value.status) == ("app_inexistente", 404)
+
+
+async def test_rota_do_pool_elegivel_vem_antes_do_id_da_operacao(harness: Harness) -> None:
+    """31.174: `GET /api/operacoes/elegiveis?app_id=` não pode ser engolida por `/operacoes/{operacao_id}`."""
+    st = harness.state
+    assert st is not None
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get("/api/operacoes/elegiveis", params={"app_id": APP})
+        assert r.status_code == 200 and r.json()["app_id"] == APP and "contagem" in r.json()
+        assert (await c.get("/api/operacoes/elegiveis", params={"app_id": "nao-existe"})).status_code == 404
+        assert (await c.get("/api/operacoes/elegiveis")).status_code == 422

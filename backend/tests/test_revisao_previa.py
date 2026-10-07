@@ -23,7 +23,7 @@ from app.db import dumps
 from app.main import create_app
 from app.metricas import Metricas, metricas
 from app.models import ControlOwner
-from app.state import SettingsStore
+from app.bootstrap import SettingsStore
 
 from .conftest import COMMAND, Harness
 

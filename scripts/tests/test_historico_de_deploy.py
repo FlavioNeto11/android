@@ -184,3 +184,137 @@ def test_deploy_nao_reusa_o_nome_de_um_parametro_nas_variaveis_novas() -> None:
     novas = set(re.findall(r"(?m)^\s*\$(?:script:)?(\w+)\s*=", d[d.index("$inicioDoDeploy"):]))
     parametros = {"ensaio", "stopemulators", "pularbackup", "pularfrontend", "pulardependencias", "semtag"}
     assert not ({n.lower() for n in novas} & parametros)
+
+
+@precisa_pwsh
+def test_tempo_por_etapa_soma_arredonda_e_so_aparece_quando_medido(tmp_path: Path) -> None:
+    """29.156 (fatia 2): `Close-EtapaDoDeploy` soma o tempo desde a marca anterior; a linha antiga não ganha campo novo."""
+    alvo = tmp_path / "deploys.jsonl"
+    r = _ps(tmp_path, "\n".join([
+        f"$a = '{alvo}'",
+        "$t0 = [datetime]::SpecifyKind([datetime]'2026-10-06 15:00:00', 'Utc')",
+        "$e = New-EstadoDeEtapas -Agora $t0",
+        "Close-EtapaDoDeploy $e 'backup' -Agora $t0.AddSeconds(12.34)",
+        "Close-EtapaDoDeploy $e 'subida' -Agora $t0.AddSeconds(52.34)",
+        "Close-EtapaDoDeploy $e 'subida' -Agora $t0.AddSeconds(62.37)",          # mesmo nome soma
+        "Close-EtapaDoDeploy $e 'relogio_atrasado' -Agora $t0.AddSeconds(10)",   # relógio andou para trás: nunca negativo
+        "Add-RegistroDeDeploy -Caminho $a -Registro (New-RegistroDeDeploy -Resultado 'ok' -UtcAgora $t0 -EtapasS $e.etapas)",
+        "Add-RegistroDeDeploy -Caminho $a -Registro (New-RegistroDeDeploy -Resultado 'ok' -UtcAgora $t0)",
+        "Add-RegistroDeDeploy -Caminho $a -Registro (New-RegistroDeDeploy -Resultado 'ok' -UtcAgora $t0 -EtapasS ([ordered]@{}))",
+    ]))
+    assert r.returncode == 0, r.stderr
+    com, sem, vazio = (json.loads(x) for x in alvo.read_text(encoding="utf-8").splitlines())
+    assert com["etapas_s"] == {"backup": 12.3, "subida": 50.0, "relogio_atrasado": 0.0}
+    assert list(com["etapas_s"]) == ["backup", "subida", "relogio_atrasado"]      # a ordem é a do deploy
+    assert "etapas_s" not in sem and "etapas_s" not in vazio
+
+
+def test_deploy_mede_cada_etapa_na_ordem_e_leva_o_tempo_tanto_no_ok_quanto_na_falha() -> None:
+    d = _deploy()
+    ordem = ["'backup'", "'site'", "'docs_check'", "'painel'", "'parada'", "'dependencias'", "'subida'", "'conferencia'", "'tag'"]
+    posicoes = [d.index(f"Close-EtapaDoDeploy $estadoDeEtapas {n}") for n in ordem]
+    assert posicoes == sorted(posicoes), "as marcas seguem a ordem das etapas do deploy"
+    assert d.index("$estadoDeEtapas = New-EstadoDeEtapas") < posicoes[0]
+    trap = d.index("\ntrap {")
+    assert "-EtapasS $estadoDeEtapas.etapas" in d[trap:trap + 1200] and "'interrompida'" in d[trap:trap + 600]
+    assert "-Resultado 'ok'" in d and "-EtapasS $estadoDeEtapas.etapas" in d[d.index("-Resultado 'ok'"):d.index("-Resultado 'ok'") + 700]
+    assert "tempo por etapa (s): " in d
+    # só medição: a lib de etapas nunca lança para fora do deploy
+    lib = LIB.read_text(encoding="utf-8")
+    assert "catch { }" in lib.split("function Close-EtapaDoDeploy")[1].split("function New-RegistroDeDeploy")[0]
+
+
+@precisa_pwsh
+def test_deploy_ps1_continua_sintaticamente_valido(tmp_path: Path) -> None:
+    r = _ps(tmp_path, "\n".join([
+        "$tokens = $null; $erros = $null",
+        f"$null = [System.Management.Automation.Language.Parser]::ParseFile('{SCRIPTS / 'deploy.ps1'}', [ref]$tokens, [ref]$erros)",
+        "if ($erros.Count -gt 0) { $erros | ForEach-Object { $_.Message }; exit 1 }",
+    ]))
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def _repo_com_changelog(tmp: Path) -> tuple[Path, Path, str, str]:
+    """Dois commits: o 2º acrescenta entradas ao CHANGELOG (uma com dado de máquina e segredo no título)."""
+    repo, origem, c1 = _repo_com_origem(tmp)
+    (repo / "CHANGELOG.md").write_text("# Changelog\n\n## 2026-10-05 — 29.1: antiga\n\n- x\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "changelog")
+    anterior = _git(repo, "rev-parse", "HEAD")
+    (repo / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## 2026-10-06 — 29.2: nova com ação (branch feat/x)\n\n- corpo que nao entra\n\n"
+        "## 2026-10-06 — 29.3: no 192.168.1.11 / WIN-ABCDEF12 em C:\git\android\data com a@b.com e ghp_ABCDEFGHIJKLMNOP123 "
+        "chave Zm9vYmFyQmF6UXV4MTIzNDU2Nzg5MEFiQ2RFZkdoSWpLbE1u (branch feat/adr-081-regra-da-frota-em-configuracoes-do-portal)\n\n"
+        "## 2026-10-05 — 29.1: antiga\n\n- x\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "nova entrada")
+    return repo, origem, anterior, _git(repo, "rev-parse", "HEAD")
+
+
+@precisa_pwsh
+def test_notas_do_release_trazem_so_as_entradas_novas_do_changelog_sem_dado_de_maquina(tmp_path: Path) -> None:
+    repo, _, anterior, commit = _repo_com_changelog(tmp_path)
+    _git(repo, "remote", "set-url", "origin", "https://x-access-token:ghp_SEGREDODAORIGEM123456@github.com/dono/repo.git")
+    r = _ps(tmp_path, "\n".join([
+        f"$n = New-NotasDeRelease -Raiz '{repo}' -Tag 'deploy-20261006-1545' -Commit '{commit}' -CommitAnterior '{anterior}' "
+        "-Migracao '127_y' -MigracaoAnterior '125_x'",
+        "[Console]::Out.Write($n)",
+    ]))
+    assert r.returncode == 0, r.stderr
+    notas = r.stdout
+    assert "Registrado no CHANGELOG desde o deploy anterior (2)" in notas
+    assert "29.2: nova com ação (branch feat/x)" in notas
+    assert "29.1: antiga" not in notas and "corpo que nao entra" not in notas, "só títulos novos; entrada antiga e corpo ficam fora"
+    assert "migração `125_x` → `127_y`" in notas and "1 commits desde" in notas
+    for vazou in ("192.168.1.11", "WIN-ABCDEF12", "C:\git", "a@b.com", "ghp_ABCDEFGHIJKLMNOP123", "SEGREDODAORIGEM", "x-access-token"):
+        assert vazou not in notas, vazou
+    assert "Zm9vYmFy" not in notas and "<token>" in notas, "chave em base64 sai"
+    assert "feat/adr-081-regra-da-frota-em-configuracoes-do-portal" in notas, "branch longo em minúsculas não é segredo e fica"
+    assert "<ip>" in notas and "<máquina>" in notas and "<caminho>" in notas and "<e-mail>" in notas and "<segredo>" in notas
+    assert f"github.com/dono/repo/compare/{anterior}...{commit}" in notas, "só dono/repositório: a credencial da origem nunca entra"
+
+
+@precisa_pwsh
+def test_o_release_usa_o_arquivo_de_notas_do_changelog_e_apaga_o_temporario(tmp_path: Path) -> None:
+    repo, origem, anterior, commit = _repo_com_changelog(tmp_path)
+    anotacao, copia = tmp_path / "gh-args.txt", tmp_path / "notas-copiadas.md"
+    r = _ps(tmp_path, "\n".join([
+        f"function gh {{ $args -join ' ' | Set-Content -Encoding utf8 '{anotacao}'; "
+        f"$i = [array]::IndexOf($args, '--notes-file'); if ($i -ge 0) {{ Copy-Item -LiteralPath $args[$i + 1] '{copia}'; "
+        "$global:ArquivoDeNotas = $args[$i + 1] }; $global:LASTEXITCODE = 0 }",
+        "$t = [datetime]::SpecifyKind([datetime]'2026-10-06 15:45:30', 'Utc')",
+        f"$r = Publish-TagDeDeploy -Raiz '{repo}' -Commit '{commit}' -Migracao '127_y' -UtcAgora $t -CommitAnterior '{anterior}' -MigracaoAnterior '125_x'",
+        "$r | ConvertTo-Json -Compress",
+        "if ($global:ArquivoDeNotas) { Test-Path -LiteralPath $global:ArquivoDeNotas } else { 'sem-arquivo' }",
+    ]))
+    assert r.returncode == 0, r.stderr
+    saida = r.stdout.strip().splitlines()
+    assert json.loads(saida[-2])["release"] is True
+    assert saida[-1] == "False", "o arquivo temporário de notas é apagado depois do release"
+    args = anotacao.read_text(encoding="utf-8-sig")
+    assert "--notes-file" in args and "--generate-notes" not in args and "--verify-tag" in args and "--latest=false" in args
+    assert "29.2: nova com ação" in copia.read_text(encoding="utf-8")
+
+
+@precisa_pwsh
+def test_sem_deploy_anterior_ou_sem_changelog_cai_nas_notas_geradas_pelo_gh(tmp_path: Path) -> None:
+    repo, origem, anterior, commit = _repo_com_changelog(tmp_path)
+    primeiro = _git(repo, "rev-list", "--max-parents=0", "HEAD")             # neste commit não existe CHANGELOG.md
+    anotacao = tmp_path / "gh-args.txt"
+    base = [f"function gh {{ $args -join ' ' | Add-Content -Encoding utf8 '{anotacao}'; $global:LASTEXITCODE = 0 }}"]
+    for i, extra in enumerate(["", f"-CommitAnterior '{primeiro}'"]):
+        r = _ps(tmp_path, "\n".join(base + [
+            f"$t = [datetime]::SpecifyKind([datetime]'2026-10-06 15:4{i}:30', 'Utc')",
+            f"$r = Publish-TagDeDeploy -Raiz '{repo}' -Commit '{commit}' -Migracao '127_y' -UtcAgora $t {extra}",
+            "$r | ConvertTo-Json -Compress",
+        ]))
+        assert r.returncode == 0, r.stderr
+        assert json.loads(r.stdout.strip().splitlines()[-1])["release"] is True
+    args = anotacao.read_text(encoding="utf-8-sig")
+    assert args.count("--generate-notes") == 2 and "--notes-file" not in args
+
+
+def test_deploy_passa_o_deploy_anterior_para_as_notas() -> None:
+    d = _deploy()
+    i = d.index("Publish-TagDeDeploy -Raiz")
+    assert "-CommitAnterior $antes.commit -MigracaoAnterior $antes.migration" in d[i:i + 300]

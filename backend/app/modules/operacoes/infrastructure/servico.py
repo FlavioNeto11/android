@@ -31,6 +31,7 @@ from app.modules.operacoes.domain import fila as filas, latencia, relatorio as r
 from app.modules.operacoes.domain.estagios import ESTADOS, EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs
+from app.social.repository import sessao_vencida
 from app.social.service import SocialError
 from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS, normal
 from app.taskqueue.recipes import SENSITIVE_PARAM
@@ -57,6 +58,8 @@ TETO_DE_CUSTO = "teto de custo"
 TETO_DA_OPERACAO = "teto da operação"
 _DO_TETO = re.compile(r"^(teto da operação:|Teto de custo da operação atingido)")
 LIMITE_DE_ACOES = "limite de ações executadas"
+#: 31.174: o aparelho da sessão existe, mas não recebe tarefa agora (fora do ar, na loja ou com conta travada).
+APARELHO_INAPTO = "aparelho fora do ar ou com conta travada"
 AGUARDA_LIBERACAO = "aguarda liberação"
 
 
@@ -390,7 +393,8 @@ class ServicoDeOperacoes:
                           "estagios": [{"estagio": e, "em": em, "etapa_ms": ms}
                                        for (e, em), ms in zip(lt.estagios, lat.etapas_ms, strict=True)],
                           "latencia": {"duracao_ms": lat.duracao_ms, "espera_do_liberar_ms": lat.espera_do_liberar_ms},
-                          "resultado": resultado, "custo_usd": custo})
+                          "resultado": resultado, "custo_usd": custo,
+                          "sessao_verificada_em": self._sessao_verificada_em(a)})
         self._anotar_filas(saida)
         capacidade = self._capacidade(saida)
         status = self._status(op, saida)
@@ -460,6 +464,15 @@ class ServicoDeOperacoes:
                       "por_peca_usd": (round(float(total) / verificadas, 4)
                                        if verificadas and isinstance(total, (int, float)) else None)},
         }
+
+    def _sessao_verificada_em(self, a: Row) -> str | None:
+        """31.173: quando a sessão da conta do alvo NESTE aparelho foi vista na tela pela última vez (`account_sessions`).
+        A porta do despacho relê a vencida antes da tarefa; aqui é o que a pessoa olha antes de começar."""
+        if not a["account_id"] or not a["instance_id"]:
+            return None
+        linha = self.db.one("SELECT verified_at FROM account_sessions WHERE account_id=? AND instance_id=?",
+                            (a["account_id"], a["instance_id"]))
+        return str(linha["verified_at"]) if linha is not None and linha["verified_at"] else None
 
     def _fontes_da_pesquisa(self, op_id: str) -> list[str]:
         """As URLs que a pesquisa externa da operação ACHOU (frente de aprendizado, migração 125: `pedido_observacoes` com
@@ -713,6 +726,33 @@ class ServicoDeOperacoes:
         self.bus.emit("operacao.encerrada", f"Operação {op['id']} encerrada: {status}.",
                       data={"operacao_id": op["id"], "status": status, "capacidade": capacidade})
         return agora
+
+    # ------------------------------------------------------------------ pool elegível (31.174)
+    def elegiveis(self, app_id: str) -> dict[str, object]:
+        """Quem pode ser alvo AGORA neste app: a mesma conferência da criação (persona → conta → sessão → aparelho, na
+        ordem do dono), mais o aparelho apto (online, fora da loja, sem conta travada). Só leitura: nada é criado nem
+        despachado. A sessão vencida continua elegível (a porta do despacho relê a tela antes da tarefa) e vem marcada,
+        para a pessoa reverificar antes da onda. Diagnóstico da prova (§ NECESSÁRIO): o pool era montado à mão."""
+        if self.db.one("SELECT id FROM apps WHERE id=?", (app_id,)) is None:
+            raise OperacaoError("app_inexistente", f"O app {app_id!r} não está registrado.", 404)
+        validade = int(getattr(self.social, "session_max_age_s", 0) or 0)
+        itens: list[dict[str, object]] = []
+        for r in self.db.query("SELECT id FROM instagram_profiles ORDER BY id"):
+            pid = str(r["id"])
+            parada, motivo, conta, aparelho = self._conferir(AlvoPedido(pid), app_id)
+            if parada is None and not self._aparelho_apto(aparelho):
+                parada, motivo = "aparelho", APARELHO_INAPTO
+            sessao = (self.db.one("SELECT status, verified_at FROM account_sessions WHERE account_id=? AND instance_id=?",
+                                  (conta, aparelho)) if conta and aparelho else None)
+            itens.append({"profile_id": pid, "persona_nome": self._nome(pid), "account_id": conta,
+                          "instance_id": aparelho, "elegivel": parada is None, "parou_em": parada, "motivo": motivo,
+                          "sessao_verificada_em": sessao["verified_at"] if sessao is not None else None,
+                          "sessao_vencida": sessao_vencida(sessao, validade)})
+        motivos = Counter(str(i["motivo"]) for i in itens if not i["elegivel"] and i["motivo"])
+        return {"app_id": app_id, "itens": itens,
+                "contagem": {"personas": len(itens), "elegiveis": sum(1 for i in itens if i["elegivel"]),
+                             "com_sessao_vencida": sum(1 for i in itens if i["elegivel"] and i["sessao_vencida"]),
+                             "motivos": dict(sorted(motivos.items()))}}
 
     # ------------------------------------------------------------------ cancelar e liberar
     def cancelar(self, op_id: str, *, quem: str | None = None) -> dict[str, object]:

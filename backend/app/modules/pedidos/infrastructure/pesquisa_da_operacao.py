@@ -27,6 +27,7 @@ from app.config import PesquisaCfg
 from app.db import Database, loads
 from app.modules.pedidos.domain import memoria as dominio_memoria
 from app.modules.pedidos.domain.observacao import curto, sha256_do_valor
+from app.modules.pedidos.infrastructure.conhecimento_da_operacao import ConhecimentoDaOperacao
 from app.modules.pedidos.infrastructure.relatorios import parece_segredo
 from app.modules.pedidos.infrastructure.repositorio_memoria import NovaObservacao, RepositorioDeMemoria
 from app.planning import costs
@@ -152,6 +153,8 @@ class PesquisaDaOperacao:
                       + (f", {c.descartados} descartado(s) sem fonte" if c.descartados else ""))
             self._marcar_estado(operacao_id, resumo, run_id, frescor_s=None if c.fatos else ESPERA_APOS_FALHA_S,
                                 prazo=prazo if c.fatos else None)
+        # 31.179: a pesquisa que chega depois da leitura do alvo (nova tentativa após a espera) já se confere com ela
+        ConhecimentoDaOperacao(self.db).confirmar_hipoteses(operacao_id, run_id=run_id)
         return Feito(len(c.fatos), confirmados, len(c.fontes), buscas, c.descartados)
 
     def _marcar_estado(self, operacao_id: str, texto: str, run_id: str, *, frescor_s: float | None,

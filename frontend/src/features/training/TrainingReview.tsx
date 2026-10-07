@@ -25,7 +25,10 @@ import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextInput } from '../../components/Field';
 import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { AvisoDaPosCondicao, lerPosCondicoes, motivoDaPosCondicao } from './PosCondicaoQueJaVale';
+import { CampoMascarado } from './CampoMascarado';
 import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
+import { paraExibir, refs, semExibicao, type Exibicao } from './exibicao';
+import { avisosPorEtapa } from './avisosDaEtapa';
 import { descartarSessaoConcluida } from './descartarSessao';
 import { temMarcadorDaPersona, textoComMarcadores } from '../../lib/marcadores';
 import { FluxoNoLivro } from './FluxoNoLivro';
@@ -101,8 +104,17 @@ export function toqueSemAlvo(e: TrainingInput): string | null {
   return e.sensitive && e.x === null ? 'em teclado ou tela sensível (não gravado)' : 'sem elemento identificado';
 }
 
-/** Como o seletor `unique` da gravação se lê (`recorder._CAMPOS_DO_SELETOR`): o que a receita compara no aparelho. */
-const SELETOR: Record<string, string> = { 'rid+text': 'identificador e texto', 'rid+desc': 'identificador e descrição', rid: 'identificador', desc: 'descrição', text: 'texto' };
+/**
+ * Como o seletor `unique` da gravação se lê (`recorder._CAMPOS_DO_SELETOR`): o que a receita compara no aparelho. Cada um é um
+ * jeito que SOZINHO acha o elemento na tela gravada. `soEle`: a mesma forma, para quando é uma alternativa de um só campo ("só pelo texto").
+ */
+const SELETOR: Record<string, { como: string; soEle: string }> = {
+  'rid+text': { como: 'pelo identificador e pelo texto', soEle: 'pelo identificador e pelo texto' },
+  'rid+desc': { como: 'pelo identificador e pela descrição', soEle: 'pelo identificador e pela descrição' },
+  rid: { como: 'pelo identificador', soEle: 'só pelo identificador' },
+  desc: { como: 'pela descrição', soEle: 'só pela descrição' },
+  text: { como: 'pelo texto', soEle: 'só pelo texto' },
+};
 
 /**
  * 31.90-F: como a gravação RECONHECE o elemento tocado, para a pessoa conferir antes de salvar (a receita só vale se o
@@ -112,8 +124,9 @@ const SELETOR: Record<string, string> = { 'rid+text': 'identificador e texto', '
 export function alvoReconhecido(e: TrainingInput): string | null {
   const t = e.target;
   if ((e.type !== 'tap' && e.type !== 'long_press') || !t || !Object.keys(t).length) return null;
-  const como = (t.unique ?? []).map((u) => SELETOR[u] ?? u);
+  const unicos = t.unique ?? [];
   const id = t.resource_id ? t.resource_id.split('/').pop() : '';
+  const como = unicos.map((u) => SELETOR[u]);
   if (!como.length) {
     if (!t.filhos?.length) return 'sem identificador único: este toque não vira receita';
     // Contêiner sem identidade: a receita acha o elemento por um filho rotulado (até três gravados); a pessoa vê quais.
@@ -124,7 +137,12 @@ export function alvoReconhecido(e: TrainingInput): string | null {
     }).filter(Boolean);
     return `reconhecido pelo que o elemento contém${filhos.length ? `: ${filhos.join('; ')}` : ''}`;
   }
-  return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `: ${id}` : ''}`;
+  // 31.169: em palavras ("achado pelo identificador ok e pelo texto"), com o id técnico logo depois da palavra que o nomeia, e as
+  // outras formas que também acham o elemento ditas como alternativas, não como lista de rótulos soltos entre parênteses.
+  const [primeiro, ...outras] = como;
+  const dito = (primeiro?.como ?? `por ${unicos[0]}`).replace(/(identificador)/, id ? `$1 ${id}` : '$1');
+  const alternativas = outras.map((o, i) => o?.soEle ?? `por ${unicos[i + 1]}`);
+  return `achado ${dito}${alternativas.length ? `; também se acha ${alternativas.join(' ou ')}` : ''}`;
 }
 
 const SELETOR_DA_POS = /^(text|desc|id)==(.+)$/;
@@ -266,6 +284,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   // chegou: descartar e devolver a mesma entrada volta ao que era, e aí não há o que perder.
   const [original, setOriginal] = useState<TrainingProposal | null>(null);
   const editado = proposta !== null && JSON.stringify(proposta) !== JSON.stringify(original);
+  // 31.189: a cópia mascarada da proposta (adendo v1.109) para EXIBIR; o que vai na prévia e no salvar é sempre `proposta`.
+  const [copia, setCopia] = useState<TrainingProposal | null | undefined>(null);
+  const exibicao: Exibicao = useMemo(() => (copia ? { original, copia } : semExibicao()), [original, copia]);
+  const vista = useMemo(() => (proposta ? paraExibir(proposta, exibicao) : null), [proposta, exibicao]);
   const [escopoMudou, setEscopoMudou] = useState(false);
   // 31.88 F2: "Vale para". O padrão é o do contrato: todos, depois de provado.
   const [vale, setVale] = useState<ModoDoEscopo>('todos');
@@ -313,6 +335,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       setSessao(s);
       setProposta(s.proposal);
       setOriginal(s.proposal);
+      setCopia(s.proposal_exibicao);
       if (s.profile_id) setEscolhidosP(new Set([s.profile_id]));
     }).catch((e) => { if (vivo) setFalhaSessao(falhaDe(e)); });
     return () => { vivo = false; };
@@ -426,6 +449,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       setErroResposta(null);
       setProposta(s.proposal);
       setOriginal(s.proposal);
+      // 31.189: toda resposta do treino que traz a sessão leva a cópia para exibir (v1.109); sem ela (backend anterior), a proposta como veio.
+      setCopia(s.proposal_exibicao);
       setDestino({});
       setAviso('');
     } catch (e) {
@@ -442,6 +467,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           setSessao(s);
           setProposta(s.proposal);
           setOriginal(s.proposal);
+          setCopia(s.proposal_exibicao);
         } catch {
           /* a releitura falhou: a tela fica com a proposta que tinha, e o próximo pedido confere de novo */
         }
@@ -473,7 +499,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       delete n[seq];
       return n;
     });
-    setAviso(`#${seq} voltou à etapa ${etapa + 1}${proposta?.steps[etapa] ? ` (${proposta.steps[etapa].title})` : ''}.`);
+    setAviso(`#${seq} voltou à etapa ${etapa + 1}${vista?.steps[etapa] ? ` (${vista.steps[etapa].title})` : ''}.`);
     setFocar(`etapa-${seq}`);
   }
 
@@ -565,7 +591,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   function motivoNaoSalvar(): string | null {
     const local = motivoLocal();
     if (local) return local;
-    const daPosCondicao = motivoDaPosCondicao(jaValem, (k) => proposta?.steps.find((s) => s.key === k)?.title ?? null);
+    const daPosCondicao = motivoDaPosCondicao(jaValem, (k) => vista?.steps.find((s) => s.key === k)?.title ?? null);
     if (daPosCondicao) return daPosCondicao;
     if (recusa) return CODIGOS_DO_COMANDO.has(recusa.code) ? 'Corrija o comando: o motivo está no campo.' : recusa.message;
     return null;
@@ -586,7 +612,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   const duplicada = new Set(duplicadas);
   const previaPorEtapa = new Map((previa?.steps ?? []).map((x) => [x.key, x]));
   // A linha de `warnings` que a etapa já mostra por dentro (31.128) não se repete na lista de avisos da prévia.
-  const avisosDaPrevia = (previa?.warnings ?? []).filter((w) => !(previa?.code && w === previa.message)).filter((w) => !jaValem.some((j) => j.message && j.message === w && proposta?.steps.some((s) => s.key === j.etapa)));
+  const todosAvisosDaPrevia = (previa?.warnings ?? []).filter((w) => !(previa?.code && w === previa.message)).filter((w) => !jaValem.some((j) => j.message && j.message === w && proposta?.steps.some((s) => s.key === j.etapa)));
+  // 31.198: o aviso que fala de uma etapa vai junto dela; só o resto fica na lista geral. Nunca bloqueia.
+  const { porEtapa: avisosDasEtapas, soltos: avisosDaPrevia } = avisosPorEtapa(todosAvisosDaPrevia, proposta?.steps ?? []);
+  const doSalvar = avisosPorEtapa(resultado?.warnings ?? [], resultado?.steps ?? []);
   const linhaDaEntrada = (seq: number) => {
     const e = porSeq.get(seq);
     return (
@@ -614,7 +643,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                   aria-label={`Devolver a entrada #${seq} à etapa`} value={destino[seq] ?? ''}
                   onChange={(ev) => { const v = ev.target.value; setDestino((d) => ({ ...d, [seq]: v })); }}>
             <option value="">Escolha a etapa…</option>
-            {proposta.steps.map((s, i) => <option key={s.key} value={i}>{`${i + 1}. ${s.title}`}</option>)}
+            {(vista ?? proposta).steps.map((s, i) => <option key={s.key} value={i}>{`${i + 1}. ${s.title}`}</option>)}
           </Select>
           <Button size="sm" variant="ghost" label={`Devolver a entrada #${seq}`}
                   disabledReason={destino[seq] ? null : 'Escolha a etapa primeiro.'}
@@ -672,18 +701,21 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           {resultado.scope ? (
             <p className={styles.muted}>Vale para {textoDoEscopo(resultado.scope, escopo.perfis, escopo.grupos)}.{resultado.ensinado_em_prova ? '' : ` ${ATE_A_PROVA}`}</p>
           ) : null}
-          <code className={styles.command}>{proposta?.command_template}</code>
+          <code className={styles.command}>{vista?.command_template}</code>
           <ul className={styles.stepReport}>
             {resultado.steps.map((s) => (
               <li key={s.key}>
                 <Badge size="sm" tone={s.recipe ? 'success' : 'neutral'}>{s.recipe ? 'sem IA' : 'com IA'}</Badge> {s.title}
                 <span className={styles.muted}> — {s.reason}</span>
                 <PacotesAceitos pacotes={s.pacotes_aceitos} />
+                {(doSalvar.porEtapa.get(s.key) ?? []).map((w) => (
+                  <span key={w} className={styles.avisoDaEtapa} role="note" data-aviso-da-etapa={s.key}><Badge size="sm" tone="warning">Aviso</Badge> {w}</span>
+                ))}
               </li>
             ))}
           </ul>
-          {resultado.warnings?.length ? (
-            <ul className={styles.questions} aria-label="Avisos do salvar">{resultado.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+          {doSalvar.soltos.length ? (
+            <ul className={styles.questions} aria-label="Avisos do salvar">{doSalvar.soltos.map((w) => <li key={w}>{w}</li>)}</ul>
           ) : null}
           {semReceitaAoSalvar ? (
             <RefazerReceitas sessionId={sessionId} onFeito={(r) => setResultado((x) => (x ? { ...x, steps: r.steps, ensinado_em_prova: r.ensinado_em_prova } : x))} />
@@ -757,23 +789,23 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                 <Field label="Comando (o que varia fica entre chaves)"
                        error={recusa && CODIGOS_DO_COMANDO.has(recusa.code) ? recusa.message : null}>
                   {({ id, describedBy, invalid }) => (
-                    <TextInput id={id} value={proposta.command_template} aria-describedby={describedBy} invalid={invalid}
-                               onChange={(e) => mudarProposta({ command_template: e.target.value })} />
+                    <CampoMascarado id={id} rotulo="Comando (o que varia fica entre chaves)" valor={proposta.command_template} aria-describedby={describedBy} invalid={invalid}
+                                    referencia={refs.comando(exibicao)} onChange={(v) => mudarProposta({ command_template: v })} />
                   )}
                 </Field>
                 {proposta.parameters.length ? (
                   <>
                     <p className={styles.params}>
-                      {proposta.parameters.map((p) => <Badge key={p.name} size="sm" tone="accent">{`{${p.name}}`} = {p.example}</Badge>)}
+                      {(vista ?? proposta).parameters.map((p) => <Badge key={p.name} size="sm" tone="accent">{`{${p.name}}`} = {p.example}</Badge>)}
                     </p>
-                    <EditorDosParametros parametros={proposta.parameters} onChange={(parameters) => mudarProposta({ parameters })} />
+                    <EditorDosParametros parametros={proposta.parameters} exibicao={exibicao} onChange={(parameters) => mudarProposta({ parameters })} />
                   </>
                 ) : null}
                 {proposta.questions.length ? (
                   <section className={styles.questions} aria-label="Perguntas da IA">
                     <p className={styles.muted}>Responda o que souber; a resposta vai para a IA. Não escreva senha nem código.</p>
-                    {proposta.questions.map((q) => (
-                      <Field key={q} label={q} error={erroResposta && (erroResposta.question === null || erroResposta.question === q) && (respostas[q] ?? '').trim()
+                    {proposta.questions.map((q, qi) => (
+                      <Field key={q} label={vista?.questions[qi] ?? q} error={erroResposta && (erroResposta.question === null || erroResposta.question === q) && (respostas[q] ?? '').trim()
                         ? erroResposta.message : null}>
                         {({ id, describedBy, invalid }) => (
                           <TextInput id={id} aria-describedby={describedBy} invalid={invalid} maxLength={MAX_RESPOSTA} value={respostas[q] ?? ''}
@@ -785,17 +817,17 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                 ) : null}
                 {proposta.answers?.length ? (
                   <ul className={styles.questions} aria-label="Respostas já dadas">
-                    {proposta.answers.map((a) => <li key={a.question}>{a.question} <strong>{a.answer}</strong></li>)}
+                    {proposta.answers.map((a, ai) => <li key={a.question}>{vista?.answers?.[ai]?.question ?? a.question} <strong>{vista?.answers?.[ai]?.answer ?? a.answer}</strong></li>)}
                   </ul>
                 ) : null}
                 <ol className={styles.steps}>
                   {proposta.steps.map((s, i) => (
                     <li key={s.key} className={styles.step}>
                       <div className={styles.stepHead}>
-                        <TextInput aria-label={`Título da etapa ${i + 1}`} value={s.title} onChange={(e) => mudarEtapa(i, { title: e.target.value })} />
+                        <CampoMascarado rotulo={`Título da etapa ${i + 1}`} valor={s.title} referencia={refs.titulo(exibicao, s.key)} onChange={(v) => mudarEtapa(i, { title: v })} />
                         {s.side_effect ? <Badge size="sm" tone="warning">efeito externo</Badge> : null}
                       </div>
-                      <TextInput aria-label={`Objetivo da etapa ${i + 1}`} value={s.goal} onChange={(e) => mudarEtapa(i, { goal: e.target.value })} />
+                      <CampoMascarado rotulo={`Objetivo da etapa ${i + 1}`} valor={s.goal} referencia={refs.objetivo(exibicao, s.key)} onChange={(v) => mudarEtapa(i, { goal: v })} />
                       {s.inputs.length ? (
                         <ul className={styles.entryList} aria-label={`Entradas da etapa ${i + 1}`}>
                           {s.inputs.map((n, k) => (
@@ -807,7 +839,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                           ))}
                         </ul>
                       ) : null}
-                      <p className={styles.muted}>Confere: {textoDoConfere(s.postcondition)}
+                      <p className={styles.muted}>Confere: {textoDoConfere(vista?.steps[i]?.postcondition ?? s.postcondition)}
                         {s.inputs.map((n) => porSeq.get(n)).filter(Boolean).length ? '' : ' · sem entradas: a IA conduz esta etapa'}</p>
                       {/* 31.141: o que a IA propôs vale; sem isso, o que a prévia calcula para a etapa. */}
                       <PacotesAceitos pacotes={s.pacotes_aceitos?.length ? s.pacotes_aceitos : previaPorEtapa.get(s.key)?.pacotes_aceitos} />
@@ -815,7 +847,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                         <AvisoDaPosCondicao key={j.valor} item={j}
                                             onUsar={(p) => mudarEtapa(i, { postcondition: { ...s.postcondition, kind: p.kind as typeof s.postcondition.kind, value: p.value } })} />
                       ))}
-                      <EditorDaPosCondicao indice={i} etapa={s} onChange={(postcondition) => mudarEtapa(i, { postcondition })} />
+                      <EditorDaPosCondicao indice={i} etapa={s} exibicao={exibicao} onChange={(postcondition) => mudarEtapa(i, { postcondition })} />
                       {previaPorEtapa.get(s.key) ? (
                         <p className={styles.muted}>
                           <Badge size="sm" tone={previaPorEtapa.get(s.key)!.recipe ? 'success' : 'neutral'}>
@@ -826,6 +858,9 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                             : previaPorEtapa.get(s.key)!.reason}
                         </p>
                       ) : null}
+                      {(avisosDasEtapas.get(s.key) ?? []).map((w) => (
+                        <p key={w} className={styles.avisoDaEtapa} role="note" data-aviso-da-etapa={s.key}><Badge size="sm" tone="warning">Aviso</Badge> {w}</p>
+                      ))}
                       {acoes.length && (s.side_effect || s.capability) ? (
                         <Select aria-label={`Ação do catálogo da etapa ${i + 1}`} value={s.capability ?? ''}
                                 onChange={(e) => mudarEtapa(i, { capability: e.target.value || null })}>
@@ -847,7 +882,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       {descarteUnico.map((d) => (
                         <li key={d.seq}>
                           <span className={styles.seq}>#{d.seq}</span>
-                          <span className={styles.entryText}>{linhaDaEntrada(d.seq)} <span className={styles.muted}>— {d.why}</span></span>
+                          <span className={styles.entryText}>{linhaDaEntrada(d.seq)} <span className={styles.muted}>— {vista?.discarded.find((x) => x.seq === d.seq)?.why ?? d.why}</span></span>
                           {acoesDaEntrada(d.seq, 'descartada')}
                         </li>
                       ))}

@@ -22,7 +22,7 @@ from app.modules.learning.application.espera import AvisadorDeEspera, RiscoDoNat
 from app.modules.learning.application.obsolescencia import ContextoDeObsolescencia, LeitorDeObsolescencia
 from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, LeitorDoEnsinado,
                                                     Minerador, MudancaNativa, LacoPeriodico, NovoSinal,
-                                                    PassoDeCuradoria, PortaDeEventos, PortaDoEnsinado,
+                                                    PassoDeCuradoria, PassoPorOperacao, PortaDeEventos, PortaDoEnsinado,
                                                     RepositorioDeAprendizado, TitulosDoCatalogo, TriagemDeTexto)
 from app.modules.learning.domain import relacoes as rel
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
@@ -34,9 +34,10 @@ from app.modules.learning.domain.evidencia_invalida import (ja_invalidada, motiv
 from app.modules.learning.domain.conteudo import capability_unica, licao_legivel, nome_da_capability, tela_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.espera import Faixa
+from app.modules.learning.domain.fatos_da_operacao import proveniencia_do_fato
 from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, EntradaDoLivro, ItemDeAprendizado,
                                                quem_no_log,
-                                               NovoItem, Transicao, a_revisar, apps_do_item, contagem,
+                                               NovoItem, Transicao, a_revisar, apps_do_item, assunto_canonico, contagem,
                                                decididos_para_revisar, devolve_a_prova, e_confirmacao,
                                                entrada_do_item, estado_nativo, motivo_da_confirmacao, para_aprovar,
                                                status_nativo)
@@ -100,6 +101,9 @@ class DetalheDoLivro:
     #: 30.44: o título da etapa que o texto de cada evidência cita, por (execução, posição, chave), lido da execução na
     #: hora (nunca gravado: é texto do planejador). A etapa que a execução não tem mais fica fora.
     titulos_das_etapas: Mapping[tuple[str, int, str], str] = field(default_factory=dict)
+    #: Adendo v1.117: a proveniência do fato da operação (31.190, `fatos_da_operacao.proveniencia_do_fato`); `None` em
+    #: todo o resto.
+    proveniencia: JsonObject | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,16 +223,19 @@ class LearningService:
     # ================================================================== leitura única
     def livro(self, *, kind: LivroKind | None = None, state: SkillState | None = None, app: str | None = None,
               origem: Origem | None = None, rotulo: Rotulo | None = None,
-              nascido_de_prova: bool | None = None) -> Livro:
+              nascido_de_prova: bool | None = None, assunto: str | None = None) -> Livro:
         """`rotulo` `None` é o livro inteiro (a visão por app, a contagem da barra e a saúde leem assim); a lista
         padrão da rota passa `PRODUTO`. `nascido_de_prova` (31.143): `True` só os fluxos nascidos de uma prova, `False`
-        o resto (os outros tipos inclusive), `None` tudo; entra antes da contagem, como os outros filtros."""
+        o resto (os outros tipos inclusive), `None` tudo; entra antes da contagem, como os outros filtros. `assunto`
+        (31.200): só os itens daquele assunto, comparado na forma canônica; `None` tudo."""
         todas = self._todas(kind)
+        do_assunto = None if assunto is None else assunto_canonico(assunto)
         # 30.33-C: o fluxo multi-app entra no filtro de cada app dele (`apps_do_item`); o rótulo QA/PRODUTO, abaixo,
         # continua pelo principal: ele decide a etiqueta da linha, não a quem ela pertence.
         filtradas = tuple(e for e in todas if (state is None or e.state is state)
                           and (app is None or app in apps_do_item(e)) and (origem is None or e.origin is origem)
-                          and (nascido_de_prova is None or e.nascido_de_prova is nascido_de_prova))
+                          and (nascido_de_prova is None or e.nascido_de_prova is nascido_de_prova)
+                          and (do_assunto is None or e.assunto == do_assunto))
         mostradas = filtradas
         if rotulo in (Rotulo.PRODUTO, Rotulo.QA):
             teste = self._fontes.pacotes_de_teste()
@@ -303,7 +310,12 @@ class LearningService:
         validas = tuple(x for x in evidencias if x.run_id not in invalidas) if invalidas else evidencias
         return DetalheDoLivro(e, evidencias, trilha, exposicoes, conteudo, saude=self.saude_de(e, validas, trilha),
                               versao=self._versao(e, validas), relacoes=self._relacoes(e, conteudo),
-                              titulos_das_etapas=self._titulos_das_etapas(evidencias))
+                              titulos_das_etapas=self._titulos_das_etapas(evidencias),
+                              proveniencia=self._proveniencia(kind, e.ref))
+
+    def _proveniencia(self, kind: LivroKind, ref: str) -> JsonObject | None:
+        item = self._repo.item(ref) if kind is LivroKind.LICAO else None
+        return None if item is None else proveniencia_do_fato(item.content, item.provenance)
 
     def _titulos_das_etapas(self, evidencias: Sequence[Evidencia]) -> dict[tuple[str, int, str], str]:
         """30.44: o título da etapa citada no texto de cada evidência com execução ("etapa 5 (send_message)"), lido de
@@ -824,6 +836,26 @@ class LearningService:
         if not self.ajustes.enabled:
             return Relatorio(pulado=True)
         return _rodar({m.nome: partial(m.minerar, run_id) for m in self._mineradores}, f"digest {run_id}")
+
+    def curar_operacao(self, operacao: str) -> JsonObject | None:
+        """A curadoria de UMA operação que acabou de encerrar (o laço ouve `operacao.encerrada`): os passos que sabem
+        rodar por operação (`PassoPorOperacao`), com o relatório de cada um por nome. None: aprendizado desligado, ou
+        nenhum passo achou a operação encerrada. O passo que falha fica fora do relatório; a volta periódica o repete."""
+        if not self.ajustes.enabled or not operacao:
+            return None
+        agora = self._relogio()
+        saida: JsonObject = {}
+        for p in self._passos:
+            if not isinstance(p, PassoPorOperacao):
+                continue
+            try:
+                feito = p.da_operacao(operacao, agora)
+            except Exception:  # noqa: BLE001 - um passo que falha não derruba os outros (como no `_rodar`)
+                log.exception("aprendizado: curadoria da operação %s, passo %s", operacao, p.nome)
+                continue
+            if feito is not None:
+                saida[p.nome] = feito
+        return saida or None
 
     def curar(self) -> Relatorio:
         """Um passo da curadoria periódica: a régua diária dos últimos dias e os passos registrados."""

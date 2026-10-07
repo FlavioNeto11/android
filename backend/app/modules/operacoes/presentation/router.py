@@ -104,12 +104,16 @@ def _erro(exc: OperacaoError) -> HTTPException:
 @router.post("/operacoes", status_code=201, response_model=None)
 async def criar_operacao(request: Request, body: OperacaoCreate) -> object:
     try:
-        return _servico(request).criar(PedidoDeOperacao(
+        criada = _servico(request).criar(PedidoDeOperacao(
             command=body.command, app_id=body.app_id, acao_final=body.acao_final, idempotency_key=body.idempotency_key,
             max_usd=body.max_usd, assunto=body.assunto, fontes=tuple(body.fontes), parametros=body.parametros,
             alvos=tuple(AlvoPedido(a.profile_id, a.account_id, a.instance_id) for a in body.alvos)), quem=quem(request))
     except OperacaoError as exc:
         raise _erro(exc) from exc
+    # 31.169 (frente de aprendizado): a pesquisa externa roda uma vez aqui, antes de qualquer alvo; a repetição
+    # idempotente encontra a lacuna coberta e não pesquisa de novo.
+    _st(request).portoes.agendar_pesquisa_da_operacao(str(criada["id"]))
+    return criada
 
 
 @router.get("/operacoes", response_model=None)
@@ -119,6 +123,15 @@ async def listar_operacoes(request: Request, limite: int = Query(50, ge=1, le=20
     """Com `profile_id` e/ou `instance_id` (31.213, adendo v1.116): só as operações com alvo deles, com o resumo desses
     alvos em `alvos`."""
     return _servico(request).listar(limite, profile_id=profile_id, instance_id=instance_id)
+
+
+@router.get("/operacoes/elegiveis", response_model=None)
+async def elegiveis_da_operacao(request: Request, app_id: str = Query(..., min_length=1, max_length=80)) -> object:
+    """31.174: o pool elegível para uma operação neste app (só leitura). Vem antes de `/operacoes/{operacao_id}`."""
+    try:
+        return _servico(request).elegiveis(app_id)
+    except OperacaoError as exc:
+        raise _erro(exc) from exc
 
 
 @router.get("/operacoes/{operacao_id}", response_model=None)

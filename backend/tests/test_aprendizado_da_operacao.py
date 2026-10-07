@@ -147,6 +147,18 @@ def test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas(banco: Databa
     assert backlog["inferida"] is True and backlog["confianca"] == "hipotese"
 
 
+def test_o_resumo_do_fluxo_leva_o_valor_da_operacao_e_nao_o_marcador(banco: Database) -> None:
+    """Achado da Portal no 57: o fluxo aparecia como "abra o perfil {username}". O valor único da operação entra; o
+    que varia por alvo segue marcador."""
+    _mundo(banco)
+    banco.execute("UPDATE objectives SET parameters=? WHERE run_id IN ('r-a','r-b')", (json.dumps({"username": "loja"}),))
+    banco.execute("UPDATE flows SET command_template='abra o perfil {username} e comente {texto}' WHERE id='f-op'")
+    banco.execute("UPDATE objectives SET parameters=? WHERE run_id='r-b'", (json.dumps({"username": "loja", "texto": "b"}),))
+    banco.execute("UPDATE objectives SET parameters=? WHERE run_id='r-a'", (json.dumps({"username": "loja", "texto": "a"}),))
+    fluxo = next(i for i in _resposta(banco)["perguntas"][3]["itens"] if i["ref"] == "fluxo:f-op")  # type: ignore[index]
+    assert fluxo["resumo"] == "abra o perfil loja e comente {texto}"
+
+
 def test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so(banco: Database) -> None:
     _mundo(banco)
     resp = _resposta(banco)
@@ -160,7 +172,7 @@ def test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so(banco: Dat
     assert revisar[f"receita:{ids['open_comments_1']}"] == "no Livro em quarantined"
     assert revisar["fluxo:f-op"] == "no Livro em candidate"
     assert revisar["fato:velho"] == "vencido: passou do frescor"
-    assert revisar["fato:pesquisa.1"] == "hipótese: não confirmada"
+    assert revisar["fato:pesquisa.1"] == "hipótese: uma fonte só, e a leitura do alvo não a confirmou"   # 31.179
     assert revisar["memoria:mem-2"] == "hipótese: não confirmada"
     assert revisar["observacao:ob-inc"].startswith("leitura incerta")
     for p in resp["perguntas"]:                                            # type: ignore[union-attr]
@@ -247,6 +259,7 @@ def test_a_rota_responde_e_diz_404_sem_a_124(banco: Database, tmp_path: Path) ->
     assert r.status_code == 200
     corpo = r.json()
     assert corpo["operacao_id"] == "op-1" and corpo["persona"] == "p1" and len(corpo["perguntas"]) == 10 and corpo["avisos"] == []
+    assert corpo["personas"] == ["p1", "p2"]                       # achado da Portal no 57: o filtro sem os alvos
     assert {n["chave"] for n in corpo["nao_coberto"]} >= {"conhecimento_geral", "pedido_relatorios", "persona_aprendeu"}
     assert cliente.get("/api/operacoes/op-x/aprendizado").json()["detail"]["code"] == "operacao_desconhecida"
 

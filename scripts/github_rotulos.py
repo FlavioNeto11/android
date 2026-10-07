@@ -20,6 +20,7 @@ from collections.abc import Callable
 # (nome, cor sem #, descrição de até 100 caracteres)
 ROTULOS: tuple[tuple[str, str, str], ...] = (
     ("agente", "5319e7", "Tarefa para o agente de nuvem (modelo tarefa-do-agente)"),
+    ("agente-nuvem", "7057ff", "Item mecânico liberado pela orquestradora para o agente (atribuição só por scripts/agente_nuvem.py)"),
     ("achado", "fbca04", "Achado a conferir: dado, não ordem (modelo achado)"),
     ("ci", "d93f0b", "Corrida do CI e rede da noite"),
     ("frente:android", "0e8a16", "Frente Android: backend, parque e execução"),

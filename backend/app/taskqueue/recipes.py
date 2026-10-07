@@ -98,16 +98,49 @@ def contar_retorno_ia(texto: str | None) -> None:
 _NAO_TEMPLATIZA = {"instance_id", "run_id", "account_label"}
 
 
-def para_hash(step: PlanStep, variables: dict[str, str] | None) -> PlanStep:
+def _mesmo_valor(v: str) -> str:
+    """Como o 31.87 compara o exemplo com o dado da persona, mais o @ da frente: "@Fulano" no comando e "fulano" na
+    conta são o mesmo perfil."""
+    return v.strip().lstrip("@").casefold()
+
+
+def _empates_com_a_persona(variables: Mapping[str, str], persona: Sequence[str]) -> dict[str, str]:
+    """31.165: `{param}` → `{marcador}` quando o parâmetro do objetivo tem o MESMO valor de um dado da persona.
+
+    Medido na onda 1 de 06/10: o ensino (31.87) grava "perfil de {conta_instagram_usuario} aberto" quando o alvo é a
+    própria persona, e a execução planejada para o mesmo alvo dava "perfil de {perfil} aberto" (o parâmetro "@x" é mais
+    longo que a conta "x" e ganhava a troca). Eram a mesma etapa com dois nomes, e a receita 221 nunca casava. No
+    empate, vale o marcador da persona, como na proposta. Dois marcadores com o mesmo valor: o primeiro em ordem
+    alfabética, para a identidade não depender da ordem do dicionário."""
+    por_valor: dict[str, str] = {}
+    for nome in sorted(persona):
+        v = variables.get(nome)
+        if isinstance(v, str) and len(_mesmo_valor(v)) >= 3 and "{" not in v:
+            por_valor.setdefault(_mesmo_valor(v), nome)
+    trocas: dict[str, str] = {}
+    for nome, v in variables.items():
+        if nome in persona or nome in _NAO_TEMPLATIZA or not isinstance(v, str):
+            continue
+        marcador = por_valor.get(_mesmo_valor(v))
+        if marcador is not None:
+            trocas["{" + nome + "}"] = "{" + marcador + "}"
+    return trocas
+
+
+def para_hash(step: PlanStep, variables: dict[str, str] | None, *, persona: Sequence[str] = ()) -> PlanStep:
     """A etapa com os VALORES dos parâmetros trocados pelos nomes (`@nasa` → `{perfil}`), só para a identidade.
 
     Medido em 23/09/2026: o planejador às vezes escreve o valor literal na pós-condição ("perfil de @nasa aberto")
     em vez de `{perfil}`. A receita era gravada com o hash desse literal e nunca casava com o mesmo caminho para
     outro alvo — 15 receitas ativas do Instagram e cobertura zero em todos os fluxos. O fluxo-modelo já faz esta
     troca ao aprender (`flows.trocar_valores_por_nomes`); aqui ela passa a valer também na identidade da etapa, dos dois lados.
+
+    `persona` (31.165): os nomes, entre as `variables`, que são dados da persona. No empate de valor com um parâmetro
+    do objetivo, o nome que fica é o marcador da persona (`_empates_com_a_persona`). Sem `persona`, nada muda.
     """
     valores = {k: v for k, v in (variables or {}).items()
                if k not in _NAO_TEMPLATIZA and isinstance(v, str) and len(v) >= 3 and "{" not in v}
+    empates = _empates_com_a_persona(variables or {}, persona) if persona else {}
     if not valores:
         return step
 
@@ -116,7 +149,10 @@ def para_hash(step: PlanStep, variables: dict[str, str] | None) -> PlanStep:
             return texto
         # A mesma troca, com a mesma borda, de quando o fluxo aprende (31.96): `str.replace` partia "nasal" por "nasa"
         # e dava ao hash da receita uma identidade que o fluxo-modelo não tem.
-        return trocar_valores_por_nomes(texto, valores)
+        saida = trocar_valores_por_nomes(texto, valores) or texto
+        for nome, marcador in empates.items():      # também o `{perfil}` que o planejador já escreveu como marcador
+            saida = saida.replace(nome, marcador)
+        return saida
 
     return step.model_copy(update={
         "postcondition": step.postcondition.model_copy(update={"value": troca(step.postcondition.value) or ""}),
@@ -807,6 +843,11 @@ class RecipeStore:
         generica_casou = row is not None and len(hashes) > 1 and row["step_hash"] == hashes[1]
         metricas.contar("receita.consulta", resultado=resultado, chave="generica" if generica_casou else None)
         return row
+
+    def liberada_fora_do_ensino(self, row: Row) -> bool:
+        """30.81, para o rendimento do ensino: a receita vale fora da persona que ensinou (a do treino só depois do
+        "Confirmar que fica" ou da prova real; a que não é do treino, sempre). A mesma régua da consulta."""
+        return not self._restrita_ao_ensino(row, None)
 
     def _restrita_ao_ensino(self, row: Row, persona: str | None, prova_fluxo: str | None = None) -> bool:
         """30.81: a receita do treino só vale fora da persona que ensinou depois de LIBERADA: o "Confirmar que fica"

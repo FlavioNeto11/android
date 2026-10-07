@@ -109,6 +109,13 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 - links relativos e caminhos;
 - o tamanho do `CLAUDE.md`;
 - se o mapa de blocos do plano-100 está de acordo com o plano;
+- o **formato** de `.claude/plano-100.json` (29.160): chave desconhecida, tipo errado, esforço ou modelo fora da lista,
+  id de bloco repetido; o erro diz o caminho (`batches[3].items[1]: ...`);
+- o **formato** de `config/config.example.yaml` (29.160), contra o modelo do backend (`AppConfigFile`, a única fonte):
+  chave desconhecida (o backend a ignoraria em silêncio), tipo errado e bloco fora do formato, com o caminho
+  (`instances.countt: ...`). Precisa de PyYAML e pydantic: **rode com o Python do venv do backend**
+  (`backend\.venv\Scripts\python.exe scripts\docs-check.py`); sem eles vem um `AVISO` dizendo que não conferiu, nunca
+  um "passou". O `config/config.yaml` da instalação não é aberto, e o valor lido nunca entra na mensagem;
 - os IDs do roadmap;
 - o vocabulário do `estado.json`;
 - se o relatório gerado está atualizado;

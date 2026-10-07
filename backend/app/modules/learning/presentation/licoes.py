@@ -54,6 +54,6 @@ def _previa(p: Previa, licoes: ServicoDeLicoes) -> JsonObject:
 @router.get("/licoes/previa", response_model=None)
 async def previa(request: Request, app: str = Query(min_length=3, max_length=200),
                  papel: Literal["actor", "planner"] = "actor", acao: str = Query("", max_length=64),
-                 etapa: str = Query("", max_length=128)) -> JsonObject:
+                 etapa: str = Query("", max_length=128), persona: str = Query("", max_length=64)) -> JsonObject:
     licoes = _licoes(request)
-    return _previa(licoes.previa(app=app, papel=Papel(papel), acao=acao, etapa=etapa), licoes)
+    return _previa(licoes.previa(app=app, papel=Papel(papel), acao=acao, etapa=etapa, persona=persona), licoes)
