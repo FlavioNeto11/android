@@ -37,6 +37,8 @@ _CODIGO = re.compile(r"`([^`\n]*)`")
 # Achado que só repete uma regra de conduta de agente (AGENTS.md, perfil do agente) aplicada a um PR de sessão: "artefato".
 _ARTEFATO = re.compile(r"(?i)regra expl[ií]cita do reposit[oó]rio|pro[ií]be agentes|nunca edite|um pr por tarefa|AGENTS\.md|copilot-instructions")
 _COMENTARIO_HTML =re.compile(r"<!--.*?(?:-->|$)")
+# o Codex abre o título com <sub><sub>...</sub></sub> (selo de gravidade em imagem): a marcação some, o texto fica
+_TAG_HTML = re.compile(r"</?[A-Za-z][^<>\n]{0,40}>")
 
 
 def gh_real(*args: str) -> str:
@@ -82,7 +84,7 @@ def resumo(corpo: str) -> str:
     corpo = _CERCA.sub("", corpo)
     corpo = _CODIGO.sub(_codigo, corpo)
     for linha in corpo.splitlines():
-        limpa = _LINK.sub(r"\1", _IMAGEM.sub("", _COMENTARIO_HTML.sub("", linha))).replace("*", "").replace("`", "'").replace("|", "/").strip(" #>-\t")
+        limpa = _LINK.sub(r"\1", _IMAGEM.sub("", _TAG_HTML.sub("", _COMENTARIO_HTML.sub("", linha)))).replace("*", "").replace("`", "'").replace("|", "/").strip(" #>-\t")
         if limpa:
             limpa = mascarar(limpa)
             return limpa if len(limpa) <= RESUMO_MAX else limpa[: RESUMO_MAX - 1] + "…"

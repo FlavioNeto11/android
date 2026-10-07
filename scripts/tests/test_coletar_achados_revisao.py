@@ -117,6 +117,11 @@ class Coletor(unittest.TestCase):
     def test_comentario_html_do_revisor_e_pulado(self) -> None:
         self.assertEqual(mod.resumo("<!-- ccr-overview-v2\n## Visao geral\ntexto"), "Visao geral")
 
+    def test_tag_html_do_selo_do_codex_nao_vai_para_o_titulo(self) -> None:
+        # 29.195: o Codex abre o corpo com <sub><sub></sub></sub> (selo de gravidade em imagem)
+        self.assertEqual(mod.resumo("<sub><sub></sub></sub> Recuse colisões de lote\nmais texto"), "Recuse colisões de lote")
+        self.assertNotIn("<", mod.resumo("**<sub>P1</sub> Badge** Propague a falha"))
+
     def test_credencial_curta_por_formato_e_mascarada(self) -> None:
         txt = mod.resumo("Loga Authorization: Bearer abc123 e senha=hunter2 e api_key: xyz")
         for proibido in ("abc123", "hunter2", "xyz"):

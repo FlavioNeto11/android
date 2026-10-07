@@ -20,6 +20,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-07 — 29.195: limites do agente de nuvem marcados como só dele; coletor sem `<sub>` (branch ci/29-195-limites-do-agente-so-do-agente)
+
+- `AGENTS.md` e `.github/copilot-instructions.md`: aviso a quem revisa PR e marca nas listas "Nunca edite" e "um PR por tarefa"
+  de que valem **só para o agente de nuvem** (`copilot/*`); o que o agente faz não muda. Motivo: a medida do 29.194 achou 12 falsos
+  em 38, vários só repetindo essas regras num PR de sessão.
+- `scripts/coletar_achados_revisao.py` (29.170): o título do achado do Codex não leva mais a marcação `<sub>…</sub>`. Prova
+  `simulated`: `scripts/tests/test_coletar_achados_revisao.py::test_tag_html_do_selo_do_codex_nao_vai_para_o_titulo`.
+- Pendente (não feito): PR de revisão por corte só para branch de código e repetir a medida no corte 61 (esperam a lista da orquestradora).
+
 ## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
 
 - Na onda 1 (06/10), a pesquisa da operação deixou 6 de 8 fatos como `hipotese` (uma fonte só), e nada os
