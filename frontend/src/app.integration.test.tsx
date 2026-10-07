@@ -770,10 +770,10 @@ describe('Central de Aparelhos — rotas por objeto e menu', () => {
     return Array.from(nav.querySelectorAll('a[aria-current="page"]')).map((a) => text(a as HTMLElement));
   };
 
-  it('o menu lateral tem as treze seções e marca a atual', async () => {
+  it('o menu lateral tem as treze seções (mais o atalho Conhecimento) e marca a atual', async () => {
     await goTo('#/painel');
     const nav = document.querySelector('nav[aria-label="Seções"]') as HTMLElement;
-    expect(nav.querySelectorAll('a')).toHaveLength(13);
+    expect(nav.querySelectorAll('a')).toHaveLength(14);   // 13 telas + o atalho Conhecimento (31.266), que é o Aprendizado na guia Aplicativos
     expect(atual()).toEqual(['Painel']);
   });
 
