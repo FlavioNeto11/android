@@ -1,5 +1,5 @@
 /**
- * Grupos de acesso (pedido do dono, 24/09): um conjunto de políticas e limites que se atribui a quantos perfis
+ * Grupos de acesso (pedido do dono, 24/09): um conjunto de políticas que se atribui a quantos perfis
  * se quiser. O perfil herda do grupo; o que for mudado deliberadamente no próprio perfil sobrepõe o grupo.
  *
  * A tela de Perfis ganha a seção com os grupos em cartões (nome, quantos perfis, o resumo "N sozinho · N com
@@ -18,7 +18,7 @@ import { Dialog } from '../../components/Dialog';
 import { Field, Select, TextInput } from '../../components/Field';
 import { plural } from '../../lib/format';
 import { toast, toastError } from '../../store/toasts';
-import { LimitsEditor, PolicyActionsEditor, resumoDePoliticas } from './PolicyEditor';
+import { PolicyActionsEditor, resumoDePoliticas } from './PolicyEditor';
 import styles from './Profiles.module.css';
 import { nomeDe, rotuloDaConta } from './pessoa';
 
@@ -92,7 +92,7 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
         <div>
           <h3 id="grupos-de-acesso" className={styles.groupsTitle}><ShieldCheck size={16} aria-hidden /> Grupos de acesso</h3>
           <p className={styles.detail}>
-            Políticas e limites que valem para várias personas de uma vez. O que uma persona mudar para si sobrepõe o grupo.
+            Políticas que valem para várias personas de uma vez. O que uma persona mudar para si sobrepõe o grupo.
           </p>
         </div>
         <Button size="sm" icon={Plus} onClick={() => setEditando('novo')}>Novo grupo</Button>
@@ -103,7 +103,7 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
         <div className={styles.groupGrid}>
           {grupos.map((g) => {
             const efetivo = (c: Capability): PolicyName => g.capabilities[c.key] ?? c.default_policy;
-            const mudancas = Object.keys(g.capabilities).length + Object.keys(g.limits).length;
+            const mudancas = Object.keys(g.capabilities).length;
             return (
               <Card key={g.id}>
                 <CardHeader
@@ -169,12 +169,10 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
     grupo ? { [pacoteDaLista]: grupo.capabilities } : {});
   const [rascunhos, setRascunhos] = useState<Record<string, Record<string, PolicyName>>>(
     grupo ? { [pacoteDaLista]: grupo.capabilities } : {});
-  const [limites, setLimites] = useState<Record<string, number>>(grupo?.limits ?? {});
   const [membros, setMembros] = useState<Set<string>>(new Set(grupo?.members.map((m) => m.id) ?? []));
   // Membro cuja conta saiu da plataforma (29.23) some da listagem de perfis, mas continua no grupo: sem esta lista,
   // o editor contava 2 e mostrava 1, e não havia como tirá-lo do grupo (29.25).
   const foraDaLista = (grupo?.members ?? []).filter((m) => !profiles.some((p) => p.id === m.id));
-  const [padraoLimites, setPadraoLimites] = useState<Record<string, number>>({});
   const [salvando, setSalvando] = useState(false);
   // "Começar a partir de" em voo (29.106): só a última escolha vale. Escolher A e logo B deixava a resposta de A, se
   // chegasse depois, por cima de B; e salvar nesse meio criava o grupo sem a escolha.
@@ -203,10 +201,6 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
   const nomeDoGrupo = useMemo(() => new Map(grupos.map((g) => [g.id, g.name])), [grupos]);
 
   useEffect(() => {
-    api.policyDefaults().then((d) => setPadraoLimites(d.limits)).catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
     if (!grupo || !pronto || chave in originais) return undefined;
     let vivo = true;
     api.getPolicyGroup(grupo.id, pacoteEfetivo)
@@ -224,10 +218,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
     if (!profileId || !pronto) {                // sem o catálogo, o rascunho ficaria sem app (chave '')
       setLendoPerfil(false);
       // "Padrão do catálogo" também SUBSTITUI: depois de partir de A, voltar ao padrão tira o que veio de A (29.109).
-      if (!profileId) {
-        setRascunhos({});
-        setLimites({});
-      }
+      if (!profileId) setRascunhos({});
       return;
     }
     setLendoPerfil(true);
@@ -240,8 +231,6 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
       if (minha !== leituraDoPerfil.current) return;
       setRascunhos(Object.fromEntries(pacotes.map((pkg, i) =>
         [pkg ?? '', { ...(politicas[i]!.group ?? {}), ...(politicas[i]!.own ?? {}) }])));
-      const base = politicas[0]!;
-      setLimites({ ...(base.group_limits ?? {}), ...(base.own_limits ?? {}) });
     } catch (e) {
       if (minha === leituraDoPerfil.current) toastError('Não foi possível ler o acesso da persona', e);
     } finally {
@@ -259,7 +248,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
     try {
       const profile_ids = [...membros];
       // Um pedido por app editado, cada um com o `package` dele (o servidor valida contra o catálogo certo e grava
-      // no recorte certo). O do app em tela vai primeiro, levando nome, descrição, limites e membros.
+      // no recorte certo). O do app em tela vai primeiro, levando nome, descrição e membros.
       const pacotes = [...new Set([chave, ...Object.keys(rascunhos)])];
       const pedido = (pkg: string) => (pkg === '' ? null : pkg);
       const comum = { name: nome.trim(), description: descricao.trim() };
@@ -267,7 +256,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
       for (const [i, pkg] of pacotes.entries()) {
         const rascunho = rascunhos[pkg] ?? {};
         if (id === null) {
-          const novo = await api.createPolicyGroup({ ...comum, capabilities: rascunho, limits: limites, profile_ids },
+          const novo = await api.createPolicyGroup({ ...comum, capabilities: rascunho, profile_ids },
                                                    pedido(pkg));
           id = novo.id;
           setCriado(id);
@@ -280,11 +269,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
         const capsPatch: Record<string, PolicyName | null> = {};
         for (const k of new Set([...Object.keys(original), ...Object.keys(rascunho)])) capsPatch[k] = rascunho[k] ?? null;
         if (i === 0) {
-          const limPatch: Record<string, number | null> = {};
-          for (const k of new Set([...Object.keys(grupo?.limits ?? {}), ...Object.keys(limites)])) {
-            limPatch[k] = limites[k] ?? null;
-          }
-          await api.updatePolicyGroup(id, { ...comum, capabilities: capsPatch, limits: limPatch, profile_ids }, pedido(pkg));
+          await api.updatePolicyGroup(id, { ...comum, capabilities: capsPatch, profile_ids }, pedido(pkg));
         } else if (Object.entries(capsPatch).some(([k, v]) => v !== (original[k] ?? null))) {
           // Outro app: só se algo mudou nele (o do âncora vem aberto da listagem, e regravá-lo igual é ruído).
           await api.updatePolicyGroup(id, { capabilities: capsPatch }, pedido(pkg));
@@ -310,7 +295,6 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
   }
 
   const efetivo = (c: Capability): PolicyName => caps[c.key] ?? c.default_policy;
-  const limitesEfetivos = { ...padraoLimites, ...limites };
 
   return (
     <Dialog open onClose={onClose} title={grupo ? `Grupo ${grupo.name}` : 'Novo grupo de acesso'} icon={ShieldCheck}
@@ -328,7 +312,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
       <div className={styles.groupDialog}>
         <div className={styles.groupDialogTop}>
           <Field label="Nome">
-            {({ id }) => <TextInput id={id} value={nome} maxLength={80} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Aquecimento" />}
+            {({ id }) => <TextInput id={id} value={nome} maxLength={80} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Cautelosos" />}
           </Field>
           <Field label="Descrição" unit="opcional">
             {({ id }) => <TextInput id={id} value={descricao} maxLength={400} onChange={(e) => setDescricao(e.target.value)}
@@ -402,23 +386,6 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
                 }
                 return { ...atual, [chave]: novo };
               })} />
-          </div>
-          <div>
-            <h4 className={styles.groupDialogSub}>Limites</h4>
-            <div className={styles.limitGrid}>
-              <LimitsEditor
-                limites={limitesEfetivos} salvando={salvando || lendoPerfil}
-                origem={(k) => (k in limites
-                  ? { propria: true, rotulo: 'definido no grupo', tone: 'info' }
-                  : { propria: false, rotulo: 'padrão', tone: 'muted' })}
-                herdaria={(k) => padraoLimites[k]}
-                onChange={(k, valor) => setLimites((atual) => {
-                  const novo = { ...atual };
-                  if (valor === null) delete novo[k];
-                  else novo[k] = valor;
-                  return novo;
-                })} />
-            </div>
           </div>
         </div>
       </div>

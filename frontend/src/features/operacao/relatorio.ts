@@ -13,7 +13,7 @@ import {
 } from './modelo';
 
 /**
- * Os motivos e resumos que o BACKEND escreve podem citar o @ de uma conta ("conta(s) da frota já mexeram com @fulano"): no relatório
+ * Os motivos e resumos que o BACKEND escreve podem citar o @ de uma conta ("… @fulano …"): no relatório
  * o @ sai (visto no central real, onda 1 de 06/10). O texto gerado pela persona não é metadado e não passa por aqui.
  */
 export const semArroba = (s: string): string => s.replace(/@[A-Za-z0-9._]+/g, '@[omitido]');

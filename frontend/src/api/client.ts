@@ -820,7 +820,6 @@ export const api = {
       { body, query: { package: pkg ?? undefined } }),
   listPolicyGroups: (pkg?: string | null) =>
     request<PolicyGroup[]>('GET', '/instagram/policy-groups', { query: { package: pkg ?? undefined } }),
-  policyDefaults: () => request<{ limits: Record<string, number> }>('GET', '/instagram/policy-defaults'),
   createPolicyGroup: (body: PolicyGroupCreateRequest, pkg?: string | null) =>
     request<PolicyGroup>('POST', '/instagram/policy-groups', { body, query: { package: pkg ?? undefined } }),
   /** Um grupo visto por UM app (23.10): `capabilities`/`loosened` são o recorte do catálogo de `pkg` (sem ele, o

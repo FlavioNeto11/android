@@ -169,7 +169,7 @@ export const LIMIT_GROUPS: LimitGroup[] = [
       {
         key: 'grupo_sem_aprovacao',
         label: 'Grupo dispensado da aprovação de política',
-        hint: 'As personas desse grupo não passam pela aprovação de política; recusas, conduta, proteção de conta e tetos continuam. Em “Nenhum” a regra fica desligada.',
+        hint: 'As personas desse grupo não passam pela aprovação de política; as recusas e a proteção de conta continuam. Em “Nenhum” a regra fica desligada.',
       },
     ],
     fields: [],

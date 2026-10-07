@@ -246,21 +246,7 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
   background: var(--accent-soft); color: var(--accent-text);
 }
 
-/* Limites: cartão com medidor em vez de só o número. */
-.limitGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-3); }
-.limitCard {
-  display: flex; flex-direction: column; gap: var(--sp-2); border: 1px solid var(--border-1); border-radius: var(--radius-md);
-  background: var(--surface-2); padding: var(--sp-3);
-}
-.limitCardHead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
-.limitCardLabel { font-size: var(--fs-sm); font-weight: 600; }
-.limitMeter { height: 6px; border-radius: var(--radius-pill); background: var(--surface-4); overflow: hidden; }
-.limitMeterFill { height: 100%; border-radius: var(--radius-pill); background: var(--success-text); }
-.limitMeterFill[data-tone="warning"] { background: var(--warning-solid); }
-.limitMeterFill[data-tone="danger"] { background: var(--danger-solid); }
-.limitMeterFill[data-tone="neutral"] { background: var(--neutral-text); }
-
-/* ---------- grupos de acesso (políticas e limites herdados por vários perfis) ---------- */
+/* ---------- grupos de acesso (políticas herdadas por vários perfis) ---------- */
 .configStack { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
 .groupPicker { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3) var(--sp-4); }
 .groupPicker > :first-child { flex: 0 1 360px; min-width: 220px; }

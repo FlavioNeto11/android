@@ -622,7 +622,8 @@ it('a política de cada ação é um controle segmentado de três botões, e tro
   await abrir();
   await irParaGuia(/Configurações/i);
   await waitFor(() => text().includes('Curtir a publicação'));
-  expect(text()).toContain('Curtidas por hora');
+  // 31.276 (ADR-083): o backend não aplica mais limite por hora; a tela não mostra o que não vale
+  expect(text()).not.toContain('Curtidas por hora');
   // não há mais <select>: a política é um grupo de botões de rádio, as três opções sempre visíveis
   expect(container.querySelectorAll('select[value]')).toHaveLength(0);
   expect(byRole('radiogroup', /Política de Curtir a publicação/i)).toBeTruthy();
@@ -730,7 +731,7 @@ it('marca visualmente uma ação de risco alto afrouxada abaixo do padrão do ca
   expect(text()).toContain('mais frouxo que o padrão');
 });
 
-it('o limite mostra um medidor com o uso de hoje contado das interações confirmadas', async () => {
+it('31.276: backend que ainda manda limites antigos: a aba não mostra limite nem medidor', async () => {
   montarConfigBackend(
     [
       { key: 'LIKE_POST', title: 'Curtir a publicação', side_effect: true, risk: 'medium',
@@ -738,37 +739,18 @@ it('o limite mostra um medidor com o uso de hoje contado das interações confir
     ],
     {
       limits: { likes_per_hour: 10, cooldown_between_external_actions_s: 45 },
+      own_limits: { likes_per_hour: 10 }, group_limits: {}, limits_origin: { likes_per_hour: 'own' },
       capabilities: { LIKE_POST: 'autonomous' },
       defaults: { LIKE_POST: 'autonomous' },
       loosened: [],
     },
-    [
-      // duas curtidas confirmadas hoje, uma pendente (não conta) e uma curtida de ontem (não conta)
-      { id: '1', profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
-        occurred_at: new Date().toISOString(), type: 'post_liked', direction: 'out', counterparty: null,
-        thread_key: null, incoming_content: null, outgoing_content: null, target: 'post-1', status: 'confirmed',
-        evidence: null, created_at: new Date().toISOString() },
-      { id: '2', profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
-        occurred_at: new Date().toISOString(), type: 'post_liked', direction: 'out', counterparty: null,
-        thread_key: null, incoming_content: null, outgoing_content: null, target: 'post-2', status: 'confirmed',
-        evidence: null, created_at: new Date().toISOString() },
-      { id: '3', profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
-        occurred_at: new Date().toISOString(), type: 'post_liked', direction: 'out', counterparty: null,
-        thread_key: null, incoming_content: null, outgoing_content: null, target: 'post-3', status: 'pending',
-        evidence: null, created_at: new Date().toISOString() },
-      { id: '4', profile_id: 'ig-1', instance_id: 'android-02', run_id: null, objective_id: null, step_id: null,
-        occurred_at: new Date(Date.now() - 86_400_000 * 2).toISOString(), type: 'post_liked', direction: 'out',
-        counterparty: null, thread_key: null, incoming_content: null, outgoing_content: null, target: 'post-4',
-        status: 'confirmed', evidence: null, created_at: new Date(Date.now() - 86_400_000 * 2).toISOString() },
-    ],
   );
   await abrir();
   await irParaGuia(/Configurações/i);
-  await waitFor(() => text().includes('Curtidas por hora'));
-  await waitFor(() => text().includes('2/10 hoje'));
-  expect(byRole('progressbar', /Uso de hoje de Curtidas por hora/i)).toBeTruthy();
-  // o limite sem contrapartida em interações (o intervalo entre ações) não ganha medidor, só o rótulo
-  expect(text()).toContain('sem contagem de uso');
+  await waitFor(() => text().includes('Curtir a publicação'));
+  expect(text()).toContain('Nenhuma escolha própria: tudo vem do grupo ou do padrão.');   // limite próprio antigo não conta
+  for (const velho of ['Curtidas por hora', 'Intervalo entre ações', 'Aquecimento', 'sem contagem de uso']) expect(text()).not.toContain(velho);
+  expect(container.querySelector('[role="progressbar"]')).toBeNull();
 });
 
 it('Completar com IA manda a instrução do dono ao enrich e mostra a persona completada', async () => {
@@ -1134,7 +1116,7 @@ it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha próp
   expect(text()).toContain('do grupo Cautelosos');                 // Curtir vem do grupo
   expect(text()).toContain('próprio · sobrepõe o grupo');          // DM foi mudada no perfil e o grupo diz outra coisa
   expect(text()).toContain('padrão');                              // Abrir o feed é o padrão do catálogo
-  expect(text()).toContain('1 ação(ões) e 0 limite(s) escolhidos nesta persona — sobrepõem o grupo');
+  expect(text()).toContain('1 ação escolhida nesta persona — sobrepõem o grupo');
 
   // "herdar" manda null — nunca uma cópia do valor do grupo, que prenderia o perfil contra o grupo
   await click(byRole('button', /herdar \(Só manual\)/i));
@@ -1204,13 +1186,12 @@ it('aba Configurações com o catálogo de apps indisponível mostra o erro com 
   expect(text()).not.toContain('Não foi possível carregar as políticas');
 });
 
-it('aba Configurações sem nenhum app com catálogo ainda carrega a política e os limites (do app âncora)', async () => {
-  montarConfigBackend([], { limits: { likes_per_hour: 30 }, capabilities: {}, defaults: {}, loosened: [] });
+it('aba Configurações sem nenhum app com catálogo ainda carrega a política (do app âncora)', async () => {
+  montarConfigBackend([], { capabilities: {}, defaults: {}, loosened: [] });
   backend.on('GET', /app-catalog/, () => json([]));
   await abrir();
   await irParaGuia(/Configurações/i);
-  await waitFor(() => text().includes('Limites'));
-  expect(text()).toContain('Grupo de acesso');
+  await waitFor(() => text().includes('Grupo de acesso'));
   // sem app com catálogo, a política é a do âncora (sem `?package=`) e não se pede catálogo de ações nenhum
   expect(backend.callsTo('GET', /\/policy$/)[0]?.query.get('package')).toBeNull();
   expect(backend.callsTo('GET', /capabilities/)).toHaveLength(0);

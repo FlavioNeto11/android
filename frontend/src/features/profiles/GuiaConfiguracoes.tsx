@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type {
   AppCatalogEntry, Capability, PolicyGroup, PolicyName, PolicyOrigin, ProfilePolicy, ProfilePolicyPatch,
-  SocialInteraction,
 } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -13,8 +12,7 @@ import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '..
 import { toastError } from '../../store/toasts';
 import { Carregando, useVersaoAoVivo } from './detalheComum';
 import type { Pessoa } from './pessoa';
-import { LimitsEditor, type Origem, PolicyActionsEditor } from './PolicyEditor';
-import { baldeDoLimite, contarUsoDeHoje } from './PolicyVisual';
+import { type Origem, PolicyActionsEditor } from './PolicyEditor';
 import styles from './Profiles.module.css';
 
 /** Apps com catálogo de ações, o âncora primeiro (23.10). Antes o efeito pegava "o primeiro app com login
@@ -30,7 +28,6 @@ function appsComCatalogo(catalogo: readonly AppCatalogEntry[]): AppCatalogEntry[
 export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onChanged: () => Promise<void> }) {
   const [politica, setPolitica] = useState<ProfilePolicy | null>(null);
   const [acoes, setAcoes] = useState<Capability[]>([]);
-  const [interacoes, setInteracoes] = useState<SocialInteraction[]>([]);
   const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
   // `null` = o catálogo ainda não chegou (ou falhou: aí o erro está em `erro`); `[]` = chegou, sem app nenhum.
   const [catalogo, setCatalogo] = useState<AppCatalogEntry[] | null>(null);
@@ -55,7 +52,7 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
 
   const apps = appsComCatalogo(catalogo ?? []);
   // Nenhum app com catálogo: `null`, e a política vem sem `?package=` (o servidor resolve o âncora) — a aba ainda
-  // mostra o grupo e os limites, só sem a lista de ações.
+  // mostra o grupo, só sem a lista de ações.
   const pacoteEfetivo = pacoteEscolhido ?? apps[0]?.package ?? null;
 
   useEffect(() => {
@@ -66,16 +63,12 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
       api.getPolicy(profile.id, pacoteEfetivo),
       // `listCapabilities` exige o pacote: sem app com catálogo não há ações a listar, e não se pergunta.
       pacoteEfetivo ? api.listCapabilities(pacoteEfetivo) : Promise.resolve([] as Capability[]),
-      // O medidor precisa do dia inteiro, não só das últimas dezenas — 200 é folga sobre qualquer teto
-      // razoável de "por hora" somado ao longo de um dia. Sem interações não há medidor, não tela quebrada.
-      api.listInteractions(profile.id, 200).catch(() => [] as SocialInteraction[]),
       api.listPolicyGroups(pacoteEfetivo).catch(() => [] as PolicyGroup[]),
     ])
-      .then(([p, c, i, g]) => {
+      .then(([p, c, g]) => {
         if (!vivo) return;
         setPolitica(p);
         setAcoes(c);
-        setInteracoes(i);
         setGrupos(g);
       })
       // Sem política carregada, o erro ocupa a aba com "Tentar de novo"; com ela, a faixa avisa que pode
@@ -131,15 +124,13 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
     return { propria: false, rotulo: 'padrão', tone: 'muted' };
   };
   const proprias = acoes.filter((c) => origemDe(c) === 'own').map((c) => c.key);
-  const limitesProprios = Object.keys(politica.own_limits ?? {});
-  const usoDeHoje = contarUsoDeHoje(interacoes);
 
   return (
     <div className={styles.configStack}>
       {erro ? <LoadErrorBanner error={erro} onRetry={() => setTentativa((t) => t + 1)} /> : null}
       <Card>
         <CardHeader title="Grupo de acesso"
-                    subtitle="A persona herda as políticas e os limites do grupo. O que você mudar aqui é desta persona e sobrepõe o grupo." />
+                    subtitle="A persona herda as políticas do grupo. O que você mudar aqui é desta persona e sobrepõe o grupo." />
         <CardBody>
           <div className={styles.groupPicker}>
             <Field label="Grupo">
@@ -154,15 +145,14 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
               )}
             </Field>
             <p className={styles.detail}>
-              {proprias.length + limitesProprios.length === 0
+              {proprias.length === 0
                 ? 'Nenhuma escolha própria: tudo vem do grupo ou do padrão.'
-                : `${proprias.length} ação(ões) e ${limitesProprios.length} limite(s) escolhidos nesta persona${grupoNome ? ' — sobrepõem o grupo' : ''}.`}
+                : `${plural(proprias.length, 'ação escolhida', 'ações escolhidas')} nesta persona${grupoNome ? ' — sobrepõem o grupo' : ''}.`}
             </p>
-            {proprias.length + limitesProprios.length ? (
+            {proprias.length ? (
               <Button size="sm" variant="ghost" icon={Undo2} disabled={salvando}
                       onClick={() => void salvar({
                         capabilities: Object.fromEntries(proprias.map((k) => [k, null])),
-                        limits: Object.fromEntries(limitesProprios.map((k) => [k, null])),
                       }, 'Não foi possível devolver ao grupo')}>
                 {grupoNome ? 'Herdar tudo do grupo' : 'Voltar tudo ao padrão'}
               </Button>
@@ -192,26 +182,6 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
               onChange={(keys, valor) => void salvar(
                 { capabilities: Object.fromEntries(keys.map((k) => [k, valor])) },
                 keys.length > 1 ? 'Não foi possível salvar as políticas da categoria' : 'Não foi possível salvar a política')} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader title="Limites"
-                      subtitle="Existem para o sistema não agir como robô e derrubar a própria conta." />
-          <CardBody className={styles.limitGrid}>
-            <LimitsEditor
-              limites={politica.limits} salvando={salvando}
-              origem={(k) => {
-                const o = politica.limits_origin?.[k] ?? 'default';
-                if (o === 'own') return { propria: true, rotulo: 'próprio', tone: 'accent' };
-                if (o === 'group') return { propria: false, rotulo: `do grupo ${grupoNome ?? ''}`.trim(), tone: 'info' };
-                return { propria: false, rotulo: 'padrão', tone: 'muted' };
-              }}
-              herdaria={(k) => politica.group_limits?.[k]}
-              uso={(k) => {
-                const balde = baldeDoLimite(k);
-                return balde ? usoDeHoje[balde] ?? 0 : null;
-              }}
-              onChange={(k, valor) => void salvar({ limits: { [k]: valor } }, 'Não foi possível salvar o limite')} />
           </CardBody>
         </Card>
       </div>

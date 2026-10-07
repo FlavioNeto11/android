@@ -2,15 +2,13 @@
  * Item 11.8 — "Configurações do perfil sem formulário gigante" (pedido do dono em 24/09).
  *
  * Antes a aba Configurações era uma lista achatada de ~20 ações, cada uma com um `<select>` escondendo as três
- * opções de política, mais um bloco de números soltos para os limites — um formulário gigante que não dizia
- * nada sobre risco nem sobre uso real. Aqui: as ações agrupadas por natureza (as mesmas fronteiras dos
+ * opções de política — um formulário gigante que não dizia nada sobre risco. Aqui: as ações agrupadas por natureza (as mesmas fronteiras dos
  * comentários de `catalog/instagram.py`), cada política como controle segmentado (as opções todas visíveis, sem
- * abrir menu) e os limites como medidor de uso contra o teto, não só um número.
+ * abrir menu). Os limites por hora e por dia saíram com o ADR-083: o backend não aplica mais nenhum (31.276).
  */
-import type { ReactNode } from 'react';
 import { Badge } from '../../components/Badge';
-import type { Capability, PolicyName, SocialInteraction } from '../../api/types';
-import { clamp01, cx } from '../../lib/format';
+import type { Capability, PolicyName } from '../../api/types';
+import { cx } from '../../lib/format';
 import type { Tone } from '../../lib/status';
 import styles from './Profiles.module.css';
 
@@ -108,81 +106,6 @@ export function PolicySegmented({ value, disabled, onChange, ariaLabel }: {
           </button>
         );
       })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- limites como medidor
-
-/** A que grupo de limite (o "balde" do `limit_bucket`) cada tipo de interação confirmada pertence — mesma
- *  divisão que `Capability.limit_bucket` usa no catálogo (curtir/descurtir → likes, comentar/responder →
- *  comments, mensagem → dms, seguir/deixar de seguir/aceitar/recusar pedido → follows). */
-const TIPO_PARA_BALDE: Record<string, string> = {
-  post_liked: 'likes', post_unliked: 'likes', comment_liked: 'likes',
-  comment_replied: 'comments',
-  dm_sent: 'dms',
-  followed: 'follows', unfollowed: 'follows', follow_request_accepted: 'follows', follow_request_declined: 'follows',
-};
-
-/** Quanto do limite já foi usado HOJE (dia local), contado só das interações já confirmadas — o mesmo padrão de
- *  "prova, não promessa" do resto do painel: pendente ou falhada não consome o teto. */
-export function contarUsoDeHoje(interacoes: SocialInteraction[], agora: Date = new Date()): Record<string, number> {
-  const hoje = agora.toDateString();
-  const contagem: Record<string, number> = {};
-  for (const it of interacoes) {
-    if (it.status !== 'confirmed') continue;
-    const quandoIso = it.occurred_at || it.created_at;
-    const quando = quandoIso ? new Date(quandoIso) : null;
-    if (!quando || Number.isNaN(quando.getTime()) || quando.toDateString() !== hoje) continue;
-    const balde = TIPO_PARA_BALDE[it.type];
-    if (!balde) continue;
-    contagem[balde] = (contagem[balde] ?? 0) + 1;
-  }
-  return contagem;
-}
-
-/** O nome do limite (`likes_per_hour`) → o balde que a contagem de uso usa (`likes`). Só limites "por hora" têm
- *  contrapartida em interações contáveis; `actions_per_run` e o intervalo entre ações não têm o que medir aqui. */
-export function baldeDoLimite(chaveDoLimite: string): string | null {
-  const m = /^(.+)_per_hour$/.exec(chaveDoLimite);
-  return m ? m[1] ?? null : null;
-}
-
-/** Cartão com medidor: uso de hoje × limite, cor por proximidade do teto. A edição do número fica no `children`
- *  (o chamador decide o campo — `AbaConfiguracoes` usa o mesmo `TextInput`/`onBlur` de antes). */
-export function LimitMeterCard({ label, usado, limite, children }: {
-  label: string;
-  /** null = sem contagem para este limite (ex.: `actions_per_run`); `undefined` = não há uso a mostrar (grupo). */
-  usado: number | null | undefined;
-  limite: number;
-  children?: ReactNode;
-}) {
-  const proporcao = usado != null && limite > 0 ? clamp01(usado / limite) : 0;
-  const tone: Tone = usado == null ? 'neutral' : proporcao >= 1 ? 'danger' : proporcao >= 0.7 ? 'warning' : 'success';
-  const pct = Math.round(proporcao * 100);
-  return (
-    <div className={styles.limitCard}>
-      <div className={styles.limitCardHead}>
-        <span className={styles.limitCardLabel}>{label}</span>
-        {usado === undefined ? null : usado !== null ? (
-          <Badge tone={tone} size="sm">{usado}/{limite} hoje</Badge>
-        ) : (
-          <Badge tone="neutral" size="sm">sem contagem de uso</Badge>
-        )}
-      </div>
-      {usado != null ? (
-        <div
-          className={cx(styles.limitMeter, `tone-${tone}`)}
-          role="progressbar"
-          aria-label={`Uso de hoje de ${label}`}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={pct}
-        >
-          <div className={styles.limitMeterFill} data-tone={tone} style={{ width: `${pct}%` }} />
-        </div>
-      ) : null}
-      {children}
     </div>
   );
 }

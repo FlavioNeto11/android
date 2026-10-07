@@ -22,7 +22,7 @@ export function SugestaoDeAlvos({ sugestao, carregando, erro, mode, enviando, im
   erro: string | null;
   mode: RunMode;
   enviando: boolean;
-  /** Por que não dá para confirmar (sem alvo, pergunta aberta, alerta de conduta), ou `null`. */
+  /** Por que não dá para confirmar (sem alvo ou pergunta aberta), ou `null`. */
   impede: string | null;
   onConfirmar: () => void;
   onManual: () => void;
