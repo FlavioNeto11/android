@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.271: a prova da receita candidata no Livro (branch feat/31-271-prova-da-candidata)
+
+- A receita candidata passa a guardar a última consulta (migração 129: `recipes.ultima_consulta_em` e
+  `ultima_consulta_resultado`). Gravam `RecipeStore.shadow` (`concordou`, `divergiu`), `nao_aplicavel_em_prova`
+  (`nao_aplicavel`, 31.262) e `RecipeStore.find` (`outro_escopo`, `quarentena`). No `find` a gravação é melhor esforço:
+  não vira exceção da consulta. A concordância simulada que não conta não grava.
+- A linha do Livro (lista e item aberto) ganha `prova_da_candidata` só na candidata: concordâncias, necessárias
+  (`ai.recipes_promote_after`), última consulta e a ativa da mesma chave que ela substitui (adendo v1.128). A ativa sai
+  do próprio lote na lista, sem consulta por candidata.
+- Prova `simulated`: `backend/tests/test_prova_da_candidata.py` (7) e `test_migracao_129.py` (2); vizinhos de receita e
+  Livro verdes. `real`: `not_run`. O PostgreSQL também (`not_run`, só na vez da orquestradora).
+
 ## 2026-10-07 — 31.268: o roteiro de prova real do aprendizado dos deploys 60 e 61 (branch feat/31-268-roteiro-prova-real)
 
 - `scripts/prova-real-aprendizado.py --operacao OP`: só leitura (banco em `mode=ro`, saúde por GET). Por item: o

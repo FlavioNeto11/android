@@ -154,7 +154,21 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
             "em_uso_real_desde": e.em_uso_real_desde,               # 31.150: o selo "em uso real desde"
             "source_kind": e.source_kind,                           # v1.117: a origem do item de learning_items
             "assunto": e.assunto,                                   # 31.200 (v1.113): o escopo de assunto do item
-            **_do_legado(e, legado), **_da_espera(e, servico)}
+            **_da_prova(e), **_do_legado(e, legado), **_da_espera(e, servico)}
+
+
+def _da_prova(e: EntradaDoLivro) -> JsonObject:
+    """31.271: `prova_da_candidata`, SÓ na receita candidata (ausente no resto), na forma que a aba Aprendido lê
+    (31.270): a sequência de concordâncias, as necessárias, a última consulta e a ativa que ela substitui."""
+    p = e.prova_da_candidata
+    if p is None:
+        return {}
+    consulta = None if p.ultima_consulta_resultado is None else {
+        "em": p.ultima_consulta_em, "resultado": p.ultima_consulta_resultado}
+    substitui = None if p.substitui_ref is None else {
+        "ref": p.substitui_ref, "versao": p.substitui_versao, "estado": "active"}
+    return {"prova_da_candidata": {"concordancias": p.concordancias, "necessarias": p.necessarias,
+                                   "ultima_consulta": consulta, "substitui": substitui}}
 
 
 def _da_espera(e: EntradaDoLivro, servico: LearningService | None) -> JsonObject:
