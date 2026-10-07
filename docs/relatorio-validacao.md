@@ -2594,6 +2594,34 @@ supervisor e não recarrega o config (K-108); recarrega `scripts\stop.ps1` com o
 orquestradora: repetir (c) só na conta que renova no sábado, com um `qa-user` parado provisionado pela Android e
 `--instances` nele. **Sem veredito do `decide`**; a chave da Venice no `.env` também não foi exercitada pelo central.
 
+**Item (c) repetido em 07/10 (`real`, android-14): o `decide` no Qwen 3.6 Plus Uncensored fechou igual ao base, 40 % mais barato.**
+Depois do deploy 62 (`228c56a4`), no `android-14` (worker `worker-lan-01`, cadastrado com o app `qa-messenger`, conta
+`qa-user-14`, sem persona nem conta real), com o `config.yaml` do ambiente mais `providers.venice`, `ai.models`,
+`ai.prices` e `ai.profiles.venice-ator`, `recipes 'off'` e `flows false` só durante os braços, e o central recarregado
+por `scripts\stop.ps1`. Primeira tentativa do dia parou no preflight (409: instância cadastrada com `instagram`; custo 0).
+Fumaça `msg-qa001`: succeeded, 64 s, US$ 0,0898; o `decide` fez 5 chamadas à Venice, 0 erros, 23.392 tokens lidos do
+cache. Dois braços, mesmo aparelho, mesmo dia, mesmo código, `eval_run.py` sobre `config/eval-set.yaml`:
+
+| Casos comuns (11) | Braço Venice (`--profile venice-ator`) | Braço base (Sonnet 5 no `decide`) |
+|---|---|---|
+| Sucesso comprovado | **11/11** (inclui `falha-de-envio` uncertain, `msg-todos-os-contatos` 8 de 8) | **11/11** (idem) |
+| US$ no hub | **0,79** (0,072 por caso) | 1,31 (0,120 por caso) → **−40 %** |
+| Tempo somado | 1.034 s | 853 s → **+21 %** |
+| `decide`: chamadas, latência média | 100, 4,7 s (máx. 8,8 s) | 87, 2,3 s |
+| Erros e fallback ao Anthropic | 0 e 0 | 0 e 0 |
+| Escalonamento do `decide` ao Opus | 0 | 0 |
+| Rejulgamento do `verify` no Opus (tier 1) | 23 chamadas | 21 chamadas |
+
+O braço da Venice teve ainda `comando-ambiguo` (needs_input, correto, 3 s) e o braço base não o rodou. **Fora do que mede,
+`not_run`:** `comando-ambiguo` no base, `sessao-expirada` e `perfil-campo-inexistente` nos dois (o resultado esperado é pedir
+pessoa e dispara aviso ao dono) e os três `ig-*` (conta real). **Incidente:** o `comando-ambiguo` do braço Venice
+perguntou ao dono pelo Telegram (avisos 87 e 88, e uma execução sucessora criada pela resposta dele, cancelada); o
+vigia da bateria só cancelava `waiting_user`, não `needs_input`. O dono disse que essa pergunta não deve chegar a ele:
+a bateria passa a excluir esses casos. **Custo real da janela: US$ 2,20 no hub** (fumaça 0,09; braço Venice 0,80; braço
+base 0,29 + 1,02, este em duas partes porque o harness foi interrompido antes do `comando-ambiguo`), 0 fora do hub.
+**Limites:** uma rodada por braço, 11 casos do app de QA, conta fictícia, sem Instagram; não prova o `decide` no Instagram
+real, o `plan` nem o `social`. Latência maior (+2,4 s por decisão) e +15 % de chamadas pesam em comandos longos.
+
 **Pré-requisito de código para (c) e para qualquer adoção:** `EnvSettings` tem `extra="ignore"` e `chave()` só lê do
 `.env` os nomes declarados; `VENICE_API_KEY` escrito no `.env` sem campo declarado cai em `os.environ` e dá 401 (o
 mesmo achado da Fase 17). Falta um campo `venice_api_key` em `EnvSettings` (padrão do `DEEPSEEK_API_KEY`), com teste,
