@@ -27,6 +27,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `ai_calls.step_id` e `actions.ai_call_id` já existia. Só expõe; a política de modelos (31.223) não muda.
 - Prova `simulated`: `backend/tests/test_custo_por_passo.py` (2 testes: a trilha da decisão descartada e da refeita, e
   a soma que fecha com `spent_usd`). Uma mutação que deixa a ação rejeitada contar como commit é pega. Real: not_run.
+- Junto, nota no v1.124: `GET /api/host/amostras` traz as três colunas do amostrador v2 (`cpu_media_pct`,
+  `demais_processos_pct`, `nao_atribuido_pct`), `null` na linha do v1 (achado da Portal no 31.211). Prova `simulated`:
+  `backend/tests/test_amostras_do_host.py`, que reprova na leitura anterior. Real: not_run.
 
 ## 2026-10-07 — 31.216: a leitura repetida da operação não grava nem avisa de novo (branch feat/operacao-latencia-por-estagio, corte 60)
 

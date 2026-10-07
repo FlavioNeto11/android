@@ -7971,3 +7971,9 @@ Código: `backend/app/planning/custo_por_passo.py` (`por_execucao`, com quatro c
 e `somar`), chamado pela rota `GET /api/runs/{id}` e por `ServicoDeOperacoes.ler`. Testes:
 `backend/tests/test_custo_por_passo.py` (a trilha do 31.223 com a decisão descartada e a refeita; a soma fecha com
 `spent_usd`; o GET do alvo igual ao da execução; o alvo sem execução vem `null`).
+
+**Nota no v1.124, as amostras do host (31.180, v1.102):** `GET /api/host/amostras` passa a trazer as três colunas do
+amostrador v2, `cpu_media_pct`, `demais_processos_pct` e `nao_atribuido_pct`: números, ou `null` na linha gravada pelo v1
+(9 colunas), que segue válida. Antes, a leitura as descartava (achado da Portal no percurso do 31.211). Código:
+`COLUNAS` em `modules/fleet/infrastructure/amostras_do_host.py`. Teste:
+`backend/tests/test_amostras_do_host.py::test_o_csv_do_amostrador_v2_traz_as_tres_colunas_novas_e_o_v1_segue_valido`.
