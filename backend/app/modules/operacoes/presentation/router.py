@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.modules.fleet.presentation.comum import quem
+from app.modules.pedidos.domain.aprendizado_da_operacao import responder
+from app.modules.pedidos.infrastructure.aprendizado_da_operacao import LeitorDoAprendizadoDaOperacao
 from app.modules.operacoes.infrastructure.servico import (AlvoPedido, OperacaoError, PedidoDeOperacao,
                                                           ServicoDeOperacoes)
 
@@ -119,6 +121,22 @@ async def listar_operacoes(request: Request, limite: int = Query(50, ge=1, le=20
 async def ler_operacao(request: Request, operacao_id: str) -> object:
     try:
         return _servico(request).ler(operacao_id)
+    except OperacaoError as exc:
+        raise _erro(exc) from exc
+
+
+@router.get("/operacoes/{operacao_id}/relatorio", response_model=None)
+async def relatorio_da_operacao(request: Request, operacao_id: str) -> object:
+    """O relatório consolidado (31.195, adendo v1.111), a mesma leitura para a Canais e a Portal. O aprendizado da
+    operação (v1.96) entra inteiro, como o `GET …/aprendizado` o devolve."""
+    st = _st(request)
+    leitor = LeitorDoAprendizadoDaOperacao(st.db)
+    itens = leitor.ler(operacao_id, simulados=False)
+    aprendizado = None if itens is None else {
+        "disponivel": True, "operacao_id": operacao_id, "gerado_em": st.db.agora_iso(), "simulados": False,
+        **responder(itens, agora=st.db.agora_iso(), persona=None), "avisos": leitor.avisos(operacao_id)}
+    try:
+        return _servico(request).relatorio(operacao_id, aprendizado)
     except OperacaoError as exc:
         raise _erro(exc) from exc
 

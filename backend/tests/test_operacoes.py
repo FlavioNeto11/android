@@ -778,3 +778,108 @@ async def test_rota_http_cancelar_alvos(harness: Harness) -> None:
         assert r.status_code == 200 and r.json()["cancelados"] == [pid]
         r = await c.post("/api/operacoes/nao-existe/cancelar-alvos", json={"profile_ids": [pid]})
         assert r.status_code == 404
+
+
+async def test_o_get_com_lote_e_o_mesmo_sem_lote(harness: Harness) -> None:
+    """31.194: o GET busca de uma vez, para todos os alvos, execução, objetivo, persona, conta, sessão, trava do aparelho
+    e custo (com 30 alvos eram 278 consultas por leitura). A resposta tem de ser a MESMA da leitura de um alvo por vez:
+    custo com pesquisa separada, aparelho travado, execução terminada e alvo sem sessão no mesmo exemplo."""
+    st = harness.state
+    assert st is not None
+    pids = []
+    for i, iid in enumerate(("android-01", "android-02", "android-03")):
+        pid = _persona(harness, f"Lote{i}", iid)
+        _conta(harness, pid, f"qa-user-7{i}", sessao_em=iid if i < 2 else None)
+        pids.append(pid)
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-lote"))
+    runs = [_alvo(op, p)["run_id"] for p in pids]
+    modelo = next(iter(st.cfg.file.ai.prices))
+    for rid, origem, tokens in ((runs[0], None, 120_000), (runs[0], "pesquisa", 40_000), (runs[1], None, 7_000)):
+        st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, input_tokens, output_tokens, ok, origem)"
+                      " VALUES (?,?,?,?,?,?,?,?)", (now_iso(), rid, "plan", modelo, tokens, tokens // 10, 1, origem))
+    st.db.execute("UPDATE runs SET status='completed' WHERE id=?", (runs[1],))
+    st.db.execute("INSERT INTO device_locked_accounts(instance_id, handle, origin, since, created_at, resolved_at)"
+                  " VALUES (?,?,?,?,?,?)", ("android-02", "qa-user-71", "declarado", now_iso(), now_iso(), None))
+    s.ler(op["id"])                                   # a 1ª leitura anota os estágios; as seguintes só leem
+    com = s.ler(op["id"])
+    s.com_lote = False
+    sem = s.ler(op["id"])
+    assert com == sem
+    assert com["custo"]["pesquisa_usd"] > 0 and com["capacidade"]["contas_disponiveis"] < 2  # type: ignore[index,operator]
+
+
+async def test_o_relatorio_consolidado_da_operacao(harness: Harness) -> None:
+    """31.195 (adendo v1.111): a mesma leitura para a Canais e a Portal. Os 19 critérios (os 16 do dono com 2b, 3b e
+    11b), quantas identidades executam hoje, textos repetidos, latência, custo por peça e o aprendizado; "não medido" é
+    None ou "nao_medido", nunca zero; nenhum @ de conta sai."""
+    st = harness.state
+    assert st is not None
+    pids = []
+    for i, iid in enumerate(("android-01", "android-02")):
+        pid = _persona(harness, f"Rel{i}", iid)
+        _conta(harness, pid, f"qa-user-6{i}", sessao_em=iid)
+        pids.append(pid)
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-relatorio"))
+    st.db.execute("UPDATE operacoes SET created_at=? WHERE id=?", ("2026-10-07T10:00:00.000Z", op["id"]))
+    run0 = _alvo(op, pids[0])["run_id"]
+    st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, input_tokens, output_tokens, ok, provider)"
+                  " VALUES (?,?,?,?,?,?,?,?)", (now_iso(), run0, "plan", "simulado", 10, 1, 1, "simulated"))
+    feito = Leitura("resultado_verificado", "concluido", None,
+                    (("persona", "2026-10-07T10:00:00.000Z"), ("post_localizado", "2026-10-07T10:01:00.000Z"),
+                     ("resposta_gerada", "2026-10-07T10:02:00.000Z"), ("acao_executada", "2026-10-07T10:03:00.000Z")))
+    parado = Leitura("post_localizado", "bloqueado", "a conta @alguem.real não abriu", (
+        ("persona", "2026-10-07T10:00:00.000Z"), ("post_localizado", "2026-10-07T10:05:00.000Z")),
+        parou_em="conteudo_lido")
+    resultados = {pids[0]: (feito, {"texto": "Que bom ver isso, @alguem.real!", "conhecimento_ids": [],
+                                    "evidencia_id": 7, "acao_final": {"tipo": "CREATE_COMMENT", "verificada": True,
+                                                                      "evidencia_id": 8}}),
+                  pids[1]: (parado, None)}
+    s._ler_alvo = lambda op_, a, d: resultados[str(a["profile_id"])]  # type: ignore[method-assign]
+    r = s.relatorio(op["id"], None)
+    assert r["ambiente"] == "simulado"
+    assert "@alguem.real" not in str(r)
+    criterios = {c["id"]: c for c in r["criterios"]}  # type: ignore[attr-defined]
+    assert len(criterios) == 19 and {"2b", "3b", "11b"} <= set(criterios)
+    assert criterios["13"]["nesta_operacao"] == "sim" and criterios["13"]["estado"] == "testado_em_simulacao"
+    # a base do diagnóstico não desce: o 9 já foi provado em ambiente real, e uma operação simulada não o rebaixa
+    assert criterios["9"]["nesta_operacao"] == "sim" and criterios["9"]["estado"] == "provado_real"
+    assert criterios["5"]["estado"] == "nao_implementado" and r["criterios_base"].startswith("diagnóstico")  # type: ignore[union-attr]
+    assert criterios["2"]["nesta_operacao"] == "nao"                 # 2 alvos, não 20
+    assert criterios["12"]["nesta_operacao"] == "nao_medido"         # um texto só não mede diferença
+    assert criterios["16"] == {"id": "16", "nome": "Preservar aprendizado", "estado": "testado_em_simulacao",
+                               "nesta_operacao": "nao_medido", "evidencia": None}
+    assert r["identidades"]["solicitadas"] == 2  # type: ignore[index]
+    assert r["identidades"]["deficit"] == 2 - r["identidades"]["executam_hoje"]  # type: ignore[index,operator]
+    agentes = {a["profile_id"]: a for a in r["agentes"]}  # type: ignore[attr-defined]
+    assert agentes[pids[0]]["acao_final"]["verificada"] == "sim" and agentes[pids[0]]["conhecimento_ids"] == []
+    assert agentes[pids[1]]["acao_final"] is None and agentes[pids[1]]["texto"] is None
+    assert r["falhas_por_motivo"] == [{"motivo": "a conta @[omitido] não abriu", "parou_em": "conteudo_lido",
+                                       "agentes": 1}]
+    assert r["latencia"]["mais_lento"] == {"profile_id": pids[1], "duracao_ms": 300_000}  # type: ignore[index]
+    assert r["latencia"]["duracao_mediana_ms"] == 240_000  # type: ignore[index]
+    assert r["custo"]["por_peca_usd"] == 0.0 and r["custo"]["teto_usd"] == op["max_usd"]  # type: ignore[index]
+    assert r["aprendizado"]["disponivel"] is False  # type: ignore[index]
+    sem_texto = s.relatorio(op["id"], {"disponivel": True, "perguntas": []})
+    assert sem_texto["aprendizado"]["disponivel"] is True  # type: ignore[index]
+    assert {c["id"]: c for c in sem_texto["criterios"]}["16"]["nesta_operacao"] == "sim"  # type: ignore[attr-defined]
+
+
+async def test_rota_http_do_relatorio(harness: Harness) -> None:
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Ana", "android-01")
+    _conta(harness, pid, "qa-user-95", sessao_em="android-01")
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    op = _servico(harness).criar(_pedido([AlvoPedido(pid)], chave="teste-op-http-relatorio"))
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.get(f"/api/operacoes/{op['id']}/relatorio")
+        assert r.status_code == 200, r.text
+        corpo = r.json()
+        assert corpo["operacao"]["id"] == op["id"] and len(corpo["criterios"]) == 19
+        assert set(corpo) >= {"gerado_em", "ambiente", "capacidade", "identidades", "agentes", "falhas_por_motivo",
+                              "textos", "aprendizado", "latencia", "custo"}
+        r = await c.get("/api/operacoes/nao-existe/relatorio")
+        assert r.status_code == 404

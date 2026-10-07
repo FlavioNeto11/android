@@ -7459,3 +7459,68 @@ quatro saíam com a hora do liberar.
 Código: `backend/app/modules/operacoes/domain/latencia.py`, `Leitura.liberado_em` em `domain/estagios.py` e
 `ServicoDeOperacoes.ler`. Testes: `backend/tests/test_operacoes_estagios.py::test_a_latencia_de_cada_estagio_e_desde_o_evento_anterior_no_tempo_e_o_liberar_sai_a_parte`
 e `backend/tests/test_operacoes.py::test_o_get_traz_a_latencia_por_estagio_por_alvo_e_da_operacao`.
+
+## Adendo v1.111 (07/10/2026; número da orquestradora; item 31.195) — o relatório consolidado da operação
+
+`GET /api/operacoes/{id}/relatorio` (só leitura, sem IA): a mesma leitura para a Canais (28.66) e a Portal (31.197). É
+montado a partir do GET da operação (com a latência do v1.108) e do aprendizado da operação (v1.96). Os nomes seguem o
+relatório que a Portal montava sozinha (`frontend/src/features/operacao/relatorio.ts`). Uma operação inexistente dá 404
+`operacao_inexistente`.
+
+**Não medido nunca vira zero.** Número, texto ou id sem dado vem `null`, e o estado de três vias vem `"nao_medido"`.
+Nenhum @ de conta sai: ele vira `@[omitido]` em motivo e texto.
+
+- `gerado_em`; `ambiente`: `real` (houve chamada de IA a um provedor real), `simulado` (só o provedor simulado) ou
+  `nao_medido` (nenhuma chamada).
+- `operacao`: `{id, comando, app_id, acao_final, status, criada_em, encerrada_em, assunto, fontes, fontes_da_pesquisa}`.
+  O `status` vem como código (`em_curso`, `concluida`, `concluida_com_bloqueios`, `cancelada`).
+- `capacidade`: a do GET, com `motivos` em lista `[{motivo, n}]`, o maior primeiro (no GET é `{motivo: n}`).
+- `identidades`: `{solicitadas, executam_hoje, deficit, nao_executam: [{motivo, n}]}`. É a resposta objetiva a quantas das
+  identidades pedidas executam hoje (conta no app, sessão válida e aparelho apto). Os motivos são `sem conta no app`,
+  `sem sessão válida` e `aparelho indisponível`.
+- `agentes[]`: `{profile_id, persona (o rótulo, nunca o @), aparelho, estado, estagio, parou_em, motivo,
+  estagios: [{estagio, em, etapa_ms}], texto, conhecimento_ids, acao_final: {tipo, verificada, evidencia_id} | null, custo_usd,
+  duracao_ms, espera_do_liberar_ms}`. `verificada` é `sim`, `nao`, `nao_conferida` ou `sem_acao`, como na Portal.
+- `falhas_por_motivo`: `[{motivo, parou_em, agentes}]`, dos alvos bloqueados ou cancelados, o maior primeiro.
+- `textos`: `{total, distintos, repetidos: [{texto, agentes}], lista: [{agente, texto}]}`. Repetido é o mesmo texto sem
+  diferença de caixa nem de espaço.
+- `criterios[]`: os 16 critérios mínimos do dono (prova30, `diagnostico.md` § 1a), com 2b, 3b e 11b: 19 linhas
+  `{id, nome, estado, nesta_operacao, evidencia}`.
+  - `nesta_operacao` é `sim`, `nao` ou `nao_medido`, lido dos dados desta operação.
+  - `estado` é `implementado`, `testado_em_simulacao`, `provado_real`, `bloqueado` ou `nao_implementado`.
+    A base é o estado do diagnóstico da prova (§ 1a, 06/10), revisto no código do corte 60 onde a entrega mudou
+    (4, 6 e 8); ela vem dita em `criterios_base`.
+  - A operação só sobe o estado, nunca o rebaixa: `nesta_operacao == "sim"` com `ambiente == "real"` dá
+    `provado_real`, e com o simulado dá `testado_em_simulacao`.
+- `aprendizado`: o corpo do `GET /api/operacoes/{id}/aprendizado` (v1.96) inteiro, com `disponivel: true`, sem repetir
+  as 10 perguntas em outro formato. Sem memória da operação, `{disponivel: false, motivo}`.
+- `latencia`: `{por_estagio (o `latencia_por_estagio` do v1.108), duracao_mediana_ms, mais_lento: {profile_id,
+  duracao_ms} | null}`.
+- `custo`: `{pesquisa_usd, alvos_usd, total_usd, teto_usd, por_peca_usd}`. `por_peca_usd` é o total dividido pelas ações
+  executadas e verificadas, e fica `null` sem nenhuma.
+
+Código: `backend/app/modules/operacoes/domain/relatorio.py`, `ServicoDeOperacoes.relatorio` e a rota em
+`modules/operacoes/presentation/router.py`. Testes: `backend/tests/test_operacoes.py::test_o_relatorio_consolidado_da_operacao`
+e `test_rota_http_do_relatorio`.
+
+## Adendo v1.112 (07/10/2026; número da orquestradora; item 31.193) — cancelar alvos por filtro sem fechar a operação
+
+`POST /api/operacoes/{id}/cancelar-alvos` `{profile_ids?, estados?, estagios?, instance_ids?}`. É uma rota própria: um
+corpo esquecido no `…/cancelar` não pode virar "cancelar tudo".
+
+- Os filtros se somam (E). O alvo entra quando casa com todos os filtros dados.
+- Cancela só a execução ainda aberta de cada alvo que casa, inclusive a que espera o liberar (lida como `bloqueado`, mas
+  com a execução aberta). A operação segue com os outros alvos e fecha pela leitura, como sempre.
+- Resposta 200: `{cancelados: [profile_id], ignorados: [{profile_id, motivo}], operacao: <o GET da operação>}`. O
+  motivo de `ignorados` é `ja_terminou` (execução terminada, inclusive entre a leitura e o pedido) ou `sem_execucao`
+  (o alvo parou na criação).
+- Erros:
+  - 422 `filtro_vazio`, sem nenhum filtro (a operação inteira é `…/cancelar`);
+  - 422 `estado_desconhecido`, para estado fora de `pendente`, `em_curso`, `concluido`, `bloqueado` e `cancelado`;
+  - 422 para campo desconhecido no corpo;
+  - 409 `ja_encerrada`, com a operação terminada ou cancelada;
+  - 404 `operacao_inexistente`.
+
+Código: `ServicoDeOperacoes.cancelar_alvos` e `modules/operacoes/presentation/router.py`. Testes:
+`backend/tests/test_operacoes.py::test_cancelar_alvos_por_filtro_cancela_so_os_que_casam_e_a_operacao_segue` e
+`test_rota_http_cancelar_alvos`.

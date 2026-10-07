@@ -19,6 +19,34 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.193, 31.194 e 31.195: a operação para a rodada de 30 alvos (branch feat/operacao-latencia-por-estagio, corte 60)
+
+- 31.193 (adendo v1.112): `POST /api/operacoes/{id}/cancelar-alvos` `{profile_ids?, estados?, estagios?, instance_ids?}`. Os filtros se
+  somam. Cancela só as execuções ainda abertas dos alvos que casam, inclusive a que espera o liberar; pula a terminada
+  (`ja_terminou`) e o alvo sem execução (`sem_execucao`), e a operação segue. Filtro vazio dá 422 `filtro_vazio`, porque
+  a operação inteira é `…/cancelar`; estado desconhecido dá 422 `estado_desconhecido`.
+- 31.194: o GET da operação busca de uma vez, para todos os alvos, execução, objetivo, etapas, pedido de aprovação,
+  persona, conta, sessão, trava do aparelho e custo (`costs.spent_usd_por_run`, `ApprovalStore.for_steps`). A resposta
+  não muda. Medido no harness com 30 alvos (`tests/test_medida_get_da_operacao.py`, opt-in `MEDIR_GET_OP=1`):
+  - com as execuções terminadas, 338 consultas por leitura caem para 18, e a parede p50 de 11,2 ms para 6,5 ms;
+  - com os alvos parados, 278 caem para 16, e de 3,4 ms para 1,5 ms.
+
+  É SQLite local; em PostgreSQL cada consulta é uma ida e volta.
+- 31.195 (adendo v1.111): `GET /api/operacoes/{id}/relatorio`, o relatório consolidado para a Canais (28.66) e a Portal
+  (31.197). Traz:
+  - os 19 critérios (os 16 do dono com 2b, 3b e 11b), com `nesta_operacao` e `estado`;
+  - quantas identidades executam hoje, os textos repetidos, as falhas por motivo e a latência;
+  - o custo por peça e o aprendizado da operação (v1.96) inteiro.
+
+  "Não medido" é `null` ou `"nao_medido"`, nunca zero; nenhum @ de conta sai.
+- Prova `simulated`:
+  - `backend/tests/test_operacoes.py`: `test_cancelar_alvos_por_filtro_cancela_so_os_que_casam_e_a_operacao_segue`,
+    `test_rota_http_cancelar_alvos`, `test_o_get_com_lote_e_o_mesmo_sem_lote`, `test_o_relatorio_consolidado_da_operacao`
+    e `test_rota_http_do_relatorio`;
+  - a medida opt-in.
+
+  Real: not_run.
+
 ## 2026-10-06 — 31.187: latência por estágio e por alvo no GET da operação, adendo v1.108 (branch feat/operacao-latencia-por-estagio, corte 60)
 
 - `GET /api/operacoes/{id}` traz `estagios[].etapa_ms` (desde o evento anterior no tempo), `alvos[].latencia`

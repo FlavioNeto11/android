@@ -26,7 +26,7 @@ from app.contracts.origem import PREFIXO_OPERACAO
 from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
-from app.modules.operacoes.domain import latencia
+from app.modules.operacoes.domain import latencia, relatorio as rel
 from app.modules.operacoes.domain.estagios import ESTADOS, EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs
@@ -39,7 +39,7 @@ from app.util import now_iso
 if TYPE_CHECKING:
     from app.config import LimitsCfg
     from app.events import EventBus
-    from app.social.approvals import ApprovalService
+    from app.social.approvals import Approval, ApprovalService
     from app.social.repository import SocialRepository
     from app.taskqueue.service import RunService
 
@@ -76,6 +76,25 @@ class AlvoPedido:
     profile_id: str
     account_id: str | None = None
     instance_id: str | None = None
+
+
+@dataclass
+class _Lote:
+    """O que uma leitura da operação busca de uma vez para todos os alvos (31.194: com 30 alvos, o GET fazia 278
+    consultas, quase todas uma por alvo). Vale só durante um `ler`; fora dele, cada ajudante consulta como antes."""
+
+    runs: dict[str, Row]
+    objetivos: dict[str, Row]
+    gasto: dict[str, float]
+    pesquisa: dict[str, float]
+    personas: dict[str, Row]
+    contas: dict[tuple[str, str], Row]
+    sessoes: dict[str, list[str]]
+    travados: set[str]
+    #: As etapas da versão vigente do plano de cada objetivo buscado (chave presente = buscado, mesmo sem etapa).
+    etapas: dict[str, list[Row]]
+    #: O pedido de aprovação mais novo de cada etapa com efeito buscada (chave presente = buscada; None = sem pedido).
+    pedidos: dict[str, Approval | None]
 
 
 @dataclass(frozen=True)
@@ -141,6 +160,9 @@ class ServicoDeOperacoes:
                  limites: Callable[[], LimitsCfg], bus: EventBus, precos: dict[str, list[float]]) -> None:
         self.db, self.runs, self.social, self.aprovacoes = db, runs, social, aprovacoes
         self.limites, self.bus, self.precos = limites, bus, precos
+        self._lote: _Lote | None = None
+        #: Desligar só serve ao teste que prova que a leitura em lote devolve o mesmo que a de um alvo por vez.
+        self.com_lote = True
 
     # ------------------------------------------------------------------ criar
     def criar(self, pedido: PedidoDeOperacao, *, quem: str | None = None) -> dict[str, object]:
@@ -237,6 +259,8 @@ class ServicoDeOperacoes:
         return iid if iid in sessoes else None
 
     def _sessoes_prontas(self, account_id: str) -> list[str]:
+        if self._lote is not None:
+            return list(self._lote.sessoes.get(account_id, []))
         return [str(r["instance_id"]) for r in self.db.query(
             "SELECT instance_id FROM account_sessions WHERE account_id=? AND status=? ORDER BY updated_at DESC,"
             " instance_id", (account_id, SessionStatus.session_ready.value))]
@@ -245,8 +269,12 @@ class ServicoDeOperacoes:
         """O custo da operação, com a pesquisa externa SEPARADA (frente de aprendizado): ela roda dentro da execução de
         um alvo, então as linhas dela também têm o `run_id` dele, e somar sem tirar contaria duas vezes."""
         runs = [str(r["id"]) for r in self.db.query("SELECT id FROM runs WHERE operacao_id=?", (op_id,))]
-        total = sum(costs.spent_usd(self.db, self.precos, run_id=r) for r in runs)
-        pesquisa = sum(costs.spent_usd(self.db, self.precos, run_id=r, origem="pesquisa") for r in runs)
+        if self._lote is not None and set(runs) <= set(self._lote.runs):
+            total = sum(self._lote.gasto.get(r, 0.0) for r in runs)
+            pesquisa = sum(self._lote.pesquisa.get(r, 0.0) for r in runs)
+        else:
+            total = sum(costs.spent_usd(self.db, self.precos, run_id=r) for r in runs)
+            pesquisa = sum(costs.spent_usd(self.db, self.precos, run_id=r, origem="pesquisa") for r in runs)
         return {"pesquisa_usd": round(pesquisa, 4), "alvos_usd": round(total - pesquisa, 4), "total_usd": round(total, 4)}
 
     def _gasto(self, op_id: str) -> float:
@@ -281,8 +309,18 @@ class ServicoDeOperacoes:
             self.db.execute("UPDATE operacoes SET acao_final='executar', status='em_curso', finished_at=NULL, updated_at=?"
                             " WHERE id=? AND acao_final='preparar' AND status<>'cancelada'", (now_iso(), op_id))
             op = self.db.one("SELECT * FROM operacoes WHERE id=?", (op_id,)) or op
+        linhas = self.db.query("SELECT * FROM operacao_alvos WHERE operacao_id=? ORDER BY seq, profile_id", (op_id,))
+        self._lote = self._montar_lote(linhas) if self.com_lote else None
+        try:
+            return self._ler_com_lote(op, linhas, definicao, limite, executadas, aprovados)
+        finally:
+            self._lote = None
+
+    def _ler_com_lote(self, op: Row, linhas: list[Row], definicao: tuple[str, dict[str, str]], limite: int,
+                      executadas: int, aprovados: set[object]) -> dict[str, object]:
+        op_id = str(op["id"])
         alvos = []
-        for a in self.db.query("SELECT * FROM operacao_alvos WHERE operacao_id=? ORDER BY seq, profile_id", (op_id,)):
+        for a in linhas:
             leitura, resultado = self._ler_alvo(op, a, definicao)
             alvos.append((a, leitura, resultado))
         saida = []
@@ -296,7 +334,7 @@ class ServicoDeOperacoes:
                                          "acao_executada")
             self._anotar(op_id, a, lt.estagio, estado, motivo)
             # O custo do alvo é o da execução DELE (com a pesquisa externa, se ela rodou ali); sem execução, nulo.
-            custo = round(costs.spent_usd(self.db, self.precos, run_id=str(a["run_id"])), 4) if a["run_id"] else None
+            custo = round(self._gasto_do_run(str(a["run_id"])), 4) if a["run_id"] else None
             if resultado is not None:
                 resultado = {**resultado, "custo_usd": custo}
             # A latência do alvo (métrica de primeira classe do dono): a etapa de cada estágio e a espera pelo liberar à
@@ -320,6 +358,65 @@ class ServicoDeOperacoes:
                 "finished_at": self._fechar(op, status, capacidade, fim=self._fim_real(saida)),
                 "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id),
                 "latencia_por_estagio": latencia.por_estagio(saida)}
+
+    def relatorio(self, op_id: str, aprendizado: Mapping[str, object] | None) -> dict[str, object]:
+        """O relatório consolidado (31.195, adendo v1.111): o GET da operação (com a latência do v1.108) arrumado para a
+        Canais e a Portal lerem o mesmo, mais o aprendizado da operação (v1.96) inteiro, como veio. `aprendizado` None =
+        indisponível (a memória da operação não está no banco). Só leitura, sem IA."""
+        op = self.ler(op_id)
+        alvos = [a for a in op["alvos"] if isinstance(a, dict)]  # type: ignore[attr-defined]
+        agentes = []
+        verificadas = 0
+        for a in alvos:
+            res_lido, lat_lida = a.get("resultado"), a.get("latencia")
+            res: dict[str, object] | None = res_lido if isinstance(res_lido, dict) else None
+            acao_lida = res.get("acao_final") if res is not None else None
+            acao: dict[str, object] | None = acao_lida if isinstance(acao_lida, dict) else None
+            lat: dict[str, object] = lat_lida if isinstance(lat_lida, dict) else {}
+            verificadas += 1 if acao is not None and rel.conferencia(res) == "sim" else 0
+            agentes.append({
+                "profile_id": a["profile_id"], "persona": a.get("persona_nome") or "uma persona",
+                "aparelho": a.get("instance_id"), "estado": a["estado"], "estagio": a["estagio"],
+                "parou_em": a.get("parou_em"), "motivo": rel.sem_arroba(a.get("motivo")),
+                "estagios": [{"estagio": e["estagio"], "em": e["em"], "etapa_ms": e.get("etapa_ms")}
+                             for e in a.get("estagios") or []],
+                "texto": rel.sem_arroba(res.get("texto")) if res is not None else None,
+                "conhecimento_ids": res.get("conhecimento_ids") if res is not None else None,
+                "acao_final": ({"tipo": acao.get("tipo"), "verificada": rel.conferencia(res),
+                                "evidencia_id": acao.get("evidencia_id")} if acao is not None else None),
+                "custo_usd": a.get("custo_usd"),
+                "duracao_ms": lat.get("duracao_ms"), "espera_do_liberar_ms": lat.get("espera_do_liberar_ms")})
+        cap = op["capacidade"] if isinstance(op["capacidade"], dict) else {}
+        custo = op["custo"] if isinstance(op["custo"], dict) else {}
+        total = custo.get("total_usd")
+        provedores = {str(r["p"]) for r in self.db.query(
+            "SELECT DISTINCT COALESCE(provider,'') p FROM ai_calls WHERE run_id IN (SELECT id FROM runs WHERE"
+            " operacao_id=?)", (op_id,))}
+        ambiente = ("nao_medido" if not provedores else
+                    "simulado" if provedores <= {"simulated"} else "real")
+        return {
+            "gerado_em": now_iso(), "ambiente": ambiente,
+            "operacao": {"id": op["id"], "comando": op["command"], "app_id": op["app_id"],
+                         "acao_final": op["acao_final"], "status": op["status"], "criada_em": op["created_at"],
+                         "encerrada_em": op["finished_at"], "assunto": op["assunto"], "fontes": op["fontes"],
+                         "fontes_da_pesquisa": op["fontes_da_pesquisa"]},
+            # No GET os motivos são {motivo: n}; aqui, a lista do relatório da Portal ({motivo, n}, o maior primeiro).
+            "capacidade": {**cap, "motivos": [{"motivo": rel.sem_arroba(m), "n": n} for m, n in sorted(
+                (cap.get("motivos") or {}).items(), key=lambda kv: (-int(kv[1]), str(kv[0])))]},
+            "identidades": rel.identidades(cap),
+            "agentes": agentes,
+            "falhas_por_motivo": rel.falhas_por_motivo(agentes),
+            "textos": rel.textos(agentes),
+            "criterios": rel.criterios(op, agentes, ambiente=ambiente, aprendizado_disponivel=aprendizado is not None),
+            "criterios_base": rel.FONTE_DA_BASE,
+            "aprendizado": dict(aprendizado) if aprendizado is not None else {
+                "disponivel": False, "motivo": "a memória da operação não está no banco"},
+            "latencia": rel.latencia(alvos, op.get("latencia_por_estagio")),
+            "custo": {"pesquisa_usd": custo.get("pesquisa_usd"), "alvos_usd": custo.get("alvos_usd"),
+                      "total_usd": total, "teto_usd": op["max_usd"],
+                      "por_peca_usd": (round(float(total) / verificadas, 4)
+                                       if verificadas and isinstance(total, (int, float)) else None)},
+        }
 
     def _fontes_da_pesquisa(self, op_id: str) -> list[str]:
         """As URLs que a pesquisa externa da operação ACHOU (frente de aprendizado, migração 125: `pedido_observacoes` com
@@ -350,12 +447,25 @@ class ServicoDeOperacoes:
         etapas: list[EtapaLida] = []
         efeito: Row | None = None
         if a["run_id"]:
-            run = self.db.one("SELECT status, status_detail, finished_at FROM runs WHERE id=?", (a["run_id"],))
-            obj = self.db.one("SELECT * FROM objectives WHERE run_id=? ORDER BY id LIMIT 1", (a["run_id"],))
+            lote = self._lote
+            if lote is not None and str(a["run_id"]) in lote.runs:
+                run, obj = lote.runs[str(a["run_id"])], lote.objetivos.get(str(a["run_id"]))
+            else:
+                run = self.db.one("SELECT status, status_detail, finished_at FROM runs WHERE id=?", (a["run_id"],))
+                obj = self.db.one("SELECT * FROM objectives WHERE run_id=? ORDER BY id LIMIT 1", (a["run_id"],))
             if obj is not None:
-                for s in self.db.query("SELECT * FROM steps WHERE objective_id=? AND plan_version=? ORDER BY seq, id",
-                                       (obj["id"], obj["plan_version"])):
-                    pedido = self.aprovacoes.store.for_step(str(s["id"])) if s["side_effect"] else None
+                lote_etapas = self._lote.etapas if self._lote is not None else {}
+                linhas_de_etapa = (lote_etapas[str(obj["id"])] if str(obj["id"]) in lote_etapas else
+                                   self.db.query("SELECT * FROM steps WHERE objective_id=? AND plan_version=? ORDER BY"
+                                                 " seq, id", (obj["id"], obj["plan_version"])))
+                for s in linhas_de_etapa:
+                    lote_pedidos = self._lote.pedidos if self._lote is not None else {}
+                    if not s["side_effect"]:
+                        pedido = None
+                    elif str(s["id"]) in lote_pedidos:
+                        pedido = lote_pedidos[str(s["id"])]
+                    else:
+                        pedido = self.aprovacoes.store.for_step(str(s["id"]))
                     texto = (loads(s["bindings"], {}) or {}).get("content") if s["side_effect"] else None
                     etapas.append(EtapaLida(
                         capability=s["capability"], status=str(s["status"]), side_effect=bool(s["side_effect"]),
@@ -394,8 +504,71 @@ class ServicoDeOperacoes:
                 "acao_final": {"tipo": efeito["capability"], "verificada": verificada,
                                "evidencia_id": prova["id"] if prova is not None and verificada else None}}
 
+    def _gasto_do_run(self, run_id: str) -> float:
+        if self._lote is not None and run_id in self._lote.runs:
+            return self._lote.gasto.get(run_id, 0.0)
+        return costs.spent_usd(self.db, self.precos, run_id=run_id)
+
+    def _montar_lote(self, linhas: list[Row]) -> _Lote:
+        """Uma consulta por tabela para todos os alvos, com as mesmas linhas que os ajudantes leriam um a um: a resposta
+        não muda (`tests/test_operacoes.py::test_o_get_com_lote_e_o_mesmo_sem_lote`)."""
+        def em(coluna: str, valores: list[str]) -> tuple[str, tuple[str, ...]]:
+            return f"{coluna} IN ({','.join('?' * len(valores))})", tuple(valores)
+
+        run_ids = sorted({str(a["run_id"]) for a in linhas if a["run_id"]})
+        runs: dict[str, Row] = {}
+        objetivos: dict[str, Row] = {}
+        if run_ids:
+            w, p = em("id", run_ids)
+            runs = {str(r["id"]): r for r in self.db.query(
+                f"SELECT id, status, status_detail, finished_at FROM runs WHERE {w}", p)}
+            w, p = em("run_id", run_ids)
+            for o in self.db.query(f"SELECT * FROM objectives WHERE {w} ORDER BY id", p):
+                objetivos.setdefault(str(o["run_id"]), o)    # o primeiro por execução, como o `ORDER BY id LIMIT 1`
+        perfis = sorted({str(a["profile_id"]) for a in linhas})
+        personas: dict[str, Row] = {}
+        if perfis:
+            w, p = em("id", perfis)
+            personas = {str(r["id"]): r for r in self.db.query(f"SELECT * FROM instagram_profiles WHERE {w}", p)}
+        contas_ids = sorted({str(a["account_id"]) for a in linhas if a["account_id"]})
+        contas: dict[tuple[str, str], Row] = {}
+        sessoes: dict[str, list[str]] = {}
+        if contas_ids:
+            w, p = em("id", contas_ids)
+            contas = {(str(r["profile_id"]), str(r["id"])): r
+                      for r in self.db.query(f"SELECT * FROM profile_accounts WHERE {w}", p)}
+            w, p = em("account_id", contas_ids)
+            for r in self.db.query(f"SELECT account_id, instance_id FROM account_sessions WHERE {w} AND status=?"
+                                   " ORDER BY updated_at DESC, instance_id", (*p, SessionStatus.session_ready.value)):
+                sessoes.setdefault(str(r["account_id"]), []).append(str(r["instance_id"]))
+        aparelhos = sorted({str(a["instance_id"]) for a in linhas if a["instance_id"]})
+        travados: set[str] = set()
+        if aparelhos:
+            w, p = em("instance_id", aparelhos)
+            travados = {str(r["instance_id"]) for r in self.db.query(
+                f"SELECT DISTINCT instance_id FROM device_locked_accounts WHERE {w} AND resolved_at IS NULL", p)}
+        etapas: dict[str, list[Row]] = {}
+        if objetivos:
+            versao = {str(o["id"]): o["plan_version"] for o in objetivos.values()}
+            etapas = {oid: [] for oid in versao}
+            w, p = em("objective_id", sorted(versao))
+            for s in self.db.query(f"SELECT * FROM steps WHERE {w} ORDER BY seq, id", p):
+                if s["plan_version"] == versao[str(s["objective_id"])]:
+                    etapas[str(s["objective_id"])].append(s)
+        com_efeito = [str(s["id"]) for lista in etapas.values() for s in lista if s["side_effect"]]
+        # O dublê de aprovações de um teste pode não ter a leitura em lote: sem ela, cada etapa busca o seu pedido.
+        em_lote = getattr(self.aprovacoes.store, "for_steps", None)
+        achados = em_lote(com_efeito) if callable(em_lote) else None
+        pedidos: dict[str, Approval | None] = ({sid: achados.get(sid) for sid in com_efeito}
+                                               if isinstance(achados, dict) else {})
+        return _Lote(runs=runs, objetivos=objetivos, etapas=etapas, pedidos=pedidos,
+                     gasto=costs.spent_usd_por_run(self.db, self.precos, run_ids),
+                     pesquisa=costs.spent_usd_por_run(self.db, self.precos, run_ids, origem="pesquisa"),
+                     personas=personas, contas=contas, sessoes=sessoes, travados=travados)
+
     def _nome(self, profile_id: str) -> str | None:
-        p = self.social.persona_row(profile_id)
+        p = self._lote.personas.get(profile_id) if self._lote is not None else None
+        p = p if p is not None else self.social.persona_row(profile_id)
         if p is None:
             return None
         nome = " ".join(str(p[k]) for k in ("first_name", "last_name") if k in p.keys() and p[k])
@@ -404,7 +577,9 @@ class ServicoDeOperacoes:
     def _handle(self, a: Row) -> str | None:
         if not a["account_id"]:
             return None
-        conta = self.social.account_row(str(a["profile_id"]), str(a["account_id"]))
+        chave = (str(a["profile_id"]), str(a["account_id"]))
+        conta = self._lote.contas.get(chave) if self._lote is not None else None
+        conta = conta if conta is not None else self.social.account_row(*chave)
         return str(conta["handle"]) if conta is not None and conta["handle"] else None
 
     def _capacidade(self, alvos: list[dict[str, object]]) -> dict[str, object]:
@@ -422,6 +597,8 @@ class ServicoDeOperacoes:
         rt = self.runs.devices.devices.get(str(instance_id)) if instance_id else None
         if rt is None or rt.store:
             return False
+        if self._lote is not None:
+            return rt.state == InstanceState.online and str(instance_id) not in self._lote.travados
         travada = self.social.conta_travada_no_aparelho(str(instance_id))
         return rt.state == InstanceState.online and travada is None
 

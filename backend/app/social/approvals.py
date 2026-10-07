@@ -142,6 +142,19 @@ class ApprovalStore:
                           (step_id,))
         return self._dto(row) if row else None
 
+    def for_steps(self, step_ids: list[str]) -> dict[str, Approval]:
+        """`for_step` de várias etapas numa consulta só (o GET da operação, 31.194): o pedido mais novo de cada uma. A
+        etapa sem pedido fica de fora do dicionário."""
+        if not step_ids:
+            return {}
+        marcas = ",".join("?" * len(step_ids))
+        mais_novo: dict[str, Approval] = {}
+        for row in self.db.query(f"SELECT * FROM pending_approvals WHERE step_id IN ({marcas}) ORDER BY created_at DESC",
+                                 tuple(step_ids)):
+            if str(row["step_id"]) not in mais_novo:
+                mais_novo[str(row["step_id"])] = self._dto(row)
+        return mais_novo
+
     def acompanhar_revisao(self, step_id: str, *, profile_id: str | None, acao: Capability | None, target: str | None,
                            content: str | None, disparou: Callable[[str], bool]) -> Approval | None:
         """A decisão já tomada sobre ESTA etapa numa versão anterior do plano, quando ela vale para a etapa revisada.
