@@ -10,6 +10,7 @@ import { Page } from '../../components/Page';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { cx, formatInt, formatUsd4, plural } from '../../lib/format';
+import { useIntervaloVisivel } from '../../lib/polling';
 import { hashDe } from '../../lib/rotas';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
@@ -195,20 +196,25 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
   );
 }
 
-function useCarga<T>(ler: (sinal: AbortSignal) => Promise<T>, chave: string): { dado: T | null; erro: LoadError | null; carregando: boolean; recarregar: () => void } {
+/** De quanto em quanto tempo a operação em andamento (e a lista) se relê sozinha, com a aba à vista (31.247). */
+const RELEITURA_DA_OPERACAO_MS = 5000;
+const RELEITURA_DA_LISTA_MS = 10000;
+
+function useCarga<T>(ler: (sinal: AbortSignal) => Promise<T>, chave: string): { dado: T | null; erro: LoadError | null; carregando: boolean; lidoEm: string | null; recarregar: () => void } {
   const [dado, setDado] = useState<T | null>(null);
+  const [lidoEm, setLidoEm] = useState<string | null>(null);
   const [erro, setErro] = useState<LoadError | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [vez, setVez] = useState(0);
   useEffect(() => {
     const ctl = new AbortController();
     setCarregando(true);
-    ler(ctl.signal).then((d) => { setDado(d); setErro(null); }).catch((e: unknown) => { if (!ctl.signal.aborted) setErro(toLoadError(e)); })
+    ler(ctl.signal).then((d) => { setDado(d); setLidoEm(new Date().toISOString()); setErro(null); }).catch((e: unknown) => { if (!ctl.signal.aborted) setErro(toLoadError(e)); })
       .finally(() => { if (!ctl.signal.aborted) setCarregando(false); });
     return () => ctl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chave, vez]);
-  return { dado, erro, carregando, recarregar: useCallback(() => setVez((n) => n + 1), []) };
+  return { dado, erro, carregando, lidoEm, recarregar: useCallback(() => setVez((n) => n + 1), []) };
 }
 
 const AVISO_DE_EXEMPLO = (
@@ -251,7 +257,7 @@ function CustoEAssunto({ op }: { op: Operacao }) {
 }
 
 function DetalheDaOperacao({ id }: { id: string }) {
-  const { dado: op, erro, carregando, recarregar } = useCarga((s) => apiOperacoes.detalhe(id, s), id);
+  const { dado: op, erro, carregando, lidoEm, recarregar } = useCarga((s) => apiOperacoes.detalhe(id, s), id);
   const [estado, setEstado] = useState<EstadoDoAlvo | ''>('');
   const [parou, setParou] = useState<EstagioId | ''>('');
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
@@ -261,6 +267,9 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const [aba, setAba] = useState<AbaDaOperacao>('agentes');
   const limiteDeAcoes = useAppStore((s) => s.settings?.operacao_max_acoes_executadas);
   const contagem = useMemo(() => contarPorEstado(op?.alvos ?? []), [op]);
+  // Operação em andamento se relê sozinha (a tela ficava no que viu ao abrir, sem dizer que era velho); parada a aba oculta, e ao voltar
+  // relê na hora. Encerrada ou exemplo: sem releitura. A releitura não apaga o que está na tela (só `op === null` mostra o esqueleto).
+  useIntervaloVisivel(recarregar, RELEITURA_DA_OPERACAO_MS, op?.status === 'em_curso' && !op.exemplo);
 
   if (carregando && !op) return <LoadingRegion label="Lendo a operação"><Skeleton height={160} /></LoadingRegion>;
   if (erro && !op) return <LoadErrorState what="a operação" error={erro} onRetry={recarregar} />;
@@ -318,6 +327,11 @@ function DetalheDaOperacao({ id }: { id: string }) {
         <a className={styles.link} href={hashDe('operacoes')}>← Todas as operações</a>
         {op.status ? <Badge tone={TOM_DO_STATUS[op.status]} size="sm">{ROTULO_DO_STATUS[op.status]}</Badge> : null}
         <span className={styles.mudo}>Ação final: {rotuloDaAcao(op.acao_final)}</span>
+        {lidoEm && !op.exemplo ? (
+          <span className={styles.mudo} data-lido-as>
+            · Lido às {formatClock(lidoEm)}{op.status === 'em_curso' ? ' (relê sozinha enquanto a aba está à vista)' : ''}
+          </span>
+        ) : null}
         {feitas.executadas > 0 ? (
           <span className={styles.mudo} data-acoes-feitas>
             · {plural(feitas.executadas, 'ação executada', 'ações executadas')}, {plural(feitas.verificadas, 'verificada', 'verificadas')}
@@ -380,6 +394,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
 
 function ListaDeOperacoes() {
   const { dado, erro, carregando, recarregar } = useCarga<ListaDeOperacoes>((s) => apiOperacoes.lista(s), 'lista');
+  useIntervaloVisivel(recarregar, RELEITURA_DA_LISTA_MS);
   if (carregando && !dado) return <Page title="Operação"><LoadingRegion label="Lendo as operações"><Skeleton height={120} /></LoadingRegion></Page>;
   if (erro && !dado) return <Page title="Operação"><LoadErrorState what="as operações" error={erro} onRetry={recarregar} /></Page>;
   const itens: ResumoDaOperacao[] = dado?.itens ?? [];

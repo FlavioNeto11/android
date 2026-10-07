@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { useToastStore } from '../../store/toasts';
@@ -430,5 +430,51 @@ describe('o que a tela nunca mostra', () => {
     expect(t).not.toMatch(/senha|password|token|credencial|login_identifier|[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
     expect(t).not.toMatch(/\b(undefined|null|NaN)\b|\[object Object\]/);
     expect(t).not.toMatch(/\b(em_curso|pendente|acao_preparada|interface_de_comentario_alcancada|resultado_verificado|conhecimento_ids|evidencia_id)\b/);
+  });
+});
+
+describe('31.247: a operação em andamento se relê sozinha e diz de quando é o que mostra', () => {
+  const alvo = (estado: string, estagio: string) => ({ profile_id: 'p1', persona_nome: 'Persona 1', app_id: 'instagram', account_id: 'a1', conta: 'c1', instance_id: 'android-01', run_id: 'r-1', estagio, estado, motivo: null, resultado: null });
+  const op = (status: string, estado: string, estagio: string) => ({
+    id: 'op-v', command: 'Comentar', app_id: 'instagram', acao_final: 'executar', status, created_at: '2026-10-07T10:00:00Z', finished_at: null,
+    capacidade: { solicitados: 1, contas_existentes: 1, sessoes_validas: 1, contas_disponiveis: 1, concluidas: 0, bloqueadas: 0, em_curso: 1, motivos: {} },
+    alvos: [alvo(estado, estagio)],
+  });
+  const leituras = () => backend.callsTo('GET', /^\/api\/operacoes\/op-v$/).length;
+
+  it('em andamento: relê a cada 5 s sem apagar a tela, mostra o que mudou e para quando a operação encerra', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let status = 'em_curso';
+      backend.on('GET', /^\/api\/operacoes\/op-v$/, () => json(status === 'em_curso' ? op('em_curso', 'em_curso', 'instagram_aberto') : op('concluida', 'concluido', 'resultado_verificado')));
+      await ir(['op-v']);
+      await waitFor(() => expect(linhas()).toHaveLength(1));
+      expect(leituras()).toBe(1);
+      expect(text(container.querySelector('[data-lido-as]')!)).toContain('Lido às');
+      expect(text(container.querySelector('[data-lido-as]')!)).toContain('relê sozinha');
+      expect(text(linhas()[0]!)).toContain('Em andamento');
+      status = 'concluida';
+      await act(async () => { vi.advanceTimersByTime(5000); });
+      await waitFor(() => expect(text(linhas()[0]!)).toContain('Concluído'));
+      expect(leituras()).toBe(2);
+      expect(text(container.querySelector('[data-lido-as]')!)).not.toContain('relê sozinha');   // encerrada: não promete mais releitura
+      await act(async () => { vi.advanceTimersByTime(20000); });
+      expect(leituras()).toBe(2);                                                                 // encerrada: nenhuma releitura nova
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('já encerrada ao abrir: nenhuma releitura automática', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      backend.on('GET', /^\/api\/operacoes\/op-v$/, () => json(op('concluida', 'concluido', 'resultado_verificado')));
+      await ir(['op-v']);
+      await waitFor(() => expect(linhas()).toHaveLength(1));
+      await act(async () => { vi.advanceTimersByTime(30000); });
+      expect(leituras()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
