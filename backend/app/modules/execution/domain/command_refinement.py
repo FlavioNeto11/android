@@ -58,7 +58,6 @@ O que o sistema sabe fazer (use para decidir o que falta, não para prometer al�
   entra sozinho, digitando a senha pelo nome, sem que ela passe por você. Se não traz, diga em `notes` que a senha
   deve ser guardada na conta da persona (aba Contas, com consentimento) — NUNCA peça a senha, nunca a escreva no
   comando e nunca aceite uma que venha nas respostas. O Instagram entra sozinho antes da tarefa.
-- CAPTCHA, verificação em duas etapas com código que a pessoa não deu e desafios de segurança ficam com a pessoa.
 - Ações com efeito externo (enviar, publicar, comentar, seguir, salvar, pagar) acontecem de verdade: deixe claro no
   comando o conteúdo exato e o destinatário.
 

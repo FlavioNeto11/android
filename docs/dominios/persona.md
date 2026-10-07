@@ -493,8 +493,8 @@ própria, **fora dos cinco papéis de IA** ([ia.md](../ia.md#1-as-cinco-funçõe
   `PRODUCOES` (3), `PROPORCOES` (`1:1`, `4:5`, `3:4`, `9:16`) e o pós-processamento (`jpeg_quality` 55–92,
   `noise_sigma` 0–4, `blur_radius` 0–0,8, `downscale` 0,6–1, `crop_shift` ±0,1).
 - **A imagem 0 é a principal**: `head and shoulders`, rosto visível, `1:1`.
-- **Prompt** (`prompt_de`): inglês, determinístico, "fictional … adult", atributos limpos (`_limpo`: sem `<`/`>`,
-  240 caracteres), e sempre "no text, no logo, no watermark, not a real person". `prompt_sha256` fica na linha.
+- **Prompt** (`prompt_de`): inglês, determinístico, atributos limpos (`_limpo`: sem `<`/`>`,
+  240 caracteres), e sempre "no text, no logo, no watermark". `prompt_sha256` fica na linha.
 - **Maioridade**: `montar_spec` levanta `MenorDeIdade` abaixo de `MAIORIDADE`; nem o simulado fotografa.
 - **Pós-processamento honesto** (`adapters/pos_processamento.py::pos_processar`): recorte na proporção, redução e
   reampliação, ruído e desfoque leves, JPEG variável — a variação que fotos de gente comum têm. Sem EXIF inventado,

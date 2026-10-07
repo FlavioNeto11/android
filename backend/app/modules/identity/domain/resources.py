@@ -89,8 +89,7 @@ class SessionVerb(StrEnum):
 
 
 VERB_RISKS: dict[str, str] = {
-    SessionVerb.connect.value: ("autentica digitando a credencial do cofre pelo canal sensível (ADR-025); desafio, "
-                                "2FA e CAPTCHA param com a pessoa (ADR-009)"),
+    SessionVerb.connect.value: ("autentica digitando a credencial do cofre pelo canal sensível (ADR-025)"),
     SessionVerb.verify.value: "só relê a tela do app; não digita nada",
 }
 
@@ -294,7 +293,7 @@ def diff_app_session(spec: ResourceSpec, observed: ObservedState) -> Drift:
                      f"a sessão do perfil em {app} ainda não foi verificada em {iid}")
     if p.status is SessionStatus.auth_challenge:
         return drift(DriftStatus.blocked, SessionCode.challenge,
-                     f"desafio de segurança em {app}: só uma pessoa resolve (ADR-009/029)")
+                     f"desafio de segurança em {app}")
     if p.status is SessionStatus.wrong_account:
         return drift(DriftStatus.blocked, SessionCode.wrong_account, f"{iid} está com outra conta entrada em {app}")
     if p.status is SessionStatus.auth_required:

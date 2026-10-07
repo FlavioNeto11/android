@@ -63,8 +63,7 @@ _F = FailureKind
 STATUS_SEM_FALHA = frozenset({"succeeded", "running", "pending", "ready", "verifying", "retry_wait", "cancelled",
                               "skipped"})
 
-#: Nunca viram lição (ADR-054, decisão 5): autenticação, desafio, conta, IA e infraestrutura. Lição sobre elas
-#: ou é evasão (desafio, 2FA, CAPTCHA seguem com a pessoa — ADR-009) ou não ensina navegação nenhuma.
+#: Nunca viram lição (ADR-054, decisão 5): autenticação, desafio, conta, IA e infraestrutura.
 NUNCA_VIRA_LICAO = frozenset({_F.AUTENTICACAO, _F.CONTA_ERRADA, _F.IA_INDISPONIVEL, _F.IA_RECUSA, _F.IA_ORCAMENTO,
                               _F.IA_SALDO, _F.IA_CHAMADA_INVALIDA, _F.IA_DECLAROU_BLOQUEIO, _F.SESSAO_DE_AUTOMACAO,
                               _F.APP_ANR, _F.UI_OCUPADA, _F.APARELHO_TRAVADO, _F.INTERROMPIDA, _F.OUTRO,
