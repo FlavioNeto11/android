@@ -179,7 +179,12 @@ function Formulario({ listas, voltar, rascunho }: { listas: Listas; voltar: Reac
           </Field>
         </div>
         <p className={styles.mudo}>{ROTULO_DA_ACAO[acaoFinal].explica}</p>
-        {rascunho ? (
+        {rascunho?.origem === 'persona' ? (
+          <Banner tone="info" icon={Copy} compact role="status" title="Persona escolhida na tela Persona">
+            {daOperacao.length ? 'A persona já está marcada abaixo.' : 'A persona não foi encontrada na lista: marque quem vai operar.'} Preencha o objetivo, o app e o teto.
+          </Banner>
+        ) : null}
+        {rascunho?.origem === 'operacao' ? (
           <Banner tone="info" icon={Copy} compact role="status" title="Copiado de uma operação anterior">
             Objetivo, app, teto, fontes e personas vieram da operação anterior; conta e aparelho são resolvidos de novo, com o que existe agora.
             {rascunho.profileIds.length > daOperacao.length ? ` ${plural(rascunho.profileIds.length - daOperacao.length, 'persona não existe mais e ficou de fora', 'personas não existem mais e ficaram de fora')}.` : ''}

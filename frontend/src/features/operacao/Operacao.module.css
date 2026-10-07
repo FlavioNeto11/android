@@ -232,3 +232,5 @@
 .formulario section > ul {
   margin-top: var(--sp-3);
 }
+.filtroDeCancelar { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); border: 1px solid var(--border-1); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3); margin: 0 0 var(--sp-3); }
+.filtroDeCancelar legend { color: var(--text-3); font-size: var(--fs-sm); padding: 0 var(--sp-1); }

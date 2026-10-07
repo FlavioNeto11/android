@@ -5,11 +5,14 @@
  */
 import type { FiltroDoLivro } from './api';
 import { PROVAS_DO_LIVRO } from './api';
+import { ASSUNTO_MAX } from './assunto';
 import { isEstadoDoLivro, isLivroKind, ORIGENS, ROTULOS, type Rotulo } from './model';
 
-export const PARAMS_DO_FILTRO = { kind: 'tipo', state: 'estado', origem: 'origem', prova: 'prova', rotulo: 'visao' } as const;
+export const PARAMS_DO_FILTRO = { kind: 'tipo', state: 'estado', origem: 'origem', prova: 'prova', rotulo: 'visao', assunto: 'assunto' } as const;
 
 type Query = Record<string, string | undefined>;
+
+const assuntoValido = (v: string | undefined): string | undefined => (v && v.trim() && v.length <= ASSUNTO_MAX ? v.trim() : undefined);
 
 /** O filtro que o endereço diz (sem o `app`, que o Livro lê à parte). */
 export function lerFiltroDoEndereco(q: Query): Omit<FiltroDoLivro, 'app'> {
@@ -21,6 +24,8 @@ export function lerFiltroDoEndereco(q: Query): Omit<FiltroDoLivro, 'app'> {
     origem: ORIGENS.find((o) => o === q[PARAMS_DO_FILTRO.origem]),
     prova: PROVAS_DO_LIVRO.find((p) => p === q[PARAMS_DO_FILTRO.prova]),
     rotulo: ROTULOS.find((r): r is Rotulo => r === q[PARAMS_DO_FILTRO.rotulo]),
+    // 31.209: o servidor recusa mais de 200 caracteres (422); um link com mais do que isso vira "sem filtro".
+    assunto: assuntoValido(q[PARAMS_DO_FILTRO.assunto]),
   };
 }
 

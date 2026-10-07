@@ -17,6 +17,13 @@
  *   avisos_pressao         {instance_id, n} dos avisos "Convidado sob pressão de CPU" do minuto (ou o texto "android-05:3;android-01:1");
  *                          vazio = nenhum OU não medido (banco indisponível)
  *
+ *   cpu_media_pct          (v2 do amostrador, 29.185) CPU total do host como MÉDIA do minuto; `cpu_host_pct` é só o instantâneo de uma janela
+ *                          curta e oscila de 8 % a 91 % entre minutos vizinhos; null na 1ª linha de cada execução
+ *   demais_processos_pct   (v2) CPU dos processos vivos nas duas pontas do minuto que NÃO estão em `processos_top` nem no qemu
+ *   nao_atribuido_pct      (v2) `cpu_media_pct` menos todos os processos: o que nasce e morre dentro do minuto, núcleo/interrupções e o
+ *                          tempo da VM. Pode dar uns décimos NEGATIVOS por arredondamento; null na 1ª linha de cada execução
+ *
+ * As três colunas só crescem no fim do CSV: o amostrador anterior não as manda, e o leitor trata a ausência como "não medido".
  * O leitor aceita as duas formas (lista ou texto do CSV) e nunca troca "não medido" por zero.
  */
 import { ApiError, apiRequest, toApiError } from '../../api/client';
@@ -34,6 +41,10 @@ export interface AmostraDoHost {
   disco_livre_gb: number | null;
   processos_top: ProcessoDoHost[];
   avisos_pressao: AvisoDePressao[];
+  /** v2 do amostrador (29.185); `null` = não medido (1ª linha da execução, ou amostrador anterior). */
+  cpu_media_pct: number | null;
+  demais_processos_pct: number | null;
+  nao_atribuido_pct: number | null;
 }
 
 export interface AmostrasDoHost {
@@ -81,6 +92,7 @@ export function lerAmostra(v: unknown): AmostraDoHost | null {
     qemu_host_pct: numero(o.qemu_host_pct), ram_livre_mb: numero(o.ram_livre_mb), disco_livre_gb: numero(o.disco_livre_gb),
     processos_top: lerPares(o.processos_top, 'nome', 'pct', (nome, pct) => ({ nome, pct })),
     avisos_pressao: lerPares(o.avisos_pressao, 'instance_id', 'n', (instance_id, n) => ({ instance_id, n })),
+    cpu_media_pct: numero(o.cpu_media_pct), demais_processos_pct: numero(o.demais_processos_pct), nao_atribuido_pct: numero(o.nao_atribuido_pct),
   };
 }
 
@@ -104,16 +116,24 @@ export function amostrasDeExemplo(horas: number, agora: number = Date.now()): Am
     const i = k - n + 1;                                                    // 0 = agora; negativo = antes
     const pico = Math.abs(i + 22) < 6;
     const cpu = Math.min(99, 24 + 14 * ruido(k, 1) + (pico ? 48 : 0));
+    const qemu = Math.round((cpu * 0.55) * 10) / 10;
+    const topo = [Math.round((6 + ruido(k, 5) * 6 + (pico ? 20 : 0)) * 10) / 10, Math.round((2 + ruido(k, 6) * 3) * 10) / 10, 1.1];
+    const demais = Math.round((1 + ruido(k, 7) * 2) * 10) / 10;
+    const naoAtribuido = Math.round((1.5 + ruido(k, 8) * 5) * 10) / 10;
     return {
       ts_utc: new Date(Math.floor(agora / 60_000) * 60_000 + i * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
       cpu_host_pct: Math.round(cpu * 10) / 10,
       vm_convidado_nucleos: Math.round((1.6 + ruido(k, 2) * 0.8 + (pico ? 1.2 : 0)) * 100) / 100,
       vmmem_ws_mb: 2900 + Math.round(ruido(k, 3) * 120),
-      qemu_host_pct: k === 0 ? null : Math.round((cpu * 0.55) * 10) / 10,
+      qemu_host_pct: k === 0 ? null : qemu,
       ram_livre_mb: 5200 - Math.round(ruido(k, 4) * 400) - (pico ? 900 : 0),
       disco_livre_gb: 212.4,
-      processos_top: [{ nome: 'python', pct: Math.round((6 + ruido(k, 5) * 6 + (pico ? 20 : 0)) * 10) / 10 }, { nome: 'node', pct: Math.round((2 + ruido(k, 6) * 3) * 10) / 10 }, { nome: 'pwsh', pct: 1.1 }],
+      processos_top: [{ nome: 'python', pct: topo[0]! }, { nome: 'node', pct: topo[1]! }, { nome: 'pwsh', pct: topo[2]! }],
       avisos_pressao: pico ? [{ instance_id: 'android-05', n: 3 }, { instance_id: 'android-01', n: 1 }] : [],
+      // A média do minuto é a soma das partes (o exemplo é coerente de propósito); a 1ª linha não tem referência anterior.
+      cpu_media_pct: k === 0 ? null : Math.round((qemu + topo[0]! + topo[1]! + topo[2]! + demais + naoAtribuido) * 10) / 10,
+      demais_processos_pct: k === 0 ? null : demais,
+      nao_atribuido_pct: k === 0 ? null : naoAtribuido,
     };
   });
   return { amostras, falhas: 0, exemplo: true };

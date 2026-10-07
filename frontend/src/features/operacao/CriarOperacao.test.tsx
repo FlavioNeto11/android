@@ -116,7 +116,7 @@ describe('prévia, validação e corpo', () => {
     expect(lerOperacao({ id: 'op-8', parametros: {} })!.parametros).toBeNull();
     expect(rascunhoDaOperacao(op)).toEqual({
       command: 'comentar', appId: 'instagram', acaoFinal: 'executar', assunto: 'tema', maxUsd: '2,5', fontes: 'https://a.com', username: 'perfil', legenda: 'trecho',
-      profileIds: ['p1', 'p2'], parametrosNaoCopiados: ['outro_campo'],
+      profileIds: ['p1', 'p2'], parametrosNaoCopiados: ['outro_campo'], origem: 'operacao',
     });
   });
   it('montarCorpo: instance_id e account_id explícitos só onde existem; assunto vazio não vai', () => {

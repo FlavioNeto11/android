@@ -68,7 +68,7 @@ describe('montarRelatorio', () => {
 
   it('o consolidado: capacidade, custos com o teto, falhas agrupadas por motivo e textos irmãos', () => {
     expect(r.capacidade).toMatchObject({ solicitados: 5, concluidas: 3, bloqueadas: 2, motivos: [{ motivo: 'sem conta', n: 2 }] });
-    expect(r.custo).toEqual({ pesquisa_usd: 0.07, alvos_usd: 0.9, total_usd: 0.97, teto_usd: 4.5 });
+    expect(r.custo).toEqual({ pesquisa_usd: 0.07, alvos_usd: 0.9, total_usd: 0.97, teto_usd: 4.5, por_peca_usd: null });
     expect(r.falhas_por_motivo).toEqual([{ motivo: 'sem conta', parou_em: 'Conta', agentes: 2 }]);
     expect(r.textos.total).toBe(3);
     expect(r.textos.distintos).toBe(2);                                  // "Texto igual." e "texto  IGUAL." são o mesmo texto
@@ -96,6 +96,10 @@ describe('montarRelatorio', () => {
   it('o custo por agente vem do próprio alvo, do resultado só como reserva, e é nulo (não zero) sem execução', () => {
     expect(r.agentes.map((a) => a.custo_usd)).toEqual([0.1, 0.2, 0.05, null, null]);
     expect(r.limites.join(' ')).toContain('Custo por agente "não informado"');
+    // com todos os custos informados a nota não aparece (só a do estado de agora)
+    const completo = montarRelatorio(lerOperacao({ id: 'o', alvos: [{ run_id: 'r1', estado: 'concluido', custo_usd: 0.1 }, { run_id: 'r2', estado: 'concluido', custo_usd: 0 }] })!);
+    expect(completo.limites).toHaveLength(1);
+    expect(completo.limites[0]).toContain('estado da operação');
     expect(OP.alvos.map((a) => a.custo_usd)).toEqual([0.1, 0.2, 0.05, null, null]);
     // o do alvo vale mais que o do resultado quando os dois vêm
     expect(lerOperacao({ id: 'o', alvos: [{ custo_usd: 0.3, resultado: { texto: 'x', custo_usd: 0.9 } }] })!.alvos[0]!.custo_usd).toBe(0.3);
@@ -104,13 +108,13 @@ describe('montarRelatorio', () => {
 
   it('sem custo nem teto no backend, os campos ficam nulos, nunca zero', () => {
     const sem = montarRelatorio(lerOperacao({ ...BRUTA, custo: undefined, max_usd: undefined })!);
-    expect(sem.custo).toEqual({ pesquisa_usd: null, alvos_usd: null, total_usd: null, teto_usd: null });
+    expect(sem.custo).toEqual({ pesquisa_usd: null, alvos_usd: null, total_usd: null, teto_usd: null, por_peca_usd: null });
     expect(relatorioEmMarkdown(sem)).toContain('Total:** não informado');
   });
 
   it('custo parcial: a parte que falta fica nula (não informado), nunca zero, no JSON e no Markdown', () => {
     const parcial = montarRelatorio(lerOperacao({ ...BRUTA, custo: { total_usd: 0.97 } })!);
-    expect(parcial.custo).toEqual({ pesquisa_usd: null, alvos_usd: null, total_usd: 0.97, teto_usd: 4.5 });
+    expect(parcial.custo).toEqual({ pesquisa_usd: null, alvos_usd: null, total_usd: 0.97, teto_usd: 4.5, por_peca_usd: null });
     const md = relatorioEmMarkdown(parcial);
     expect(md).toContain('Pesquisa externa: não informado');
     expect(md).toContain('- Agentes: não informado');

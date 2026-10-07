@@ -159,7 +159,7 @@ describe('sem a rota no central (exemplo)', () => {
   it('o detalhe do agente mostra o texto gerado, o conhecimento, as evidências e os estágios; fecha de novo', async () => {
     await abrirExemplo();
     await click(byRole('button', /^Abrir o detalhe de Persona 01$/, container));
-    const d = container.querySelector('tbody tr:nth-child(2) td') as HTMLElement;
+    const d = container.querySelector('tbody tr:nth-child(2) td[colspan]') as HTMLElement;
     expect(text(d)).toContain('Ficou ótimo, parabéns pelo lançamento!');
     expect(text(d)).toContain('Ação final: Comentário, verificada.');
     expect(text(d)).toContain('Conhecimento usado (2)');
@@ -252,7 +252,7 @@ describe('com a rota no central', () => {
     await ir(['op-1']);
     await waitFor(() => expect(linhas()).toHaveLength(3));
     expect(container.querySelector('thead')!.textContent).toContain('Custo de IA');
-    const celulas = linhas().map((l) => Array.from(l.querySelectorAll('td'))[6]!.textContent);
+    const celulas = linhas().map((l) => Array.from(l.querySelectorAll('td'))[7]!.textContent);
     expect(celulas).toEqual(['US$ 0,0123', 'US$ 0,5000', '—']);
   });
 

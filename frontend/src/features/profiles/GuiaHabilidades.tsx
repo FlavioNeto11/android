@@ -11,6 +11,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { FLOW_STATUS, metaOf } from '../../lib/status';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { toastError } from '../../store/toasts';
+import { AlcanceDaPersona } from './AlcanceDaPersona';
 import { Carregando, Linha, useVersaoAoVivo } from './detalheComum';
 import type { Pessoa } from './pessoa';
 import styles from './Profiles.module.css';
@@ -23,7 +24,17 @@ const CUSTO_IA: Record<string, { label: string; tone: 'success' | 'warning' | 'd
   desconhecido: { label: 'cobertura desconhecida', tone: 'neutral' },
 };
 
+/** A guia Habilidades: o alcance (o que a persona PODE usar, 31.186) e, abaixo, o que ela já fez e o que roda sem IA. */
 export function AbaHabilidades({ profile }: { profile: Pessoa }) {
+  return (
+    <div className={styles.grid}>
+      <AlcanceDaPersona profile={profile} />
+      <HabilidadesDaPersona profile={profile} />
+    </div>
+  );
+}
+
+function HabilidadesDaPersona({ profile }: { profile: Pessoa }) {
   const [dados, setDados] = useState<ProfileCapabilities | null>(null);
   const now = useNow();
   const versao = useVersaoAoVivo(profile);

@@ -155,6 +155,8 @@ export interface Rascunho {
   profileIds: string[];
   /** Parâmetros fixos além de `username` e `caption_contains`, que o formulário não oferece e não copia. */
   parametrosNaoCopiados: string[];
+  /** De onde veio: de uma operação anterior ("Repetir como nova") ou da tela Persona ("Operar com esta persona"). */
+  origem: 'operacao' | 'persona';
 }
 
 let guardado: Rascunho | null = null;
@@ -170,7 +172,15 @@ export function rascunhoDaOperacao(op: Operacao): Rascunho {
     maxUsd: op.max_usd === null ? '' : String(op.max_usd).replace('.', ','), fontes: op.fontes.join('\n'),
     username: par.username ?? '', legenda: par.caption_contains ?? '',
     profileIds: [...new Set(op.alvos.map((a) => a.profile_id).filter((x): x is string => !!x))],
-    parametrosNaoCopiados: Object.keys(par).filter((k) => k !== 'username' && k !== 'caption_contains'),
+    parametrosNaoCopiados: Object.keys(par).filter((k) => k !== 'username' && k !== 'caption_contains'), origem: 'operacao',
+  };
+}
+
+/** "Operar com esta persona" (31.188): o formulário abre só com a persona marcada; o resto o app e a pessoa preenchem. */
+export function rascunhoDaPersona(profileId: string): Rascunho {
+  return {
+    command: '', appId: '', acaoFinal: 'preparar', assunto: '', maxUsd: '', fontes: '', username: '', legenda: '', profileIds: [profileId],
+    parametrosNaoCopiados: [], origem: 'persona',
   };
 }
 

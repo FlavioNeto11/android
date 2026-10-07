@@ -7,8 +7,10 @@
  * com a conferência dele (por isso não tem editor), e do parâmetro só o exemplo entra no fluxo e na prova automática.
  */
 import { Disclosure } from '../../components/Disclosure';
-import { Select, TextInput } from '../../components/Field';
+import { Select } from '../../components/Field';
 import type { TrainingProposal, TrainingStep } from '../../api/types';
+import { CampoMascarado } from './CampoMascarado';
+import { refs, semExibicao, type Exibicao } from './exibicao';
 import styles from './Training.module.css';
 
 type PosCondicao = TrainingStep['postcondition'];
@@ -26,9 +28,11 @@ export const semComprovacao = (s: Pick<TrainingStep, 'side_effect' | 'postcondit
   s.side_effect && !(s.postcondition?.value ?? '').trim() && !(s.postcondition?.description ?? '').trim();
 
 /** "Editar o que a etapa confere": tipo, valor e descrição. Abre sozinho na etapa com efeito que ainda não se comprova. */
-export function EditorDaPosCondicao({ indice, etapa, onChange }: {
+export function EditorDaPosCondicao({ indice, etapa, exibicao = semExibicao(), onChange }: {
   indice: number;
   etapa: TrainingStep;
+  /** 31.189: a cópia mascarada da proposta; os dois textos abaixo mostram a cópia até a pessoa pedir para editar. */
+  exibicao?: Exibicao;
   onChange: (pos: PosCondicao) => void;
 }) {
   const pos = etapa.postcondition ?? { kind: 'model_judged', value: '', description: '' };
@@ -49,11 +53,11 @@ export function EditorDaPosCondicao({ indice, etapa, onChange }: {
             {opcoes.map((t) => <option key={t.kind} value={t.kind}>{t.rotulo}</option>)}
           </Select>
           {(tipo ?? opcoes[0])?.valor ? (
-            <TextInput aria-label={`${(tipo ?? opcoes[0])!.valor} (etapa ${n})`} value={pos.value} placeholder={(tipo ?? opcoes[0])!.valor ?? undefined}
-                       onChange={(e) => mudar({ value: e.target.value })} />
+            <CampoMascarado rotulo={`${(tipo ?? opcoes[0])!.valor} (etapa ${n})`} valor={pos.value} placeholder={(tipo ?? opcoes[0])!.valor ?? undefined}
+                            referencia={refs.conferenciaValor(exibicao, etapa.key)} onChange={(v) => mudar({ value: v })} />
           ) : null}
-          <TextInput aria-label={`O que a tela mostra depois (etapa ${n})`} value={pos.description} placeholder="O que a tela mostra quando deu certo"
-                     onChange={(e) => mudar({ description: e.target.value })} />
+          <CampoMascarado rotulo={`O que a tela mostra depois (etapa ${n})`} valor={pos.description} placeholder="O que a tela mostra quando deu certo"
+                          referencia={refs.conferenciaDescricao(exibicao, etapa.key)} onChange={(v) => mudar({ description: v })} />
         </div>
       )}
     </Disclosure>
@@ -61,8 +65,9 @@ export function EditorDaPosCondicao({ indice, etapa, onChange }: {
 }
 
 /** "Editar os exemplos": o exemplo é o que a prova automática repete; a descrição do parâmetro não entra no fluxo salvo. */
-export function EditorDosParametros({ parametros, onChange }: {
+export function EditorDosParametros({ parametros, exibicao = semExibicao(), onChange }: {
   parametros: TrainingProposal['parameters'];
+  exibicao?: Exibicao;
   onChange: (lista: TrainingProposal['parameters']) => void;
 }) {
   const mudar = (i: number, parcial: Partial<TrainingProposal['parameters'][number]>) =>
@@ -74,8 +79,8 @@ export function EditorDosParametros({ parametros, onChange }: {
           {parametros.map((p, i) => (
             <div key={p.name} className={styles.parametro}>
               <strong>{`{${p.name}}`}</strong>
-              <TextInput aria-label={`Exemplo de {${p.name}}`} value={p.example} placeholder="Um valor de exemplo"
-                         onChange={(e) => mudar(i, { example: e.target.value })} />
+              <CampoMascarado rotulo={`Exemplo de {${p.name}}`} valor={p.example} placeholder="Um valor de exemplo"
+                              referencia={refs.exemplo(exibicao, p.name)} onChange={(v) => mudar(i, { example: v })} />
             </div>
           ))}
         </div>

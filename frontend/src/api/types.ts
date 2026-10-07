@@ -2131,6 +2131,8 @@ export interface TrainingSession {
   status: 'recording' | 'recorded' | 'proposed' | 'saved' | 'discarded';
   operator: string | null;
   proposal: TrainingProposal | null;
+  /** 31.189 (adendo v1.109): cópia da `proposal` com o dado da persona trocado por `{nome}`, só para EXIBIR; o painel nunca a devolve. Ausente = backend anterior. */
+  proposal_exibicao?: TrainingProposal | null;
   flow_id: string | null;
   created_at: string;
   finished_at: string | null;
