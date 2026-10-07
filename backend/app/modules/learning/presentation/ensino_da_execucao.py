@@ -79,8 +79,11 @@ def ensinar_da_execucao(request: Request, run_id: str) -> JsonObject:
         if e.receita is None:
             continue
         try:
-            mover(LivroKind.RECEITA, str(e.receita.id), "active", by=quem,
-                  reason=motivo_da_promocao(run_id, e.etapa.profile_id))
+            # os dois passos (candidate → validated → published) numa transação: a recusa do 2º desfaz o 1º, e a
+            # candidata segue ensinável (achado da revisão do PR 502)
+            with db.tx():
+                mover(LivroKind.RECEITA, str(e.receita.id), "active", by=quem,
+                      reason=motivo_da_promocao(run_id, e.etapa.profile_id))
         except ErroDeAprendizado as exc:
             recusadas.append({"recipe_id": e.receita.id, "step_key": e.etapa.key, "code": exc.code,
                               "message": str(exc)})
