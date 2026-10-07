@@ -1086,7 +1086,18 @@ class RunService:
         novo, motivo = plano_da_operacao.ajustar(plan, fixos, capabilities)
         if motivo:
             self.repo.decision(f"Plano da operação: {motivo}.", run_id=run_id)
+        # 31.236: a pergunta do planejador por um nome que a operação fixou já tem resposta (só os nomes vão ao texto)
+        novo, respondidos = plano_da_operacao.sem_perguntas_dos_fixos(novo, fixos)
+        if respondidos:
+            self.repo.decision(f"Plano da operação: a pergunta por {', '.join(respondidos)} foi respondida pelo "
+                               "parâmetro fixo da operação (31.236).", run_id=run_id)
         return novo, plano_da_operacao.colisoes(plan, fixos)
+
+    def _fixos_da_operacao(self, run_id: str) -> dict[str, str]:
+        """31.236: os `parametros` da operação da execução, para o planejador; fora de operação, vazio."""
+        valor = self.repo.db.scalar("SELECT o.parametros FROM runs r JOIN operacoes o ON o.id = r.operacao_id"
+                                    " WHERE r.id=?", (run_id,))
+        return {str(k): str(v) for k, v in (loads(valor, {}) or {}).items()}
 
     def _teto_da_operacao_estourado(self, run_id: str) -> str | None:
         """O teto da operação com corte suave (rodada de 30 alvos): a execução de alvo que ainda vai planejar, com a
@@ -1215,7 +1226,9 @@ class RunService:
                         catalogs=catalogos,
                         available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
                         lessons=list(licoes), habilidades=list(conhecidas.values()),
-                        etapas_ensinadas=ensinadas)),
+                        etapas_ensinadas=ensinadas,
+                        # 31.236: o planejador vê o que a operação já decidiu e não pergunta por isso
+                        parametros_fixos=self._fixos_da_operacao(run_id) if da_operacao else {})),
                     role="plan", marca=MarcaDaChamada(motivo="plano"))
                 # R6: todo plano do planejador declara os apps em que roda — os parsers já preenchem; isto cobre o
                 # provedor que não preenche (um dublê, um provedor novo). Plano de skill traz os dele do compilador.
