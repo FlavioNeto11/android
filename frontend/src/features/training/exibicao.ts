@@ -4,8 +4,9 @@
  * `proposal` (com as edições da pessoa), nunca a cópia. Aqui mora a regra de qual texto aparece:
  *  - texto que a pessoa NÃO mexeu: a cópia mascarada;
  *  - texto que a pessoa mexeu: o que ela escreveu (é dela; mostrar a cópia seria mostrar outro texto).
- * Os identificadores (`key`, `name`, `capability`, `inputs`, `seq`…) vêm iguais nas duas; é por eles que se casa uma etapa ou um
- * parâmetro, nunca pela posição na lista.
+ * Os identificadores (`name`, `capability`, `inputs`, `seq`…) vêm iguais nas duas, MENOS a `key` da etapa: na cópia ela também é mascarada
+ * (o `_` conta como separador). A etapa da cópia é por isso a que ocupa a MESMA posição da etapa original de mesma `key`; o parâmetro
+ * casa por `name`. O painel não cria, tira nem reordena etapas, então a posição da original é estável.
  */
 import type { TrainingProposal, TrainingStep } from '../../api/types';
 
@@ -27,13 +28,19 @@ export function etapaDe(p: TrainingProposal | null | undefined, key: string): Tr
   return p?.steps.find((s) => s.key === key);
 }
 
+/** A etapa da CÓPIA que corresponde à etapa `key` da original: a da mesma posição (a `key` da cópia vem mascarada). */
+export function etapaDaCopia(e: Exibicao, key: string): TrainingStep | undefined {
+  const i = e.original?.steps.findIndex((s) => s.key === key) ?? -1;
+  return i < 0 ? undefined : e.copia?.steps[i];
+}
+
 /** A referência (original e exibido) do texto de um campo da proposta. */
 export const refs = {
   comando: (e: Exibicao): CampoRef => ({ original: e.original?.command_template, exibido: e.copia?.command_template }),
-  titulo: (e: Exibicao, key: string): CampoRef => ({ original: etapaDe(e.original, key)?.title, exibido: etapaDe(e.copia, key)?.title }),
-  objetivo: (e: Exibicao, key: string): CampoRef => ({ original: etapaDe(e.original, key)?.goal, exibido: etapaDe(e.copia, key)?.goal }),
-  conferenciaValor: (e: Exibicao, key: string): CampoRef => ({ original: etapaDe(e.original, key)?.postcondition?.value, exibido: etapaDe(e.copia, key)?.postcondition?.value }),
-  conferenciaDescricao: (e: Exibicao, key: string): CampoRef => ({ original: etapaDe(e.original, key)?.postcondition?.description, exibido: etapaDe(e.copia, key)?.postcondition?.description }),
+  titulo: (e: Exibicao, key: string): CampoRef => ({ original: etapaDe(e.original, key)?.title, exibido: etapaDaCopia(e, key)?.title }),
+  objetivo: (e: Exibicao, key: string): CampoRef => ({ original: etapaDe(e.original, key)?.goal, exibido: etapaDaCopia(e, key)?.goal }),
+  conferenciaValor: (e: Exibicao, key: string): CampoRef => ({ original: etapaDe(e.original, key)?.postcondition?.value, exibido: etapaDaCopia(e, key)?.postcondition?.value }),
+  conferenciaDescricao: (e: Exibicao, key: string): CampoRef => ({ original: etapaDe(e.original, key)?.postcondition?.description, exibido: etapaDaCopia(e, key)?.postcondition?.description }),
   exemplo: (e: Exibicao, nome: string): CampoRef => ({
     original: e.original?.parameters.find((p) => p.name === nome)?.example, exibido: e.copia?.parameters.find((p) => p.name === nome)?.example,
   }),
@@ -65,7 +72,7 @@ export function paraExibir(p: TrainingProposal, e: Exibicao): TrainingProposal {
     discarded: p.discarded.map((d) => ({ ...d, why: t(d.why, o.discarded.find((x) => x.seq === d.seq)?.why, c.discarded.find((x) => x.seq === d.seq)?.why) })),
     steps: p.steps.map((s) => {
       const so = etapaDe(o, s.key);
-      const sc = etapaDe(c, s.key);
+      const sc = etapaDaCopia(e, s.key);
       return {
         ...s,
         title: t(s.title, so?.title, sc?.title),
