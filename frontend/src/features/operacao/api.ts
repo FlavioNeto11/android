@@ -7,6 +7,8 @@ import { ApiError, apiRequest, toApiError } from '../../api/client';
 import { lerLiberacao, lerLista, lerOperacao, type Operacao, type ResultadoDaLiberacao, type ResumoDaOperacao } from './modelo';
 import { lerAprendizado, type LeituraDoAprendizado } from './aprendizadoDaOperacao';
 import { OPERACAO_DE_EXEMPLO } from './operacaoDeExemplo';
+import type { RelatorioDaOperacao } from './relatorio';
+import { relatorioDoServidor } from './relatorioDoServidor';
 
 const enc = encodeURIComponent;
 
@@ -15,6 +17,9 @@ const rotaAusente = (e: unknown): boolean => {
   const err = toApiError(e);
   return err.status === 404 && err.code !== 'operacao_inexistente';
 };
+
+/** O relatório do central (v1.111) ou o porquê de não haver: o painel então monta o seu, como reserva. */
+export type LeituraDoRelatorio = { situacao: 'central'; relatorio: RelatorioDaOperacao } | { situacao: 'indisponivel'; motivo: string };
 
 export const EXEMPLO = (): Operacao => lerOperacao(OPERACAO_DE_EXEMPLO, true)!;
 
@@ -66,6 +71,20 @@ export const apiOperacoes = {
           ? 'A operação ainda não tem execução nem memória de aprendizado.' : 'O central ainda não oferece o aprendizado da operação.' };
       }
       return { situacao: 'indisponivel', motivo: `Não foi possível ler o aprendizado: ${err.message}` };
+    }
+  },
+  /**
+   * O relatório que o CENTRAL monta (adendo v1.111, `GET /api/operacoes/{id}/relatorio`; 31.197). Rota ausente, resposta fora do formato e
+   * falha de leitura viram "indisponível" com o motivo: o painel monta o relatório dele e diz que o do central não veio.
+   */
+  async relatorio(id: string, signal?: AbortSignal): Promise<LeituraDoRelatorio> {
+    try {
+      const r = relatorioDoServidor(await apiRequest<unknown>('GET', `/operacoes/${enc(id)}/relatorio`, { signal }));
+      return r ? { situacao: 'central', relatorio: r } : { situacao: 'indisponivel', motivo: 'O relatório do central veio em formato inesperado.' };
+    } catch (e) {
+      const err = toApiError(e);
+      if (rotaAusente(e)) return { situacao: 'indisponivel', motivo: 'O central ainda não oferece o relatório da operação.' };
+      return { situacao: 'indisponivel', motivo: `Não foi possível ler o relatório do central: ${err.message}` };
     }
   },
   async cancelar(id: string): Promise<Operacao> {
