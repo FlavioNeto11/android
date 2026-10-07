@@ -8044,7 +8044,7 @@ Portal (31.234, `.claude/handoffs/jev-para-portal-31-234.md`).
 - **Prova:** `simulated` (`backend/tests/test_pesquisa_no_get_da_operacao.py`, os quatro estados escritos pela própria
   pesquisa da operação). `real`: `not_run`, até o GET da primeira operação com assunto depois do deploy.
 
-## Adendo (07/10/2026; número a definir pela orquestradora; item 31.251 no aguarda_resposta) — o alvo adiado pela frota e o que espera resposta
+## Adendo v1.126 (07/10/2026; número da orquestradora; itens 31.258 e 31.251) — o alvo adiado pela frota e o que espera resposta
 
 Sem rota nova. O `GET /api/operacoes/{id}` ganha campos aditivos e só de leitura; ausentes no central anterior.
 
@@ -8060,7 +8060,7 @@ Sem rota nova. O `GET /api/operacoes/{id}` ganha campos aditivos e só de leitur
   `app.social.policy.ESPACO_DA_FROTA`.
 - **Prova:** `simulated` (`backend/tests/test_frota_adiada_no_get.py`). `real`: `not_run` até o deploy.
 
-## Adendo (07/10/2026; número a definir pela orquestradora) — a pesquisa no relatório consolidado (v1.111)
+## Adendo v1.127 (07/10/2026; número da orquestradora; item 31.259) — a pesquisa no relatório consolidado (v1.111)
 
 Sem rota nova. O `GET /api/operacoes/{id}/relatorio` muda em dois pontos.
 
