@@ -67,7 +67,7 @@ function Get-EstadoDoAmostrador {
   $processo = $null
   try {
     $processo = Get-CimInstance Win32_Process -ErrorAction Stop |
-      Where-Object { $_.CommandLine -and $_.CommandLine -like '*amostrador-host.ps1*' -and $_.CommandLine -notlike '*Get-CimInstance*' -and $_.ProcessId -ne $PID } |
+      Where-Object { $_.CommandLine -and $_.CommandLine -match '[\\/]scripts[\\/]amostrador-host\.ps1' -and $_.CommandLine -notlike '*Get-CimInstance*' -and $_.ProcessId -ne $PID } |
       Select-Object -First 1
   } catch { }
   return @{

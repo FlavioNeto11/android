@@ -100,7 +100,7 @@ class TestLeituras:
         assert _ps(tmp_path, f"Get-CabecalhoDoUltimoCsv -Pasta '{tmp_path / 'nao-existe'}'").stdout.strip() == ""
 
 
-def _montar(tmp: Path, *, registrada=True, rodando=True, csv_v1=True, processo_novo=True, nova_linha=True) -> str:
+def _montar(tmp: Path, *, registrada=True, rodando=True, csv_v1=True, processo_novo=True, nova_linha=True, serie_manual=False) -> str:
     """Um 'host' falso: tarefa, processo, amostrador e CSV. Devolve o corpo PowerShell que chama o Update e imprime o resultado."""
     (tmp / "scripts").mkdir(exist_ok=True)
     pasta = tmp / "data" / "observabilidade" / "host"
@@ -114,8 +114,12 @@ def _montar(tmp: Path, *, registrada=True, rodando=True, csv_v1=True, processo_n
     desde = datetime.now() + timedelta(hours=1) if processo_novo else datetime.now() - timedelta(hours=2)
     return "\n".join([
         f"function Get-ScheduledTask {{ [CmdletBinding()] param($TaskName) if ({'$true' if registrada else '$false'}) {{ [pscustomobject]@{{ TaskName = $TaskName }} }} }}",
-        f"function Get-CimInstance {{ [CmdletBinding()] param([Parameter(Position=0)]$ClassName) if ({'$true' if rodando else '$false'}) "
-        f"{{ [pscustomobject]@{{ CommandLine = 'pwsh -File x/amostrador-host.ps1'; ProcessId = 99999; CreationDate = [datetime]'{desde:%Y-%m-%dT%H:%M:%S}' }} }} }}",
+        # A série manual do DevOps (devops-amostrador-host.ps1, de dias atrás) NÃO é o amostrador da tarefa e vem ANTES na lista.
+        f"function Get-CimInstance {{ [CmdletBinding()] param([Parameter(Position=0)]$ClassName) if ({'$true' if serie_manual else '$false'}) "
+        "{ [pscustomobject]@{ CommandLine = 'pwsh -File x/.claude/handoffs/devops-amostrador-host.ps1 -Minutos 1440'; ProcessId = 88888; "
+        "CreationDate = [datetime]'2020-01-01T00:00:00' } }; "
+        f"if ({'$true' if rodando else '$false'}) "
+        f"{{ [pscustomobject]@{{ CommandLine = 'pwsh -File x/scripts/amostrador-host.ps1'; ProcessId = 99999; CreationDate = [datetime]'{desde:%Y-%m-%dT%H:%M:%S}' }} }} }}",
         f"function Stop-ScheduledTask {{ [CmdletBinding()] param($TaskName) Add-Content -LiteralPath '{log}' 'stop' }}",
         f"function Start-ScheduledTask {{ [CmdletBinding()] param($TaskName) Add-Content -LiteralPath '{log}' 'start'; "
         + (f"Add-Content -LiteralPath '{csv}' '2026-10-07T02:34:55Z,13.6,0.31,6973,,24756,118.3,,0,,,' }}" if nova_linha else "}"),
@@ -151,6 +155,10 @@ class TestAcao:
     def test_script_mais_novo_que_o_processo_reinstala_mesmo_com_cabecalho_igual(self, tmp_path):
         res, chamadas = _atualizar(tmp_path, csv_v1=False, processo_novo=False)
         assert res["resultado"] == "reinstalado" and "mais novo" in res["motivo"]
+
+    def test_a_serie_manual_do_devops_nao_e_confundida_com_o_amostrador_da_tarefa(self, tmp_path):
+        res, chamadas = _atualizar(tmp_path, csv_v1=False, serie_manual=True)
+        assert res["resultado"] == "nada" and chamadas == [], "o processo da tarefa e novo; o de 2020 e outro script"
 
     def test_simular_so_diz_o_que_faria(self, tmp_path):
         res, chamadas = _atualizar(tmp_path, extra="-Simular")
