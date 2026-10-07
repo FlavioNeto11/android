@@ -92,3 +92,8 @@ def test_a_evidencia_do_31_178_e_o_fato_confirmado_do_31_179(tmp_path: Path) -> 
     assert saida["pendentes"] == []
     assert prova.marcar(c, "op-sem-nada", "f" * 40, ancestral=lambda _i, _n: None)["resultados"] == []
     c.close()
+
+
+def test_a_saude_so_aceita_http() -> None:
+    with pytest.raises(ValueError):
+        prova.commit_da_saude("file:///etc/passwd")

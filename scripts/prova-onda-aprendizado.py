@@ -118,6 +118,8 @@ def no_ar(commit_do_item: str, commit_no_ar: str, *, repo: Path = RAIZ) -> bool 
 
 
 def commit_da_saude(url: str = SAUDE) -> str:
+    if not url.startswith(("http://", "https://")):          # só HTTP: o `urlopen` também abriria `file:` (revisão)
+        raise ValueError("a saúde é uma URL http(s)")
     with urllib.request.urlopen(url, timeout=10) as resp:      # noqa: S310 - URL local fixa ou dada pelo operador
         return str(json.load(resp).get("commit") or "")
 
