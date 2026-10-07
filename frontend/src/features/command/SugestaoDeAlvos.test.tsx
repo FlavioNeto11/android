@@ -27,7 +27,7 @@ const SUGESTAO: RunTargetsSuggestion = {
                  aderencia: 'alta', instance_id: 'android-02', servidor: 'Central' }],
   descartadas: [{ profile_id: 'p-nelson', nome: 'Nelson', motivo: 'ateu: o pedido exige falar como fiel' }],
   nao_avaliaveis: [{ profile_id: 'p-bia', nome: 'Sueli', falta: 'crenças não registradas' }],
-  alerta_conduta: null, perguntas: [], questions: [], command_sem_destinos: 'responda à tia sobre a missa',
+  perguntas: [], questions: [], command_sem_destinos: 'responda à tia sobre a missa',
   resumo: 'Marina: a única com fé declarada e sessão pronta.', warnings: [],
 };
 
@@ -77,17 +77,6 @@ describe('Modo Automático', () => {
       command: 'responda à tia sobre a missa de domingo', mode: 'execute', instance_ids: [],
       targets: [{ profile_id: 'p-marina', instance_ids: ['android-02'], app_id: 'instagram' }],
     });
-  });
-
-  it('alerta de conduta: nada para confirmar e nenhuma execução', async () => {
-    backend.on('POST', /^\/api\/runs\/targets\/suggest$/, () => json({
-      ...SUGESTAO, targets: [], escolhidas: [], descartadas: [], nao_avaliaveis: [],
-      alerta_conduta: 'o pedido é propaganda eleitoral', resumo: '' }));
-    await setValue(campo(), 'comente pedindo voto no candidato X');
-    await click(byRole('button', /^Planejar/));
-    await waitFor(() => expect(text(container)).toContain('o pedido é propaganda eleitoral'));
-    await click(byRole('button', /^Confirmar e planejar/));
-    expect(backend.callsTo('POST', /^\/api\/runs$/)).toHaveLength(0);
   });
 
   it('"Escolher manualmente" a partir da sugestão leva ao modo por persona com as sugeridas marcadas', async () => {

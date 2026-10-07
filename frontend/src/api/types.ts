@@ -370,17 +370,8 @@ interface Settings {
   step_timeout_s: number; objective_timeout_s: number; driver_call_timeout_s: number;
   retry_backoff_s: number; no_progress_limit: number;
   session_unknown_retry_cap: number;
-  // v0.4 — coordenação de frota sobre o mesmo alvo (item 8.3/achado #114)
-  fleet_max_accounts_per_target: number;
-  /** A janela, em dias, em que a ação de outra conta sobre o mesmo alvo conta para a regra (ADR-055; substitui a `fleet_target_window_s`, sem uso). */
-  fleet_target_window_days: number;
-  /** ADR-081: quantas contas DIFERENTES da frota podem seguir, mandar mensagem ou comentar para o mesmo alvo dentro da janela (as curtidas têm o teto próprio acima). Backend anterior ao corte 56 não manda. */
-  frota_max_contas_por_alvo?: number;
-  /** ADR-081: ligado (padrão), o alvo que é conta nossa ativa não entra nessa contagem; pessoa real sempre entra. Backend anterior ao corte 56 não manda. */
-  frota_conta_nossa_fora_da_regra?: boolean;
-  /** 28.61: id de um grupo de política cujas personas não passam pela aprovação de política (recusas, conduta, proteção de conta e tetos seguem); vazio = desligado. Backend anterior ao corte 57 não manda. */
+  /** 28.61: id de um grupo de política cujas personas não passam pela aprovação de política (recusas e tetos seguem); vazio = desligado. Backend anterior ao corte 57 não manda. */
   grupo_sem_aprovacao?: string;
-  fleet_min_spacing_between_accounts_s: number; fleet_spacing_jitter_s: number;
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;
   // item 17.12 — o teto de chamadas cresce por item do for_each (base + por_item × (itens − 1)), até o absoluto
   ai_max_calls_per_item: number; ai_max_calls_absolute: number;
@@ -3021,7 +3012,6 @@ export interface RunTargetsSuggestion {
   escolhidas: PersonaEscolhida[];
   descartadas: PersonaDescartada[];
   nao_avaliaveis: PersonaNaoAvaliavel[];
-  alerta_conduta: string | null;
   perguntas: string[];
   questions: TargetQuestion[];
   command_sem_destinos: string;
@@ -3203,7 +3193,7 @@ export interface PreviaDaPorta {
   parcial: boolean;
   total: boolean;
   itens: ItemDaPorta[];
-  na_execucao: { textos_da_tela: number; itens_for_each: number; sempre: string[] };
+  na_execucao: { textos_da_tela: number; itens_for_each: number };
 }
 
 export interface AprovarPlanoItem {

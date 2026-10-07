@@ -35,7 +35,7 @@ from app.planning.capabilities import capability_of
 from app.planning.pesquisa import Citacao, PesquisaBruta, PesquisaRequest, Resultado, fatos_consolidados
 from app.planning.provider import Usage
 
-from .test_capabilities import IG
+from .apoio_politica import IG
 from .test_conhecimento_da_operacao import LEGENDA, _com_operacao
 from .test_pedidos_modelo import _banco, _run
 from .test_porta_do_plano import _plano

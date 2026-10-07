@@ -207,17 +207,7 @@ limits:
   retry_backoff_s: 5
   no_progress_limit: 4
   ai_max_calls_per_objective: 60
-  # Contas NOSSAS podem interagir entre si (29.28, emenda do ADR-050): este é o espaçamento mínimo, em segundos, entre dois gestos
-  # públicos da MESMA conta quando o alvo é outra conta da frota (viva); vale o maior entre ele e o cooldown do perfil (45 s).
-  # Conta retirada por bloqueio segue recusada. Baixe com cuidado: é o ritmo baixo que a decisão do dono pede.
-  fleet_min_spacing_to_own_account_s: 600
-  # ADR-081 (dono, 06/10): quantas contas diferentes da frota podem seguir, mandar mensagem ou comentar para o mesmo alvo
-  # dentro de fleet_target_window_days (era 1). As curtidas seguem em fleet_max_accounts_per_target.
-  frota_max_contas_por_alvo: 10
-  # ADR-081: o alvo que é conta nossa viva não entra nessa contagem; pessoa real sempre entra.
-  frota_conta_nossa_fora_da_regra: true
-  # 28.61: id do grupo de política cujas personas não passam pela aprovação de política (vazio = desligado). As recusas,
-  # os tetos, a conduta, a proteção de conta, o teto preparar e o liberar da operação continuam.
+  # 28.61: id do grupo de política cujas personas não passam pela aprovação de política (vazio = desligado).
   grupo_sem_aprovacao: ""
   # 31.253 / ADR-082: na operação com acao_final executar, o alvo cuja persona está nesse grupo nasce com o teto agir (sem
   # aprovação, sem Telegram, sem liberar). false volta ao teto preparar para todos (28.23).

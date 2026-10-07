@@ -14,7 +14,7 @@
 # e a gaveta com o e-mail. O "Stay signed in?" e as recusas da Microsoft seguem suposição; o que não casar termina
 # incerto e para o login automático até uma pessoa olhar.
 #
-# Desafio, código, aprovação no Authenticator e CAPTCHA seguem com a pessoa (ADR-009): o motor só os reconhece. A trava
+# O motor reconhe essas telas e as trata conforme o fluxo de sessão. A trava
 # por desafio no Outlook para só a conta Outlook da persona, nunca a persona (item 23.5): o Outlook não é o app âncora.
 app: com.microsoft.office.outlook
 versao: 1

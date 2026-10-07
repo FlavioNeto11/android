@@ -17,7 +17,7 @@ from typing import Any
 from app.contracts.origem import PREFIXO_ENSAIO
 from app.models import ProfileCreate
 
-from .test_capabilities import IG, SENHA
+from .apoio_politica import IG, SENHA
 
 OID = "run-e:android-01"
 ETAPA = f"{OID}:v1:comment_1"

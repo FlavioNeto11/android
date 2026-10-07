@@ -23,7 +23,7 @@ Com um `CommandBus` (segunda parte da fase H):
   de pessoa); `verify` relê o vínculo, e `reconcile` não tem comando a fechar;
 * `app.session` aplica pelo canal de comandos o que a porta de sessão já faz: `session.connect` é o trabalho da porta
   (`ensure_session(automatic=True)`, com a credencial do cofre pelo canal sensível, ADR-025) e `session.verify` é a
-  releitura da tela (`observe_only=True`, sem digitar nada). Desafio, 2FA e CAPTCHA continuam com a pessoa (o `diff`
+  releitura da tela (`observe_only=True`, sem digitar nada). O `diff`
   os põe em `blocked`, ADR-009/029). A prova de um `uncertain` é a sessão verificada DEPOIS do comando.
 """
 from __future__ import annotations

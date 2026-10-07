@@ -1,0 +1,961 @@
+{
+  "gerado_em": "2026-10-06T23:14:11.201Z",
+  "operacao": {
+    "id": "op-20261006194323-0a1540",
+    "comando": "No Instagram, abra pela busca o seu próprio perfil, abra a publicação cuja legenda contém \"Primeira foto por aqui.\" e comente nela com a sua leitura sobre esse assunto, ligando ao que a publicação mostra.",
+    "app_id": "instagram",
+    "acao_final": "executar",
+    "status": "Concluída",
+    "criada_em": "2026-10-06T19:43:23.422Z",
+    "encerrada_em": "2026-10-06T19:48:05.915Z",
+    "assunto": "novidades do Instagram em outubro de 2026 que afetam quem publica fotos",
+    "fontes": []
+  },
+  "capacidade": {
+    "solicitados": 1,
+    "contas_existentes": 1,
+    "sessoes_validas": 1,
+    "contas_disponiveis": 1,
+    "concluidas": 1,
+    "bloqueadas": 0,
+    "em_curso": 0,
+    "motivos": []
+  },
+  "custo": {
+    "pesquisa_usd": 0.0526,
+    "alvos_usd": 0.2368,
+    "total_usd": 0.2894,
+    "teto_usd": 0.75
+  },
+  "falhas_por_motivo": [],
+  "textos": {
+    "total": 1,
+    "distintos": 1,
+    "repetidos": [],
+    "lista": [
+      {
+        "agente": "Lucas Almeida",
+        "texto": "marcada como AI content, mas a estreia foi aqui mesmo. bom começo pra galeria"
+      }
+    ]
+  },
+  "agentes": [
+    {
+      "agente": "Lucas Almeida",
+      "aparelho": "android-01",
+      "estado": "Concluído",
+      "parou_em": null,
+      "motivo": null,
+      "estagios": [
+        {
+          "estagio": "persona",
+          "rotulo": "Persona",
+          "em": "2026-10-06T19:43:23.422Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "conta",
+          "rotulo": "Conta",
+          "em": "2026-10-06T19:43:23.422Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "sessao",
+          "rotulo": "Sessão",
+          "em": "2026-10-06T19:43:23.422Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "aparelho",
+          "rotulo": "Aparelho",
+          "em": "2026-10-06T19:43:29.961Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "instagram_aberto",
+          "rotulo": "Instagram aberto",
+          "em": "2026-10-06T19:43:29.958Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "target_localizado",
+          "rotulo": "Perfil-alvo localizado",
+          "em": "2026-10-06T19:43:54.920Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "post_localizado",
+          "rotulo": "Post localizado",
+          "em": "2026-10-06T19:44:28.063Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "conteudo_lido",
+          "rotulo": "Conteúdo lido",
+          "em": "2026-10-06T19:44:33.206Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "conhecimento_recuperado",
+          "rotulo": "Conhecimento recuperado",
+          "em": "2026-10-06T19:44:42.438Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "resposta_gerada",
+          "rotulo": "Resposta gerada",
+          "em": "2026-10-06T19:48:05.915Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "interface_de_comentario_alcancada",
+          "rotulo": "Interface de comentário alcançada",
+          "em": "2026-10-06T19:44:32.674Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "acao_preparada",
+          "rotulo": "Ação preparada",
+          "em": "2026-10-06T19:48:05.915Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "acao_executada",
+          "rotulo": "Ação executada",
+          "em": "2026-10-06T19:48:05.915Z",
+          "alcancado": true
+        },
+        {
+          "estagio": "resultado_verificado",
+          "rotulo": "Resultado verificado",
+          "em": "2026-10-06T19:48:05.915Z",
+          "alcancado": true
+        }
+      ],
+      "conhecimento_ids": [],
+      "texto": "marcada como AI content, mas a estreia foi aqui mesmo. bom começo pra galeria",
+      "evidencia_id": 2941,
+      "acao_final": {
+        "tipo": "CREATE_COMMENT",
+        "verificada": "sim",
+        "evidencia_id": 2943
+      },
+      "custo_usd": 0.2894
+    }
+  ],
+  "aprendizado": {
+    "disponivel": true,
+    "motivo": null,
+    "gerado_em": "2026-10-06T23:14:11.187Z",
+    "nao_coberto": [
+      {
+        "chave": "conhecimento_geral",
+        "motivo": "A promoção de um fato da operação a conhecimento geral do Livro (curadoria) não existe: aqui aparecem os fatos confirmados da operação, que são candidatos."
+      },
+      {
+        "chave": "pedido_relatorios",
+        "motivo": "A operação não é um pedido: o relatório periódico do pedido não se aplica a ela."
+      },
+      {
+        "chave": "persona_aprendeu",
+        "motivo": "Só a memória que a persona aprendeu de uma interação liga-se à execução; a memória de observação de tela não guarda a execução e não aparece aqui."
+      },
+      {
+        "chave": "falhas_que_geraram_aprendizado",
+        "motivo": "O backlog de falhas não guarda a execução: a ligação com a operação é inferida por app, ação e tipo de falha, e vem marcada `inferida`."
+      }
+    ],
+    "perguntas": [
+      {
+        "chave": "plataforma_aprendeu",
+        "titulo": "O que a plataforma aprendeu",
+        "veio": true,
+        "itens": [
+          {
+            "ref": "receita:91",
+            "tipo": "receita",
+            "escopo": "app",
+            "resumo": "open_comments_1 em com.instagram.android (v1, 10 ok / 1 falhas)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 1,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "receita:111",
+            "tipo": "receita",
+            "escopo": "app",
+            "resumo": "open_post_1 em com.instagram.android (v2, 5 ok / 0 falhas)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 1,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fluxo:f-f1613acf64a0",
+            "tipo": "fluxo",
+            "escopo": "processo",
+            "resumo": "No Instagram, abra pela busca o seu próprio perfil, abra a publicação cuja legenda contém \"{caption_contains}\" e comente nela com a sua leitura sobre esse assunto, ligando ao que a publicação mostra.",
+            "confianca": "hipotese",
+            "persona": "Lucas Almeida",
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 1,
+            "contra": 0,
+            "fontes": []
+          }
+        ]
+      },
+      {
+        "chave": "persona_aprendeu",
+        "titulo": "O que uma persona aprendeu",
+        "veio": true,
+        "itens": [
+          {
+            "ref": "interacao:int-T8LxiKyx9qxRIGkL",
+            "tipo": "interacao",
+            "escopo": "persona",
+            "resumo": "comment_replied (outbound, confirmed) em instagram",
+            "confianca": "confirmado",
+            "persona": "Lucas Almeida",
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          }
+        ]
+      },
+      {
+        "chave": "do_app",
+        "titulo": "O que pertence ao app",
+        "veio": true,
+        "itens": [
+          {
+            "ref": "receita:91",
+            "tipo": "receita",
+            "escopo": "app",
+            "resumo": "open_comments_1 em com.instagram.android (v1, 10 ok / 1 falhas)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 1,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "receita:111",
+            "tipo": "receita",
+            "escopo": "app",
+            "resumo": "open_post_1 em com.instagram.android (v2, 5 ok / 0 falhas)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 1,
+            "contra": 0,
+            "fontes": []
+          }
+        ]
+      },
+      {
+        "chave": "do_processo",
+        "titulo": "O que pertence ao processo",
+        "veio": true,
+        "itens": [
+          {
+            "ref": "fluxo:f-f1613acf64a0",
+            "tipo": "fluxo",
+            "escopo": "processo",
+            "resumo": "No Instagram, abra pela busca o seu próprio perfil, abra a publicação cuja legenda contém \"{caption_contains}\" e comente nela com a sua leitura sobre esse assunto, ligando ao que a publicação mostra.",
+            "confianca": "hipotese",
+            "persona": "Lucas Almeida",
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 1,
+            "contra": 0,
+            "fontes": []
+          }
+        ]
+      },
+      {
+        "chave": "conhecimento_geral",
+        "titulo": "O que é conhecimento geral",
+        "veio": true,
+        "itens": [
+          {
+            "ref": "fato:alvo.conteudo",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "lucas.almeida9484 Primeira foto por aqui.",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fato:pesquisa.37766261cb9f",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "O feed passou a privilegiar fotos em proporção vertical 3:4, formato nativo dos smartphones. Posts antigos podem ser ajustados entre as opções \"ajustar\" e \"preencher\".",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 2,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fato:pesquisa.7820db760e2f",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "Agora é possível adicionar fotos nos comentários de posts e Reels, tocando no ícone de foto.",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 2,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          }
+        ]
+      },
+      {
+        "chave": "fontes_externas",
+        "titulo": "O que veio de fontes externas",
+        "veio": true,
+        "itens": [
+          {
+            "ref": "fonte:fonte.19d67b8cc202",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "Instagram em 2026: O Que Mudou e Como Usar na Estratégia da Sua Marca — https://www.dgitais.com/post/novas-funcionalidades-instagram-em-2026/ (acessado em 2026-10-06, página de 144 days ago)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.27b0b924d4a2",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "New Instagram Updates & Features — https://napoleoncat.com/blog/instagram-new-features-and-updates/ (acessado em 2026-10-06, página de 5 days ago)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.2e93404e3fc9",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "Instagram Updates & News 2026 — https://metricool.com/instagram-news/ (acessado em 2026-10-06, página de 4 days ago)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.457e56fb809c",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "Atualização do Instagram: principais mudanças de 2026 — https://www.bagy.com.br/blog/atualizacao-do-instagram/ (acessado em 2026-10-06, página de 297 days ago)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.915f42223e26",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "Instagram 2026: Guia Completo com Todas as Atualizações e Estratégias — https://camaleoescriativos.com/atualizacoes-instagram-2026-guia-completo-e-estrategias/ (acessado em 2026-10-06, página de 233 d",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.ea7b2666d9d7",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "Novidades do Instagram 2026: Recursos, Algoritmo e Estratégias — https://jamilefernandes.com.br/blog/novidades-do-instagram-2026-recursos-algoritmo-e-estrategias (acessado em 2026-10-06, página de 147",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          }
+        ]
+      },
+      {
+        "chave": "fontes_que_sustentam",
+        "titulo": "Quais fontes sustentam um conhecimento",
+        "veio": true,
+        "itens": [
+          {
+            "ref": "fato:alvo.conteudo",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "obs5c5e835875b309e8",
+                "resumo": null
+              }
+            ]
+          },
+          {
+            "ref": "fato:pesquisa.1ab38b69b046",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "fonte:fonte.915f42223e26",
+                "resumo": "Instagram 2026: Guia Completo com Todas as Atualizações e Estratégias — https://camaleoescriativos.com/atualizacoes-instagram-2026-guia-completo-e-estrategias/ (acessado em 2026-10-06, página de 233 d"
+              }
+            ]
+          },
+          {
+            "ref": "fato:pesquisa.37766261cb9f",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "fonte:fonte.457e56fb809c",
+                "resumo": "Atualização do Instagram: principais mudanças de 2026 — https://www.bagy.com.br/blog/atualizacao-do-instagram/ (acessado em 2026-10-06, página de 297 days ago)"
+              },
+              {
+                "ref": "fonte:fonte.915f42223e26",
+                "resumo": "Instagram 2026: Guia Completo com Todas as Atualizações e Estratégias — https://camaleoescriativos.com/atualizacoes-instagram-2026-guia-completo-e-estrategias/ (acessado em 2026-10-06, página de 233 d"
+              }
+            ]
+          },
+          {
+            "ref": "fato:pesquisa.6aac6053146c",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "fonte:fonte.27b0b924d4a2",
+                "resumo": "New Instagram Updates & Features — https://napoleoncat.com/blog/instagram-new-features-and-updates/ (acessado em 2026-10-06, página de 5 days ago)"
+              }
+            ]
+          },
+          {
+            "ref": "fato:pesquisa.7820db760e2f",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "fonte:fonte.27b0b924d4a2",
+                "resumo": "New Instagram Updates & Features — https://napoleoncat.com/blog/instagram-new-features-and-updates/ (acessado em 2026-10-06, página de 5 days ago)"
+              },
+              {
+                "ref": "fonte:fonte.2e93404e3fc9",
+                "resumo": "Instagram Updates & News 2026 — https://metricool.com/instagram-news/ (acessado em 2026-10-06, página de 4 days ago)"
+              }
+            ]
+          },
+          {
+            "ref": "fato:pesquisa.7c8e9ce4309b",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "fonte:fonte.27b0b924d4a2",
+                "resumo": "New Instagram Updates & Features — https://napoleoncat.com/blog/instagram-new-features-and-updates/ (acessado em 2026-10-06, página de 5 days ago)"
+              }
+            ]
+          },
+          {
+            "ref": "fato:pesquisa.dbea09a151ae",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "fonte:fonte.ea7b2666d9d7",
+                "resumo": "Novidades do Instagram 2026: Recursos, Algoritmo e Estratégias — https://jamilefernandes.com.br/blog/novidades-do-instagram-2026-recursos-algoritmo-e-estrategias (acessado em 2026-10-06, página de 147"
+              }
+            ]
+          },
+          {
+            "ref": "fato:pesquisa.e84c86140d15",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "fonte:fonte.19d67b8cc202",
+                "resumo": "Instagram em 2026: O Que Mudou e Como Usar na Estratégia da Sua Marca — https://www.dgitais.com/post/novas-funcionalidades-instagram-em-2026/ (acessado em 2026-10-06, página de 144 days ago)"
+              }
+            ]
+          },
+          {
+            "ref": "fato:pesquisa.f25ecf79046b",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "fonte:fonte.27b0b924d4a2",
+                "resumo": "New Instagram Updates & Features — https://napoleoncat.com/blog/instagram-new-features-and-updates/ (acessado em 2026-10-06, página de 5 days ago)"
+              }
+            ]
+          },
+          {
+            "ref": "receita:91",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "r-20261006194323-240d40",
+                "resumo": null
+              }
+            ]
+          },
+          {
+            "ref": "receita:111",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "r-20261006194323-240d40",
+                "resumo": null
+              }
+            ]
+          },
+          {
+            "ref": "fluxo:f-f1613acf64a0",
+            "tipo": null,
+            "escopo": null,
+            "resumo": null,
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 0,
+            "a_favor": null,
+            "contra": null,
+            "fontes": [
+              {
+                "ref": "r-20261006194323-240d40",
+                "resumo": null
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "chave": "reutilizavel",
+        "titulo": "O que é reutilizável",
+        "veio": true,
+        "itens": [
+          {
+            "ref": "fato:alvo.conteudo",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "lucas.almeida9484 Primeira foto por aqui.",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fato:pesquisa.37766261cb9f",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "O feed passou a privilegiar fotos em proporção vertical 3:4, formato nativo dos smartphones. Posts antigos podem ser ajustados entre as opções \"ajustar\" e \"preencher\".",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 2,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fato:pesquisa.7820db760e2f",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "Agora é possível adicionar fotos nos comentários de posts e Reels, tocando no ícone de foto.",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 2,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.19d67b8cc202",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "Instagram em 2026: O Que Mudou e Como Usar na Estratégia da Sua Marca — https://www.dgitais.com/post/novas-funcionalidades-instagram-em-2026/ (acessado em 2026-10-06, página de 144 days ago)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.27b0b924d4a2",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "New Instagram Updates & Features — https://napoleoncat.com/blog/instagram-new-features-and-updates/ (acessado em 2026-10-06, página de 5 days ago)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.2e93404e3fc9",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "Instagram Updates & News 2026 — https://metricool.com/instagram-news/ (acessado em 2026-10-06, página de 4 days ago)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.457e56fb809c",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "Atualização do Instagram: principais mudanças de 2026 — https://www.bagy.com.br/blog/atualizacao-do-instagram/ (acessado em 2026-10-06, página de 297 days ago)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.915f42223e26",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "Instagram 2026: Guia Completo com Todas as Atualizações e Estratégias — https://camaleoescriativos.com/atualizacoes-instagram-2026-guia-completo-e-estrategias/ (acessado em 2026-10-06, página de 233 d",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fonte:fonte.ea7b2666d9d7",
+            "tipo": "fonte",
+            "escopo": "operacao",
+            "resumo": "Novidades do Instagram 2026: Recursos, Algoritmo e Estratégias — https://jamilefernandes.com.br/blog/novidades-do-instagram-2026-recursos-algoritmo-e-estrategias (acessado em 2026-10-06, página de 147",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "receita:91",
+            "tipo": "receita",
+            "escopo": "app",
+            "resumo": "open_comments_1 em com.instagram.android (v1, 10 ok / 1 falhas)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 1,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "receita:111",
+            "tipo": "receita",
+            "escopo": "app",
+            "resumo": "open_post_1 em com.instagram.android (v2, 5 ok / 0 falhas)",
+            "confianca": "confirmado",
+            "persona": null,
+            "motivo": null,
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 1,
+            "contra": 0,
+            "fontes": []
+          }
+        ]
+      },
+      {
+        "chave": "revisar_ou_descartar",
+        "titulo": "O que revisar ou descartar",
+        "veio": true,
+        "itens": [
+          {
+            "ref": "fato:pesquisa.1ab38b69b046",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "Um guia relata que o limite de slides em carrosséis subiu para 20 imagens. É fonte secundária.",
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": "hipótese: não confirmada",
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fato:pesquisa.6aac6053146c",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "Segundo a página de regras do Instagram, o bônus de foto e carrossel está em teste. Só criadores selecionados recebem convite, e nem todo criador elegível é escolhido.",
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": "hipótese: não confirmada",
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fato:pesquisa.7c8e9ce4309b",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "Para se qualificar ao bônus de foto e carrossel, é preciso atingir um mínimo de visualizações por mês durante três meses seguidos. O mínimo varia por país: 500 mil no Japão e 1 milhão na Coreia do Sul",
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": "hipótese: não confirmada",
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fato:pesquisa.dbea09a151ae",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "Um blog relata que imagens 100% geradas por IA no app recebem marca d'água \"Gerada por IA\". É fonte secundária, sem confirmação oficial.",
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": "hipótese: não confirmada",
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fato:pesquisa.e84c86140d15",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "O Instagram ampliou a proteção a conteúdo original, incluindo fotos e carrosséis. Contas que dependem de reposts ou de material pouco transformado podem perder recomendação para não seguidores.",
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": "hipótese: não confirmada",
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fato:pesquisa.f25ecf79046b",
+            "tipo": "fato",
+            "escopo": "operacao",
+            "resumo": "O Instagram está testando um bônus que paga por posts de foto e carrossel, além do bônus já existente para Reels.",
+            "confianca": "hipotese",
+            "persona": null,
+            "motivo": "hipótese: não confirmada",
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 0,
+            "contra": 0,
+            "fontes": []
+          },
+          {
+            "ref": "fluxo:f-f1613acf64a0",
+            "tipo": "fluxo",
+            "escopo": "processo",
+            "resumo": "No Instagram, abra pela busca o seu próprio perfil, abra a publicação cuja legenda contém \"{caption_contains}\" e comente nela com a sua leitura sobre esse assunto, ligando ao que a publicação mostra.",
+            "confianca": "hipotese",
+            "persona": "Lucas Almeida",
+            "motivo": "no Livro em candidate",
+            "inferida": false,
+            "evidencias": 1,
+            "a_favor": 1,
+            "contra": 0,
+            "fontes": []
+          }
+        ]
+      },
+      {
+        "chave": "falhas_que_geraram_aprendizado",
+        "titulo": "Quais falhas geraram aprendizado",
+        "veio": true,
+        "itens": []
+      }
+    ],
+    "licoes": {
+      "contestadas": [],
+      "reforcadas": []
+    },
+    "avisos": []
+  },
+  "limites": [
+    "Custo por agente \"não informado\": o alvo ainda não tinha execução (ou o central é anterior ao custo por alvo).",
+    "O relatório vem do estado da operação no momento em que foi gerado; uma operação em curso muda depois."
+  ]
+}

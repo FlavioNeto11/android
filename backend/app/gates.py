@@ -49,7 +49,7 @@ from .social.approvals import (
     textos_irmaos,
 )
 from .social.chave_da_aprovacao import chave_da_aprovacao, midia_da_etapa, texto_exato
-from .social.policy import UMA_CONTA_POR_ALVO, Verdict
+from .social.policy import Verdict
 from .social.service import SocialError, thread_de_dm
 from .util import now, parse_iso
 
@@ -220,13 +220,6 @@ class Portoes:
             if parada is not None:
                 return parada
         if cap.side_effect:
-            # 31.240: antes de liberar, a reserva do alvo na frota. Cada alvo de operação é uma execução, e as aprovadas
-            # juntas passavam a porta juntas, antes de qualquer efeito existir para o espaçamento contar (onda 2).
-            adiada = self._st.policies.reservar_frota(profile_id, cap, contraparte(cap, argumentos),
-                                                      app_id=app_da_etapa_id, step_id=srow["id"])
-            if adiada is not None:
-                return Verdict(allowed=False, policy=veredito.policy, counts=veredito.counts, reason=adiada[0],
-                               retry_at=adiada[1])
             # 31.64 S1 (migração 110): a porta liberou o efeito. Na mesma passada sem `await` da regra do objeto na família
             # (acima): a irmã que chegar depois vê esta marca e é recusada, qualquer que seja a ordem das tomadas.
             self._st.social_repo.marcar_passou_a_porta(srow["id"])
@@ -299,16 +292,14 @@ class Portoes:
             contas = len({profile_id, *(dono for _o, _a, dono in irmaos)})
             escolhido_id, escolhido_aparelho = min([(obj["id"], obj["instance_id"]),
                                                     *((o, a) for o, a, _d in irmaos)])
-            if cap.limit_bucket in UMA_CONTA_POR_ALVO and escolhido_id != obj["id"]:
+            if escolhido_id != obj["id"]:
                 return PortaDaEtapa.fim(Verdict(
                     allowed=False, policy=cap.default_policy,
-                    reason=(f"esta execução manda o mesmo pedido ({cap.key}) a {contas} contas sobre {alvo}; em "
-                            "seguir, mensagem e comentário vale uma conta por alvo (ADR-055) — segue só a de "
-                            f"{escolhido_aparelho}, e esta foi recusada"),
+                    reason=(f"esta execução manda o mesmo pedido ({cap.key}) a {contas} contas sobre {alvo}; "
+                            f"segue só a de {escolhido_aparelho}, e esta foi recusada"),
                     hint="Nada foi feito por esta conta. Para outro alvo, faça um pedido separado."))
             confirmacao = (f"confirmação exigida: esta execução manda o mesmo pedido ({cap.key}) a {contas} contas "
-                           f"sobre {alvo}" + (" — só esta conta segue; as outras foram recusadas"
-                                              if cap.limit_bucket in UMA_CONTA_POR_ALVO else ""))
+                           f"sobre {alvo}")
             registrar_confirmacao = self._st.approvals.for_step(srow["id"]) is None
         # `package`: a política é do APP desta etapa (23.10) — SEND_MESSAGE do Instagram e o de outro catálogo são
         # escolhas diferentes do perfil.
@@ -719,7 +710,7 @@ class Portoes:
                                    instance_id=obj["instance_id"], step_id=srow["id"])
                 pedido = None
         bindings = self._st.repo.bindings_da_etapa(srow, profile_id)
-        # O alvo normalizado é a chave da reserva de frota (`SocialRepository.fleet_targeting`).
+        # O alvo normalizado é a chave do pedido de aprovação.
         alvo = contraparte(cap, bindings) or alvo_da_acao(cap, bindings)
         # 31.113 F3: o pedido GUARDA o marcador (alvo e texto pela máscara reversível, resumo pela do registro); a
         # porta decide com o valor. A tela do painel resolve ao vivo (`texto_ao_vivo`); canal e evento levam o marcador.

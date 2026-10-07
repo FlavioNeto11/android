@@ -93,7 +93,6 @@ class RunTargetsSuggestion(BaseModel):
     escolhidas: list[PersonaEscolhida] = Field(default_factory=list)
     descartadas: list[PersonaDescartada] = Field(default_factory=list)
     nao_avaliaveis: list[PersonaNaoAvaliavel] = Field(default_factory=list)
-    alerta_conduta: str | None = None
     perguntas: list[str] = Field(default_factory=list)
     #: As perguntas do resolvedor (persona num aparelho com duas…), no formato da prévia.
     questions: list[dict[str, object]] = Field(default_factory=list)
@@ -168,12 +167,11 @@ class Orquestrador:
         nome = mundo.nome
         base = RunTargetsSuggestion(
             modo="ia", app_ids=apps, command_sem_destinos=texto, resumo=out.resumo, perguntas=out.perguntas,
-            alerta_conduta=out.alerta_conduta or None,
             descartadas=[PersonaDescartada(profile_id=d.profile_id, nome=nome(d.profile_id), motivo=d.motivo)
                          for d in out.descartadas],
             nao_avaliaveis=[PersonaNaoAvaliavel(profile_id=n.profile_id, nome=nome(n.profile_id), falta=n.falta)
                             for n in out.nao_avaliaveis])
-        if out.alerta_conduta or not out.escolhidas:
+        if not out.escolhidas:
             return base
         # 3b. ONDE: cada escolhida no aparelho dela, pelo resolvedor de sempre (a IA não escolhe aparelho).
         ids = [e.profile_id for e in out.escolhidas]

@@ -32,7 +32,7 @@ from app.main import create_app
 from app.models import (PersonaBiography, PersonaCreate, PersonaPatch, PersonaTraits, PersonaVisual, ProfileCreate,
                         ProfilePatch)
 from app.modules.identity.domain.persona import (BIOGRAPHY_SCHEMA_VERSION, idade_em, lacunas_da_biografia,
-                                                 mesclar_secao, nome_ficticio_plausivel, separar_nome)
+                                                 mesclar_secao, separar_nome)
 from app.social.service import SocialError
 
 from .conftest import Harness, make_config
@@ -56,8 +56,6 @@ def test_regras_puras_da_pessoa() -> None:
     assert idade_em("1995-03-10", date(2026, 3, 9)) == 30 and idade_em("1995-03-10", date(2026, 3, 10)) == 31
     assert idade_em("10/03/1995", date(2026, 1, 1)) is None and idade_em("2099-01-01", date(2026, 1, 1)) is None
     assert separar_nome("Renata Vieira Lima") == ("Renata", "Vieira Lima") and separar_nome("Otávio") == ("Otávio", None)
-    assert nome_ficticio_plausivel("Ana Souza") and nome_ficticio_plausivel("Jean-Luc D'Ávila")
-    assert not nome_ficticio_plausivel("@lucas_99") and not nome_ficticio_plausivel("Ana") and not nome_ficticio_plausivel("Ana 2")
     base = {"home": {"city": "SP", "state": "SP"}, "tastes": {"hobbies": ["trilha"]}, "schema_version": 1}
     mesclado = mesclar_secao(base, {"home": {"city": "Rio", "state": None}, "tastes": {"hobbies": ["surfe", "yoga"]}})
     assert mesclado == {"home": {"city": "Rio"}, "tastes": {"hobbies": ["surfe", "yoga"]}, "schema_version": 1}

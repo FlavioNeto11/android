@@ -99,16 +99,6 @@ def nome_exibido(display_name: str | None, first_name: str | None, last_name: st
     return juntos or (username or "").strip()
 
 
-def nome_ficticio_plausivel(nome: str) -> bool:
-    """Um nome de pessoa: pelo menos duas palavras só de letras (acentos, hífen e apóstrofo valem), sem dígito.
-
-    Não é detector de pessoa real — isso não existe de forma confiável e uma lista de sobrenomes famosos seria
-    heurística frágil. É o que impede o modelo de devolver `"@lucas_99"`, um nome vazio ou um nome só.
-    """
-    palavras = nome.split()
-    return len(palavras) >= 2 and all(len(p) >= 2 and _PALAVRA_DE_NOME.match(p) is not None for p in palavras)
-
-
 def valor_no_caminho(dados: Mapping[str, object], caminho: str) -> object | None:
     """`valor_no_caminho({"home": {"city": "SP"}}, "home.city")` → `"SP"`; caminho ausente → `None`."""
     atual: object = dados
