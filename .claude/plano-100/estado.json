@@ -11004,24 +11004,17 @@
   },
   "29.154": {
    "id": "29.154",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "Fatia 1 do comando remoto (ADR-079) na branch feat/29-154-comando-remoto-f1, ponta cdcb5eba (base main 4aa46764): agente (worker/comando.py, feature remote_exec), central (workers/comando_remoto.py), seis rotas em /api/workers/{id} (adendo v1.90) com sessão nomeada obrigatória e 404 no host público, migração 123 (worker_comandos e worker_comando_remoto), auditoria worker.comando como pré-condição, linha com cara de credencial recusada antes de gravar ou despachar, saída redigida antes do corte, 422 sem eco, queda ou reinício = uncertain, cancelamento. Fio congelado do worker mudou de propósito (5 mensagens novas, nenhuma existente; hash d840bd78f67ef1a8 -> cfb85c95fbc75962). Revisor-segredos no desenho e no código (bloqueio do 422 e ressalvas de pasta/chave/corte bruto corrigidos). Simulado: backend/tests/test_comando_remoto_agente.py::* (15), backend/tests/test_comando_remoto_central.py::* (24), backend/tests/test_contratos_do_worker.py::*, backend/tests/test_ordem_das_rotas.py::*; dirigidos vizinhos de worker, contrato, config e migração 280 passed; catracas backend 88 + scripts 6; scripts/tests 684 passed; mypy 257 = teto; docs-check 0 (Windows, central WIN-7S2UASNLFOP, 06/10 12:39Z-13:02Z). Real: not_run (nada roda no notebook antes do deploy, do procedimento escrito em docs/worker.md e do sim do dono). Falta: fatia 2 (terminal com histórico na tela de Infraestrutura), fatia 3 (cliente para sessões nomeadas), fatia 4 (procedimento e prova real) e LIGAR só com o sim explícito do dono por cartão (os três interruptores nascem desligados: comando_remoto.ativo no config do central, o interruptor por worker no painel e comando_remoto: true no worker.yaml), depois do deploy com a migração 123 e da atualização do agente do notebook. Fatia 2 (terminal do comando remoto na Infraestrutura, desligado de fábrica; branch feat/29-154-comando-remoto-f2, 5cbf0c1e): frontend/src/features/infra/TerminalDoWorker.test.tsx::* (11 testes). Corte 53: Corte 53 (integ/suite-53, ponta 2579893c, base main c0d2fd5f; Windows, central WIN-7S2UASNLFOP, 06/10/2026 16:07Z-16:55Z, Idle): scripts/tests 767 passed; backend SQLite inteiro 12414 passed, 13 skipped (17 min 32 s); frontend typecheck ok e 1870 testes em 145 arquivos passed, build ok; catracas backend 88 passed + scripts 7 passed; docs-check 0 erros, 0 avisos; mypy 257 = teto; PostgreSQL dirigido, 298 arquivos em 2 partes: parte 1 com 3129 passed, 5 skipped; parte 2 com 2799 passed, 1 skipped e 1 falha de tempo esgotado (test_sempre_na_promovida.py::test_quarentena_para_de_espalhar_mas_nao_rebaixa_quem_esta_na_versao, 'android-02 ligado', sob a carga da parte 2) que passa isolada: 17 passed no SQLite e 17 passed no PostgreSQL (pg-rapido, 16:55Z).",
-   "blocker": "Falta: fatia 2 (terminal com histórico na tela de Infraestrutura), fatia 3 (cliente para sessões nomeadas), fatia 4 (procedimento e prova real) e LIGAR só com o sim explícito do dono por cartão (os três interruptores nascem desligados: comando_remoto.ativo no config do central, o interruptor por worker no painel e comando_remoto: true no worker.yaml), depois do deploy com a migração 123 e da atualização do agente do notebook.",
-   "arquivos": [
-    "backend/app/worker/comando.py",
-    "backend/app/workers/comando_remoto.py",
-    "backend/migrations/123_comando_remoto.sql",
-    "backend/tests/test_comando_remoto_agente.py",
-    "backend/tests/test_comando_remoto_central.py"
-   ],
-   "nota": "fatias 3 (cliente scripts/worker-comando.py) e 4 (procedimento e prova real) pendentes; LIGAR só com o sim explícito do dono por cartão; a frente confirma a prova real",
-   "grupo": "android-suite-53",
+   "evidence": "Fatia 3 e 4: cliente scripts/worker-comando.py e procedimento (Android, a84bd026); real not_run, nada foi ligado. Corte 59 (integ/suite-59, ponta 8552b160281e8d = main 0c8683e8 + lista fechada + main 50760e86 so docs; sem migração; Windows, central WIN-7S2UASNLFOP, 07/10/2026 01:15Z-02:30Z, Idle, no wrapper com-teto-de-cpu b5cd1ffb -Teto 25 em powershell 5.1: a árvore usou 7693 s de CPU em 4291 s = 8,1 % do total): scripts/tests 1001 (999 passed + 2 failed por carga/teste da DevOps, rerodados a seco: 51 passed); backend SQLite inteiro 12647 passed, 14 skipped, 0 failed; frontend typecheck ok, 2032 testes em 153 arquivos (2028 passed + 4 de 3 arquivos que falharam sob carga; a reexecução do vitest inteiro deu 2032 passed), build ok; catracas backend 89 e scripts 9; docs-check 0/0; mypy 257 = teto; PostgreSQL dirigido (512 arquivos em 2 partes): parte 1 5998 passed e 7 skipped em 25:23, parte 2 4742 passed e 7 skipped em 20:01, 0 failed, 0 errors.",
+   "blocker": null,
+   "nota": "simulated; real: not_run (os três interruptores seguem desligados)",
+   "grupo": "android-suite-59",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T17:22:53+00:00"
+   "quando": "2026-10-07T02:33:23+00:00"
   },
   "29.155": {
    "id": "29.155",
@@ -11080,14 +11073,14 @@
    "id": "29.156",
    "status": "partial",
    "proof": "real",
-   "evidence": "Fatia 3 (ensaio do rollback com migracao): scripts/rollback-ensaio.ps1, branch devops/29-156-ensaio-de-rollback, commits d3f08faf e 08bba070 (docs), em cima da fatia 2 (d578101c) e da fatia 1 (7a4079d0) sobre origin/main 945f5043; worktree C:\\git\\android-wt-29-156b. real: 06/10/2026 22:14:41Z, central, a mao em Idle, Raiz C:\\git\\android: linha ok mais nova de data\\deploys.jsonl (deploy 56, 21:15:51Z): git archive so de backend\\ do commit_antes 086236e9, backup 20261006-181424 restaurado numa pasta de trabalho, aberto pelo codigo antigo -> resultado ok em 11,4 s: integridade ok, migracao da copia 125_conhecimento_da_operacao = migracao_antes da linha = a do codigo antigo, 117 tabelas, ZERO migracoes que o codigo antigo quisesse aplicar; pasta de trabalho (com a chave restaurada) apagada, 0 sobras; checkout, .git e data\\poc.sqlite3 intocados. Veredito: C:\\git\\android\\data\\rollback-ensaio\\ultimo.json. Isso prova o que o runbook do § 6 afirmava e ninguem tinha provado: o codigo do deploy anterior abre o banco do backup do deploy que trouxe a migracao 126/127. simulated: scripts/tests/test_rollback_ensaio.py, 9 testes passam (repositorio git e banco de mentira): ok; codigo antigo que quer migrar falha; migracao do backup diferente da linha falha; backup podado, sem linha e commit ausente dao 'pulado' (2, nunca aprovado); trabalho com a chave some e nada vaza; sobra anterior e varrida; git do checkout intocado; mutacoes provadas (tirar a checagem de migracao pendente e tirar a limpeza derrubam testes). docs/operacao.md (§ 6 e tabela de scripts) atualizado, docs-check 0 erros. Sem revisor-segredos separado nesta fatia: reaproveita as funcoes ja revisadas do restore-ensaio (limpeza conferida, motivo fixo, sem eco de caminho).",
-   "blocker": "Nenhum. Nao registrei tarefa agendada para este ensaio: ele faz sentido depois de cada deploy que traz migracao (pode ser chamado pelo deploy.ps1 num passo final, decisao da orquestradora). Depende das fatias 1 e 2 so por estar empilhada na mesma branch base; os arquivos nao se tocam.",
-   "grupo": "devops-29.156-fatia3",
+   "evidence": "REAL: deploy 58, 2026-10-07T01:12:11Z, central, commit 0c8683e8 (tag deploy-20261007-0112, duracao 93,9 s, resultado ok, em data/deploys.jsonl): a linha do deploy traz etapas_s (backup 2.1 s, site 0.4, docs_check 1.4, painel 5.6, parada 11.7, dependencias 3.7, subida 65.6, conferencia 0.0, tag 3.5), fatia 2 do 29.156 em producao de desenvolvimento. As fatias 4 (ensaio de rollback no deploy, dde61df2) e 5 (notas de release, bd578387) seguem SIMULATED e entram no corte 59: Fatia 4 (deploy.ps1 chama o ensaio de rollback quando traz migracao): branch devops/29-156-fatia4-rollback-no-deploy, commit dde61df2 sobre 08bba070; worktree C:\\git\\android-wt-29-156d. Passo 6b depois da tag e antes de gravar a linha, so se migracao_depois != migracao_antes e ha backup; rollback-ensaio.ps1 ganha -CommitAntes/-MigracaoAntes/-Backup (a linha ainda nao existe); resultado em ensaio_de_rollback (ok/falhou/pulado) e ensaio_de_rollback_motivo na linha do deploys.jsonl; falha ou pulado viram aviso e NUNCA revertem nem derrubam; pulado nunca aprova; -SemEnsaioDeRollback pula. simulated: scripts/tests/test_deploy_ensaio_de_rollback.py (13 testes: o trecho do deploy roda de verdade sob o param do deploy com ensaio falso: ok, 2, 1, 3, 255, lancando, sem migracao, sem saude, sem backup, interruptor; mais a ordem no arquivo) e 2 no test_rollback_ensaio.py; 45 passam com os vizinhos; mutacoes provadas (2->ok, tirar a condicao de migracao). Sintaxe do deploy.ps1 testada (test_historico_de_deploy.py). Fatia 5 (notas de release do CHANGELOG): branch devops/29-156-fatia5-notas-de-release, commit bd578387 sobre 08bba070; worktree C:\\git\\android-wt-29-156e. New-NotasDeRelease (titulos NOVOS do CHANGELOG entre commit_antes e o do deploy, ate 40, migracao antes/depois, contagem de commits, link de comparacao so com dono/repo: a URL da origem nunca entra) e Remove-DadosDaMaquina (IP, WIN-*, worker-*-NN, caminho, e-mail, sk-/ghp_/github_pat_, base64 longo; SHA e branch em minusculas ficam); Publish-TagDeDeploy usa --notes-file (apaga o temporario) e cai em --generate-notes sem deploy anterior ou sem CHANGELOG; deploy.ps1 passa -CommitAnterior/-MigracaoAnterior. simulated: 4 testes novos em test_historico_de_deploy.py (14 no arquivo, 25 com o portao); mutacoes provadas. real (texto): geradas as notas do deploy 56 (086236e9..f8319454, 9 entradas, 77 commits) sem dado de maquina. Release de verdade pelo gh e ensaio de rollback real: not_run ate o deploy 59/60.",
+   "blocker": "As fatias 4 e 5 tocam deploy.ps1, historico-de-deploy.ps1 e docs/operacao.md em trechos diferentes mas ambas nascem da 08bba070: a 2a a entrar pede merge simples. Sem revisor-segredos separado: a fatia 5 trata texto publicado (Remove-DadosDaMaquina tem teste proprio) e a fatia 4 nao toca segredo.",
+   "grupo": "devops-29.156-fatia4-5",
    "modelo": "claude-sonnet-5-5",
    "esforco": "sessao executora (Frente DevOps)",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-07T01:16:50+00:00"
+   "quando": "2026-10-07T02:33:23+00:00"
   },
   "29.161": {
    "id": "29.161",
@@ -11273,31 +11266,27 @@
    "id": "31.154",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "Corte 57, branch feat/corte57-jev: c2bf12ef = 441abaac + merge da 0d8b973d (cb36b9b4) + achados das revisões dos PRs 479 e 483; a330e29f = os 5 achados do Copilot no PR 487. (a) fontes_da_pesquisa no GET (pedido_observacoes tipo url, migração 125): backend/tests/test_operacoes.py::test_o_get_traz_as_fontes_que_a_pesquisa_achou. (b) Nome fixo da operação já usado no plano com outro valor: a execução do alvo termina recusada no planejamento (plan.refused, motivo parametro_em_conflito, só os nomes), e a operação lê o alvo em acao_bloqueada com 'parâmetro em conflito: …'; alvo recusado no planejamento deixa de ficar pendente para sempre: backend/tests/test_plano_da_operacao.py::test_nome_fixo_em_conflito_recusa_o_alvo_e_a_operacao_le_acao_bloqueada. (c) Teto da operação: conferência e reserva na mesma seção crítica (_budget(reservar=True)); barrada por outra régua, a reserva sai: backend/tests/test_operacoes.py::test_a_conferencia_e_a_reserva_do_teto_sao_uma_secao_critica_so. (d) Aprovação por fora do liberar: reabre ANTES da leitura dos alvos (achado P1 do Codex no PR 483): backend/tests/test_operacoes.py::test_a_reabertura_le_os_alvos_ja_como_executar_e_o_mesmo_get_nao_fecha_de_novo. (e) Copilot PR 487: só a coluna ausente vira sem operação (app.db.coluna_ausente): test_operacoes.py::test_so_a_coluna_ausente_vira_execucao_sem_operacao; recusa de parâmetro sem nome nem valor: test_plano_da_operacao.py::test_a_recusa_nao_devolve_o_nome_do_parametro; reabertura condicional, não ressuscita a cancelada: test_operacoes.py::test_a_reabertura_nao_ressuscita_a_operacao_cancelada_entre_a_leitura_e_o_update; reserva até o custo gravado (Usage.soltar_reserva, add_usage solta; 120 s de prazo de segurança): test_operacoes.py::test_a_reserva_da_chamada_que_respondeu_vale_ate_o_custo_gravado; valor comparável sem espaço nenhum: test_plano_da_operacao.py::test_o_valor_comparavel_nao_tem_espaco_nenhum. Todos os testes novos reprovam no código anterior (cb36b9b4 e c2bf12ef). Dirigidos na a330e29f: 95 arquivos + catracas, 3822 passed, 1 skipped; mypy 257 (no teto); docs-check 0. Sem chamada paga, sem aparelho (real: not_run neste corte; o real do 31.154 é o da onda 1, no corte 56).",
+   "evidence": "Nota do 31.154, correção do percurso da Portal no 57: cada estágio do alvo guarda a sua hora. Branch feat/31-175-medida-sobre-main (9a4e8e29). Em backend/app/modules/operacoes/domain/estagios.py, depois do liberar, a hora de cada estágio deixava de ser a do próprio evento. Teste: backend/tests/test_operacoes_estagios.py::test_depois_do_liberar_cada_estagio_guarda_a_sua_hora, que reprova no código anterior. A prova anterior do 31.154 segue valendo; esta linha só acrescenta a correção. Real: not_run.",
    "grupo": "jev",
    "modelo": "opus-5.5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T23:11:08+00:00"
+   "quando": "2026-10-07T02:33:23+00:00"
   },
   "31.157": {
    "id": "31.157",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "Achados do Codex e da revisão do PR 480/482 (Aprendizado ea31d391 e 87774a52): evidência pelo id cru, contagem efetiva, voz da persona dona, aviso de conhecimento e a lição de duas personas guarda o conjunto. Simulado: backend/tests/test_aprendizado_da_operacao.py::*, backend/tests/test_conhecimento_da_operacao.py::*. Corte 57 (integ/suite-57, ponta 581c62f9ddb2d9 = main do deploy 56 + 5 pontas, sem migração; Windows, central WIN-7S2UASNLFOP, 06/10/2026 21:17Z-22:58Z, Idle): scripts/tests 790 passed; backend SQLite inteiro 12538 passed, 13 skipped, 0 failed (na ponta c2bf12ef, anterior ao commit a330e29f da Jev); SQLite dirigido dos arquivos tocados por a330e29f (operações, routing, planning, usage, estágios; 17 arquivos) 165 passed; frontend typecheck ok, 1982 testes em 151 arquivos passed, build ok (na c2bf12ef); catracas backend 89 + scripts 7 passed; docs-check 0/0; mypy 257 = teto (na 581c62f9); PostgreSQL dirigido na 581c62f9, 435 arquivos em 2 partes: parte 1 com 5127 passed, 8 skipped; parte 2 com 4104 passed, 6 skipped, 2 failed e 1 error (test_loja_de_apps::test_proxy_que_o_aparelho_nao_confirma_vira_falha_e_nao_se_repete, test_rotation_worker::test_tarefa_para_remoto_desligado_liga_pelo_worker_e_conclui e test_learning_rota_publicacao::test_a_rota_diz_vetado_antes_do_modo), com o host a 90-100 % de CPU por outro ensaio em paralelo; os 3 arquivos rerodados sozinhos: 33 passed no SQLite e 33 passed no PostgreSQL (22:57Z). Uma primeira rodada do PG na c2bf12ef (1317 passed na parte 1) foi interrompida por mim para subir o android-03 e reiniciada na 581c62f9.",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_aprendizado_da_operacao.py",
-    "backend/tests/test_conhecimento_da_operacao.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-57",
-   "modelo": "claude-sonnet-5-5",
-   "esforco": "high",
+   "evidence": "feat/31-160-gravacao-mascarada 36bfdbae (corte 59). Achados b e d da Portal no 57 (06/10 23:20Z): o resumo do fluxo no GET /api/operacoes/{id}/aprendizado leva o valor do parâmetro quando a operação tem um valor só para ele (o que varia por alvo segue marcador; instance_id, run_id e account_label fora; resumo redigido); a resposta ganha personas (profile_ids das execuções, ordenados). Validação: backend/tests/test_aprendizado_da_operacao.py (8, 1 novo); operação, pedidos e arquitetura 722 verdes; mypy 257; docs-check 0.",
+   "real": "not_run (a aba Aprendizado da operação na Portal após o deploy)",
+   "nota": "adendo v1.106 (5b53865c)",
+   "grupo": "aprendizado",
+   "modelo": "",
+   "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T23:11:08+00:00"
+   "quando": "2026-10-07T02:33:23+00:00"
   },
   "31.158": {
    "id": "31.158",
@@ -11503,16 +11492,17 @@
   },
   "31.160": {
    "id": "31.160",
-   "status": "partial",
-   "proof": "real",
-   "evidence": "Ensino: 06/10 19:20Z-19:31Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8), android-01 (conta real, sem adb, só navegação). Sessão trn-M60OrpiMBqLWHyJ7 salva; fluxo f-63f2d6289cd7 e receita 221 (open_profile_1 pela busca); custo US$ 0,033. Na onda 1, tentativa 3 (execução r-20261006194323-240d40): open_post_1 e open_comments_1 conduzidos pelas receitas 111 e 91 (de antes do ensino), com 0 decisão de IA; open_profile_1 pela IA. A receita 221 não foi consultada: a identidade dela é 'perfil de {conta_instagram_usuario} aberto' (8a9a214a…), e a da etapa planejada é 'perfil de {perfil} aberto' (a25a2299…). No empate de valores, para_hash fica com o parâmetro do objetivo; reproduzido com _identidade. Decisão da orquestradora: a 221 vale só para o perfil da própria conta, e o alinhamento da identidade vira o 31.165 (pós-prova). Registro: .claude/handoffs/prova30/medida-onda-1-conhecimento.md.",
-   "blocker": "Falta: a receita ensinada conduzir open_profile_1 numa execução real (depende do 31.165) e a prova do fluxo f-63f2d6289cd7.",
-   "grupo": "aprendizado-corte56-estado-apos-onda-1",
-   "modelo": "claude-opus-5-5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "K-107: a gravação crua do ensino sai mascarada na leitura (Aprendizado, e9cd4526). Corte 59 (integ/suite-59, ponta 8552b160281e8d = main 0c8683e8 + lista fechada + main 50760e86 so docs; sem migração; Windows, central WIN-7S2UASNLFOP, 07/10/2026 01:15Z-02:30Z, Idle, no wrapper com-teto-de-cpu b5cd1ffb -Teto 25 em powershell 5.1: a árvore usou 7693 s de CPU em 4291 s = 8,1 % do total): scripts/tests 1001 (999 passed + 2 failed por carga/teste da DevOps, rerodados a seco: 51 passed); backend SQLite inteiro 12647 passed, 14 skipped, 0 failed; frontend typecheck ok, 2032 testes em 153 arquivos (2028 passed + 4 de 3 arquivos que falharam sob carga; a reexecução do vitest inteiro deu 2032 passed), build ok; catracas backend 89 e scripts 9; docs-check 0/0; mypy 257 = teto; PostgreSQL dirigido (512 arquivos em 2 partes): parte 1 5998 passed e 7 skipped em 25:23, parte 2 4742 passed e 7 skipped em 20:01, 0 failed, 0 errors.",
+   "blocker": null,
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-59",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T21:18:22+00:00"
+   "quando": "2026-10-07T02:33:23+00:00"
   },
   "31.163": {
    "id": "31.163",
@@ -11730,14 +11720,14 @@
   "31.172": {
    "id": "31.172",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "frontend/src/features/operacao/OperacaoPage.test.tsx (2 testes novos)",
+   "proof": "real",
+   "evidence": "2026-10-07T01:2xZ, maquina WIN-7S2UASNLFOP, central 0c8683e8 (deploy 58), navegador embutido, so leitura, aba fechada ao fim: operacao op-20261006194323-0a1540 (1 alvo, acao liberada e executada): cabecalho 'Concluida · Acao final: Preparar e executar · 1 acao executada, 1 verificada', coerente com a capacidade (1 solicitado, 1 concluido, 0 bloqueado), 'Por aplicativo: instagram 1 alvo, 1 concluido, 1 verificado'; 'Liberar' e 'Cancelar a operacao' aparecem indisponiveis com o motivo ('Nenhum agente espera a liberacao da acao final.' / 'A operacao ja terminou.'). NAO coberto: o cabecalho durante a espera da liberacao (nenhuma operacao nesse estado agora).",
    "grupo": "Portal",
    "modelo": "claude-sonnet-5-5",
    "esforco": "alto",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-07T01:16:50+00:00"
+   "quando": "2026-10-07T02:33:23+00:00"
   },
   "31.176": {
    "id": "31.176",
@@ -11754,14 +11744,14 @@
   "31.180": {
    "id": "31.180",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "frontend/src/features/host/HostPage.test.tsx (14 testes: leitor CSV/lista, nao medido=null, resumo, processos por media/minuto, pressao por aparelho, defasagem, serie com buracos, tela, troca de janela, 404=exemplo, erro, releitura de 60 s) + app.integration/TopBar (13 secoes); vitest 151 arquivos / 1976 testes; tsc limpo; olhada no navegador embutido (escuro, 1100 px) com exemplo. Real = apos a rota da Jev e o amostrador ligado.",
-   "grupo": "portal",
+   "proof": "real",
+   "evidence": "2026-10-07T01:2xZ, maquina WIN-7S2UASNLFOP, central 0c8683e8 (deploy 58), navegador embutido, so leitura: #/host chamou GET /api/host/amostras?horas=1 -> 200 (57 amostras) e mostra CPU agora/media/pico com a hora, RAM livre agora e minima, disco livre, nucleos usados pelas VMs, memoria da VM do WSL, CPU dos emuladores, quatro series, processos que mais pesaram (so nome e %) e avisos de pressao por aparelho (3 aparelhos). Os campos reais da rota (ts_utc, cpu_host_pct, vm_convidado_nucleos, vmmem_ws_mb, qemu_host_pct, ram_livre_mb, disco_livre_gb, processos_top[{nome,pct}], avisos_pressao) casam com o leitor; a rota nao traz envelope alem de items.",
+   "grupo": "Portal",
    "modelo": "claude-sonnet-5-5",
-   "esforco": "high",
+   "esforco": "alto",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-07T01:16:50+00:00"
+   "quando": "2026-10-07T02:33:23+00:00"
   },
   "29.160": {
    "id": "29.160",
@@ -11880,6 +11870,193 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-07T01:16:50+00:00"
+  },
+  "31.175": {
+   "id": "31.175",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Branch feat/31-175-medida-sobre-main (5e45fa13; sem mudança de código). Medida opt-in da concorrência de IA: backend/tests/test_medida_concorrencia_31175.py::test_medida_da_concorrencia_de_ia, que só roda com MEDIR_31175=1 (MEDIR_31175_LATENCIA = segundos por chamada). Harness na porta 5640, operação de 6 alvos em 6 FakeQaDevice, provedor simulado com latência artificial fixa, 18 chamadas de IA. Com 2 s por chamada, 4 vagas dão a operação em 11,1 s e a espera pela vaga com p95 de 2009 ms; 6 vagas dão 7,7 s e espera 0. Com 0,5 s, 3,6 s contra 3,2 s. Código: nada a mudar, porque max_ai_concurrency é relido ao vivo (scheduler.py, ai_limiter.set_limit); subir para 6 é PUT /api/settings, decisão da orquestradora ou do dono. Tabela completa em .claude/handoffs/jev-31-175-medida.md. Falta a leitura real da onda 2 (só leitura, sem gasto, por scripts/latencia-por-etapa.py): o limite de taxa do provedor real (429) só ela mostra. Real: not_run.",
+   "grupo": "jev",
+   "modelo": "opus-5.5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "31.151": {
+   "id": "31.151",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/31-151-fluxo-por-semelhanca 0a04fb14 + adendo v1.103 em d0b243cc (sobre d397a793, corte 59). Fluxos ativos e no escopo (_no_escopo, 30.81) que o comando parece (FlowStore.semelhantes, nota mínima 0,3 medida: a paráfrase do item dá 0,333; até 3) vão ao planejador como habilidades conhecidas no texto de usuário (planning/habilidades.py): ref pública, molde sem literal de alvo, nomes dos parâmetros (sem os reservados), apps; nunca valor demonstrado nem nome do fluxo. A resposta traz 'habilidade' (anulável, lista de pares {nome, valor}) nos 5 formatos de saída do plano. O código confere: ref oferecida, parâmetros exatos, cada valor no comando. Valendo, o plano é o do fluxo (planner.model fluxo:<id>, runs.flow_id; trilha 'Plano do fluxo X por semelhança, nota N'); recusada, plano livre com o motivo; sem escolha, a trilha diz o oferecido. Padrão seguro até a decisão do dono: SEM_CONFIRMACAO=False, o execute para em planned (flows.uses só sobe ao aprovar). Validação: backend/tests/test_fluxo_por_semelhanca.py (5 testes); planejamento, parsing, prompts, fluxos e arquitetura: 3373 passaram, e as 2 falhas da rodada corrigidas e rerodadas (48). mypy 257, docs-check 0. Revisor de segredos: sem alto; médio e baixos corrigidos.",
+   "blocker": "Real autorizado pela orquestradora (06/10, teto US$ 0,05, uma execução do pedido parafraseado no android-04, sem conta real, cancelada após ler o plano), mas not_run: o central responde f8319454 (deploy 56), sem o 31.151; rodar agora testaria o código antigo. Roda depois do deploy do corte 59. Decisão do dono (P-032): a escolha por semelhança roda sem confirmação ou só com a prévia aprovada (hoje, só com a prévia).",
+   "grupo": "aprendizado-31-151-fluxo-por-semelhanca",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "31.153": {
+   "id": "31.153",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "feat/31-153-etapas-ensinadas 0631b9d0 + 53ab847f (revisão de segredos: a etapa do plano com efeito, trava, catálogo ou bindings não é trocada; etapa de sessão e chave com palavra de valor demonstrado não são oferecidas; 24 testes dirigidos verdes) (sobre d0b243cc, corte 59). Cada etapa de fluxo ensinado (ligado ou não) com receita do ensino ativa e com 1+ reprodução boa, sem efeito, sem commit_guard e fora do catálogo, vira oferta ao planejador livre dos apps do aparelho e dos citados (planning/etapas_ensinadas.py, FlowStore.etapas_ensinadas; uma por app e nome, a mais reproduzida, até 12). O bloco <etapas_ensinadas> leva nome, app e nomes dos parâmetros; o título não vai (pode trazer o valor demonstrado). A etapa do plano livre com esse nome, no mesmo app e com os parâmetros declarados, vira a etapa-molde do ensino e ganha o mesmo template_hash da receita (o executor roda sem IA e cai na IA se divergir); a trilha diz a receita; faltando parâmetro, fica a do plano com o motivo. Sem mudança no esquema de saída. Escopo da receita segue o 30.81. Validação: backend/tests/test_etapas_ensinadas_no_plano_livre.py (2 testes; a etapa materializada tem o hash da receita); planejamento, receitas, fluxos e arquitetura: 4801 passaram; mypy 257, docs-check 0.",
+   "blocker": "Decisão do dono: a ação ensinada por uma persona serve a todas ou só ao escopo de quem ensinou (hoje: 30.81). Real: um comando livre do Configurações em que a etapa de busca roda pela receita ensinada com 0 decisões de IA, depois do deploy do corte 59.",
+   "grupo": "aprendizado-31-153-etapas-ensinadas",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "29.174": {
+   "id": "29.174",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "NAO TESTADO sob carga real (07/10 ~01:15Z): o funil 58 rodou SEM teto (pwsh 7 MSIX escapa do job; corrigido por aviso no d199986a). scripts/com-teto-de-cpu.ps1 -Teto N [-NucleosE|-Afinidade 0x..] [-Simular] -Linha|-ComandoJson: Job Object com teto rigido de taxa de CPU, afinidade opcional (NucleosE = threads de eficiencia baixa lidas do Windows, mascara 0x3003FC nesta maquina) e KILL_ON_JOB_CLOSE; o comando e criado SUSPENSO, entra no job e so entao retoma (CreateProcessW + AssignProcessToJobObject + ResumeThread), entao pytest, workers do xdist e netos ficam sob o teto; -Linha passa por cmd.exe /d /s /c (processos criados por pwsh escapam do job); propaga o codigo de saida; nao toca .wslconfig/WSL/tunel/relogio nem mata processo alheio (teste estatico). Branch devops/29-174-teto-de-cpu, commit 42edb08e sobre bd578387; worktree C:\\git\\android-wt-29-174. simulated: scripts/tests/test_com_teto_de_cpu.py, 17 passam (~50 s): com teto 25 % um queimador de 1 processo por thread logico usa <40 % do total (controle sem teto >50 %), mascara de afinidade chega ao filho, codigo de saida e argumentos passam, arvore morre se o wrapper morre; mutacao da taxa (10000 fixo) derruba o teste. real (06/10 22:4xZ, central, host ja a ~90-100 % de Processor Utility por outras cargas: MsMpEng, qemu): pytest -n 6 de test_docs_check.py x4 pelo wrapper: sem teto 18,5 s, teto 25 % 17,2 s, teto 25 % + NucleosE 20,2 s; a arvore (workers incluidos) usou 10,4-10,6 % do total, ou seja, abaixo do teto de 25 %: o pytest do ensaio usou ~10 % do total, abaixo do teto de 25 %: so o contador provou que a arvore python esta no job. docs/operacao.md (secao 10 e tabela 12) atualizado.",
+   "blocker": "Efeito do teto sobre os avisos de pressao e o custo em duracao do funil: not_run ate o funil 58 embrulhado (Android) comparado ao 57. Com NucleosE, 10 threads (nao 8) ficam disponiveis ao funil; pode ser pouco para -n 6 pesado: medir.",
+   "grupo": "devops-29.174",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "sessao executora (Frente DevOps)",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "29.185": {
+   "id": "29.185",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Amostrador v2: branch devops/29-156-mutex-hermetico, commit 98a99dd1 sobre 53e16f9c e 42edb08e; worktree C:\\git\\android-wt-29-156f. Tres colunas no fim do mesmo CSV: cpu_media_pct (media do minuto por GetSystemTimes: variacao de nucleo+usuario menos ocioso), demais_processos_pct (processos vivos nas duas pontas, fora o topo e o qemu) e nao_atribuido_pct (media menos todos os processos: processos que nasceram e morreram no minuto, nucleo/interrupcoes e VM; pode dar decimos negativos). Primeira linha de cada execucao com as tres vazias. Arquivo do dia de versao antiga ganha o novo cabecalho uma vez (leitura por posicao segue valendo). docs/operacao.md secao 10 atualizada; docs-check 0 erros. simulated: 2 testes novos em scripts/tests/test_amostrador_host.py (colunas e cabecalho antigo) e o de formato atualizado para 12 colunas; sintaxe do script conferida pelo parser do PowerShell (0 erros). Os testes que rodam o amostrador NAO foram executados: regra de carga durante o funil 58. ATUALIZACAO 07/10 00:59Z (date -u): scripts/tests/test_amostrador_host.py inteiro na ponta 98a99dd1: 17 passed em 86,8 s, COM o amostrador real (PID 21556) vivo, o que prova o mutex hermetico; inclui os 2 testes novos das colunas. (O mutex hermetico dos testes do amostrador, commit 53e16f9c, e parte do 29.156 e esta citado no resultado fatia4-5; este arquivo so reporta o 29.185.)",
+   "blocker": "real: not_run ate o amostrador novo ser registrado depois do deploy 59 (o PID 21556 roda a versao antiga, 9 colunas).",
+   "grupo": "devops-29.185",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "sessao executora (Frente DevOps)",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "29.177": {
+   "id": "29.177",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Branch ci/29-177-issue-do-pacote, ponta 66507650, empilhada em 1dcc753d (29.176), [skip ci]. scripts/issue_do_pacote.py gera a issue de tarefa a partir de .claude/plano-100/pacotes/<id>.md: titulo com o ID, trabalho, arquivos do indice, prova exigida (real, simulated, not_run) e regras; idempotente pela marca <!-- pacote:<id> --> (aberta ou fechada); nunca atribui ao agente de nuvem (sem --assignee; rotulo agente so com --agente); recusa e-mail, IPv4, serial, arroba, caminho de maquina, credencial e chave conhecida sem imprimir o trecho. REAL em 06/10/2026 22:41Z (date -u), esta maquina, repositorio real: pacote 29.17 gerou a issue FlavioNeto11/android#491 (rotulo tamanho:P, sem responsavel, 0 comentarios); a 2a execucao disse ja existe (open); a 3a, depois de fechada (not planned), ja existe (closed). SIMULATED: scripts/tests/test_issue_do_pacote.py (13 testes), test_workflows_pins e test_ci_gatilhos passam, docs-check 0 erros. Revisao do revisor-segredos: sem bloqueio; padroes de credencial, caminho de maquina e chave conhecida acrescentados.",
+   "blocker": "NOTA: o item 29.177 ainda nao tem pacote no checkout central, entao a prova real usou o 29.17. Nome de persona nao e detectavel por formato: a previa (ensaio e o padrao) precisa ser lida antes de --aplicar. Os pacotes ficam fora do Git: o script roda no checkout central ou com --pacotes.",
+   "grupo": "github-29-177",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "29.178": {
+   "id": "29.178",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Branch ci/29-178-custo-semanal (commit d4307774), empilhada em 66507650 (29.177), [skip ci]. scripts/github_custo.py (so leitura pelo gh): minutos hospedados faturaveis ESTIMADOS por workflow (duracao do job arredondada para cima, todas as tentativas), minutos no runner proprio, creditos do Copilot estimados (146 por revisao, 31 por tarefa), Codex sem API; --anexar acrescenta a um arquivo; sem nome de conta, repositorio ou runner, nem no erro do gh. REAL em 06/10/2026 22:48Z (date -u), esta maquina: leitura da semana anexada a .claude/handoffs/github-custo-revisao.md (fora do Git): 77 runs, 641 min hospedados estimados (490 do workflow CI), 2182 min no runner proprio, CI leve do PR 6,7 min por run em 6 runs (confirma os ~7 min do 29.175), 5 revisoes e 5 tarefas do Copilot = 885 creditos estimados. SIMULATED: scripts/tests/test_github_custo.py (14 testes), test_ci_gatilhos e test_workflows_pins passam, docs-check 0 erros. Revisor-segredos: dois bloqueios (nome do repo no erro, nome do runner na saida) e achados de billing, truncamento e anexar, todos corrigidos com teste.",
+   "blocker": "LIMITES: a API de billing (saldo de minutos e gasto extra) pede o escopo user, que o gh desta maquina nao tem (conta e do dono): esses numeros seguem com a leitura da pagina de uso no Chrome. O endpoint de timing do run devolve faturavel 0 em repositorio privado, por isso os minutos sao estimativa. So Linux (Windows 2x, macOS 10x nao separados). Codex sem API.",
+   "grupo": "github-29-178",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "29.179": {
+   "id": "29.179",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Branch ci/29-179-ci-semana, ponta 635b6c9f (641ef7f8 e o docs), empilhada em d4307774 (29.178), [skip ci]. ci.yml: o job backend-postgres (hospedado) passa a rodar pytest -q -n 2 com pytest-xdist==3.8.0 instalado so nele. REAL em 06/10/2026, ubuntu-latest, dispatch somente_postgres na branch (run 37543575206, 22:55Z a 23:29Z; os 7 jobs do runner central skipped): 12489 passed e 56 skipped em 33 min 19 s, verde, contra 69 min serial no run 37463062580 (12:24Z): ~35 min a menos por corrida, ~245 min por semana. Classificacao das 16 falhas e 33 cancelamentos de 62 runs (29/09 a 06/10) em .claude/handoffs/github-ci-semana.md: docs-check (link local fora do Git, corrigido), mypy (divida de tipos, catraca 29.102), frontend (AnexosTab, correcao da Canais a caminho), PostgreSQL (3 reais corrigidas, 2 dependentes do host), cancelados (concorrencia do regime antigo e tempo). SIMULATED: test_ci_gatilhos e test_workflows_pins passam, docs-check 0 erros.",
+   "blocker": "NAO APLICADO (decisao da orquestradora e do dono): cadencia do cron 05:17Z (PG em dias alternados) e -n 6 no SQLite do central. NAO INSPECIONADAS: as 3 falhas do SQLite do central (regime antigo) e as demais falhas do docs-check alem de 03/10 e 04/10. REMEDIR: semana de 13/10 por scripts/github_custo.py.",
+   "grupo": "github-29-179",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "28.60": {
+   "id": "28.60",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/tests/test_aviso_restore_ensaio.py::test_falhou_avisa_uma_vez_por_veredito, ::test_pulado_usa_frase_fixa, ::test_veredito_velho_avisa_um_por_dia_utc, ::test_arquivo_ausente_nao_avisa_nem_na_primeira_semana, ::test_json_quebrado_avisa_so_na_segunda_leitura_ruim, ::test_motivo_com_caminho_nao_sai; real=not_run (forcar falha numa copia de teste)",
+   "blocker": "real not_run: falta forcar uma falha do ensaio numa copia de teste e ver a rotina chegar ao Telegram (orquestradora)",
+   "arquivos": [
+    "backend/app/modules/avisos/domain/host.py",
+    "backend/app/modules/avisos/infrastructure/vigia_do_host.py",
+    "backend/app/modules/avisos/domain/mensagem.py",
+    "backend/app/config.py",
+    "backend/app/state.py",
+    "config/config.example.yaml",
+    "docs/dominios/canais.md",
+    "docs/operacao.md",
+    "CHANGELOG.md",
+    "backend/tests/test_aviso_restore_ensaio.py"
+   ],
+   "grupo": "canais-28-60-28-58",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "28.58": {
+   "id": "28.58",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/tests/test_aviso_disco_baixo.py::test_degraus_avisam_uma_vez_cada_e_so_para_baixo, ::test_voltar_ao_piso_rearma_e_a_recaida_do_mesmo_dia_avisa, ::test_abaixo_de_60_e_critico_e_espera_o_dono, ::test_abaixo_do_piso_avisa_com_o_que_ocupa, ::test_a_medida_das_pastas_e_cacheada, ::test_medir_pasta_nao_segue_juncao; real=not_run",
+   "blocker": "real not_run: falta a primeira leitura no central com o numero (orquestradora)",
+   "arquivos": [
+    "backend/app/devices/diagnostics.py",
+    "backend/app/modules/avisos/domain/host.py",
+    "backend/app/modules/avisos/infrastructure/vigia_do_host.py",
+    "backend/app/config.py",
+    "backend/app/state.py",
+    "config/config.example.yaml",
+    "docs/dominios/canais.md",
+    "CHANGELOG.md",
+    "backend/tests/test_aviso_disco_baixo.py"
+   ],
+   "grupo": "canais-28-60-28-58",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "28.62": {
+   "id": "28.62",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "backend/tests/test_aviso_operacao_encerrada.py (23 testes: concluida com custo, parcial com bloqueios e motivos, cancelada, sem custo, chave idempotente, texto sem comando/handle/nome, servico assina o kind e deduplica, _fechar emite o custo); vizinhos 635 passed (tests/test_avisos_*, test_canais_estado, test_arquitetura, test_operacoes*, test_*_da_operacao, test_pedidos_avisos); @tests/catracas.txt 89 passed",
+   "blocker": "real not_run: conferir na rodada de 07/10 com o fim de uma operacao de verdade (aviso na janela de rotina, uma vez por operacao); numeros de ADR/K/migracao nao citados",
+   "arquivos": [
+    "backend/app/modules/avisos/domain/mensagem.py",
+    "backend/app/modules/avisos/infrastructure/servico.py",
+    "backend/app/modules/operacoes/infrastructure/servico.py",
+    "backend/tests/test_aviso_operacao_encerrada.py",
+    "docs/dominios/canais.md",
+    "docs/api-contract.md",
+    "CHANGELOG.md"
+   ],
+   "grupo": "canais-aviso-operacao",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
+  },
+  "29.180": {
+   "id": "29.180",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "CORRIGIDO 07/10 ~01:15Z: leitura final por estagio sobre a serie real do central (CSVs de 06 e 07/10, 22:29Z a 01:0xZ; logs dos funis 57b/57c/58). O funil 58 NAO rodou sob o teto: o wrapper marcou 0,0 s de CPU da arvore em 3502 s porque o comando era pwsh 7 (app MSIX, ativado fora do job); medido: pwsh e o caminho real = 0,0 s dentro do job, powershell 5.1 = 3,4 s de 3,4 s. Todas as janelas sao SEM teto. Achados: (1) os avisos de pressao se concentram no estagio sqlite inteiro -n 6 (13 de 30 min com aviso, 24 dos 26 avisos do 58; python 22 % de media e pico 41 % do host); estagios com PG tem 11-16 % de python e quase nenhum aviso; (2) Defender 5,0 % de media nesse estagio e 5,9 % no PG parte 2 (picos 8-12 %) contra 0,5-2,4 %; qemu 6-10 %; (3) teto 40 nao resolveria (media 22 %, so o pico passa de 40): proposta teto 25 % realmente dentro do job. Relatorio: .claude/handoffs/devops-29-180.md; script: devops-29-180-analise.py. Perguntas A (Defender) e B (prioridade do qemu) enviadas a Canais para a P-033, com numeros corrigidos. Nenhuma configuracao da maquina foi alterada. simulated = analise sobre a serie real; a serie real e de 06/10/2026, central. PARTE REAL (07/10/2026, central, deploy 58 em 0c8683e8 e funil 59 em curso): estagio sqlite inteiro -n 6: 57 sem teto 15:22, 58 sem teto 31:07, 59 sob teto 25 % com powershell 5.1 18:48 (12647 passed, 0 failed); host cpu_inst 41 %/73 %/47 %; avisos de pressao por evento 8 (0,52/min)/21 (0,68/min)/3 (0,16/min); no 59 a arvore dentro do job usou 4121 s de CPU, 16,4 % do total, pico de 25,2 % em 30 s (wrapper59-out.txt); Defender 5,0 % (58) e 3,1 % (59); qemu 9,2 % e 6,0 %. Leitura aceita como indicio (uma rodada por lado). Defender: exclusao das pastas do funil NAO aplicada: not_run ate o dono aplicar a P-033; prioridade do qemu idem. Comparacao e recomendacao do teto: .claude/handoffs/devops-29-180-comparacao-59.md.",
+   "blocker": "Exclusao do Defender e prioridade do qemu: not_run (dono, P-033). Demais etapas do 59 entram com o run.txt; uma rodada por lado, 57 sem processos no CSV.",
+   "grupo": "devops-29.180",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "sessao executora (Frente DevOps)",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-07T02:33:23+00:00"
   }
  },
  "rodadas": [
@@ -15528,6 +15705,47 @@
     "github-29-176",
     "jev",
     "portal"
+   ]
+  },
+  {
+   "quando": "2026-10-07T02:33:23+00:00",
+   "itens": [
+    "31.160",
+    "29.154",
+    "31.175",
+    "31.154",
+    "31.151",
+    "31.153",
+    "31.157",
+    "29.156",
+    "29.174",
+    "29.185",
+    "29.177",
+    "29.178",
+    "29.179",
+    "28.60",
+    "28.58",
+    "28.62",
+    "31.172",
+    "31.180",
+    "29.180"
+   ],
+   "grupos": [
+    "Portal",
+    "android-suite-59",
+    "aprendizado",
+    "aprendizado-31-151-fluxo-por-semelhanca",
+    "aprendizado-31-153-etapas-ensinadas",
+    "canais-28-60-28-58",
+    "canais-aviso-operacao",
+    "devops-29.156-fatia4-5",
+    "devops-29.174",
+    "devops-29.180",
+    "devops-29.185",
+    "github-29-177",
+    "github-29-178",
+    "github-29-179",
+    "jev"
    ]
   }
  ]
