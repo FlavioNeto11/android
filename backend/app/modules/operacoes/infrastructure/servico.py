@@ -142,7 +142,7 @@ def _parametros_do_catalogo(pacote: str) -> list[str] | None:
 
 
 def _conferir_contra_o_app(parametros: Mapping[str, str] | None, pacote: str) -> None:
-    """31.224: o parâmetro fixo que não casa com o app é recusado ANTES de qualquer execução, para que um erro de
+    """31.224 (adendo v1.121): o parâmetro fixo que não casa com o app é recusado ANTES de qualquer execução, para que um erro de
     digitação na prova não custe chamada paga. `username` vai sem arroba e sem espaço: a prova local compara o texto da
     tela, que não traz o @. Chave fora do catálogo do app é recusada com a lista dos aceitos (que vem do catálogo, não do
     pedido). Como em `_conferir_parametros`, a recusa diz a POSIÇÃO (`posicao`, 1 = o primeiro de `parametros`), nunca o

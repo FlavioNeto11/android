@@ -22,7 +22,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-07 — 31.224: `parametros` da operação conferidos com o app antes de qualquer execução (branch feat/31-224-valida-parametros, corte 61)
 
-- `POST /api/operacoes` recusa com 422 o `username` com arroba ou com espaço, e a chave fora do catálogo de ações do app
+- `POST /api/operacoes` (adendo v1.121) recusa com 422 o `username` com arroba ou com espaço, e a chave fora do catálogo do app
   (com a lista dos aceitos), antes de gravar e de criar execução. O corpo traz `motivo` e `posicao`, nunca o nome que
   veio. O app sem catálogo segue com a chave livre.
 - Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (3 testes novos, um parametrizado). A mutação que desliga

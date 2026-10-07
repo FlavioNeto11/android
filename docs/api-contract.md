@@ -7613,7 +7613,7 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
 - **Vizinhos:** contam as etapas de planos LIVRES (sem fluxo e sem prova de fluxo) que aceitaram o pacote.
 - **Prova:** `simulated` (`backend/tests/test_rendimento_do_ensino.py`, 2 testes). `real`: `not_run`.
 
-## Nota do 31.224 (07/10/2026; sem número; o número fica com a orquestradora) — `parametros` conferidos com o app
+## Adendo v1.121 (07/10/2026; número da orquestradora; item 31.224) — `parametros` conferidos com o app
 
 `POST /api/operacoes` confere cada parâmetro fixo com o app ANTES de gravar a operação e de criar qualquer execução,
 para que um erro de digitação não custe chamada paga. Vale depois das recusas que já existiam (credencial, formato do
