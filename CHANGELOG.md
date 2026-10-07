@@ -20,6 +20,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-07 — 29.203: o rótulo do PR também sai dos prefixos das outras frentes (branch ci/29-203-rotula-prefixos)
+
+- `scripts/rotulo_do_pr.py` (workflow `rotula-pr.yml`, hospedado) passa a pôr `frente:devops`, `frente:jev`, `frente:aprendizado`, `frente:portal` e `frente:canais` em branch `devops/…`,
+  `jev/…`, `aprendizado/…`, `portal/…` e `canais/…` (as integrações de corte e a branch da DevOps); `feat/…`, `fix/…` e `revisao/…` continuam sem rótulo (o prefixo não diz a frente).
+  `scripts/github_rotulos.py` ganha o rótulo `frente:devops` (nasce no `--aplicar` logo após o deploy 60). Só rótulo existente é posto; nunca cria nem tira.
+- Prova `simulated`: `scripts/tests/test_rotulo_do_pr.py::test_prefixos_das_outras_frentes_29_203` e o teste dos prefixos que não rotulam (19 testes com `test_github_rotulos.py`). `real` (07/10, `date -u` 12:58Z, esta máquina,
+  API, ensaio): `aprendizado/integ-61` rotularia com `frente:aprendizado`; `devops/…` avisa que `frente:devops` ainda não existe.
+
 ## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
 
 - Medido no percurso real da Portal no 57 (06/10 23:20Z): o resumo do fluxo na aba Aprendizado da operação mostrava o
