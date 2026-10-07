@@ -31,7 +31,10 @@ from app.porta_do_plano import (
 from app.taskqueue.repository import MOTIVO_REJEICAO
 from app.util import now, now_iso, parse_iso, to_iso
 
-from .test_capabilities import IG, SENHA
+from .apoio_politica import IG, SENHA
+
+# Testes que só cobriam regra removida pelo refactor do dono de 07/10 (31.272).
+SAIU_NO_ADR_083 = pytest.mark.skip(reason="ADR-083: a trava da mesma DM repetida (mensagem_repetida) saiu da política")
 
 ALVO = "@anarabottinipsicopedagoga"
 DM = {"username": ALVO, "content": "oi, tudo bem?", "content_verbatim": "true"}
@@ -560,6 +563,7 @@ async def test_a_publicacao_no_plano_leva_a_imagem_que_vai_ao_feed(harness: Any)
     assert itens["pub2"]["tem_imagem"] is True and itens["pub2"]["image_id"] is None    # sem imagem pronta
 
 
+@SAIU_NO_ADR_083
 async def test_dm_editada_para_um_texto_ja_enviado_segue_no_cadeado_com_a_regra_real(harness: Any,
                                                                                     monkeypatch: Any) -> None:
     """B1, cenário real (`_repetido` de verdade, sem monkeypatch): a única regra da porta que depende do TEXTO é a da
@@ -653,6 +657,7 @@ async def test_g1b_sem_item_a_aprovar_nao_exige_vista_em(harness: Any, monkeypat
     assert iniciou
 
 
+@SAIU_NO_ADR_083
 async def test_g1b_a_mesma_dm_mandada_depois_da_previa_vista_nao_fica_coberta(harness: Any, monkeypatch: Any) -> None:
     """O resíduo do #330: a DM igual mandada ENTRE a prévia na tela e o clique não estava no motivo lido. A chave não
     muda; o gesto devolve `plano_mudou` com o motivo da repetição, e nada é gravado."""
@@ -687,6 +692,7 @@ async def test_g1b_a_mesma_dm_mandada_antes_da_previa_vista_segue_coberta(harnes
     assert state.db.scalar("SELECT COUNT(*) FROM pending_approvals WHERE origem='plano'") == 1
 
 
+@SAIU_NO_ADR_083
 async def test_g1b_o_texto_editado_repetido_depois_da_previa_vista_nao_fica_coberto(harness: Any,
                                                                                      monkeypatch: Any) -> None:
     """Revisão do 31.68, T1: a repetição se confere com o texto que VAI (o editado). O texto editado mandado ao mesmo
