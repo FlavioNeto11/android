@@ -92,10 +92,16 @@ class TestTetoDeCpu:
 
     @pytest.mark.parametrize("linha", ['pwsh -NoProfile -Command "exit 0"', f'"{PWSH}" -NoProfile -Command "exit 0"',
                                        'cmd /c pwsh -NoProfile -Command "exit 0"'])
-    def test_avisa_quando_o_comando_usa_pwsh_que_escapa_do_job(self, linha):
+    def test_recusa_o_comando_que_usa_pwsh_que_escapa_do_job(self, linha):
         r = _wrapper("-Teto", "50", "-Linha", linha)
+        assert r.returncode == 125, r.stdout + r.stderr
+        assert "RECUSADO" in r.stdout and "escapa do job" in r.stdout
+        assert "teto agora" not in r.stdout and "usou" not in r.stdout, "o comando nem chegou a rodar"
+
+    def test_permitir_pwsh_roda_mas_avisa(self):
+        r = _wrapper("-Teto", "50", "-PermitirPwsh", "-Linha", 'pwsh -NoProfile -Command "exit 0"')
         assert r.returncode == 0, r.stdout + r.stderr
-        assert "AVISO" in r.stdout and "escapa do job" in r.stdout
+        assert "AVISO" in r.stdout and "RECUSADO" not in r.stdout
 
     @pytest.mark.parametrize("args", [["-ComandoJson", json.dumps([sys.executable, "-c", "print(1)"])],
                                       ["-Linha", f'"{sys.executable}" -c "print(1)"'], ["-Linha", "powershell -NoProfile -Command exit"]])
@@ -121,10 +127,22 @@ class TestTetoDeCpu:
         assert "AVISO" not in r.stdout
 
     def test_batimento_acusa_arvore_com_zero_de_cpu_fora_do_job(self):
-        r = _wrapper("-Teto", "50", "-BatimentoS", "1", "-ZeroAposS", "1", "-Linha",
+        r = _wrapper("-Teto", "50", "-BatimentoS", "1", "-ZeroAposS", "1", "-PermitirPwsh", "-Linha",
                      'pwsh -NoProfile -Command "$s=Get-Date; while(((Get-Date)-$s).TotalSeconds -lt 3){}"')
         assert r.returncode == 0, r.stdout + r.stderr
         assert "FORA do job" in r.stdout
+
+    def test_arquivo_de_teto_troca_o_teto_do_job_que_ja_roda(self, tmp_path):
+        ctl = tmp_path / "teto.txt"
+        ctl.write_text("25", encoding="utf-8")
+        filho = (f"import time; time.sleep(1.5); open(r'{ctl}','w').write('40'); time.sleep(5); open(r'{ctl}','w').write('abc'); "
+                 "time.sleep(3); open(r'" + str(ctl) + "','w').write('10'); time.sleep(3)")
+        r = _wrapper("-Teto", "25", "-BatimentoS", "0", "-ArquivoDeTeto", str(ctl), "-ComandoJson",
+                     json.dumps([sys.executable, "-c", filho]))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "teto agora 40 % (era 25 %)" in r.stdout
+        assert "teto agora 10 % (era 40 %)" in r.stdout, "valor inválido no meio não derruba nem troca o teto"
+        assert r.stdout.count("percentual de 1 a 100") == 1, "o aviso do valor inválido sai uma vez só"
 
     def test_batimento_zero_desliga(self):
         r = _wrapper("-Teto", "50", "-BatimentoS", "0", "-ComandoJson", json.dumps([sys.executable, "-c", "print(1)"]))

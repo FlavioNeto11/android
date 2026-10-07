@@ -395,6 +395,16 @@ estado antigo, nunca uma edição retroativa.
   parou). Veredito em `data/restore-ensaio/ultimo.json` e `historico.jsonl` (só fatos, nenhum valor de tabela); saída 0 ok,
   1 falhou, 2 pulado. **Não manda Telegram**: o canal do § 15 só aceita os tipos de aviso montados no backend; ligar o `falhou`
   ao aviso é trabalho de backend (ver o resultado do 29.167). PostgreSQL (`parque.dump`) não é ensaiado aqui.
+- **`scripts/funil.ps1`** (29.196) — o funil de um corte num comando só, em **Windows PowerShell 5.1** e sob o teto de CPU. Etapas: 1 `scripts/tests -n 4`,
+  2 SQLite inteiro `-n 6`, 3 frontend (typecheck, vitest, build), 4 catracas + docs-check, 5 mypy, 6 PG dirigido em partes (`pg-rapido.py`; sem
+  `-ListaPg` a etapa é PULADA e pulada nunca conta como verde). Sem `-SemTeto` o funil se relança sob `com-teto-de-cpu.ps1` (`-Teto 25` por padrão,
+  batimento de 30 s) e o encadeamento roda dentro do job; `-TetoPorEtapa "pg=40,sqlite=25"` escreve o percentual de cada etapa no arquivo de teto
+  antes dela. Grava um **run.txt padronizado** (`FUNIL`/`ETAPA` com `ini`, `fim`, `dur_s`, `rc`, `status` ok|falhou|pulado|nao_rodou, `teto`,
+  `passed`, `failed`, `skipped`, `errors`; datas em UTC; detalhe de cada etapa em `<run>.<id>-<chave>.txt`, batimento do wrapper em
+  `<run>.wrapper.txt`). Saída 0 só com tudo verde, 1 se alguma etapa falhou, 2 se nenhuma falhou mas alguma foi pulada ou não rodou. Uso:
+  `powershell -NoProfile -File scripts\funil.ps1 -Raiz <checkout> -ListaPg <lista> -Saida <run.txt>`; `-Simular` mostra o plano; `-ParaNoErro` para na
+  primeira falha. A comparação entre cortes lê o run.txt direto (`devops-29-180-comparar.py run.txt=<corte>`). Teste:
+  `scripts/tests/test_funil.py` (comandos falsos pelo gancho `-ComandosDeTeste`).
 - **Restaurar o banco regride a cerca** (`commands.fence`, usada para invalidar comando obsoleto por aparelho):
   depois de restaurar, o agente recusa comandos com "cerca N é anterior à última executada (M)" e os `start`
   ficam `failed` sem reparo automático. Procedimento: subir manualmente o `fence` do último comando do aparelho
@@ -486,7 +496,8 @@ Fontes: `.claude/handoffs/hardware-analise.md` (fora do Git, Frente Hardware, 06
   morre junto. `-Linha` passa pelo `cmd.exe /d /c`. **O `pwsh` (PowerShell 7) deste host é um app MSIX e o Windows o ativa FORA do job: o
   teto não vale para ele nem para nada que ele inicie** (o funil 58 rodou assim, sem teto, com a árvore em 0,0 s de CPU no
   contador do wrapper). Use `powershell` (5.1) como hospedeiro do script do funil, ou chame o python/pytest direto; o wrapper
-  avisa quando o comando usa `pwsh` e quando a árvore quase não usa CPU. `-BatimentoS N` (padrão 60; 0 desliga) imprime a cada N s a
+  RECUSA (código 125) o comando que usa `pwsh` (`-PermitirPwsh` ignora, só para teste) e avisa quando a árvore quase não usa CPU.
+  `-ArquivoDeTeto <arquivo>` (uma linha com o percentual) troca o teto do job que já roda, lido a cada 2 s: é o teto por etapa do `funil.ps1`. `-BatimentoS N` (padrão 60; 0 desliga) imprime a cada N s a
   CPU que a árvore já usou e acusa árvore com 0 s depois de `-ZeroAposS` s (padrão 20): dá para conferir no primeiro minuto, pelo
   arquivo de saída, que o funil está dentro do job. Imprime a CPU usada pela árvore (% do total) e propaga o código de saída. Não toca `.wslconfig`, WSL, túnel nem relógio e não
   mata processo alheio. Teste: `scripts/tests/test_com_teto_de_cpu.py`. O custo do teto é tempo de funil: compare a duração da
@@ -803,6 +814,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
 | `amostrador-host.ps1` | S | Amostrador permanente do host (CPU, RAM, disco, VM do WSL, processos que mais usam CPU, avisos de pressão por aparelho), 1 linha/min em `data\observabilidade\host`, retenção 7 dias; `-Instalar` [P] registra a tarefa `farm-amostrador-host` |
 | `com-teto-de-cpu.ps1` | S | Roda um comando sob teto rígido de CPU (Job Object) e, opcional, nos núcleos E; só limita a árvore do próprio comando |
+| `funil.ps1` | P | O funil de um corte (scripts, SQLite, frontend, catracas, mypy, PG dirigido) em PowerShell 5.1 sob `com-teto-de-cpu.ps1`; run.txt padronizado; mexe só no contêiner `farm-pg-rapido` e em CPU/disco da máquina |
 | `rollback-ensaio.ps1` | S | Ensaio do rollback com migração: backup da última linha de `deploys.jsonl` aberto pelo código do `commit_antes`, em pasta própria (Idle, sem tocar o checkout nem `data\poc.sqlite3`) |
 | `restore-ensaio.ps1` | S | Ensaio semanal sobre a cópia mais nova (pasta própria, Idle, não toca `data\poc.sqlite3`); `-Instalar` [P] registra a tarefa `farm-restore-ensaio` |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central`; grava `data\deploys.jsonl` e, conferida a subida, cria a tag `deploy-AAAAMMDD-HHMM` e o release (29.159; `-SemTag` pula a tag) |
