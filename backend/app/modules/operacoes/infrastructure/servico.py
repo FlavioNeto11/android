@@ -129,43 +129,40 @@ def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
         raise OperacaoError("pedido_invalido", "Dois parâmetros com o mesmo valor.", 422)
 
 
-def _parametros_do_catalogo(pacote: str) -> list[str] | None:
-    """Os nomes de parâmetro que as ações do catálogo do app usam (obrigatórios, opcionais e herdados). `None` quando o
-    app não tem catálogo: o planejamento livre segue livre, e só a conferência genérica vale."""
-    catalogo = apps_registrados.get(pacote)
-    if catalogo is None:
-        return None
-    nomes: set[str] = set()
-    for cap in catalogo.capabilities:
-        nomes.update(cap.bindings, cap.optional_bindings, cap.inherited_bindings)
-    return sorted(nomes)
-
-
 def _conferir_contra_o_app(parametros: Mapping[str, str] | None, pacote: str) -> None:
-    """31.224 (adendo v1.121): o parâmetro fixo que não casa com o app é recusado ANTES de qualquer execução, para que um erro de
-    digitação na prova não custe chamada paga. `username` vai sem arroba e sem espaço: a prova local compara o texto da
-    tela, que não traz o @. Chave fora do catálogo do app é recusada com a lista dos aceitos (que vem do catálogo, não do
-    pedido). Como em `_conferir_parametros`, a recusa diz a POSIÇÃO (`posicao`, 1 = o primeiro de `parametros`), nunca o
-    nome que veio; `campo` só sai quando o nome é o nosso (`username`)."""
+    """31.224 (adendo v1.121) e 31.227: o parâmetro fixo que não casa com o app é recusado ANTES de qualquer execução,
+    para que um erro de digitação na prova não custe chamada paga. Sem catálogo, só a conferência genérica (o teto de
+    300). Com catálogo, a chave tem de ser uma que as ações usam (a recusa traz a lista dos aceitos, que vem do catálogo,
+    não do pedido), e o parâmetro que o catálogo declara (`parametros` no YAML) segue a forma e o tamanho dele: `handle`
+    vai sem arroba e sem espaço. Como em `_conferir_parametros`, a recusa diz a POSIÇÃO (`posicao`, 1 = o primeiro de
+    `parametros`), nunca o nome que veio; `campo` só sai quando o nome é um declarado pelo app."""
     if not parametros:
         return
-    for posicao, (nome, valor) in enumerate(parametros.items(), start=1):
-        if nome != "username":
-            continue
-        if "@" in valor:
-            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro (username) vai sem arroba.", 422,
-                                motivo="username_com_arroba", posicao=posicao, campo="username")
-        if any(c.isspace() for c in valor):
-            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro (username) vai sem espaço.", 422,
-                                motivo="username_com_espaco", posicao=posicao, campo="username")
-    aceitos = _parametros_do_catalogo(pacote)
-    if aceitos is None:
+    catalogo = apps_registrados.get(pacote)
+    if catalogo is None:
         return
-    for posicao, nome in enumerate(parametros, start=1):
-        if nome not in aceitos:
+    usados: set[str] = set()
+    for cap in catalogo.capabilities:
+        usados.update(cap.bindings, cap.optional_bindings, cap.inherited_bindings)
+    aceitos = sorted(usados)
+    for posicao, (nome, valor) in enumerate(parametros.items(), start=1):
+        if nome not in usados:
             raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro não é aceito por este app; aceitos: "
                                 f"{', '.join(aceitos)}.", 422, motivo="parametro_desconhecido", posicao=posicao,
                                 aceitos=aceitos)
+        decl = catalogo.parametros.get(nome)
+        if decl is None:
+            continue
+        if decl.forma == "handle" and "@" in valor:
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro ({nome}) vai sem arroba.", 422,
+                                motivo=f"{nome}_com_arroba", posicao=posicao, campo=nome)
+        if decl.forma == "handle" and any(c.isspace() for c in valor):
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro ({nome}) vai sem espaço.", 422,
+                                motivo=f"{nome}_com_espaco", posicao=posicao, campo=nome)
+        if len(valor) > decl.max:
+            raise OperacaoError("pedido_invalido", f"O {posicao}º parâmetro ({nome}) tem no máximo {decl.max} "
+                                "caracteres neste app.", 422, motivo=f"{nome}_longo", posicao=posicao, campo=nome,
+                                max=decl.max)
 
 
 def _sha(pedido: PedidoDeOperacao) -> str:

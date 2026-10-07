@@ -252,6 +252,9 @@ def test_chave_normalizada_fora_do_formato_nao_renomeia_nada() -> None:
     ({"usernmae": "loja.exemplo"}, "parametro_desconhecido", 1),
     ({"caption_contains": "Setembro Amarelo", "username": "@loja.exemplo"}, "username_com_arroba", 2),
     ({"username": "loja exemplo"}, "username_com_espaco", 1),
+    # 31.227: a forma e o tamanho vêm da declaração do catálogo (`parametros` no YAML do app)
+    ({"username": "loja.exemplo", "post_author": "@autor"}, "post_author_com_arroba", 2),
+    ({"username": "a" * 31}, "username_longo", 1),
 ])
 async def test_parametro_que_nao_casa_com_o_app_e_recusado_antes_de_qualquer_execucao(
         harness: Harness, parametros: dict[str, str], motivo: str, posicao: int) -> None:
@@ -271,7 +274,9 @@ async def test_parametro_que_nao_casa_com_o_app_e_recusado_antes_de_qualquer_exe
         assert "usernmae" not in exc.value.message
         assert {"username", "caption_contains"} <= set(exc.value.extra["aceitos"])  # type: ignore[arg-type]
     else:
-        assert exc.value.extra["campo"] == "username"
+        assert exc.value.extra["campo"] == list(parametros)[posicao - 1]
+    if motivo.endswith("_longo"):
+        assert exc.value.extra["max"] == 30
     assert st.db.scalar("SELECT COUNT(*) FROM runs") == runs and st.db.scalar("SELECT COUNT(*) FROM operacoes") == ops
 
 
@@ -281,11 +286,33 @@ async def test_parametros_do_catalogo_passam_e_o_app_sem_catalogo_segue_livre(ha
     op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-ok", app_id="instagram",
                          parametros={"username": "loja.exemplo", "caption_contains": "Setembro Amarelo"}))
     assert op["parametros"] == {"username": "loja.exemplo", "caption_contains": "Setembro Amarelo"}
-    # o QA Messenger não tem catálogo: a chave livre segue aceita, e só o username tem a regra dele
+    # o QA Messenger não tem catálogo: a chave e a forma seguem livres, só com o teto genérico (31.227)
     assert s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-livre", parametros={"contato": "QA-001"}))["id"]
-    with pytest.raises(OperacaoError) as exc:
-        s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-livre2", parametros={"username": "@qa"}))
-    assert exc.value.extra["motivo"] == "username_com_arroba"
+    assert s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-livre2", parametros={"username": "@qa"}))["id"]
+    # o declarado no limite passa: 30 caracteres no username do Instagram
+    assert s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-30", app_id="instagram",
+                           parametros={"username": "a" * 30}))["id"]
+
+
+@pytest.mark.parametrize(("declaracao", "trecho"), [
+    ({"nome_que_nenhuma_acao_usa": {"forma": "handle", "max": 30}}, "nenhuma ação usa"),
+    ({"username": {"forma": "arroba", "max": 30}}, "forma"),
+    ({"username": {"forma": "handle", "max": 301}}, "max"),
+    ({"username": {"forma": "handle"}}, "esperava"),
+    (["username"], "esperava um mapa"),
+])
+def test_a_declaracao_errada_do_parametro_e_recusada_na_carga(declaracao: object, trecho: str) -> None:
+    """31.227: a declaração do parâmetro no catálogo é conferida na CARGA, como o resto do catálogo."""
+    import yaml
+
+    from app.planning.capabilities import CONHECIMENTO_DE_APPS, CatalogoInvalido, catalogo_de_dados
+
+    dados = yaml.safe_load((CONHECIMENTO_DE_APPS / "com.instagram.android" / "catalogo.yaml").read_text(
+        encoding="utf-8"))
+    assert dados["parametros"]["username"] == {"forma": "handle", "max": 30}
+    with pytest.raises(CatalogoInvalido, match=trecho):
+        catalogo_de_dados({**dados, "parametros": declaracao})
+    assert catalogo_de_dados({k: v for k, v in dados.items() if k != "parametros"}).parametros == {}
 
 
 async def test_rota_devolve_o_motivo_e_a_posicao_no_422(harness: Harness) -> None:

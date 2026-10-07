@@ -7635,3 +7635,19 @@ pode estar no próprio nome); `aceitos` vem do catálogo do app, não do pedido.
 Código: `_conferir_contra_o_app` em `modules/operacoes/infrastructure/servico.py`. Testes em
 `backend/tests/test_plano_da_operacao.py`: a recusa sem gravar nem criar execução, o caminho aceito, o app sem catálogo
 e o 422 pela rota.
+
+## Nota do 31.227 (07/10/2026; sem número; o número fica com a orquestradora) — a forma do parâmetro vem do catálogo
+
+O `catalogo.yaml` do app ganha a seção opcional `parametros: {nome: {forma, max}}`. `forma` é `handle` (sem arroba
+nem espaço) ou `texto`, e `max` vai de 1 a 300. A carga recusa nome que nenhuma ação usa, forma fora do vocabulário e
+máximo fora da faixa. O Instagram declara `username` e `post_author` como `handle` de até 30 caracteres.
+
+A conferência do v1.121 passa a ler essa declaração: o parâmetro declarado segue a forma e o tamanho dele, e o que não
+está declarado vale o teto genérico de 300. O app sem catálogo não tem conferência de chave nem de forma; isso muda o
+v1.121, onde a regra do `username` valia em qualquer app. Os motivos do 422 são `<nome>_com_arroba`,
+`<nome>_com_espaco` e `<nome>_longo` (este último com `max`), todos com `posicao` e `campo` = o nome declarado, além de
+`parametro_desconhecido`. Para `username`, os dois primeiros têm o mesmo valor do v1.121.
+
+Código: `FormaDoParametro` e `_parametros` em `planning/capabilities.py`, e `_conferir_contra_o_app` em
+`modules/operacoes/infrastructure/servico.py`. Testes em `backend/tests/test_plano_da_operacao.py` (recusa por
+`post_author` com arroba e por `username` acima de 30; os 30 exatos passam; declaração errada recusada na carga).
