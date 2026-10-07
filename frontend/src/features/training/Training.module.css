@@ -102,3 +102,4 @@
 .posJaValeSugestoes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .campoMascarado { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .campoMascarado > input { flex: 1 1 14rem; min-width: 0; }
+.avisoDaEtapa { display: block; margin: var(--sp-1) 0 0; color: var(--text-2); font-size: var(--fs-sm); }
