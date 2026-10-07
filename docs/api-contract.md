@@ -7924,3 +7924,42 @@ mesma leitura repetida não grava nada nem emite evento. "Só lê" quer dizer "n
 há laço do sistema que avance a operação, e é a leitura (a do painel, a da Canais ou a de um POST) que a avança.
 Teste: `backend/tests/test_operacoes.py::test_ler_varias_vezes_nao_grava_de_novo_nem_avisa_de_novo`, com uma mutação
 (sem a guarda de `_anotar`) pega pelo teste.
+
+## Adendo v1.124 (07/10/2026; número da orquestradora; item 31.229) — o custo e o modelo por passo
+
+Fonte da linha do tempo do alvo (31.228, Portal) e da medida da política de modelos (31.223, Aprendizado). Só expõe:
+não muda a política. Não há migração, porque o vínculo já existe na origem: o executor grava `ai_calls.step_id` em
+toda chamada `decide`/`verify` de uma etapa, e `actions.ai_call_id` (088) aponta para o `decide` que escolheu a ação.
+O planejamento (`plan`) não tem etapa e entra em `sem_passo`.
+
+**Onde:**
+- `GET /api/runs/{id}`: o campo novo `custo_por_passo`, da execução;
+- `GET /api/operacoes/{id}`: `alvos[].custo_por_passo`, do alvo (o objeto da execução dele; `null` sem execução), e,
+  na operação, `custo_por_modelo` e `custo_por_estagio`, somados entre os alvos.
+
+**`custo_por_passo`:**
+
+```
+{
+  "passos": [{
+    "step_id": "...", "seq": 3, "key": "...", "capability": "OPEN_POST" | null,
+    "efeito": true,                       // a etapa declara efeito externo (steps.side_effect)
+    "estagio": "post_localizado" | null,  // o estágio da operação que a capability marca (app.yaml operacao.estagios)
+    "modelo": "claude-sonnet-..." | null, // id CRU do modelo do último decide ok da etapa; null = só receita
+    "commit": {"fonte": "ai" | "recipe", "modelo": "claude-opus-..." | null} | null,
+                                          // a última ação com efeito (actions.side_effect) e o modelo do decide que a
+                                          // escolheu (actions.ai_call_id); null = a etapa não chegou ao commit
+    "chamadas": 4, "custo_usd": 0.0123,
+    "por_modelo": [{"modelo": "...", "chamadas": 3, "custo_usd": 0.01}]
+  }],
+  "sem_passo": {"chamadas": 1, "custo_usd": 0.004, "por_modelo": [...]},  // planejamento e chamadas sem etapa
+  "por_modelo": [{"modelo": "...", "chamadas": 5, "custo_usd": 0.0163}], // passos + sem_passo
+  "por_estagio": {"post_localizado": {"chamadas": 2, "custo_usd": 0.005}, "sem_estagio": {...}, "sem_passo": {...}}
+}
+```
+
+Os passos vêm na ordem de `seq` e incluem as versões replanejadas. `custo_usd` segue a regra de `spent_usd`: o custo
+declarado onde há, tokens vezes o preço do modelo onde não há, e a chamada simulada a US$ 0. `chamadas` conta todas,
+inclusive as simuladas e as que falharam. Na operação, `custo_por_modelo` é a lista `por_modelo` somada entre os alvos,
+e `custo_por_estagio` o mapa `por_estagio` somado. O modelo vem sempre como o id cru gravado em `ai_calls.model`; o
+rótulo para pessoa fica com a tela.
