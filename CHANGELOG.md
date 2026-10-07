@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.207 (J0): N personas no mesmo aparelho na operação, só no app que declara a troca (branch feat/31-207-j0-troca-na-operacao, corte 61)
+
+- No app que declara a troca de conta (ADR-080, `troca` no `sessao.yaml`), o alvo cuja persona serve ao app no
+  aparelho (o pedido, ou o principal dela) entra na operação sem sessão aberta ali: ganha a execução própria, a porta
+  de sessão troca para a conta dela (31.155) e o despacho serializa os alvos do aparelho. A capacidade conta esse alvo
+  em `sessoes_validas`. Sem a declaração, nada muda: quem não tem sessão para em `sessao`. Nenhum app do parque declara
+  a troca hoje, então o Instagram fica de fora por construção.
+- Prova `simulated`: `backend/tests/test_operacoes.py::test_n_personas_no_mesmo_aparelho_so_quando_o_app_declara_a_troca`
+  (com e sem a declaração; uma mutação que desliga a entrada pela troca é pega). Ele prova a admissão do alvo e a
+  capacidade; a troca de conta durante a execução é a do 31.155 (`test_troca_de_conta.py`). Real: not_run.
+
 ## 2026-10-07 — 31.206 e 31.213: a fila do aparelho no GET e a lista de operações por persona (branch feat/operacao-latencia-por-estagio, corte 60)
 
 - 31.206 (adendo v1.114): o alvo pendente traz `fila` `{posicao, a_frente, previsao_inicio_em, base_ms}`, na ordem do

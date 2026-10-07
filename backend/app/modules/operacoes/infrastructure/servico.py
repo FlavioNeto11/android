@@ -31,6 +31,7 @@ from app.modules.operacoes.domain import fila as filas, latencia, relatorio as r
 from app.modules.operacoes.domain.estagios import ESTADOS, EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs
+from app.social.repository import troca_declarada
 from app.social.service import SocialError
 from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS, normal
 from app.taskqueue.recipes import SENSITIVE_PARAM
@@ -266,11 +267,35 @@ class ServicoDeOperacoes:
         else:
             aparelho = alvo.instance_id or (sessoes[0] if sessoes else None)
         if aparelho is None or aparelho not in sessoes:
-            return "sessao", SEM_SESSAO, str(conta["id"]), alvo.instance_id
+            # 31.207 (J0, ADR-080): o app que DECLARA a troca de conta atende N personas no mesmo aparelho, uma depois da
+            # outra; só uma conta está aberta por vez, e a porta de sessão da execução troca para a esperada (31.155).
+            # Basta a persona servir ao app no aparelho. App sem a declaração (o Instagram) segue exigindo a sessão.
+            pela_troca = self._aparelho_pela_troca(alvo, app_id)
+            if pela_troca is None:
+                return "sessao", SEM_SESSAO, str(conta["id"]), alvo.instance_id
+            aparelho = pela_troca
         rt = self.runs.devices.devices.get(aparelho)
         if rt is None or rt.store:
             return "aparelho", SEM_APARELHO, str(conta["id"]), aparelho
         return None, None, str(conta["id"]), aparelho
+
+    def _aparelho_pela_troca(self, alvo: AlvoPedido, app_id: str) -> str | None:
+        """O aparelho em que a persona entra pela troca declarada (31.207): o pedido, ou o principal dela, desde que ela
+        sirva ao app nele. None quando o app não declara a troca ou ela não serve ao app ali."""
+        if not troca_declarada(self.db, app_id):
+            return None
+        alvo_do_pedido = alvo.instance_id
+        if alvo_do_pedido is None:
+            principal = self.social.binding_principal(alvo.profile_id)
+            alvo_do_pedido = str(principal["instance_id"]) if principal is not None else None
+        if alvo_do_pedido is None or not self._serve_o_app(alvo.profile_id, alvo_do_pedido, app_id):
+            return None
+        return alvo_do_pedido
+
+    def _serve_o_app(self, profile_id: str, instance_id: str, app_id: str) -> bool:
+        """A persona serve ao app no aparelho: o vínculo daquele app, ou o vínculo sem app de quem tem conta nele (a
+        mesma leitura de `profiles_of_instance`, que decide qual persona do aparelho a tarefa usa)."""
+        return any(str(v["profile_id"]) == profile_id for v in self.social.profiles_of_instance(instance_id, app_id))
 
     def _principal_com_sessao(self, profile_id: str, sessoes: list[str]) -> str | None:
         principal = self.social.binding_principal(profile_id)
@@ -657,7 +682,11 @@ class ServicoDeOperacoes:
 
     def _capacidade(self, alvos: list[dict[str, object]]) -> dict[str, object]:
         contas = [a for a in alvos if a["account_id"]]
-        com_sessao = [a for a in contas if self._sessoes_prontas(str(a["account_id"]))]
+        # A conta que entra pela troca declarada (31.207) conta como sessão válida: a porta de sessão a abre na hora.
+        troca = bool(alvos) and troca_declarada(self.db, str(alvos[0]["app_id"]))
+        com_sessao = [a for a in contas if self._sessoes_prontas(str(a["account_id"]))
+                      or (troca and bool(a["instance_id"]) and self._serve_o_app(
+                          str(a["profile_id"]), str(a["instance_id"]), str(a["app_id"])))]
         disponiveis = [a for a in com_sessao if self._aparelho_apto(a["instance_id"])]
         estados = Counter(str(a["estado"]) for a in alvos)
         motivos = Counter(str(a["motivo"]) for a in alvos if a["estado"] == "bloqueado" and a["motivo"])

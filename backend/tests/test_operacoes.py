@@ -982,3 +982,44 @@ async def test_a_lista_filtrada_por_persona_ou_aparelho_traz_so_as_operacoes_del
         assert r.status_code == 200 and [i["id"] for i in r.json()["items"]] == [as_duas["id"]]
         r = await c.get("/api/operacoes", params={"profile_id": ""})
         assert r.status_code == 422
+
+
+@pytest.mark.parametrize("declara", [False, True])
+async def test_n_personas_no_mesmo_aparelho_so_quando_o_app_declara_a_troca(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch, declara: bool) -> None:
+    """31.207 (J0, ADR-080): no app que declara a troca de conta, a persona vinculada ao aparelho entra na operação sem
+    sessão aberta ali (a porta de sessão da execução troca para a conta dela) e o despacho serializa os alvos no mesmo
+    aparelho. Sem a declaração (o Instagram), quem não tem sessão segue parado em `sessao`. Persona que não serve ao app
+    naquele aparelho para em `sessao` nos dois casos."""
+    from app.modules.operacoes.infrastructure import servico as mod
+    from app.social import repository as social_repo
+    st = harness.state
+    assert st is not None
+    # Os vínculos nascem como no app que declara (o D2-a do repositório não recusa a segunda persona); o que varia
+    # entre os dois casos é só a declaração que a operação lê.
+    monkeypatch.setattr(social_repo, "_troca_declarada", lambda _db, app_id: app_id == APP)
+    monkeypatch.setattr(mod, "troca_declarada", lambda _db, app_id: declara and app_id == APP)
+    pids = []
+    for n, (iid, sessao) in enumerate((("android-02", True), ("android-02", False), ("android-02", False),
+                                       ("android-03", False)), start=1):
+        pid = _persona(harness, f"Troca{n}")
+        st.social_repo.bind(pid, iid, app_id=APP, primary=True)
+        _conta(harness, pid, f"qa-user-4{n}", sessao_em=iid if sessao else None)
+        pids.append(pid)
+    aberta, fechada, pelo_principal, de_fora = pids
+    op = _servico(harness).criar(_pedido(
+        [AlvoPedido(aberta), AlvoPedido(fechada, instance_id="android-02"), AlvoPedido(pelo_principal),
+         AlvoPedido(de_fora, instance_id="android-02")], chave=f"teste-op-troca-{int(declara)}"))
+    a, b, c, d = (_alvo(op, p) for p in (aberta, fechada, pelo_principal, de_fora))
+    assert a["run_id"] and a["instance_id"] == "android-02"
+    assert (d["estado"], d["parou_em"], d["run_id"]) == ("bloqueado", "sessao", None)
+    if declara:
+        for alvo in (b, c):
+            assert alvo["run_id"] and alvo["instance_id"] == "android-02" and alvo["estado"] in ("pendente", "em_curso")
+        assert len({a["run_id"], b["run_id"], c["run_id"]}) == 3
+        assert op["capacidade"]["sessoes_validas"] == 3
+    else:
+        for alvo in (b, c):
+            assert (alvo["estado"], alvo["motivo"], alvo["parou_em"], alvo["run_id"]) == (
+                "bloqueado", "sem sessão", "sessao", None)
+        assert op["capacidade"]["sessoes_validas"] == 1
