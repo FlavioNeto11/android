@@ -501,7 +501,7 @@ avisos depois da faxina"), e a trava cai no TTL.
   <checkout>]`, SÓ LEITURA (6 GETs; um guarda recusa qualquer método que não seja GET; nunca escreve no Trello nem avisa
   ninguém). Seis verificações, cada uma com contagem e até 5 exemplos, SÓ com o ID (`NN.NN`, `P-NNN` ou o rótulo
   `android-NN`; nunca nome de cartão nem texto da descrição, e tudo passa por `_sem_contato` e `redacao.redigir`): (1)
-  duplicados (mesmo ID de plano ou P-NNN em dois cartões abertos); (2) item de `docs/plano-100.md` sem cartão em nenhum
+  duplicados (dois cartões abertos do mesmo quadro com o mesmo ID de plano como começo exato do nome e o mesmo sufixo de subitem `-C`/`F5`, tirado só o `🙋`; `[A]` e `#NNN ·` nunca duplicam; o mesmo P-NNN no Execução também conta); (2) item de `docs/plano-100.md` sem cartão em nenhum
   quadro (a conta do `espelho_do_deploy`, com a leitura de ID do `reconciliar`); (3) pergunta com a resposta do dono no topo
   ainda em "Perguntas para você", ou em "Perguntas respondidas" sem nenhum bloco datado no topo; (4) cartão de aparelho
   (`Aparelho: <rótulo>`) duplicado, fora das 3 listas de aparelho ou em lista diferente do "Estado da sessão" escrito nele;
@@ -513,8 +513,9 @@ avisos depois da faxina"), e a trava cai no TTL.
   linha HTML do Telegram, que o `canais/resumo_diario.py` mostra entre os cartões movidos e o `Crítico` (import protegido e
   opcional: se a auditoria falhar, o resumo sai como antes com "não consegui ler"; a coerência não entra em `Crítico`).
   Testes: `.claude/trello/test_auditoria_dos_quadros.py` e `.claude/canais/test_resumo_diario.py` (simulated, cartões e
-  Trello falsos). Prova `real` (ensaio só-GET, 07/10/2026 00:40Z): 387 cartões no Execução, 145 no Programa, 461 no
-  Histórico; 5 achados, todos em "duplicados"; as outras 5 verificações com 0.
+  Trello falsos). Prova `real` (ensaio só-GET, 07/10/2026 00:46Z): 389 cartões no Execução, 145 no Programa, 461 no
+  Histórico; 0 achados. A primeira versão da verificação 1 contou 5 "duplicados" que eram subitens, cartões de pergunta
+  (`[A]`) e de PR (`#NNN ·`); a regra do mesmo ID, mesmo sufixo e mesmo quadro os separou.
 - **Hoje:** `.claude/trello/reconciliar.py` (testes em `.claude/trello/test_reconciliar.py`), a rotina da skill `trello` e o
   aviso no fim do `aplicar` do plano. As exceções acima (sem estado, "Espera você") ficam num relato para o dono ver.
 - **No produto:** nada ainda. A Central só tem o espelho dos avisos; levar a reconciliação para dentro dela é decisão a

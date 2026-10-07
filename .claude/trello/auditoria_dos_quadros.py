@@ -9,7 +9,9 @@ CHANGELOG e o Git; o padrão é o checkout central.
 Seis verificações, contadas e com até 5 exemplos cada (SÓ o ID: `NN.NN`, `P-NNN` ou o rótulo `android-NN` do aparelho;
 nunca o nome do cartão nem texto da descrição):
 
-  1. duplicados: o mesmo ID de plano (ou P-NNN, no Execução) em dois cartões abertos dos 3 quadros;
+  1. duplicados: dois cartões abertos do MESMO quadro cujo nome começa pelo mesmo ID de plano, com o mesmo sufixo de subitem
+     (`-C`, `F5` ou nenhum), depois de tirar só o `🙋`; nome com `[A]` ou `#NNN ·` nunca duplica; `28.24 F5` não é duplicata
+     de `28.24`. Vale também para o mesmo P-NNN no Execução;
   2. sem_cartao: item de `docs/plano-100.md` sem cartão aberto em nenhum dos 3 quadros (a conta do `espelho_do_deploy`, com a
      leitura de ID do `reconciliar`; cartão da lista "Prova 07/10" conta como cartão);
   3. pergunta_incoerente: cartão P-NNN com a resposta do dono no topo ("**RESPOSTA DO DONO" ou "**Resposta do dono") mas ainda
@@ -116,15 +118,32 @@ def _resultado(exemplos: list[str], n: int | None = None) -> dict:
     return {"n": len(uniq) if n is None else n, "exemplos": [_limpo(e) for e in uniq[:MAX_EXEMPLOS]]}
 
 
+#: nome que COMEÇA pelo ID do item (só o `🙋` pode vir antes), com o sufixo de subitem opcional: `-C` ou ` F5`. Nome com
+#: `[A]` (cartão de pergunta ao dono) ou `#NNN ·` (cartão de PR/atividade) não casa: esses nunca são duplicata do item.
+_NOME_DO_ITEM = re.compile(r"^(?:🙋\s*)?(?P<id>\d+\.\d+|T\.\d+)(?P<suf>-[A-Za-z]|\s+F\d+)?(?=$|[\s·:—–])")
+
+
+def _chave_de_duplicata(c: dict) -> tuple[str, str] | None:
+    """(ID com o sufixo de subitem, quadro) se o cartão pode ser duplicata de outro; `None` se não pode. Item é o mesmo só
+    com o MESMO ID, o MESMO sufixo e no MESMO quadro: `28.24 F5` não duplica `28.24`, nem `31.90-C` duplica `31.90-D`."""
+    m = _NOME_DO_ITEM.match(str(c.get("nome") or ""))
+    if m:
+        return m["id"] + re.sub(r"\s+", " ", (m["suf"] or "")).upper(), str(c.get("quadro"))
+    p = _p_de(c)
+    return (p, str(c.get("quadro"))) if p else None
+
+
 def verificar_duplicados(cartoes: list[dict]) -> dict:
-    por_id: dict[str, int] = {}
+    """Dois cartões abertos com o mesmo ID de item (mesmo sufixo, mesmo quadro) ou o mesmo P-NNN no Execução."""
+    por_chave: dict[tuple[str, str], int] = {}
     for c in cartoes:
         if _papel(c) == "prova":
             continue
-        chave = _id_de(c) or _p_de(c)
+        chave = _chave_de_duplicata(c)
         if chave:
-            por_id[chave] = por_id.get(chave, 0) + 1
-    return _resultado([f"{k} ({n} cartões)" for k, n in sorted(por_id.items()) if n > 1])
+            por_chave[chave] = por_chave.get(chave, 0) + 1
+    achados = [(k, n) for k, n in sorted(por_chave.items()) if n > 1]
+    return _resultado([f"{k[0]} ({n} cartões)" for k, n in achados], n=len(achados))
 
 
 def verificar_sem_cartao(cartoes: list[dict], itens: list) -> dict:

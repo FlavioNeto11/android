@@ -43,11 +43,32 @@ def audita(cartoes: list[dict], itens: list | None = None, estado: dict | None =
 
 
 # ------------------------------------------------------------------------------------------------ 1. duplicados
-def test_duplicado_mesmo_id_em_dois_cartoes_de_quadros_diferentes() -> None:
-    r = audita([cartao("28.30 · um", L_PROX), cartao("28.30 · um de novo", "Concluído", quadro="historico"),
-                cartao("28.31 · outro", L_PROX), cartao("[A] 🙋 28.32 · dono", L_PROX), cartao("#4 · 28.32 · de novo", L_VALID)])
+def test_duplicata_verdadeira_mesmo_id_mesmo_sufixo_no_mesmo_quadro() -> None:
+    r = audita([cartao("28.30 · um", L_PROX), cartao("28.30 — um de novo", L_VALID), cartao("28.31 · outro", L_PROX),
+                cartao("🙋 28.32 · dono", L_PROX), cartao("28.32 · de novo", L_VALID),
+                cartao("31.90-C · subitem", L_PROX), cartao("31.90-c · subitem repetido", L_VALID),
+                cartao("28.24 F5 — botão", L_PROX), cartao("28.24 F5 — botão de novo", L_VALID)])
     v = r["verificacoes"]["duplicados"]
-    assert v["n"] == 2 and v["exemplos"] == ["28.30 (2 cartões)", "28.32 (2 cartões)"]
+    assert v["n"] == 4 and v["exemplos"] == ["28.24 F5 (2 cartões)", "28.30 (2 cartões)", "28.32 (2 cartões)", "31.90-C (2 cartões)"]
+
+
+def test_os_cinco_casos_do_ensaio_real_nao_sao_duplicata() -> None:
+    cs = [
+        # (a) subitem F5 vs o item pai
+        cartao("28.24 F5 — Botão Ler", L_VALID), cartao("28.24 — Anexos nos canais", "🙋 Espera você"),
+        # (b) cartão de pergunta/decisão do dono vs o item
+        cartao("[A] 29.134 · decisão do dono", L_CONC), cartao("29.134 · item", L_CONC),
+        # (c) cartão de PR/atividade (#NNN ·) vs o cartão do item, ainda no mesmo quadro
+        cartao("#163 · 30.36 atividade", "Fase 30", quadro="historico"), cartao("30.36 · item", "Fase 30", quadro="historico"),
+        cartao("#164 · 31.21 atividade", "Fase 31", quadro="historico"), cartao("31.21 · item", "Fase 31", quadro="historico"),
+        # (d) quatro subitens com sufixos diferentes
+        *[cartao(f"31.90-{x} · subitem", L_CONC) for x in "CDEF"]]
+    assert audita(cs)["verificacoes"]["duplicados"] == {"n": 0, "exemplos": []}
+
+
+def test_mesmo_id_em_quadros_diferentes_nao_duplica() -> None:
+    r = audita([cartao("28.30 · um", L_PROX), cartao("28.30 · um", "Concluído", quadro="historico")])
+    assert r["verificacoes"]["duplicados"]["n"] == 0
 
 
 def test_duplicado_ignora_a_lista_da_prova_e_cartao_sem_id() -> None:
@@ -190,7 +211,7 @@ def test_auditar_tudo_le_so_por_get_nos_tres_quadros_e_devolve_o_resultado(tmp_p
     assert r["ok"] and r["quadros"] == {"execucao": 2, "programa": 2, "historico": 2}
     assert len(fake.chamadas) == 6 and {m for m, _ in fake.chamadas} == {"GET"}
     assert r["verificacoes"]["sem_cartao"] == {"n": 1, "exemplos": ["30.5"]}
-    assert r["verificacoes"]["duplicados"]["exemplos"] == ["30.1 (6 cartões)"]
+    assert r["verificacoes"]["duplicados"] == {"n": 3, "exemplos": ["30.1 (2 cartões)"]}  # um por quadro; exemplo sem repetir
     saida = json.dumps(r, ensure_ascii=False)
     assert "segredo de nome" not in saida and "texto da descrição" not in saida
 
@@ -258,7 +279,7 @@ def test_console_mostra_contagem_e_exemplos_e_json_sai_integro(tmp_path: Path, m
     raiz = _raiz_com_plano(tmp_path)
     assert A.main(["--raiz", str(raiz)]) == 0
     texto = capsys.readouterr().out
-    assert "só leitura" in texto and "duplicados: 1" in texto and "30.1 (6 cartões)" in texto and "segredo de nome" not in texto
+    assert "só leitura" in texto and "duplicados: 3" in texto and "30.1 (2 cartões)" in texto and "segredo de nome" not in texto
     assert A.main(["--json", "--raiz", str(raiz)]) == 0
     assert json.loads(capsys.readouterr().out)["ok"] is True
     monkeypatch.setattr(A, "novo_cliente", lambda: FakeTrello(RuntimeError("rede")))
