@@ -631,7 +631,7 @@ class TrainingSkills:
             app=str(pacote or ""), chave=chave, caminho=tuple(destiladas[i].passo.key for i in indices),
             sessao=session_id, run_id=str(etapa["run_id"]), step_id=str(origem.get("step_id")),
             side_effect=bool(etapa["side_effect"]) or any(destiladas[i].passo.side_effect for i in indices),
-            valores=tuple(valores), simulated=bool(etapa["simulated"])))
+            valores=tuple(valores), simulated=bool(etapa["simulated"]), persona=str(etapa["profile_id"] or "")))
         if isinstance(proposta, Recusa):
             return {"id": None, "motivo": f"a lição foi recusada ({proposta.motivo.value})"}
         try:

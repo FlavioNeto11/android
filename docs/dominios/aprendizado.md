@@ -2436,3 +2436,21 @@ loja de receitas, a quarentena (3 falhas seguidas) e o 30.81 seguem iguais. Liga
 - Código: `domain/sombra_da_quarentena.py` e `infrastructure/sombra_da_quarentena_sql.py`. A montagem só registra o
   passo quando há a loja de receitas.
 - A pergunta ao dono (o que muda com sim e com não) está em `.claude/handoffs/aprendizado-pergunta-31-202.md`.
+
+## A lição do planejador por persona (31.218)
+
+O 31.149 fazia da correção ensinada (a que não virou receita na etapa que falhou) uma lição do planejador do app
+inteiro. O que uma persona errou ia ao plano de todas.
+
+- **De quem é:** a lição nasce com a persona do objetivo que falhou (`scope_profile_id`; o id, nunca o nome, também na
+  proveniência). Sem persona na execução, segue do app.
+- **Para quem vai:** a lição com persona só vai ao planejamento de UMA persona, a mesma (`licoes.nivel`). A costura
+  `PedidoDeLicoes.profile_id` vai preenchida só quando todos os aparelhos do plano são dessa persona; com várias, vai
+  '' e a lição fica fora.
+- **Identidade:** a persona faz parte do escopo, então a mesma correção a partir de duas personas são dois itens. Cada
+  um espera o dono: o texto é de pessoa (D1).
+- **Onde se vê:** o alcance (31.181) mostra, em cada persona, as `correcoes`: o que ela erra (a etapa), como se
+  corrige (o caminho) e se vale só para ela ou para o app. A lição anterior ao 31.218 aparece na persona da etapa que
+  falhou, marcada `app`. A prévia das lições aceita `persona=` (adendo v1.118).
+- `scope_profile_id` deixa de ser só de voz e preferência. O relatório do aprendizado da operação já trata o item
+  com dona como conhecimento da persona; a lição de correção passa a contar lá desse jeito.

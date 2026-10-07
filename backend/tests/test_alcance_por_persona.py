@@ -72,8 +72,8 @@ async def test_o_alcance_por_persona_segue_a_regra_da_execucao(harness: Harness)
         corpo = r.json()
         assert (await c.get("/api/aprendizado/alcance", params={"app": "nao-existe"})).status_code == 404
     assert corpo["pacote"] == PACOTE
-    assert corpo["personas"] == [{"profile_id": "p-ana", "aparelhos": ["android-01"]},
-                                 {"profile_id": "p-bia", "aparelhos": ["android-02"]}]
+    assert corpo["personas"] == [{"profile_id": "p-ana", "aparelhos": ["android-01"], "correcoes": []},
+                                 {"profile_id": "p-bia", "aparelhos": ["android-02"], "correcoes": []}]
     ref = str(db.scalar("SELECT ref_publico FROM flows WHERE id='f-ensinado'"))
     assert ref and ref != "f-ensinado" and "f-ensinado" not in r.text          # o id interno do fluxo nunca sai
     por_id = {(i["tipo"], "f-ensinado" if i["id"] == ref else i["id"]): i["por_persona"] for i in corpo["itens"]}
