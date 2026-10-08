@@ -1,10 +1,12 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `228c56a4097b5b` (migração 129, deploy 62); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `c74a695c856319` (migração 129, deploy 63); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 63 no ar (08/10/2026, 18:34:56Z, central `c74a695c856319`, sem migração nova; Jev 31.285: sem a porta "mesmo pedido a N contas").** Cada conta é julgada pela política do próprio perfil.
+  - `real`: deploy rc=0, tag `deploy-20261008-1834`, saúde ok, migração 129, prova de fora, agente `0.1.0+c74a695`. `simulated`: funil reduzido (sem PG e sem vitest, por ordem), verde com a nota `test_com_teto_de_cpu`. `not_run`: PostgreSQL, vitest e o 31.285 real.
 - **Deploy 62 no ar (07/10/2026, 22:27Z, central `228c56a4097b5b`, sem migração nova; grupo "Liberado" sem aprovação de política e aviso "sem senha guardada").** Jev 28.61 (`ac028b94`, decisão "A" do dono) e 31.278 (`da345bb6`).
   - `real`: deploy com backup `20261007-192607` (tag `deploy-20261007-2227`), saúde ok, migração 129, prova de fora, agente `0.1.0+228c56a`. `simulated`: suíte 62 verde com notas de ambiente (`test_com_teto_de_cpu`, vitest e 1 PG sob carga, re-rodados). `not_run`: 28.61 e 31.278 reais.
 - **Deploy 61 no ar (07/10/2026, 20:52Z, central `9df65300bd3e63`, migração 129 (`129_prova_da_candidata`, ensaiada numa cópia restaurada do backup de hoje: só a 129 aplicou); ensino a partir da execução, custo por passo, laço e validação da operação, revisão automática restringida, funil versionado).** todas as pontas: Aprendizado 31.221 a 31.223 e 31.230;

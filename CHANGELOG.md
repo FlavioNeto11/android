@@ -1418,6 +1418,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-08 — Deploy 63 (31.285: sem a porta "mesmo pedido a N contas"; sem migração)
+
+- **Implantado** às 18:34:56Z: central em `c74a695c856319`, migração 129 (sem nova), `integ/suite-63` = main `e6f1fee2` + Jev `beaeac86` (31.285: a porta "mesmo pedido a N contas" de `gates.py`, que deixava só o android-01 seguir, saiu; cada conta é julgada pela política do próprio perfil). Backup do deploy e tag `deploy-20261008-1834`; `commit_antes` na linha de `data/deploys.jsonl` é `00fb0fc4`, o que a saúde respondia.
+- Prova `real`: `deploy.ps1` rc=0 às 18:34:56Z; `GET /api/health` ok, migração 129, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+c74a695`; 01, 03, 06 e 09 `ready`; 0 eventos recusados ou de erro depois do deploy. O `models.py` do dono ficou guardado em stash e foi devolvido sem conflito.
+- Prova `simulated` (funil REDUZIDO por ordem da orquestradora: sem PG e sem vitest, mudança só em `gates.py` e testes): coleta 12632 testes e 0 erros; `scripts/tests` 1262 passed (+1 `test_com_teto_de_cpu`, DevOps, conhecido); backend SQLite inteiro 12572 passed, 60 skipped; catracas 89 e 9; docs-check 0/0; mypy 257 (teto 257).
+- `not_run`: PostgreSQL e vitest (por ordem); 31.285 real (refazer o "seguir com todas as personas" é decisão do dono).
+
 ## 2026-10-07 — Deploy 62 (grupo "Liberado" sem aprovação de política, aviso "sem senha guardada"; sem migração)
 
 - **Implantado** às 22:27Z: central em `228c56a4097b5b`, migração 129 (sem migração nova), `integ/suite-62` = main `1366e45c` + Jev `ac028b94` (28.61: leitor de `grupo_sem_aprovacao` e teste, decisão "A" do dono) + Jev `da345bb6` (31.278: aviso "sem senha guardada"). Backup `20261007-192607`, tag `deploy-20261007-2227`; `commit_antes` na linha de `data/deploys.jsonl` é `7d496d16` (o central já servia esse commit de docs por reinício anterior), migração 129.
