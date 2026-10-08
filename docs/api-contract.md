@@ -5782,7 +5782,7 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
   `imagem_sha256`, `chave` (só no selo `aprovacao`), `dependentes` (as etapas do mesmo objetivo que dependem desta,
   transitivas) e `falhou`. Selos, pela MESMA conta do despacho (`AppState.vereditos_da_porta`):
   - `permitido`: segue sem parar;
-  - `aprovacao`: pede o aval (política, DM fria, o mesmo pedido a várias contas, teto `preparar`, mensagem repetida), com
+  - `aprovacao`: pede o aval (política, DM fria, teto `preparar`, mensagem repetida; o "mesmo pedido a várias contas" saiu no 31.285, ADR-083), com
     chave;
   - `adiado`: espera até `retry_at`;
   - `recusado`: não acontece (inclusive o mesmo efeito não-DM sobre o mesmo objeto duas vezes no plano);

@@ -6,7 +6,7 @@
 * `vereditos_da_porta`: a MESMA conta, só lendo (alimenta a prévia do plano em `porta_do_plano.py`);
 * `_draft_gate` / `_ler_tela`: o texto escrito na voz do perfil e a leitura de tela que o alimenta;
 * `_approval_gate` / `_sim_do_plano_nao_vale`: o pedido de aprovação e o consumo do sim do plano;
-* `_registrar_leitura` e os auxiliares (`_mesmo_pedido_noutras_contas`, `_pacote_da_etapa`, `_alvo_da_conversa`).
+* `_registrar_leitura` e os auxiliares (`_pacote_da_etapa`, `_alvo_da_conversa`).
 
 O `AppState` guarda métodos finos com os mesmos nomes e assinaturas que delegam para cá (o scheduler recebe
 `state._policy_gate`, a prévia chama `state.vereditos_da_porta`, e os testes chamam os dois). Este módulo não importa
@@ -107,10 +107,6 @@ class PortaDaEtapa:
     rt: DeviceRuntime | None = None
     pacote: str | None = None
     app_id: str | None = None
-    #: O mesmo pedido desta execução a várias contas sobre o mesmo alvo: a confirmação exigida ('' quando não há).
-    confirmacao: str = ""
-    #: A porta do despacho grava a decisão da confirmação uma vez por etapa (sem pedido aberto ainda).
-    registrar_confirmacao: bool = False
     teto: str | None = None
 
     @classmethod
@@ -156,14 +152,11 @@ class Portoes:
         pelo seu app. A regra não muda; a pergunta passa a ser feita ao app certo.
         """
         porta = self.vereditos_da_porta(obj, srow, run)
-        if porta.registrar_confirmacao:                      # uma vez por etapa, não a cada retomada
-            self._st.repo.decision(f"{obj['instance_id']}: {porta.confirmacao}", run_id=obj["run_id"],
-                               instance_id=obj["instance_id"], step_id=srow["id"])
         if porta.final:
             return porta.veredito
         veredito, cap, profile_id, rt = porta.veredito, porta.cap, porta.profile_id, porta.rt
         assert veredito is not None and cap is not None and profile_id is not None
-        app_da_etapa_id, pacote, confirmacao, teto = porta.app_id, porta.pacote, porta.confirmacao, porta.teto
+        app_da_etapa_id, pacote, teto = porta.app_id, porta.pacote, porta.teto
         self._st.excecoes.vencer()                    # 30.65: a exceção vencida sai com evento (o `check` já não a usa)
         if not veredito.allowed:
             return veredito
@@ -204,16 +197,15 @@ class Portoes:
         if mesmo is not None and mesmo[0]:
             return Verdict(allowed=False, policy=veredito.policy, counts=veredito.counts, reason=mesmo[1], hint=mesmo[2])
         objeto_ambiguo = mesmo[1] if mesmo is not None and mesmo[1] not in (veredito.reason or "") else None
-        # Aprovação por política, por DM fria (o porquê vem no `reason` do veredito que libera) ou pela confirmação
-        # do mesmo pedido a várias contas — nenhum grupo nem perfil afrouxa as duas últimas.
+        # Aprovação por política ou por DM fria (o porquê vem no `reason` do veredito que libera).
         # 28.23: com o teto `preparar`, o efeito exige aprovação qualquer que seja a política da persona.
         pelo_teto = ("teto de autonomia preparar: o efeito precisa da sua aprovação"
                      if teto == "preparar" and cap.side_effect else "")
-        if veredito.needs_approval or confirmacao or pelo_teto or repetida or citada or objeto_ambiguo:
+        if veredito.needs_approval or pelo_teto or repetida or citada or objeto_ambiguo:
             # O `check` já põe a repetição no `reason` quando o texto era conhecido antes do rascunho: sem este corte, o
             # cartão trazia a mesma frase duas vezes (revisão do 31.49).
             nova = repetida if repetida and repetida not in (veredito.reason or "") else ""
-            motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, nova, citada, objeto_ambiguo) if m)
+            motivo = "; ".join(m for m in (veredito.reason, pelo_teto, nova, citada, objeto_ambiguo) if m)
             # 30.65: a etapa que usa a exceção sempre pede decisão nova; o aprovado de outra versão não vale para ela.
             parada = self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao,
                                          pacote=pacote, app_id=app_da_etapa_id)
@@ -277,30 +269,11 @@ class Portoes:
                     hint="Vincule um perfil a este aparelho (ou peça o texto exato no comando, com “envie "
                          "exatamente…”) e retome o item."))
             return PortaDaEtapa.fim(None)
-        # Alvo desta etapa, para a coordenação de frota (achado #114, ADR-055): o argumento que a AÇÃO declara no
+        # Alvo desta etapa (achado #114, ADR-055; a coordenação de frota saiu no ADR-083): o argumento que a AÇÃO declara no
         # catálogo (`Capability.counterparty`), normalizado. Antes era `username` cru — curtir e comentar não o têm,
         # e a porta de frota recebia `None` e liberava tudo; `@Ana` e `@ana` eram duas pessoas.
         bindings = self._st.repo.bindings_da_etapa(srow, profile_id)
         alvo = contraparte(cap, bindings)
-        # O mesmo pedido, nesta execução, a outras contas sobre o mesmo alvo (o caso de 19/09: uma execução, sete
-        # contas, uma pessoa). A porta de frota conta o que JÁ aconteceu; os objetivos irmãos chegam aqui juntos,
-        # antes de qualquer um disparar, e passariam todos. Decide-se pela execução, de forma determinística.
-        irmaos = self._mesmo_pedido_noutras_contas(obj, cap, profile_id, alvo)
-        confirmacao = ""
-        registrar_confirmacao = False
-        if irmaos:
-            contas = len({profile_id, *(dono for _o, _a, dono in irmaos)})
-            escolhido_id, escolhido_aparelho = min([(obj["id"], obj["instance_id"]),
-                                                    *((o, a) for o, a, _d in irmaos)])
-            if escolhido_id != obj["id"]:
-                return PortaDaEtapa.fim(Verdict(
-                    allowed=False, policy=cap.default_policy,
-                    reason=(f"esta execução manda o mesmo pedido ({cap.key}) a {contas} contas sobre {alvo}; "
-                            f"segue só a de {escolhido_aparelho}, e esta foi recusada"),
-                    hint="Nada foi feito por esta conta. Para outro alvo, faça um pedido separado."))
-            confirmacao = (f"confirmação exigida: esta execução manda o mesmo pedido ({cap.key}) a {contas} contas "
-                           f"sobre {alvo}")
-            registrar_confirmacao = self._st.approvals.for_step(srow["id"]) is None
         # `package`: a política é do APP desta etapa (23.10) — SEND_MESSAGE do Instagram e o de outro catálogo são
         # escolhas diferentes do perfil.
         # 30.62: a execução que nasceu de um pedido entre personas leva a família dele; as personas da família contam
@@ -311,31 +284,7 @@ class Portoes:
                                        pedido=contexto_do_pedido(self._st.db, obj["run_id"]) if cap.side_effect else None,
                                        bindings=self._st.repo.bindings_da_etapa(srow, profile_id))
         return PortaDaEtapa(veredito=veredito, final=False, cap=cap, profile_id=profile_id, rt=rt, pacote=pacote,
-                            app_id=app_da_etapa.id if app_da_etapa else None, confirmacao=confirmacao,
-                            registrar_confirmacao=registrar_confirmacao, teto=teto)
-
-    def _mesmo_pedido_noutras_contas(self, obj: Row, cap: Capability, profile_id: str,
-                                     alvo: str | None) -> list[tuple[str, str, str]]:
-        """`(objetivo, aparelho, perfil)` das OUTRAS contas desta execução com a mesma ação sobre o mesmo alvo.
-
-        Só conta objetivo vivo (falhou ou foi cancelado não age mais), etapa da versão atual do plano dele e não
-        cancelada, e alvo já concreto (uma cópia de `for_each` ainda com `{item}` não é alvo de ninguém). A mesma
-        persona em dois aparelhos não é "outra conta": o aviso disso é da prévia de alvos."""
-        if not alvo or not cap.side_effect or not cap.limit_bucket:
-            return []
-        linhas = self._st.db.query(
-            "SELECT o.id AS objetivo, o.instance_id, o.profile_id, s.bindings FROM steps s"
-            " JOIN objectives o ON o.id = s.objective_id"
-            " WHERE s.run_id=? AND s.capability=? AND s.plan_version=o.plan_version AND s.status<>'cancelled'"
-            " AND o.id<>? AND o.status NOT IN ('failed','cancelled')",
-            (obj["run_id"], cap.key, obj["id"]))
-        achados: dict[str, tuple[str, str]] = {}
-        for r in linhas:
-            dono = r["profile_id"] or self._st.social_repo.perfil_unico_da_instancia(r["instance_id"])
-            # 31.113 F3: cada irmã com a persona do SEU objetivo; o mesmo marcador em duas personas não é o mesmo alvo.
-            if dono and dono != profile_id and contraparte(cap, self._st.repo.bindings_da_etapa(r, str(dono))) == alvo:
-                achados[str(r["objetivo"])] = (str(r["instance_id"]), str(dono))
-        return sorted((o, a, d) for o, (a, d) in achados.items())
+                            app_id=app_da_etapa.id if app_da_etapa else None, teto=teto)
 
     def _registrar_leitura(self, obj: Any, step: Any, items: list[str]) -> None:
         """Uma etapa de leitura de conversa terminou: o que a outra pessoa disse entra no HISTÓRICO do perfil.
@@ -686,7 +635,7 @@ class Portoes:
         É por isso que a porta fica aqui e não no meio da etapa: etapa concluída é estado terminal, então não
         haveria como "editar e refazer" depois que o texto já foi digitado e enviado.
 
-        `motivo` é o porquê de a aprovação ser exigida além da política (DM fria, o mesmo pedido a várias contas —
+        `motivo` é o porquê de a aprovação ser exigida além da política (DM fria —
         ADR-055): vai no resumo do pedido e no motivo da espera, para quem decide saber o que está confirmando.
 
         `excecao`: a etapa usa esta exceção de política (30.65). O dono decide sobre o cartão DELA: a decisão de uma
@@ -789,8 +738,6 @@ class Portoes:
         # 31.49 (F1 da revisão): a chave não leva estado de fora do item. A mensagem repetida que SURGIU depois do sim
         # (outra execução mandou, ou teve aprovada, o mesmo texto ao mesmo alvo) é estado mudado: o dono não a viu na
         # prévia, então o sim não a cobre. A que já existia antes do sim estava no motivo da prévia e segue coberta.
-        # (A confirmação do ADR-055 desta porta é a do mesmo pedido a várias contas DESTA execução: sai dos objetivos da
-        # própria execução, que a prévia já via; a frota entre execuções RECUSA no `check`, antes de o sim ser lido.)
         if pedido.decided_at:
             nova = self._st.policies.mensagem_repetida(profile_id, cap, bindings, app_id=app_id, step_id=srow["id"],
                                                    desde=parse_iso(pedido.decided_at))

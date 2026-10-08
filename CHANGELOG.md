@@ -33,6 +33,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   mais 521 testes dirigidos verdes, catracas 89 verdes, mypy no teto (257). `real`: `not_run`. O dado do campo (QA Messenger sem sessão
   no android-01) é do dono: guardar a credencial de teste na ficha da persona ou usar aparelho com o app logado.
 
+## 2026-10-08 — 31.285: sai a porta do "mesmo pedido a N contas" (sobra do ADR-083; branch fix/31-285-sem-mesmo-pedido-em-n-contas)
+
+- O dono mandou "seguir @alvo com todas as personas que têm Instagram"; só o android-01 seguiu (com aval exigido) e o 03 e o 06 foram
+  recusados por `gates.py` ("esta execução manda o mesmo pedido (FOLLOW) a N contas… segue só a de X"). Era coordenação de frota, que o
+  refactor do dono (ADR-083) tirou: a porta, o `PortaDaEtapa.confirmacao` / `registrar_confirmacao` que ela gerava, o motivo de aprovação
+  "confirmação exigida" e o delegado em `state.py` saem. Cada conta passa a ser julgada pela política do seu perfil. Nenhum teto voltou.
+- Prova `simulated`: `tests/test_sem_porta_de_n_contas.py` (FOLLOW igual em duas contas da mesma execução: nenhuma é recusada nem exige
+  confirmação de frota); `test_bindings_com_marcador_da_persona.py` (o teste da função removida fica marcado com o ADR-083 e o piso de
+  leituras do leitor único passa de 10 para 9); dirigidos de gates, política, aprovação, família e arquitetura: 212 passed, 42 skipped
+  antes do ajuste do piso e verdes depois; catracas 89, mypy 257/257. `real`: `not_run` (efeito no mundo é do dono: refazer o seguir).
+
 ## 2026-10-07 — 29.204: `scripts/funil.ps1` não reusa o nome do parâmetro `-ExigirCommit` com outra caixa (correção da Android, DevOps fechada na semana)
 
 - A variável local `$exigirCommit` (linha 281) era a mesma variável do parâmetro `$ExigirCommit` (o PowerShell não distingue caixa) e o `test_nenhum_ps1_atribui_a_um_parametro_com_outra_caixa` reprovava no funil 61. Renomeada para `$exigeCommit` nas três linhas que a usam; o comportamento não muda. Prova `simulated`: `scripts/tests/test_deploy_portao_do_ensaio.py`.

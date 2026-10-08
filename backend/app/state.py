@@ -1285,11 +1285,6 @@ class AppState:
         """Delegado a `Portoes.vereditos_da_porta` (`gates.py`)."""
         return self.portoes.vereditos_da_porta(obj, srow, run)
 
-    def _mesmo_pedido_noutras_contas(self, obj: Row, cap: Capability, profile_id: str,
-                                     alvo: str | None) -> list[tuple[str, str, str]]:
-        """Delegado a `Portoes._mesmo_pedido_noutras_contas` (`gates.py`)."""
-        return self.portoes._mesmo_pedido_noutras_contas(obj, cap, profile_id, alvo)
-
     def _registrar_leitura(self, obj: object, step: object, items: list[str]) -> None:
         """Delegado a `Portoes._registrar_leitura` (`gates.py`)."""
         return self.portoes._registrar_leitura(obj, step, items)

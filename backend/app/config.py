@@ -382,7 +382,7 @@ class LimitsCfg(BaseModel):
     # (a escolha do perfil ou do grupo, a DM fria, a publicação no feed, a pessoa real num pedido, a citação da família e a
     # repetição já conhecida no `check`). Continuam: as recusas (frota, tetos, repetido, retirada), a exceção do 30.65, o
     # teto `preparar` da execução (a operação segue pelo liberar e por `operacao_max_acoes_executadas`), as confirmações
-    # do despacho (o mesmo pedido a várias contas, a repetição e a família vistas depois do rascunho), a conduta e a
+    # do despacho (a repetição e a família vistas depois do rascunho), a conduta e a
     # proteção de conta. Vazio = desligado. Lido ao vivo; desfazer é `PUT /api/settings {"grupo_sem_aprovacao": ""}`.
     grupo_sem_aprovacao: str = Field("", max_length=80)
     # 31.253 / ADR-082 (dono, 07/10: "colocar todas as personas em um grupo que libera tudo para não precisar de
