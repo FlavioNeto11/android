@@ -1,10 +1,12 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `9cb6fae3a0e738` (migração 129, deploy 64); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `2e990961c3426c` (migração 129, deploy 65); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 65 no ar (08/10/2026, 19:37:51Z, central `2e990961c3426c`, sem migração nova; Jev 31.287: a receita concorda por alvo).**
+  - `real`: deploy rc=0, tag `deploy-20261008-1937`, saúde ok, prova de fora, agente `0.1.0+2e99096`. `simulated`: funil reduzido (SQLite dirigido, sem PG e sem vitest). `not_run`: PostgreSQL, vitest, SQLite inteiro e o 31.287 real.
 - **Deploy 64 no ar (08/10/2026, 19:05:11Z, central `9cb6fae3a0e738`, sem migração nova; Jev 31.286: a conta só vale no próprio perfil).**
   - `real`: deploy rc=0, tag `deploy-20261008-1905`, saúde ok, prova de fora, agente `0.1.0+9cb6fae`. `simulated`: funil reduzido (SQLite dirigido, sem PG e sem vitest, por ordem). `not_run`: PostgreSQL, vitest, SQLite inteiro e o 31.286 real.
 - **Deploy 63 no ar (08/10/2026, 18:34:56Z, central `c74a695c856319`, sem migração nova; Jev 31.285: sem a porta "mesmo pedido a N contas").** Cada conta é julgada pela política do próprio perfil.

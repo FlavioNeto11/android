@@ -1448,6 +1448,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-08 — Deploy 65 (31.287: a receita só se promove se concorda por alvo; promoção por efeito, 1 sem commit e 2 com commit; sem migração)
+
+- **Implantado** às 19:37:51Z: central em `2e990961c3426c`, migração 129 (sem nova), `integ/suite-65` = main + Jev `ec708d6a` (31.287, `fix/31-287-receita-concorda-por-alvo`: comparador de receita por alvo e `recipes_promote_after` por efeito, novos defaults). O `config.yaml` do central não fixa `recipes_promote_after` nem `strong_model_only_on_commit`: os defaults novos valem sozinhos. Tag `deploy-20261008-1937`; `commit_antes` `9cb6fae3a0e738`.
+- Prova `real`: `deploy.ps1` rc=0; `GET /api/health` ok, migração 129, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+2e99096`; 0 eventos recusados ou de erro. O `models.py` do dono ficou em stash e voltou sem conflito.
+- Prova `simulated` (funil REDUZIDO por ordem da orquestradora: sem PG e sem vitest): coleta 12641 testes e 0 erros; `scripts/tests` 1262 passed (+1 `test_com_teto_de_cpu`, DevOps, conhecido); SQLite dirigido (386 arquivos: afetados mais a bateria de receitas, sessão e pré-voo) 8292 passed, 17 skipped; catracas 89 e 9; docs-check 0/0; mypy 257 (teto 257).
+- `not_run`: PostgreSQL, vitest e SQLite inteiro; 31.287 real.
+
 ## 2026-10-08 — Deploy 64 (31.286: o leitor de sessão não toma o perfil de terceiro como conta logada; sem migração)
 
 - **Implantado** às 19:05:11Z: central em `9cb6fae3a0e738`, migração 129 (sem nova), `integ/suite-64` = main + Jev `a758880e` (31.286, `fix/31-286-conta-so-no-proprio-perfil`: a conta só vale no próprio perfil). Tag `deploy-20261008-1905`; `commit_antes` `c74a695c856319`.
