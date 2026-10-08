@@ -218,11 +218,18 @@ diária.
   sem receita herda, como CANDIDATA, a receita `active` da mesma etapa (`step_hash`) mais próxima, noutra variante, na
   legada ou noutra versão; assinatura diferente nunca doa, e a chave esperando o dono ou posta de lado não herda. A
   herdeira passa pelo veto de `save`, guarda a origem da doadora (`learned_from_step`) e só age depois de concordar em
-  sombra (`recipes_promote_after`); com `commit`, para em `validated`. `ai.recipes_heranca: false` só mede a causa, e
+  sombra (`recipes_promote_after`, ou `_com_efeito` se tiver `commit`); com `commit`, para em `validated`. `ai.recipes_heranca: false` só mede a causa, e
   com `recipes_promote_after: 0` não há herança. Quando a herdeira vira `active`, a legada ativa da mesma etapa e
   versão sai (`superseded`, "provou-se na chave completa").
 - Com `recipes_promote_after: 0`, a receita aprendida em execução real nasce ativa; a de origem simulada continua
   candidata.
+- **A prova vale por efeito e soma entre aparelhos (31.287, 08/10).** `ai.recipes_promote_after` (padrão 1) é o número de
+  execuções seguidas em que a IA fez o caminho da receita SEM ação de efeito externo; `ai.recipes_promote_after_com_efeito`
+  (padrão 2) é o da etapa com `commit`. O D1 não muda: a receita com efeito, mesmo provada, para em `validated` e espera o dono
+  em "Para aprovar" (o Livro mostra `necessarias` pelo efeito de cada candidata). Dois aparelhos que aprendem o mesmo botão são
+  o MESMO caminho (`recipes.py::_caminho` compara ferramenta, efeito, argumentos e alvo, não a lista de seletores), então a
+  candidata do primeiro soma a prova do segundo em vez de ser trocada. E a sombra não conta a decisão que o executor descarta
+  (K-109).
 - **O que uma execução simulada ensina não publica (RA-19, fatia B, 03/10; leitura 2, decidida pela orquestradora).**
   - Origem simulada (`runs.simulated=1`) nunca NASCE ativa. A receita nasce candidata mesmo com
     `ai.recipes_promote_after: 0` (`executor.py::_after_step`, `_origem_simulada`). O fluxo nasce candidato mesmo com

@@ -1330,6 +1330,8 @@ class StepExecutor:
             return          # olhar a tela não é caminho: `distill` nunca grava leitura, então não há o que comparar
         if decision.tool == "step_done" and rr.replayer.idx == 0:
             return          # já estava no estado final (K-004): não houve caminho — nem concordância nem divergência
+        rep = rr.replayer
+        rr.antes_da_comparacao = (rep.idx, rep.scrolls, rep.done_actions, rr.diverged, rr.partida_diferente)
         try:
             would = rr.replayer.next(obs.tree)
         except AlvoAusente as exc:
@@ -1357,6 +1359,19 @@ class StepExecutor:
                       and (would.tool != "type_text" or would.args.get("text") == decision.args.get("text")))
         if not agreed:
             rr.diverged = "a IA escolheu outra ação"
+
+    @staticmethod
+    def _desfazer_comparacao(rr: "_RecipeRun") -> None:
+        """31.287: a decisão que acabou de ser comparada com a receita foi DESCARTADA pelo executor (o commit do modelo de
+        ação sobe ao forte, 31.223; ou a repetição da tentativa anterior, LT-12) e vai ser refeita. Comparar as duas
+        gastava a ação da receita na primeira: a refeita (a MESMA ação) via a receita esgotada e contava como divergência
+        (`a IA escolheu outra ação`), em todo FOLLOW — a receita candidata nunca somava prova. Devolve o cursor e os sinais
+        ao estado de antes, e a comparação que vale é a da decisão que de fato agir."""
+        if rr.replayer is None or rr.antes_da_comparacao is None:
+            return
+        rr.replayer.idx, rr.replayer.scrolls, rr.replayer.done_actions, rr.diverged, rr.partida_diferente = (
+            rr.antes_da_comparacao)
+        rr.antes_da_comparacao = None
 
     def _screen(self, obs: Observation, *, with_image: bool = True, protect: tuple[str, ...] = (),
                boost: tuple[str, ...] = (), ai: AiCfg | None = None) -> tuple[ScreenInput, float]:
@@ -1827,7 +1842,12 @@ class StepExecutor:
             concordou = True
         else:
             return
+        if rr.diverged and rr.row["status"] == "candidate":
+            # 31.287: a divergência da candidata diz POR QUÊ (antes só a contagem zerava e ninguém sabia o motivo).
+            self.repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} em prova divergiu: {rr.diverged}; "
+                               "a prova recomeça", run_id=run_id, instance_id=iid, step_id=step.id)
         promovida = self.recipes.shadow(rr.row["id"], concordou, promote_after=self.cfg.file.ai.recipes_promote_after,
+                                        promote_after_com_efeito=self.cfg.file.ai.recipes_promote_after_com_efeito,
                                         simulada=self._origem_simulada(run_id))
         if promovida:
             self.repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} promovida a ativa — a IA fez "
@@ -3485,6 +3505,7 @@ class StepExecutor:
             # ---------- 31.223: na etapa com efeito, o modelo de ação navega e o commit é decidido pelo forte
             if so_no_commit and not commit_subiu and not from_recipe and tier == 0 and is_commit:
                 commit_subiu = True
+                self._desfazer_comparacao(rr)     # 31.287: esta decisão não age; a que vale é a do forte
                 commit_alvo_fora = not alvo_na_arvore(args, obs.tree)
                 history.append(f"(executor) {decision.tool} dispararia o efeito desta etapa: a decisão sobe ao modelo "
                                "de escalonamento antes de agir.")
@@ -3494,6 +3515,7 @@ class StepExecutor:
                 repete = acao_onde_parou == (obs.tree.signature(estrutural=True), f"{decision.tool}:{_target_key(args)}")
                 if repete or is_commit:
                     retentativa_subiu = True
+                    self._desfazer_comparacao(rr)     # 31.287: idem — a decisão do barato é descartada e refeita
                     history.append(f"(executor) {decision.tool} " + ("é a ação em que a tentativa anterior parou, nesta "
                                    "mesma tela" if repete else "dispararia o efeito desta etapa")
                                    + ": a decisão sobe ao modelo de escalonamento antes de agir.")
@@ -5017,6 +5039,9 @@ class _RecipeRun:
     #: Estratégias que a tentativa EXERCEU, em ordem (trilha da 045, `attempts.strategy`): `recipe` quando a receita
     #: foi consultada, `ai_actor` quando a IA decidiu; a divergência dá a cadeia `recipe>ai_actor`.
     exercised: list[str] = field(default_factory=list)
+    #: 31.287: o cursor da receita e os sinais de divergência ANTES da última comparação da sombra, para desfazê-la quando a
+    #: decisão comparada é descartada pelo executor (o commit que sobe ao modelo forte, 31.223 / LT-12) e refeita.
+    antes_da_comparacao: tuple[int, int, int, str | None, bool] | None = None
 
     def exerceu(self, kind: StrategyKind) -> None:
         if kind.value not in self.exercised:

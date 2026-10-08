@@ -68,9 +68,10 @@ def _de_app(pacote: str | None, bruto: str | None) -> tuple[str, str | None]:
 
 class FontesSql:
     def __init__(self, db: Database, *, pacotes_do_registro: Callable[[], Iterable[str]] = lambda: (),
-                 necessarias: Callable[[], int] | None = None) -> None:
+                 necessarias: Callable[[bool], int] | None = None) -> None:
         """`pacotes_do_registro`: os pacotes do registro de apps (a composição passa o real; os testes, um falso).
-        `necessarias` (31.271): `ai.recipes_promote_after`, lido a cada leitura; sem ele, a prova da candidata sai sem
+        `necessarias` (31.271, 31.287): recebe se a receita tem efeito externo e devolve `ai.recipes_promote_after` (ou
+        `_com_efeito`), lido a cada leitura; sem ele, a prova da candidata sai sem
         o total (`None`, que o painel trata como "o central não diz", nunca zero)."""
         self._db = db
         self._registro = pacotes_do_registro
@@ -122,8 +123,7 @@ class FontesSql:
         rows = self._db.query(_RECEITAS + " ORDER BY r.app_package, r.step_key, r.version")
         # 31.271: a ativa de cada chave sai do próprio lote (todas as receitas já estão aqui), sem consulta por candidata.
         ativas = {_chave(r): r for r in rows if linhas.texto(r, "status") == "active"}
-        necessarias = self._lidas_necessarias()
-        return [_receita(r, necessarias=necessarias, ativa=ativas.get(_chave(r))) for r in rows]
+        return [_receita(r, necessarias=self._lidas_necessarias(r), ativa=ativas.get(_chave(r))) for r in rows]
 
     def receita(self, ref: str) -> EntradaDoLivro | None:
         try:
@@ -138,10 +138,13 @@ class FontesSql:
             ativa = self._db.one("SELECT id, version FROM recipes WHERE app_package=? AND app_version=? AND"
                                  " app_signature=? AND variant=? AND step_hash=? AND status='active'"
                                  " ORDER BY version DESC, id DESC LIMIT 1", _chave(row))
-        return _receita(row, necessarias=self._lidas_necessarias(), ativa=ativa)
+        return _receita(row, necessarias=self._lidas_necessarias(row), ativa=ativa)
 
-    def _lidas_necessarias(self) -> int | None:
-        return None if self._necessarias is None else int(self._necessarias())
+    def _lidas_necessarias(self, r: Row) -> int | None:
+        """As concordâncias que ESTA receita pede: a etapa com efeito externo pede mais que a sem efeito (31.287)."""
+        if self._necessarias is None:
+            return None
+        return int(self._necessarias(receita_tem_efeito(linhas.json_legado(linhas.texto(r, "actions")))))
 
     # ------------------------------------------------------------------ conteúdo legível (30.3)
     def conteudo(self, kind: LivroKind, ref: str) -> JsonObject | None:
