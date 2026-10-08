@@ -815,3 +815,5 @@ orquestradora; ela anota aqui antes de responder.
 | próximos livres (atualização 08/10 17:1xZ) | 31.285, 29.212, 28.78; ADR-088; migração 131; adendo v1.132; K-109 | |
 | migração 131 | 31.281 (Jev): colunas aditivas de provisionamento em profile_accounts (ADR-087) | Jev | CONCEDIDA 08/10 17:4xZ; próxima livre 132 |
 | adendo api-contract v1.132 | 31.281 (Jev): estados e campos da conta planejada + ação estruturada do refinador (ADR-087) | Jev | CONCEDIDO 08/10 17:4xZ; próximo livre v1.133 |
+| 31.285 | Jev | sobra do ADR-083 em gates.py (~l.284-303): a porta 'mesmo pedido a N contas sobre o mesmo alvo nesta execução' (caso de 19/09) ainda recusa as contas irmãs e exige confirmação da escolhida (comando do dono 08/10: seguir um perfil com todas as personas → só android-01, com aval; 03 e 06 recusadas); pelo ADR-083 a coordenação de frota saiu: remover a porta (ou flag padrão desligado), testes ajustados, sem ressuscitar tetos; corte 63 | reservado 08/10 17:2xZ |
+| próximos livres (atualização 08/10 17:2xZ) | 31.286, 29.212, 28.78; ADR-088; migração 132; adendo v1.133; K-109 | |
