@@ -1430,6 +1430,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-08 — Deploy 64 (31.286: o leitor de sessão não toma o perfil de terceiro como conta logada; sem migração)
+
+- **Implantado** às 19:05:11Z: central em `9cb6fae3a0e738`, migração 129 (sem nova), `integ/suite-64` = main + Jev `a758880e` (31.286, `fix/31-286-conta-so-no-proprio-perfil`: a conta só vale no próprio perfil). Tag `deploy-20261008-1905`; `commit_antes` `c74a695c856319`.
+- Prova `real`: `deploy.ps1` rc=0; `GET /api/health` ok, migração 129, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+9cb6fae`; 01, 03, 06 e 09 `ready`; 0 eventos recusados ou de erro. O `models.py` do dono ficou em stash e voltou sem conflito.
+- Prova `simulated` (funil REDUZIDO por ordem da orquestradora: sem PG e sem vitest, apresentação do dono): coleta 12637 testes e 0 erros; `scripts/tests` 1262 passed (+1 `test_com_teto_de_cpu`, DevOps, conhecido); SQLite dirigido (arquivos tocados e afetados, mais a bateria de sessão e pré-voo, 213 arquivos) 3705 passed, 9 skipped; catracas 89 e 9; docs-check 0/0; mypy 257 (teto 257).
+- `not_run`: PostgreSQL, vitest e SQLite inteiro; 31.286 real.
+
 ## 2026-10-08 — Deploy 63 (31.285: sem a porta "mesmo pedido a N contas"; sem migração)
 
 - **Implantado** às 18:34:56Z: central em `c74a695c856319`, migração 129 (sem nova), `integ/suite-63` = main `e6f1fee2` + Jev `beaeac86` (31.285: a porta "mesmo pedido a N contas" de `gates.py`, que deixava só o android-01 seguir, saiu; cada conta é julgada pela política do próprio perfil). Backup do deploy e tag `deploy-20261008-1834`; `commit_antes` na linha de `data/deploys.jsonl` é `00fb0fc4`, o que a saúde respondia.

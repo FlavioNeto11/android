@@ -1,10 +1,12 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `c74a695c856319` (migração 129, deploy 63); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `9cb6fae3a0e738` (migração 129, deploy 64); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 64 no ar (08/10/2026, 19:05:11Z, central `9cb6fae3a0e738`, sem migração nova; Jev 31.286: a conta só vale no próprio perfil).**
+  - `real`: deploy rc=0, tag `deploy-20261008-1905`, saúde ok, prova de fora, agente `0.1.0+9cb6fae`. `simulated`: funil reduzido (SQLite dirigido, sem PG e sem vitest, por ordem). `not_run`: PostgreSQL, vitest, SQLite inteiro e o 31.286 real.
 - **Deploy 63 no ar (08/10/2026, 18:34:56Z, central `c74a695c856319`, sem migração nova; Jev 31.285: sem a porta "mesmo pedido a N contas").** Cada conta é julgada pela política do próprio perfil.
   - `real`: deploy rc=0, tag `deploy-20261008-1834`, saúde ok, migração 129, prova de fora, agente `0.1.0+c74a695`. `simulated`: funil reduzido (sem PG e sem vitest, por ordem), verde com a nota `test_com_teto_de_cpu`. `not_run`: PostgreSQL, vitest e o 31.285 real.
 - **Deploy 62 no ar (07/10/2026, 22:27Z, central `228c56a4097b5b`, sem migração nova; grupo "Liberado" sem aprovação de política e aviso "sem senha guardada").** Jev 28.61 (`ac028b94`, decisão "A" do dono) e 31.278 (`da345bb6`).
