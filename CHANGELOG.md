@@ -19,6 +19,24 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-08 — 31.287: a receita concorda por alvo, a prova soma entre aparelhos e vale por efeito (branch fix/31-287-receita-concorda-por-alvo)
+
+- Evidência (`r-20261008183647-25e4b5`, 3 aparelhos, 28 chamadas): as candidatas do `follow_1` ficaram em 0/0 com `divergiu` e cada aparelho
+  apagava a prova do anterior. Causa 1: com `strong_model_only_on_commit` (31.223) a sombra comparava o toque de efeito que o executor ia
+  descartar e refazer no forte; a 1ª comparação gastava a única ação da receita, e a refeita contava "a IA escolheu outra ação" (divergência
+  falsa em todo FOLLOW). Causa 2: `_caminho` comparava a lista inteira de seletores, e o mesmo botão com 5 seletores num aparelho e 4 noutro
+  era "outro caminho". A hipótese de "nao_aplicavel" não se confirmou.
+- `StepExecutor._desfazer_comparacao` devolve o cursor da receita quando a decisão comparada é descartada (commit que sobe ao forte e LT-12).
+  `recipes.py::_caminho` compara ferramenta, efeito, argumentos e ALVO (seletor de maior confiança); `why`, seletores alternativos e teto de
+  rolagem ficam de fora. A divergência de uma candidata sai na linha do tempo com o motivo.
+- `ai.recipes_promote_after` passa a 1 (etapa sem efeito externo) e entra `ai.recipes_promote_after_com_efeito: 2` (etapa com `commit`), em
+  `config.py` e `config.example.yaml`; o `config.yaml` do central, se fixa o valor antigo, a Android ajusta no deploy. `RecipeStore.shadow` recebe o
+  limiar do efeito e o Livro (`necessarias`) o mostra por receita. O D1 não muda: com efeito, a receita para em `validated` e espera o dono.
+- Prova `simulated`: `tests/test_receita_concorda_por_alvo.py` (4: o caminho por alvo, a candidata não trocada pela cópia, os 3 aparelhos
+  com a escalada ligada até `validated` e visível em "Para aprovar", o `necessarias` por efeito; sem o `_desfazer_comparacao` o teste dos 3
+  aparelhos falha com `shadow_agree` 0); 1773 testes de receitas, aprendizado, custo e arquitetura verdes; catracas 89; mypy 257/257.
+  `real`: `not_run`.
+
 ## 2026-10-07 — 31.278: o app pede a senha e a persona não tem senha guardada para ele — o item e o aviso dizem isso (branch fix/31-278-aviso-sem-senha)
 
 - Defeito do campo: a persona do android-01 tinha conta e senha com consentimento só no Instagram e no Outlook; o QA Messenger abriu na tela de

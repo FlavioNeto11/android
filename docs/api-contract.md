@@ -8162,7 +8162,7 @@ serialização), a forma proposta pelo Portal em `portal-para-jev-receita-candid
 
 - **`prova_da_candidata`**, SÓ em receita com `state = candidate` (ausente em todo o resto):
   - `concordancias`: `recipes.shadow_agree`, a sequência (a divergência zera);
-  - `necessarias`: `ai.recipes_promote_after`, lido a cada resposta;
+  - `necessarias`: `ai.recipes_promote_after` (ou `ai.recipes_promote_after_com_efeito`, se a receita tem `commit`; 31.287), lido a cada resposta;
   - `ultima_consulta`: `{em, resultado}` ou `null` quando nunca foi consultada;
   - `substitui`: `{ref, versao, estado: "active"}` ou `null`. É a ATIVA da mesma chave (pacote, versão do app,
     assinatura, variante e etapa) que a candidata assume ao ser promovida; não é a versão anterior do detalhe.

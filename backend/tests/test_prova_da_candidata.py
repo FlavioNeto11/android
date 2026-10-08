@@ -119,7 +119,7 @@ def test_o_livro_traz_a_prova_so_na_candidata_com_a_ativa_que_ela_substitui(tmp_
     rid = _candidata(store)
     ativa = _ativa_da_mesma_chave(db)            # a ativa da mesma chave (a loja só grava candidata sem ativa)
     store.shadow(rid, True, promote_after=5)
-    fontes = FontesSql(db, necessarias=lambda: 2)
+    fontes = FontesSql(db, necessarias=lambda efeito: 2)
 
     entradas = {e.ref: e for e in fontes.receitas()}
     prova = entradas[str(rid)].prova_da_candidata

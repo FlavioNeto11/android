@@ -836,7 +836,12 @@ class AiCfg(BaseModel):
     # mesmo custo de uma etapa sem receita. Depois de N execuções SEGUIDAS da etapa em que a IA fez exatamente o
     # caminho dela, vira ativa e passa a agir; uma divergência recomeça a contagem. Uma execução limpa só é um
     # caminho visto uma vez — aprender só com prova (pedido do dono). 0 = sem prova: nasce ativa (o modo anterior).
-    recipes_promote_after: int = Field(2, ge=0, le=20)
+    recipes_promote_after: int = Field(1, ge=0, le=20)
+    # 31.287: a prova vale POR EFEITO. `recipes_promote_after` é a de uma etapa SEM ação de efeito externo (ler, abrir, buscar:
+    # 1 concordância basta, o erro é barato e a quarentena o pega). `recipes_promote_after_com_efeito` é a da etapa com
+    # `commit` (seguir, curtir, comentar, enviar): 2 concordâncias, e mesmo assim para em `validated` e espera o dono
+    # (D1 do ADR-054). Só vale com a prova ligada (`recipes_promote_after > 0`).
+    recipes_promote_after_com_efeito: int = Field(2, ge=1, le=20)
     # 31.233: a receita ATIVA que divergiu e caiu em quarentena nesta tentativa, com a IA completando a etapa: o caminho
     # que de fato rodou (o trecho da receita e o da IA) vira candidata, em prova como qualquer outra. Medido na onda 2
     # (07/10): a 111 divergiu nos 3 alvos, 39 % do custo, e nada se aprendeu. `false` = como antes.

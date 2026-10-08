@@ -289,8 +289,11 @@ ai:
                                   # candidata (só com recipes_promote_after > 0)
   candidata_da_ativa_que_divergiu: true  # (true) 31.233: a ativa que diverge e cai em quarentena com a IA completando
                                          # a etapa: o caminho que rodou vira candidata; false = como antes
-  recipes_promote_after: 2        # receita aprendida nasce candidata (a IA decide, ela só é comparada) e vira ativa
-                                  # depois de N execuções seguidas em que a IA fez o caminho dela; 0 = nasce ativa
+  recipes_promote_after: 1        # receita aprendida nasce candidata (a IA decide, ela só é comparada) e vira ativa
+                                  # depois de N execuções seguidas em que a IA fez o caminho dela (etapa SEM efeito
+                                  # externo); 0 = nasce ativa
+  recipes_promote_after_com_efeito: 2  # 31.287: o mesmo para a etapa COM efeito externo (commit); mesmo provada, para em
+                                       # `validated` e espera o dono (D1)
   flows: true                     # (false) comando repetido reaproveita o plano, sem chamar o planejador
   pathfinder_wait_s: 240          # (0) com vários aparelhos, o 1º aprende e os demais esperam por ele
   # Porta `DecisaoFechada` (Fase 31, ADR-069): decisão por conjunto fechado no Jev (TypeSafe System One). DESLIGADA: as classes

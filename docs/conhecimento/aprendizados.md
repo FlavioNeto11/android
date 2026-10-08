@@ -2859,3 +2859,29 @@ Além disso, o `commit` em `GET /api/health` é o HEAD do checkout no momento da
 `deploy.ps1`, que já faz isso), nunca só parar a tarefa. Para saber qual código está no ar, use a última linha de
 `data/deploys.jsonl` (ou a tag `deploy-*`), não o `commit` da saúde. Validação de provedor com bateria exige um
 aparelho de QA preparado (`scripts/provision-qa.ps1`, conta de teste), nunca um aparelho com conta real.
+
+### K-109 — A prova da receita com efeito nunca somava: a sombra comparava a decisão que o executor descartava
+
+**Data:** 08/10/2026 · **Área:** receitas (sombra, 31.223, 31.287)
+
+**Sintoma.** Execução `r-20261008183647-25e4b5` (seguir um perfil com 3 aparelhos em sequência, 28 chamadas de IA): as candidatas do
+`follow_1` (ids 225 e 226) ficaram em 0/0 com `ultima_consulta_resultado='divergiu'`, e cada aparelho gravava a sua e marcava a anterior
+`superseded`. A receita nunca chegou a `validated`, e a IA pagou o mesmo passo nos três aparelhos.
+
+**Causa.** Duas, uma em cima da outra. (1) Em `executor.py::_shadow_compare`, a comparação rodava em TODA decisão da IA, antes de o
+executor decidir se ela age. Com `ai.strong_model_only_on_commit` (31.223) o toque de efeito do modelo barato é descartado e refeito no
+forte. A 1ª comparação consumia a única ação da receita; a decisão refeita via a receita esgotada (`would is None`) e contava
+`a IA escolheu outra ação`, em todo FOLLOW e em todo envio, mesmo com a IA tocando o mesmo botão. A divergência zerava a prova.
+(2) Com a candidata "divergida", `RecipeStore.save` a trocava pela do aparelho seguinte quando `_caminho` diferia, e `_caminho` comparava
+a lista inteira de seletores: o mesmo botão, gravado com 5 seletores num aparelho e 4 noutro, era "outro caminho".
+
+**O que funcionou.** `_desfazer_comparacao`: o cursor da receita e os sinais de divergência voltam ao estado de antes quando a decisão
+comparada é descartada (o commit que sobe ao forte e o LT-12), e a comparação que vale é a da decisão que age. `_caminho` passou a comparar
+o alvo (o seletor de maior confiança), sem `why`, sem seletores alternativos e sem o teto de rolagem. A divergência de uma candidata agora
+sai na linha do tempo com o motivo. O limiar passou a valer por efeito (1 sem efeito, 2 com).
+
+**O que não funcionou.** Supor que a divergência era `nao_aplicavel` (tela de partida diferente): esse caminho já não conta contra a
+receita. O motivo só apareceu lendo o laço do executor contra a linha do tempo ("decisão escalonada… só a decisão do commit").
+
+**Aplicabilidade.** Vigente. Toda comparação com efeito colateral no estado (cursor, contador) precisa saber se a decisão comparada vai
+agir. O teste que protege é `tests/test_receita_concorda_por_alvo.py` (com a escalada ligada, a prova soma e o envio chega a `validated`).

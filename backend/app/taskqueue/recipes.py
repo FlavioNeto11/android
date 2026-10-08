@@ -759,9 +759,33 @@ class Replayer:
 
 
 # ------------------------------------------------------------------ persistência
+def _alvo(seletores: object) -> object:
+    """31.287: o ALVO de uma ação, não a lista de seletores que a IA gravou. Dois aparelhos tocam o mesmo botão e gravam
+    listas de tamanhos diferentes (um tem o seletor `text` a mais): o que identifica o alvo é o seletor de maior confiança,
+    o primeiro, com o resource-id e o discriminador (texto, descrição, o filho que recebe o toque). Os alternativos ficam
+    de fora. Sem seletor (digitar no campo em foco), não há alvo."""
+    if not isinstance(seletores, list) or not seletores or not isinstance(seletores[0], dict):
+        return None
+    primeiro = seletores[0]
+    if primeiro.get("rid"):
+        return {k: primeiro[k] for k in ("rid", "text", "via", "conteiner") if k in primeiro}
+    return dict(primeiro)
+
+
 def _caminho(acoes: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
-    """O que a reprodução faz, sem o `why` — a justificativa da IA muda a cada execução e não muda o caminho."""
-    return [{k: v for k, v in a.items() if k != "why"} for a in acoes]
+    """O que a reprodução faz, sem o `why` e sem o que não muda o caminho: a justificativa da IA muda a cada execução, a
+    lista de seletores alternativos muda de aparelho para aparelho (31.287: vale o ALVO) e o teto de rolagens é só um
+    limite. Fica a ferramenta, o efeito (`commit`), a âncora, os argumentos (o texto digitado, o pacote, a duração), o
+    alvo e a direção da rolagem prévia."""
+    saida: list[dict[str, object]] = []
+    for a in acoes:
+        item = {k: v for k, v in a.items() if k not in ("why", "selectors", "scroll")}
+        item["alvo"] = _alvo(a.get("selectors"))
+        rolagem = a.get("scroll")
+        if isinstance(rolagem, dict):
+            item["rolagem"] = rolagem.get("direction")
+        saida.append(item)
+    return saida
 
 
 #: Quem decide quando a própria loja muda o status (aprendizado, prova em sombra, quarentena, substituição).
@@ -1256,7 +1280,8 @@ class RecipeStore:
         metricas.contar("receita.sombra", resultado="divergiu" if conta else "nao_aplicavel")
         return conta
 
-    def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int, simulada: bool = False) -> bool:
+    def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int, promote_after_com_efeito: int | None = None,
+               simulada: bool = False) -> bool:
         """Veredito da sombra de UMA execução da etapa. Devolve True se a candidata foi promovida a ativa agora.
 
         A unidade é a execução, não a decisão: duas decisões concordantes numa mesma etapa não são repetição. Na
@@ -1274,6 +1299,10 @@ class RecipeStore:
         RA-19 B: a concordância de uma execução SIMULADA (`simulada`) não conta para a candidata: não soma à sequência
         nem a promove; só evidência real publica. A divergência dela zera, como qualquer outra (o lado seguro), e na
         ativa a taxa acumula igual.
+
+        31.287: a prova vale POR EFEITO. `promote_after` é o de uma receita sem ação de efeito externo;
+        `promote_after_com_efeito` (quando dado) é o da que tem `commit`. As concordâncias de aparelhos diferentes somam
+        (a sequência é da receita, não do aparelho), porque a receita é uma só por etapa.
 
         31.271: o veredito que conta grava a última consulta (`concordou`/`divergiu`). A concordância simulada que não
         conta não grava nada: a aba Aprendido diria "concordou" de uma consulta que não somou à prova.
@@ -1296,7 +1325,9 @@ class RecipeStore:
                 self.db.execute("UPDATE recipes SET shadow_total=shadow_total+1, ultima_consulta_em=?,"
                                 " ultima_consulta_resultado=? WHERE id=?", (*consulta, recipe_id))
             seguidas = int(self.db.scalar("SELECT shadow_agree FROM recipes WHERE id=?", (recipe_id,)) or 0)
-            if not (agreed and row["status"] == "candidate" and seguidas >= max(1, promote_after)):
+            com_efeito = receita_tem_efeito(loads(row["actions"], []))
+            necessarias = promote_after_com_efeito if com_efeito and promote_after_com_efeito is not None else promote_after
+            if not (agreed and row["status"] == "candidate" and seguidas >= max(1, necessarias)):
                 return False
             for outra in ("active", "validated"):
                 if self._com_status(outra, row["app_package"], row["app_version"], row["step_hash"],
@@ -1308,7 +1339,7 @@ class RecipeStore:
                 learned_from=row["learned_from_step"] or "")
             if self.ouvinte is not None and self.ouvinte.vetada(vista):
                 return False
-            efeito = receita_tem_efeito(loads(row["actions"], []))
+            efeito = com_efeito
             reaprendida = False if efeito or self.ouvinte is None else self.ouvinte.exige_o_dono(recipe_id, vista)
             if reaprendida is None:
                 return False

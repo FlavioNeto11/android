@@ -531,7 +531,8 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
         receitas=self.scheduler.executor.recipes,
         decidir=lambda texto, run_id: self.repo.decision(texto, run_id=run_id), eventos=self.bus,
         curador_de_ia=CuradorComTriagemEmSombra(self._curador_do_hub, self._triagem_do_curador),
-        necessarias_da_receita=lambda: int(self.cfg.file.ai.recipes_promote_after))
+        necessarias_da_receita=lambda efeito: int(self.cfg.file.ai.recipes_promote_after_com_efeito if efeito
+                                                  else self.cfg.file.ai.recipes_promote_after))
     # 31.111 F4: o ensino que nasce de uma falha lê a causa provável da tentativa (30.13), sem IA.
     falhas = self.learning.extensao(ServicoDeFalhas)
     self.training.diagnostico_da_falha = falhas.diagnostico_para_o_ensino if falhas is not None else None

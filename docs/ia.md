@@ -206,13 +206,17 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
 
 - **Receitas** (`ai.recipes: replay`): a IA aprende uma etapa uma vez; repetição por seletor (resource-id/texto)
   sem nova chamada. Seletor que não casa exatamente um elemento → divergência (só aquela etapa volta para a IA).
-  3 falhas seguidas → quarentena. `shadow` aprende e compara sem agir. Desde 29/09 a receita da IA nasce `candidate` e
-  sobe por `ai.recipes_promote_after` (2) concordâncias em sombra; com ação `commit`, para em `validated` e espera o
+  3 falhas seguidas → quarentena. `shadow` aprende e compara sem agir. A sombra compara a decisão que AGE: a que o executor
+  descarta e refaz (o commit que sobe ao modelo forte, 31.223) não gasta a ação da receita (K-109). Duas receitas são o mesmo
+  caminho quando a ferramenta, o efeito, os argumentos e o ALVO (o seletor de maior confiança) são os mesmos: a lista de
+  seletores alternativos, o `why` e o teto de rolagem não contam, e a prova soma entre aparelhos. Desde 29/09 a receita da IA nasce `candidate` e
+  sobe por concordâncias em sombra, que valem POR EFEITO (31.287): `ai.recipes_promote_after` (1) na etapa sem efeito externo e
+  `ai.recipes_promote_after_com_efeito` (2) na com `commit`, que mesmo provada para em `validated` e espera o
   dono (D1 do [ADR-054](decisoes.md#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha)).
 - **Herança da receita** (`ai.recipes_heranca: true`, RA-20 / item 29.40): a etapa sem receita na chave atual (versão,
   assinatura e variante) herda, como candidata, a receita provada da mesma etapa noutra versão do app, noutra variante
   ou na legada de 17/09 (sem assinatura nem variante). A herdeira não age: a IA decide a etapa e ela só é comparada até
-  concordar `recipes_promote_after` vezes; com `commit`, para em `validated`. Assinatura diferente nunca doa; com
+  concordar o número de vezes do efeito dela (`recipes_promote_after` ou `_com_efeito`); com `commit`, para em `validated`. Assinatura diferente nunca doa; com
   `recipes_promote_after: 0` não herda. A herdeira que passa a agir aposenta a legada ativa da mesma etapa e versão. A
   causa de cada "ausente" é medida em `receita.ausente{causa}` ([dominios/aprendizado.md](dominios/aprendizado.md)).
 - **Chave genérica da receita** (RA-20 fatia B): na etapa julgada pelo modelo, sem efeito, a receita cujo caminho não
