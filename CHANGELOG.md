@@ -33,6 +33,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   mais 521 testes dirigidos verdes, catracas 89 verdes, mypy no teto (257). `real`: `not_run`. O dado do campo (QA Messenger sem sessão
   no android-01) é do dono: guardar a credencial de teste na ficha da persona ou usar aparelho com o app logado.
 
+## 2026-10-08 — 31.286: a conta aberta só se lê no perfil próprio; a página de outra pessoa é indeterminada (branch fix/31-286-conta-so-no-proprio-perfil)
+
+- Defeito (execução de 08/10, android-06): o aparelho estava na página de @nasa (Follow/Message, `action_bar_title` = nasa) e o leitor de
+  sessão tomou o título como a conta logada ("a conta aberta é @nasa, e a esperada é …"), parando a etapa em `waiting_user`.
+- A extração declarada do Instagram (`telas.yaml`, `conta_no_cabecalho`) ganha `exceto_ids` / `exceto_textos` (dado do app, ADR-052): tela
+  com o botão de seguir, de deixar de seguir ou de mensagem é de terceiro, e a extração devolve `None` (nem pelo palpite do primeiro @). O
+  depois-do-envio pede a leitura pela aba (`conferir`), e `ler_conta` volta a tocar a aba do próprio perfil; se a página alheia não sair, o
+  resultado é "a conta não pôde ser lida", nunca "conta errada". O perfil próprio de outra conta nossa segue acusando conta errada.
+  Os ids do botão de seguir são de captura real; o de mensagem e os textos em português são palpite (o botão de seguir já decide sozinho).
+- Prova `simulated`: `tests/test_conta_so_no_proprio_perfil.py` (5, árvores com os ids reais; a hierarquia crua de hoje não foi gravada) e 1669
+  testes de sessão, pré-voo, login e arquitetura verdes; catracas 89; mypy no teto. `real`: `not_run`.
+
 ## 2026-10-08 — 31.285: sai a porta do "mesmo pedido a N contas" (sobra do ADR-083; branch fix/31-285-sem-mesmo-pedido-em-n-contas)
 
 - O dono mandou "seguir @alvo com todas as personas que têm Instagram"; só o android-01 seguiu (com aval exigido) e o 03 e o 06 foram
