@@ -122,7 +122,7 @@ def _dependentes(etapas_do_objetivo: list[Row]) -> dict[str, list[str]]:
 def _selo(porta: PortaDaEtapa, alvo_por_resolver: bool, repetida: str) -> tuple[str, str, str, str | None]:
     """`(selo, motivo, dica, retry_at)` do veredito da porta, com a regra do que fica para a execução. Espelha o fim do
     `_policy_gate`: aprovação por política, por DM fria (o porquê vem no `reason` do veredito que libera), pela
-    confirmação do mesmo pedido a várias contas, pelo teto `preparar` ou por mensagem repetida."""
+    pelo teto `preparar` ou por mensagem repetida."""
     v = porta.veredito
     if v is None:
         return PERMITIDO, "", "", None
@@ -141,8 +141,8 @@ def _selo(porta: PortaDaEtapa, alvo_por_resolver: bool, repetida: str) -> tuple[
                                                             "pedida na execução, com a exceção presa") if m), v.hint, None
     pelo_teto = ("teto de autonomia preparar: o efeito precisa da sua aprovação"
                  if porta.teto == "preparar" and porta.cap is not None and porta.cap.side_effect else "")
-    if v.needs_approval or porta.confirmacao or pelo_teto or repetida:
-        return APROVACAO, "; ".join(m for m in (v.reason, porta.confirmacao, pelo_teto, repetida) if m), v.hint, None
+    if v.needs_approval or pelo_teto or repetida:
+        return APROVACAO, "; ".join(m for m in (v.reason, pelo_teto, repetida) if m), v.hint, None
     return PERMITIDO, v.reason, v.hint, None
 
 

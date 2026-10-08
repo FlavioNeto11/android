@@ -35,6 +35,9 @@ NOME, OUTRO = "Zelda", "Odete"
 
 # Testes que só cobriam regra removida pelo refactor do dono de 07/10 (31.272).
 SAIU_NO_ADR_083 = pytest.mark.skip(reason="ADR-083: a trava do mesmo objeto repetido (30.64) saiu da política")
+SAIU_A_PORTA_DE_N_CONTAS = pytest.mark.skip(reason=(
+    "ADR-083 / 31.285: a porta do mesmo pedido a N contas (`_mesmo_pedido_noutras_contas`) saiu junto com a "
+    "coordenação de frota"))
 MOLDE = "Oi, aqui é {perfil_nome}!"
 DM_MOLDE = {**DM, "content": MOLDE}
 
@@ -107,6 +110,7 @@ async def test_a_persona_trocada_depois_do_sim_faz_a_porta_perguntar_de_novo(har
 
 
 # ------------------------------------------------------------------ frota e repetição (as regras sem chave)
+@SAIU_A_PORTA_DE_N_CONTAS
 async def test_o_mesmo_marcador_em_duas_personas_nao_e_o_mesmo_alvo(harness: Any) -> None:
     """`_mesmo_pedido_noutras_contas`: cada irmã se resolve com a persona do SEU objetivo. Com o marcador cru, as duas
     linhas teriam o mesmo `{perfil_nome}` e pareceriam o mesmo alvo."""
@@ -256,4 +260,5 @@ def test_a_porta_le_os_bindings_so_pelo_leitor_unico() -> None:
             for funcao, linha in _leituras_cruas(raiz / arquivo) if funcao not in permitidos]
     assert not fora, "leitura crua de `bindings` fora de `Repository.bindings_da_etapa`: " + ", ".join(fora)
     texto = (raiz / "app/gates.py").read_text(encoding="utf-8")      # onde os portões moram desde o 15.15 F5a (antes, `state.py`)
-    assert len(re.findall(r"bindings_da_etapa\(", texto)) >= 10
+    # 31.285: 10 antes de sair a porta do mesmo pedido a N contas (uma das leituras era dela); o piso é só contra o leitor sumir.
+    assert len(re.findall(r"bindings_da_etapa\(", texto)) >= 9
