@@ -5918,3 +5918,60 @@ dono, e a resposta dele no Telegram ainda criou uma execução sucessora.
 
 **Consequências.** O harness de avaliação responde ou pula os casos que pedem entrada. Prova: `not_run` até o
 31.279.
+
+## ADR-087 — Conta planejada: persona, conta externa, credencial e sessão observada são quatro coisas
+
+**Data:** 08/10/2026 · **Estado:** aceito; implementação pendente (31.281 backend, 31.282 refinador, 31.283 painel,
+31.284 validação). Pedido do dono no chat da orquestradora às 17:0xZ ("Correção estrutural: criação de contas,
+credenciais e refinamento de comandos"; brief literal em `.claude/handoffs/pedido-contas-planejadas-2026-10-08.md`),
+diagnóstico só leitura da Jev (31.280, `.claude/handoffs/jev-diagnostico-31-280.md`). Complementa o ADR-040
+(credencial guardada com consentimento) e o ADR-052 (app como dado); emenda o item 29.52.
+
+**Contexto.** O comando "pegue 3 personas sem Outlook e vamos guiá-las a criar contas" virou a pergunta "a senha da nova
+conta já está guardada ou será definida?", e as duas respostas caem no 409 `credencial_na_resposta`. Causa raiz: o
+refinador (`command_refinement.py::_REFINE_SYSTEM`) só conhece dados de contas que já existem e não tem ramo para
+conta nova, então o modelo pergunta a origem da senha; e `assistente.py::refinar` aplica a triagem de credencial ao
+texto da PERGUNTA, recusando qualquer resposta a uma pergunta que cite senha. A regra da triagem está certa (ADR-040,
+29.52); o erro é o refinador gerar a pergunta, e não existir em lugar nenhum o estado "conta ainda não criada no
+provedor". `profile_accounts`, `account_credentials`, `account_sessions`, o cofre, o canal sensível, as perguntas com
+sucessora e o painel de contas já existem e se reaproveitam; não há gerador de senha, estado de provisionamento,
+usuário desejado versus confirmado, nem ação estruturada no refinador.
+
+**Decisão.**
+- Quatro conceitos em quatro lugares: persona (`instagram_profiles`); conta externa desejada ou existente
+  (`profile_accounts`, que ganha o ciclo de provisionamento); credencial (`account_credentials` + cofre, sem mudar
+  de forma); sessão observada (`account_sessions`). "Sessão autenticada" é visão derivada (conta confirmada e
+  sessão pronta no aparelho), nunca estado gravado na conta.
+- `profile_accounts` ganha, por migração aditiva (131): `provisioning_state`, `desired_handle`,
+  `provisioning_detail`, `resume_state`, `confirmed_at`, `confirmation_evidence`. `handle` segue sendo o endereço
+  CONFIRMADO e fica vazio enquanto a conta é só planejada; as linhas existentes nascem `confirmada`.
+- Máquina de estados em módulo de domínio puro (o serviço só aplica): `planejada` → `credencial_preparada` →
+  `aguardando_cadastro_externo` → `aguardando_verificacao` → `confirmada`; `falha` guarda `resume_state` e
+  `retomar` volta a ele sem reiniciar; `cancelar` só antes de `confirmada` e só apaga a senha do cofre se nenhuma
+  outra conta a referencia (regra do clone, 31.103). Toda transição compara e troca o estado esperado; repetir o
+  mesmo evento no mesmo estado devolve 200 sem efeito; cada transição emite evento redigido, sem valor de segredo.
+  O índice único (perfil, app, host) dá a idempotência do planejar.
+- Senha: gerada no servidor com `secrets` (nunca pela IA), gravada direto no cofre e nunca devolvida; ou digitada
+  pelo canal sensível; ou reutilizada de outra conta da mesma persona só por escolha expressa (nunca padrão).
+  Substituir só antes de `confirmada`; depois é troca de senha pela rota atual. **Gerar ou digitar a senha no
+  painel com a caixa de autorização marcada vale como o consentimento do ADR-040** para aquela conta.
+- Conta que não está `confirmada` não é conta real logada: o roteamento do Automático, o pré-voo de sessão e a
+  lista de dados ao plano a filtram; só o usuário desejado e a senha sensível ficam disponíveis, para o plano que
+  preenche o cadastro.
+- Refinador por estado, não por pergunta: antes de chamar o modelo, o backend calcula o estado de cada par persona
+  e app citado e o põe no prompt (estado e metadados, nunca valor). Senha nunca vira pergunta: a saída do modelo que
+  a triagem marcar como sensível é descartada e, se o app não tem credencial pronta, trocada por uma **ação
+  estruturada** (persona, app; ações: preparar credencial, abrir Contas e acesso, usar credencial existente,
+  continuar quando pronta), sem campo de texto e fora da triagem de resposta. Preparada a credencial, o painel
+  refaz o refinar ou responde a sucessora, que preserva alvos, intenção, dados e etapas (cenários A a D do brief).
+- Cadastro no provedor: a automação prepara, preenche o formulário com os dados da persona e dita a senha pelo
+  canal sensível (ADR-085: faz o que é necessário); CAPTCHA, código e e-mail de verificação são da pessoa (ADR-009).
+  A conta só vira `confirmada` com evidência: sessão observada com o usuário igual ao desejado, ou marcação nominal
+  da pessoa gravada como evidência "declarada". Sem evidência, recusa.
+- Nada específico de Microsoft: o mecanismo vale para qualquer app declarado com cadastro, login e credencial.
+
+**Consequências.** Contrato primeiro (adendo v1.132: estados, campos e a ação estruturada) abre o 31.281; 31.282 e
+31.283 andam em paralelo depois; 31.284 valida ponta a ponta com provedor SIMULADO (nunca conta real na
+Microsoft) e regressão de conta existente, clone, consentimento e login normal, com varredura de segredo em log,
+evento e leitura. Risco principal: o filtro de conta não confirmada nos consumidores. Prova: `not_run` até o
+31.284.

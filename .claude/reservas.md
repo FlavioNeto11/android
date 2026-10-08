@@ -813,3 +813,5 @@ orquestradora; ela anota aqui antes de responder.
 | 31.284 | Jev + Android | validação ponta a ponta: 3 personas de teste sem Outlook, provedor SIMULADO (nunca conta real na Microsoft), os 10 passos do § 8 do brief + regressão (contas existentes, clonadas, consentimento, autenticação); prova simulated; nada real | reservado 08/10 17:1xZ |
 | ADR-087 | orquestradora | conta planejada × conta externa × credencial × sessão (decisão de arquitetura do pedido de 08/10), escrito a partir do 31.280 | reservado 08/10 17:1xZ |
 | próximos livres (atualização 08/10 17:1xZ) | 31.285, 29.212, 28.78; ADR-088; migração 131; adendo v1.132; K-109 | |
+| migração 131 | 31.281 (Jev): colunas aditivas de provisionamento em profile_accounts (ADR-087) | Jev | CONCEDIDA 08/10 17:4xZ; próxima livre 132 |
+| adendo api-contract v1.132 | 31.281 (Jev): estados e campos da conta planejada + ação estruturada do refinador (ADR-087) | Jev | CONCEDIDO 08/10 17:4xZ; próximo livre v1.133 |
