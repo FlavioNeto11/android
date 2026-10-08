@@ -63,6 +63,13 @@ extracoes:
     ids: [username, action_bar_title, profile_header_username, row_profile_header_textview_username]
     padrao: '^@?([A-Za-z0-9._]{1,30})$'
     arroba_solto: true
+    # 31.286 (execução de 08/10, android-06): a página de @nasa (botões Follow/Message, `action_bar_title` = nasa) foi lida
+    # como a conta logada e acusou "conta errada". O botão de seguir ou de mensagem só existe no perfil de OUTRA pessoa:
+    # nele a leitura é indeterminada e o laço volta a tocar a aba do próprio perfil. Os ids vêm de captura real
+    # (`profile_header_follow_button`, `profile_header_unfollow_button`); o de mensagem e os textos em português não foram
+    # medidos (palpite; o botão de seguir já decide sozinho).
+    exceto_ids: [profile_header_follow_button, profile_header_unfollow_button, profile_header_message_button]
+    exceto_textos: [follow, following, requested, message, seguir, seguindo, solicitado, enviar mensagem, mensagem]
 
 # Em ordem de precedência: a primeira regra que casar vence. Desafio e 2FA vêm ANTES do login, porque também têm
 # campo de entrada, e confundir faria digitar senha numa tela de código.

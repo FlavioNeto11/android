@@ -106,6 +106,20 @@ class Extracao:
     #: num texto sem id, dentro de um painel com id (a gaveta do Outlook: o e-mail da conta num TextView sem id, e à
     #: esquerda a lista de contas, que não conta).
     dentro_de: tuple[str, ...] = ()
+    #: 31.286: a extração é da conta ABERTA, e a página de OUTRA pessoa mostra o mesmo cabeçalho (`action_bar_title` com o
+    #: @ dela). Esta tela é de terceiro quando tem um destes ids (sufixo exato) ou um botão clicável com um destes
+    #: textos exatos (minúsculos): o botão de seguir/mensagem só existe no perfil alheio. Nela a extração devolve
+    #: `None` (indeterminado), nunca o @ do terceiro como se fosse a conta logada.
+    exceto_ids: tuple[str, ...] = ()
+    exceto_textos: tuple[str, ...] = ()
+
+    def de_terceiro(self, tree: UiTree) -> bool:
+        """A tela é a página de outra pessoa (tem o botão de seguir ou de mensagem que o próprio perfil nunca tem)."""
+        if not (self.exceto_ids or self.exceto_textos):
+            return False
+        return any((_sufixo(e.resource_id) in self.exceto_ids if e.resource_id else False)
+                   or (e.clickable and (e.text or e.desc or "").strip().lower() in self.exceto_textos)
+                   for e in tree.elements)
 
     def cabe(self, tree: UiTree, e: object) -> bool:
         """O elemento está dentro de um dos contêineres declarados (sempre, quando não há contêiner declarado)."""
@@ -205,6 +219,8 @@ class ConhecimentoDeTelas:
     def extrair(self, nome: str, tree: UiTree, *, palpite: bool = True) -> str | None:
         """Valor de uma extração declarada: primeiro pelos ids; com `palpite`, pelo primeiro `@texto` da tela."""
         ex = self.extracoes[nome]
+        if ex.de_terceiro(tree):
+            return None
         for e in tree.elements:
             if ((_sufixo(e.resource_id) in ex.ids or (not ex.ids and ex.dentro_de)) and ex.cabe(tree, e)
                     and (m := ex.padrao.match((e.text or "").strip()))):
@@ -457,7 +473,11 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
         extracoes[nome] = Extracao(ids=_textos(ex.get("ids"), f"extracoes.{nome}.ids"),
                                    padrao=_regex(ex.get("padrao"), f"extracoes.{nome}.padrao"),
                                    arroba_solto=bool(ex.get("arroba_solto", False)),
-                                   dentro_de=_textos(ex.get("dentro_de"), f"extracoes.{nome}.dentro_de"))
+                                   dentro_de=_textos(ex.get("dentro_de"), f"extracoes.{nome}.dentro_de"),
+                                   exceto_ids=_textos(ex.get("exceto_ids"), f"extracoes.{nome}.exceto_ids")
+                                   if "exceto_ids" in ex else (),
+                                   exceto_textos=_textos(ex.get("exceto_textos"), f"extracoes.{nome}.exceto_textos")
+                                   if "exceto_textos" in ex else ())
     regras: list[RegraDeTela] = []
     for i, bruto in enumerate(_lista(raiz.get("telas"), "telas")):
         onde = f"telas[{i}]"
