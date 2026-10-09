@@ -1567,7 +1567,7 @@ class SocialService:
                                      f"({type(exc).__name__}): confira as execuções da persona.", level="error",
                               data={"profile_id": profile_id, "account_id": account_id})
         # Limpeza do egresso (133, §9): desatribui → remove perfil → apaga segredo de rastreio.
-        if self.ao_limpar_egresso is not None and proxy_secret_ref is not None:
+        if self.ao_limpar_egresso is not None:
             try:
                 self.ao_limpar_egresso(profile_id, account_id, proxy_secret_ref)
             except Exception as exc:  # noqa: BLE001 - a conta já saiu; a limpeza falhar não desfaz

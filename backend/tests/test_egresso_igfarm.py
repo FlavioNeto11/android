@@ -211,3 +211,197 @@ def ponte_com_rede_falsa(harness, monkeypatch):
 
     return _montar_ponte(harness)
 
+
+# ============================================================================ 5. gatilho do vínculo + limpeza
+def _semear_conta_igfarm(harness, *, account_id="acc-1", profile_id="p1", username="alvo.um",
+                         proxy_secret_ref="ref-proxy", ip_criacao="8.8.8.8") -> None:
+    db = harness.state.db
+    db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at) "
+               "VALUES (?,?, 'active','2026-01-01','2026-01-01')", (profile_id, username))
+    db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, created_at, updated_at) "
+               "VALUES (?,?, 'com.instagram.android', ?, '2026-01-01','2026-01-01')",
+               (account_id, profile_id, username))
+    db.execute("INSERT INTO contas_igfarm(account_id, profile_id, igfarm_account_id, username_registrado, "
+               "criada_em_igfarm, registrada_em, proxy_secret_ref, ip_criacao) "
+               "VALUES (?,?, 'ig-1', ?, '2026-01-01','2026-01-01', ?, ?)",
+               (account_id, profile_id, username, proxy_secret_ref, ip_criacao))
+
+
+def _semear_perfil_de_rede(harness, *, perfil_id="np-1", account_id="acc-1",
+                           params="{}") -> None:
+    harness.state.db.execute(
+        "INSERT INTO network_profiles(id, name, kind, protocol, endpoint_host, endpoint_port, params, created_at) "
+        "VALUES (?,?, 'proxy','http','p.example.com',8080,?, '2026-01-01')",
+        (perfil_id, f"igfarm-{account_id}", params))
+
+
+def test_gatilho_atribui_perfil_existente(harness, monkeypatch):
+    """Vínculo criado DEPOIS do registro: o gatilho acha o perfil pelo nome e o atribui (política exigida)."""
+    from app.modules.identity.application import egresso
+    chamadas: list[tuple[list[str], str | None, str]] = []
+    monkeypatch.setattr(egresso, "atribuir",
+                        lambda st, body, quem: chamadas.append((list(body.instance_ids), body.proxy_profile_id,
+                                                                body.policy)))
+    _semear_conta_igfarm(harness)
+    _semear_perfil_de_rede(harness)
+    egresso.vincular_egresso(harness.state, "p1", "android-01")
+    assert chamadas == [(["android-01"], "np-1", "exigida")]
+
+
+def test_gatilho_conta_real_fica_pendente(harness, monkeypatch, caplog):
+    """`real_account_confirm_required` não derruba o vínculo: fica pendente e é registrado."""
+    from app.modules.identity.application import egresso
+    from app.devices.rede import RedeError
+
+    def recusa(st, body, quem):
+        raise RedeError(409, "real_account_confirm_required", "conta real")
+
+    monkeypatch.setattr(egresso, "atribuir", recusa)
+    _semear_conta_igfarm(harness)
+    _semear_perfil_de_rede(harness)
+    egresso.vincular_egresso(harness.state, "p1", "android-01")     # não levanta
+
+
+def test_limpeza_desatribui_remove_perfil_e_apaga_segredo(harness, monkeypatch):
+    """Ordem da limpeza: unassign (com confirmação) -> remove perfil -> apaga segredo de rastreio."""
+    from app.modules.identity.application import egresso
+    eventos: list[tuple[object, ...]] = []
+    monkeypatch.setattr(egresso, "atribuir",
+                        lambda st, body, quem: eventos.append(("unassign", list(body.instance_ids),
+                                                               body.proxy_profile_id,
+                                                               list(body.confirm_real_account))))
+    monkeypatch.setattr(egresso, "remover_perfil", lambda st, pid: eventos.append(("remove", pid)))
+    monkeypatch.setattr(harness.state.secrets, "delete_secret", lambda ref: eventos.append(("segredo", ref)))
+    _semear_perfil_de_rede(harness)
+    harness.state.db.execute(
+        "INSERT INTO device_network(instance_id, proxy_profile_id, updated_at) VALUES ('android-01','np-1','2026-01-01')")
+    egresso.limpar_egresso(harness.state, "p1", "acc-1", "ref-proxy")
+    assert eventos == [("unassign", ["android-01"], None, ["android-01"]),
+                       ("remove", "np-1"),
+                       ("segredo", "ref-proxy")]
+
+
+def test_limpeza_sem_perfil_ainda_apaga_segredo(harness, monkeypatch):
+    """Proxy sem perfil criado (ou já removido): só o segredo de rastreio é apagado, sem erro."""
+    from app.modules.identity.application import egresso
+    segredos: list[str] = []
+    monkeypatch.setattr(egresso, "remover_perfil", lambda st, pid: None)
+    monkeypatch.setattr(harness.state.secrets, "delete_secret", lambda ref: segredos.append(ref))
+    egresso.limpar_egresso(harness.state, "p1", "acc-inexistente", "ref-x")
+    assert segredos == ["ref-x"]
+
+
+# ============================================================================ 6. egresso no registrar() (dois caminhos)
+class _RedeFalsa:
+    """Rede de mentira: registra o que a ponte pediu, sem tocar no subsistema real."""
+
+    def __init__(self) -> None:
+        self.perfis: list[str] = []
+        self.secrets: list[object] = []
+        self.atribuicoes: list[tuple[list[str], str | None, str]] = []
+
+    def parse_proxy(self, proxy_url: str):
+        return _parse_proxy(proxy_url)
+
+    def criar_perfil_de_conta(self, account_id, *, host, port, protocol, username, secret, ip_criacao, quem):
+        self.perfis.append(account_id)
+        self.secrets.append(secret)
+        return f"np-{account_id}"
+
+    def atribuir(self, instance_ids, proxy_profile_id, policy, quem, confirm_real_account=None):
+        self.atribuicoes.append((list(instance_ids), proxy_profile_id, policy))
+        return {}
+
+
+def _ponte_com_fakes(harness, rede):
+    """Ponte com portas falsas de pessoas/contas/cofre/email e armazém REAL (ArmazemSql)."""
+    from app.modules.identity.application.ponte_igfarm import PonteIgfarm
+    from app.modules.identity.domain.ponte_igfarm import FichaDaPessoa
+    from app.modules.identity.infrastructure.ponte_igfarm import ArmazemSql
+
+    class Pessoas:
+        def ficha(self, pid):
+            return FichaDaPessoa(persona_id=pid, nome="Alvo", primeiro_nome="Alvo", sobrenome="Um",
+                                 nome_exibicao="Alvo", birth_date="1990-01-01", idade=35, genero="f",
+                                 biografia={}, visual={}, resumo="", profissao=None, cidade=None, interesses=())
+
+    class Contas:
+        def eh_nossa(self, h): return False
+        def foi_retirada(self, h): return False
+        def registrar(self, pid, *, username, email, senha, por): return "acc-1"
+
+    class Cofre:
+        def __init__(self): self.guardados: list[str] = []
+        def guardar(self, v): self.guardados.append(v); return (f"ref-{len(self.guardados)}", "k")
+        def apagar(self, ref): pass
+
+    class Email:
+        def validar_dominio(self, d): return d
+        def confere_dominio(self, e, d): return None
+
+    class Bus:
+        def emitir(self, *a, **k): pass
+
+    ponte = PonteIgfarm(armazem=ArmazemSql(harness.state.db), pessoas=Pessoas(), textos=None,
+                        imagens=None, contas=Contas(), cofre=Cofre(), email=Email(), barramento=Bus(),
+                        rede=rede)
+    return ponte
+
+
+def _semear_persona_sem_conta(harness, *, profile_id="p1", account_id="acc-1") -> None:
+    db = harness.state.db
+    db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at) "
+               "VALUES (?, '', 'active','2026-01-01','2026-01-01')", (profile_id,))
+    db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, created_at, updated_at) "
+               "VALUES (?,?, 'com.instagram.android', '', '2026-01-01','2026-01-01')",
+               (account_id, profile_id))
+
+
+def test_re_post_nao_acumula_segredo_e_roda_egresso_nos_dois_caminhos(harness):
+    _semear_persona_sem_conta(harness)
+    rede = _RedeFalsa()
+    ponte = _ponte_com_fakes(harness, rede)
+    r1 = ponte.registrar(_cmd())
+    r2 = ponte.registrar(_cmd())                     # idempotente
+    assert r1.account_id == r2.account_id == "acc-1"
+    assert rede.perfis == ["acc-1", "acc-1"]         # criar perfil roda nos DOIS caminhos
+    # senha do e-mail (1x, no cadastro) + senha do PROXY (1x, só na 1ª vez)
+    assert ponte.cofre.guardados == ["senha-email-123", "p"]
+    assert all(isinstance(s, SecretStr) for s in rede.secrets if s is not None)
+    row = harness.state.db.one("SELECT proxy_secret_ref, ip_criacao FROM contas_igfarm WHERE account_id='acc-1'")
+    assert row["proxy_secret_ref"] == "ref-2" and row["ip_criacao"] == "8.8.8.8"
+
+
+def test_registrar_com_vinculo_atribui_ao_device(harness):
+    _semear_persona_sem_conta(harness)
+    harness.state.db.execute(
+        "INSERT INTO device_profile_bindings(profile_id, instance_id, app_id, active, bound_at) "
+        "VALUES ('p1','android-01', NULL, 1, '2026-01-01')")
+    rede = _RedeFalsa()
+    ponte = _ponte_com_fakes(harness, rede)
+    ponte.registrar(_cmd())
+    assert rede.atribuicoes == [(["android-01"], "np-acc-1", "exigida")]
+
+
+def test_registrar_sem_vinculo_nao_atribui(harness):
+    _semear_persona_sem_conta(harness)
+    rede = _RedeFalsa()
+    ponte = _ponte_com_fakes(harness, rede)
+    ponte.registrar(_cmd())
+    assert rede.atribuicoes == []
+
+
+# ============================================================================ 7. reaquecer (observabilidade)
+def test_reaquecer_marca_1_quando_a_saida_divergir(harness):
+    from app.devices.rede import reaquecer_da_conta
+    _semear_conta_igfarm(harness)
+    _semear_perfil_de_rede(harness, params='{"egress_esperado": "8.8.8.8"}')
+    harness.state.db.execute(
+        "INSERT INTO device_profile_bindings(profile_id, instance_id, app_id, active, bound_at) "
+        "VALUES ('p1','android-01', NULL, 1, '2026-01-01')")
+    harness.state.db.execute(
+        "INSERT INTO device_network(instance_id, proxy_profile_id, policy, state, egress_ipv4, updated_at) "
+        "VALUES ('android-01','np-1','exigida','trafego_verificado','1.1.1.1','2026-01-01')")
+    reaquecer_da_conta(harness.state, "android-01")
+    assert harness.state.db.scalar("SELECT reaquecer FROM contas_igfarm WHERE account_id='acc-1'") == 1
+
