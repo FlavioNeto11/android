@@ -405,3 +405,31 @@ def test_reaquecer_marca_1_quando_a_saida_divergir(harness):
     reaquecer_da_conta(harness.state, "android-01")
     assert harness.state.db.scalar("SELECT reaquecer FROM contas_igfarm WHERE account_id='acc-1'") == 1
 
+
+def test_gatilho_nao_reatribui_o_que_ja_esta_pedido(harness, monkeypatch):
+    """Device já com este perfil e política que segura: o gatilho sai sem chamar `atribuir`."""
+    from app.modules.identity.application import egresso
+    chamadas: list[object] = []
+    monkeypatch.setattr(egresso, "atribuir", lambda st, body, quem: chamadas.append(body))
+    _semear_conta_igfarm(harness)
+    _semear_perfil_de_rede(harness)
+    harness.state.db.execute(
+        "INSERT INTO device_network(instance_id, proxy_profile_id, policy, updated_at) "
+        "VALUES ('android-01','np-1','exigida','2026-01-01')")
+    egresso.vincular_egresso(harness.state, "p1", "android-01")
+    assert chamadas == []
+
+
+def test_gatilho_preserva_exigida_com_bloqueio(harness, monkeypatch):
+    """Device em `exigida_com_bloqueio` e ainda SEM o proxy: o gatilho atribui o proxy mas mantém o bloqueio."""
+    from app.modules.identity.application import egresso
+    politicas: list[object] = []
+    monkeypatch.setattr(egresso, "atribuir", lambda st, body, quem: politicas.append(body.policy))
+    _semear_conta_igfarm(harness)
+    _semear_perfil_de_rede(harness)
+    harness.state.db.execute(
+        "INSERT INTO device_network(instance_id, policy, updated_at) "
+        "VALUES ('android-01','exigida_com_bloqueio','2026-01-01')")
+    egresso.vincular_egresso(harness.state, "p1", "android-01")
+    assert politicas == ["exigida_com_bloqueio"]
+

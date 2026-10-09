@@ -30,16 +30,28 @@ def _perfil_da_conta(st: AppState, account_id: str) -> str | None:
 
 
 def vincular_egresso(st: AppState, profile_id: str, instance_id: str) -> None:
-    """Atribui ao device o perfil de egresso de cada conta igfarm da persona (política `exigida`)."""
+    """Atribui ao device o perfil de egresso de cada conta igfarm da persona (política `exigida`).
+
+    Não é destrutivo com o que já está pedido: se o device já tem ESTE perfil com uma política que segura
+    (`exigida` ou `exigida_com_bloqueio`), sai sem chamar `atribuir`. E, se o device já está em
+    `exigida_com_bloqueio`, preserva o bloqueio em vez de rebaixar para `exigida` (rebaixar mudaria a configuração
+    do aparelho, bumparia a revisão e jogaria o device de volta a `pendente`, perdendo o `trafego_verificado`).
+    """
     contas = [str(r["account_id"]) for r in st.db.query(
         "SELECT account_id FROM contas_igfarm WHERE profile_id=?", (profile_id,))]
     for account_id in contas:
         perfil_id = _perfil_da_conta(st, account_id)
         if perfil_id is None:
             continue
+        atual = st.db.one("SELECT proxy_profile_id, policy FROM device_network WHERE instance_id=?", (instance_id,))
+        if (atual is not None and str(atual["proxy_profile_id"] or "") == perfil_id
+                and str(atual["policy"]) in ("exigida", "exigida_com_bloqueio")):
+            continue                                    # já está pedido: não reatribui nem rebaixa a política
+        politica = ("exigida_com_bloqueio" if (atual is not None
+                                               and str(atual["policy"]) == "exigida_com_bloqueio") else "exigida")
         try:
             atribuir(st, NetworkAssignBody(instance_ids=[instance_id], proxy_profile_id=perfil_id,
-                                           policy="exigida"), quem="igfarm")
+                                           policy=politica), quem="igfarm")
         except RedeError as exc:
             if exc.code != "real_account_confirm_required":
                 raise

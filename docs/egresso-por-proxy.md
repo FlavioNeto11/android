@@ -45,7 +45,9 @@ O formato da senha do proxy IPRoyal inclui `_session-<id>_lifetime-7d`: a sessã
 ## Gatilho de vínculo
 
 Se o vínculo persona↔device for criado **depois** do registro da conta, um gatilho (`ao_vincular_egresso`) cria e
-atribui o perfil automaticamente. Sem ele, o perfil ficaria órfão.
+atribui o perfil automaticamente. Sem ele, o perfil ficaria órfão. O gatilho é não-destrutivo: se o device já tem o
+perfil com política que segura, não reatribui; e preserva `exigida_com_bloqueio` quando já configurado, sem rebaixar
+para `exigida`.
 
 ## Limpeza
 
