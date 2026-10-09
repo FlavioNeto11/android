@@ -63,7 +63,7 @@ def test_o_voto_da_execucao_vem_antes_do_coringa_de_execucao() -> None:
 
 def test_as_sete_rotas_de_releases_seguem_no_app_e_cada_uma_uma_vez() -> None:
     """15.15 F4d: as rotas de `/api/releases*` saíram de `api.py` para `modules/applications/presentation/releases.py`; o
-    conjunto (método e modelo) é o de antes, sem repetição nem rota perdida."""
+    conjunto (método e modelo) é o de antes, sem repetição nem rota perdida (mais as 3 da ponte do igfarm)."""
     rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/releases")]
     assert sorted(rotas) == sorted([
         ("GET", "/api/releases"), ("POST", "/api/releases/import"), ("GET", "/api/releases/{release_id}/icon"),
@@ -141,7 +141,7 @@ def test_as_vinte_rotas_de_personas_seguem_no_app_e_cada_uma_uma_vez() -> None:
         ("DELETE", "/api/personas/{persona_id}/images/{image_id}")])
 
 
-def test_as_quarenta_e_uma_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_vez() -> None:
+def test_as_quarenta_e_quatro_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_vez() -> None:
     """15.15 F4i: `/api/instagram/*` saiu de `api.py` para `modules/identity/presentation/instagram.py`; o conjunto (método e modelo) é o de
     antes, sem repetição nem rota perdida."""
     rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/instagram")]
@@ -186,7 +186,11 @@ def test_as_quarenta_e_uma_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_vez()
         ("DELETE", "/api/instagram/policy-groups/{group_id}"),
         ("GET", "/api/instagram/profiles/{profile_id}/auth-attempts"),
         ("GET", "/api/instagram/profiles/{profile_id}/runs"),
-        ("GET", "/api/instagram/profiles/{profile_id}/operational-context")])
+        ("GET", "/api/instagram/profiles/{profile_id}/operational-context"),
+        # Ponte android <-> igfarm (ADR-088, migração 132, adendo v1.133).
+        ("GET", "/api/instagram/personas-pendentes"),
+        ("POST", "/api/instagram/contas"),
+        ("GET", "/api/instagram/contas/{conta_id}/codigo")])
 
 
 def test_as_vinte_rotas_de_proxies_comandos_e_apps_seguem_no_app_e_cada_uma_uma_vez() -> None:

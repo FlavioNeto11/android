@@ -129,7 +129,7 @@ Código em `backend/app/modules/identity/{domain,application,infrastructure}/pon
   | Item | Nível | Prova |
   |---|---|---|
   | Domínio `nvit.com.br` aceito; domínio de fora recusado | `real` | central: 200 e 422 `dominio_nao_permitido`, 18:58Z |
-  | @ sugerido por IA pela rota, no central | `real` | `claude-sonnet-5-5`; ex.: `camiladuarte.foto` para `ig-persona-Qud6TL9ZehJggYAT` |
+  | @ sugerido por IA pela rota, no central | `real` | `claude-sonnet-5-5`; para `ig-persona-Qud6TL9ZehJggYAT` (valor omitido: contém o nome da persona) |
   | Reserva (`reservar=true`) e não repetição da persona reservada | `real` | 18:58:54Z, a chamada seguinte não devolveu a persona |
   | Imagem da persona servida pela URL da rota | `real` | `img-a-BX4lR85vyevuYI`, JPEG de 84 KB, `gpt-image-2`, gerada em 29/09 na criação da persona |
   | Imagem GERADA dentro da rota (ramo `reservar=true` sem foto) | `simulated` | `test_personas_pendentes_api`; as 6 pendentes já tinham foto (`on_create`), o ramo não disparou |

@@ -41,7 +41,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     não bastou (reinicia o supervisor, o `app.main` de 17:15Z seguiu vivo); `scripts\stop.ps1` e o supervisor religando o
     backend (18:57:15Z) resolveram. Depois: `nvit.com.br` 200, `exemplo.com` 422;
   - `GET /personas-pendentes?dominio=nvit.com.br&limite=1&reservar=true` 18:58:54Z: persona `ig-persona-Qud6TL9ZehJggYAT`,
-    @ `camiladuarte.foto` (IA real, `claude-sonnet-5-5`), e-mail `camila.duarte1660@nvit.com.br`, imagem
+    @ e e-mail sugeridos (IA real, `claude-sonnet-5-5`; valores omitidos por conterem o nome da persona), imagem
     `img-a-BX4lR85vyevuYI` servida como JPEG de 84 KB (gerada em 29/09, `gpt-image-2`); a chamada seguinte não devolveu a
     persona reservada (vale 24 h). As 6 pendentes já tinham foto (`on_create`): o ramo "gerar imagem na reserva" ficou `simulated`;
   - `GET /contas/{id}/codigo` com IMAP real da Hostinger: 200 `{codigo, recebido_em, remetente}` de um e-mail real do Instagram
@@ -49,7 +49,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     serviço fixado em 13:30Z (o e-mail tem mais de 30 min);
   - `GET /api/session` no central: `token_required: false`; o loopback atendeu sem token.
 - **`not_run` (explícito):** código lido por um cadastro novo com relógio real; `POST /contas` com dados reais do igfarm;
-  verificação no app (checkpoint), ver [`docs/verificacao-no-app.md`](docs/verificacao-no-app.md); suíte inteira.
+  verificação no app (checkpoint), ver [`docs/verificacao-no-app.md`](docs/verificacao-no-app.md); suíte inteira em PostgreSQL.
+- **Prova `simulated` — suíte inteira em SQLite (09/10/2026, 19:02:43Z–19:19:07Z, `-n 6`, Idle, `main` `ada84394`):** 12625 passaram,
+  62 ignorados, 1 falhou: `test_ordem_das_rotas` fixava as 41 rotas do Instagram e as 3 da ponte (ADR-088) a quebraram; o deploy 66
+  (funil reduzido) não rodou esse teste. Corrigido: o conjunto agora tem 44 rotas; o teste, `test_cobertura_de_rotas`,
+  `test_arquitetura` e as catracas (89) passam.
 - **Convergência com o ADR-087:** emenda no ADR-088 (esquemas independentes, persona com conta planejada não é pendente,
   passo da ponte quando o 31.281 entrar e a decisão do dono sobre a evidência do igfarm).
 - **Fora do Git, no ambiente do dono:** os rascunhos `app/shared/venice/` e `evidence.py` ficaram em
