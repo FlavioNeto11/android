@@ -19,21 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-10-09 — ponte android ⇄ igfarm: personas pendentes, registro da conta e e-mail do parque (sem commit ainda; migração 132, adendo v1.133)
+## 2026-10-09 — ponte android ⇄ igfarm: personas pendentes, registro da conta e e-mail do parque (implantada no deploy 66; migração 132, adendo v1.133, ADR-088)
 
 - **Entregue:** `GET /api/instagram/personas-pendentes`, `POST /api/instagram/contas`, `GET /api/instagram/contas/{id}/codigo`,
   módulo `app/modules/email_do_parque`, chaves `EMAIL_*`, `AIProvider.generate_text`, migração 132. Doc:
-  [`docs/email-do-parque.md`](docs/email-do-parque.md).
-- **Prova `simulated`:** `test_personas_pendentes_api` (8), `test_contas_igfarm_api` (6), `test_email_do_parque` (27),
-  `test_migracao_132` (2), `test_generate_text` (5), em SQLite. PostgreSQL e suíte inteira: `not_run`.
-- **Prova `real` (autorizada pelo dono em chat, 09/10/2026, WIN-7S2UASNLFOP, base `f0e8ed70` + mudanças não commitadas):**
+  [`docs/email-do-parque.md`](docs/email-do-parque.md). Integrada pela branch `feat/ponte-igfarm` (`238c5098`) no corte 66.
+- **Prova `simulated` (SQLite):** `test_personas_pendentes_api` (8), `test_contas_igfarm_api` (6), `test_email_do_parque` (27),
+  `test_migracao_132` (2), `test_generate_text` (5); no worktree, 79 passados com `cobertura_de_rotas`, `apps_fora_do_nucleo`,
+  `arquitetura` e `configuracao_de_exemplo`; catracas 89; `docs-check` 0/0; `mypy-catraca` 257 (teto).
+- **Prova `real` (PostgreSQL dirigido, 09/10/2026 18:08:01Z–18:10:03Z, WIN-7S2UASNLFOP, `farm-pg-rapido`, `main` `3dc8f318`):**
+  `test_migracao_132`, `test_personas_pendentes_api` e `test_contas_igfarm_api`, 16 passados em 92 s, rc=0.
+- **Prova `real` (autorizada pelo dono em chat, 09/10/2026, WIN-7S2UASNLFOP):**
   - @ por IA: anthropic `claude-sonnet-5`, 16:26:01Z, 251/10 tokens, US$ 0,000602, resultado válido (`ana.docesecafe`).
   - imagem: openai `gpt-image-2` medium, 16:26:04Z a 16:26:44Z, US$ 0,053245, `req_0f129e134797465293794022018e20c0`,
     JPEG 1080x1080.
-  - IMAP Hostinger: `not_run` — o arquivo de ambiente do app não tem `EMAIL_DOMINIO`, `EMAIL_IMAP_HOST`,
-    `EMAIL_IMAP_USER`, `EMAIL_IMAP_PASS`.
-- **Pendente:** achados de arquitetura/catraca de outros arquivos sem rastreio (`app/shared/venice/`,
-  `modules/identity/infrastructure/evidence.py`); convergência com a conta planejada do ADR-087; ADR e `estado-atual`.
+  - IMAP Hostinger (`imap.hostinger.com:993`), 18:03:42Z: login e `SELECT INBOX` aceitos (55 mensagens) e `LeitorImap`
+    com busca por destinatário e remetente sem erro; para um endereço fictício a busca devolveu 0 mensagens com código.
+    Duas tentativas anteriores foram recusadas por credencial inválida (corrigida pelo dono).
+- **Convergência com o ADR-087:** emenda no ADR-088 (esquemas independentes, persona com conta planejada não é pendente,
+  passo da ponte quando o 31.281 entrar e a decisão do dono sobre a evidência do igfarm).
+- **`not_run`:** leitura de um código de verdade (precisa de um cadastro real do igfarm); suíte inteira (SQLite e PostgreSQL).
+- **Fora do Git, no ambiente do dono:** os rascunhos `app/shared/venice/` e `evidence.py` ficaram em
+  `backend/wip-fora-do-app/` (sem rastreio); a chave da Venice já está no arquivo de ambiente da raiz.
 
 ## 2026-10-08 — 31.287: a receita concorda por alvo, a prova soma entre aparelhos e vale por efeito (branch fix/31-287-receita-concorda-por-alvo)
 

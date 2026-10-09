@@ -4,9 +4,9 @@ Endereços de e-mail das personas sobre **uma caixa compartilhada** (catch-all),
 nessa caixa. Código em `backend/app/modules/email_do_parque/`; é a base das APIs de ponte com o igfarm (personas
 pendentes e registro de conta).
 
-> **Prova.** Tudo o que está descrito aqui foi exercitado só com leitor e cliente IMAP falsos (`simulated`:
-> `backend/tests/test_email_do_parque.py`). Leitura real da caixa Hostinger, geração de handle por IA e de imagem:
-> `not_run` até autorização explícita do dono em chat.
+> **Prova.** O comportamento descrito é exercitado em `backend/tests/test_email_do_parque.py` com leitor e cliente IMAP
+> falsos (`simulated`). Em 09/10/2026, com autorização do dono, passaram no mundo real a geração do @ por IA, a da imagem
+> e o login e a busca IMAP na Hostinger (`real`, CHANGELOG de 09/10). A leitura de um código de verdade segue `not_run`.
 
 ## Modelo: caixa catch-all
 
@@ -107,6 +107,7 @@ Código em `backend/app/modules/identity/{domain,application,infrastructure}/pon
 
 ## Limites
 
-- Prova real (leitura IMAP na Hostinger, handle por IA, imagem): `not_run`.
+- Prova real (09/10/2026): handle por IA, imagem e login/busca IMAP na Hostinger passaram (CHANGELOG de 09/10). Falta
+  ler um código de verdade: só acontece quando o igfarm cadastrar a primeira conta (`not_run`).
 - A caixa é compartilhada: quem tem a senha lê o e-mail de todas as personas. Por isso a senha da caixa nunca sai em
   resposta de API, evento, log ou evidência, e a leitura é sempre filtrada pelo destinatário.
