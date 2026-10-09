@@ -75,6 +75,7 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 | Skills, DSL, compilador, ensino | `backend/app/modules/skills/`, `modules/capabilities/`, `contracts/skills/` | [`dominios/skills.md`](dominios/skills.md), [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md) |
 | Perfis, personas, Instagram, treinamento | `backend/app/social/`, `modules/identity/presentation/personas.py`, `modules/identity/presentation/instagram.py`, `app/conhecimento/apps/`, `integrations/app_declarado/`, `training/` | [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md) |
 | Retrieval de contexto de código (desligado por padrão) | `backend/app/modules/context_retrieval/`, `scripts/plano-100-pacotes.py --contexto` | [`dominios/context-retrieval.md`](dominios/context-retrieval.md) |
+| E-mail do parque (caixa catch-all, endereço da persona, código de confirmação por IMAP) | `backend/app/modules/email_do_parque/`, chaves `EMAIL_*` em `backend/app/config.py` | [`email-do-parque.md`](email-do-parque.md) |
 | Banco e migrações | `backend/app/db.py`, `backend/migrations/` | [`banco.md`](banco.md) |
 | Segurança | `backend/app/security/` | [`operacao.md`](operacao.md) |
 | Site institucional e contato público (desligados por padrão) | `site/`, `backend/app/modules/portal/` | [`operacao.md`](operacao.md) "Site institucional na raiz", ADR-075 em [`decisoes.md`](decisoes.md) |

@@ -66,6 +66,27 @@ class EnvSettings(BaseSettings):
     #: FIXOS, só do `.env` ou do ambiente, nunca do `config.yaml`. `SecretStr`: não aparecem em repr nem em log.
     telegram_bot_token: SecretStr | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: SecretStr | None = Field(default=None, alias="TELEGRAM_CHAT_ID")
+    #: E-mail do parque (docs/email-do-parque.md): caixa compartilhada catch-all `*@EMAIL_DOMINIO` lida por IMAP.
+    #: Nomes FIXOS, só do `.env` ou do ambiente, nunca do `config.yaml`. Sem host, usuário e senha só se gera e
+    #: valida endereço; ler código dá `email_indisponivel`. A senha é `SecretStr`: fora de repr e de log.
+    email_dominio: str = Field(default="", alias="EMAIL_DOMINIO")
+    email_imap_host: str = Field(default="", alias="EMAIL_IMAP_HOST")
+    email_imap_port: int = Field(default=993, alias="EMAIL_IMAP_PORT")
+    email_imap_user: str = Field(default="", alias="EMAIL_IMAP_USER")
+    email_imap_pass: SecretStr | None = Field(default=None, alias="EMAIL_IMAP_PASS")
+    #: Domínios que a API aceita gerar/registrar, separados por vírgula; vazio = só `EMAIL_DOMINIO`.
+    email_allowlist_dominios: str = Field(default="", alias="EMAIL_ALLOWLIST_DOMINIOS")
+
+    @field_validator("email_imap_port", mode="before")
+    @classmethod
+    def _porta_vazia_e_a_padrao(cls, v: object) -> object:
+        """`EMAIL_IMAP_PORT=` em branco (cópia do exemplo) não pode derrubar a partida."""
+        return 993 if isinstance(v, str) and not v.strip() else v
+
+    def email_allowlist(self) -> tuple[str, ...]:
+        """`EMAIL_ALLOWLIST_DOMINIOS` em tupla: minúsculo, sem vazios nem repetidos, na ordem escrita."""
+        return tuple(dict.fromkeys(d for d in (x.strip().lower() for x in self.email_allowlist_dominios.split(","))
+                                   if d))
     #: Trello do dono (item 32.2, ADR-072): a chave do Power-Up, o token do dono e o segredo do aplicativo (que assina o
     #: webhook). Nomes FIXOS, só do `.env` ou do ambiente, nunca do `config.yaml`. A autenticação vai no cabeçalho
     #: `Authorization`, nunca na URL.

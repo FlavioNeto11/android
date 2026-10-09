@@ -11,6 +11,7 @@ Ficaram em `app.models`: `ProfilePatch` (usa `OfflinePolicy`, que o `InstagramPr
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
@@ -227,3 +228,57 @@ class FeitaPorIaBody(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     feita_por_ia: bool | None
+
+
+class PersonaPendenteDTO(BaseModel):
+    """Uma persona sem conta, com o que o igfarm precisa para criá-la (`GET /api/instagram/personas-pendentes`)."""
+
+    persona_id: str
+    nome: str
+    primeiro_nome: str
+    sobrenome: str
+    nome_exibicao: str
+    birth_date: str
+    genero: str | None = None
+    biografia: dict[str, object] = Field(default_factory=dict)
+    visual: dict[str, object] = Field(default_factory=dict)
+    resumo: str | None = None
+    email_sugerido: str
+    username_sugerido: str
+    #: Caminho da foto (`/api/personas/{id}/images/{image_id}`); `None` enquanto não foi gerada (só `reservar=true` gera).
+    imagem_perfil: str | None = None
+    imagem_pendente: bool = False
+
+
+class ContaIgfarmBody(BaseModel):
+    """`POST /api/instagram/contas`: a conta que o igfarm criou. As senhas entram no cofre e nunca voltam."""
+
+    model_config = ConfigDict(extra="forbid")
+    persona_id: str = Field(min_length=1, max_length=100)
+    dominio: str = Field(min_length=3, max_length=255)
+    email: str = Field(min_length=3, max_length=320)
+    email_senha: SecretStr
+    instagram_username: str = Field(min_length=1, max_length=40)
+    instagram_senha: SecretStr
+    igfarm_account_id: str = Field(min_length=1, max_length=200)
+    criada_em: datetime
+
+
+class ContaRegistradaDTO(BaseModel):
+    persona_id: str
+    account_id: str
+    igfarm_account_id: str
+    email: str
+    instagram_username: str
+    criada_em: str
+    registrada_em: str
+    #: Máscara fixa para conferência; o valor das senhas nunca sai.
+    senhas: str
+    criada: bool
+    idempotente: bool
+
+
+class CodigoDaContaDTO(BaseModel):
+    codigo: str
+    recebido_em: str
+    remetente: str

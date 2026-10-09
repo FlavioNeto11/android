@@ -250,6 +250,9 @@ class AtorDosDoisApps:
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
         return await self.qa.generate_persona(req)
 
+    async def generate_text(self, system: str, prompt: str, *, max_tokens: int = 64) -> tuple[str, Usage]:
+        return await self.qa.generate_text(system, prompt, max_tokens=max_tokens)
+
     async def transcribe(self, req: Any) -> tuple[Any, Usage]:
         # O leitor da leitura visual (12.5) só existe para o app de prova: o do Instagram falso não lê recortes.
         return await self.qa.transcribe(req)

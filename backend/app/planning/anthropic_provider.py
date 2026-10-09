@@ -612,3 +612,13 @@ class AnthropicProvider:
         self._check_stop(resp, modelo)
         raw = next((b.text for b in resp.content if b.type == "text"), "")
         return persona_draft_from_json(raw), usage
+
+    async def generate_text(self, system: str, prompt: str, *, max_tokens: int = 64) -> tuple[str, Usage]:
+        """Texto curto livre pelo papel `persona`, sem esquema: o chamador valida o que voltou. `max_tokens` conta o
+        raciocínio do modelo também; quem pede texto curto deixa folga. Cortado por `max_tokens` ou recusado = `AIError`."""
+        modelo = self.model if self.role is not None else self.models["persona"]
+        resp, usage = await self._create(role="persona", model=modelo, system=system,
+                                         content=[{"type": "text", "text": prompt}], effort="low",
+                                         max_tokens=max_tokens)
+        self._check_stop(resp, modelo)
+        return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip(), usage

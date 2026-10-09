@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-09 — ponte android ⇄ igfarm: personas pendentes, registro da conta e e-mail do parque (sem commit ainda; migração 132, adendo v1.133)
+
+- **Entregue:** `GET /api/instagram/personas-pendentes`, `POST /api/instagram/contas`, `GET /api/instagram/contas/{id}/codigo`,
+  módulo `app/modules/email_do_parque`, chaves `EMAIL_*`, `AIProvider.generate_text`, migração 132. Doc:
+  [`docs/email-do-parque.md`](docs/email-do-parque.md).
+- **Prova `simulated`:** `test_personas_pendentes_api` (8), `test_contas_igfarm_api` (6), `test_email_do_parque` (27),
+  `test_migracao_132` (2), `test_generate_text` (5), em SQLite. PostgreSQL e suíte inteira: `not_run`.
+- **Prova `real` (autorizada pelo dono em chat, 09/10/2026, WIN-7S2UASNLFOP, base `f0e8ed70` + mudanças não commitadas):**
+  - @ por IA: anthropic `claude-sonnet-5`, 16:26:01Z, 251/10 tokens, US$ 0,000602, resultado válido (`ana.docesecafe`).
+  - imagem: openai `gpt-image-2` medium, 16:26:04Z a 16:26:44Z, US$ 0,053245, `req_0f129e134797465293794022018e20c0`,
+    JPEG 1080x1080.
+  - IMAP Hostinger: `not_run` — o arquivo de ambiente do app não tem `EMAIL_DOMINIO`, `EMAIL_IMAP_HOST`,
+    `EMAIL_IMAP_USER`, `EMAIL_IMAP_PASS`.
+- **Pendente:** achados de arquitetura/catraca de outros arquivos sem rastreio (`app/shared/venice/`,
+  `modules/identity/infrastructure/evidence.py`); convergência com a conta planejada do ADR-087; ADR e `estado-atual`.
+
 ## 2026-10-08 — 31.287: a receita concorda por alvo, a prova soma entre aparelhos e vale por efeito (branch fix/31-287-receita-concorda-por-alvo)
 
 - Evidência (`r-20261008183647-25e4b5`, 3 aparelhos, 28 chamadas): as candidatas do `follow_1` ficaram em 0/0 com `divergiu` e cada aparelho

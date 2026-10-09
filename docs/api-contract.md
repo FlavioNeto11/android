@@ -8181,3 +8181,30 @@ serialização), a forma proposta pelo Portal em `portal-para-jev-receita-candid
 - **Prova:** `simulated` (`backend/tests/test_prova_da_candidata.py`, 7; `backend/tests/test_migracao_129.py`, 2). `real`:
   `not_run`; o `GET /api/aprendizado` de uma candidata depois da primeira operação pós-deploy.
 
+
+## Adendo v1.133 (09/10/2026; número reservado pelo usuário com a migração 132) — ponte android ⇄ igfarm
+
+Três rotas novas em `/api/instagram` e a migração 132 (`persona_reservas`, `caixas_email`, `contas_igfarm`). Detalhe do
+fluxo e do e-mail: [`email-do-parque.md`](email-do-parque.md).
+
+- **`GET /api/instagram/personas-pendentes`**: query `dominio` (obrigatório, allowlist `EMAIL_ALLOWLIST_DOMINIOS`, senão
+  422 `dominio_nao_permitido`), `limite` (1–50, padrão 10), `locale`, `com_imagem` (padrão `true`), `reservar` (padrão
+  `false`). Devolve lista de `{persona_id, nome, primeiro_nome, sobrenome, nome_exibicao, birth_date, genero, biografia,
+  visual, resumo, email_sugerido, username_sugerido, imagem_perfil, imagem_pendente}`.
+  - A sugestão (e-mail + @ por IA) é persistente por persona. A imagem só é gerada com `reservar=true`; sem reserva,
+    `imagem_perfil` é a existente ou `null` com `imagem_pendente: true`. A URL é `/api/personas/{id}/images/{image_id}`.
+  - Erros: `ai_unavailable`/`ai_budget`/`ai_error` (503), `image_not_configured` (409).
+- **`POST /api/instagram/contas`**: corpo `{persona_id, dominio, email, email_senha, instagram_username, instagram_senha,
+  igfarm_account_id, criada_em}` (`extra="forbid"`; as duas senhas são `SecretStr`). 201 na primeira vez, 200 com
+  `idempotente: true` na repetição (chave `persona_id` + `instagram_username`). Resposta `{persona_id, account_id,
+  igfarm_account_id, email, instagram_username, criada_em, registrada_em, senhas: "••••", criada, idempotente}`: a senha
+  nunca volta. Erros: `not_found` (404), `dominio_nao_permitido`/`dominio_divergente`/`email_invalido` (422),
+  `duplicate_username`, `conta_retirada`, `email_em_uso` (409).
+- **`GET /api/instagram/contas/{id}/codigo`**: `{codigo, recebido_em, remetente}`; `sem_codigo` (404), `email_indisponivel`
+  e `remetente_nao_configurado` (503).
+- **Eventos:** `identity.persona.reservada` e `identity.conta.registrada`, sem senhas.
+- **Transporte:** a API 2 recebe senhas; fora do loopback exige `API_TOKEN` e TLS.
+- **Compatibilidade:** rotas e tabelas novas, nada muda nas existentes. `AIProvider` ganhou `generate_text` (os dublês de
+  teste foram atualizados).
+- **Prova:** `simulated` (`backend/tests/test_personas_pendentes_api.py`, `test_contas_igfarm_api.py`,
+  `test_email_do_parque.py`, `test_migracao_132.py`, `test_generate_text.py`). `real`: ver `CHANGELOG.md` (09/10/2026).

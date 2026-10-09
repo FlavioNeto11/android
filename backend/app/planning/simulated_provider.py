@@ -11,6 +11,7 @@ import hashlib
 import json
 import random
 import re
+import unicodedata
 from datetime import date
 from collections.abc import Callable
 from typing import Any
@@ -461,6 +462,19 @@ class SimulatedProvider:
     async def generate_persona(self, req: PersonaGenerationRequest) -> tuple[PersonaDraft, Usage]:
         """Persona por sorteio determinístico (semente = hash do pedido): completa, adulta, fictícia; sem custo."""
         return persona_simulada(req), Usage()
+
+    async def generate_text(self, system: str, prompt: str, *, max_tokens: int = 64) -> tuple[str, Usage]:
+        """Texto curto sem IA e sem custo, DETERMINÍSTICO a partir do pedido: duas palavras do prompt (sem acento) e dois
+        dígitos do hash, no formato de um @ (`palavra.palavra42`). O mesmo prompt dá sempre o mesmo texto; um prompt que
+        cita o que foi recusado (a nova tentativa) dá outro."""
+        digest = hashlib.sha256(f"{system}\n{prompt}".encode()).hexdigest()
+        puro = unicodedata.normalize("NFKD", prompt.lower()).encode("ascii", "ignore").decode()
+        palavras = sorted({w for w in re.findall(r"[a-z]{4,}", puro)})
+        if len(palavras) < 2:
+            palavras = ["perfil", "diario"]
+        a = palavras[int(digest[:8], 16) % len(palavras)]
+        b = palavras[int(digest[8:16], 16) % len(palavras)]
+        return f"{a}.{b}{int(digest[16:20], 16) % 100:02d}", Usage()
 
     #: Como o leitor simulado responde (item 12.5): nada programado = "não consegui ler", nunca uma leitura inventada. Um
     #: teste ou uma bancada atribui uma `Transcricao`, ou uma função `LeituraRequest -> Transcricao`.

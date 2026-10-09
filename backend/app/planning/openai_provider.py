@@ -444,3 +444,10 @@ class OpenAICompatProvider:
                                         content=[{"type": "text", "text": texto}],
                                         max_tokens=MAX_TOKENS_DO_RASCUNHO, schema=esquema, schema_name="persona")
         return persona_draft_from_json(self._texto(msg)), usage
+
+    async def generate_text(self, system: str, prompt: str, *, max_tokens: int = 64) -> tuple[str, Usage]:
+        """Texto curto livre pelo papel `persona`, sem esquema: o chamador valida o que voltou."""
+        modelo = self.models.get("persona", self.model)
+        msg, usage = await self._create(role="persona", model=modelo, system=system,
+                                        content=[{"type": "text", "text": prompt}], max_tokens=max_tokens)
+        return self._texto(msg).strip(), usage

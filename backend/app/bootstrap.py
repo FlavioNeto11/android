@@ -56,6 +56,8 @@ from .modules.decisoes.infrastructure.estado_sql import EstadoDasDecisoes
 from .modules.decisoes.infrastructure.registro_sql import RegistroSql as RegistroDeDecisoes
 from .modules.decisoes.infrastructure.resumo_sql import ResumoDasDecisoes
 from .modules.decisoes.infrastructure.servico import ServicoDeDecisoes
+from .modules.applications.infrastructure.registry import pacote_ancora
+from .modules.email_do_parque.adapters.imap import construir_email_do_parque
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.persona_images import compor_servico_de_imagens, imagens_dto
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
@@ -185,6 +187,12 @@ class _FontesDoEspelhoDoTrello:
 
     def livro_em_validacao(self) -> list[tuple[str, str, str]]:
         return [(v.id, v.item_ref, v.estado.value) for v in self._validacoes.vivos()]
+
+
+def _remetente_do_pacote(pacote: str | None) -> str:
+    """Trecho do pacote que identifica quem envia o e-mail do app (`com.<marca>.android` → `<marca>`)."""
+    partes = (pacote or "").split(".")
+    return partes[1] if len(partes) >= 3 else ""
 
 
 def montar_armazenamento(cfg: Config) -> tuple[Storage, Storage]:
@@ -662,6 +670,13 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
     self.pedidos_api = PedidosApi(self.db, self.pedidos, self.runs, self.bus.emit, cfg.file.pedidos,
                                   membro_trello_dono=cfg.file.trello.membro_dono)
     self.pedidos.notificar = self.pedidos_api.publicar
+    # E-mail do parque: caixa catch-all lida por IMAP. Sem host/usuário/senha o leitor fica `None` e só a geração e
+    # a validação de endereço funcionam (a leitura do código responde `email_indisponivel`).
+    self.email_parque = construir_email_do_parque(
+        dominio=cfg.env.email_dominio, allowlist=cfg.env.email_allowlist(), host=cfg.env.email_imap_host,
+        porta=cfg.env.email_imap_port, usuario=cfg.env.email_imap_user,
+        senha=cfg.env.email_imap_pass.get_secret_value() if cfg.env.email_imap_pass else "",
+        remetente_codigo=_remetente_do_pacote(pacote_ancora()))
     # Costuras do aprendizado (ADR-054, A2): o executor pede as lições do ator e avisa cada tentativa fechada; o
     # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, cancelar, responder); o
     # gerenciador, a tomada de controle; o ensino, a correção; a rota de comandos (`api.py`, por `self.costuras`),
