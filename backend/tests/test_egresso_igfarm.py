@@ -6,11 +6,41 @@ o fluxo de egresso no registrar(), auto-assign, gatilho de vínculo, limpeza e c
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import SecretStr
 
 from app.devices.rede import _parse_proxy, criar_perfil_de_conta, reaquecer_da_conta
+from app.modules.identity.domain.ponte_igfarm import ComandoDeRegistro
+
+
+def _cmd(*, persona_id="p1", username="alvo.um", email="alvo.um@nvit.com.br",
+         proxy_url="http://u:p@proxy.example.com:8080", ip_criacao="8.8.8.8") -> ComandoDeRegistro:
+    """Atalho para criar um ComandoDeRegistro de teste."""
+    return ComandoDeRegistro(
+        persona_id=persona_id, dominio="nvit.com.br", email=email, email_senha="senha-email-123",
+        instagram_username=username, instagram_senha="senha-ig-123", igfarm_account_id="ig-acc-1",
+        criada_em="2026-01-01T00:00:00Z", por="test", proxy_url=proxy_url, ip_criacao=ip_criacao)
+
+
+def _montar_ponte(harness, rede_mock=None):
+    """Monta a PonteIgfarm com o AppState do harness e um adaptador de rede falso (ou None)."""
+    from app.modules.identity.infrastructure.ponte_igfarm import (ArmazemSql, BarramentoSocial, CofreSocial,
+                                                                   ContasSocial, ImagensSocial, PessoasSocial,
+                                                                   PonteIgfarm, RedeSocial, TextosSocial)
+    from app.modules.email_do_parque.application.servico import EmailDoParque
+
+    s = harness.state
+    email: EmailDoParque = s.email_parque
+    if rede_mock is not None:
+        rede = rede_mock
+    else:
+        rede = RedeSocial(s)
+    return PonteIgfarm(
+        armazem=ArmazemSql(s.db), pessoas=PessoasSocial(s.social), textos=TextosSocial(s.social),
+        imagens=ImagensSocial(s.persona_images, s.social), contas=ContasSocial(s.social), cofre=CofreSocial(s.social),
+        email=email, barramento=BarramentoSocial(s.bus), rede=rede)
 
 
 # ============================================================================ 1. _parse_proxy
@@ -109,3 +139,75 @@ class TestCriarPerfilDeConta:
         row = harness.state.db.one("SELECT params FROM network_profiles WHERE id=?", (pid,))
         params = json.loads(row["params"])
         assert params.get("egress_esperado") == "8.8.8.8"
+
+
+# ============================================================================ 4. Egresso no registrar()
+class TestEgressoNoRegistrar:
+    def test_auto_assign_conta_real_fica_pendente(self, harness, monkeypatch, caplog):
+        """BUG 1: o adapter tem de traduzir a RedeError do devices.rede para a do application, senão o POST estoura."""
+        from app.modules.identity.application.ponte_igfarm import RedeError as RedeErrorApp
+        from app.modules.identity.infrastructure.ponte_igfarm import RedeSocial
+        from app.devices.rede import RedeError as RedeErrorDevice
+
+        def atribuir_que_recusa(st, body, quem):
+            raise RedeErrorDevice(409, "real_account_confirm_required", "conta real")
+
+        monkeypatch.setattr("app.devices.rede.atribuir", atribuir_que_recusa)
+        adapter = RedeSocial(harness.state)
+        with pytest.raises(RedeErrorApp) as exc:
+            adapter.atribuir(instance_ids=["android-01"], proxy_profile_id="perfil-1", policy="exigida", quem="t")
+        assert exc.value.code == "real_account_confirm_required"     # traduzida, não a do device
+
+    def test_instance_ids_filtra_app(self, harness):
+        """BUG 3: vínculo só de Outlook não é alvo; Instagram é; app_id NULL é."""
+        db = harness.state.db
+        db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at) VALUES ('p1','', 'active', '2026-01-01', '2026-01-01')")
+        # Garante que o app do Outlook existe
+        outlook = db.one("SELECT id FROM apps WHERE package='com.microsoft.office.outlook'")
+        if outlook is None:
+            db.execute("INSERT INTO apps(id, name, package) VALUES ('outlook', 'Outlook', 'com.microsoft.office.outlook')")
+        db.execute("INSERT INTO device_profile_bindings(profile_id, instance_id, app_id, active, bound_at) "
+                   "VALUES ('p1','android-01', (SELECT id FROM apps WHERE package='com.microsoft.office.outlook'), 1, '2026-01-01')")
+        db.execute("INSERT INTO device_profile_bindings(profile_id, instance_id, app_id, active, bound_at) "
+                   "VALUES ('p1','android-02', (SELECT id FROM apps WHERE package='com.instagram.android'), 1, '2026-01-01')")
+        db.execute("INSERT INTO device_profile_bindings(profile_id, instance_id, app_id, active, bound_at) "
+                   "VALUES ('p1','android-03', NULL, 1, '2026-01-01')")
+        from app.modules.identity.infrastructure.ponte_igfarm import ArmazemSql
+        alvos = ArmazemSql(db)._instance_ids_da_persona("p1")
+        assert "android-01" not in alvos          # só Outlook
+        assert set(alvos) == {"android-02", "android-03"}
+
+
+# ============================================================================ Fixtures
+@pytest.fixture
+def ponte_com_rede_falsa(harness, monkeypatch):
+    """Ponte com rede mockada para testes de egresso."""
+    from app.modules.identity.infrastructure.ponte_igfarm import RedeSocial
+
+    class RedeFalsa:
+        def __init__(self, st):
+            self.st = st
+            self.perfis_criados = []
+            self.atribuicoes = []
+
+        def parse_proxy(self, proxy_url):
+            return _parse_proxy(proxy_url)
+
+        def criar_perfil_de_conta(self, account_id, *, host, port, protocol, username, secret, ip_criacao, quem):
+            self.perfis_criados.append(account_id)
+            return criar_perfil_de_conta(
+                self.st, account_id, host=host, port=port, protocol=protocol,
+                username=username, secret=secret, ip_criacao=ip_criacao, quem=quem)
+
+        def atribuir(self, instance_ids, proxy_profile_id, policy, quem, confirm_real_account=None):
+            self.atribuicoes.append((instance_ids, proxy_profile_id))
+            return {}
+
+    monkeypatch.setattr(RedeSocial, "__init__", lambda self, st: setattr(self, "st", st) or setattr(self, "perfis_criados", []) or setattr(self, "atribuicoes", []))
+    monkeypatch.setattr(RedeSocial, "parse_proxy", lambda self, proxy_url: _parse_proxy(proxy_url))
+    monkeypatch.setattr(RedeSocial, "criar_perfil_de_conta", lambda self, account_id, **kw: criar_perfil_de_conta(
+        self.st, account_id, **kw))
+    monkeypatch.setattr(RedeSocial, "atribuir", lambda self, instance_ids, proxy_profile_id, policy, quem, confirm_real_account=None: {})
+
+    return _montar_ponte(harness)
+

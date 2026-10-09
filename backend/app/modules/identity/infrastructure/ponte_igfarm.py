@@ -11,7 +11,7 @@ from app.db import Database
 from app.events import EventBus
 from app.modules.email_do_parque.application.servico import EmailDoParque
 from app.modules.identity.application.persona_images import PersonaImageService
-from app.modules.identity.application.ponte_igfarm import ErroDaPonte, PonteIgfarm
+from app.modules.identity.application.ponte_igfarm import ErroDaPonte, PonteIgfarm, RedeError
 from app.modules.identity.domain.persona_image import (GeracaoFalhou, GeracaoRecusada, MenorDeIdade,
                                                        OrcamentoEsgotado)
 from app.modules.identity.domain.ponte_igfarm import ContaRegistrada, FichaDaPessoa, ImagemDaPessoa, Sugestao
@@ -104,7 +104,8 @@ class ArmazemSql:
         return ContaRegistrada(persona_id=persona_id, account_id=str(r["account_id"]),
                                igfarm_account_id=str(r["igfarm_account_id"]), email=str(r["endereco"] or ""),
                                instagram_username=str(r["username_registrado"]), criada_em=str(r["criada_em_igfarm"]),
-                               registrada_em=str(r["registrada_em"]), idempotente=True)
+                               registrada_em=str(r["registrada_em"]), idempotente=True,
+                               proxy_secret_ref=r.get("proxy_secret_ref"))
 
     def gravar_caixa(self, *, account_id: str, persona_id: str, endereco: str, dominio: str, secret_ref: str,
                      key_id: str, agora: str) -> None:
@@ -127,7 +128,10 @@ class ArmazemSql:
     def _instance_ids_da_persona(self, persona_id: str) -> list[str]:
         return [str(r["instance_id"]) for r in self.db.query(
             "SELECT DISTINCT b.instance_id FROM device_profile_bindings b "
-            "WHERE b.profile_id=? AND b.active=1 ORDER BY b.instance_id", (persona_id,))]
+            "LEFT JOIN apps a ON a.id = b.app_id "
+            "WHERE b.profile_id=? AND b.active=1 "
+            "AND (b.app_id IS NULL OR a.package='com.instagram.android') "
+            "ORDER BY b.instance_id", (persona_id,))]
 
     def endereco_da_conta(self, conta_id: str) -> str | None:
         r = self.db.one("SELECT endereco FROM caixas_email WHERE account_id=? OR account_id IN"
@@ -274,17 +278,20 @@ class RedeSocial:
         from app.devices.rede import _parse_proxy  # noqa: PLC0415
         return _parse_proxy(proxy_url)
 
-    def criar_perfil_de_conta(self, account_id: str, *, host: str, port: int, protocol, username: str | None,
+    def criar_perfil_de_conta(self, account_id: str, *, host: str, port: int, protocol: NetworkProtocol, username: str | None,
                               secret, ip_criacao: str | None, quem: str | None) -> str:
-        from app.devices.rede import criar_perfil_de_conta  # noqa: PLC0415
+        from app.devices.rede import NetworkProtocol, criar_perfil_de_conta  # noqa: PLC0415
         return criar_perfil_de_conta(
             self.st, account_id, host=host, port=port, protocol=protocol,
             username=username, secret=secret, ip_criacao=ip_criacao, quem=quem)
 
     def atribuir(self, instance_ids: list[str], proxy_profile_id: str | None, policy: str, quem: str | None,
                  confirm_real_account: list[str] | None = None) -> dict[str, object]:
-        from app.devices.rede import NetworkAssignBody, RedeError, atribuir  # noqa: PLC0415
-        return atribuir(
-            self.st, NetworkAssignBody(
-                instance_ids=instance_ids, proxy_profile_id=proxy_profile_id, policy=policy,  # type: ignore[arg-type]
-                confirm_real_account=confirm_real_account or []), quem=quem)
+        from app.devices.rede import NetworkAssignBody, RedeError as RedeErrorDoDevice, atribuir  # noqa: PLC0415
+        try:
+            return atribuir(
+                self.st, NetworkAssignBody(
+                    instance_ids=instance_ids, proxy_profile_id=proxy_profile_id, policy=policy,
+                    confirm_real_account=confirm_real_account or []), quem=quem)
+        except RedeErrorDoDevice as exc:
+            raise RedeError(exc.status, exc.code, exc.message) from None

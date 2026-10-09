@@ -133,6 +133,7 @@ class ContaRegistrada:
     criada_em: str
     registrada_em: str
     idempotente: bool
+    proxy_secret_ref: str | None = None
 
 
 @dataclass(frozen=True)

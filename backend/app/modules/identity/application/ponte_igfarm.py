@@ -106,7 +106,7 @@ class RedeDaPonte(Protocol):
     def parse_proxy(self, proxy_url: str) -> tuple: ...
     def criar_perfil_de_conta(self, account_id: str, *, host: str, port: int, protocol, username: str | None,
                               secret, ip_criacao: str | None, quem: str | None) -> str: ...
-    def atribuir(self, instance_ids: list[str], proxy_profile_id: str | None, policy: str, quem: str | None,
+    def atribuir(self, instance_ids: list[str], proxy_profile_id: str | None, policy, quem: str | None,
                  confirm_real_account: list[str] | None = None) -> dict[str, object]: ...
 
 
@@ -247,33 +247,42 @@ class PonteIgfarm:
         if not username_valido(username):
             raise ErroDaPonte("username_invalido", "O @ deve ter de 3 a 30 caracteres de a-z, 0-9, ponto e sublinhado, "
                                                    "sem ponto no começo ou no fim nem dois pontos seguidos.", 422)
+
         agora = to_iso(self._agora())
         ref_email: str | None = None
+        existente: ContaRegistrada | None = None
+        account_id: str | None = None
         with self.armazem.tx():
-            if (existente := self.armazem.conta_igfarm(cmd.persona_id, username)) is not None:
-                return existente
-            if self.contas.foi_retirada(username):
-                raise ErroDaPonte("conta_retirada", f"O @{username} é de uma conta retirada da plataforma.", 409)
-            if self.contas.eh_nossa(username):
-                raise ErroDaPonte("duplicate_username", f"Já existe uma conta nossa para @{username}.", 409)
-            if self.armazem.email_em_uso(email, cmd.persona_id):
-                raise ErroDaPonte("email_em_uso", "Este e-mail já é de outra conta.", 409)
-            try:
-                account_id = self.contas.registrar(cmd.persona_id, username=username, email=email,
-                                                   senha=cmd.instagram_senha, por=cmd.por)
-                ref_email, key_id = self.cofre.guardar(cmd.email_senha)
-                self.armazem.gravar_caixa(account_id=account_id, persona_id=cmd.persona_id, endereco=email, dominio=dom,
-                                          secret_ref=ref_email, key_id=key_id, agora=agora)
-                self.armazem.gravar_conta_igfarm(account_id=account_id, persona_id=cmd.persona_id,
-                                                 igfarm_account_id=cmd.igfarm_account_id, username=username,
-                                                 criada_em=cmd.criada_em, agora=agora)
-                self.armazem.apagar_sugestao(cmd.persona_id)
-            except BaseException:
-                if ref_email is not None:                # o cofre não é transacional: não deixa a senha órfã
-                    self.cofre.apagar(ref_email)
-                raise
-        # Egresso: depois da tx principal (a tx é reentrante; §11). Parse defensivo: não derruba o POST.
-        self._registrar_egresso(cmd, account_id)
+            existente = self.armazem.conta_igfarm(cmd.persona_id, username)
+            if existente is None:
+                if self.contas.foi_retirada(username):
+                    raise ErroDaPonte("conta_retirada", f"O @{username} é de uma conta retirada da plataforma.", 409)
+                if self.contas.eh_nossa(username):
+                    raise ErroDaPonte("duplicate_username", f"Já existe uma conta nossa para @{username}.", 409)
+                if self.armazem.email_em_uso(email, cmd.persona_id):
+                    raise ErroDaPonte("email_em_uso", "Este e-mail já é de outra conta.", 409)
+                try:
+                    account_id = self.contas.registrar(cmd.persona_id, username=username, email=email,
+                                                       senha=cmd.instagram_senha, por=cmd.por)
+                    ref_email, key_id = self.cofre.guardar(cmd.email_senha)
+                    self.armazem.gravar_caixa(account_id=account_id, persona_id=cmd.persona_id, endereco=email,
+                                              dominio=dom, secret_ref=ref_email, key_id=key_id, agora=agora)
+                    self.armazem.gravar_conta_igfarm(account_id=account_id, persona_id=cmd.persona_id,
+                                                     igfarm_account_id=cmd.igfarm_account_id, username=username,
+                                                     criada_em=cmd.criada_em, agora=agora)
+                    self.armazem.apagar_sugestao(cmd.persona_id)
+                except BaseException:
+                    if ref_email is not None:                # o cofre não é transacional: não deixa a senha órfã
+                        self.cofre.apagar(ref_email)
+                    raise
+
+        # Egresso roda nos DOIS caminhos (a tx principal já fechou). Perfil é idempotente por nome;
+        # o gravar_egresso tem guarda no SQL.
+        self._registrar_egresso(cmd, existente.account_id if existente is not None else account_id)
+
+        if existente is not None:
+            return existente
+
         self.barramento.emitir(
             "identity.conta.registrada", f"Conta @{username} registrada pela ponte do igfarm",
             {"persona_id": cmd.persona_id, "account_id": account_id, "igfarm_account_id": cmd.igfarm_account_id,
@@ -296,9 +305,9 @@ class PonteIgfarm:
         if host is None:
             return
         with self.armazem.tx():
-            # Só na 1ª vez: re-POST não acumula segredo
+            # Só na 1ª vez: re-POST não acumula segredo (a guarda do SQL também protege)
             conta = self.armazem.conta_igfarm(cmd.persona_id, normalizar_username(cmd.instagram_username))
-            if conta is not None and getattr(conta, "proxy_secret_ref", None) is None:
+            if conta is not None and conta.proxy_secret_ref is None:
                 secret_ref: str | None = None
                 key_id: str | None = None
                 if password:
