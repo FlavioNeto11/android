@@ -254,6 +254,11 @@ class CountingProvider:
         draft, _ = await self.inner.generate_persona(req)
         return draft, Usage(calls=1, role="persona", model="simulado")
 
+    async def generate_text(self, system: str, prompt: str, *, max_tokens: int = 64) -> Any:
+        self.calls.append({"role": "persona", "kind": "texto"})
+        texto, _ = await self.inner.generate_text(system, prompt, max_tokens=max_tokens)
+        return texto, Usage(calls=1, role="persona", model="simulado")
+
     async def review_knowledge(self, req: Any) -> Any:
         self.calls.append({"role": "plan", "kind": "curador"})
         parecer, _ = await self.inner.review_knowledge(req)

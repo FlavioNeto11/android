@@ -59,6 +59,7 @@ from .modules.decisoes.application.desfazer import DesfazerDecisoes
 from .modules.avisos.infrastructure.trello_leitor import ComentariosDoTrello, LeitorDoTrello
 from .modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook, PortaDoWebhook
 from .modules.context_retrieval.adapters.jev import JevSemanticProvider
+from .modules.email_do_parque.application.servico import EmailDoParque
 from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                          emit_needs_person_change, motivo_do_login_parado)
@@ -270,6 +271,7 @@ class AppState:
     catalogo_da_cadeia: Callable[[], list[EntradaDeCatalogo]]
     pedidos: LacoDePedidos
     pedidos_api: PedidosApi
+    email_parque: EmailDoParque
     costuras: CosturasDoLivro
     _diag_cache: dict[str, object] | None
     _bg: list[asyncio.Task[object]]

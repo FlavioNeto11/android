@@ -740,6 +740,52 @@ class SocialService:
                 log.exception("falha ao registrar o uso da geração de persona")
         return draft, usage
 
+    async def gerar_texto_curto(self, system: str, prompt: str, *, max_tokens: int = 400) -> str:
+        """Texto curto livre pelo papel `persona` (hoje: o @ sugerido pela ponte com o igfarm). Os mesmos códigos de erro
+        da geração de persona: sem provedor, `ai_unavailable`; orçamento, recusa e falha viram `ai_budget`, `ai_refusal`
+        e `ai_error` (503). O custo entra no mesmo relatório (`usage_sink`). Sem segredo no pedido: é a persona fictícia."""
+        if self.provider is None:
+            raise SocialError("ai_unavailable", "Nenhum provedor de IA disponível para sugerir o @ da conta.", 503)
+        try:
+            texto, usage = await self.provider.generate_text(system, prompt, max_tokens=max_tokens)
+        except AIError as exc:
+            codigo = "ai_budget" if exc.kind == "budget" else "ai_refusal" if exc.kind == "refusal" else "ai_error"
+            raise SocialError(codigo, str(exc), 503) from None
+        if self.usage_sink is not None:
+            try:
+                self.usage_sink(usage)
+            except Exception:  # noqa: BLE001 - contabilidade de custo nunca derruba a sugestão
+                log.exception("falha ao registrar o uso da geração de texto")
+        return texto
+
+    def registrar_conta_externa(self, persona_id: str, *, username: str, email: str, password: SecretStr,
+                                by: str) -> str:
+        """A conta que o igfarm criou pela API mobile vira a conta de cadastro da pessoa que ainda não tinha uma (a mesma
+        linha, o mesmo id), com o e-mail dela e a senha no cofre COM o consentimento de `by` (ADR-040): é o mesmo caminho do
+        cadastro (`create_profile` com `persona_id`), só que a senha entra pelo consentimento e o e-mail é o identificador de
+        login. Devolve o id da conta (`acc-…`). Nada fica pela metade: a transação desfaz a pessoa adotada se a senha falhar."""
+        pessoa = self._pessoa_sem_conta(persona_id)
+        assert pessoa is not None
+        pid = str(pessoa["id"])
+        if self.repo.profile_by_username(username):
+            raise SocialError("duplicate_username", f"Já existe um perfil para @{username}.")
+        if self.secrets.status() != "ready":
+            raise SocialError("secret_store_unavailable", self._vault_message(), 503)
+        app_da_conta = self._app_do_pacote(pacote_ancora())
+        if app_da_conta:
+            self._recusar_conta_que_quebra_d2a(pid, app_da_conta)
+        with self.repo.db.tx():
+            self.repo.adopt_account(pid, username=username, first_name=None, last_name=None, display_name=None,
+                                    birth_date=None, email=email)
+            conta = self.repo.conta_ancora(pid, criar=True)
+            if conta is None:
+                raise SocialError("no_account", "Nenhum aplicativo registrado provê a conta deste perfil.", 409)
+            self._gravar_credencial(pid, conta, password=password, login_identifier=email, consent=True, by=by)
+            self.repo.set_session(pid, status=SessionStatus.unknown,
+                                  detail="Conta registrada pelo igfarm; sessão ainda não verificada.")
+        self.bus.emit("log", f"Conta @{username} registrada para a persona", data={"profile_id": pid})
+        return str(conta["id"])
+
     def _proveniencia(self, source: str, usage: Usage, *, prompt: str | None = None) -> PersonaGeneration:
         provedor = usage.provider or getattr(self.provider, "name", None)
         return PersonaGeneration(source=source, prompt=(prompt or None) and prompt[:2000], provider=provedor,

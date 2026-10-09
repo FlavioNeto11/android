@@ -13,7 +13,8 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.commands.despacho import _despachar_trabalho
@@ -36,6 +37,11 @@ from app.models import (
     ProfilePolicyPatch,
     SessionStatus,
 )
+from app.modules.identity.application.ponte_igfarm import ErroDaPonte
+from app.modules.identity.domain.ponte_igfarm import SENHAS_MASCARADAS, ComandoDeRegistro, PersonaPendente
+from app.modules.identity.infrastructure.ponte_igfarm import compor_ponte_igfarm
+from app.modules.identity.presentation.schemas import (CodigoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
+                                                       PersonaPendenteDTO)
 from app.modules.identity.presentation.comum import device, mime_da_chave, quem, servir_do_storage, social_error
 from app.social.capacidades import capacidades_do_perfil
 from app.social.policy import DEFAULT_LIMITS
@@ -578,3 +584,61 @@ async def profile_context(request: Request, profile_id: str, instance_id: str | 
     s = _st(request)
     rt, _perfil = _profile_device(s, profile_id, instance_id)
     return contexto_do_aparelho(s, rt.id)
+
+
+# ------------------------------------------------------------------ ponte android ⇄ igfarm (migração 132)
+def _erro_da_ponte(exc: ErroDaPonte) -> HTTPException:
+    return _err(exc.status, exc.code, exc.message)
+
+
+def _pendente_dto(p: PersonaPendente) -> PersonaPendenteDTO:
+    f = p.ficha
+    return PersonaPendenteDTO(
+        persona_id=f.persona_id, nome=f.nome, primeiro_nome=f.primeiro_nome, sobrenome=f.sobrenome,
+        nome_exibicao=f.nome_exibicao, birth_date=f.birth_date or "", genero=f.genero, biografia=f.biografia,
+        visual=f.visual, resumo=f.resumo, email_sugerido=p.email_sugerido, username_sugerido=p.username_sugerido,
+        imagem_perfil=p.imagem.url if p.imagem else None, imagem_pendente=p.imagem_pendente)
+
+
+@router.get("/instagram/personas-pendentes", response_model=None)
+async def personas_pendentes(request: Request, dominio: str, limite: int = Query(10, ge=1, le=50),
+                             locale: str | None = None, com_imagem: bool = True,
+                             reservar: bool = False) -> list[PersonaPendenteDTO]:
+    """As pessoas que ainda não têm conta, com e-mail e @ sugeridos (persistentes) e a foto. A foto só é GERADA com
+    `reservar=true`; `reservar=true` também tira a pessoa das outras chamadas por 24 h. Quem consome chama sempre com
+    `reservar=true` e um `limite` pequeno."""
+    try:
+        achadas = await compor_ponte_igfarm(_st(request)).pendentes(
+            dominio=dominio, limite=limite, locale=locale, com_imagem=com_imagem, reservar=reservar)
+    except ErroDaPonte as exc:
+        raise _erro_da_ponte(exc) from exc
+    return [_pendente_dto(p) for p in achadas]
+
+
+@router.post("/instagram/contas", response_model=None)
+async def registrar_conta_igfarm(request: Request, body: ContaIgfarmBody) -> JSONResponse:
+    """Registra a conta que o igfarm criou: 201 na primeira vez, 200 com `idempotente: true` na repetição (mesma persona
+    e mesmo @). As senhas vão ao cofre; a resposta só mostra a máscara."""
+    try:
+        r = compor_ponte_igfarm(_st(request)).registrar(ComandoDeRegistro(
+            persona_id=body.persona_id.strip(), dominio=body.dominio, email=body.email,
+            email_senha=body.email_senha.get_secret_value(), instagram_username=body.instagram_username,
+            instagram_senha=body.instagram_senha.get_secret_value(), igfarm_account_id=body.igfarm_account_id,
+            criada_em=body.criada_em.isoformat(), por="igfarm"))
+    except ErroDaPonte as exc:
+        raise _erro_da_ponte(exc) from exc
+    dto = ContaRegistradaDTO(persona_id=r.persona_id, account_id=r.account_id, igfarm_account_id=r.igfarm_account_id,
+                             email=r.email, instagram_username=r.instagram_username, criada_em=r.criada_em,
+                             registrada_em=r.registrada_em, senhas=SENHAS_MASCARADAS, criada=not r.idempotente,
+                             idempotente=r.idempotente)
+    return JSONResponse(status_code=200 if r.idempotente else 201, content=dto.model_dump())
+
+
+@router.get("/instagram/contas/{conta_id}/codigo", response_model=None)
+async def codigo_da_conta(request: Request, conta_id: str) -> CodigoDaContaDTO:
+    """O código de 6 dígitos mais recente na caixa da conta (leitura de e-mail real: 503 `email_indisponivel` sem IMAP)."""
+    try:
+        c = await compor_ponte_igfarm(_st(request)).codigo(conta_id)
+    except ErroDaPonte as exc:
+        raise _erro_da_ponte(exc) from exc
+    return CodigoDaContaDTO(codigo=c.codigo, recebido_em=c.recebido_em, remetente=c.remetente)

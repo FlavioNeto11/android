@@ -587,5 +587,8 @@ class AtorDoInstagram:
 
         return persona_simulada(req), Usage()
 
+    async def generate_text(self, system: str, prompt: str, *, max_tokens: int = 64) -> tuple[str, Usage]:
+        return "[roteiro]", Usage()
+
     async def transcribe(self, req: Any) -> tuple[Any, Usage]:
         raise AssertionError("o ator do Instagram falso não lê recortes de tela (leitura visual, item 12.5)")

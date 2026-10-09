@@ -609,6 +609,12 @@ class RoutingProvider:
         # a prévia — o teto do dia vale, o da execução não. `image` NÃO é papel: imagem tem porta própria.
         return await self._call("persona", None, lambda p: p.generate_persona(req), origem="persona")
 
+    async def generate_text(self, system: str, prompt: str, *, max_tokens: int = 64) -> tuple[str, Usage]:
+        """Texto curto livre (hoje: o @ sugerido para a conta nova da persona, ponte com o igfarm). Mesmo papel, mesmo teto,
+        mesmo saldo e mesma contabilidade do `generate_persona`: é uma chamada do portal, sem `run_id`."""
+        return await self._call("persona", None, lambda p: p.generate_text(system, prompt, max_tokens=max_tokens),
+                                origem="persona")
+
 
 def perfis_para_o_painel(cfg: Config) -> list[AiProfileStatus]:
     """Os perfis de `ai.profiles` com as funções que cada um MUDA, para o `GET /api/ai` (adendo v0.87). A `persona` sem
