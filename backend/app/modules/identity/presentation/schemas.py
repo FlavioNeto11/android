@@ -262,6 +262,8 @@ class ContaIgfarmBody(BaseModel):
     instagram_senha: SecretStr
     igfarm_account_id: str = Field(min_length=1, max_length=200)
     criada_em: datetime
+    proxy_url: SecretStr | None = Field(default=None, max_length=500)
+    ip_criacao: str | None = Field(default=None, max_length=45)
 
 
 class ContaRegistradaDTO(BaseModel):

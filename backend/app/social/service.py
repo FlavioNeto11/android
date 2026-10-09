@@ -134,6 +134,12 @@ class SocialService:
         #: Só é chamado quando o app da conta DECLARA `limpar_ao_retirar` e há aparelho; sem a ligação (testes, scripts),
         #: a retirada é só banco, como na 29.23.
         self.ao_limpar_aparelhos: Callable[[PedidoDeLimpeza], None] | None = None
+        #: Gatilho do egresso (migração 133, §8): quando um vínculo é criado, se a persona tem conta igfarm
+        #: com proxy, cria+atribui o perfil de rede. O AppState liga a rotina de rede aqui.
+        self.ao_vincular_egresso: Callable[[str, str], None] | None = None
+        #: Limpeza do egresso (migração 133, §9): quando uma conta é retirada, desatribui+remove o perfil e apaga
+        #: o segredo de rastreio. O AppState liga a rotina de rede aqui.
+        self.ao_limpar_egresso: Callable[[str, str, str | None], None] | None = None
         self._retirando: set[tuple[str, str]] = set()
         #: O SINAL FORTE de bloqueio (29.23): `instance_id -> a atividade de desafio do Instagram está em foco agora`.
         #: O AppState liga ao que `DeviceManager.observe` leu (`DeviceRuntime.atividade_de_desafio`). Só texto na tela
@@ -415,6 +421,12 @@ class SocialService:
             self.repo.bind(profile_id, instance_id, app_id=app_id, primary=primary, reason=reason)
         except (BindingConflict, AparelhoEmQuarentena) as exc:
             raise SocialError(exc.code, str(exc), 409) from exc
+        # Gatilho do egresso (133, §8): se a persona tem conta igfarm com proxy, cria+atribui o perfil.
+        if self.ao_vincular_egresso is not None:
+            try:
+                self.ao_vincular_egresso(profile_id, instance_id)
+            except Exception:  # noqa: BLE001 - o vínculo não pode falhar por causa do egresso
+                log.exception("gatilho do egresso falhou para %s → %s", profile_id, instance_id)
 
     def _recusar_conta_que_quebra_d2a(self, profile_id: str | None, app_id: str,
                                       instance_id: str | None = None) -> None:
@@ -1502,6 +1514,9 @@ class SocialService:
         contagens: dict[str, int] = {}
         # Onde a conta estava logada, ANTES de a retirada mascarar o @ do marcador e apagar sessões e vínculos (29.27).
         pedido = self._pedido_de_limpeza(profile_id, conta, ancora)
+        # Egresso (133, §9): lê o proxy_secret_ref ANTES da tx (a conta sai dentro dela).
+        egresso_row = self.repo.db.one("SELECT proxy_secret_ref FROM contas_igfarm WHERE account_id=?", (account_id,))
+        proxy_secret_ref = str(egresso_row["proxy_secret_ref"]) if egresso_row and egresso_row["proxy_secret_ref"] else None
         # Sessões que estavam na fila "Aguardando intervenção": a conta sai, e o item sai da fila junto. O `unknown`
         # no teto (29.92) também abriu item, e a conta é lida ANTES de a retirada apagar o vínculo que dá o teto 1.
         na_fila: list[tuple[str, str, bool]] = []
@@ -1551,6 +1566,15 @@ class SocialService:
                 self.bus.emit("log", f"Conta {account_id} retirada, mas o disjuntor de conta falhou "
                                      f"({type(exc).__name__}): confira as execuções da persona.", level="error",
                               data={"profile_id": profile_id, "account_id": account_id})
+        # Limpeza do egresso (133, §9): desatribui → remove perfil → apaga segredo de rastreio.
+        if self.ao_limpar_egresso is not None and proxy_secret_ref is not None:
+            try:
+                self.ao_limpar_egresso(profile_id, account_id, proxy_secret_ref)
+            except Exception as exc:  # noqa: BLE001 - a conta já saiu; a limpeza falhar não desfaz
+                self.bus.emit("log", f"Conta {account_id} retirada, mas a limpeza do egresso falhou "
+                                     f"({type(exc).__name__}): confira o perfil de rede e o cofre.", level="error",
+                              data={"profile_id": profile_id, "account_id": account_id,
+                                    "proxy_secret_ref": proxy_secret_ref})
         return {"profile_id": profile_id, "account_id": account_id, "retirada": True, "ancora": ancora,
                 "limpezas": contagens, "status_da_persona": self._status_do(profile_id),
                 "limpeza_dos_aparelhos": limpeza, "detail": "Conta retirada; a persona continua."}

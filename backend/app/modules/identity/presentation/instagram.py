@@ -624,7 +624,9 @@ async def registrar_conta_igfarm(request: Request, body: ContaIgfarmBody) -> JSO
             persona_id=body.persona_id.strip(), dominio=body.dominio, email=body.email,
             email_senha=body.email_senha.get_secret_value(), instagram_username=body.instagram_username,
             instagram_senha=body.instagram_senha.get_secret_value(), igfarm_account_id=body.igfarm_account_id,
-            criada_em=body.criada_em.isoformat(), por="igfarm"))
+            criada_em=body.criada_em.isoformat(), por="igfarm",
+            proxy_url=body.proxy_url.get_secret_value() if body.proxy_url else None,
+            ip_criacao=body.ip_criacao))
     except ErroDaPonte as exc:
         raise _erro_da_ponte(exc) from exc
     dto = ContaRegistradaDTO(persona_id=r.persona_id, account_id=r.account_id, igfarm_account_id=r.igfarm_account_id,

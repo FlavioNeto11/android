@@ -25,6 +25,7 @@ import ipaddress
 import logging
 import re
 import time
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -88,6 +89,18 @@ def _host_valido(host: str) -> str:
     if not re.match(_HOST, host):
         raise ValueError("endpoint_host precisa ser um nome de host, um IPv4 ou um IPv6")
     return host
+
+
+def _parse_proxy(proxy_url: str) -> tuple[NetworkProtocol, str, int, str | None, str | None]:
+    """(scheme, host, port, username, password). scheme ∈ {http, socks5}; sem esquema → http.
+    Levanta ValueError em URL malformada ou porta ausente/inválida."""
+    parsed = urllib.parse.urlparse(proxy_url if "://" in proxy_url else "http://" + proxy_url)
+    scheme = (parsed.scheme or "http").lower()
+    if scheme not in ("http", "socks5"):
+        raise ValueError(f"esquema de proxy não suportado: {scheme!r}")
+    if not parsed.hostname or not parsed.port:
+        raise ValueError("proxy sem host ou porta")
+    return scheme, parsed.hostname, parsed.port, parsed.username or None, parsed.password or None  # type: ignore[return-value]
 
 
 def _conferir_segredo(valor: object) -> None:
@@ -416,6 +429,30 @@ def criar_perfil(st: AppState, body: NetworkProfileInput, quem: str | None) -> N
     _emitir(st, f"Rede: perfil {dto.name} ({dto.kind}/{dto.protocol}) cadastrado", profile_id=pid,
             acao="perfil_criado")
     return dto
+
+
+def criar_perfil_de_conta(st: AppState, account_id: str, *, host: str, port: int, protocol: NetworkProtocol,
+                          username: str | None, secret: SecretStr | None,
+                          ip_criacao: str | None, quem: str | None) -> str:
+    """Perfil de proxy do egresso da conta. Idempotente pelo nome determinístico.
+    `egress_esperado` só entra se `ip_criacao` for IPv4 público."""
+    nome = f"igfarm-{account_id}"
+    existente = st.db.one("SELECT id FROM network_profiles WHERE name=?", (nome,))
+    if existente is not None:
+        return str(existente["id"])
+    params: dict[str, object] = {}
+    if username:
+        params["username"] = username
+    if ip_criacao:
+        try:
+            if ipaddress.ip_address(ip_criacao).is_global:
+                params["egress_esperado"] = ip_criacao
+        except ValueError:
+            pass
+    body = NetworkProfileInput(name=nome, kind="proxy", protocol=protocol,
+                               endpoint_host=host, endpoint_port=port,
+                               params=params, secret=secret)
+    return criar_perfil(st, body, quem).id
 
 
 def remover_perfil(st: AppState, profile_id: str) -> None:
@@ -1451,6 +1488,7 @@ def registrar_medicao(st: AppState, instance_id: str, medicao: NetworkMeasuremen
                     data={"instance_id": instance_id, "acao": "saida_compartilhada", "measurement_id": mid,
                           "egress_ipv4": medicao.egress_ipv4, "egress_ipv6": medicao.egress_ipv6, "shared_with": iguais})
     _avisar_saida_divergente(st, instance_id, medicao, mid, rev)
+    reaquecer_da_conta(st, instance_id)
     return mid, novo
 
 
@@ -1471,8 +1509,29 @@ def _avisar_saida_divergente(st: AppState, instance_id: str, medicao: NetworkMea
                 instance_id=instance_id,
                 data={"instance_id": instance_id, "acao": "saida_divergente", "measurement_id": mid,
                       "egress_ipv4": medicao.egress_ipv4, "egress_ipv6": medicao.egress_ipv6,
-                      "expected_ipv4": esperada.ipv4, "expected_ipv6": esperada.ipv6,
-                      "profile_id": esperada.profile_id})
+                       "expected_ipv4": esperada.ipv4, "expected_ipv6": esperada.ipv6,
+                       "profile_id": esperada.profile_id})
+
+
+def reaquecer_da_conta(st: AppState, instance_id: str) -> None:
+    """Marca reaquecer=1 quando o IP medido divergir do esperado. Flag de observabilidade."""
+    dn = _linha(st, instance_id)
+    if dn is None or dn["state"] not in ("trafego_verificado", "parcial"):
+        return
+    conta = st.db.one(
+        "SELECT ci.account_id FROM contas_igfarm ci "
+        "JOIN device_profile_bindings b ON b.profile_id = ci.profile_id "
+        "LEFT JOIN apps a ON a.id = b.app_id "
+        "WHERE b.instance_id=? AND b.active=1 AND ci.ip_criacao IS NOT NULL "
+        "AND (b.app_id IS NULL OR a.package='com.instagram.android') LIMIT 1", (instance_id,))
+    if conta is None:
+        return
+    esperada = saida_esperada(st, dn["vpn_profile_id"], dn["proxy_profile_id"])
+    confere = saida_confere(esperada, dn["egress_ipv4"], dn["egress_ipv6"])
+    if confere is None:
+        return
+    st.db.execute("UPDATE contas_igfarm SET reaquecer=? WHERE account_id=?",
+                  (0 if confere else 1, str(conta["account_id"])))
 
 
 def saidas_compartilhadas(st: AppState, instance_id: str, ipv4: str | None, ipv6: str | None) -> list[str]:

@@ -119,6 +119,8 @@ class ComandoDeRegistro:
     igfarm_account_id: str
     criada_em: str
     por: str
+    proxy_url: str | None = None
+    ip_criacao: str | None = None
 
 
 @dataclass(frozen=True)

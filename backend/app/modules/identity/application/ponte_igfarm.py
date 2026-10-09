@@ -20,6 +20,10 @@ from contextlib import AbstractContextManager
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
+import logging
+
+from pydantic import SecretStr
+
 from app.modules.email_do_parque.application.servico import EmailDoParque, ErroEmailDoParque
 from app.modules.identity.domain.persona import MAIORIDADE
 from app.modules.identity.domain.ponte_igfarm import (SYSTEM_DO_USERNAME, TENTATIVAS_DE_USERNAME, TTL_RESERVA_HORAS,
@@ -28,6 +32,8 @@ from app.modules.identity.domain.ponte_igfarm import (SYSTEM_DO_USERNAME, TENTAT
                                                        normalizar_username, pedido_do_username, username_do_modelo,
                                                        username_valido)
 from app.util import to_iso
+
+log = logging.getLogger(__name__)
 
 
 class ErroDaPonte(RuntimeError):
@@ -55,6 +61,9 @@ class ArmazemDaPonte(Protocol):
                      key_id: str, agora: str) -> None: ...
     def gravar_conta_igfarm(self, *, account_id: str, persona_id: str, igfarm_account_id: str, username: str,
                             criada_em: str, agora: str) -> None: ...
+    def gravar_egresso(self, account_id: str, proxy_secret_ref: str | None, proxy_key_id: str | None,
+                       ip_criacao: str | None) -> None: ...
+    def _instance_ids_da_persona(self, persona_id: str) -> list[str]: ...
     def endereco_da_conta(self, conta_id: str) -> str | None: ...
 
 
@@ -87,10 +96,25 @@ class BarramentoDaPonte(Protocol):
     def emitir(self, tipo: str, mensagem: str, dados: dict[str, object]) -> None: ...
 
 
+class RedeError(RuntimeError):
+    def __init__(self, status: int, code: str, message: str, **extra: object):
+        super().__init__(message)
+        self.status, self.code, self.message, self.extra = status, code, message, extra
+
+
+class RedeDaPonte(Protocol):
+    def parse_proxy(self, proxy_url: str) -> tuple: ...
+    def criar_perfil_de_conta(self, account_id: str, *, host: str, port: int, protocol, username: str | None,
+                              secret, ip_criacao: str | None, quem: str | None) -> str: ...
+    def atribuir(self, instance_ids: list[str], proxy_profile_id: str | None, policy: str, quem: str | None,
+                 confirm_real_account: list[str] | None = None) -> dict[str, object]: ...
+
+
 class PonteIgfarm:
     def __init__(self, *, armazem: ArmazemDaPonte, pessoas: PessoasDaPonte, textos: TextosDaPonte,
                  imagens: ImagensDaPonte, contas: ContasDaPonte, cofre: CofreDaPonte, email: EmailDoParque,
-                 barramento: BarramentoDaPonte, agora: Callable[[], datetime] | None = None,
+                 barramento: BarramentoDaPonte, rede: RedeDaPonte | None = None,
+                 agora: Callable[[], datetime] | None = None,
                  ttl_reserva_horas: int = TTL_RESERVA_HORAS) -> None:
         self.armazem = armazem
         self.pessoas = pessoas
@@ -100,6 +124,7 @@ class PonteIgfarm:
         self.cofre = cofre
         self.email = email
         self.barramento = barramento
+        self.rede = rede
         self._agora = agora or (lambda: datetime.now(timezone.utc))
         self.ttl_reserva_horas = ttl_reserva_horas
 
@@ -247,6 +272,8 @@ class PonteIgfarm:
                 if ref_email is not None:                # o cofre não é transacional: não deixa a senha órfã
                     self.cofre.apagar(ref_email)
                 raise
+        # Egresso: depois da tx principal (a tx é reentrante; §11). Parse defensivo: não derruba o POST.
+        self._registrar_egresso(cmd, account_id)
         self.barramento.emitir(
             "identity.conta.registrada", f"Conta @{username} registrada pela ponte do igfarm",
             {"persona_id": cmd.persona_id, "account_id": account_id, "igfarm_account_id": cmd.igfarm_account_id,
@@ -254,6 +281,47 @@ class PonteIgfarm:
         return ContaRegistrada(persona_id=cmd.persona_id, account_id=account_id, igfarm_account_id=cmd.igfarm_account_id,
                                email=email, instagram_username=username, criada_em=cmd.criada_em, registrada_em=agora,
                                idempotente=False)
+
+    def _registrar_egresso(self, cmd: ComandoDeRegistro, account_id: str) -> None:
+        """Cria o perfil de proxy do egresso e atribui aos devices vinculados. Parse defensivo: proxy inválido não derruba."""
+        if self.rede is None:
+            return
+        scheme = host = port = username = password = None
+        if cmd.proxy_url and cmd.proxy_url.strip():
+            try:
+                scheme, host, port, username, password = self.rede.parse_proxy(cmd.proxy_url)
+            except ValueError:
+                log.warning("proxy_url inválido para conta %s", account_id)
+                host = None
+        if host is None:
+            return
+        with self.armazem.tx():
+            # Só na 1ª vez: re-POST não acumula segredo
+            conta = self.armazem.conta_igfarm(cmd.persona_id, normalizar_username(cmd.instagram_username))
+            if conta is not None and getattr(conta, "proxy_secret_ref", None) is None:
+                secret_ref: str | None = None
+                key_id: str | None = None
+                if password:
+                    secret_ref, key_id = self.cofre.guardar(password)
+                self.armazem.gravar_egresso(account_id, secret_ref, key_id, cmd.ip_criacao)
+            perfil_id = self.rede.criar_perfil_de_conta(
+                account_id, host=host, port=port, protocol=scheme, username=username,
+                secret=SecretStr(password) if password else None, ip_criacao=cmd.ip_criacao, quem="igfarm")
+        # Auto-assign: roda nos DOIS caminhos (com e sem vínculo)
+        self._auto_assign(cmd.persona_id, perfil_id)
+
+    def _auto_assign(self, persona_id: str, perfil_id: str) -> None:
+        """Atribui o perfil de proxy aos devices vinculados à persona."""
+        if self.rede is None:
+            return
+        iids = self.armazem._instance_ids_da_persona(persona_id)
+        for iid in iids:
+            try:
+                self.rede.atribuir(instance_ids=[iid], proxy_profile_id=perfil_id, policy="exigida", quem="igfarm")
+            except RedeError as exc:
+                if exc.code != "real_account_confirm_required":
+                    raise
+                log.info("device %s: atribuição pendente (conta real)", iid)
 
     # ------------------------------------------------------------------ código de confirmação
     async def codigo(self, conta_id: str) -> CodigoDaConta:

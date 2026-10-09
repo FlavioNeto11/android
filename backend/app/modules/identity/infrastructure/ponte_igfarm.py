@@ -118,6 +118,17 @@ class ArmazemSql:
                         " criada_em_igfarm, registrada_em) VALUES (?,?,?,?,?,?)",
                         (account_id, persona_id, igfarm_account_id, username.lower(), criada_em, agora))
 
+    def gravar_egresso(self, account_id: str, proxy_secret_ref: str | None, proxy_key_id: str | None,
+                       ip_criacao: str | None) -> None:
+        self.db.execute("UPDATE contas_igfarm SET proxy_secret_ref=?, proxy_key_id=?, ip_criacao=?"
+                        " WHERE account_id=? AND proxy_secret_ref IS NULL",
+                        (proxy_secret_ref, proxy_key_id, ip_criacao, account_id))
+
+    def _instance_ids_da_persona(self, persona_id: str) -> list[str]:
+        return [str(r["instance_id"]) for r in self.db.query(
+            "SELECT DISTINCT b.instance_id FROM device_profile_bindings b "
+            "WHERE b.profile_id=? AND b.active=1 ORDER BY b.instance_id", (persona_id,))]
+
     def endereco_da_conta(self, conta_id: str) -> str | None:
         r = self.db.one("SELECT endereco FROM caixas_email WHERE account_id=? OR account_id IN"
                         " (SELECT account_id FROM contas_igfarm WHERE igfarm_account_id=?)", (conta_id, conta_id))
@@ -250,4 +261,30 @@ def compor_ponte_igfarm(s: AppState) -> PonteIgfarm:
     return PonteIgfarm(
         armazem=ArmazemSql(s.db), pessoas=PessoasSocial(s.social), textos=TextosSocial(s.social),
         imagens=ImagensSocial(s.persona_images, s.social), contas=ContasSocial(s.social), cofre=CofreSocial(s.social),
-        email=email, barramento=BarramentoSocial(s.bus))
+        email=email, barramento=BarramentoSocial(s.bus), rede=RedeSocial(s))
+
+
+class RedeSocial:
+    """Adaptador da ponte para o subsistema de rede."""
+
+    def __init__(self, st: AppState) -> None:
+        self.st = st
+
+    def parse_proxy(self, proxy_url: str) -> tuple:
+        from app.devices.rede import _parse_proxy  # noqa: PLC0415
+        return _parse_proxy(proxy_url)
+
+    def criar_perfil_de_conta(self, account_id: str, *, host: str, port: int, protocol, username: str | None,
+                              secret, ip_criacao: str | None, quem: str | None) -> str:
+        from app.devices.rede import criar_perfil_de_conta  # noqa: PLC0415
+        return criar_perfil_de_conta(
+            self.st, account_id, host=host, port=port, protocol=protocol,
+            username=username, secret=secret, ip_criacao=ip_criacao, quem=quem)
+
+    def atribuir(self, instance_ids: list[str], proxy_profile_id: str | None, policy: str, quem: str | None,
+                 confirm_real_account: list[str] | None = None) -> dict[str, object]:
+        from app.devices.rede import NetworkAssignBody, RedeError, atribuir  # noqa: PLC0415
+        return atribuir(
+            self.st, NetworkAssignBody(
+                instance_ids=instance_ids, proxy_profile_id=proxy_profile_id, policy=policy,  # type: ignore[arg-type]
+                confirm_real_account=confirm_real_account or []), quem=quem)
