@@ -1464,6 +1464,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-09 — Deploy 66 (ponte Android⇄igfarm: personas pendentes, registro de conta e e-mail do parque; migração 132; ADR-088)
+
+- **Implantado** às 17:16:06Z: central em `7156f0df77e958`, migração `132_ponte_igfarm` (já aplicada no banco real desde 16:52:08Z por reinício direto; o checksum do arquivo da branch conferido contra `schema_migrations`: `32f6993101d449d9…`, igual), `integ/suite-66` = main `f0e8ed70` + `feat/ponte-igfarm` `238c5098`. Tag `deploy-20261009-1716`; `commit_antes` `f0e8ed705fbda8`.
+- Prova `real`: `deploy.ps1` rc=0; `GET /api/health` ok, migração 132, `problems` 0 (antes degradado por `migration_changed`, `devices_degraded` do android-06 sumiu); prova de fora como esperado; agente do notebook em `0.1.0+7156f0d`; 01, 03, 06 e 09 `ready`. O `models.py` do dono ficou em stash e voltou sem conflito.
+- Prova `simulated` (funil REDUZIDO por ordem da orquestradora: sem vitest): coleta 12688 testes e 0 erros; `scripts/tests` 1262 passed (+1 `test_com_teto_de_cpu`, DevOps, conhecido); SQLite dirigido (424 arquivos: afetados, testes da ponte, cobertura de rotas e apps fora do núcleo) 8822 passed, 31 skipped; PostgreSQL só da migração (`test_migracao_132`) 2 passed; catracas 89 e 9; docs-check 0/0; mypy 257 (teto 257).
+- `not_run`: vitest, PostgreSQL inteiro e SQLite inteiro; a ponte real com o igfarm.
+
 ## 2026-10-08 — Deploy 65 (31.287: a receita só se promove se concorda por alvo; promoção por efeito, 1 sem commit e 2 com commit; sem migração)
 
 - **Implantado** às 19:37:51Z: central em `2e990961c3426c`, migração 129 (sem nova), `integ/suite-65` = main + Jev `ec708d6a` (31.287, `fix/31-287-receita-concorda-por-alvo`: comparador de receita por alvo e `recipes_promote_after` por efeito, novos defaults). O `config.yaml` do central não fixa `recipes_promote_after` nem `strong_model_only_on_commit`: os defaults novos valem sozinhos. Tag `deploy-20261008-1937`; `commit_antes` `9cb6fae3a0e738`.

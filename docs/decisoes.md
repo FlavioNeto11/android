@@ -5975,3 +5975,13 @@ usuário desejado versus confirmado, nem ação estruturada no refinador.
 Microsoft) e regressão de conta existente, clone, consentimento e login normal, com varredura de segredo em log,
 evento e leitura. Risco principal: o filtro de conta não confirmada nos consumidores. Prova: `not_run` até o
 31.284.
+
+## ADR-088 — Ponte Android⇄igfarm: personas pendentes, registro de conta e e-mail do parque
+
+**Data:** 09/10/2026 · **Estado:** aceito e implantado (deploy 66, migração 132; contrato v1.133). Implementação da sessão "APIs de ponte Android-igfarm".
+
+**Contexto.** O igfarm cria as contas de Instagram; a Central Android opera os aparelhos e guarda as personas. Faltava um canal combinado entre os dois sistemas.
+
+**Decisão.** A Central expõe a ponte em três partes: (1) lista das personas pendentes de conta, para o igfarm saber o que criar; (2) registro da conta criada (`contas_igfarm`, migração `132_ponte_igfarm`) vinculada à persona; (3) e-mail do parque (`email_do_parque`, leitura por IMAP) para a verificação de cadastro. A credencial segue a regra do ADR-040: cofre, consentimento por conta, digitação só pelo canal sensível; nenhum segredo passa pela ponte em log, evento ou evidência.
+
+**Consequências.** A migração 132 foi aplicada no banco real antes de entrar na main (reinício direto do backend); o deploy 66 regularizou o registro (checksum conferido contra o arquivo da branch). O arquivo de ambiente ganha as chaves do e-mail do parque (exemplo em `.env.example`; valores só no ambiente central).

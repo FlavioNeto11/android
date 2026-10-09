@@ -1,10 +1,12 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `2e990961c3426c` (migração 129, deploy 65); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `7156f0df77e958` (migração 132, deploy 66); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 66 no ar (09/10/2026, 17:16:06Z, central `7156f0df77e958`, migração 132; ponte Android⇄igfarm, ADR-088).**
+  - `real`: deploy rc=0, tag `deploy-20261009-1716`, saúde ok, migração 132, prova de fora, agente `0.1.0+7156f0d`. `simulated`: funil reduzido (SQLite dirigido e PG da migração, sem vitest). `not_run`: vitest, PG e SQLite inteiros, ponte real com o igfarm.
 - **Deploy 65 no ar (08/10/2026, 19:37:51Z, central `2e990961c3426c`, sem migração nova; Jev 31.287: a receita concorda por alvo).**
   - `real`: deploy rc=0, tag `deploy-20261008-1937`, saúde ok, prova de fora, agente `0.1.0+2e99096`. `simulated`: funil reduzido (SQLite dirigido, sem PG e sem vitest). `not_run`: PostgreSQL, vitest, SQLite inteiro e o 31.287 real.
 - **Deploy 64 no ar (08/10/2026, 19:05:11Z, central `9cb6fae3a0e738`, sem migração nova; Jev 31.286: a conta só vale no próprio perfil).**
