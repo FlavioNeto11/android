@@ -36,9 +36,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - IMAP Hostinger (`imap.hostinger.com:993`), 18:03:42Z: login e `SELECT INBOX` aceitos (55 mensagens) e `LeitorImap`
     com busca por destinatário e remetente sem erro; para um endereço fictício a busca devolveu 0 mensagens com código.
     Duas tentativas anteriores foram recusadas por credencial inválida (corrigida pelo dono).
+- **Prova `real` no central (09/10/2026 18:56Z–19:05Z, WIN-7S2UASNLFOP, central `7156f0df` + docs `96627654`):**
+  - o central lia o arquivo de ambiente de antes das chaves: 422 `dominio_nao_permitido`. Reiniciar só a tarefa `farm-central`
+    não bastou (reinicia o supervisor, o `app.main` de 17:15Z seguiu vivo); `scripts\stop.ps1` e o supervisor religando o
+    backend (18:57:15Z) resolveram. Depois: `nvit.com.br` 200, `exemplo.com` 422;
+  - `GET /personas-pendentes?dominio=nvit.com.br&limite=1&reservar=true` 18:58:54Z: persona `ig-persona-Qud6TL9ZehJggYAT`,
+    @ `camiladuarte.foto` (IA real, `claude-sonnet-5-5`), e-mail `camila.duarte1660@nvit.com.br`, imagem
+    `img-a-BX4lR85vyevuYI` servida como JPEG de 84 KB (gerada em 29/09, `gpt-image-2`); a chamada seguinte não devolveu a
+    persona reservada (vale 24 h). As 6 pendentes já tinham foto (`on_create`): o ramo "gerar imagem na reserva" ficou `simulated`;
+  - `GET /contas/{id}/codigo` com IMAP real da Hostinger: 200 `{codigo, recebido_em, remetente}` de um e-mail real do Instagram
+    (13:21:05Z, `no-reply@mail.instagram.com`, endereço de teste do igfarm), em banco de teste temporário e com o relógio do
+    serviço fixado em 13:30Z (o e-mail tem mais de 30 min);
+  - `GET /api/session` no central: `token_required: false`; o loopback atendeu sem token.
+- **`not_run` (explícito):** código lido por um cadastro novo com relógio real; `POST /contas` com dados reais do igfarm;
+  verificação no app (checkpoint), ver [`docs/verificacao-no-app.md`](docs/verificacao-no-app.md); suíte inteira.
 - **Convergência com o ADR-087:** emenda no ADR-088 (esquemas independentes, persona com conta planejada não é pendente,
   passo da ponte quando o 31.281 entrar e a decisão do dono sobre a evidência do igfarm).
-- **`not_run`:** leitura de um código de verdade (precisa de um cadastro real do igfarm); suíte inteira (SQLite e PostgreSQL).
 - **Fora do Git, no ambiente do dono:** os rascunhos `app/shared/venice/` e `evidence.py` ficaram em
   `backend/wip-fora-do-app/` (sem rastreio); a chave da Venice já está no arquivo de ambiente da raiz.
 

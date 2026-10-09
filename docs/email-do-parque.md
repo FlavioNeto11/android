@@ -38,6 +38,12 @@ e ler código responde `email_indisponivel` (503).
 
 O serviço fica em `AppState.email_parque`.
 
+**A central só lê o arquivo de ambiente quando sobe.** Depois de editar as chaves, pare o backend com
+`pwsh -File scripts\stop.ps1` (emuladores continuam ligados) e espere o supervisor religá-lo (cerca de 1 min). Parar e
+iniciar só a tarefa `farm-central` **não** reinicia o backend: ela reinicia o supervisor, e o `app.main` antigo segue
+vivo com a configuração velha. Medido em 09/10/2026: depois de `Stop/Start-ScheduledTask` a API ainda respondia
+`dominio_nao_permitido`; depois do `stop.ps1` aceitou `nvit.com.br`.
+
 ## Interface
 
 - `gerar_endereco(persona_id, primeiro_nome, sobrenome, dominio, existentes)`: parte local `nome.sobrenome` em
@@ -60,11 +66,22 @@ O serviço fica em `AppState.email_parque`.
   no Instagram é problema do igfarm, que re-tenta ao receber `username_is_taken`.
 - O endereço sugerido é checado contra o que a central conhece (contas, credenciais, caixas registradas, reservas).
 
-## Transporte
+## Transporte e token
 
-A API de registro de conta recebe **senhas no corpo**. Fora do loopback ela só atende com `API_TOKEN` e TLS (o
-middleware `guarda` e `conferir_exposicao` já exigem os dois para sair do loopback); sem isso a central nem sobe. O
-igfarm deve chamar sempre por HTTPS com o token, e as respostas trazem as senhas mascaradas, nunca o valor.
+A API de registro de conta recebe **senhas no corpo**; as respostas trazem as senhas mascaradas, nunca o valor.
+
+- **Mesma máquina (loopback):** o igfarm em `127.0.0.1` chama a central em `127.0.0.1:8000` **sem token**. Provado em
+  09/10/2026: `GET /api/instagram/personas-pendentes` respondeu 200 sem cabeçalho de autorização (igfarm e central rodam em
+  `WIN-7S2UASNLFOP`).
+- **Outra máquina:** só atende com `API_TOKEN`, `server.public_hosts` e TLS (o middleware `guarda` e `conferir_exposicao`
+  exigem os três; sem isso a central nem sobe fora do loopback). O igfarm manda `Authorization: Bearer <API_TOKEN>` por
+  HTTPS.
+- **Como obter o token:** o dono o gera e o guarda; ele nunca vai para Git, log, chat nem documento. Gere um valor
+  aleatório e longo, por exemplo `pwsh -File scripts\portal-gerar-senha.ps1` (24 bytes) ou
+  `python -c "import secrets; print(secrets.token_urlsafe(32))"`, ponha `API_TOKEN=<valor>` no arquivo de ambiente da raiz
+  da central e reinicie o backend como acima. O mesmo valor vai, à mão, na configuração do igfarm. Para saber se há token
+  configurado, a central não o mostra: `GET /api/session` responde `token_required` (em 09/10/2026 o central respondia
+  `false`: sem `API_TOKEN`, só atende o loopback).
 
 ## Fluxo do igfarm
 
@@ -107,7 +124,19 @@ Código em `backend/app/modules/identity/{domain,application,infrastructure}/pon
 
 ## Limites
 
-- Prova real (09/10/2026): handle por IA, imagem e login/busca IMAP na Hostinger passaram (CHANGELOG de 09/10). Falta
-  ler um código de verdade: só acontece quando o igfarm cadastrar a primeira conta (`not_run`).
+- **Estado das provas, sem ambiguidade (09/10/2026, `WIN-7S2UASNLFOP`, central `7156f0df` + docs `96627654`):**
+
+  | Item | Nível | Prova |
+  |---|---|---|
+  | Domínio `nvit.com.br` aceito; domínio de fora recusado | `real` | central: 200 e 422 `dominio_nao_permitido`, 18:58Z |
+  | @ sugerido por IA pela rota, no central | `real` | `claude-sonnet-5-5`; ex.: `camiladuarte.foto` para `ig-persona-Qud6TL9ZehJggYAT` |
+  | Reserva (`reservar=true`) e não repetição da persona reservada | `real` | 18:58:54Z, a chamada seguinte não devolveu a persona |
+  | Imagem da persona servida pela URL da rota | `real` | `img-a-BX4lR85vyevuYI`, JPEG de 84 KB, `gpt-image-2`, gerada em 29/09 na criação da persona |
+  | Imagem GERADA dentro da rota (ramo `reservar=true` sem foto) | `simulated` | `test_personas_pendentes_api`; as 6 pendentes já tinham foto (`on_create`), o ramo não disparou |
+  | Login e busca IMAP na Hostinger | `real` | 18:03Z, 55 mensagens na caixa |
+  | `GET /contas/{id}/codigo` com IMAP real | `real`, com relógio fixado | e-mail real de `no-reply@mail.instagram.com` recebido 13:21:05Z lido de um endereço de teste do igfarm; banco de teste temporário; relógio do serviço em 13:30Z porque o e-mail tem mais de 30 min |
+  | Código lido por um cadastro novo, com relógio real | `not_run` | exige o igfarm cadastrar uma conta agora |
+  | `POST /api/instagram/contas` com dados reais do igfarm | `not_run` | o igfarm ainda não chamou |
+  | Verificação no app (checkpoint) | `not_run` | ver [`verificacao-no-app.md`](verificacao-no-app.md) |
 - A caixa é compartilhada: quem tem a senha lê o e-mail de todas as personas. Por isso a senha da caixa nunca sai em
   resposta de API, evento, log ou evidência, e a leitura é sempre filtrada pelo destinatário.
