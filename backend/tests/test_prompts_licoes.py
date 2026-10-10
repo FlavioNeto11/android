@@ -78,7 +78,7 @@ def _ctx() -> StepContext:
 
 def _tela() -> ScreenInput:
     return ScreenInput(width=540, height=1200, jpeg=None, elements=["e1 Button text=\"Início\" id=tab_home"],
-                       package=QA, sensitive=False)
+                       package=QA)
 
 
 def _decisao(lessons: list[str] | None = None) -> DecisionRequest:
@@ -202,7 +202,7 @@ async def test_o_provedor_simulado_ignora_as_licoes_sem_quebrar() -> None:
         'class="android.widget.Button" package="com.pocqa.messenger" content-desc="" clickable="true" '
         'enabled="true" focused="false" scrollable="false" password="false" checked="false" '
         'bounds="[0,0][100,100]" /></hierarchy>')
-    tela = ScreenInput(width=540, height=1200, jpeg=None, elements=[], package=QA, sensitive=False, tree=arvore)
+    tela = ScreenInput(width=540, height=1200, jpeg=None, elements=[], package=QA, tree=arvore)
     sem = await provedor.decide(DecisionRequest(ctx=_ctx(), screen=tela))
     com = await provedor.decide(DecisionRequest(ctx=_ctx(), screen=tela, lessons=[LICAO_A]))
     assert sem[0].tool == com[0].tool and sem[0].args == com[0].args

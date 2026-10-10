@@ -23,7 +23,7 @@ from .conftest import make_config
 
 APP = AppContext("qa-messenger", "QA Messenger", "com.pocqa.messenger", ".MainActivity", "dicas", None)
 SCREEN = ScreenInput(width=720, height=1280, jpeg=b"\xff\xd8jpeg", elements=['e1 | Button | text="Enviar"'],
-                     package="com.pocqa.messenger", sensitive=False)
+                     package="com.pocqa.messenger")
 
 
 def ctx(**over: Any) -> StepContext:

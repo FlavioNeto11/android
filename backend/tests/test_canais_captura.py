@@ -186,8 +186,8 @@ class Gerenciador:
         self.soltos.append(conexao)
 
 
-def _frame(idade_s: float = 0.0, *, sensivel: bool = False, jpeg: bytes = JPEG) -> SimpleNamespace:
-    return SimpleNamespace(mono=time.monotonic() - idade_s, sensitive=sensivel, jpeg_full=b"" if sensivel else jpeg)
+def _frame(idade_s: float = 0.0, *, jpeg: bytes = JPEG) -> SimpleNamespace:
+    return SimpleNamespace(mono=time.monotonic() - idade_s, jpeg_full=jpeg)
 
 
 def _rt(frame: SimpleNamespace | None, *, estado: InstanceState = InstanceState.online, loja: bool = False) -> SimpleNamespace:
@@ -243,21 +243,10 @@ async def test_sem_frame_novo_no_prazo_diz_ao_dono_e_solta_o_interesse() -> None
     assert g.soltos[0].startswith("captura-canal-android-12-") and g.soltos[0] == g.interesses[0][0]
 
 
-@pytest.mark.parametrize("rt", [_rt(_frame(0.1, sensivel=True)), _rt(_frame(0.1, jpeg=b"")),
-                                _rt(_frame(0.1), loja=True), _rt(_frame(0.1), estado=InstanceState.stopped)])
-async def test_tela_sensivel_loja_ou_aparelho_fora_do_ar_nao_sai_captura(rt: SimpleNamespace) -> None:
+@pytest.mark.parametrize("rt", [_rt(_frame(0.1, jpeg=b"")), _rt(_frame(0.1), estado=InstanceState.stopped)])
+async def test_sem_imagem_ou_aparelho_fora_do_ar_nao_sai_captura(rt: SimpleNamespace) -> None:
     jpeg, motivo = await capturar_para_o_dono(Gerenciador(rt), "android-12")
     assert jpeg is None and motivo
-
-
-async def test_sensivel_que_aparece_no_frame_novo_tambem_nao_sai() -> None:
-    rt = _rt(_frame(60))
-
-    async def dormir(_s: float) -> None:
-        rt.frame = _frame(0.0, sensivel=True)
-
-    jpeg, motivo = await capturar_para_o_dono(Gerenciador(rt), "android-12", dormir=dormir)
-    assert jpeg is None and "sensível" in (motivo or "")
 
 
 async def test_aparelho_desconhecido() -> None:

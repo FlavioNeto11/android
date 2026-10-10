@@ -166,7 +166,7 @@ async def test_o_provedor_poe_a_dica_no_conteudo_e_nunca_no_sistema(tmp_path: Pa
     falso = Falso()
     p.configured = True
     p._client = SimpleNamespace(messages=falso, beta=SimpleNamespace(messages=falso))  # noqa: SLF001
-    tela = ScreenInput(width=720, height=1280, jpeg=None, elements=["e1 View"], package=OUTLOOK, sensitive=False)
+    tela = ScreenInput(width=720, height=1280, jpeg=None, elements=["e1 View"], package=OUTLOOK)
     dicas = telas.dicas_da_tela(CONHECIMENTO_DE_APPS / OUTLOOK, _lista_do_outlook(), package=OUTLOOK)
 
     await p.verify(VerifyRequest(ctx=_ctx(), screen=tela))
@@ -265,9 +265,12 @@ async def test_o_executor_nao_entrega_dica_de_app_que_nao_declara(tmp_path: Path
     # O texto que o provedor monta é o de antes: o bloco some junto com a dica.
     com_campo = prompts.verifier_user_text(pedido.ctx, "tela", ["e1 View"], None, pedido.facts, pedido.dicas_da_tela)
     assert com_campo == prompts.verifier_user_text(pedido.ctx, "tela", ["e1 View"], None, pedido.facts)
-    assert "dicas_da_tela" not in com_campo
-
-
+    assert "dicas_da_tela" not in com_campo
+
+
+
+
+
 async def test_31_50d_o_rejulgamento_do_sim_com_efeito_vai_sem_a_dica(tmp_path: Path) -> None:
     """31.50 (d): o 17.10 é a segunda opinião independente; com a orientação do primeiro juiz, deixava de ser."""
     primeiro, *resto = await _julgar(tmp_path, OUTLOOK, efeito=True)

@@ -134,33 +134,6 @@ async def test_midia_sem_a_parte_pedida_nao_conta_como_captura(tmp_path: Path,
         await _parar(r)
 
 
-async def test_previa_de_tela_sabidamente_sensivel_nao_traz_pixel_da_origem(tmp_path: Path,
-                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
-    """`observe` numa tela sensível pede `so_dimensoes` ("nem o PNG sai da máquina do worker"). `_ciclo_de_previa`
-    não: quando a última classificação diz sensível e a releitura falha com `DriverError` (sem sessão — o caso do
-    aparelho em `waiting_user` com a pessoa digitando na janela do emulador), ele segue para
-    `_capturar_na_origem(previa=True)`: a origem codifica e manda a tela inteira pelo túnel, e o central a descarta.
-    Não é regressão sobre o PNG pelo túnel de antes, mas a garantia nova não é aplicada onde já se sabe que a tela é
-    sensível (o mesmo com `rt.store`, que nem relê)."""
-    r = await _remoto(tmp_path)
-    try:
-        devs = r.h.state.devices  # type: ignore[union-attr]
-        r.fake.screen = "login"
-        devs.arvore(r.rt, r.fake.page_source())                              # classificada sensível
-        assert devs._tela_sensivel(r.rt)                                      # noqa: SLF001
-
-        def sem_sessao() -> str:
-            raise DriverError("sem sessão de automação", effect_possible=False)
-
-        monkeypatch.setattr(r.rt.io, "page_source", sem_sessao)
-        assert await devs._ciclo_de_previa(r.rt) == "sensivel"                # noqa: SLF001 - nada publicado
-        assert r.pedidos, "nenhum pedido à origem"
-        assert r.pedidos[-1]["so_dimensoes"] is True and r.pedidos[-1]["previa"] is False, (
-            f"pixels de tela sabidamente sensível pedidos à origem: {r.pedidos[-1]}")
-    finally:
-        await _parar(r)
-
-
 async def test_evidencia_tardia_de_geracao_anterior_e_descartada(tmp_path: Path) -> None:
     """`_observar_imagem` levanta e `_publicar_imagem` descarta quando a geração muda durante a captura. A evidência
     tardia (`imagem_tardia`) não confere: o aparelho sai do ar no meio (`_nova_geracao`, que também apaga a

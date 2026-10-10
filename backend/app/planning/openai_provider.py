@@ -266,7 +266,7 @@ class OpenAICompatProvider:
     @staticmethod
     def _screen_content(screen: ScreenInput, text: str) -> list[dict[str, Any]]:
         content: list[dict[str, Any]] = []
-        if screen.jpeg and not screen.sensitive:
+        if screen.jpeg:
             b64 = base64.standard_b64encode(screen.jpeg).decode()
             content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
         content.append({"type": "text", "text": text})
@@ -364,7 +364,7 @@ class OpenAICompatProvider:
     # ------------------------------------------------------------------ decisão
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         modelo = self.models.get("escalation" if req.tier > 0 else "decide", self.model)
-        with_image = bool(req.screen.jpeg) and not req.screen.sensitive
+        with_image = bool(req.screen.jpeg)
         msg, usage = await self._create(role="decide", model=modelo, system=prompts.ACTOR_SYSTEM,
                                         content=self._screen_content(req.screen, prompts.actor_user_text(req)),
                                         max_tokens=4000, tools=True, tier=req.tier, with_image=with_image)
@@ -392,11 +392,10 @@ class OpenAICompatProvider:
         s = req.screen
         escalado = bool(getattr(req, "escalate", False))
         modelo = self.models.get("escalation" if escalado else "verify", self.model)
-        with_image = bool(s.jpeg) and not s.sensitive
-        desc = ("tela sensível (imagem omitida)" if s.sensitive
-                else f"app em primeiro plano: {s.package or 'desconhecido'}; "
-                     + (f"imagem {s.width}x{s.height}" if with_image
-                        else "imagem não enviada (julgue pela lista de elementos)"))
+        with_image = bool(s.jpeg)
+        desc = (f"app em primeiro plano: {s.package or 'desconhecido'}; "
+                + (f"imagem {s.width}x{s.height}" if with_image
+                   else "imagem não enviada (julgue pela lista de elementos)"))
         esquema = strict_schema(Verdict)
         texto = prompts.verifier_user_text(req.ctx, desc, s.elements, req.ctx.required_delivery_level,
                                            req.facts, req.dicas_da_tela) + self._json_hint(modelo, esquema)

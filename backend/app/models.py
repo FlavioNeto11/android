@@ -325,10 +325,6 @@ class FrameInfo(BaseModel):
     height: int
     orientation: Literal["portrait", "landscape"]
     stale: bool = False
-    #: A tela deste frame foi classificada como sensível (contrato C4 do adendo v0.20): não há imagem, e
-    #: `GET /frame` responde 404 `sensitive_screen`. O frame existe mesmo assim — é ele que tira do ar a imagem
-    #: anterior e mantém o tamanho da tela para o controle manual.
-    sensitive: bool = False
 
 
 class InstanceCurrent(BaseModel):

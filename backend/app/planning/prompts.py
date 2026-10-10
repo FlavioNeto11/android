@@ -572,15 +572,10 @@ def actor_user_partes(req: DecisionRequest) -> tuple[str, str]:
     O `cache_da_etapa` põe o 2º ponto de cache no fim da primeira."""
     hist = "\n".join(f"  {i + 1}. {h}" for i, h in enumerate(req.history)) or "  (nenhuma ação ainda)"
     s = req.screen
-    if s.sensitive:
-        # O motivo não vem para cá de propósito: descrevê-lo ("desafio de 2FA") seria contar ao modelo o que há
-        # na tela que a imagem justamente omite. Ele precisa saber que não vai ver a imagem, não por quê.
-        screen = "A tela foi classificada como sensível: a imagem foi omitida por segurança."
-    else:
-        space = f"{s.width}x{s.height} px; coordenadas x,y e os limites [x1,y1,x2,y2] dos elementos usam este mesmo espaço"
-        screen = (f"Imagem da tela: {space}." if s.jpeg else
-                  f"Imagem NÃO enviada nesta observação (tela de {space}); use os elementos abaixo ou "
-                  "peça a imagem com observe_screen(need_image=true).")
+    space = f"{s.width}x{s.height} px; coordenadas x,y e os limites [x1,y1,x2,y2] dos elementos usam este mesmo espaço"
+    screen = (f"Imagem da tela: {space}." if s.jpeg else
+              f"Imagem NÃO enviada nesta observação (tela de {space}); use os elementos abaixo ou "
+              "peça a imagem com observe_screen(need_image=true).")
     elements = "\n".join(s.elements) or "(hierarquia vazia)"
     return (f"{step_block(req.ctx, for_actor=True)}\n\n{licoes_block(req.lessons)}",
             f"Histórico desta tentativa:\n{hist}\n\n"

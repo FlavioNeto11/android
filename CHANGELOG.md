@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — a plataforma não esconde tela de ninguém (ADR-089, revoga o C4)
+
+- Saíram o marcador de tela sensível, o 404 `sensitive_screen` de `GET /frame`, a omissão de imagem na observação da IA
+  e na evidência, a pausa da prévia durante `type_secret` e a loja como exceção (`devices/manager.py`, `executor.py`,
+  `security/sensitive_input.py`, provedores e prompts, `captura_pontual.py`). `FrameInfo.sensitive` e
+  `ScreenInput.sensitive` deixaram de existir. Motivo: a tela do código de e-mail ficou invisível para o dono.
+- Prova **simulada**: `tests/test_previa_sem_tela_escondida.py` (4 testes) e 281 dirigidos verdes; as 3 falhas de
+  `test_arquitetura`/`test_apps_fora_do_nucleo` já existiam antes (importes do `egresso.py` da 133).
+
 ## 2026-10-10 — egresso da ponte: o aparelho com a conta da própria persona é confirmado, e o pendente aparece (migração 133)
 
 - `_auto_assign` (`modules/identity/application/ponte_igfarm.py`) não engole mais `real_account_confirm_required`: o aparelho

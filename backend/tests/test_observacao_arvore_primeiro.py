@@ -83,17 +83,17 @@ async def test_com_interesse_a_mesma_decodificacao_alimenta_a_previa(harness: Ha
     devs.soltar_interesse("aba")
 
 
-async def test_sensivel_sem_imagem_e_sem_previa(harness: Harness) -> None:
+async def test_tela_de_senha_tem_imagem_e_previa_como_qualquer_outra(harness: Harness) -> None:
     devs, rt, fake = await _pronto(harness)
     fake.screen = "home"
     await devs.observe(rt, timeout=5)
     fake.screen = "login"
     antes = len(fake.calls)
-    obs = await devs.observe(rt, timeout=5)                   # mesmo pedindo imagem (o padrão)
-    assert fake.calls[antes:] == ["page_source"], "tela sensível: nem screencap"
-    assert obs.jpeg is None and obs.sensitive and obs.image_omitted == "sensitive"
-    assert rt.frame is not None and rt.frame.sensitive and rt.frame.info.id == obs.frame_id
-    assert metricas.valor("captura.evitada", motivo="sensivel") == 1
+    obs = await devs.observe(rt, timeout=5)                   # pedindo imagem (o padrão)
+    assert "screenshot" in fake.calls[antes:], "nenhuma tela é escondida: a captura acontece"
+    assert obs.jpeg and obs.image_omitted is None
+    assert rt.frame is not None and rt.frame.jpeg_full and rt.frame.info.id == obs.frame_id
+    assert metricas.valor("captura.evitada", motivo="sensivel") == 0
 
 
 async def test_sem_imagem_o_tamanho_segue_a_orientacao_da_hierarquia(harness: Harness) -> None:
@@ -119,12 +119,12 @@ async def test_sem_tamanho_conhecido_a_imagem_e_adquirida(harness: Harness) -> N
     assert fake.calls[antes:] == ["page_source", "screenshot"] and obs.jpeg and obs.image_omitted is None
 
 
-async def test_imagem_tardia_nunca_de_tela_sensivel(harness: Harness) -> None:
+async def test_imagem_tardia_tambem_da_tela_de_senha(harness: Harness) -> None:
     devs, rt, fake = await _pronto(harness)
     fake.screen = "login"
     antes = len(fake.calls)
-    assert await devs.imagem_tardia(rt, timeout=5) is None
-    assert "screenshot" not in fake.calls[antes:], "a classificação vem antes do screencap da evidência"
+    login = await devs.imagem_tardia(rt, timeout=5)
+    assert login is not None and "screenshot" in fake.calls[antes:], "a evidência não esconde tela nenhuma"
     fake.screen = "home"
     await devs.observe(rt, timeout=5, imagem=False)
     tardia = await devs.imagem_tardia(rt, timeout=5)
@@ -188,33 +188,3 @@ async def test_falha_grava_evidencia_com_imagem_tardia(harness: Harness) -> None
     assert falha and all(r["path"] for r in falha), "a evidência da falha tem imagem"
 
 
-async def test_hierarquia_sensivel_durante_a_codificacao_tira_a_imagem_da_observacao(
-        harness: Harness, monkeypatch: Any) -> None:
-    """Mesma corrida da revisão F8 na prévia, agora na observação da IA: a codificação roda fora do executor, e uma
-    hierarquia lida nesse meio-tempo (ex.: a prévia relendo a tela) pode classificá-la como sensível. A imagem não
-    vai ao modelo nem à prévia; a decisão segue pela árvore desta observação."""
-    import threading
-
-    import app.devices.manager as manager_mod
-
-    devs, rt, fake = await _pronto(harness)
-    devs.registrar_interesse("aba", ["android-01"], None, 20)
-    fake.screen = "home"
-    original = manager_mod._codificar
-    entrou, liberar = threading.Event(), threading.Event()
-
-    def codificacao_lenta(*a: Any, **kw: Any) -> Any:
-        entrou.set()
-        liberar.wait(5)
-        return original(*a, **kw)
-
-    monkeypatch.setattr(manager_mod, "_codificar", codificacao_lenta)
-    obs_tarefa = asyncio.create_task(devs.observe(rt, timeout=5, imagem=lambda t: True, lado_max=768))
-    assert await asyncio.to_thread(entrou.wait, 5)
-    fake.screen = "login"
-    devs.arvore(rt, fake.page_source())                       # leitura mais nova: SENSÍVEL
-    liberar.set()
-    obs = await obs_tarefa
-    assert obs.jpeg is None and obs.image_omitted == "sensitive" and not obs.sensitive   # a árvore dela era comum
-    assert rt.frame is not None and rt.frame.sensitive and rt.frame.jpeg_full == b""
-    devs.soltar_interesse("aba")

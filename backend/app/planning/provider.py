@@ -287,7 +287,6 @@ class ScreenInput:
     jpeg: bytes | None
     elements: list[str]                       # linhas compactas da hierarquia
     package: str | None
-    sensitive: bool
     tree: Any = None                          # UiTree completo (usado só pelo provedor simulado)
     podados: int = 0                          # item 31.35: elementos da barra do navegador fora do prompt
 

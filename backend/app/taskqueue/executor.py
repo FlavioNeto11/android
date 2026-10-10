@@ -1401,7 +1401,7 @@ class StepExecutor:
         lines = _arvore_com_endereco_limpo(obs.tree, obs.package).prompt_lines(
             self.cfg.file.ai.max_hierarchy_elements, scale, protect=protect, boost=boost, ocultar=ocultar)
         return ScreenInput(width=w, height=h, jpeg=jpeg, elements=lines, package=obs.package,
-                           sensitive=obs.sensitive, tree=obs.tree, podados=podados), scale
+                           tree=obs.tree, podados=podados), scale
 
     async def _arvore_antes_da_poda(self, obs: Observation, podados: int, *, run_id: str, iid: str, step_id: str,
                                     attempt_id: str) -> None:
@@ -2178,8 +2178,7 @@ class StepExecutor:
                                               kind="text", note=note)
                 return
             data = obs.jpeg
-            sensivel_tardia = False
-            if data is None and not obs.sensitive and obs.image_omitted in ("policy", "capture_failed"):
+            if data is None and obs.image_omitted in ("policy", "capture_failed"):
                 # A observação saiu só com a árvore (a imagem não ia ao modelo, ou a captura falhou e o 31.76 tolerou).
                 # A evidência adquire a SUA, agora, com o próprio horário na nota — é só evidência, nunca fonte de
                 # coordenada (adendo v0.20, C1).
@@ -2193,15 +2192,7 @@ class StepExecutor:
                 if tardia is not None:
                     data, quando = tardia
                     note += f" (imagem adquirida depois da observação, às {quando})"
-                else:
-                    # `None` da tardia é a tela que é (ou pode ser) sensível, ou a geração trocada: segue "sensível".
-                    sensivel_tardia = True
-            if obs.sensitive or sensivel_tardia:
-                await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
-                                              kind=kind, note=note + " (tela sensível: captura omitida)", redacted=True)
-            elif data is None:
-                # Leitura do 31.76: imagem AUSENTE não é tela sensível. Dizer "sensível" com `redacted` afirmaria na
-                # trilha de auditoria um fato falso sobre a tela.
+            if data is None:
                 motivo = "captura da tela falhou" if obs.image_omitted == "capture_failed" else "imagem ausente"
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
                                               kind="text", note=note + f" ({motivo})")

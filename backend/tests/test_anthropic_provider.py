@@ -58,7 +58,7 @@ def ctx(**over: Any) -> StepContext:
 
 
 SCREEN = ScreenInput(width=720, height=1280, jpeg=b"\xff\xd8jpeg", elements=['e1 | Button | text="Enviar" | clickable | [1,2,3,4]'],
-                     package="com.pocqa.messenger", sensitive=False)
+                     package="com.pocqa.messenger")
 
 
 async def test_sem_chave_informa_pendencia(tmp_path: Path) -> None:
@@ -169,7 +169,7 @@ async def test_modelo_por_funcao_escalonamento_e_parametros_por_modelo(tmp_path:
                          no_effort, _resp([verdict])])
     p.configured = True
     p._client = SimpleNamespace(messages=fake, beta=SimpleNamespace(messages=fake))  # noqa: SLF001
-    no_image = ScreenInput(width=360, height=640, jpeg=None, elements=SCREEN.elements, package="x", sensitive=False)
+    no_image = ScreenInput(width=360, height=640, jpeg=None, elements=SCREEN.elements, package="x")
 
     _, u0 = await p.decide(DecisionRequest(ctx=ctx(), screen=no_image))               # nível 0 → modelo do ator
     haiku = fake.calls[0]
@@ -189,7 +189,7 @@ async def test_modelo_por_funcao_escalonamento_e_parametros_por_modelo(tmp_path:
     assert "effort" in p._unsupported["claude-sonnet-5"] and "effort" not in p._unsupported["claude-opus-5"]  # noqa: SLF001
 
 
-async def test_tela_sensivel_nao_envia_imagem_e_erros_sao_classificados(tmp_path: Path) -> None:
+async def test_erros_sao_classificados_e_a_imagem_segue_na_decisao(tmp_path: Path) -> None:
     import anthropic
     import httpx2 as httpx
 
@@ -200,11 +200,11 @@ async def test_tela_sensivel_nao_envia_imagem_e_erros_sao_classificados(tmp_path
     verdict = _resp([SimpleNamespace(type="text", text=json.dumps({"satisfied": "yes", "evidence": "Enviada ✓",
                                                                    "delivery_level": "sent"}))])
     p, fake = provider(tmp_path, [no_tool, rate, refusal, verdict])
-    sensitive = ScreenInput(width=720, height=1280, jpeg=b"segredo", elements=[], package="x", sensitive=True)
+    tela = ScreenInput(width=720, height=1280, jpeg=b"imagem", elements=[], package="x")
     with pytest.raises(AIError) as e1:
-        await p.decide(DecisionRequest(ctx=ctx(), screen=sensitive))
+        await p.decide(DecisionRequest(ctx=ctx(), screen=tela))
     assert e1.value.kind == "invalid_output" and e1.value.retryable
-    assert [b["type"] for b in fake.calls[0]["messages"][0]["content"]] == ["text"]       # sem imagem
+    assert [b["type"] for b in fake.calls[0]["messages"][0]["content"]] == ["image", "text"]  # a imagem sempre vai
     with pytest.raises(AIError) as e2:
         await p.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
     assert e2.value.retryable

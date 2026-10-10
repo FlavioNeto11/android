@@ -1452,11 +1452,11 @@ pedida. O padrão (`True`) preserva o comportamento anterior.
 interesse. Não é `stale` nem erro. Na ordem das perguntas de `devices/stream.py`, vem depois de
 offline/hibernado/worker fora e antes de `no_frame`/`live`. Com o interesse de volta, a captura é imediata.
 
-**C4. Tela sensível na prévia.** A prévia nunca mostra tela classificada como sensível:
-- a classificação vem antes de publicar o frame;
-- `GET /api/instances/{id}/frame` responde 404 `sensitive_screen` quando o último frame é sensível;
-- a captura de prévia pausa durante `type_secret`;
-- a VM-loja segue a mesma regra.
+**C4. (revogado em 10/10/2026, ADR-089)** A plataforma não esconde tela de ninguém. Antes, a prévia nunca mostrava a
+tela classificada como sensível (campo de senha, desafio, a VM-loja, a digitação de uma credencial), com `GET /frame`
+em 404 `sensitive_screen`, marcador sem imagem e observação da IA sem `jpeg`. Agora toda tela tem imagem na prévia, na
+rota, na observação da IA e na evidência. `FrameInfo.sensitive` deixou de existir; a classificação `UiTree.sensitive`
+segue só para as DECISÕES da automação (não agir por receita numa tela de senha ou desafio, detectar conta travada).
 
 **C5. Métricas agregadas** (`backend/app/metricas.py`). Contadores e distribuições em memória, com teto de séries.
 Rótulos são valores curtos de conjunto pequeno e nunca id de execução, texto de tela ou credencial. Grava-se uma
@@ -1518,7 +1518,7 @@ Detalhes decididos na implementação e na revisão F8, que o texto dos contrato
 ```ts
 type StreamStatus = 'live' | 'stale' | 'capture_error' | 'no_frame' | 'device_offline' | 'device_hibernated'
                   | 'worker_offline' | 'paused';
-interface FrameInfo { /* …campos de antes… */ sensitive?: boolean }   // ausente = false
+interface FrameInfo { /* …campos de antes… */ }   // `sensitive` foi removido (ADR-089)
 interface Settings  { /* …campos de antes… */ preview_mode?: 'on_demand' | 'always' }
 type ClientMessage = { type: 'ping' } | { type: 'focus'; instance_id: string | null }
                    | { type: 'watch'; grid: string[]; focus: string | null; ttl_s: number };

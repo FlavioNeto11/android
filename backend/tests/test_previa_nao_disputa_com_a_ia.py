@@ -92,7 +92,7 @@ async def test_observacao_so_de_arvore_da_ia_publica_o_frame_para_o_painel(harne
     antes = len(fake.calls)
     obs = await devs.observe(rt, timeout=5, imagem=False, lado_max=768)
     assert fake.calls[antes:] == ["page_source", "screenshot"], "árvore primeiro; a imagem da prévia logo depois"
-    assert rt.frame is not None and rt.frame.info.id != anterior and not rt.frame.sensitive
+    assert rt.frame is not None and rt.frame.info.id != anterior
     assert rt.frame.jpeg_full and rt.frame.jpeg_thumb
     assert obs.frame_id == rt.frame.info.id
     # Para o MODELO nada mudou: sem imagem, por política (tokens, evidência e `_screen` leem estes campos).

@@ -122,25 +122,6 @@ async def test_worker_sem_a_feature_segue_pelo_adb_como_sempre(tmp_path: Path) -
 
 
 # ---------------------------------------------------------------- as mesmas guardas
-async def test_tela_que_fica_sensivel_durante_a_captura_descarta_a_imagem_da_origem(tmp_path: Path) -> None:
-    r = await _remoto(tmp_path)
-    try:
-        devs = r.h.state.devices  # type: ignore[union-attr]
-
-        def fica_sensivel() -> None:
-            r.fake.screen = "login"                           # campo de senha na tela
-            devs.arvore(r.rt, r.fake.page_source())           # uma hierarquia chega no meio da captura
-
-        r.antes_de_entregar = fica_sensivel
-        devs.registrar_interesse("aba", ["android-03"], None, 20)
-        obs = await devs.observe(r.rt, timeout=10, imagem=lambda _t: True, lado_max=768)
-        assert obs.jpeg is None and obs.image_omitted == "sensitive"
-        assert r.rt.frame is not None and r.rt.frame.sensitive and r.rt.frame.jpeg_full == b"", (
-            "a imagem da origem de uma tela sensível foi publicada na prévia")
-    finally:
-        await _parar(r)
-
-
 async def test_geracao_que_muda_durante_a_captura_nao_entrega_imagem(tmp_path: Path) -> None:
     r = await _remoto(tmp_path)
     try:
@@ -164,18 +145,6 @@ async def test_falha_na_origem_e_falha_de_captura_sem_volta_ao_adb(tmp_path: Pat
         await _parar(r)
 
 
-async def test_tela_sensivel_pede_so_as_dimensoes_e_nenhum_pixel_sai(tmp_path: Path) -> None:
-    r = await _remoto(tmp_path)
-    try:
-        r.fake.screen = "login"
-        obs = await r.h.state.devices.observe(r.rt, timeout=10, imagem=lambda _t: True, lado_max=768)  # type: ignore[union-attr]
-        assert obs.jpeg is None and obs.image_omitted == "sensitive" and (obs.width, obs.height) == (720, 1280)
-        assert [p["so_dimensoes"] for p in r.pedidos] == [True]
-        assert r.screencaps_pelo_tunel() == 0
-    finally:
-        await _parar(r)
-
-
 # ---------------------------------------------------------------- prévia e evidência
 async def test_previa_do_aparelho_remoto_vem_da_origem_pela_mesma_porta(tmp_path: Path) -> None:
     r = await _remoto(tmp_path)
@@ -188,15 +157,10 @@ async def test_previa_do_aparelho_remoto_vem_da_origem_pela_mesma_porta(tmp_path
         assert r.rt.frame.jpeg_thumb == esperado.miniatura and r.screencaps_pelo_tunel() == 0
         assert r.pedidos[-1]["previa"] is True
 
-        def fica_sensivel() -> None:
-            r.fake.screen = "login"
-            devs.arvore(r.rt, r.fake.page_source())
-
-        r.fake.screen = "home"
+        r.fake.screen = "login"                               # tela de senha: a origem manda os pixels como em qualquer outra
         devs.arvore(r.rt, r.fake.page_source())
-        r.antes_de_entregar = fica_sensivel
-        assert await devs._ciclo_de_previa(r.rt) == "sensivel"
-        assert r.rt.frame.sensitive and r.rt.frame.jpeg_full == b""
+        assert await devs._ciclo_de_previa(r.rt) == "capturada"
+        assert r.rt.frame.jpeg_full and r.pedidos[-1]["so_dimensoes"] is False
     finally:
         await _parar(r)
 

@@ -45,8 +45,6 @@ async def capturar_para_o_dono(gerenciador: DeviceManager, instance_id: str, *, 
         return None, f"Não conheço o aparelho {instance_id}."
     if rt.state != InstanceState.online:
         return None, f"O {instance_id} não está online agora."
-    if rt.store:
-        return None, f"O {instance_id} é a loja: a tela dela é sempre sensível e não sai captura."
     idade_max = gerenciador.get_settings().frame_max_age_ms / 1000
     quadro = rt.frame
     if quadro is None or time.monotonic() - quadro.mono > idade_max:
@@ -67,6 +65,6 @@ async def capturar_para_o_dono(gerenciador: DeviceManager, instance_id: str, *, 
             gerenciador.soltar_interesse(conexao)
         if quadro is None:
             return None, f"Não consegui uma captura nova do {instance_id} agora. Tente de novo em instantes."
-    if quadro.sensitive or not quadro.jpeg_full:
-        return None, f"A tela do {instance_id} é sensível agora (senha, código ou verificação): não envio captura."
+    if not quadro.jpeg_full:
+        return None, f"O {instance_id} ainda não tem imagem de tela para enviar."
     return quadro.jpeg_full, None

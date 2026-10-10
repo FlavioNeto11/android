@@ -358,8 +358,7 @@ def _ctx(**over: Any) -> StepContext:
 
 def test_step_block_sem_proximas_etapas_so_para_o_ator() -> None:
     """`for_actor=True` tira "Próximas etapas" do prompt do ator; o verificador continua recebendo."""
-    req = DecisionRequest(ctx=_ctx(), screen=ScreenInput(width=10, height=10, jpeg=None, elements=[], package=None,
-                                                          sensitive=False))
+    req = DecisionRequest(ctx=_ctx(), screen=ScreenInput(width=10, height=10, jpeg=None, elements=[], package=None))
     texto_ator = actor_user_text(req)
     assert "Próximas etapas" not in texto_ator
     texto_verificador = verifier_user_text(_ctx(), "tela", [], None)

@@ -5992,3 +5992,23 @@ evento e leitura. Risco principal: o filtro de conta não confirmada nos consumi
 - **Quando o 31.281 entrar** (passo seguinte, de quem o implementar): `ContasSocial.registrar` (`modules/identity/infrastructure/ponte_igfarm.py`) passa a gravar a conta já como `confirmada`, com `desired_handle` igual à sugestão, `handle` igual ao @ confirmado e `confirmed_at` igual a `criada_em`; o `igfarm_account_id` e a origem "igfarm" vão em `confirmation_evidence`. A conta da ponte é real desde o nascimento (o igfarm já a criou no provedor), então os filtros de "conta não confirmada" do ADR-087 não a excluem.
 - **Decisão do dono pendente:** o ADR-087 só prevê como evidência de confirmação a sessão observada ou a marcação nominal da pessoa. Aceitar a declaração do igfarm (sistema autorizado, com id rastreável) como evidência "declarada" precisa do sim do dono; até lá a ponte segue gravando a conta pelo caminho atual (`add_account`), que não passa por esse ciclo.
 - **Prova (09/10/2026):** `simulated` na SQLite e `real` no IMAP, no @ por IA e na imagem (CHANGELOG de 09/10); o PostgreSQL dirigido da 132 está registrado no mesmo CHANGELOG.
+
+## ADR-089 — A plataforma não esconde tela de ninguém (revoga o contrato C4 do adendo v0.20)
+
+- **Data e autor:** 10/10/2026, decisão do dono ("eu sou o administrador de todas as contas e sei a senha de tudo, essa
+  funcionalidade não faz sentido", "sem exceção nenhuma, essa funcionalidade não é pra existir"). Um teste de login no
+  android-07 parou na tela do código do e-mail e o dono ficou cego, sem prévia, com a janela de 6 dígitos para digitar.
+- **O que existia (C4):** a tela classificada como sensível (campo de senha, desafio, a VM-loja do Google, o trecho em
+  que `type_secret` digitava) virava marcador: prévia sem imagem, `GET /frame` com 404, observação da IA e evidência sem
+  imagem, captura de prévia pausada durante a digitação da credencial.
+- **O que mudou:** tudo isso saiu. `DeviceManager` publica, observa e guarda evidência de qualquer tela; `FrameInfo` e
+  `Frame` perderam `sensitive`; `ScreenInput` perdeu `sensitive`; o trecho sensível do executor e a loja como exceção
+  deixaram de existir. A classificação `UiTree.sensitive` (e a conta travada, ADR-029) continua, mas só para decisões
+  da automação.
+- **Consequência aceita pelo dono:** imagens de tela com campo de senha (mascarado pelo Android, com o último caractere
+  visível por instantes durante a digitação) podem ir à prévia, ao provedor de IA e à evidência guardada; a regra
+  "senha nunca em captura" de `.claude/rules/segredos-e-mundo-real.md` deixa de valer para imagem de tela. O valor da
+  credencial continua só no canal sensível (cofre → driver), fora de log, prompt de texto, evento e Git.
+- **Prova:** `simulated`, `tests/test_previa_sem_tela_escondida.py` (4 testes) e os dirigidos de prévia e observação
+  reescritos; o teste `test_previa_tela_sensivel.py` foi removido junto com a regra que ele provava.
+

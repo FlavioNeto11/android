@@ -10,7 +10,6 @@ valor, não o coloca em exceção, e não registra nem o comprimento.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
@@ -85,35 +84,29 @@ class SensitiveInputChannel:
             raise SensitiveInputUnavailable(
                 "O mascaramento de log do Appium não está ativo; preenchimento de credencial bloqueado.")
 
-        # A captura de PRÉVIA não entra enquanto a credencial é digitada (contrato C4 do adendo v0.20): o Android
-        # mostra o último caractere digitado por um instante, e o teclado destaca a tecla. `call` é o único cabo que
-        # o canal tem para o aparelho, e os dois chamadores (execução e autenticação) já passam `rt.executor.run` —
-        # a marca fica no executor, sem cada chamador precisar lembrar dela. Sem executor (dublê), nada muda.
-        marca = getattr(getattr(call, "__self__", None), "trecho_sensivel", None)
-        with marca() if callable(marca) else contextlib.nullcontext():
-            field = await self._focus_and_clear(call=call, io=io, observe=observe, locate=locate)
+        field = await self._focus_and_clear(call=call, io=io, observe=observe, locate=locate)
 
-            value = secret()
-            try:
-                if not value:
-                    raise SensitiveInputError("Credencial vazia.")
-                await self._type(call=call, io=io, text=value)
-            finally:
-                del value                   # solta a referência assim que possível; sem promessa de zeroização
+        value = secret()
+        try:
+            if not value:
+                raise SensitiveInputError("Credencial vazia.")
+            await self._type(call=call, io=io, text=value)
+        finally:
+            del value                   # solta a referência assim que possível; sem promessa de zeroização
 
-            # `after.password` é SEMPRE verdadeiro aqui — `locate` só devolve campo com esse atributo —, então
-            # incluí-lo anulava a condição inteira e a trava virava código morto. O único sinal que distingue os dois
-            # casos é o texto: com conteúdo, a hierarquia devolve a máscara; vazio, devolve vazio (é o mesmo critério
-            # de `_is_empty`). Sem esta guarda, digitação que não chega ao campo de senha passa despercebida — e o
-            # segredo pode ter ido parar no campo ao lado, em texto claro, e seguir no envio.
+        # `after.password` é SEMPRE verdadeiro aqui — `locate` só devolve campo com esse atributo —, então
+        # incluí-lo anulava a condição inteira e a trava virava código morto. O único sinal que distingue os dois
+        # casos é o texto: com conteúdo, a hierarquia devolve a máscara; vazio, devolve vazio (é o mesmo critério
+        # de `_is_empty`). Sem esta guarda, digitação que não chega ao campo de senha passa despercebida — e o
+        # segredo pode ter ido parar no campo ao lado, em texto claro, e seguir no envio.
+        after = locate(await observe())
+        for _ in range(CONFERENCIAS_DEPOIS_DE_DIGITAR - 1):
+            if after is not None and after.text:
+                break
+            await asyncio.sleep(PAUSA_ENTRE_CONFERENCIAS_S)
             after = locate(await observe())
-            for _ in range(CONFERENCIAS_DEPOIS_DE_DIGITAR - 1):
-                if after is not None and after.text:
-                    break
-                await asyncio.sleep(PAUSA_ENTRE_CONFERENCIAS_S)
-                after = locate(await observe())
-            if after is None or not after.text:
-                raise SensitiveInputError("O campo sensível continuou vazio depois da digitação.")
+        if after is None or not after.text:
+            raise SensitiveInputError("O campo sensível continuou vazio depois da digitação.")
         log.info("entrada sensível concluída no campo %s", field.resource_id or field.class_name)
         return SensitiveInputReceipt(field=field.resource_id or field.class_name)
 

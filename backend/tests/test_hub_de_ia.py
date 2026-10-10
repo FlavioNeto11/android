@@ -38,7 +38,7 @@ from .conftest import CountingProvider, Harness, _dsn_de_teste, make_config
 
 APP = AppContext("qa-messenger", "QA Messenger", "com.pocqa.messenger", ".MainActivity", None, None)
 SCREEN = ScreenInput(width=720, height=1280, jpeg=b"\xff\xd8jpeg", elements=["e1 | Button"],
-                     package="com.pocqa.messenger", sensitive=False)
+                     package="com.pocqa.messenger")
 
 
 def ctx(run_id: str = "r1") -> StepContext:

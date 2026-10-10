@@ -505,10 +505,6 @@ async def frame(request: Request, instance_id: str, mode: str = "thumb") -> Resp
     f = rt.frame
     if f is None:
         raise _err(404, "no_frame", "Ainda não há frame deste aparelho.")
-    if f.sensitive:
-        # Contrato C4: a prévia nunca mostra tela sensível. O marcador existe (tamanho, id para o controle manual),
-        # mas não tem imagem — e a anterior já saiu do ar quando ele foi publicado.
-        raise _err(404, "sensitive_screen", "A tela atual deste aparelho é sensível: a prévia não a mostra.")
     headers = {"X-Frame-Id": f.info.id, "X-Frame-Ts": f.info.ts, "X-Frame-Width": str(f.info.width),
                "X-Frame-Height": str(f.info.height), "X-Frame-Orientation": f.info.orientation,
                "Cache-Control": "no-store", "Access-Control-Expose-Headers": "X-Frame-Id, X-Frame-Ts, X-Frame-Width, X-Frame-Height, X-Frame-Orientation"}

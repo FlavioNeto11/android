@@ -341,7 +341,7 @@ class AnthropicProvider:
         ponto de cache; a imagem e a observação depois. Com a imagem primeiro, nada depois do system podia ser
         cacheado: a imagem muda a cada decisão, e o prefixo cacheável termina no primeiro byte que muda."""
         content: list[dict[str, object]] = [{"type": "text", "text": estavel, "cache_control": {"type": "ephemeral"}}]
-        if screen.jpeg and not screen.sensitive:
+        if screen.jpeg:
             content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                                          "data": base64.standard_b64encode(screen.jpeg).decode()}})
         content.append({"type": "text", "text": volatil})
@@ -350,7 +350,7 @@ class AnthropicProvider:
     @staticmethod
     def _screen_content(screen: ScreenInput, text: str) -> list[dict[str, Any]]:
         content: list[dict[str, Any]] = []
-        if screen.jpeg and not screen.sensitive:
+        if screen.jpeg:
             content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                                          "data": base64.standard_b64encode(screen.jpeg).decode()}})
         content.append({"type": "text", "text": text})
@@ -504,7 +504,7 @@ class AnthropicProvider:
     async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
         funcao = "escalation" if req.tier > 0 else "decide"
         model = self.models[funcao]
-        with_image = bool(req.screen.jpeg) and not req.screen.sensitive
+        with_image = bool(req.screen.jpeg)
         f = self._da_funcao(funcao)
         if f is not None and f.cache_da_etapa:
             content = self._conteudo_da_etapa(req.screen, *prompts.actor_user_partes(req))
@@ -529,10 +529,9 @@ class AnthropicProvider:
     # ------------------------------------------------------------------ verificação
     async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
         s = req.screen
-        with_image = bool(s.jpeg) and not s.sensitive
-        desc = ("tela sensível (imagem omitida)" if s.sensitive
-                else f"app em primeiro plano: {s.package or 'desconhecido'}; "
-                     + (f"imagem {s.width}x{s.height}" if with_image else "imagem não enviada (julgue pela lista de elementos)"))
+        with_image = bool(s.jpeg)
+        desc = (f"app em primeiro plano: {s.package or 'desconhecido'}; "
+                + (f"imagem {s.width}x{s.height}" if with_image else "imagem não enviada (julgue pela lista de elementos)"))
         text = prompts.verifier_user_text(req.ctx, desc, s.elements, req.ctx.required_delivery_level, req.facts,
                                          req.dicas_da_tela)
         escalado = bool(getattr(req, "escalate", False))
