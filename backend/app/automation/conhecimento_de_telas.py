@@ -266,8 +266,8 @@ def sufixos(tree: UiTree, pacote: str | None = None) -> list[str]:
 
 
 def tela_protegida(tree: UiTree) -> bool:
-    """Onde nada aprendido vale e nada se aprende (ADR-054): tela sensível (senha, verificação, declarada pelo parque,
-    aparelho-loja), campo de senha, ou texto de verificação — conta travada ou pedido de código, este MESMO sem campo
+    """Onde nada aprendido vale e nada se aprende (ADR-054): tela sensível (senha, verificação, declarada pelo parque),
+    campo de senha, ou texto de verificação — conta travada ou pedido de código, este MESMO sem campo
     de texto (aqui a dúvida protege: a regra aprendida só deixa de valer)."""
     if tree.sensitive or tree.conta_travada is not None or any(e.password for e in tree.elements):
         return True

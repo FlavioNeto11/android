@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o critério "aparelho-loja" da tela sensível sai do código (31.308, ADR-089)
+
+- `automation/hierarchy.py`: removidos `MOTIVO_LOJA` e o parâmetro `sempre_sensivel` de `parse_hierarchy`, sem chamador desde o ADR-089 (o
+  `DeviceManager` só passa `regras`). Comportamento igual: a tela da loja já não era sensível por definição. `docs/evidencias.md` e o docstring de
+  `tela_protegida` ajustados.
+- Testes: `test_sensitive_input.py` perdeu a prova do critério revogado (`test_toda_tela_da_vm_loja_e_sensivel`, agora
+  `test_a_tela_da_vm_loja_nao_e_sensivel_por_definicao`) e o caso `loja` do teste de intervenção humana; os demais ficaram. Não mexi em
+  `_motivo_da_imagem` (`sensivel`): a pergunta ao dono está aberta.
+- Prova `simulated`: 1198 dirigidos (parse_hierarchy, conhecimento de telas, arquitetura), catracas e mypy 257/257, `docs-check`. Sem mudança de comportamento.
+
 ## 2026-10-10 — as Execuções filtram e contam as que têm etapa descoberta pela IA (31.306, adendo v1.135)
 
 - `features/runs/filtroExecucoes.ts`, `RunsPage.tsx`, `api/types.ts` (`RunSummary.etapas_exploratorias`), `lib/rotas.ts`: a barra da lista

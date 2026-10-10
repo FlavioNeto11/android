@@ -16,7 +16,7 @@ from xml.sax.saxutils import quoteattr
 import pytest
 
 from app.automation.appium_server import LOG_FILTER_RULES
-from app.automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, parse_hierarchy
+from app.automation.hierarchy import RegraDeTelaSensivel, parse_hierarchy
 from app.security.redaction import MASK, RedactingFilter, redact, redact_obj
 from app.security.sensitive_input import SensitiveInputChannel, SensitiveInputError, SensitiveInputUnavailable
 
@@ -394,12 +394,13 @@ def test_pagina_da_microsoft_que_segura_a_conta_e_sensivel_mesmo_sem_campo(frase
     assert tela.conta_travada is not None and tela.conta_travada.subtipo == "conta_travada"
 
 
-def test_toda_tela_da_vm_loja_e_sensivel() -> None:
-    """Na loja, a conta Google do parque está em toda tela — não há critério de conteúdo que valha a discussão."""
-    tela = parse_hierarchy(_tela(_no(text="Play Store")), sempre_sensivel=MOTIVO_LOJA)
-    assert tela.sensitive is True and tela.sensitive_reason == MOTIVO_LOJA
-    # Inclusive quando a hierarquia nem veio: XML quebrado não pode ser a brecha por onde a imagem sai.
-    assert parse_hierarchy("<<<não é xml", sempre_sensivel=MOTIVO_LOJA).sensitive is True
+def test_a_tela_da_vm_loja_nao_e_sensivel_por_definicao() -> None:
+    """ADR-089 (31.308): a loja deixou de ser exceção. A tela comum da Play Store não é sensível, e a hierarquia que
+    nem veio (XML quebrado) também não vira sensível por si só."""
+    tela = parse_hierarchy(_tela(_no(text="Play Store")))
+    assert tela.sensitive is False and tela.sensitive_reason is None
+    quebrada = parse_hierarchy("<<<não é xml")
+    assert quebrada.sensitive is False and quebrada.elements == []
 
 
 def test_app_declara_a_propria_tela_sensivel() -> None:
@@ -414,11 +415,11 @@ def test_app_declara_a_propria_tela_sensivel() -> None:
     assert outro.sensitive is False
 
 
-def test_tela_declarada_omite_a_imagem_mas_NAO_para_a_etapa() -> None:
+def test_tela_declarada_e_sensivel_mas_NAO_para_a_etapa() -> None:
     """A distinção que o critério novo obriga a fazer, e a regressão que ela evita.
 
-    Enquanto "sensível" era só campo de senha, omitir a imagem e parar a etapa pedindo uma pessoa eram a mesma
-    coisa. Agora não: se uma tela declarada em `sensitive_screens` (ou qualquer tela da VM-loja) parasse a etapa,
+    Enquanto "sensível" era só campo de senha, tratar a tela como sensível e parar a etapa pedindo uma pessoa eram a
+    mesma coisa. Agora não: se uma tela declarada em `sensitive_screens` parasse a etapa,
     o executor inventaria uma falha de autenticação e marcaria o perfil como `auth_required` TODA VEZ que a IA
     passasse por ali — e o autenticador automático dispararia atrás de um login que nunca foi pedido.
     """
@@ -426,14 +427,12 @@ def test_tela_declarada_omite_a_imagem_mas_NAO_para_a_etapa() -> None:
 
     regra = RegraDeTelaSensivel(package="com.exemplo.app", resource_ids=(":id/cpf",), why="dados do titular")
     declarada = parse_hierarchy(_tela(_no(rid="com.exemplo.app:id/cpf", text="123.456.789-00")), regras=(regra,))
-    loja = parse_hierarchy(_tela(_no(text="Play Store")), sempre_sensivel=MOTIVO_LOJA)
     desafio = parse_hierarchy(_tela(_no(text="Código de segurança"), _no("android.widget.EditText", rid="a:id/c")))
     senha = parse_hierarchy(_tela(
         _no("android.widget.EditText", rid="a:id/p").replace("bounds=", 'password="true" bounds=')))
 
-    assert declarada.sensitive and loja.sensitive                  # a imagem não sai em nenhuma das quatro
-    assert pede_intervencao_humana(declarada) is False             # ...mas só duas param a etapa
-    assert pede_intervencao_humana(loja) is False
+    assert declarada.sensitive                                     # sensível só para as decisões da automação
+    assert pede_intervencao_humana(declarada) is False             # ...e só senha e desafio param a etapa
     assert pede_intervencao_humana(desafio) is True
     assert pede_intervencao_humana(senha) is True
     assert pede_intervencao_humana(parse_hierarchy(_tela(_no(text="Tela comum")))) is False

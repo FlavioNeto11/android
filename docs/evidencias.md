@@ -158,7 +158,7 @@ evidência e na mensagem da etapa; **não** vai ao modelo):
 | declarado por app | `config.yaml: sensitive_screens` — por pacote, resource-id ou texto |
 
 O terceiro critério de antes, `aparelho-loja` (toda tela da VM-loja), deixou de ser aplicado no ADR-089: a loja não é
-mais exceção, e o parâmetro `sempre_sensivel` de `parse_hierarchy` ficou sem chamador.
+mais exceção, e o parâmetro `sempre_sensivel` de `parse_hierarchy` e o `MOTIVO_LOJA` foram removidos (31.308).
 
 Declarar uma tela por app, em `config.yaml`:
 
@@ -173,6 +173,6 @@ sensitive_screens:
 Isto existe por causa do catálogo de apps: o parque passa a operar aplicativos que ninguém analisou, e o critério
 genérico não tem como saber que a tela de "dados da conta" daquele app tem documento. Quem cadastrou o app sabe.
 
-> **Uma leitura, um lugar.** Toda hierarquia passa por `DeviceManager.arvore()`, que é quem aplica as regras e o
-> `sempre_sensivel` da VM-loja. Foi assim que o critério antigo ficou preso a `password=true`: cada chamador
+> **Uma leitura, um lugar.** Toda hierarquia passa por `DeviceManager.arvore()`, que é quem aplica as regras
+> declaradas (`sensitive_screens`). Foi assim que o critério antigo ficou preso a `password=true`: cada chamador
 > novo de `parse_hierarchy` nascia sem o resto, e ninguém percebia.

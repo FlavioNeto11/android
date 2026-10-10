@@ -136,7 +136,6 @@ def eh_campo_de_texto(classe: str) -> bool:
 
 MOTIVO_SENHA = "campo de senha"
 MOTIVO_DESAFIO = "desafio de verificação (2FA/código de acesso)"
-MOTIVO_LOJA = "aparelho-loja: a tela mostra a conta Google do parque"
 
 
 @dataclass(slots=True, frozen=True)
@@ -593,24 +592,23 @@ def _janela_do_dump(root: ET.Element) -> tuple[int, int, int, int] | None:
 
 
 def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
-                    regras: tuple[RegraDeTelaSensivel, ...] = (), sempre_sensivel: str | None = None) -> UiTree:
-    """`regras` e `sempre_sensivel` são os dois critérios de "tela sensível" que faltavam (achado #127).
+                    regras: tuple[RegraDeTelaSensivel, ...] = ()) -> UiTree:
+    """`regras` é o critério de "tela sensível" declarado por app em `config.yaml: sensitive_screens` (achado #127),
+    além do campo de senha e do desafio de verificação.
 
-    Antes havia um só: `password=true` num campo. Qualquer outra tela — desafio de 2FA, dados da conta, conversa
-    de terceiro, tela da VM-loja com a conta Google — virava JPEG em `data/evidence` e imagem no corpo da
-    requisição ao provedor de IA. `sempre_sensivel` é o que a VM-loja usa: lá TODA tela é da conta Google do
-    parque, e não há critério de conteúdo que valha a pena discutir.
+    Desde o ADR-089 a classificação serve só às DECISÕES da automação (não agir por receita, detectar conta travada);
+    nenhuma imagem deixa de sair por causa dela. A tela da VM-loja deixou de ser sensível por definição: o critério
+    `sempre_sensivel` (31.308) não tem mais chamador nem motivo.
     """
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
-        return UiTree(elements=[], packages=[], sensitive=bool(sempre_sensivel),
-                      sensitive_reason=sempre_sensivel)
+        return UiTree(elements=[], packages=[], sensitive=False, sensitive_reason=None)
     elements: list[UiElement] = []
     packages: list[str] = []
     truncada = False
-    sensitive = bool(sempre_sensivel)
-    motivo: str | None = sempre_sensivel
+    sensitive = False
+    motivo: str | None = None
     # O pedido de CÓDIGO só conta quando há ONDE digitá-lo. Sem esta condição, a linha "Autenticação de dois fatores"
     # do MENU de configurações marcaria a tela inteira como sensível — e o executor pararia a etapa pedindo
     # intervenção humana no meio de uma navegação comum. Medido no desenho, não depois. A conta travada não tem essa
