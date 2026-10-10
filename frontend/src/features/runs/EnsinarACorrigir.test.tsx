@@ -10,7 +10,7 @@ import { useToastStore } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { RUN_ID, makeInstance, makeRunDetail } from '../../test/fixtures';
 import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { EnsinarACorrigir, intencaoDaCorrecao } from './EnsinarACorrigir';
+import { AtalhoParaEnsinar, EnsinarACorrigir, intencaoDaCorrecao } from './EnsinarACorrigir';
 
 /**
  * 31.111 F5 (adendo v1.75): "Ensinar a corrigir" na etapa que falhou. Pede o controle do aparelho da etapa só depois da
@@ -405,4 +405,90 @@ describe('31.116 parte 2 (adendo v1.80): a intenção sugerida pelo diagnóstico
     await abrirFormulario();
     await waitFor(() => expect(text()).toContain('Causa provável: o app mudou de versão.'));
   });
+});
+
+describe('31.313 (adendo v1.138): ensinar onde a exploração da IA parou', () => {
+  const PEDIDO = 'Crie uma regra no Outlook para a caixa de Fulana Exemplo';
+  const FRASE = 'Ensinar à IA como fazer: criar regra de e-mail';
+  const SUGESTAO_EXPLORACAO = {
+    intent: FRASE,
+    pergunta: 'A IA explorou e parou no teto da exploração sem chegar lá. Mostre, a partir desta tela, o caminho toque a toque: ensinado uma vez, ele serve a todas as personas.',
+    rotulo: null, causa: null, exploracao: true, parou_no_teto: true,
+  };
+  const campo = () => byRole('textbox', /O que você vai ensinar/) as HTMLTextAreaElement;
+  const exploratoria = (status: StepStatus): Step => ({ ...etapa(status), key: 'explorar_criar_regra_email', title: PEDIDO, goal: PEDIDO, exploratoria: true });
+  const montarExploratoria = async (status: StepStatus = 'failed') => {
+    await act(async () => root.render(<EnsinarACorrigir detail={{ id: RUN_ID }} step={exploratoria(status)} />));
+    await click(byRole('button', /^Ensinar a corrigir$/));
+    await waitFor(() => expect(text()).toContain('Assumir o controle e abrir o treino'));
+  };
+
+  it('usa o intent e a pergunta do servidor, diz que parou no teto e não manda intent se o texto é a sugestão', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json(SUGESTAO_EXPLORACAO));
+    await montarExploratoria('uncertain');
+    await waitFor(() => expect(campo().value).toBe(FRASE));
+    expect(text(container.querySelector('[aria-label="Exploração da IA"]') as HTMLElement)).toContain('parou no teto da exploração');
+    expect(text()).toContain('O que mostrar: A IA explorou e parou no teto');
+    await click(await botaoPronto(/^Assumir o controle e abrir o treino$/));
+    await waitFor(() => expect(backend.callsTo('POST', /\/from-run$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /\/from-run$/)[0]!.body).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1' });
+  });
+
+  it('o pedido de origem nunca entra no campo nem no corpo, nem quando a sugestão não chega', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json(null, 404));
+    await montarExploratoria();
+    await waitFor(() => expect(campo().getAttribute('aria-busy')).toBeNull());
+    expect(campo().value).toBe('');                                       // sem a frase do servidor o campo fica vazio, sem o título da etapa
+    expect(container.textContent).not.toContain(PEDIDO);
+    await click(await botaoPronto(/^Assumir o controle e abrir o treino$/));
+    await waitFor(() => expect(backend.callsTo('POST', /\/from-run$/)).toHaveLength(1));
+    const corpo = backend.callsTo('POST', /\/from-run$/)[0]!.body as Record<string, unknown>;
+    expect(corpo).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1' });
+    expect(JSON.stringify(corpo)).not.toContain('Fulana');
+  });
+
+  it('exploração que falhou sem teto diz "não chegou lá"; etapa comum não ganha o aviso', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json({ ...SUGESTAO_EXPLORACAO, parou_no_teto: false }));
+    await montarExploratoria();
+    await waitFor(() => expect(campo().value).toBe(FRASE));
+    expect(text(container.querySelector('[aria-label="Exploração da IA"]') as HTMLElement)).toContain('não chegou lá');
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    backend.on('GET', /ensino-sugerido$/, () => json({ intent: 'Corrigir a etapa «Abrir o app»', pergunta: null, rotulo: null }));
+    await montar('failed');
+    await abrirFormulario();
+    await waitFor(() => expect(campo().value).toBe('Corrigir a etapa «Abrir o app»'));
+    expect(container.querySelector('[aria-label="Exploração da IA"]')).toBeNull();
+  });
+
+  it('a frase do servidor reescrita pela pessoa vai como intent', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json(SUGESTAO_EXPLORACAO));
+    await montarExploratoria();
+    await waitFor(() => expect(campo().value).toBe(FRASE));
+    await setValue(campo(), 'Ensinar à IA a criar a regra pela tela de filtros');
+    await click(await botaoPronto(/^Assumir o controle e abrir o treino$/));
+    await waitFor(() => expect(backend.callsTo('POST', /\/from-run$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /\/from-run$/)[0]!.body).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1', intent: 'Ensinar à IA a criar a regra pela tela de filtros' });
+  });
+});
+
+it('31.313: o atalho da etapa exploratória não leva o pedido (título da etapa) ao nome do botão nem ao título do diálogo', async () => {
+  const pedido = 'Crie uma regra no Outlook para a caixa de Fulana Exemplo';
+  backend.on('GET', /ensino-sugerido$/, () => json(null, 404));
+  const exploratoria: Step = { ...etapa('failed'), key: 'explorar_criar_regra_email', title: pedido, goal: pedido, exploratoria: true };
+  await act(async () => root.render(<AtalhoParaEnsinar detail={{ id: RUN_ID }} step={exploratoria} />));
+  const botao = byRole('button', /^Ensinar a corrigir a exploração da IA em android-01$/);
+  expect(botao.getAttribute('aria-label')).not.toContain('Fulana');
+  await click(botao);
+  await waitFor(() => expect(document.body.textContent).toContain('Ensinar a corrigir: onde a IA parou'));
+  expect(document.body.textContent).not.toContain('Fulana');
+  // A etapa comum segue com o título dela.
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await act(async () => root.render(<AtalhoParaEnsinar detail={{ id: RUN_ID }} step={etapa('failed')} />));
+  expect(byRole('button', /^Ensinar a corrigir a etapa «Abrir o app» em android-01$/)).toBeTruthy();
 });

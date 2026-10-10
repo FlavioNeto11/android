@@ -6,7 +6,7 @@
  * 31.116: o diagnóstico da falha (`origin.diagnostico`) aparece aqui, acima do contexto: a causa provável em palavras, o que
  * mostrar ao gravar e os fatos que sustentam a hipótese. É uma sugestão: não mexe na intenção da sessão.
  */
-import { Wrench } from 'lucide-react';
+import { Compass, Wrench } from 'lucide-react';
 import { evidenceUrl } from '../../api/client';
 import type { TrainingDiagnostico, TrainingOrigin } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -27,9 +27,15 @@ export function SeloDeOrigem({ origin, aoAbrir }: { origin: TrainingOrigin; aoAb
   return (
     <a href={href} className={styles.seloLink} title={`Abrir a execução ${origin.run_id} (etapa ${origin.step_key})`}
        onClick={aoAbrir ? (e) => { e.preventDefault(); aoAbrir(href); } : undefined}>
-      <Badge size="sm" tone="info" icon={Wrench}>
-        corrige uma falha<span className="sr-only"> da etapa {origin.step_key} da execução {origin.run_id}: abrir a execução</span>
-      </Badge>
+      {origin.exploracao ? (
+        <Badge size="sm" tone="info" icon={Compass}>
+          ensina onde a IA parou<span className="sr-only"> na exploração da etapa {origin.step_key} da execução {origin.run_id}: abrir a execução</span>
+        </Badge>
+      ) : (
+        <Badge size="sm" tone="info" icon={Wrench}>
+          corrige uma falha<span className="sr-only"> da etapa {origin.step_key} da execução {origin.run_id}: abrir a execução</span>
+        </Badge>
+      )}
     </a>
   );
 }
@@ -74,6 +80,11 @@ export function OrigemDoTreino({ origin, aoAbrirExecucao }: { origin: TrainingOr
         Etapa <span className="mono">{origin.step_id}</span>
         {origin.attempt_id ? <> · tentativa <span className="mono">{origin.attempt_id}</span></> : null}
       </p>
+      {origin.exploracao ? (
+        <p className={styles.hint} role="note">
+          A IA explorou o app para este pedido e não chegou lá. O que você ensina aqui parte da tela em que ela parou e serve a todas as personas.
+        </p>
+      ) : null}
       {origin.motivo
         ? <p className={styles.hint}>Motivo: {origin.motivo}</p>
         : <p className={styles.hint}>A etapa já não existe (a limpeza de execuções antigas a apagou): só os ids ficaram como rótulo.</p>}
@@ -97,7 +108,7 @@ export function OrigemDoTreino({ origin, aoAbrirExecucao }: { origin: TrainingOr
             ) : null}
             {ctx.esperado ? (
               <p className={styles.hint}>
-                A etapa esperava: {ctx.esperado.description || ctx.esperado.value || ctx.esperado.kind}
+                {origin.exploracao ? 'Pedido de origem' : 'A etapa esperava'}: {ctx.esperado.description || ctx.esperado.value || ctx.esperado.kind}
                 {ctx.esperado.description && ctx.esperado.value ? <> (<span className="mono">{ctx.esperado.value}</span>)</> : null}
               </p>
             ) : null}

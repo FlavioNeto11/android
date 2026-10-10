@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — "Ensinar a corrigir" na etapa em que a exploração da IA parou (31.313, adendo v1.138)
+
+- `features/runs/EnsinarACorrigir.tsx`, `features/training/OrigemDoTreino.tsx`, `api/types.ts` (`EnsinoSugerido.exploracao`/`parou_no_teto`,
+  `TrainingOrigin.exploracao`): na etapa exploratória que falhou ou parou, o formulário usa o `intent` e a `pergunta` que o servidor
+  manda (`GET .../ensino-sugerido`), avisa que a IA explorou e parou no teto (ou não chegou lá) e que o ensino serve a todas as
+  personas. O pedido de origem **nunca** entra no campo de intenção: o título da etapa exploratória não vira texto padrão (sem a
+  sugestão o campo fica vazio e o backend usa a intenção dele), e o nome do atalho e o título do diálogo deixam de repetir o
+  título. A sessão de ensino com `origin.exploracao` leva o selo "ensina onde a IA parou" e mostra o pedido de origem, com o dado
+  da persona mascarado, como "Pedido de origem" no contexto da falha.
+- Prova `simulated`: `features/runs/EnsinarACorrigir.test.tsx` (5 testes novos 31.313: intent e pergunta do servidor, pedido fora
+  do campo e do corpo, "não chegou lá" e etapa comum, frase reescrita, atalho sem o pedido) e `features/training/OrigemDaExploracao.test.tsx`
+  (2 testes); 387 dirigidos de runs e training, tsc e build. Percurso no navegador contra o backend isolado do worktree, com a execução e
+  a sugestão reescritas no navegador (o harness não tem exploração): aviso de teto, campo com a frase do servidor, pedido fora do
+  formulário e do título. **Real no central: não executada** (a 31.312 só chega com o deploy; o ensino de uma exploração real
+  precisa do aparelho).
+
 ## 2026-10-10 — o login de app com `sessao.yaml` nunca vai ao ator (12.3, parte 1: a garantia)
 
 - **Catraca nova** `backend/tests/test_login_gerenciado_fora_do_ator.py` (entra em `tests/catracas.txt`): todo pacote declarado com `sessao.yaml` é

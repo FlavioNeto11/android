@@ -2229,6 +2229,8 @@ export interface TrainingOrigin {
   attempt_id: string | null;
   /** O motivo literal do executor lido AGORA; `null` se a limpeza de execuções velhas apagou a etapa. */
   motivo: string | null;
+  /** 31.313 (adendo v1.138): a sessão nasceu de uma exploração que não chegou lá; só vem quando verdadeiro. */
+  exploracao?: boolean;
   context?: TrainingOriginContext;
   /** 31.116 (F4): o diagnóstico determinístico da falha. Ausente ou `null` em backend anterior e na sessão sem tentativa lida. */
   diagnostico?: TrainingDiagnostico | null;
@@ -2270,6 +2272,11 @@ export interface EnsinoSugerido {
   pergunta: string | null;
   rotulo: string | null;
   causa?: string | null;
+  /** 31.313 (adendo v1.138): a etapa é de EXPLORAÇÃO (a IA a descobriu e não chegou lá). `intent` já vem como "Ensinar à IA como fazer: <frase da chave>",
+   *  nunca com o pedido. Ausente em etapa comum e em backend anterior. */
+  exploracao?: boolean;
+  /** 31.313: só com `exploracao`: a exploração parou no teto (de ações, chamadas ou custo), em vez de falhar. */
+  parou_no_teto?: boolean;
 }
 
 export interface TrainingFromRunBody {

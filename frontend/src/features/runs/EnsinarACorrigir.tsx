@@ -142,7 +142,10 @@ interface FormularioProps {
 
 /** O formulário em si: monta quando se abre (as leituras começam aí) e não guarda nada quando se fecha. */
 export function FormularioDeEnsino({ detail, step, id: formId, onClose }: FormularioProps) {
-  const padrao = intencaoDaCorrecao(step.title);
+  // 31.313: o título da etapa exploratória é o pedido (pode ter dado de persona): ele NUNCA vira texto do campo. Sem a
+  // sugestão do servidor (a frase fechada da chave), o campo fica vazio e o backend usa a intenção dele.
+  const exploratoria = step.exploratoria === true;
+  const padrao = exploratoria ? '' : intencaoDaCorrecao(step.title);
   const [texto, setTexto] = useState(padrao);
   const [sugestao, setSugestao] = useState<EnsinoSugerido | null>(null);
   const [lendoSugestao, setLendoSugestao] = useState(false);
@@ -232,7 +235,8 @@ export function FormularioDeEnsino({ detail, step, id: formId, onClose }: Formul
         ...(intencao && intencao !== base ? { intent: intencao } : {}),
         ...(precisaEscolher && escolhaValida ? { profile_id: quem } : {}),
       });
-      toast({ tone: 'success', title: 'Treino aberto a partir da falha', message: `Ensine a tarefa em ${aparelho}; a gravação segue a etapa «${step.title}».` });
+      toast({ tone: 'success', title: deExploracao ? 'Treino aberto a partir da exploração' : 'Treino aberto a partir da falha',
+              message: deExploracao ? `Mostre o caminho em ${aparelho}; a gravação segue a etapa explorada.` : `Ensine a tarefa em ${aparelho}; a gravação segue a etapa «${step.title}».` });
       onClose('abriu');
       useUiStore.getState().openFocus(aparelho);
     } catch (e) {
@@ -244,6 +248,7 @@ export function FormularioDeEnsino({ detail, step, id: formId, onClose }: Formul
   };
 
   const causa = sugestao ? linhaDaCausa(sugestao) : null;
+  const deExploracao = exploratoria || sugestao?.exploracao === true;
   const dica = lendoSugestao ? 'Lendo a sugestão…' : sugestao && (causa || sugestao.pergunta) ? (
     <>
       {causa ? <>{causa} </> : null}
@@ -265,10 +270,17 @@ export function FormularioDeEnsino({ detail, step, id: formId, onClose }: Formul
         Nada roda sozinho.
       </p>
       <AvisoDeEtapaEnsinada salvas={salvas} emAberto={emAberto} abrirSessao={setLendoSessao} />
+      {deExploracao ? (
+        <p className={styles.mostrar} role="note" aria-label="Exploração da IA">
+          <strong>A IA explorou este pedido e {sugestao?.parou_no_teto ? 'parou no teto da exploração' : 'não chegou lá'}.</strong>{' '}
+          Ensine o caminho aqui; ensinado uma vez, ele serve a todas as personas. O pedido de origem fica no contexto da falha, no treino, e não entra neste campo.
+        </p>
+      ) : null}
       {sugestao?.pergunta ? <p className={styles.mostrar}><strong>O que mostrar:</strong> {sugestao.pergunta}</p> : null}
       <Field label="O que você vai ensinar?" hint={dica}>
         {({ id, describedBy }) => (
           <TextArea id={id} aria-describedby={describedBy} aria-busy={lendoSugestao || undefined} rows={2} value={texto} maxLength={400}
+                    placeholder={deExploracao && !texto ? 'Diga em uma frase o que vai ensinar' : undefined}
                     onChange={(e) => { editou.current = true; setTexto(e.target.value.replace(/\s*\n\s*/g, ' ')); }}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
         )}
@@ -314,7 +326,11 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
                 aria-controls={aberto ? formId : undefined}>
           Ensinar a corrigir
         </Button>
-        <span className={styles.rotulo}>Você refaz a tarefa em {aparelho} e o treino fica ligado a esta etapa.</span>
+        <span className={styles.rotulo}>
+          {step.exploratoria === true
+            ? `Você mostra o caminho em ${aparelho}, a partir da tela em que a IA parou; o treino fica ligado a esta etapa.`
+            : `Você refaz a tarefa em ${aparelho} e o treino fica ligado a esta etapa.`}
+        </span>
       </div>
       {aberto ? (
         <FormularioDeEnsino id={formId} detail={detail} step={step}
@@ -338,11 +354,13 @@ export function AtalhoParaEnsinar({ detail, step }: { detail: Pick<RunDetail, 'i
   return (
     <>
       <Button ref={botao} size="sm" variant="outline" icon={Wrench} onClick={() => setAberto(true)}
-              label={`Ensinar a corrigir a etapa «${step.title}» em ${step.instance_id}`}>
+              label={step.exploratoria === true
+                ? `Ensinar a corrigir a exploração da IA em ${step.instance_id}`   // 31.313: o título da etapa é o pedido, que pode ter dado de persona
+                : `Ensinar a corrigir a etapa «${step.title}» em ${step.instance_id}`}>
         Ensinar a corrigir
       </Button>
       {aberto ? (
-        <Dialog open onClose={() => fechar('cancelou')} title={`Ensinar a corrigir: ${step.title}`} icon={Wrench} size="md">
+        <Dialog open onClose={() => fechar('cancelou')} title={step.exploratoria === true ? 'Ensinar a corrigir: onde a IA parou' : `Ensinar a corrigir: ${step.title}`} icon={Wrench} size="md">
           <FormularioDeEnsino detail={detail} step={step} onClose={fechar} />
         </Dialog>
       ) : null}
