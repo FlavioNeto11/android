@@ -5,6 +5,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 
 ## Onde estamos
 
+- **31.288 pronto no branch `fix/31-288-testemunha-da-purga` (10/10/2026), ainda não na main nem implantado.** A testemunha da purga do curador percorre `events` por `ts` em blocos (K-110) em vez do `MIN(ts)` que lia as ~32 mil linhas sem execução com o lock do banco. `simulated`: 7 testes novos mais a bateria dirigida; `not_run`: o travamento real (só se prova no central, com as pilhas do vigia do laço). Sem migração.
 - **Deploys 67, 68 e 69 no ar (10/10/2026, central `6536ad04d6c99e`, migração 133; sem tag).** Feitos de madrugada por outras sessões, com `PularFrontend` e `SemTag`; a linha de cada um está em `data/deploys.jsonl`.
   - 67: 00:33:33Z, `7d187acb` → `972633a7` (egresso da ponte confirma o aparelho da própria persona), backup `20261009-213213` (do ensaio), 72,7 s.
   - 68: 02:16:41Z, `972633a7` → `9ad2907f` (ADR-089, a plataforma não esconde tela de ninguém), backup `20261009-231605` (do ensaio), 32,2 s.

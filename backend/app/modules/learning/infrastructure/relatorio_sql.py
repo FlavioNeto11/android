@@ -54,6 +54,8 @@ _INTERVENCOES_LIGADAS = (SignalKind.TOMOU_CONTROLE.value, SignalKind.TELA_DESCON
 _LOTE = 400
 #: Tentativas lidas por vez ao procurar o começo da janela da reincidência (o app sai do pacote, filtrado aqui).
 _LOTE_DA_JANELA = 100
+#: 31.288: linhas de `events` lidas por bloco ao procurar a testemunha da purga.
+BLOCO_DA_TESTEMUNHA = 500
 
 
 def _segundos(inicio: str | None, fim: str | None) -> float | None:
@@ -307,12 +309,34 @@ class FontesDeFalhaSql:
         """O evento SEM execução mais antigo. A purga de logs apaga `events` e `ai_calls` com o mesmo corte, e só
         poupa evento de execução ainda aberta — por isso só os sem execução servem (e existem todo dia: aparelho,
         worker, controle)."""
-        row = self._db.one("SELECT MIN(ts) AS primeiro FROM events WHERE run_id IS NULL")
-        bruto = linhas.texto_ou_nulo(row, "primeiro") if row else None
+        bruto = self._primeiro_evento_sem_execucao()
         try:
             return parse_iso(bruto) if bruto else None
         except ValueError:
             return None
+
+    def _primeiro_evento_sem_execucao(self) -> str | None:
+        """31.288: percorre `events` na ordem de `ts` (índice `idx_events_ts`) em blocos pequenos e para no primeiro sem
+        execução. O `SELECT MIN(ts) ... WHERE run_id IS NULL` do SQLite escolhia o índice de `run_id`, lia as ~30 mil
+        linhas sem execução e ia à tabela buscar o `ts` de cada uma: com o disco frio e o host carregado levou 41 s com
+        o lock do banco na mão (o laço de eventos, que espera esse lock, ficou sem batida; 09/10 15:55Z e 16:51Z). Aqui
+        o caminho é o mesmo nos dois dialetos, custa algumas páginas, e o lock é solto entre os blocos."""
+        depois_de: tuple[str, int] | None = None
+        while True:
+            if depois_de is None:
+                bloco = self._db.query("SELECT id, ts, run_id FROM events ORDER BY ts, id LIMIT ?",
+                                       (BLOCO_DA_TESTEMUNHA,))
+            else:
+                bloco = self._db.query(
+                    "SELECT id, ts, run_id FROM events WHERE ts > ? OR (ts = ? AND id > ?) ORDER BY ts, id LIMIT ?",
+                    (depois_de[0], depois_de[0], depois_de[1], BLOCO_DA_TESTEMUNHA))
+            for r in bloco:
+                if r["run_id"] is None:
+                    return linhas.texto_ou_nulo(r, "ts")
+            if len(bloco) < BLOCO_DA_TESTEMUNHA:
+                return None
+            ultimo = bloco[-1]
+            depois_de = (linhas.texto(ultimo, "ts"), linhas.inteiro(ultimo, "id"))
 
     # ================================================================== denominador da taxa
     def elegiveis(self, desde: str, ate: str, *, simulados: bool) -> dict[tuple[str, str], int]:
