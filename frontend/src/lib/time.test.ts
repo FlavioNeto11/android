@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ageMs, computeServerOffset, duracaoHumana, formatDuration, formatQuando, formatSpan, tempoRelativo } from './time';
+import { ageMs, computeServerOffset, duracaoHumana, formatClock, formatClockComFuso, formatDuration, formatQuando, formatSpan, rotuloDoFuso, tempoRelativo } from './time';
 
 describe('computeServerOffset', () => {
   it('calcula servidor − local', () => {
@@ -92,5 +92,21 @@ describe('formatQuando — o dia sempre aparece quando não é hoje', () => {
   it('sem instante válido: travessão', () => {
     expect(formatQuando(null, agora)).toBe('—');
     expect(formatQuando('lixo', agora)).toBe('—');
+  });
+});
+
+describe('fuso à vista (31.294)', () => {
+  it('rotuloDoFuso: diferença de UTC do navegador naquele instante, no formato UTC±h[:mm]', () => {
+    const iso = '2026-10-10T10:00:00Z';
+    expect(rotuloDoFuso(iso)).toMatch(/^(UTC|UTC[+-]\d{1,2}(:\d{2})?)$/);
+    const min = -new Date(iso).getTimezoneOffset();
+    expect(rotuloDoFuso(iso)).toBe(min === 0 ? 'UTC' : `UTC${min < 0 ? '-' : '+'}${Math.floor(Math.abs(min) / 60)}${Math.abs(min) % 60 ? `:${String(Math.abs(min) % 60).padStart(2, '0')}` : ''}`);
+  });
+
+  it('formatClockComFuso: a mesma hora do formatClock, com o fuso entre parênteses; sem instante, traço', () => {
+    const iso = '2026-10-10T10:00:19Z';
+    expect(formatClockComFuso(iso)).toBe(`${formatClock(iso)} (${rotuloDoFuso(iso)})`);
+    expect(formatClockComFuso(null)).toBe('—');
+    expect(formatClockComFuso('lixo')).toBe('—');
   });
 });

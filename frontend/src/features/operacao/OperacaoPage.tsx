@@ -14,7 +14,7 @@ import { useIntervaloVisivel } from '../../lib/polling';
 import { hashDe } from '../../lib/rotas';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
-import { formatClock, formatQuando, formatSpan } from '../../lib/time';
+import { formatClock, formatClockComFuso, formatQuando, formatSpan, rotuloDoFuso } from '../../lib/time';
 import { toast, toastError } from '../../store/toasts';
 import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
@@ -234,7 +234,7 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
             {alvo.estagios.map((e) => {
               const passo = latencia.passos.find((p) => p.estagio === e.estagio);
               return (
-                <li key={e.estagio}>{rotuloDoEstagio(e.estagio)}{e.em ? <span className={styles.mudo}> · {formatClock(e.em)}</span> : null}
+                <li key={e.estagio}>{rotuloDoEstagio(e.estagio)}{e.em ? <span className={styles.mudo}> · {formatClockComFuso(e.em)}</span> : null}
                   {passo?.situacao === 'ok' ? <span className={styles.mudo} data-passo="ok"> · +{formatSpan(passo.ms!)}</span> : null}
                   {passo?.situacao === 'mesma_hora' ? <span className={styles.mudo} data-passo="mesma_hora"> · mesma hora {passo.deEstagio ? <>que “{rotuloDoEstagio(passo.deEstagio)}”</> : 'do evento anterior'}</span> : null}
                   {passo?.situacao === 'fora_de_ordem' ? <span className={styles.mudo} data-passo="fora_de_ordem"> · hora anterior à de “{rotuloDoEstagio(passo.deEstagio)}”: fora de ordem</span> : null}
@@ -297,7 +297,7 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar, conhecidos, preparado, onLibera
           {/* Adiado pelo espaçamento entre contas (31.258): não parou, espera a vez; diz quando retoma, em hora local. */}
           {!alvo.aguarda_resposta && alvo.retomada_em ? (
             <span data-retomada-em={alvo.retomada_em}>
-              <strong>Adiado pelo espaçamento entre contas da frota:</strong> retoma às {horaCurta(alvo.retomada_em)} (hora local).
+              <strong>Adiado pelo espaçamento entre contas da frota:</strong> retoma às {horaCurta(alvo.retomada_em)}.
             </span>
           ) : null}
           {!alvo.aguarda_resposta && !espera && !alvo.retomada_em && alvo.motivo ? (
@@ -373,7 +373,7 @@ function EsperaDeResposta({ op }: { op: Operacao }) {
 }
 
 /** HH:MM em hora local (o rótulo diz "hora local"; a rota está em UTC). */
-const horaCurta = (iso: string): string => formatClock(iso).slice(0, 5);
+const horaCurta = (iso: string): string => `${formatClock(iso).slice(0, 5)} ${rotuloDoFuso(iso)}`;
 
 /** O selo do cabeçalho: quantos alvos esperam a vez pelo espaçamento da frota e quando o primeiro retoma; nada quando o central não diz (31.264). */
 function AdiadosPelaFrota({ op }: { op: Operacao }) {
@@ -383,7 +383,7 @@ function AdiadosPelaFrota({ op }: { op: Operacao }) {
     <div data-adiados-pela-frota>
       <Banner tone="info" icon={Hourglass} role="status" compact
               title={quantos === 1 ? '1 agente adiado pelo espaçamento da frota' : `${formatInt(quantos)} agentes adiados pelo espaçamento da frota`}>
-        Não é falha: contas diferentes não agem no mesmo alvo ao mesmo tempo.{primeiraRetomada ? <> O primeiro retoma às {horaCurta(primeiraRetomada)} (hora local).</> : null}
+        Não é falha: contas diferentes não agem no mesmo alvo ao mesmo tempo.{primeiraRetomada ? <> O primeiro retoma às {horaCurta(primeiraRetomada)}.</> : null}
       </Banner>
     </div>
   );
@@ -505,7 +505,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
         <span className={styles.mudo}>Ação final: {rotuloDaAcao(op.acao_final)}</span>
         {lidoEm && !op.exemplo ? (
           <span className={styles.mudo} data-lido-as>
-            · Lido às {formatClock(lidoEm)}{op.status === 'em_curso' ? ' (relê sozinha enquanto a aba está à vista)' : ''}
+            · Lido às {formatClockComFuso(lidoEm)}{op.status === 'em_curso' ? ' (relê sozinha enquanto a aba está à vista)' : ''}
           </span>
         ) : null}
         {feitas.executadas > 0 ? (

@@ -11,7 +11,7 @@ import { FakeBackend, allByRole, apiError, byRole, click, esperarElemento, insta
 import {
   adiadosDaOperacao, agregadoPorApp, contarPorEstado, ESTAGIOS, estagioDeParada, estagiosAlcancados, lerAlvo, lerCapacidade, lerEstagio, lerOperacao, verificacaoDoAlvo,
 } from './modelo';
-import { formatClock } from '../../lib/time';
+import { formatClock, rotuloDoFuso } from '../../lib/time';
 import { OPERACAO_DE_EXEMPLO } from './operacaoDeExemplo';
 import { commitEmPalavras, lerCustoPorPasso, rotuloDoModelo } from './custoPorPasso';
 import { modelosDoAlvo } from './modelosLidos';
@@ -705,12 +705,12 @@ describe('31.264: o alvo adiado pelo espaçamento da frota diz quando retoma e n
     await abrir({ ...BASE, alvos: [alvo('1', { retomada_em: TARDE, motivo }), alvo('2', { retomada_em: CEDO, motivo }), alvo('3', { retomada_em: null })] });
     const cab = container.querySelector('[data-adiados-pela-frota]') as HTMLElement;
     expect(text(cab)).toContain('2 agentes adiados pelo espaçamento da frota');
-    expect(text(cab)).toContain(`O primeiro retoma às ${hora(CEDO)} (hora local).`);
+    expect(text(cab)).toContain(`O primeiro retoma às ${hora(CEDO)} ${rotuloDoFuso(CEDO)}.`);
     expect(text(cab)).toContain('Não é falha');
     const [a, b, c] = linhas();
     expect(text(a!.querySelector('[data-adiado-pela-frota]')!)).toBe('Adiado pela frota');
-    expect(text(a!.querySelector('[data-retomada-em]')!)).toContain(`retoma às ${hora(TARDE)} (hora local)`);
-    expect(text(b!.querySelector('[data-retomada-em]')!)).toContain(`retoma às ${hora(CEDO)} (hora local)`);
+    expect(text(a!.querySelector('[data-retomada-em]')!)).toContain(`retoma às ${hora(TARDE)} ${rotuloDoFuso(TARDE)}`);
+    expect(text(b!.querySelector('[data-retomada-em]')!)).toContain(`retoma às ${hora(CEDO)} ${rotuloDoFuso(CEDO)}`);
     // adiado não "parou": o motivo do espaçamento não vira "Parou em …"
     expect(text(a!)).not.toContain('Parou em');
     expect(a!.querySelector('[data-motivo-do-alvo]')).toBeNull();

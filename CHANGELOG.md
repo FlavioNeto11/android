@@ -49,6 +49,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   do dono). PostgreSQL: não executado. Telegram ao começar e ao concluir e painel da exploração (Portal): não feitos.
   Limite conhecido: o pedido misto ("abra a caixa de entrada e veja a lixeira") perde a parte do catálogo, porque o
   planejador devolve `steps` vazio com `fora_do_catalogo` (a regra do prompt de hoje).
+## 2026-10-10 — a hora na tela diz de que relógio é (31.294)
+
+- `lib/time.ts` (`rotuloDoFuso`, `formatClockComFuso`), `features/host/HostPage.tsx`, `features/operacao/OperacaoPage.tsx`:
+  a hora de "Lido às", do pico de CPU, da última amostra, dos estágios da Operação e da retomada do alvo adiado sai com o
+  fuso do navegador ao lado ("22:20:43 (UTC-3)"). As amostras e a API seguem em UTC; quem compara com `date -u` vê a
+  diferença na própria tela. O resto das horas do painel não mudou.
+- Prova `simulated`: `lib/time.test.ts::fuso à vista` e 244 dirigidos (time, host, operacao). Prova `real` (10/10 ~13:35Z,
+  central 5ebf237e ou anterior no ar (o health mudou durante o percurso), build do worktree): a página Host mostrou "Lido às 10:32:11 (UTC-3)". `not_run`: a página de
+  Operação (não havia operação aberta).
+
 ## 2026-10-10 — "0 execuções" diz onde estão as que esperam resposta (31.295)
 
 - `store/metricas.ts` (`execucoesAguardandoResposta`, `dicaDoContadorDeExecucoes`) e `features/topbar/TopBar.tsx`: a dica
