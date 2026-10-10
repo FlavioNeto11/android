@@ -5,6 +5,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 
 ## Onde estamos
 
+- **31.290 (Jev, 10/10/2026): os avisos de tela sensível dizem o que o código faz depois do ADR-089; ramo `fix/31-290-textos-do-adr-089`, não implantado.** `AVISO_TELA_SENSIVEL` e os comentários falsos reescritos; "nunca são recortadas" da leitura visual confirmado e mantido. `simulated`: `tests/test_aviso_de_tela_adr089.py`. `not_run`: o painel real. Aberto: o executor ainda não leva a imagem da tela sensível à decisão de rotina (`_motivo_da_imagem`).
 - **31.273 (Aprendizado, 10/10/2026): o pedido fora do catálogo explora em vez de recusar; NÃO está na `main` nem no ar.** Ramo `feat/31-273-ensino` (migração 130, adendo v1.130). O que faz e o que falta: [`docs/dominios/aprendizado.md`](dominios/aprendizado.md) (seção da exploração).
   - `simulated`: `tests/test_exploracao_fora_do_catalogo.py`, `test_etapas_descobertas.py`, `test_migracao_130.py`. `not_run`: exploração real no Outlook (API paga, pede o sim do dono), PostgreSQL, replay da etapa exploratória num app com catálogo, Telegram e painel (Portal).
 - **Deploys 67, 68 e 69 no ar (10/10/2026, central `6536ad04d6c99e`, migração 133; sem tag).** Feitos de madrugada por outras sessões, com `PularFrontend` e `SemTag`; a linha de cada um está em `data/deploys.jsonl`.

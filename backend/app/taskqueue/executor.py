@@ -291,9 +291,9 @@ def pede_intervencao_humana(tree: UiTree, *, tem_credencial: bool = False) -> bo
     """A tela sensível exige uma PESSOA, ou só exige que a imagem não saia daqui?
 
     Eram a mesma pergunta enquanto `sensitive` significava apenas "há campo de senha" (achado #127). Deixaram de
-    ser: uma tela declarada em `config.yaml: sensitive_screens`, ou qualquer tela da VM-loja, tem a imagem
-    omitida — mas parar a etapa nela seria inventar uma falha de autenticação e marcar o perfil como
-    `auth_required` toda vez que a IA passasse por ali.
+    ser: uma tela declarada em `config.yaml: sensitive_screens` é sensível, mas parar a etapa nela seria inventar
+    uma falha de autenticação e marcar o perfil como `auth_required` toda vez que a IA passasse por ali. Nenhuma
+    imagem é omitida por isso (ADR-089); a decisão de rotina só deixa de levá-la (`_motivo_da_imagem`).
 
     Função nomeada, e não uma condição embutida no laço, porque é a regra que separa as duas coisas: escondida no
     meio de 900 linhas ela voltaria a ser "sensível = pare", que é de onde ela veio.
@@ -2639,12 +2639,12 @@ class StepExecutor:
                                    + ". Se ele morrer de novo, a etapa para.")
                     agiu = True
                     continue
-            # "Não mandar a imagem" e "parar e chamar uma pessoa" eram a MESMA coisa enquanto `sensitive` só
+            # "Não levar a imagem" e "parar e chamar uma pessoa" eram a MESMA coisa enquanto `sensitive` só
             # significava campo de senha. Deixaram de ser (achado #127): uma tela declarada em
-            # `sensitive_screens` — ou qualquer tela da VM-loja — precisa ter a imagem omitida, mas parar a
-            # etapa ali seria inventar uma falha de autenticação e marcar o perfil como `auth_required` toda vez
-            # que a IA passasse por ela. A omissão da imagem já aconteceu (aqui em cima e nos provedores); só o
-            # campo de senha e o desafio de verificação pedem gente.
+            # `sensitive_screens` é sensível, mas parar a etapa ali seria inventar uma falha de autenticação e
+            # marcar o perfil como `auth_required` toda vez que a IA passasse por ela. Só o campo de senha e o
+            # desafio de verificação pedem gente. (Desde o ADR-089 nenhuma tela tem a imagem omitida da
+            # observação; a decisão de rotina é que não a leva, por `_motivo_da_imagem`.)
             if pede_intervencao_humana(obs.tree, tem_credencial=senha_do_app.secret is not None):
                 porque = obs.tree.sensitive_reason
                 if porque == MOTIVO_DESAFIO:

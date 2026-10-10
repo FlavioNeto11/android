@@ -137,24 +137,28 @@ Continuam em `data/logs/`, e **continuam locais de propósito**: eles são diagn
 máquina, não prova de execução. A cauda que interessa ao operador já sobe no `result` do comando
 (`commands.store._log_do_emulador`) e, por isso, atravessa réplicas pelo banco, sem arquivo nenhum.
 
-## O que conta como "tela sensível" (item 9.5 · achado #127)
+## O que conta como "tela sensível" (item 9.5 · achado #127; revisto pelo ADR-089, 31.290)
 
-Uma tela sensível não vira JPEG em `data/evidence` e não entra no corpo da requisição ao provedor de IA — nem
-como imagem. Por muito tempo o critério foi **um só**: existir na árvore um
-elemento com `password="true"`. O aviso do painel dizia isso com todas as letras ("Telas com campo de senha nunca
-são enviadas"), e era literalmente verdade — o problema é que tela sensível sem campo de senha é a regra, não a
-exceção: dados da conta, conversa de terceiro, a tela da VM-loja com a conta
-Google do parque.
+"Tela sensível" é uma **classificação para as decisões da automação** (não agir por receita numa tela de senha ou
+desafio, detectar conta travada). Ela **não esconde imagem de ninguém**: desde o ADR-089 (10/10/2026) a prévia, a
+evidência em `data/evidence` e a observação levam o JPEG de qualquer tela, e o provedor de IA pode recebê-lo. O que
+resta é uma escolha do executor: a decisão de rotina (`StepExecutor._motivo_da_imagem`, motivo `sensivel`) lê a tela
+sensível pela lista de elementos, sem a imagem; o julgamento da relação e o rejulgamento levam a imagem. A leitura
+visual de um valor (12.5) continua recusando a árvore sensível. O aviso do painel (`AVISO_TELA_SENSIVEL`, em
+`/api/ai`) diz exatamente isso; já foi "telas sensíveis nunca são enviadas", e deixou de valer.
 
-Hoje `automation/hierarchy.parse_hierarchy` aplica três critérios, e `UiTree.sensitive_reason` diz qual deles
-pegou (o motivo aparece na evidência e na mensagem da etapa; **não** vai ao modelo — descrever o que há na tela
-seria contar justamente o que a imagem omite):
+Por muito tempo o critério foi **um só**: existir na árvore um elemento com `password="true"`. Tela sensível sem
+campo de senha é a regra, não a exceção: dados da conta, conversa de terceiro. Hoje `automation/hierarchy.
+parse_hierarchy` aplica dois critérios, e `UiTree.sensitive_reason` diz qual deles pegou (o motivo aparece na
+evidência e na mensagem da etapa; **não** vai ao modelo):
 
 | Critério | O que casa |
 | --- | --- |
 | `campo de senha` | qualquer elemento com `password="true"` (o de sempre) |
 | declarado por app | `config.yaml: sensitive_screens` — por pacote, resource-id ou texto |
-| `aparelho-loja` | **toda** tela do aparelho-loja, sem exceção |
+
+O terceiro critério de antes, `aparelho-loja` (toda tela da VM-loja), deixou de ser aplicado no ADR-089: a loja não é
+mais exceção, e o parâmetro `sempre_sensivel` de `parse_hierarchy` ficou sem chamador.
 
 Declarar uma tela por app, em `config.yaml`:
 

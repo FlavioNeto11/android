@@ -1,7 +1,7 @@
 """A captura de tela de UM aparelho, pedida pelo dono por um canal (item 28.24, exceção (a) do dono, 04/10 15:17Z).
 
 Não abre caminho novo até o aparelho: usa a MESMA prévia do painel (`rt.frame`), com as regras dela. Isso importa:
-- a tela sensível (senha, código, loja) é só um marcador sem imagem, e aqui também não sai nada;
+- nenhuma tela é escondida (ADR-089): a de senha, de código ou da loja sai como qualquer outra;
 - quando ninguém olha o aparelho a prévia não captura (`preview_mode = on_demand`); então o pedido registra, por poucos
   segundos, um interesse de FOCO nele (o mesmo gesto de um painel que abre o aparelho) e espera o frame novo. Se a IA está
   operando o aparelho, a prévia não põe screencap na fila dele: vale o frame que a observação da IA acabou de publicar;

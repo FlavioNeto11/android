@@ -24,11 +24,16 @@ if TYPE_CHECKING:
     from .habilidades import HabilidadeConhecida
 
 
-#: O que o painel PROMETE ao operador sobre o que sai desta máquina. Uma frase só, usada por todo provedor —
-#: achado #127: cada provedor tinha a sua cópia, e todas diziam "telas com campo de senha", que deixou de ser o
-#: critério. Aviso que descreve outra coisa que não o código é pior do que aviso nenhum.
-AVISO_TELA_SENSIVEL = ("Telas sensíveis nunca são enviadas: campo de senha, desafio de verificação/2FA, telas "
-                       "declaradas por app em `sensitive_screens` e todas as do aparelho-loja.")
+#: O que o painel DIZ ao operador sobre o que sai desta máquina. Uma frase só, usada por todo provedor. Já foi a
+#: promessa "telas sensíveis nunca são enviadas" (achado #127); o ADR-089 (10/10/2026) a revogou: a plataforma não
+#: esconde tela de ninguém. O que o código ainda faz é só isto: a decisão de rotina do executor
+#: (`_motivo_da_imagem`, motivo `sensivel`) lê a tela sensível pela lista de elementos, sem a imagem; os demais
+#: caminhos (julgamento, evidência, prévia) levam a imagem. Aviso que descreve outra coisa que não o código é pior
+#: do que aviso nenhum.
+AVISO_TELA_SENSIVEL = ("A plataforma não esconde tela de ninguém (ADR-089): a imagem de qualquer tela, inclusive de "
+                       "senha ou de verificação, pode ir ao provedor. A decisão de rotina ainda lê essas telas só "
+                       "pela lista de elementos, sem a imagem. O valor de uma credencial fica fora do texto enviado: "
+                       "vai do cofre ao campo pelo canal sensível.")
 
 #: Rótulo de cada função na frase "Modelos por função" do aviso de `/api/ai`, na ordem de sempre.
 _ROTULOS_DAS_FUNCOES: Final = (("plan", "plano"), ("decide", "ação"), ("verify", "verificação"),

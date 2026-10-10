@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — os avisos de tela sensível deixam de prometer o que o ADR-089 revogou (31.290)
+
+- `planning/provider.py::AVISO_TELA_SENSIVEL` (frase única do `notice` de `GET /api/ai` e `/api/health`, nos provedores
+  Anthropic e compatível com OpenAI): era "Telas sensíveis nunca são enviadas: … e todas as do aparelho-loja", falsa desde o
+  ADR-089. Agora diz que a plataforma não esconde tela, que a imagem pode ir ao provedor, que a decisão de rotina ainda lê a tela
+  sensível pela lista de elementos (`_motivo_da_imagem` → `sensivel`, conferido no código) e que o valor da credencial fica fora
+  do texto enviado. "Telas sensíveis e de verificação nunca são recortadas" (leitura visual, `routing.py`, `docs/ia.md`) **ficou**:
+  `saidas.ler_valor_visual` ainda recusa a árvore sensível, e o teste novo trava isso.
+- Comentários e docstrings que afirmavam o contrário do código: `devices/manager.py` (`image_omitted="sensitive"` não existe mais),
+  `devices/captura_pontual.py`, `automation/hierarchy.py::UiTree.sensitive`, `taskqueue/executor.py` (duas explicações da
+  intervenção humana). `docs/evidencias.md`: a seção "O que conta como tela sensível" reescrita (o critério `aparelho-loja` não é
+  mais aplicado).
+- Prova `simulated`: `tests/test_aviso_de_tela_adr089.py` (7 testes), 314 dirigidos, catracas (89), mypy no teto (257) e `docs-check`.
+  **Real: não verificada**; o painel só mostra a frase nova depois do deploy. Fica aberto para a orquestradora: o executor ainda não
+  leva a imagem da tela sensível à decisão de rotina, o que o ADR-089 permite mas não manda; mudar isso é comportamento, não texto.
 ## 2026-10-10 — o painel de rede mostra a saída medida × esperada e leva ao editor (31.303)
 
 - `features/rede/RedePage.tsx`, `EditarSaidaEsperada.tsx`, `Rede.module.css`: o aparelho que o backend marcou com `egress_matches: false`

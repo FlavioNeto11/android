@@ -241,7 +241,7 @@ def _na_faixa(a: tuple[int, int, int, int], lista: tuple[int, int, int, int]) ->
 class UiTree:
     elements: list[UiElement]
     packages: list[str]
-    sensitive: bool          # tela sensível → não enviar/gravar imagem (ver `sensitive_reason`)
+    sensitive: bool          # tela sensível → decisão da automação (ver `sensitive_reason`); a imagem não é escondida (ADR-089)
     #: POR QUE a tela é sensível, em português, para virar mensagem de etapa e evidência. `None` quando não é.
     #: Existe porque o critério deixou de ser um só (achado #127) e "campo de senha" passou a ser mentira em
     #: metade dos casos — e a mensagem que o operador lê é a única coisa que explica por que a IA parou.

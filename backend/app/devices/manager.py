@@ -226,7 +226,7 @@ class Observation:
     package: str | None
     sensitive: bool
     # Adendo v0.20, contrato C1 (todos opcionais): quando a hierarquia e a imagem foram lidas (`image_at=None` = sem
-    # imagem), POR QUE não há imagem (`sensitive` | `policy`: omitir não é falha de captura; `capture_failed`: a
+    # imagem), POR QUE não há imagem (`policy`: omitir não é falha de captura; `capture_failed`: a
     # aquisição FALHOU e quem chamou aceitou seguir só pela árvore, 31.76), de onde veio e de qual geração do runtime.
     tree_at: str | None = None
     image_at: str | None = None
@@ -3879,8 +3879,9 @@ class DeviceManager:
         adquirida, logo em seguida e pelo mesmo executor. `lado_max`: a imagem sai já no tamanho que o modelo vê
         (lado maior), sem o JPEG cheio de passagem; a prévia só é codificada se alguém está olhando.
 
-        Tela sensível nunca tem imagem (`image_omitted="sensitive"`) e vira marcador na prévia (contrato C4); sem
-        imagem por escolha de quem chamou, `image_omitted="policy"`. Omitir NÃO é falha de captura. Sem imagem, a
+        Tela sensível tem imagem como qualquer outra (ADR-089 revogou o contrato C4: sem marcador na prévia e sem
+        `image_omitted="sensitive"`); sem imagem por escolha de quem chamou, `image_omitted="policy"`. Omitir NÃO é
+        falha de captura. Sem imagem, a
         largura e a altura vêm do último frame desta geração na orientação que a hierarquia declara, ou de
         `wm size` — nunca de outro aparelho; sem nenhuma dessas, a imagem é adquirida (é o jeito de saber).
 
@@ -3973,7 +3974,7 @@ class DeviceManager:
                                lado_max: int | None = None) -> Observation:
         """A imagem de uma observação que saiu só com a árvore, quando a necessidade aparece DEPOIS (a receita
         divergiu; o verificador vai julgar pela visão). Mesma árvore, imagem adquirida em seguida pelo mesmo
-        executor, sem ação no meio. Tela sensível — nesta árvore ou numa leitura mais nova — continua sem imagem."""
+        executor, sem ação no meio. Qualquer tela tem imagem (ADR-089); quem decide se ela vai ao modelo é o chamador."""
         # `capture_failed` entra: quem JULGA pela imagem (verificador, evidência) não aceita a falha tolerada do laço do
         # ator, e tenta de novo — sem tolerância, de modo que uma segunda falha sobe como sempre (31.76).
         if obs.image_omitted not in ("policy", "capture_failed"):
