@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o login de app com `sessao.yaml` nunca vai ao ator (12.3, parte 1: a garantia)
+
+- **Catraca nova** `backend/tests/test_login_gerenciado_fora_do_ator.py` (entra em `tests/catracas.txt`): todo pacote declarado com `sessao.yaml` é
+  login gerenciado no registro (`tem_provedor_de_sessao`), a conta dele não oferece o nome da senha ao ator, `type_secret` pelo nome é recusado, não há senha
+  digitável por app, o bloco de dados do planejador não traz senha e a tela de senha no meio da tarefa é de pessoa. Vale também para um app novo só em
+  arquivos de dado (o Correio de Exemplo, em pasta temporária) e recusa `sessao.yaml` sem `provedor_de_sessao`. Sem código de produção alterado.
+- Prova: `simulated` (`test_login_gerenciado_fora_do_ator.py`, 5 testes). `real`: `not_run`. Nenhum yaml de app real (D2, P-045 com o dono).
+
 ## 2026-10-10 — o cadastro guiado da conta planejada (31.310, ADR-087, adendo v1.137)
 
 - **Rota nova** `POST /api/instagram/profiles/{profile_id}/accounts/{account_id}/provisioning/signup` (202, verbo `session.cadastrar`) e campo aditivo
