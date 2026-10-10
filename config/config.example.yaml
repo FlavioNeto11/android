@@ -205,6 +205,7 @@ limits:
   exploracao_max_chamadas_ia: 30  # chamadas de IA nas etapas de exploração da execução
   exploracao_max_usd: 0.60        # US$ por exploração (0 = sem teto em dinheiro); estourar para a etapa e diz o que viu
   exploracao_max_por_dia: 5       # explorações por dia por app (0 = sem teto)
+  exploracao_efeito_ligada: false # 31.297 (ADR-091): o pedido de EFEITO também explora, pela política do perfil (aprovação por padrão)
   max_attempts_per_step: 3
   step_timeout_s: 180
   objective_timeout_s: 900
