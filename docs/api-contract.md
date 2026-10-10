@@ -8215,3 +8215,27 @@ fluxo e do e-mail: [`email-do-parque.md`](email-do-parque.md).
   teste foram atualizados).
 - **Prova:** `simulated` (`backend/tests/test_personas_pendentes_api.py`, `test_contas_igfarm_api.py`,
   `test_email_do_parque.py`, `test_migracao_132.py`, `test_generate_text.py`). `real`: ver `CHANGELOG.md` (09/10/2026).
+
+## Adendo v1.134 (10/10/2026; item 31.291) — a saída esperada de um perfil só muda pelo app
+
+Uma rota nova em `/api/network` e nenhuma tabela nova. Motivo: no android-05 o `egress_esperado` do perfil
+`igfarm-{conta}` foi regravado FORA do app (o IP da criação virou o IP medido), sem evento, e a comparação saída
+medida × esperada deixou de provar algo. Antes, nenhum código do app editava um perfil.
+
+- **`PUT /api/network/profiles/{id}`**: corpo `{egress_esperado?, egress_esperado_ipv6?, motivo?}` (`extra="forbid"`).
+  Campo omitido fica como está; `null` tira a saída esperada daquela família; pelo menos um dos dois campos de IP é
+  obrigatório (422 `ValidationError`). Resposta: o `NetworkProfileDTO` (sem segredo). Nome, endpoint, protocolo e segredo
+  não mudam por aqui.
+  - Validação igual à do cadastro (`_saida_esperada_valida`): IP público da família certa, em texto. Recusa: 422
+    `invalid_egress`.
+  - **409 `egress_esperado_protegido`**: o perfil é `igfarm-{account_id}`, a conta existe em `contas_igfarm` e algum
+    aparelho o pede. O corpo traz `message` (por que e o que fazer), `profile_id`, `account_id`, `in_use`,
+    `motivo_obrigatorio: true`, `antes` e `depois`. Repetir o PUT com `motivo` (até 300 caracteres, sem segredo: a
+    redação por formato o recusa) aplica a troca.
+  - 404 `not_found`; valor igual ao atual: 200 sem gravar nem emitir.
+- **Evento** `network.updated`, `acao: "perfil_atualizado"`: `profile_id`, `profile_name`, `antes` e `depois`
+  (`{egress_esperado, egress_esperado_ipv6}`), `motivo`, `quem`, `in_use`, `conta_igfarm`. Nunca segredo nem os outros
+  `params` do perfil.
+- **Não faz:** não reavalia a rede do aparelho; a próxima medição (`POST …/verify`) compara com o valor novo.
+- **Compatibilidade:** aditivo. O `POST /api/network/profiles` e o `DELETE` seguem como estavam.
+- **Prova:** `simulated` (`backend/tests/test_rede_saida_esperada_edicao.py`, 7 testes). `real`: `not_run`.

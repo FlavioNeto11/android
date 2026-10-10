@@ -62,6 +62,17 @@ async def create_network_profile(request: Request) -> rede.NetworkProfileDTO:
         raise rede_error(exc) from exc
 
 
+@router.put("/network/profiles/{profile_id}")
+async def update_network_profile(request: Request, profile_id: str, body: rede.NetworkProfileSaidaBody) -> rede.NetworkProfileDTO:
+    """A única edição de perfil: a saída esperada (`egress_esperado`, `egress_esperado_ipv6`; `null` tira). Emite
+    `network.updated` `perfil_atualizado` com o antes e o depois. 409 `egress_esperado_protegido` no perfil de uma conta
+    do igfarm em uso, a não ser que o corpo traga `motivo`. Nome, endpoint, protocolo e segredo não mudam por aqui."""
+    try:
+        return rede.atualizar_saida_esperada(_st(request), profile_id, body, quem(request))
+    except rede.RedeError as exc:
+        raise rede_error(exc) from exc
+
+
 @router.delete("/network/profiles/{profile_id}", status_code=204)
 async def delete_network_profile(request: Request, profile_id: str) -> Response:
     """409 `network_profile_in_use` com os aparelhos que o usam: troque ou tire o perfil deles antes."""

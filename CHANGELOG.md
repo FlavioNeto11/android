@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — a saída esperada de um perfil só muda pelo app (31.291)
+
+- `PUT /api/network/profiles/{id}` (`devices/rede.py::atualizar_saida_esperada`, `fleet/presentation/rede.py`): troca
+  `egress_esperado`/`egress_esperado_ipv6` com a mesma validação do cadastro, grava e emite `network.updated`
+  `perfil_atualizado` com antes e depois. No perfil de conta do igfarm em uso, sem `motivo`: 409
+  `egress_esperado_protegido`. Origem: o esperado do android-05 foi regravado fora do app (10/10, entre 00:47Z e 01:01Z).
+  Adendo v1.134; seção em `docs/egresso-por-proxy.md`.
+- Prova **simulada**: `backend/tests/test_rede_saida_esperada_edicao.py` (7 testes) e 115 dirigidos de rede, egresso,
+  rotas e arquitetura verdes, fora 3 catracas que JÁ falhavam na main (`test_imports_tardios_so_diminuem`,
+  `test_contratos_dominio_e_aplicacao_nao_veem_infraestrutura`, `test_texto_do_instagram_no_codigo_so_desce`: importes e
+  SQL do `ponte_igfarm`/`egresso`/`reaquecer_da_conta`). mypy: 268 erros contra o teto de 257, nenhum no código desta
+  mudança. **Real: não executada.**
+
 ## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
 
 - O motor de sessão (`integrations/app_declarado/sessao.py`) lê o código mais novo da caixa da conta (porta
