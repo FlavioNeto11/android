@@ -2821,7 +2821,10 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
   (apps sem catálogo) e a própria exploração (a segunda vez do mesmo pedido, em app com catálogo), que reaproveita o molde e
   roda por receita, sem IA. O `value` da pós-condição da etapa e o do molde são o mesmo (a frase da chave; o pedido vai só
   na `description`, que o hash não lê), então a receita aprendida na exploração é achada pelo molde. Provado: o hash da etapa
-  e o do molde coincidem; **não provado**: o replay pelo executor num app com catálogo (`not_run`).
+  e o do molde coincidem, e (31.311) o ciclo inteiro pelo executor: a 1ª execução aprende a receita `candidate`, a 2ª a promove a
+  `active` pela prova sombra (outro texto de pedido, mesma chave, mesmo hash), o leitor passa a oferecer a etapa pelo nome e a 3ª, com o
+  molde, é conduzida por receita (`driven_by = recipe`, 0 decisões da IA na etapa). `simulated`, no aparelho falso do QA Messenger
+  (`tests/test_replay_da_etapa_descoberta.py`). **Não provado**: o mesmo no Outlook real (`not_run`, pede o sim do dono, P-043).
 - **Degrau do catálogo.** A etapa exploratória já cai em `acoes_livres` (sem ação do catálogo). O limiar é 2 execuções reais
   comprovadas (`ACAO_EXECUCOES_EXPLORADA`), a regra do Livro, e o fragmento sai preenchido com a chave, a prova por tela e
   `side_effect: false`; política, risco e tela de partida ficam `A_DEFINIR`. Só chave e contagens vão ao texto.

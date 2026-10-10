@@ -57,6 +57,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   no navegador (o harness não tem etapa exploratória): selo, contagem, filtro pelo seletor, link e limpar. **Real no central: não
   executada** (o 31.305 só chega com o deploy).
 
+## 2026-10-10 — o replay da etapa descoberta, provado de ponta a ponta no simulado (31.311)
+
+- Só teste e documentação: `tests/test_replay_da_etapa_descoberta.py` roda três execuções no executor de verdade, com o aparelho falso do
+  QA Messenger e um provedor roteirizado (sem API paga): a IA descobre e a receita nasce `candidate`; a segunda execução (outro texto
+  do pedido, mesma chave) a promove a `active`; o leitor oferece a etapa pelo nome e o molde tem o hash da etapa que a aprendeu;
+  a terceira entra por receita (`driven_by = recipe`, 0 decisões da IA, ações `source='recipe'`). Controle negativo conferido
+  (promoção em 2 reprova o teste). Fecha a ressalva do ADR-084/K-111. **Real: não executada** no Outlook (pede o sim do dono, P-043).
+
 ## 2026-10-10 — o resumo da execução conta as etapas exploratórias (31.305; adendo v1.135)
 
 - `RunSummary.etapas_exploratorias` (inteiro, sempre presente) em `GET /api/runs` e no detalhe: contagem de `steps.exploratoria`, numa
