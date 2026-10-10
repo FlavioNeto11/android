@@ -858,3 +858,5 @@ orquestradora; ela anota aqui antes de responder.
 | 31.305 | Aprendizado | GET /api/runs: campo aditivo etapas_exploratorias (number) no RunSummary, contado de steps[].exploratoria, para o Portal filtrar e contar nas Execuções sem ler cada execução; adendo v1.135 | Aprendizado | reservado 10/10 13:59Z |
 | 31.306 | Portal | Execuções: filtro e contagem "descoberta pela IA" sobre etapas_exploratorias do 31.305 (segunda metade do 31.304) | Portal | reservado 10/10 13:59Z; depende do 31.305 |
 | próximos livres (atualização 10/10 13:59Z) | 31.307, 29.212, 28.78; ADR-092; migração 134; adendo v1.136; K-112 | |
+| 31.307 | Jev (Aprendizado revisa) | laço de eventos sem acesso síncrono ao banco compartilhado (ressalva do 31.293: a régua e a testemunha em blocos reduzem a posse do lock, mas não eliminam parada de disco); só se o laço travar de novo depois do deploy 70; desenho primeiro (3 linhas para a orquestradora) | Jev | reservado 10/10 14:03Z; condicional |
+| próximos livres (atualização 10/10 14:03Z) | 31.308, 29.212, 28.78; ADR-092; migração 134; adendo v1.136; K-112 | |
