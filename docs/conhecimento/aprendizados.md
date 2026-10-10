@@ -2905,3 +2905,28 @@ vai só na `description`, que o hash não lê e o juiz lê. Os dois hashes (espe
 
 **Aplicabilidade.** Vigente. Todo molde oferecido a outra execução tem de ter o mesmo hash da etapa que gerou a receita; texto
 que pode ter valor de pessoa vai em campo que o hash não lê. Não provado: o replay pelo executor num app com catálogo (`not_run`).
+
+### K-110 — `MIN(ts) ... WHERE run_id IS NULL` no SQLite lê todas as linhas sem execução: percorra pelo índice de `ts` em blocos
+
+**Data:** 10/10/2026 · **Área:** Aprendizado (curador), banco (31.288)
+
+**Sintoma.** O laço de eventos do backend ficou sem batida 14,7 s (09/10 15:55Z) e 41 s (16:51Z, o supervisor reiniciou o backend). As duas
+pilhas (`data/logs/laco-travado-20261009T165152Z-2.txt`) mostram o scheduler esperando o lock do `Database` em `dispatchable_objectives` e a thread
+do curador dentro de `testemunha_da_purga`, segurando o lock com `SELECT MIN(ts) FROM events WHERE run_id IS NULL`.
+
+**Causa.** O SQLite resolve o `IS NULL` pelo `idx_events_run` (plano `SEARCH events USING INDEX idx_events_run (run_id=?)`): lê as ~32 mil linhas sem
+execução e vai à tabela buscar o `ts` de cada uma. Quente, 33 ms; frio e com o host carregado, é leitura aleatória de 32 mil páginas com o lock na mão.
+Um índice parcial `events(ts) WHERE run_id IS NULL` **não muda o plano** (medido na cópia do banco central: o planner seguiu no `idx_events_run`), então
+migração e índice não resolvem. O `ORDER BY ts LIMIT 1` com o filtro também cai no `idx_events_run` mais um `TEMP B-TREE`.
+
+**O que funcionou.** Percorrer `events` na ordem `(ts, id)` (usa o `idx_events_ts`, igual nos dois dialetos) em blocos de 500 e parar no primeiro
+`run_id` nulo; a chave da página seguinte é `(ts, id)`, porque `ts` repete. Cada bloco é uma consulta curta e o lock se solta entre eles. Medido na cópia
+do central: 1,9 ms contra 33 ms, mesmo valor. Teste: `tests/test_testemunha_da_purga.py` (7).
+
+**O que não funcionou.** A hipótese de que o corte era recalculado N vezes por passada: numa passada inteira do curador sobre a cópia do banco
+(386 consultas, 0,94 s) a testemunha roda uma vez. A de lock injusto também não: com o curador em laço e uma thread consultando a cada 50 ms, a pior
+espera foi 29 ms.
+
+**Aplicabilidade.** Vigente. Consulta com `IS NULL` em coluna indexada no SQLite não ganha de índice parcial; confira o plano com `EXPLAIN QUERY PLAN` na
+cópia do banco (`sqlite3.backup`) antes de pedir migração. Outros pontos que travaram o laço no mesmo lock (`active_runs`, `run_detail`, `validations_of`
+nas pilhas de 07/10 e 09/10) não foram tratados aqui: o `Database` chama o banco direto do laço de eventos por desenho.

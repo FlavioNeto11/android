@@ -176,6 +176,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova **simulada**: `tests/test_arquitetura.py` e `test_apps_fora_do_nucleo.py` verdes (eram 3 vermelhas), catracas
   (`@tests/catracas.txt`, 89), 217 dirigidos de egresso, ponte, rotas e rede, e o mypy-catraca em 257 (teto 257, era
   268). **Real: não executada** (muda estrutura, não comportamento).
+## 2026-10-10 — 31.288: a testemunha da purga não varre mais os eventos sem execução com o lock do banco (branch fix/31-288-testemunha-da-purga)
+
+- Defeito (09/10 15:55Z, 14,7 s; 16:51Z, 41 s, o supervisor reiniciou o backend): o laço de eventos esperava o lock do `Database` enquanto o curador do
+  Aprendizado rodava `SELECT MIN(ts) FROM events WHERE run_id IS NULL` (`relatorio_sql.testemunha_da_purga`, chamada por `falhas._corte_de_custo`).
+- Causa medida na cópia do banco central: o SQLite resolve o `IS NULL` pelo `idx_events_run` e lê as ~32 mil linhas sem execução; um índice parcial não
+  muda o plano. A testemunha agora percorre `events` por `(ts, id)` em blocos de 500 (índice `idx_events_ts`) e para no primeiro sem execução: 1,9 ms
+  contra 33 ms no cache quente, mesmo valor. Sem migração, sem mudança de contrato.
+- Medido também: uma passada inteira do curador faz 386 consultas em 0,94 s (a testemunha roda uma vez) e a pior espera de uma thread concorrente foi 29 ms;
+  o travamento de 41 s não se reproduz com o disco quente. Aprendizado K-110.
+- Prova `simulated`: `tests/test_testemunha_da_purga.py` (7: vazio, só execução, bloco a bloco, `ts` repetido na fronteira, bloco exato, tamanho do bloco),
+  `test_learning_backlog.py`, `test_retencao_telemetria.py`, catracas e cobertura de rotas verdes (58). `test_arquitetura.py` tem 2 falhas que já estão na
+  main (`identity/application/egresso` importa `app.devices.rede` e `app.state`; `ponte_igfarm` com 3 imports tardios). `real`: `not_run` (o travamento
+  só se prova no central, depois do deploy, com as pilhas de `data/logs/laco-travado-*` sem o curador).
 
 ## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
 
