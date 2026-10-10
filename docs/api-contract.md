@@ -8209,13 +8209,13 @@ Contrato do 31.281 (backend), consumido pelo 31.282 (refinador) e pelo 31.283 (p
 - **`POST /accounts/planned`**, corpo `{app_id, host?, desired_handle?}` → `ProfileAccountDTO`. 201 na primeira vez (`state: planejada`, `handle: ""`); **200 idempotente** se já existe conta planejada deste (perfil, app, host): devolve a mesma linha, e um `desired_handle` diferente só a EDITA (enquanto não `confirmada`). Erros: 404 `not_found` (perfil ou app), 409 `duplicate_account` (já existe conta confirmada neste app/host), 422 `desired_handle_invalido`. O `POST /accounts` de sempre continua criando conta já `confirmada`.
 - **`GET /accounts/handle-suggestions?app_id=`** → `{suggestions: [{handle, source}]}`, `source` = `persona_nome`, `persona_dados` ou `alternativa`. Local e determinístico (nome, sobrenome e data da persona; alternativas numeradas), sem IA e sem rede. Não afirma disponibilidade no provedor.
 - **`PATCH /accounts/{account_id}`** ganha `desired_handle`; 409 `conta_confirmada` depois de confirmada.
-- **`POST /accounts/{account_id}/credential/prepare`**, corpo `{modo, consent, substituir?, senha?, reutilizar_de?, tamanho?}`:
+- **`POST /accounts/{account_id}/credential/prepare`**, corpo `{modo, consent, substituir?, password?, clonar_de?, tamanho?}`:
   - `modo: "gerar"`: o servidor gera a senha com `secrets` (CSPRNG; `tamanho` 16 a 64, padrão 20; maiúscula, minúscula, dígito e símbolo), grava direto no cofre e **não a devolve**. A IA nunca participa.
-  - `modo: "digitar"`: `senha` (`SecretStr`, como no `PUT …/credential`); o 422 do validador não devolve o corpo.
-  - `modo: "reutilizar"`: `reutilizar_de` = id de OUTRA conta da MESMA persona que já tem credencial; nunca é o padrão e a escolha é expressa. Copia como o `credential/clone` (31.103).
+  - `modo: "digitar"`: `password` (`SecretStr`, como no `PUT …/credential`); o 422 do validador não devolve o corpo.
+  - `modo: "reutilizar"`: `clonar_de` (o mesmo campo do `credential/clone`) = id de OUTRA conta da MESMA persona que já tem credencial; nunca é o padrão e a escolha é expressa. Copia como o `credential/clone` (31.103).
   - `consent` tem de ser `true`: gerar ou digitar na tela com a caixa marcada vale como o consentimento do ADR-040 para ESTA conta. Reutilizar não herda o consentimento da origem; vale a caixa marcada agora.
   - Estado: `planejada` passa a `credencial_preparada`. Em `credencial_preparada`, só com `substituir: true` (troca a senha antes da confirmação). De `aguardando_cadastro_externo` em diante, 409 `estado_nao_permite_credencial` (depois de `confirmada` é a troca de senha pela rota de hoje).
-  - Resposta: `ProfileAccountDTO` (credencial só com metadados). Erros: 409 `consentimento_de_credencial`, 422 `credencial_modo_invalido` (campo do modo errado, ou `senha` junto com `reutilizar_de`), 404/409 `reutilizar_de_invalido` (outra persona, sem credencial ou a própria conta), 503 `secret_store_unavailable`.
+  - Resposta: `ProfileAccountDTO` (credencial só com metadados). Erros: 409 `consentimento_de_credencial`, 422 `credencial_modo_invalido` (campo do modo errado, ou `password` junto com `clonar_de`), os do `credential/clone` para a origem (404 `not_found`, 409 `credencial_de_outra_persona`, `clonar_de_si_mesma`, `no_credential`) e 503 `secret_store_unavailable`.
   - O `PUT …/credential` numa conta `planejada` faz o mesmo que `modo: "digitar"` e avança o estado.
 - **`POST /accounts/{account_id}/provisioning`**, corpo `{evento, estado_esperado, motivo?, evidencia?}` → `ProfileAccountDTO`. **`estado_esperado` é obrigatório (comparar e trocar):**
 
@@ -8226,7 +8226,7 @@ Contrato do 31.281 (backend), consumido pelo 31.282 (refinador) e pelo 31.283 (p
 | `aguardando_verificacao` | `confirmar` | `confirmada` | Exige `evidencia` (abaixo). `handle` passa a ser o endereço confirmado e `confirmed_at` é gravado. |
 | qualquer ativo (`planejada` a `aguardando_verificacao`) | `falhar` (`motivo`) | `falha` | Grava `resume_state`; nada é apagado. |
 | `falha` | `retomar` | `resume_state` | Preserva credencial e dados; não reinicia. |
-| `planejada` a `aguardando_verificacao` | `cancelar` | (conta removida) | Só apaga a senha do cofre se nenhuma outra conta a referencia (regra do clone). Resposta `{removida: true, credencial_removida: bool}`. |
+| `planejada` a `aguardando_verificacao`, ou `falha` | `cancelar` | (conta removida) | Só apaga a senha do cofre se nenhuma outra conta a referencia (regra do clone). Resposta `{removida: true, credencial_removida: bool}`. |
 
   - `evidencia` do `confirmar`: `{tipo: "sessao", sessao_id}` (sessão observada cujo usuário é IGUAL ao desejado; o `handle` vem dela) ou `{tipo: "declarada", handle_confirmado}` (marcação nominal da pessoa, gravada como evidência `declarada` com o autor). `confirmar` sem evidência não existe.
   - **Idempotência:** repetir o evento quando a conta já está no estado de destino dele devolve 200 com a conta, sem efeito e sem novo evento. Estado diferente do esperado e do destino: 409 `estado_inesperado` (`details.estado_atual`).
@@ -8245,7 +8245,7 @@ Contrato do 31.281 (backend), consumido pelo 31.282 (refinador) e pelo 31.283 (p
 ```
 
 - `estado`: `sem_conta` (nenhuma linha), `planejada` ou `falha`. Pares em `credencial_preparada` ou depois não entram na lista.
-- `acoes` (nunca texto livre; o painel executa cada uma pelos ids): `preparar_credencial` (planejar se for `sem_conta`, com `desired_handle` sugerido, e `credential/prepare`), `abrir_contas_e_acesso` (navegar à guia da persona), `usar_credencial_existente` (só quando `reutilizavel_de` não está vazio; `credential/prepare` com `modo: "reutilizar"` e a escolha expressa), `continuar` (refazer o refinar com o mesmo corpo: a pendência é reavaliada).
+- `acoes` (nunca texto livre; o painel executa cada uma pelos ids): `preparar_credencial` (planejar se for `sem_conta`, com `desired_handle` sugerido, e `credential/prepare`), `abrir_contas_e_acesso` (navegar à guia da persona), `usar_credencial_existente` (só quando `reutilizavel_de` não está vazio; `credential/prepare` com `modo: "reutilizar"`, `clonar_de` e a escolha expressa), `continuar` (refazer o refinar com o mesmo corpo: a pendência é reavaliada).
 - `ready` é `false` enquanto houver item na lista. **Senha nunca vira pergunta:** pergunta do modelo que a triagem marca como sensível é descartada; se o app não tem credencial pronta, aparece como item de `acoes_de_conta`. A pergunta "a senha já está guardada ou será definida?" deixa de existir.
 - Retomada: o `successor` e o refinar com `run_id` seguem preservando alvos, intenção, dados e etapas concluídas; credencial preparada não pede recomeçar.
 
