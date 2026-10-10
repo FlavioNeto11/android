@@ -298,6 +298,44 @@ class SocialRepository:
         self.db.execute("DELETE FROM profile_accounts WHERE id=? AND profile_id=?", (account_id, profile_id))
         self._sincronizar_rotulos_da_persona(profile_id)
 
+    # -- conta planejada (31.281, migração 131) ---------------------------------------------------------------
+    def create_planned_account(self, profile_id: str, *, app_id: str, host: str | None,
+                               desired_handle: str | None) -> str:
+        """Uma conta que ainda não existe no provedor: `handle` (o CONFIRMADO) fica vazio, o desejado vai à parte."""
+        account_id = f"acc-{new_token()}"
+        agora = now_iso()
+        self.db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, notes, host, created_at,"
+                        " updated_at, provisioning_state, desired_handle) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                        (account_id, profile_id, app_id, "", "", host, agora, agora, "planejada", desired_handle))
+        self._sincronizar_rotulos_da_persona(profile_id)
+        return account_id
+
+    def set_provisioning(self, profile_id: str, account_id: str, *, de: str, para: str, resume_state: str | None,
+                         detail: str | None, handle: str | None = None, confirmed_at: str | None = None,
+                         evidence: str | None = None) -> bool:
+        """Comparar e trocar: só grava se a conta ainda está em `de`. Devolve se gravou (falso = outra chamada andou)."""
+        sets = ["provisioning_state=?", "resume_state=?", "provisioning_detail=?", "updated_at=?"]
+        valores: list[str | None] = [para, resume_state, detail, now_iso()]
+        if handle is not None:
+            sets.append("handle=?")
+            valores.append(handle)
+        if confirmed_at is not None:
+            sets += ["confirmed_at=?", "confirmation_evidence=?"]
+            valores += [confirmed_at, evidence]
+        cur = self.db.execute(f"UPDATE profile_accounts SET {', '.join(sets)} WHERE id=? AND profile_id=?"
+                              " AND provisioning_state=?", (*valores, account_id, profile_id, de))
+        gravou = cur.rowcount == 1
+        if gravou and handle is not None:
+            self._sincronizar_rotulos_da_persona(profile_id)
+        return gravou
+
+    def handle_ocupado(self, app_id: str, candidato: str, *, exceto_conta: str | None = None) -> bool:
+        """Já há conta deste app com este endereço, confirmado ou desejado (sem distinguir caixa)?"""
+        chave = candidato.strip().lower()
+        return bool(self.db.scalar(
+            "SELECT COUNT(*) FROM profile_accounts WHERE app_id=? AND id<>? AND"
+            " (lower(handle)=? OR lower(COALESCE(desired_handle,''))=?)", (app_id, exceto_conta or "", chave, chave)))
+
     def retirar_conta_bloqueada(self, profile_id: str, account_id: str, *, ancora: bool, motivo: str) -> list[str]:
         """Tira do banco TUDO o que faz a conta existir para a plataforma, sem tocar a persona (29.23, ADR-068).
         Devolve as referências de segredo que a conta tinha, para quem chama apagar no cofre (depois de conferir que

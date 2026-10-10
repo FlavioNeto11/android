@@ -35,8 +35,9 @@ from .modules.fleet.presentation.schemas import (  # noqa: F401
     RepairPauseBody, ResolverQuarentenaBody, ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
 from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION, crenca_legada, normalizar_biografia
 from .modules.identity.presentation.schemas import (  # noqa: F401
-    CredentialClone, CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,
-    PolicyName, ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch)
+    ConfirmationEvidence, CredentialClone, CredentialPrepare, CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,
+    PlannedAccountCreate, PolicyName, ProfileAccountCreate, ProfileAccountPatch, ProfileCreate, ProfilePolicyPatch,
+    ProvisioningEventBody)
 # `workers.protocol` não importa nada do app: é o contrato puro entre central e agente. Reaproveitar `WorkerDevice`
 # e `WorkerResources` aqui evita duas definições da mesma coisa — o que o worker declara é o que a API mostra.
 from .workers.protocol import WorkerDevice, WorkerResources
@@ -1281,6 +1282,23 @@ class ProfilePolicyDTO(BaseModel):
     limits_origin: dict[str, Literal["own", "group", "default"]] = Field(default_factory=dict)
 
 
+class ProvisioningInfo(BaseModel):
+    """O ciclo de provisionamento de uma conta (31.281, ADR-087, adendo v1.132). `handle` da conta é o endereço
+    CONFIRMADO; o desejado mora aqui. Nenhum campo tem segredo."""
+
+    state: str = "confirmada"
+    desired_handle: str | None = None
+    detail: str | None = None
+    resume_state: str | None = None
+    confirmed_at: str | None = None
+    #: `{kind: sessao|declarada|igfarm, ref}` ou nulo (conta anterior ao ciclo).
+    evidence: dict[str, str] | None = None
+    #: Os `evento` que a rota de transição aceita AGORA neste estado.
+    actions: list[str] = Field(default_factory=list)
+    #: Derivado: confirmada e sessão pronta no aparelho vinculado. Nunca é estado gravado.
+    authenticated: bool = False
+
+
 class ProfileAccountDTO(BaseModel):
     """Uma conta do perfil NUM app (item 12.1; ADR-040: a Conta é a entidade única). O perfil é a identidade; cada
     app — e cada site, no navegador — tem a sua conta, com credencial, consentimento e sessão por aparelho."""
@@ -1311,6 +1329,8 @@ class ProfileAccountDTO(BaseModel):
     #: A credencial desta conta (só metadados; a senha não tem campo) e o consentimento dela.
     credential: CredentialInfo = Field(default_factory=CredentialInfo)
     consent_at: str | None = None
+    #: Conta planejada ou em cadastro (31.281): `state != "confirmada"` não é conta real logada.
+    provisioning: ProvisioningInfo = Field(default_factory=ProvisioningInfo)
     notes: str = ""
     created_at: str
     updated_at: str

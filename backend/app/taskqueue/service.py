@@ -443,7 +443,8 @@ class RunService:
         db = self.repo.db
         apps = [a for a in dict.fromkeys(app_ids) if a]
         contas: dict[str, set[str]] = {}
-        for r in db.query("SELECT profile_id, app_id FROM profile_accounts"):
+        # 31.281 (ADR-087): só a conta CONFIRMADA serve a um pedido; a planejada ainda não é conta real.
+        for r in db.query("SELECT profile_id, app_id FROM profile_accounts WHERE provisioning_state='confirmada'"):
             contas.setdefault(str(r["profile_id"]), set()).add(str(r["app_id"]))
         vinculos = tuple(
             Vinculo(str(v["profile_id"]), str(v["instance_id"]),
@@ -467,7 +468,7 @@ class RunService:
         # Nenhum com login gerenciado: o próprio conjunto — a regra de antes para um app só, que filtrava por ele.
         relevantes = [a for a in apps if capabilities_of(pacote.get(a)).session_provider] or apps
         sql = ("SELECT a.profile_id, s.instance_id FROM account_sessions s JOIN profile_accounts a ON a.id = s.account_id"
-               " WHERE s.status=?")
+               " WHERE a.provisioning_state='confirmada' AND s.status=?")
         pares: list[frozenset[tuple[str, str]]] = []
         for app_id in relevantes or [None]:
             params: tuple[object, ...] = (SessionStatus.session_ready.value,)

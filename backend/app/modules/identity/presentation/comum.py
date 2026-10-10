@@ -42,6 +42,9 @@ def quem(request: Request | None = None, informado: str | None = None) -> str:
 
 
 def social_error(exc: SocialError) -> HTTPException:
+    if exc.details:
+        return HTTPException(status_code=exc.status,
+                             detail={"code": exc.code, "message": exc.message, "details": exc.details})
     return _err(exc.status, exc.code, exc.message)
 
 

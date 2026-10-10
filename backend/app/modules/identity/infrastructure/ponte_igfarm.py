@@ -2,6 +2,7 @@
 (`application/ponte_igfarm.py`) ao cadastro de contas, ao cofre, às imagens, à IA de texto e ao barramento."""
 from __future__ import annotations
 
+import json
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING
 
@@ -118,6 +119,12 @@ class ArmazemSql:
         self.db.execute("INSERT INTO contas_igfarm(account_id, profile_id, igfarm_account_id, username_registrado,"
                         " criada_em_igfarm, registrada_em) VALUES (?,?,?,?,?,?)",
                         (account_id, persona_id, igfarm_account_id, username.lower(), criada_em, agora))
+        # ADR-088 (emenda) × ADR-087: a conta da ponte é real desde o nascimento (o igfarm já a criou no provedor), então
+        # nasce `confirmada`, com o desejado igual ao confirmado e a origem como evidência.
+        self.db.execute("UPDATE profile_accounts SET provisioning_state='confirmada', desired_handle=?, confirmed_at=?,"
+                        " confirmation_evidence=? WHERE id=? AND profile_id=?",
+                        (username, criada_em, json.dumps({"kind": "igfarm", "ref": igfarm_account_id}), account_id,
+                         persona_id))
 
     def gravar_egresso(self, account_id: str, proxy_secret_ref: str | None, proxy_key_id: str | None,
                        ip_criacao: str | None) -> None:

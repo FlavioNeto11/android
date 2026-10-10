@@ -238,13 +238,14 @@ class AppSessionProvider:
         return not gravada or gravada < to_iso(self._agora() - timedelta(seconds=self._validade_s))
 
     def _conta(self, perfil_id: str, app_id: str, instance_id: str) -> AppAccount | None:
-        c = self._db.one("SELECT id, status FROM profile_accounts WHERE profile_id=? AND app_id=? AND host IS NULL",
-                         (perfil_id, app_id))
+        c = self._db.one("SELECT id, status, provisioning_state FROM profile_accounts WHERE profile_id=? AND app_id=?"
+                         " AND host IS NULL", (perfil_id, app_id))
         if c is None:
             return None
         s = self._db.one("SELECT status, verified_at FROM account_sessions WHERE account_id=? AND instance_id=?",
                          (str(c["id"]), instance_id))
-        return AppAccount(active=c["status"] == "active",
+        # 31.281: conta planejada ou em cadastro não é conta real; o reconciliador não a trata como ativa.
+        return AppAccount(active=c["status"] == "active" and c["provisioning_state"] == "confirmada",
                           session_status=known(SessionStatus, s["status"]) if s is not None else None,
                           verified_at=_texto(s["verified_at"]) if s is not None else None)
 

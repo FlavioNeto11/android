@@ -557,6 +557,11 @@ class SessaoDeclarada:
                 return AuthResult(Outcome.INVALID_CREDENTIAL, f"esta persona não tem conta no {rotulo}; cadastre a "
                                                               "conta na tela da persona antes de conectar",
                                   session_status=SessionStatus.auth_required)
+        estado = str(linha["provisioning_state"] or "confirmada")
+        if estado != "confirmada":
+            # 31.281 (ADR-087): conta planejada ou em cadastro não é conta real; o login gerenciado só vale para a confirmada.
+            return AuthResult(Outcome.UNCERTAIN, f"a conta do {rotulo} desta persona ainda não foi confirmada no "
+                                                 f"provedor ({estado}); conclua o cadastro antes de entrar")
         ancora = self.repo.eh_pacote_ancora(profile_id, self.package)
         cred = self.repo.account_credential_row(profile_id, linha["id"])
         login = str(cred["login_identifier"] or "").strip() if cred is not None else ""
