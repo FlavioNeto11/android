@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import modelo_de_foco as MF  # noqa: E402
 from reconciliar import (  # noqa: E402
     MARCA,
     SEPARADOR,
@@ -17,6 +18,7 @@ from reconciliar import (  # noqa: E402
     auditar_historico_e_programa,
     com_linha,
     decidir,
+    estado_do_cartao,
     deploy_do_item,
     deploy_pela_evidencia,
     deploys_do_changelog,
@@ -30,6 +32,7 @@ from reconciliar import (  # noqa: E402
     inicio_da_semana,
     leitura_datada,
     papel_da_lista,
+    rotulo_do_destino,
     topo_da_linha,
 )
 
@@ -43,8 +46,8 @@ def estado(**itens):
     return {"itens": itens}
 
 
-def cartao(i, nome, lista, desc=""):
-    return {"id": i, "nome": nome, "lista": lista, "desc": desc}
+def cartao(i, nome, lista, desc="", etiquetas=()):
+    return {"id": i, "nome": nome, "lista": lista, "desc": desc, "etiquetas": list(etiquetas)}
 
 
 def roda(cartoes, est):
@@ -173,7 +176,7 @@ def test_linha_nova_troca_a_antiga_em_vez_de_empilhar():
     um = com_linha("corpo", topo_da_linha(a, "06/10/2026 02:00Z"))
     dois = com_linha(um, topo_da_linha(a, "06/10/2026 03:00Z"))
     assert dois.count(MARCA) == 1 and "03:00Z" in dois and dois.endswith("corpo")
-    assert "Próximas (06/10/2026 02:00Z, regra de 06/10):** vai para Concluído. Prova simulada" in um
+    assert "Próximas (06/10/2026 02:00Z, regra de 06/10):** vai para FEITO. Prova simulada" in um
 
 
 def test_historico_e_programa_so_relatam():
@@ -361,3 +364,85 @@ def test_item_que_fica_para_outro_corte_nao_conta_como_citado_no_deploy():
     achados = ids_citados_por_deploy(texto)
     assert "31.116" not in achados and "31.117" not in achados
     assert achados["15.15"] == 47 and achados["31.113"] == 47 and achados["31.91"] == 46 and achados["31.114"] == 46
+
+
+# ---- modelo de foco (10/10/2026): EM CURSO é a lista única, o estado do plano vai na etiqueta, FEITO é o concluído -------
+
+EM_CURSO = "🔄 EM CURSO (frentes paralelas)"
+FEITO = "✅ FEITO (modelo de foco)"
+FRENTE = "etiqueta-de-frente-qualquer"
+IMPLANTADO = {"29.1": {"status": "implemented", "proof": "simulated", "quando": "2026-10-05T17:00:00+00:00",
+                       "evidence": "backend/tests/test_x.py::test_a passou"}}
+
+
+def em_curso(i, nome, estado_do_plano=None, *extra):
+    et = ([MF.ETIQUETA_DE_ESTADO[estado_do_plano]] if estado_do_plano else []) + list(extra)
+    return cartao(i, nome, EM_CURSO, etiquetas=et)
+
+
+def test_papeis_das_listas_novas_nao_colidem_com_as_antigas():
+    assert papel_da_lista("🎯 FOCO (trilha crítica da persona)") == "foco"
+    assert papel_da_lista(EM_CURSO) == "em_curso"
+    assert papel_da_lista("🧾 DÍVIDA DE PROVA (trilha crítica)") == "divida_de_prova"
+    assert papel_da_lista(FEITO) == "feito"          # "modelo de foco" em minúsculas não é a lista FOCO
+    assert papel_da_lista("⏸ PAUSADO (adiado pelo dono ou sem dono)") == "pausado"
+    assert papel_da_lista("🎯 Prova 07/10 · BLOQUEADOR") == "prova"
+
+
+def test_estado_vem_da_etiqueta_na_lista_em_curso():
+    assert estado_do_cartao(em_curso("c", "29.1 · x", "em_validacao", FRENTE)) == "em_validacao"
+    assert estado_do_cartao(em_curso("c", "29.1 · x")) == "proximas"              # sem etiqueta de estado
+    assert estado_do_cartao(cartao("c", "29.1 · x", FEITO)) == "concluido"
+    assert estado_do_cartao(cartao("c", "29.1 · x", "🙋 Espera você")) == "espera_voce"
+
+
+def test_implantado_em_curso_vai_ao_feito_e_tira_o_estado():
+    rel = roda([em_curso("c1", "29.1 · algo", "em_validacao")], estado(**IMPLANTADO))
+    a = rel.acoes[0]
+    assert (a.tipo, a.de, a.para) == ("mover", "em_validacao", "concluido")
+    assert MF.destino(a.para) == (MF.LISTA_FEITO, None)
+
+
+def test_implementado_sem_deploy_em_curso_ganha_a_etiqueta_em_validacao_sem_trocar_de_lista():
+    est = estado(**{"29.9": {"status": "implemented", "proof": "simulated", "quando": "2026-10-06T01:55:00+00:00",
+                             "evidence": "backend/tests/test_x.py::test_a passou"}})
+    rel = roda([em_curso("c1", "29.9 · x", "proximas")], est)
+    a = rel.acoes[0]
+    assert (a.tipo, a.de, a.para) == ("mover", "proximas", "em_validacao")
+    assert MF.destino(a.para) == (MF.LISTA_EM_CURSO, "em_validacao")
+    assert roda([em_curso("c1", "29.9 · x", "em_validacao")], est).acoes == []          # idempotente
+
+
+def test_bloqueado_no_plano_vira_etiqueta_bloqueado_em_curso():
+    est = estado(**{"29.7": {"status": "blocked", "blocker": "espera o dono"}})
+    a = roda([em_curso("c1", "29.7 · x", "proximas")], est).acoes[0]
+    assert (a.para, MF.destino(a.para)) == ("bloqueado", (MF.LISTA_EM_CURSO, "bloqueado"))
+    assert roda([em_curso("c1", "29.7 · x", "bloqueado")], est).acoes == []
+
+
+def test_espera_voce_em_curso_nao_se_move():
+    est = estado(**IMPLANTADO)
+    rel = roda([em_curso("c1", "29.1 · x", "espera_voce")], est)
+    assert [(a.tipo, a.para) for a in rel.acoes] == [("listar", None)]
+
+
+def test_foco_divida_e_pausado_sao_a_mao_e_nunca_se_movem():
+    est = estado(**IMPLANTADO, **{"29.7": {"status": "blocked", "blocker": "x"}})
+    for lista in ("🎯 FOCO (trilha crítica da persona)", "🧾 DÍVIDA DE PROVA (trilha crítica)", "⏸ PAUSADO (adiado pelo dono)"):
+        assert roda([cartao("c1", "29.1 · x", lista), cartao("c2", "29.7 · y", lista)], est).acoes == []
+
+
+def test_etiquetas_de_frente_sobrevivem_a_troca_de_estado():
+    frente = "6ac13aeda5570365d020f911"
+    antes = [MF.ETIQUETA_DE_ESTADO["proximas"], frente]
+    assert MF.etiquetas_com_estado(antes, "em_validacao") == [frente, MF.ETIQUETA_DE_ESTADO["em_validacao"]]
+    assert MF.etiquetas_com_estado(antes, None) == [frente]                          # vai ao FEITO: sem etiqueta de estado
+    assert MF.etiquetas_com_estado([frente], "bloqueado") == [frente, MF.ETIQUETA_DE_ESTADO["bloqueado"]]
+
+
+def test_texto_do_cartao_diz_em_curso_com_o_estado_e_feito():
+    assert rotulo_do_destino("em_validacao") == "EM CURSO (Em validação)"
+    assert rotulo_do_destino("concluido") == "FEITO"
+    assert rotulo_do_destino("historico") == "o Histórico"
+    a = Acao("c", "n", "mover", "proximas", "bloqueado", "item bloqueado no plano: x", "m")
+    assert "vai para EM CURSO (Bloqueado)." in topo_da_linha(a, "10/10/2026 18:00Z")

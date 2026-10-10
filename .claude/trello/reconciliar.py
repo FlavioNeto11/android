@@ -29,6 +29,7 @@ from pathlib import Path
 AQUI = Path(__file__).resolve().parent
 RAIZ = AQUI.parent.parent
 sys.path.insert(0, str(AQUI))
+import modelo_de_foco as MF  # noqa: E402
 
 MARCA = "**Saída de "
 SEPARADOR = "\n\n---\n\n"
@@ -36,13 +37,14 @@ BRASILIA = timezone(timedelta(hours=-3))
 CARTAO_DO_DONO = ("espera_voce",)
 
 # papel de cada lista do quadro Execução, achado pelo nome (os nomes levam emoji e mudam de texto)
-PAPEIS = (("Prova 07/10", "prova"), ("Concluído", "concluido"), ("Em validação", "em_validacao"), ("Em execução", "em_execucao"),
+PAPEIS = (("FOCO", "foco"), ("EM CURSO", "em_curso"), ("DÍVIDA DE PROVA", "divida_de_prova"), ("FEITO", "feito"),
+          ("PAUSADO", "pausado"), ("Prova 07/10", "prova"), ("Concluído", "concluido"), ("Em validação", "em_validacao"), ("Em execução", "em_execucao"),
           ("Próximas", "proximas"), ("Aguardando", "aguardando"), ("Espera você", "espera_voce"),
           ("Bloqueado", "bloqueado"), ("Perguntas respondidas", "perguntas_respondidas"),
           ("Perguntas para você", "perguntas"), ("Como ler", "como_ler"), ("Central", "central"))
 ROTULO = {"concluido": "Concluído", "em_validacao": "Em validação", "em_execucao": "Em execução",
           "proximas": "Próximas", "aguardando": "Aguardando data ou evento", "bloqueado": "Bloqueado",
-          "historico": "o Histórico", "espera_voce": "Espera você"}
+          "historico": "o Histórico", "espera_voce": "Espera você", "em_curso": "EM CURSO", "feito": "FEITO"}
 
 
 @dataclass
@@ -86,6 +88,17 @@ def papel_da_lista(nome: str) -> str:
         if trecho in nome:
             return papel
     return "outra"
+
+
+def estado_do_cartao(c: dict) -> str:
+    """Estado do plano que o cartão tem hoje, no vocabulário de papéis do `decidir`: lista FEITO = `concluido`; lista
+    EM CURSO = o da etiqueta "Estado · …" (sem etiqueta vale `proximas`); as demais listas, o papel da própria lista."""
+    papel = papel_da_lista(c["lista"])
+    if papel == "feito":
+        return "concluido"
+    if papel == "em_curso":
+        return MF.estado_pela_etiqueta(c.get("etiquetas") or ()) or MF.ESTADO_PADRAO
+    return papel
 
 
 def deploys_do_changelog(texto: str) -> list[int]:
@@ -275,7 +288,7 @@ def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[i
     primeiro = min(horas) if horas else 0
     rel = Relatorio()
     for c in cartoes:
-        nome, atual = c["nome"], papel_da_lista(c["lista"])
+        nome, atual = c["nome"], estado_do_cartao(c)
         pid = id_do_item(nome)
         if not pid:
             continue
@@ -287,8 +300,8 @@ def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[i
         if atual in CARTAO_DO_DONO:
             rel.acoes.append(Acao(c["id"], nome, "listar", atual, None, "", "espera o dono; não se move"))
             continue
-        if atual in ("como_ler", "central", "perguntas", "perguntas_respondidas", "prova"):
-            continue          # "prova": lista da prova de 07/10, mantida à mão até o fim da prova
+        if atual in ("como_ler", "central", "perguntas", "perguntas_respondidas", "prova", *MF.LISTAS_A_MAO):
+            continue          # "prova" e as listas à mão (FOCO, DÍVIDA DE PROVA, PAUSADO): curadas pela orquestradora
         st = it.get("status")
         if st == "blocked":
             if atual != "bloqueado":
@@ -370,12 +383,19 @@ def leitura_datada(desc: str, agora: datetime) -> datetime | None:
         return None
 
 
+def rotulo_do_destino(para: str) -> str:
+    """Como o cartão diz para onde vai: FEITO, EM CURSO com o estado entre parênteses, ou o Histórico."""
+    if para in MF.ESTADOS_DE_TRABALHO:
+        return f"EM CURSO ({ROTULO[para]})"
+    return "FEITO" if para == "concluido" else ROTULO.get(para, para)
+
+
 def topo_da_linha(acao: Acao, selo: str) -> str:
     """Primeira linha do cartão. `selo` é a data e hora UTC já formatadas; quem chama lê `date -u` na hora."""
     corpo = acao.linha[0].upper() + acao.linha[1:] if acao.linha else ""
     de = ROTULO.get(acao.de, acao.de)
     if acao.tipo == "mover":
-        return f"{MARCA}{de} ({selo}, regra de 06/10):** vai para {ROTULO.get(acao.para or '', '')}. {corpo}.{SEPARADOR}"
+        return f"{MARCA}{de} ({selo}, regra de 06/10):** vai para {rotulo_do_destino(acao.para or '')}. {corpo}.{SEPARADOR}"
     return f"{MARCA}estado do plano ({selo}):** fica em {de}. {corpo}.{SEPARADOR}"
 
 
@@ -424,8 +444,9 @@ def horas_dos_deploys(raiz: Path | None = None) -> dict[int, str]:
 async def _cartoes(cl, board: str) -> list[dict]:
     ls = await cl._pedir("GET", f"/1/boards/{board}/lists", params={"fields": "name", "filter": "open"})
     listas = {x["id"]: x["name"] for x in ls}
-    cs = await cl._pedir("GET", f"/1/boards/{board}/cards", params={"fields": "name,idList,desc", "filter": "open"})
-    return [{"id": c["id"], "nome": c["name"], "lista": listas.get(c["idList"], ""), "desc": c.get("desc", "")} for c in cs]
+    cs = await cl._pedir("GET", f"/1/boards/{board}/cards", params={"fields": "name,idList,desc,idLabels", "filter": "open"})
+    return [{"id": c["id"], "nome": c["name"], "lista": listas.get(c["idList"], ""), "desc": c.get("desc", ""),
+             "etiquetas": c.get("idLabels", [])} for c in cs]
 
 
 async def _principal(aplicar: bool, raiz: Path | None = None, resultado: dict | None = None) -> int:
@@ -442,8 +463,9 @@ async def _principal(aplicar: bool, raiz: Path | None = None, resultado: dict | 
     ls = await cl._pedir("GET", f"/1/boards/{ident['execucao']}/lists", params={"fields": "name", "filter": "open"})
     listas = {x["id"]: x["name"] for x in ls}
     cs = await cl._pedir("GET", f"/1/boards/{ident['execucao']}/cards",
-                         params={"fields": "name,idList,desc", "filter": "open"})
-    cartoes = [{"id": c["id"], "nome": c["name"], "lista": listas.get(c["idList"], ""), "desc": c.get("desc", "")} for c in cs]
+                         params={"fields": "name,idList,desc,idLabels", "filter": "open"})
+    cartoes = [{"id": c["id"], "nome": c["name"], "lista": listas.get(c["idList"], ""), "desc": c.get("desc", ""),
+                "etiquetas": c.get("idLabels", [])} for c in cs]
     hl = await cl._pedir("GET", f"/1/boards/{ident['historico']}/lists", params={"fields": "name", "filter": "open"})
     hist = {x["name"]: x["id"] for x in hl}
     estado = json.loads((raiz / ".claude/plano-100/estado.json").read_text(encoding="utf-8"))
@@ -466,19 +488,23 @@ async def _principal(aplicar: bool, raiz: Path | None = None, resultado: dict | 
     if not aplicar:
         return 0
     selo = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%MZ")
-    lista_do_papel = {papel_da_lista(n): lid for lid, n in listas.items()}
     falhas = []
     for a in rel.acoes:
         if a.tipo == "listar":
             continue
         try:
-            d = (await cl._pedir("GET", f"/1/cards/{a.cartao}", params={"fields": "desc"}))["desc"]
-            corpo: dict = {"desc": com_linha(d, topo_da_linha(a, selo))}
+            atual = await cl._pedir("GET", f"/1/cards/{a.cartao}", params={"fields": "desc,idLabels"})
+            corpo: dict = {"desc": com_linha(atual["desc"], topo_da_linha(a, selo))}
             if a.tipo == "mover":
+                # a etiqueta de estado troca ANTES da lista: na ida ao Histórico (outro quadro) ela não pode ir junto
+                lista, estado = (None, None) if a.para == "historico" else MF.destino(a.para or "")
+                novas = MF.etiquetas_com_estado(atual.get("idLabels", []), estado)
+                if sorted(novas) != sorted(atual.get("idLabels", [])):
+                    await cl._pedir("PUT", f"/1/cards/{a.cartao}", corpo={"idLabels": ",".join(novas)})
                 if a.para == "historico":
                     corpo.update({"idBoard": ident["historico"], "idList": a.lista_do_historico})
                 else:
-                    corpo["idList"] = lista_do_papel[a.para or ""]
+                    corpo["idList"] = lista
             await cl._pedir("PUT", f"/1/cards/{a.cartao}", corpo=corpo)
         except Exception as ex:  # noqa: BLE001 - relata e segue com os outros cartões
             falhas.append((a.nome[:40], type(ex).__name__))

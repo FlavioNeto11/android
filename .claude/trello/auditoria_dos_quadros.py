@@ -51,6 +51,7 @@ sys.path.insert(0, str(AQUI.parent / "canais"))
 BACKEND_CENTRAL = Path(r"C:\git\android\backend")
 RAIZ_CENTRAL = BACKEND_CENTRAL.parent
 
+import modelo_de_foco as MF  # noqa: E402
 import reconciliar as R  # noqa: E402
 from cartoes_de_aparelho import _LINHA_APARELHO, _ROTULO, LISTA_DO_ESTADO, LISTAS  # noqa: E402
 from espelho_do_deploy import QUADROS, ids_sem_cartao, itens_do_plano  # noqa: E402
@@ -67,14 +68,15 @@ VERIFICACOES = {
     "sem_cartao": ("sem cartão", "item do plano sem cartão"),
     "pergunta_incoerente": ("perguntas", "pergunta P-NNN em lista incoerente com a resposta"),
     "aparelho_incoerente": ("aparelhos", "cartão de aparelho duplicado ou em lista incoerente"),
-    "concluido_fora": ("concluídos fora de Concluído", "item já concluído e implantado, ainda em lista de trabalho"),
+    "concluido_fora": ("concluídos fora do FEITO", "item já concluído e implantado, ainda em lista de trabalho"),
     "sem_lista": ("sem lista conhecida", "cartão em lista que não se conhece"),
 }
 #: verificações que dependem do plano (2 e 5)
 DO_PLANO = ("sem_cartao", "concluido_fora")
 
 #: papéis do Execução que NÃO são lista de trabalho (o `reconciliar.decidir` também os deixa quietos ou os move só a mão)
-NAO_E_TRABALHO = {"concluido", "prova", "como_ler", "central", "perguntas", "perguntas_respondidas", "espera_voce"}
+NAO_E_TRABALHO = {"concluido", "feito", "prova", "foco", "divida_de_prova", "pausado", "como_ler", "central", "perguntas",
+                  "perguntas_respondidas", "espera_voce"}
 #: estado escrito no cartão do aparelho (`Estado da sessão: pronta`) → lista em que ele tem de estar (a regra do 28.69)
 _LISTA_DO_ESTADO_ESCRITO = dict(LISTA_DO_ESTADO)
 _LINHA_ESTADO = re.compile(r"(?m)^Estado da sessão: (.+?)[ \t]*$")
@@ -275,9 +277,12 @@ async def ler_cartoes(cl) -> tuple[list[dict], dict[str, str]]:  # noqa: ANN001
         listas = {x["id"]: x["name"] for x in ls}
         if quadro == "historico":
             hist = {n: i for i, n in listas.items()}
-        cs = await cl._pedir("GET", f"/1/boards/{bid}/cards", params={"fields": "name,idList,desc", "filter": "open"})
-        cartoes += [{"id": c["id"], "nome": c["name"], "lista": listas.get(c["idList"], ""), "id_lista": c["idList"],
-                     "desc": c.get("desc") or "", "quadro": quadro} for c in cs]
+        cs = await cl._pedir("GET", f"/1/boards/{bid}/cards",
+                             params={"fields": "name,idList,desc,idLabels", "filter": "open"})
+        # no Execução, `id_lista` é a posição lógica (EM CURSO + etiqueta de estado, ou FEITO), a que os cartões de aparelho usam
+        cartoes += [{"id": c["id"], "nome": c["name"], "lista": listas.get(c["idList"], ""),
+                     "id_lista": MF.posicao_do_cartao(c["idList"], c.get("idLabels") or []) if quadro == "execucao" else c["idList"],
+                     "etiquetas": c.get("idLabels") or [], "desc": c.get("desc") or "", "quadro": quadro} for c in cs]
     return cartoes, hist
 
 

@@ -28,10 +28,11 @@ from pathlib import Path
 AQUI = Path(__file__).resolve().parent
 RAIZ = AQUI.parents[1]
 sys.path.insert(0, str(AQUI))
+import modelo_de_foco as MF  # noqa: E402
 BACKEND_CENTRAL = Path(r"C:\git\android\backend")
 
-LISTA_PROXIMAS = "6ac13b17a670feab8e9d3f4c"
-LISTA_CONCLUIDO = "6ac13b1d2b3e0ab6f1126112"
+LISTA_PROXIMAS = MF.POS_PROXIMAS          # posição lógica: EM CURSO com a etiqueta "Estado · Próximas"
+LISTA_CONCLUIDO = MF.LISTA_FEITO          # id real da lista FEITO (o cartão existente vem com o id real)
 QUADRO_EXECUCAO = "6ac13aeda5570365d020f8e2"
 PREFIXO_DA_CHAVE = "Chave do achado: "
 NOME_MAX = 100
@@ -131,7 +132,8 @@ async def _principal(achados: list[dict[str, object]], aplicar: bool) -> int:
     from app.modules.avisos.adapters.trello import ClienteTrello  # noqa: PLC0415
     from redacao import redigir  # noqa: PLC0415
     e = EnvSettings()
-    cl = ClienteTrello(e.trello_api_key.get_secret_value().strip(), e.trello_token.get_secret_value().strip())
+    cl = MF.ClienteDePosicoes(ClienteTrello(e.trello_api_key.get_secret_value().strip(),
+                                            e.trello_token.get_secret_value().strip()))
     cs = await cl._pedir("GET", f"/1/boards/{QUADRO_EXECUCAO}/cards",
                          params={"fields": "name,idList,desc", "filter": "open"})
     existentes = {k: {"id": c["id"], "lista": c["idList"]}
@@ -149,7 +151,7 @@ async def _principal(achados: list[dict[str, object]], aplicar: bool) -> int:
                 await cl._pedir("PUT", f"/1/cards/{r['id']}", corpo={"pos": "bottom"})
         else:
             atual = await cl._pedir("GET", f"/1/cards/{a.cartao}", params={"fields": "desc"})
-            await cl.atualizar_cartao(a.cartao, desc=f"**{a.desc}.**\n\n{atual['desc']}", lista=LISTA_CONCLUIDO)
+            await cl.atualizar_cartao(a.cartao, desc=f"**{a.desc}.**\n\n{atual['desc']}", lista=MF.POS_CONCLUIDO)
     return 0
 
 
