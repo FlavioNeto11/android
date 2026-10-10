@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o resumo da execução conta as etapas exploratórias (31.305; adendo v1.135)
+
+- `RunSummary.etapas_exploratorias` (inteiro, sempre presente) em `GET /api/runs` e no detalhe: contagem de `steps.exploratoria`, numa
+  consulta só para a lista. Para o Portal filtrar e contar nas Execuções (31.306). Prova **simulada**:
+  `tests/test_run_etapas_exploratorias.py`. **Real: não executada** (depois do deploy, numa execução que explorou).
+
 ## 2026-10-10 — a conta âncora ociosa é relida de tempos em tempos, sem IA (31.302; adendo v1.136)
 
 - Laço novo `modules/identity/infrastructure/verificacao_periodica.py` (regras puras em `application/`): a cada

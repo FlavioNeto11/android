@@ -1892,6 +1892,9 @@ class RunSummary(BaseModel):
     operacao_id: str | None = None
     #: 31.50: quando a pergunta (`needs_input`) vence pelo sistema, ISO; nulo fora de `needs_input` ou desligado.
     vence_em: str | None = None
+    #: 31.305 (v1.135): quantas etapas da execução nasceram de exploração (o catálogo não cobria o pedido, ADR-084), contadas
+    #: de `steps.exploratoria`. É o que o painel filtra e conta nas Execuções sem ler cada execução; 0 na maioria.
+    etapas_exploratorias: int = 0
 
 
 class EfeitoRepetido(BaseModel):

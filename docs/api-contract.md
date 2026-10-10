@@ -8370,6 +8370,14 @@ medida × esperada deixou de provar algo. Antes, nenhum código do app editava u
 - **Compatibilidade:** aditivo. O `POST /api/network/profiles` e o `DELETE` seguem como estavam.
 - **Prova:** `simulated` (`backend/tests/test_rede_saida_esperada_edicao.py`, 7 testes). `real`: `not_run`.
 
+## Adendo v1.135 (10/10/2026; número da orquestradora; item 31.305) — `etapas_exploratorias` no resumo da execução
+
+Campo aditivo no `RunSummary`, em `GET /api/runs` (cada item de `runs`), `GET /api/runs/{id}` (herdado pelo `RunDetail`) e em todo lugar
+que devolve o resumo: `etapas_exploratorias` (number, inteiro >= 0, **sempre presente**, 0 na maioria). É a contagem das etapas
+da execução que nasceram de exploração (`steps.exploratoria`, 31.273: o catálogo não cobria o pedido, ADR-084). Na lista vem de
+UMA consulta para a página inteira, para o painel filtrar e contar "descoberta pela IA" nas Execuções sem ler cada execução (31.306).
+Sem rota nova, sem migração. **Prova:** `simulated` (`backend/tests/test_run_etapas_exploratorias.py`, rota HTTP de verdade).
+
 ## Adendo v1.136 (10/10/2026; número da orquestradora; item 31.302) — a releitura periódica da sessão da conta âncora
 
 Sem rota nova. Um laço do central relê, a cada N horas e SEM IA, a tela da conta âncora de cada persona com sessão

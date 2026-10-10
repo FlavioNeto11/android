@@ -1742,13 +1742,25 @@ class Repository:
             for x in self.db.query(f"SELECT run_id, status, COUNT(*) n FROM objectives WHERE run_id IN ({marcas}) "
                                    "GROUP BY run_id, status", tuple(contagens)):
                 setattr(contagens[str(x["run_id"])], x["status"], x["n"])
+        # 31.305: as etapas exploratórias de todas numa consulta só.
+        exploratorias: dict[str, int] = {}
+        if contagens:
+            marcas = ",".join("?" for _ in contagens)
+            exploratorias = {str(x["run_id"]): int(x["n"]) for x in self.db.query(
+                f"SELECT run_id, COUNT(*) n FROM steps WHERE exploratoria=1 AND run_id IN ({marcas}) GROUP BY run_id",
+                tuple(contagens))}
         return [self.run_summary(r, entrada_da_pergunta=entradas.get(str(r["id"]), r["created_at"])
-                                 if str(r["id"]) in perguntas else None, contagens=contagens[str(r["id"])])
+                                 if str(r["id"]) in perguntas else None, contagens=contagens[str(r["id"])],
+                                 exploratorias=exploratorias.get(str(r["id"]), 0))
                 for r in rows]
 
     def run_summary(self, row: Row, *, deduplicated: bool | None = None,
-                    entrada_da_pergunta: str | None = None, contagens: RunCounts | None = None) -> RunSummary:
+                    entrada_da_pergunta: str | None = None, contagens: RunCounts | None = None,
+                    exploratorias: int | None = None) -> RunSummary:
         ids = loads(row["instance_ids"], [])
+        if exploratorias is None:                     # fora de `run_summaries`: uma consulta, só para esta execução
+            exploratorias = int(self.db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=? AND exploratoria=1",
+                                               (row["id"],)) or 0)
         counts = contagens if contagens is not None else self._counts(row["id"])
         total = sum(counts.model_dump().values())
         origem, origem_ref = origem_da_execucao(_col(row, "prova_fluxo_id"), _col(row, "idempotency_key"))
@@ -1764,7 +1776,7 @@ class Repository:
             pedido_id=_col(row, "pedido_id"), ocorrencia_id=_col(row, "ocorrencia_id"),
             prova_fluxo_id=_col(row, "prova_fluxo_id"), origem=origem, origem_ref=origem_ref,
             operacao_id=_col(row, "operacao_id"),
-            vence_em=self._vence_em_da_pergunta(row, entrada_da_pergunta))
+            vence_em=self._vence_em_da_pergunta(row, entrada_da_pergunta), etapas_exploratorias=exploratorias)
 
     def _vence_em(self, desde: str | None) -> str | None:
         """31.50: o mais tardio entre `desde` e a marca de quando o vencimento foi ligado, mais o prazo."""
