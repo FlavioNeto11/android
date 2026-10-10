@@ -242,7 +242,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_conta_planejada.py` (22: domínio, planejar idempotente, sugestões, gerar sem devolver a senha, digitar,
   reutilizar da mesma persona, ciclo completo, evidência por sessão e declarada, comparar e trocar, falha e retomada, cancelar com cofre,
   trilha sem endereço nem senha, consumidores) e 803 testes dirigidos de contas, sessão, ponte, rotas, catracas verdes. `test_arquitetura.py`
-  segue com as 2 falhas que já estão na main (egresso/ponte). `real`: `not_run` (a validação ponta a ponta com provedor simulado é o 31.284).
+  estava com 2 falhas que já vinham da main (egresso/ponte) e passou a verde no rebase sobre o 31.292; no rebase de 10/10 só a catraca de `profile_id` pediu ajuste (`handle_ocupado` declarado global) e `test_ordem_das_rotas` segue vermelho na main pela rota `PUT /api/network/profiles/{profile_id}` do 31.301. `real`: `not_run` (a validação ponta a ponta com provedor simulado é o 31.284).
 
 ## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
 
