@@ -19,6 +19,7 @@ import re
 import secrets
 import unicodedata
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any, Protocol
 
 from ..db import Database, Row
@@ -29,10 +30,10 @@ from ..modules.learning.domain.uso_real import em_uso_real_desde
 from ..modules.skills.domain.document import JsonValue
 from ..modules.skills.domain.matching import specificity
 from ..models import Plan, PlannerInfo, StepResult
-from ..util import now_iso
+from ..util import now, now_iso, to_iso
 from .parecidos import parecidos as parecidos_do_texto
 from .vizinhos import Vizinho, pares_dos_fluxos
-from ..planning.etapas_ensinadas import EtapaEnsinada, oferecivel
+from ..planning.etapas_ensinadas import EtapaEnsinada, oferecivel, oferecivel_descoberta
 
 RESERVED = {"instance_id", "run_id", "account_label"}
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
@@ -670,6 +671,42 @@ class FlowStore:
                     continue
                 saida.append(EtapaEnsinada(nome=passo.key, app_id=str(app), passo=passo, receita=achada[0],
                                            reproducoes=achada[1], origem=str(f["source"])))
+        return saida
+
+    def etapas_descobertas(self, *, sem_uso_dias: int = 90) -> list[EtapaEnsinada]:
+        """31.273 (ADR-084): as etapas que a IA DESCOBRIU numa exploração (`steps.exploratoria`, migração 130) e que a
+        receita comprovou: ativa (a candidata só vira ativa pela prova de concordância do Livro, 31.271/31.287), sem
+        efeito externo e sem valor de pessoa na etapa (`oferecivel_descoberta`). O molde sai de `runs.plan` da execução
+        de origem, que guarda a etapa como o planejador a escreveu (sem resolver as variáveis).
+
+        Frescor: a chave da receita inclui versão, assinatura e variante do app, então outra versão do app não a acha
+        (`RecipeStore.find`) e a exploração roda de novo; `sem_uso_dias` tira da oferta a receita sem uso (ou sem
+        nascer) há tanto tempo, sem apagá-la (0 desliga o piso). A de origem em treino é de `etapas_ensinadas`."""
+        corte = to_iso(now() - timedelta(days=sem_uso_dias)) if sem_uso_dias > 0 else None
+        saida: list[EtapaEnsinada] = []
+        planos: dict[str, Plan | None] = {}
+        for r in self.db.query(
+                "SELECT r.id, r.replay_ok, r.shadow_agree, r.created_at, r.last_used_at, r.learned_from_step,"
+                " s.run_id, s.key, s.app_id FROM recipes r JOIN steps s ON s.id = r.learned_from_step"
+                " WHERE r.status = 'active' AND s.exploratoria = 1 AND r.learned_from_step NOT LIKE ?"
+                " ORDER BY r.id", (PREFIXO_DO_TREINO + "%",)):
+            if corte and str(r["last_used_at"] or r["created_at"] or "") < corte:
+                continue
+            run_id = str(r["run_id"])
+            if run_id not in planos:
+                linha = self.db.one("SELECT plan FROM runs WHERE id = ?", (run_id,))
+                try:
+                    planos[run_id] = Plan.model_validate_json(linha["plan"]) if linha and linha["plan"] else None
+                except ValueError:
+                    planos[run_id] = None
+            plano = planos[run_id]
+            passo = next((p for p in plano.steps if p.key == r["key"]), None) if plano else None
+            app = (passo and passo.app_id) or (plano and plano.app_id) or r["app_id"]
+            if plano is None or passo is None or not app or not oferecivel_descoberta(passo, plano.parameters.values()):
+                continue
+            saida.append(EtapaEnsinada(nome=passo.key, app_id=str(app), passo=passo, receita=int(r["id"]),
+                                       reproducoes=max(int(r["replay_ok"]), int(r["shadow_agree"])),
+                                       origem=str(r["learned_from_step"]), descoberta=True))
         return saida
 
     def vizinhos_conhecidos(self) -> dict[str, dict[str, Vizinho]]:

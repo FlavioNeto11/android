@@ -406,7 +406,8 @@ class FontesSql:
 
 #: A receita com o título da etapa de que foi aprendida (`EntradaDoLivro.etapa`); a de treino não casa com `steps`.
 #: 30.43: e a marca da execução de origem (`origem_prova`, `origem_chave`) para `nasceu_em`.
-_RECEITAS = ("SELECT r.*, s.title AS etapa_titulo, ru.prova_fluxo_id AS origem_prova, ru.idempotency_key AS origem_chave"
+_RECEITAS = ("SELECT r.*, s.title AS etapa_titulo, s.exploratoria AS origem_exploracao,"
+             " ru.prova_fluxo_id AS origem_prova, ru.idempotency_key AS origem_chave"
              " FROM recipes r LEFT JOIN steps s ON s.id = r.learned_from_step LEFT JOIN runs ru ON ru.id = s.run_id")
 
 
@@ -445,7 +446,7 @@ def _receita(r: Row, *, necessarias: int | None = None, ativa: Row | None = None
                                     linhas.texto(r, "step_hash")),
         app_version=linhas.texto(r, "app_version"), falhas_seguidas=linhas.inteiro(r, "consecutive_fail"),
         nasceu_de=run_da_etapa(aprendida), etapa=linhas.texto_ou_nulo(r, "etapa_titulo"),
-        nasceu_em=_nasceu_em(r),
+        nasceu_em=_nasceu_em(r), nasceu_de_exploracao=bool(linhas.inteiro_ou_nulo(r, "origem_exploracao")),
         prova_da_candidata=_prova_da_candidata(r, necessarias, ativa) if status == "candidate" else None)
 
 

@@ -8215,3 +8215,23 @@ fluxo e do e-mail: [`email-do-parque.md`](email-do-parque.md).
   teste foram atualizados).
 - **Prova:** `simulated` (`backend/tests/test_personas_pendentes_api.py`, `test_contas_igfarm_api.py`,
   `test_email_do_parque.py`, `test_migracao_132.py`, `test_generate_text.py`). `real`: ver `CHANGELOG.md` (09/10/2026).
+
+## Adendo v1.130 (10/10/2026; número da orquestradora; item 31.273, ADR-084) — a etapa descoberta por exploração
+
+Sem rota nova. Campos aditivos; a forma do resto não muda.
+
+- **`steps[].exploratoria`** (GET do run/objetivo): `boolean`, `false` por padrão. `true` = a etapa foi criada por EXPLORAÇÃO,
+  porque o catálogo do app não cobria o pedido (migração 130, `steps.exploratoria`). Só proveniência.
+- **`PlanStep.exploratoria`** (o plano em `runs.plan`): fora da serialização quando falso, como `opcional`; os planos já
+  gravados e o hash das etapas não mudam.
+- **`nasceu_de_exploracao`** na linha do Livro (`GET /api/aprendizado` e o item aberto): `boolean`, presente em toda
+  linha. `true` só na receita cuja etapa de origem é exploratória; é o selo "nasceu de exploração" da lista e do dossiê.
+- **`ai.descobertas_sem_uso_dias`** (config, lido ao vivo por `PUT /api/settings`): inteiro, padrão 90, `0` desliga o
+  piso. A receita descoberta sem uso (ou sem nascer) há mais dias que isso deixa de ser oferecida ao planejador; a receita
+  não é apagada.
+- **Prompt do planejador:** a etapa descoberta e comprovada vai num bloco `<etapas_descobertas>` SEPARADO do
+  `<etapas_ensinadas>` (o planejador sabe que nenhuma pessoa a demonstrou), só com nome, app e parâmetros. A ensinada por
+  pessoa vence a descoberta de mesmo nome. A trilha do plano diz "etapa DESCOBERTA pela IA numa exploração (31.273;
+  ninguém a demonstrou)".
+- **Prova:** `simulated` (`backend/tests/test_etapas_descobertas.py`, `backend/tests/test_migracao_130.py`). `real`:
+  `not_run` (a exploração real no Outlook depende do sim do dono para o custo de API).

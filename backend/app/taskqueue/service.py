@@ -1356,12 +1356,20 @@ class RunService:
         return list(recusadas.values())
 
     def _etapas_ensinadas(self, apps: list[str]) -> list[etapas_ensinadas.EtapaEnsinada]:
-        """31.153: as etapas ensinadas oferecíveis dos `apps` do plano. Falha ao ler = nenhuma (o plano segue livre)."""
+        """31.153: as etapas ensinadas oferecíveis dos `apps` do plano, mais (31.273) as que a IA descobriu numa
+        exploração e a receita comprovou; a ensinada por pessoa vence a descoberta de mesmo nome (`escolher`). Falha
+        ao ler = nenhuma (o plano segue livre); a descoberta que falha não derruba a ensinada."""
+        candidatas: list[etapas_ensinadas.EtapaEnsinada] = []
         try:
-            return etapas_ensinadas.escolher(self.flows.etapas_ensinadas(), apps)
+            candidatas.extend(self.flows.etapas_ensinadas())
         except Exception as exc:  # noqa: BLE001
             log.info("etapas ensinadas não lidas (%s): o plano segue sem elas", exc)
-            return []
+        try:
+            candidatas.extend(self.flows.etapas_descobertas(
+                sem_uso_dias=self.scheduler.cfg.file.ai.descobertas_sem_uso_dias))
+        except Exception as exc:  # noqa: BLE001
+            log.info("etapas descobertas não lidas (%s): o plano segue sem elas", exc)
+        return etapas_ensinadas.escolher(candidatas, apps)
 
     def _trocar_por_ensinadas(self, run_id: str, plan: Plan,
                               ensinadas: list[etapas_ensinadas.EtapaEnsinada]) -> Plan:
@@ -1373,6 +1381,8 @@ class RunService:
         if trocadas:
             plan = plan.model_copy(update={"steps": passos})
             self.repo.decision("Etapas ensinadas no plano livre (31.153): " + "; ".join(
+                (f"{k} pela etapa DESCOBERTA pela IA numa exploração (31.273; ninguém a demonstrou; receita {e.receita},"
+                 f" {e.reproducoes} reprodução(ões)/concordância(s) boa(s))") if e.descoberta else
                 f"{k} pela etapa ensinada em {e.origem} (receita {e.receita}, {e.reproducoes} reprodução(ões) boa(s))"
                 for k, e in trocadas) + ".", run_id=run_id)
         if recusas:

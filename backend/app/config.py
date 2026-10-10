@@ -871,6 +871,10 @@ class AiCfg(BaseModel):
     # mesma etapa noutra versão do app, noutra variante ou na legada. false = só mede a causa do "ausente". Só vale
     # com a prova (`recipes_promote_after > 0`): sem ela a receita aprendida já nasce ativa e não há o que herdar.
     recipes_heranca: bool = True
+    # 31.273 (ADR-084): a etapa que a IA descobriu numa exploração e a receita comprovou é oferecida ao planejador pelo
+    # nome (`planning/etapas_ensinadas`, bloco `etapas_descobertas`). A receita sem uso há tantos dias sai da oferta,
+    # sem ser apagada; 0 = sem piso. Lido ao vivo (PUT /api/settings).
+    descobertas_sem_uso_dias: int = Field(90, ge=0, le=3650)
     flows: bool = False                          # reaproveita o plano de comandos repetidos (sem chamar o planejador)
     pathfinder_wait_s: int = Field(0, ge=0, le=3600)   # >0: numa execução sem receita, 1 aparelho aprende e os demais esperam
     # US$ por milhão de tokens [entrada, leitura de cache, gravação de cache, saída] — platform.claude.com/docs/en/about-claude/pricing

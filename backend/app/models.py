@@ -228,6 +228,10 @@ class PlanStep(BaseModel):
     #: Configurações é de outro pacote). O ensino preenche com os vistos na demonstração. Fora da serialização quando
     #: vazia, como `saidas`: o plano e o hash das etapas já gravadas não mudam. Pacote desconhecido nunca comprova.
     pacotes_aceitos: list[str] = Field(default_factory=list, exclude_if=lambda v: not v)
+    #: Item 31.273 (ADR-084, migração 130): etapa criada por EXPLORAÇÃO, porque o catálogo do app não cobria o pedido.
+    #: Só proveniência: não muda a execução nem a aprovação; o ensino a lê para achar de novo o que a IA comprovou.
+    #: Fora da serialização quando falsa, como `opcional`: o plano e o hash das etapas já gravadas não mudam.
+    exploratoria: bool = Field(default=False, exclude_if=lambda v: not v)
 
     @field_validator("saidas")
     @classmethod
@@ -1931,6 +1935,7 @@ class StepDTO(BaseModel):
     for_each: str | None = None               # etapa-modelo ainda não expandida
     variables: dict[str, str] = {}            # variáveis próprias da etapa (item, item_index)
     opcional: bool = False                    # item 31.36: etapa de limpeza; falhar vira `skipped` e o objetivo segue
+    exploratoria: bool = False                # item 31.273 (v1.130): etapa criada por exploração (o catálogo não cobria o pedido)
     #: Item 31.123 (adendo v1.84): os pacotes vizinhos em que a etapa pode concluir. Omitido quando vazio.
     pacotes_aceitos: list[str] = Field(default_factory=list, exclude_if=lambda v: not v)
     # Item 31.65: o motivo da RECUSA da persona ao escrever o texto desta etapa (texto do modelo). Só aqui, no detalhe

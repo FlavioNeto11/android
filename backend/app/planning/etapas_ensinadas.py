@@ -37,7 +37,10 @@ class EtapaEnsinada:
     passo: PlanStep                 # a etapa-molde (`{nome}` no lugar dos valores)
     receita: int
     reproducoes: int
-    origem: str                     # `training:<sessão>`
+    origem: str                     # `training:<sessão>`; na descoberta, o `steps.id` da etapa exploratória
+    #: 31.273 (ADR-084): a etapa que a IA DESCOBRIU numa exploração e a receita comprovou; ninguém a demonstrou. O
+    #: planejador e a trilha precisam saber a diferença, e a ensinada por pessoa ganha o nome repetido.
+    descoberta: bool = False
 
     @property
     def parametros(self) -> tuple[str, ...]:
@@ -69,6 +72,21 @@ def oferecivel(passo: PlanStep, exemplos: Iterable[str] = ()) -> bool:
     return not any(re.search(r"(?<![a-z])" + re.escape(p) + r"(?![a-z])", chave) for p in palavras)
 
 
+def oferecivel_descoberta(passo: PlanStep, exemplos: Iterable[str] = ()) -> bool:
+    """31.273: a etapa descoberta por exploração só é oferecida como molde se NADA nela carrega o valor de uma pessoa.
+    O planejador livre escreve o título e o objetivo à vontade (o fluxo ensinado vem de um molde com `{nome}` no lugar
+    do valor), então, além do que vale para a ensinada (`oferecivel`), a etapa não pode ter digitação (`bindings`) nem
+    ter nenhum valor dos parâmetros do plano no título, no objetivo, na pré-condição ou na pós-condição. A etapa
+    exploratória que nasceu com o valor escrito fica de fora; a receita dela segue valendo pelo caminho de sempre."""
+    exemplos = list(exemplos)
+    if not oferecivel(passo, exemplos) or passo.bindings or passo.for_each or passo.template_key:
+        return False
+    texto = _normal(" ".join(filter(None, [passo.title, passo.goal, passo.precondition, passo.postcondition.value,
+                                           passo.postcondition.description])))
+    valores = {_normal(str(v).lstrip("@").strip()) for v in exemplos}
+    return not any(v and v in texto for v in valores)
+
+
 def _com_efeito(passo: PlanStep) -> bool:
     """A etapa do plano que o planejador marcou com efeito, trava, ação do catálogo ou digitação: trocá-la pelo molde
     (que não tem essas marcas) a tiraria da aprovação e do catálogo."""
@@ -82,23 +100,33 @@ def escolher(candidatas: Sequence[EtapaEnsinada], apps: Sequence[str]) -> list[E
         if e.app_id not in apps:
             continue
         atual = melhores.get((e.app_id, e.nome))
-        if atual is None or (e.reproducoes, e.receita) > (atual.reproducoes, atual.receita):
+        # a ensinada por pessoa vence a descoberta de mesmo nome (31.273); entre iguais, a de mais reproduções
+        if atual is None or (not e.descoberta, e.reproducoes, e.receita) > (not atual.descoberta, atual.reproducoes,
+                                                                            atual.receita):
             melhores[(e.app_id, e.nome)] = e
-    return sorted(melhores.values(), key=lambda e: (-e.reproducoes, e.app_id, e.nome))[:MAXIMO]
+    return sorted(melhores.values(), key=lambda e: (e.descoberta, -e.reproducoes, e.app_id, e.nome))[:MAXIMO]
 
 
 def bloco(etapas: Sequence[EtapaEnsinada]) -> str:
-    """O bloco do texto de USUÁRIO, seguido de linha em branco; sem etapa, nada."""
+    """O bloco do texto de USUÁRIO, seguido de linha em branco; sem etapa, nada. As ensinadas por pessoa e as
+    descobertas pela IA (31.273) vão em blocos separados: o planejador sabe quais foram demonstradas e quais não."""
+    return _bloco([e for e in etapas if not e.descoberta], "etapas_ensinadas",
+                  "demonstradas por uma pessoa e reproduzidas sem IA") + _bloco(
+        [e for e in etapas if e.descoberta], "etapas_descobertas",
+        "descobertas pela IA numa exploração e comprovadas sem IA; nenhuma pessoa as demonstrou")
+
+
+def _bloco(etapas: Sequence[EtapaEnsinada], tag: str, origem: str) -> str:
     if not etapas:
         return ""
     linhas = "\n".join(e.linha() for e in etapas)
-    return ("<etapas_ensinadas origem=\"demonstradas por uma pessoa e reproduzidas sem IA\">\n"
+    return (f"<{tag} origem=\"{origem}\">\n"
             f"{linhas}\n"
             "Quando uma etapa do plano faz exatamente o que o nome de uma destas diz, no mesmo app, use como `key` "
             "dela o `nome` "
             "acima e declare em `parameters` o valor de cada parâmetro dela (tirado do comando). O sistema roda a "
             "etapa ensinada.\n"
-            "</etapas_ensinadas>\n\n")
+            f"</{tag}>\n\n")
 
 
 def trocar(passos: Sequence[PlanStep], app_do_plano: str | None, oferecidas: Sequence[EtapaEnsinada],
@@ -130,4 +158,4 @@ def trocar(passos: Sequence[PlanStep], app_do_plano: str | None, oferecidas: Seq
     return saida, trocadas, recusas
 
 
-__all__ = ["MAXIMO", "EtapaEnsinada", "bloco", "escolher", "oferecivel", "trocar"]
+__all__ = ["MAXIMO", "EtapaEnsinada", "bloco", "escolher", "oferecivel", "oferecivel_descoberta", "trocar"]

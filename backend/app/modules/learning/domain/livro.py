@@ -320,6 +320,9 @@ class EntradaDoLivro:
     assunto: str | None = None
     #: 31.271: só na receita candidata; `None` em todo o resto.
     prova_da_candidata: ProvaDaCandidata | None = None
+    #: 31.273 (v1.130, ADR-084): a receita nasceu de uma EXPLORAÇÃO da IA (a etapa de origem tem `steps.exploratoria`),
+    #: não de uma demonstração nem de um plano com ação do catálogo. Só a receita tem a marca; o resto fica `False`.
+    nasceu_de_exploracao: bool = False
 
     @property
     def requires_owner(self) -> bool:

@@ -152,6 +152,7 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
             "saude": _saude(saude), "nasceu_de": e.nasceu_de, "nasceu_em": e.nasceu_em, "reaprendido": _reaprendido(e.reaprendido),
             "nascido_de_prova": e.nascido_de_prova,                 # 31.143 (v1.92): o selo e o filtro "Prova" (31.131)
             "em_uso_real_desde": e.em_uso_real_desde,               # 31.150: o selo "em uso real desde"
+            "nasceu_de_exploracao": e.nasceu_de_exploracao,         # 31.273 (v1.130): a receita nasceu de uma exploração da IA
             "source_kind": e.source_kind,                           # v1.117: a origem do item de learning_items
             "assunto": e.assunto,                                   # 31.200 (v1.113): o escopo de assunto do item
             **_da_prova(e), **_do_legado(e, legado), **_da_espera(e, servico)}
