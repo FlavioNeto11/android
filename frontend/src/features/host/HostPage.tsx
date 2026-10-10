@@ -7,7 +7,7 @@ import { Page } from '../../components/Page';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { formatDecimal, formatGb, formatInt, formatMb, formatPercent, plural } from '../../lib/format';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
-import { formatClock } from '../../lib/time';
+import { formatClockComFuso } from '../../lib/time';
 import { apiHost, JANELAS_EM_HORAS, type AmostraDoHost, type AmostrasDoHost, type JanelaEmHoras } from './contratoDoHost';
 import { defasagemEmMinutos, LIMITE_DE_DEFASAGEM_MIN, paraOndeFoiACpu, pressaoPorAparelho, processosNoTopo, resumoDaJanela, trechosDaSerie } from './resumo';
 import styles from './Host.module.css';
@@ -61,8 +61,8 @@ function Corpo({ dado, horas }: { dado: AmostrasDoHost; horas: number }) {
     ['CPU agora (instantâneo)', formatPercent(u.cpu_host_pct)],
     ['CPU média do último minuto', formatPercent(r.cpuMedia.agora)],
     [`CPU média na janela`, formatPercent(r.cpu.media)],
-    ['Pico de CPU', r.cpu.pico === null ? '—' : `${formatPercent(r.cpu.pico)} às ${formatClock(r.cpu.picoEm)}`],
-    ['Maior CPU média de um minuto', r.cpuMedia.pico === null ? '—' : `${formatPercent(r.cpuMedia.pico)} às ${formatClock(r.cpuMedia.picoEm)}`],
+    ['Pico de CPU', r.cpu.pico === null ? '—' : `${formatPercent(r.cpu.pico)} às ${formatClockComFuso(r.cpu.picoEm)}`],
+    ['Maior CPU média de um minuto', r.cpuMedia.pico === null ? '—' : `${formatPercent(r.cpuMedia.pico)} às ${formatClockComFuso(r.cpuMedia.picoEm)}`],
     ['RAM livre agora', formatMb(u.ram_livre_mb)],
     ['Menor RAM livre na janela', formatMb(r.ramLivreMinimaMb)],
     ['Disco livre', formatGb(u.disco_livre_gb)],
@@ -74,7 +74,7 @@ function Corpo({ dado, horas }: { dado: AmostrasDoHost; horas: number }) {
     <>
       {atraso !== null && atraso > LIMITE_DE_DEFASAGEM_MIN ? (
         <Banner tone="warning" icon={TriangleAlert} compact role="status" title="A última amostra é antiga">
-          A amostra mais nova tem {plural(atraso, 'minuto', 'minutos')} (às {formatClock(u.ts_utc)}). O amostrador grava uma por minuto: ele pode ter parado.
+          A amostra mais nova tem {plural(atraso, 'minuto', 'minutos')} (às {formatClockComFuso(u.ts_utc)}). O amostrador grava uma por minuto: ele pode ter parado.
         </Banner>
       ) : null}
       <dl className={styles.celulas} aria-label="Medidas do host">
@@ -158,7 +158,7 @@ function Corpo({ dado, horas }: { dado: AmostrasDoHost; horas: number }) {
                     <td>{formatInt(p.avisos)}</td>
                     <td>{formatInt(p.minutos)}</td>
                     <td>{formatDecimal(p.pctDaJanela)}%</td>
-                    <td>{formatClock(p.ultimoEm)}</td>
+                    <td>{formatClockComFuso(p.ultimoEm)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -206,7 +206,7 @@ export function HostPage() {
             </Select>
           )}
         </Field>
-        <p className={styles.mudo} role="status">{lidoEm ? `Lido às ${formatClock(lidoEm)}; a próxima leitura é em até 1 minuto.` : 'Lendo…'}</p>
+        <p className={styles.mudo} role="status">{lidoEm ? `Lido às ${formatClockComFuso(lidoEm)}; a próxima leitura é em até 1 minuto.` : 'Lendo…'}</p>
       </div>
       {erro && dado ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {dado?.exemplo ? (

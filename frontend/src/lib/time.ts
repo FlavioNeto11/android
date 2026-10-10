@@ -154,6 +154,27 @@ export function formatClock(iso: string | null | undefined): string {
   return t === null ? '—' : timeFmt.format(t);
 }
 
+/**
+ * O fuso do navegador NAQUELE instante, como diferença de UTC ("UTC-3", "UTC+5:30", "UTC"). Quem compara a tela com
+ * `date -u` ou com a hora do servidor precisa saber de qual relógio é o número (31.294): as amostras e a API vêm em UTC.
+ */
+export function rotuloDoFuso(iso: string | null | undefined): string {
+  const t = parseTs(iso);
+  const min = -new Date(t ?? Date.now()).getTimezoneOffset();
+  if (min === 0) return 'UTC';
+  const sinal = min < 0 ? '-' : '+';
+  const abs = Math.abs(min);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return `UTC${sinal}${h}${m ? `:${String(m).padStart(2, '0')}` : ''}`;
+}
+
+/** `formatClock` com o fuso à vista: "22:20:43 (UTC-3)". Sem instante, "—". */
+export function formatClockComFuso(iso: string | null | undefined): string {
+  const t = parseTs(iso);
+  return t === null ? '—' : `${timeFmt.format(t)} (${rotuloDoFuso(iso)})`;
+}
+
 export function formatDateTime(iso: string | null | undefined): string {
   const t = parseTs(iso);
   return t === null ? '—' : dateTimeFmt.format(t);

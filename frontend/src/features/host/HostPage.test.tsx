@@ -122,7 +122,7 @@ describe('a tela Host', () => {
     await waitFor(() => expect(container.querySelector('[aria-label="Medidas do host"]')).not.toBeNull());
     const t = text(container);
     expect(t).toContain('50%');                                                              // CPU agora
-    expect(t).toMatch(/90% às \d\d:\d\d:\d\dPico de CPU/);
+    expect(t).toMatch(/90% às \d\d:\d\d:\d\d \((UTC|UTC[+-]\d+(:\d\d)?)\)Pico de CPU/);
     expect(t).toMatch(/57%CPU média na janela/);                                             // (30+90+50)/3
     expect(t).toMatch(/2,0 GBMenor RAM livre na janela/);
     expect(container.querySelector('tr[data-processo="python"]')).not.toBeNull();
