@@ -1512,6 +1512,7 @@ class RunService:
                     return plan, {"motivo": "teto_de_exploracao_por_dia", "texto": texto, "app_id": app_id,
                                   "feitas": feitas, "teto": teto_dia}
         passos: list[PlanStep] = []
+        do_catalogo = list(plan.steps)                    # 31.298: a parte do pedido que o catálogo cobre fica
         reaproveitadas: list[str] = []
         for f, e in decididos:
             if any(p.key == e.chave for p in passos):
@@ -1522,9 +1523,10 @@ class RunService:
                 reaproveitadas.append(e.chave)
             else:
                 passo = exploracao.passo_da_exploracao(f.pedido, e, app_id=None, nome_do_app=f.app)
+            anterior = passos[-1].key if passos else (do_catalogo[-1].key if do_catalogo else None)
             passos.append(passo.model_copy(update={
                 "app_id": f.app_id if f.app_id != plan.app_id else None,
-                "depends_on": [passos[-1].key] if passos else []}))
+                "depends_on": [anterior] if anterior else []}))
         chaves = [p.key for p in passos]
         self.repo.decision(
             "Exploração (31.273, ADR-084): o catálogo do app não cobre o pedido; explorando em vez de recusar — "
@@ -1532,15 +1534,15 @@ class RunService:
             + f". Tetos: {int(s.exploracao_max_acoes)} ações, {int(s.exploracao_max_chamadas_ia)} chamadas de IA, "
             f"US$ {float(s.exploracao_max_usd):.2f}.", run_id=run_id)
         self.repo.bus.emit("exploracao.iniciada", "O app não tem essa ação no catálogo: vou explorar.", run_id=run_id,
-                           data={"etapas": chaves, "reaproveitadas": reaproveitadas,
+                           data={"run_id": run_id, "etapas": chaves, "reaproveitadas": reaproveitadas,
                                  "app_ids": sorted({str(f.app_id) for f, e in decididos
                                                     if f.app_id and (f.app_id, e.chave) not in conhecidas}),
                                  "tetos": {"acoes": int(s.exploracao_max_acoes),
                                            "chamadas_ia": int(s.exploracao_max_chamadas_ia),
                                            "usd": float(s.exploracao_max_usd)}})
         return plan.model_copy(update={
-            "steps": passos, "missing": [], "fora_do_catalogo": [],
-            "success_criteria": [p.postcondition.description for p in passos]}), None
+            "steps": [*do_catalogo, *passos], "fora_do_catalogo": [],
+            "success_criteria": [*plan.success_criteria, *(p.postcondition.description for p in passos)]}), None
 
     def _exploracoes_de_hoje(self, app_id: str) -> int:
         """Quantas explorações NOVAS (com IA) começaram hoje (UTC) no app: o teto do dia por app. Lê o evento
@@ -1558,6 +1560,7 @@ class RunService:
         execução termina recusada, sem etapa e sem pergunta, com o texto montado dos dados do catálogo (ADR-052): vale
         para qualquer app declarado, sem nome de app nem ação no código."""
         texto = " ".join(texto_fora_do_catalogo(f.pedido, f.app, f.disponiveis) for f in plan.fora_do_catalogo)
+        plan = plan.model_copy(update={"steps": [], "missing": []})   # a recusa substitui o plano inteiro
         dados: dict[str, object] = {"motivo": "sem_acao_do_catalogo"}
         if motivo is not None:                       # 31.273: a exploração foi negada por um teto, e o motivo diz qual
             texto = str(motivo["texto"])

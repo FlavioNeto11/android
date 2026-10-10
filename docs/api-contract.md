@@ -8243,6 +8243,13 @@ Sem rota nova. Campos aditivos; a forma do resto não muda.
   leva `app_ids` com o app do pedido sem receita descoberta); o pedido de efeito segue `sem_acao_do_catalogo`.
 - **`GET` do relatório do aprendizado (`saude.exploracoes`):** `{por_conducao: {<condução>: n}, pct_sem_ia: number|null}`,
   das etapas exploratórias que terminaram na janela; `pct_sem_ia` = parte conduzida por receita ou atalho.
+- **Acréscimo do 31.298 (pedido misto e aviso):** o planejador com catálogo agora devolve, no pedido misto, as ações do
+  catálogo em `steps` E o que falta em `fora_do_catalogo` (os prompts de sistema `PLANNER_CAPABILITY_SYSTEM`,
+  `PLANNER_MULTIAPP_SYSTEM` e o curto mudaram de propósito); o serviço junta a exploração depois da última etapa do catálogo
+  (a primeira etapa de exploração depende dela), e a recusa continua substituindo o plano inteiro. Evento novo
+  `exploracao.concluida` (`data: {run_id, step_id, resultado: concluida|falhou|cancelada|parou_no_teto}`), uma vez por etapa
+  exploratória; `exploracao.iniciada` ganha `run_id` em `data`. Os dois viram aviso no Telegram, na hora (nível 3, fora da
+  janela da rotina): o início só quando há exploração com IA (`app_ids` não vazio), o fim com custo e chamadas lidos do banco.
 - **Prova:** `simulated` (`backend/tests/test_etapas_descobertas.py`, `test_exploracao_fora_do_catalogo.py`,
   `test_migracao_130.py`, `test_learning_backlog.py`). `real`: `not_run` (a exploração real no Outlook depende do sim do
   dono para o custo de API).

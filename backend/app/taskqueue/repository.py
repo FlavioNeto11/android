@@ -58,6 +58,9 @@ TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 MOTIVO_REJEICAO = "rejeitado por quem aprova"
 #: Os desfechos de etapa que são FALHA e levam o tipo classificado (ADR-054); nos demais, `steps.failure_kind` é nulo.
 _ETAPA_EM_FALHA = frozenset({StepStatus.failed, StepStatus.uncertain, StepStatus.waiting_user})
+#: 31.298: o desfecho FINAL de uma etapa exploratória (o `resultado` do evento `exploracao.concluida`).
+_DESFECHO_DA_EXPLORACAO = {StepStatus.succeeded: "concluida", StepStatus.failed: "falhou",
+                           StepStatus.uncertain: "falhou", StepStatus.cancelled: "cancelada"}
 #: 31.242: os textos da etapa que o juiz repete na nota (o comentário, o alvo) viram `{chave}` na nota. A legenda
 #: (`caption_contains`) fica: é o texto público da publicação alvo, e a evidência diz qual legenda foi conferida.
 _TEXTOS_DA_ETAPA_NA_NOTA = ("content", "username", "post_author", "target")
@@ -775,6 +778,19 @@ class Repository:
                 raise PosseDaEtapaPerdida(step_id, (atual or {}).get("claimed_by"), self.owner_id)
         self.emit_step(step_id, message or f"Etapa '{row['title']}': {target.value}" + (f" — {detail}" if detail else ""),
                        level=level)
+        if _col(row, "exploratoria") and target in _DESFECHO_DA_EXPLORACAO:
+            self._anunciar_fim_da_exploracao(row, target, detail)
+
+    def _anunciar_fim_da_exploracao(self, row: Row, alvo: StepStatus, detail: str | None) -> None:
+        """Item 31.298: evento `exploracao.concluida` quando a etapa exploratória TERMINA (uma vez por etapa). Só o id da
+        execução e o desfecho; o custo e as chamadas o aviso lê do banco ao montar. A falha de emitir nunca derruba a etapa."""
+        try:
+            resultado = ("parou_no_teto" if detail and "Teto da exploração" in detail
+                         else _DESFECHO_DA_EXPLORACAO[alvo])
+            self.bus.emit("exploracao.concluida", f"Exploração {resultado.replace('_', ' ')}.", run_id=row["run_id"],
+                          data={"run_id": row["run_id"], "step_id": row["id"], "resultado": resultado})
+        except Exception:  # noqa: BLE001
+            log.exception("exploração %s: evento de fim não emitido", row["id"])
 
     def promote(self, run_id: str) -> int:
         """pending→ready quando as dependências estão comprovadas; retry_wait→ready quando vence o intervalo."""

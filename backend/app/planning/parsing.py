@@ -440,8 +440,10 @@ def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: 
     fora = fora_do_catalogo(out.fora_do_catalogo, {plan.app_id or "": req.catalog},
                             {plan.app_id or "": (app.name or app.id or "") if app else req.catalog.package})
     if fora:
-        # A recusa substitui o plano inteiro: um pedaço montado ou uma pergunta não servem a quem pediu o impossível.
-        plan.steps, plan.missing, plan.fora_do_catalogo = [], [], fora
+        # 31.298 (ADR-084): as ações do catálogo que cobrem o resto do pedido FICAM (o serviço junta a exploração do que
+        # o catálogo não cobre, ou, se explorar não for possível, zera o plano e recusa). A pergunta do modelo some: a
+        # exploração ou a recusa responde por ela; a falta de dado de uma ação do catálogo (`missing` da composição) fica.
+        plan.missing, plan.fora_do_catalogo = missing, fora
     plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
     return _com_escolha(plan, raw, req)
 
@@ -541,7 +543,7 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
         fora = fora_do_catalogo(out.fora_do_catalogo, catalogos,
                                 {k: a.name or k for k, a in conhecidos.items()})
         if fora:
-            plan.steps, plan.missing, plan.fora_do_catalogo = [], [], fora
+            plan.missing, plan.fora_do_catalogo = faltas, fora       # 31.298: as etapas do catálogo ficam (ver acima)
     except (ValidationError, ValueError) as exc:
         falha = _sem_entrada(exc)
     if falha is not None:

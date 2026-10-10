@@ -104,6 +104,10 @@ NIVEL_POR_TIPO: dict[str, int] = {
     # com a conta no título. Nenhum deles começa com `portal.`, que a fila nunca agrupa (`SEM_AGRUPAR`).
     "host.restore_ensaio": ROTINA,
     "host.disco_baixo": ROTINA,
+    # 31.298 (ADR-084): a exploração de um app fora do catálogo, ao começar e ao concluir. Notícia, nunca pede o dono, mas
+    # sai na hora (`NA_HORA_SEM_PEDIR`): quem mandou o pedido quer saber que a IA foi explorar e quanto custou.
+    "exploracao.iniciada": ROTINA,
+    "exploracao.concluida": ROTINA,
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
 PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado", "portal.resumo", "portal.borda",
@@ -114,9 +118,11 @@ PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado"
 #: incerto em conta real é crítico mesmo num lote (revisão da #312, 04/10 20:27Z).
 PREFIXO_DE_LOTE = "pedido.lote."
 LOTE_NA_HORA = frozenset({"aprovacao_pendente", "ocorrencia_incerta"})
+#: Notícias que não pedem o dono mas saem na hora, não na janela da rotina (31.298: a exploração começou/terminou).
+NA_HORA_SEM_PEDIR = frozenset({"exploracao.iniciada", "exploracao.concluida"})
 #: Os tipos que esperam a janela, para a fila separá-los já na consulta (a entrega é do tipo).
 TIPOS_DA_JANELA: frozenset[str] = frozenset(t for t, n in NIVEL_POR_TIPO.items() if n != PRECISA_DE_VOCE
-                                            and t not in PARARAM_ALGO)
+                                            and t not in PARARAM_ALGO and t not in NA_HORA_SEM_PEDIR)
 #: Quanto a rotina espera, contada do aviso mais velho dela, antes de sair numa mensagem só. Fica no código (decisão
 #: (f): sem chave nova de config nesta rodada).
 JANELA_DA_ROTINA_S = 3600.0
@@ -140,6 +146,8 @@ ROTULOS: dict[str, str] = {
     "pedido.ocorrencia_incerta": "Uma ocorrência de pedido terminou incerta",
     "learning.needs_person": "Um conhecimento aprendido espera a sua revisão",
     "operacao.encerrada": "Uma operação foi encerrada",
+    "exploracao.iniciada": "A IA foi explorar um app fora do catálogo",
+    "exploracao.concluida": "Uma exploração fora do catálogo terminou",
     "learning.ensinado_rebaixado": "Algo que você ensinou foi rebaixado",
     "learning.ensinado_sem_receita": "Algo que você ensinou caiu, e a etapa ficou sem receita",
 }
@@ -244,7 +252,7 @@ def entrega_do_tipo(tipo: str) -> str:
     """`agora` ou `janela`. É o tipo que decide, e não o aviso: a linha da fila guarda só o tipo."""
     if tipo.startswith(PREFIXO_DE_LOTE):
         return JANELA
-    if nivel_do_tipo(tipo) == PRECISA_DE_VOCE or tipo in PARARAM_ALGO:
+    if nivel_do_tipo(tipo) == PRECISA_DE_VOCE or tipo in PARARAM_ALGO or tipo in NA_HORA_SEM_PEDIR:
         return AGORA
     return JANELA
 
@@ -666,6 +674,41 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         assunto, linhas = _da_operacao(_texto(d.get("status")) or "", _filho(d, "capacidade"), _filho(d, "custo"),
                                        nomes, redigir)
         link = link_da_tela(url_painel, "#/operacoes")
+    elif kind in ("exploracao.iniciada", "exploracao.concluida"):
+        # 31.298: só ids, contagens e dinheiro. Nem o pedido, nem a chave da etapa, nem nome de persona ou handle. A
+        # exploração que só reaproveitou a receita descoberta (nenhum app novo) não avisa o início: não custa IA.
+        d = dados or {}
+        ident = _id_valido(ID_DE_EXECUCAO, d.get("run_id"))
+        if ident is None:
+            return None
+        tipo = kind
+        chave = chave_do_fato("exploracao", ident, "iniciada" if kind == "exploracao.iniciada" else "concluida")
+        link = link_da_tela(url_painel, f"#/execucoes/{ident}")
+        if kind == "exploracao.iniciada":
+            if not d.get("app_ids"):
+                return None
+            tetos = _filho(d, "tetos")
+            assunto = "🧭 Explorando um app fora do catálogo"
+            linhas = ["O catálogo do app não tem essa ação, então a IA vai descobrir como fazer pela tela.",
+                      f"Tetos: {_inteiro(tetos.get('acoes'))} ações, {_inteiro(tetos.get('chamadas_ia'))} chamadas de IA e "
+                      f"{_dolar(_numero(tetos.get('usd')) or 0.0)}.",
+                      "Só leitura e navegação: nada é alterado. Aviso ao concluir."]
+        else:
+            resultado = _texto(d.get("resultado")) or ""
+            assunto = {"concluida": "✅ Exploração concluída", "parou_no_teto": "⚠️ A exploração parou no teto",
+                       "falhou": "⚠️ A exploração não concluiu", "cancelada": "A exploração foi cancelada"
+                       }.get(resultado, "A exploração terminou")
+            custo = _numero(d.get("custo_usd"))
+            if custo is None:
+                linhas = ["Custo: indisponível agora; veja a execução no painel."]
+            else:
+                chamadas = d.get("chamadas")
+                linhas = [f"Custo: {_dolar(custo)}" + (f" em {_inteiro(chamadas)} chamadas de IA." if chamadas is not None else ".")]
+            if resultado == "parou_no_teto":
+                linhas.append("Parou sem concluir: o teto da exploração foi atingido. O que foi visto está na execução.")
+            elif resultado == "concluida":
+                linhas.append("O que a IA descobriu vira receita candidata e, provada, passa a valer sem IA.")
+            linhas.append("Só leitura e navegação: nada foi alterado.")
     else:
         return None
     return Aviso(chave=chave, tipo=tipo, titulo=titulo_do_aviso(assunto), corpo="\n".join(linhas), link=link,
@@ -688,6 +731,8 @@ ROTULOS_AGRUPADOS: dict[str, str] = {
     "objective.waiting_user": "{n} objetivos pararam esperando você",
     "learning.needs_person": "{n} conhecimentos aprendidos esperam a sua revisão",
     "operacao.encerrada": "{n} operações foram encerradas",
+    "exploracao.iniciada": "{n} explorações começaram",
+    "exploracao.concluida": "{n} explorações terminaram",
     "learning.ensinado_rebaixado": "{n} coisas que você ensinou foram rebaixadas",
     "learning.ensinado_sem_receita": "{n} coisas que você ensinou caíram, e as etapas ficaram sem receita",
     "pendencia.vence_em": "{n} pendências vencem nas próximas 2 h",

@@ -2828,7 +2828,7 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
 - **Medida.** `saude.exploracoes.por_conducao` e `pct_sem_ia`: das explorações que terminaram, quantas entraram por receita
   ou atalho (0 chamadas de IA). É a medida de que o sistema aprende o que descobre.
 - **Prova.** `simulated`: `tests/test_exploracao_fora_do_catalogo.py`, `test_etapas_descobertas.py`, `test_migracao_130.py`,
-  `test_learning_backlog.py`. `real`: `not_run` (exploração real no Outlook: gasta API, pede o sim do dono). Faltam o aviso
-  no Telegram ao começar e ao concluir, e o selo da exploração no painel (o `exploracao` do GET do run é do Portal). Limite:
-  o pedido misto (parte no catálogo, parte fora) perde a parte do catálogo, porque o planejador devolve `steps` vazio com
-  `fora_do_catalogo`; melhorar isso muda o prompt e o parsing, e pede validação com o modelo real.
+  `test_learning_backlog.py`. `real`: `not_run` (exploração real no Outlook: gasta API, pede o sim do dono). O pedido misto (31.298) mantém a parte do catálogo: o prompt pede as ações do catálogo em `steps` E o resto
+  em `fora_do_catalogo`, e a exploração entra depois da última etapa do catálogo; o aviso no Telegram ao começar e ao concluir
+  está em [Canais](canais.md). Falta o selo/campo `exploracao` no painel (Portal, 31.299), e o prompt novo não foi validado
+  com o modelo real (API paga, `not_run`).

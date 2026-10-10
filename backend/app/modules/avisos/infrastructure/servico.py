@@ -28,6 +28,7 @@ from app.db import loads
 from app.contracts.origem import PREFIXO_LOTE, PREFIXO_OPERACAO, e_execucao_do_sistema
 from app.events import EventBus
 from app.models import Problem
+from app.planning import costs
 from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrega import Canal, Resultado, entregar
 from app.modules.avisos.domain.mensagem import Aviso, aviso_de_evento
@@ -62,7 +63,9 @@ KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_
                               # 28.50 (30.80 B): o que a pessoa ensinou e o sistema rebaixou.
                               "learning.ensinado_rebaixado", "learning.ensinado_sem_receita",
                               # 28.62: o fim da operação com N agentes (rotina, um aviso por operação).
-                              "operacao.encerrada"})
+                              "operacao.encerrada",
+                              # 31.298: a exploração fora do catálogo começou / terminou (só ids, contagens e US$).
+                              "exploracao.iniciada", "exploracao.concluida"})
 #: De quanto em quanto tempo o laço varre incertos, vencidos e purga (a entrega roda a cada volta).
 FAXINA_S = 3600.0
 #: De quanto em quanto tempo, com o canal desligado, vencem os contatos do site pendentes (28.32).
@@ -167,6 +170,8 @@ class ServicoDeAvisos:
             if self._conta_ja_avisou(obj, data):
                 return False
             data = self._com_nome_da_acao(self._com_a_etapa_que_espera(data, obj))
+        if kind == "exploracao.concluida":
+            data = self._com_o_custo_da_exploracao(data)
         aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir,
                                 nomes=nomes, conversa=conversa)
         if aviso is None or self._e_de_prova(kind, data):
@@ -176,6 +181,20 @@ class ServicoDeAvisos:
         except Exception:  # noqa: BLE001 - o aviso nunca derruba o emissor nem o laço
             log.exception("avisos: não foi possível enfileirar %s", aviso.chave)
             return False
+
+    def _com_o_custo_da_exploracao(self, data: dict[str, object] | None) -> dict[str, object] | None:
+        """31.298: o custo (tokens x preço, `planning.costs.spent_usd`) e as chamadas de IA da execução que explorou. A
+        falha da leitura só tira a linha do custo: o aviso sai dizendo que ele está indisponível."""
+        run_id = (data or {}).get("run_id")
+        if not isinstance(run_id, str):
+            return data
+        try:
+            custo = costs.spent_usd(self.fila.db, self.cfg.file.ai.prices, run_id=run_id)
+            chamadas = int(self.fila.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE run_id=?", (run_id,)) or 0)
+        except Exception:  # noqa: BLE001
+            log.exception("avisos: custo da exploração %s não lido", run_id)
+            return data
+        return {**(data or {}), "custo_usd": custo, "chamadas": chamadas}
 
     def _nomes(self) -> list[str] | None:
         """Os nomes de persona que o aviso não pode carregar, ou `None` se a leitura falhou (aí o aviso sai sem texto da

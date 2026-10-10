@@ -258,3 +258,51 @@ async def test_a_etapa_exploratoria_executa_no_simulado_e_grava_a_marca(harness:
     assert etapa["status"] in {"succeeded", "failed"}, etapa["status"]          # rodou sob o teto próprio de ações
     visao = st.runs.repo.steps_of(run.id) if hasattr(st.runs.repo, "steps_of") else []
     assert all(getattr(v, "exploratoria", True) for v in visao)
+
+
+# ------------------------------------------------------------------ o pedido misto (31.298)
+def _passo_do_catalogo() -> dict[str, Any]:
+    return {"key": "abrir_entrada", "capability": "OPEN_MAIL_INBOX", "depends_on": [], "bindings": [], "for_each": None}
+
+
+def test_o_pedido_misto_mantem_as_acoes_do_catalogo_e_a_pergunta_do_modelo_some() -> None:
+    from app.planning.capabilities import load_catalog
+    from app.planning.parsing import catalog_plan_from_json
+    from app.planning.provider import AppContext, PlanRequest
+    catalogo = load_catalog("com.microsoft.office.outlook")
+    assert catalogo is not None
+    app = AppContext("outlook", "Microsoft Outlook", "com.microsoft.office.outlook", None, None, None)
+    req = PlanRequest(command="c", run_id="r", instances=[], apps=[app], catalog=catalogo)
+    bruto = json.dumps({"summary": "s", "parameters": [], "success_criteria": [], "steps": [_passo_do_catalogo()],
+                        "missing": [{"field": "x", "question": "Como ver a lixeira?"}],
+                        "fora_do_catalogo": [{"app_id": None, "pedido": "ver a caixa de lixo eletrônico"}]})
+    plano = catalog_plan_from_json(bruto, req, provider="p", model="m", max_steps=10)
+    assert [s.capability for s in plano.steps] == ["OPEN_MAIL_INBOX"]                   # a parte do catálogo fica
+    assert plano.missing == [] and [f.pedido for f in plano.fora_do_catalogo] == ["ver a caixa de lixo eletrônico"]
+
+
+async def test_o_pedido_misto_executa_o_catalogo_e_depois_a_exploracao(tmp_path: Any) -> None:
+    plano = _plano("ver a caixa de lixo eletrônico")
+    plano = plano.model_copy(update={"steps": [PlanStep(
+        key="abrir_entrada", title="Abrir a caixa de entrada", goal="g", capability="OPEN_MAIL_INBOX",
+        postcondition=Postcondition(kind="model_judged", value="v", description="d"))]})
+    linha, state, _ = await _executar(tmp_path, plano, "abra a entrada e veja o lixo do Outlook")
+    try:
+        assert linha["status"] == "planned", linha["status_detail"]
+        passos = json.loads(linha["plan"])["steps"]
+        assert [p["key"] for p in passos] == ["abrir_entrada", "explorar_ver_caixa_lixo_eletronico"]
+        assert passos[1]["depends_on"] == ["abrir_entrada"] and passos[0].get("exploratoria") is None
+    finally:
+        await state.stop()
+
+
+async def test_o_pedido_misto_recusado_zera_tambem_a_parte_do_catalogo(tmp_path: Any) -> None:
+    plano = _plano("apagar a pasta").model_copy(update={"steps": [PlanStep(
+        key="abrir_entrada", title="Abrir a caixa de entrada", goal="g", capability="OPEN_MAIL_INBOX",
+        postcondition=Postcondition(kind="model_judged", value="v", description="d"))]})
+    linha, state, _ = await _executar(tmp_path, plano, "abra a entrada e apague a pasta")
+    try:
+        assert linha["status"] == "failed"
+        assert json.loads(linha["plan"])["steps"] == [] and _contagem(state, "steps", linha["id"]) == 0
+    finally:
+        await state.stop()

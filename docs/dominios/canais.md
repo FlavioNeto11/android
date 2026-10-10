@@ -1154,3 +1154,15 @@ As ferramentas do Trello ficam em `.claude/trello/`.
 
 Na migração para a API, cada regra acima já diz o item e a chave que a aplicam (campo "No produto"). Regra sem item
 numerado é lacuna, a levar à orquestradora antes de desligar a operação pela sessão.
+
+## A exploração fora do catálogo avisa ao começar e ao concluir (31.298, ADR-084)
+
+- Dois tipos novos, `exploracao.iniciada` e `exploracao.concluida` (nível 3, **na hora**: `NA_HORA_SEM_PEDIR` em
+  `avisos/domain/mensagem.py`; não esperam a janela horária e nunca pedem o dono). Só ids, contagens e dinheiro: nem o
+  pedido, nem a chave da etapa, nem nome de persona ou handle.
+- **Início:** só quando algum pedido vai explorar COM IA (`app_ids` do evento não vazio); o pedido que só reaproveita a receita
+  descoberta não avisa. Diz os tetos (ações, chamadas de IA, US$) e que é só leitura e navegação.
+- **Fim:** uma vez por etapa exploratória (`transition_step` emite `exploracao.concluida`); diz o resultado (concluída,
+  parou no teto, não concluiu, cancelada), o custo (`spent_usd` da execução, lido ao montar) e as chamadas de IA. Falha ao ler o
+  custo: a linha diz "indisponível".
+- **Prova:** `simulated`, `backend/tests/test_aviso_exploracao.py`. `real`: `not_run` (canal real e exploração real).

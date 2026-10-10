@@ -27,6 +27,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`nasceu_de_exploracao`) mostra "Nasceu de exploração" na linha e no dossiê do Livro. Sem a marca, ou em backend anterior, nada aparece.
 - Prova `simulated`: `features/aprendizado/SeloDeExploracao.test.tsx` (3 testes), 532 dirigidos (aprendizado, runs, components),
   tsc e build. **Real: não executada** (a 31.273 ainda não está no central).
+## 2026-10-10 — o pedido misto preserva o catálogo e a exploração avisa no Telegram (31.298)
+
+- O prompt do planejador com catálogo (os três de sistema) passa a pedir as ações do catálogo em `steps` E o resto em
+  `fora_do_catalogo`; o parsing não zera mais as etapas, o serviço junta a exploração depois da última etapa do catálogo, e a
+  recusa (efeito, teto do dia, desligada) zera o plano inteiro como antes. A catraca `test_prompts_licoes` teve os três
+  hashes trocados de propósito.
+- Aviso no Telegram na hora (nível 3): `exploracao.iniciada` (tetos; só exploração com IA) e `exploracao.concluida`
+  (resultado, custo, chamadas). Prova **simulada**: `tests/test_aviso_exploracao.py` e os casos novos de
+  `test_exploracao_fora_do_catalogo.py`. **Real: não executada** — o prompt novo não foi validado com o modelo real (API paga)
+  e o Telegram real depende do canal ligado.
 
 ## 2026-10-10 — a troca do grupo de política da persona deixa trilha (31.269; adendo v1.131)
 

@@ -89,8 +89,9 @@ def _semear(st: Any, rid: str, passo: PlanStep, *, parametros: dict[str, str] | 
     sid = f"{rid}:android-01:v1:{passo.key}"
     db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
                " postcondition, timeout_s, max_attempts, status, app_id, exploratoria)"
-               " VALUES (?,?,?,?,1,1,?,?,?,'{}',60,3,'succeeded','qa-messenger',?)",
-               (sid, rid, f"{rid}:o", "android-01", passo.key, passo.title, passo.goal, 1 if exploratoria else None))
+               " VALUES (?,?,?,?,1,1,?,?,?,?,60,3,'succeeded','qa-messenger',?)",
+               (sid, rid, f"{rid}:o", "android-01", passo.key, passo.title, passo.goal,
+                passo.postcondition.model_dump_json(), 1 if exploratoria else None))
     uso = None if usada_ha_dias is None else to_iso(now() - timedelta(days=usada_ha_dias))
     criada = to_iso(now() - timedelta(days=(usada_ha_dias or 0) + 1))
     db.execute("INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key, version,"

@@ -104,9 +104,10 @@ preenche os argumentos delas. Título, objetivo, pós-condição e guardas de ca
 
 Regras:
 - Use somente as ações listadas, com o nome exatamente como aparece. Se o comando pedir algo que nenhuma ação cobre,
-  NÃO invente e NÃO pergunte: devolva `steps` vazio e ponha em `fora_do_catalogo` um item com `app_id` = null e
-  `pedido` = a ação pedida, em poucas palavras e no infinitivo. `missing` é só para dado que FALTA a uma ação que
-  existe; fora disso, `fora_do_catalogo` = [].
+  NÃO invente e NÃO pergunte: ponha em `fora_do_catalogo` um item com `app_id` = null e `pedido` = a ação pedida, em
+  poucas palavras e no infinitivo (o sistema a explora). Se o comando também pede o que o catálogo cobre, ponha essas
+  ações em `steps` como sempre; se nenhuma parte do pedido é coberta, `steps` vazio. `missing` é só para dado que FALTA
+  a uma ação que existe; fora disso, `fora_do_catalogo` = [].
 - Preencha todos os argumentos obrigatórios de cada ação em `bindings` (lista de {{name, value}}). Nome de usuário
   vai com @ (ex.: @fulana.tal1234).
 - TEXTO DE MENSAGEM OU COMENTÁRIO: o mesmo plano roda em VÁRIOS aparelhos, cada um com um perfil e uma persona
@@ -169,9 +170,10 @@ reutilizável em cada aparelho selecionado. Cada etapa roda em UM app, dito em `
 Como é cada etapa:
 - App COM catálogo de ações: a etapa é UMA ação do catálogo DAQUELE app, com `capability` = o nome exato e os
   argumentos em `bindings`; `livre` = null. Título, objetivo, pós-condição e guardas são do sistema. Nunca escreva
-  etapa livre num app com catálogo: se nenhuma ação dele cobre o pedido, NÃO pergunte: devolva `steps` vazio e
-  ponha em `fora_do_catalogo` um item com o `app_id` desse app e `pedido` = a ação pedida, em poucas palavras e no
-  infinitivo. `missing` é só para dado que FALTA a uma ação que existe; fora disso, `fora_do_catalogo` = [].
+  etapa livre num app com catálogo: se nenhuma ação dele cobre o pedido, NÃO pergunte: ponha em `fora_do_catalogo`
+  um item com o `app_id` desse app e `pedido` = a ação pedida, em poucas palavras e no infinitivo (o sistema a explora).
+  Se o comando também pede o que o catálogo cobre, essas ações vão em `steps` como sempre; se nenhuma parte do pedido é
+  coberta, `steps` vazio. `missing` é só para dado que FALTA a uma ação que existe; fora disso, `fora_do_catalogo` = [].
 - App SEM catálogo: a etapa é LIVRE, com `capability` = null, `bindings` = [] e `livre` preenchido (título,
   objetivo, pós-condição, side_effect, commit_guard, precondition, timeout_s, max_attempts).
 - Use só os apps listados, e só os que o comando precisa: app que o pedido não usa fica fora do plano. Não crie
