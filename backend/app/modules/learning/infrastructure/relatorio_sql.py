@@ -328,8 +328,8 @@ class FontesDeFalhaSql:
                                        (BLOCO_DA_TESTEMUNHA,))
             else:
                 bloco = self._db.query(
-                    "SELECT id, ts, run_id FROM events WHERE ts > ? OR (ts = ? AND id > ?) ORDER BY ts, id LIMIT ?",
-                    (depois_de[0], depois_de[0], depois_de[1], BLOCO_DA_TESTEMUNHA))
+                    "SELECT id, ts, run_id FROM events WHERE (ts, id) > (?, ?) ORDER BY ts, id LIMIT ?",
+                    (depois_de[0], depois_de[1], BLOCO_DA_TESTEMUNHA))
             for r in bloco:
                 if r["run_id"] is None:
                     return linhas.texto_ou_nulo(r, "ts")
