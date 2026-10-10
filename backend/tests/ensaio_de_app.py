@@ -38,7 +38,8 @@ edita), `ao_tocar` (`enviar`, `ir:<tela>` ou `abrir:<tela>`), `se` (`erro`: só 
 (posição na faixa inferior). `ir` troca de tela; `abrir` também, e é o que a aba da conta usa.
 
 `espera` por cenário: `desfecho` (um `Outcome`), `usuario_observado` (opcional), `digitou_a_senha` (opcional, padrão:
-verdadeiro só em `session_ready` e `invalid_credential`), `nunca_digitou_a_senha` (atalho de `digitou_a_senha: false`) e `sessao`
+verdadeiro só em `session_ready` e `invalid_credential`), `nunca_digitou_a_senha` (atalho de `digitou_a_senha: false`), `digitou_vezes` (quantas vezes a senha chegou ao aparelho: é
+como "não insiste" se prova) e `sessao`
 (opcional: o `SessionStatus` que ficou gravado para a conta, p.ex. `unknown` quando o app parou numa tela que ninguém conhece:
 a conta fica à espera de uma pessoa, e o ator não é chamado).
 """
@@ -71,7 +72,7 @@ _NO = {"classe", "id", "texto", "desc", "clicavel", "senha", "foco", "ao_tocar",
 _ENVIO = {"se", "vai_para", "erro", "entra_na_conta"}
 _CENARIO = {"nome", "aparelho", "envio", "espera"}
 _APARELHO = {"senha_aceita", "conta", "tela"}
-_ESPERA = {"desfecho", "usuario_observado", "digitou_a_senha", "nunca_digitou_a_senha", "sessao"}
+_ESPERA = {"desfecho", "usuario_observado", "digitou_a_senha", "nunca_digitou_a_senha", "digitou_vezes", "sessao"}
 _SE_DO_ENVIO = {"senha_certa", "senha_errada"}
 #: Painel de 720x1280 do dublê: nós empilhados de cima para baixo; os de `rodape` ficam na faixa inferior.
 _LARGURA, _ALTURA_DO_NO, _PASSO, _TOPO, _RODAPE_Y = 720, 70, 90, 60, 1180
@@ -359,8 +360,13 @@ async def ensaiar(roteiro: Roteiro, cenario: Cenario, tmp: Path) -> Resultado:
     quer_senha = espera.get("digitou_a_senha")
     if espera.get("nunca_digitou_a_senha"):
         quer_senha = False
+    if quer_senha is None and "digitou_vezes" in espera:
+        quer_senha = espera["digitou_vezes"] > 0
     if quer_senha is None:
         quer_senha = espera["desfecho"] in (Outcome.SESSION_READY.value, Outcome.INVALID_CREDENTIAL.value)
+    vezes = aparelho.digitados.count(roteiro.senha)
+    if "digitou_vezes" in espera and vezes != espera["digitou_vezes"]:
+        problemas.append(f"a senha foi digitada {vezes} vez(es), esperado {espera['digitou_vezes']}")
     if "sessao" in espera and status != espera["sessao"]:
         problemas.append(f"sessão gravada {status!r}, esperado {espera['sessao']!r}")
     if digitou != bool(quer_senha):

@@ -56,6 +56,24 @@ def test_o_rascunho_detecta_login_ids_e_sinais_estaveis(xmls: list[Path]) -> Non
     assert caixa["tipo"] == "desconhecida_a_classificar" and "RASCUNHO" in caixa["razao"]
 
 
+def test_nome_de_pessoa_na_tela_avisa_no_cabecalho_e_senha_em_view_customizada_nao_vira_sinal(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    casa = tmp_path / "casa.xml"
+    casa.write_text('<hierarchy rotation="0">' + _no("TextView", "Ana Correio", y=0)
+                    + _no("View", "SENHA-EM-VIEW-CUSTOMIZADA", "campo_senha_custom", senha=True, y=100)
+                    + "</hierarchy>", encoding="utf-8")
+    assert _modulo().main(["--app", PACOTE, str(casa)]) == 0
+    saida = capsys.readouterr().out
+    assert "NOME da conta" in saida                                          # o aviso de revisão vem no topo do arquivo
+    assert "SENHA-EM-VIEW-CUSTOMIZADA" not in saida
+
+
+def test_saida_igual_a_uma_entrada_e_recusada(xmls: list[Path], capsys: pytest.CaptureFixture[str]) -> None:
+    antes = xmls[0].read_text(encoding="utf-8")
+    assert _modulo().main(["--app", PACOTE, "--saida", str(xmls[0]), *map(str, xmls)]) == 2
+    assert xmls[0].read_text(encoding="utf-8") == antes and "recusado" in capsys.readouterr().err
+
+
 def test_o_rascunho_pede_o_que_falta_e_carrega_depois_de_editado(xmls: list[Path], capsys: pytest.CaptureFixture[str]) -> None:
     m = _modulo()
     assert m.main(["--app", PACOTE, *map(str, xmls)]) == 0

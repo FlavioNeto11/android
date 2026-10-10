@@ -1,4 +1,5 @@
-# Ensaio de pacote do Correio de Exemplo (app FICTÍCIO; formato em tests/ensaio_de_app.py). A senha abaixo é inventada.
+# Ensaio de pacote do Correio de Exemplo (app FICTÍCIO; formato em tests/ensaio_de_app.py). A senha abaixo é inventada: é fixture de
+# teste, não credencial (um varredor de segredos que a acuse deve ignorar este arquivo).
 app: com.exemplo.email
 usuario: ana.correio
 senha: senha-de-ensaio-7
@@ -36,12 +37,20 @@ cenarios:
     espera: {desfecho: session_ready, usuario_observado: ana.correio, nunca_digitou_a_senha: true}
   - nome: senha recusada para e nao insiste
     aparelho: {senha_aceita: outra-senha}
-    espera: {desfecho: invalid_credential}
+    espera: {desfecho: invalid_credential, digitou_vezes: 1}
   - nome: desafio depois do envio chama a pessoa
     envio:
       - {se: senha_errada, vai_para: entrada, erro: true}
       - {se: senha_certa, vai_para: desafio}
     espera: {desfecho: auth_challenge, digitou_a_senha: true}
+  - nome: desafio antes do envio nunca recebe a senha
+    aparelho: {tela: desafio}
+    espera: {desfecho: auth_challenge, nunca_digitou_a_senha: true}
+  - nome: tela desconhecida depois do envio para sem digitar de novo
+    envio:
+      - {se: senha_errada, vai_para: entrada, erro: true}
+      - {se: senha_certa, vai_para: estranha}
+    espera: {desfecho: uncertain, digitou_vezes: 1, sessao: unknown}
   - nome: conta errada aberta no app
     aparelho: {conta: outra.pessoa}
     espera: {desfecho: wrong_account, nunca_digitou_a_senha: true}

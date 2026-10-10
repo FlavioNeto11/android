@@ -64,7 +64,7 @@ def _textos_estaveis(elementos: list[UiElement]) -> list[str]:
     achados: list[str] = []
     for e in elementos:
         t = (e.text or "").strip()
-        if 3 <= len(t) <= 40 and not _INSTAVEL.search(t) and not e.editable and t not in achados:
+        if 3 <= len(t) <= 40 and not _INSTAVEL.search(t) and not e.editable and not e.password and t not in achados:
             achados.append(t)
     return achados[:SINAIS_POR_TELA]
 
@@ -128,12 +128,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.saida is not None and not _destino_permitido(args.saida):
         print(f"recusado: {args.saida} está dentro de app/conhecimento/apps; grave fora e revise antes de promover", file=sys.stderr)
         return 2
+    if args.saida is not None and args.saida.resolve() in {p.resolve() for p in args.xml}:
+        print(f"recusado: {args.saida} é também uma das entradas; a captura da pessoa não é sobrescrita", file=sys.stderr)
+        return 2
     faltando = [str(p) for p in args.xml if not p.is_file()]
     if faltando:
         print(f"arquivo não encontrado: {', '.join(faltando)}", file=sys.stderr)
         return 2
     dados = rascunhar(args.app, list(args.xml))
     texto = ("# RASCUNHO gerado por scripts/rascunho-de-telas.py: revise tipos, sinais e estado_conhecido antes de promover.\n"
+             "# ATENÇÃO: o texto das telas pode conter o NOME da conta ou da pessoa (ex.: a tela de casa). Troque por um rótulo fixo\n"
+             "# do app ou apague o sinal ANTES de commitar: nome próprio é dado pessoal e muda a cada conta.\n"
              + yaml.safe_dump(dados, allow_unicode=True, sort_keys=False))
     if args.saida is not None:
         args.saida.write_text(texto, encoding="utf-8", newline="\n")
