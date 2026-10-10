@@ -188,8 +188,9 @@ async def test_execucao_so_de_teste_cala_e_a_mista_segue_avisando(harness: Harne
         st.db.execute("INSERT INTO runs(id, command, mode, status, idempotency_key, instance_ids, created_at)"
                       " VALUES (?,?,'one','needs_input',?,'[]',?)", (run, "x", f"k-{run}", agora))
         for i, p in enumerate(perfis):
-            st.db.execute("INSERT INTO objectives(run_id, instance_id, profile_id, status) VALUES (?,?,?,'pending')",
-                          (run, f"android-0{i + 1}", p))
+            # `id` explícito, como o repositório (`{run}:{instância}`): no PostgreSQL a coluna não tem default.
+            st.db.execute("INSERT INTO objectives(id, run_id, instance_id, profile_id, status) VALUES (?,?,?,?,'pending')",
+                          (f"{run}:android-0{i + 1}", run, f"android-0{i + 1}", p))
     s = _avisos(harness)
     assert s._e_de_persona_de_teste("run.updated", {"run": {"id": "r-so-teste"}})             # noqa: SLF001
     assert not s._e_de_persona_de_teste("run.updated", {"run": {"id": "r-misto"}})            # noqa: SLF001
