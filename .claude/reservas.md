@@ -846,3 +846,5 @@ orquestradora; ela anota aqui antes de responder.
 | 31.298 | Aprendizado | exploração: pedido misto (parte no catálogo, parte fora) preserva a parte do catálogo; aviso no Telegram ao começar e ao concluir a exploração (motivo e custo) | Aprendizado | reservado 10/10 13:32Z |
 | 31.299 | Portal | campo exploracao no GET do run e selo nasceu_de_exploracao no painel (execução e Livro); adendo v1.135 | Portal | reservado 10/10 13:32Z |
 | próximos livres (atualização 10/10 13:32Z) | 31.300, 29.212, 28.78; ADR-092; migração 134; adendo v1.136; K-112 | |
+| 31.300 | Android | scripts/tests: test_stop_appium_orfao falha na base (visto 10/10 pela Aprendizado, 1261 passaram e 1 falhou); diagnosticar e corrigir sem enfraquecer o teste | Android | reservado 10/10 13:37Z |
+| próximos livres (atualização 10/10 13:37Z) | 31.301, 29.212, 28.78; ADR-092; migração 134; adendo v1.135 (31.299 não usa); K-112 | |
