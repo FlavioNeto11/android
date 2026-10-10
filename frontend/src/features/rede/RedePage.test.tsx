@@ -881,3 +881,69 @@ it('31.301: a troca que chegou pelo evento network.updated aparece na linha do p
   expect(text(lista)).toContain('motivo: proxy recriado');
   expect(text(lista)).toContain('por Flavio');
 });
+
+// ---- 31.303: saída medida × esperada com a divergência destacada e o atalho ao editor ------------------------------------------------
+
+const ESPERADA_303 = { ipv4: '198.51.100.7', ipv6: null, profile_id: 'vpn-1', profile_name: 'Dedicada-01' };
+
+async function aparelhosDivergentes(): Promise<void> {
+  backend.on('GET', /\/network\/profiles$/, () => json({
+    profiles: [perfil({ id: 'vpn-1', name: 'Dedicada-01', params: { egress_esperado: '198.51.100.7' } })],
+  }));
+  backend.on('GET', /\/network\/devices/, () => json({
+    devices: [
+      linha({ instance_id: 'android-01', effective_state: 'parcial', egress_expected: ESPERADA_303, egress_matches: false,
+              network: rede({ vpn_profile_id: 'vpn-1', state: 'parcial', egress_ipv4: '198.51.100.99' }) }),
+      linha({ instance_id: 'android-02', effective_state: 'trafego_verificado', egress_expected: ESPERADA_303, egress_matches: true,
+              network: rede({ instance_id: 'android-02', vpn_profile_id: 'vpn-1', state: 'trafego_verificado', egress_ipv4: '198.51.100.7' }) }),
+      linha({ instance_id: 'android-03', effective_state: 'pendente', egress_expected: ESPERADA_303, egress_matches: null,
+              network: rede({ instance_id: 'android-03', vpn_profile_id: 'vpn-1' }) }),
+    ],
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-03'));
+}
+
+it('31.303: o aparelho divergente mostra medida × esperada por família; os outros dois não mostram nada a mais', async () => {
+  await aparelhosDivergentes();
+  const listas = Array.from(container.querySelectorAll('ul[aria-label="Medida × esperada"]'));
+  expect(listas).toHaveLength(1);
+  expect(text(listas[0] as HTMLElement)).toContain('IPv4: medida 198.51.100.99 × esperada 198.51.100.7');
+  expect(text(listas[0] as HTMLElement)).toContain('diverge');
+  const linhaDe = (id: string) => Array.from(container.querySelectorAll('tbody tr')).find((tr) => tr.textContent?.includes(id))!;
+  expect(linhaDe('android-02').textContent).not.toContain('Corrigir a esperada');
+  expect(linhaDe('android-03').textContent).not.toContain('Corrigir a esperada');
+  expect(text(listas[0]!.parentElement as HTMLElement)).toContain('sessão fixa no proxy');
+});
+
+it('31.303: o resumo acima da tabela conta só o que o backend marcou como divergente e lista os aparelhos', async () => {
+  await aparelhosDivergentes();
+  expect(text()).toContain('1 aparelho sai por um IP diferente do esperado');
+  expect(text()).toContain('android-01. Com política exigida');
+});
+
+it('31.303: sem divergência (ou backend antigo, sem os campos) o resumo e o detalhe não aparecem', async () => {
+  backend.on('GET', /\/network\/devices/, () => json({
+    devices: [
+      linha({ instance_id: 'android-02', egress_expected: ESPERADA_303, egress_matches: true,
+              network: rede({ instance_id: 'android-02', vpn_profile_id: 'vpn-1', egress_ipv4: '198.51.100.7' }) }),
+      linha({ instance_id: 'android-05', network: rede({ instance_id: 'android-05', vpn_profile_id: 'vpn-1', egress_ipv4: '198.51.100.50' }) }),
+    ],
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('android-05'));
+  expect(text()).not.toContain('por um IP diferente do esperado');
+  expect(container.querySelector('ul[aria-label="Medida × esperada"]')).toBeNull();
+});
+
+it('31.303: "Corrigir a esperada" abre o editor do perfil que declara a saída, e abre de novo depois de fechado', async () => {
+  await aparelhosDivergentes();
+  expect(container.querySelector('[aria-expanded="true"]')).toBeNull();
+  await click(byRole('button', /^Corrigir a saída esperada do perfil Dedicada-01$/));
+  await waitFor(() => !!container.querySelector('input[placeholder="203.0.113.10"]'));
+  expect((byRole('textbox', /Saída esperada IPv4/) as HTMLInputElement).value).toBe('198.51.100.7');
+  await click(byRole('button', /Editar a saída esperada de Dedicada-01$/));   // a pessoa fecha o editor
+  expect(container.querySelector('input[placeholder="203.0.113.10"]')).toBeNull();
+  await click(byRole('button', /Editar a saída esperada do perfil Dedicada-01 \(resumo\)/));   // o atalho do resumo reabre
+  await waitFor(() => !!container.querySelector('input[placeholder="203.0.113.10"]'));
+});

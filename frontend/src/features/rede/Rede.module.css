@@ -24,3 +24,6 @@
 .saidaAntesDepois { margin: 0; color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
 .saidaAcoes { display: flex; gap: var(--sp-2); }
 .saidaTrocas { margin: 0; padding-left: var(--sp-4); color: var(--text-2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+
+.divergencia { display: flex; flex-direction: column; gap: var(--sp-1); align-items: flex-start; margin-top: var(--sp-1); font-size: var(--fs-xs); }
+.divergencia ul { margin: 0; padding-left: var(--sp-3); }

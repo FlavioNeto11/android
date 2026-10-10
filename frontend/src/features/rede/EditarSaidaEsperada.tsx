@@ -7,7 +7,7 @@
  * Trocar o esperado NÃO é remédio para proxy que rotaciona: o remédio é sessão fixa no proxy.
  */
 import { Pencil, ShieldAlert } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, toApiError } from '../../api/client';
 import type { NetworkProfileListed } from '../../api/types';
 import { Banner } from '../../components/Banner';
@@ -77,7 +77,11 @@ function Antes({ d }: { d: unknown }) {
   return <>{mostrar(t('egress_esperado'))}{t('egress_esperado_ipv6') ? ` · ${t('egress_esperado_ipv6')}` : ''}</>;
 }
 
-export function EditarSaidaEsperada({ perfil, onSalvo }: { perfil: NetworkProfileListed; onSalvo: () => Promise<void> }) {
+export function EditarSaidaEsperada({ perfil, onSalvo, pedido = null }: {
+  perfil: NetworkProfileListed; onSalvo: () => Promise<void>;
+  /** Muda a cada pedido de abertura vindo de fora (o atalho da saída divergente, 31.303); `null` = ninguém pediu. */
+  pedido?: number | null;
+}) {
   const [aberto, setAberto] = useState(false);
   const atual = saidaAtual(perfil);
   const [digitado, setDigitado] = useState<Record<Familia, string>>({
@@ -99,6 +103,16 @@ export function EditarSaidaEsperada({ perfil, onSalvo }: { perfil: NetworkProfil
     setRecusa(null);
     setAberto(true);
   }
+
+  const raiz = useRef<HTMLDivElement>(null);
+  const ultimoPedido = useRef<number | null>(null);
+  useEffect(() => {
+    if (pedido === null || pedido === ultimoPedido.current) return;
+    ultimoPedido.current = pedido;
+    abrir();
+    raiz.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    // `abrir` só lê o perfil de agora; o token é o que dispara.
+  }, [pedido]);
 
   async function salvar() {
     if (!mudou || ocupado) return;
@@ -130,7 +144,7 @@ export function EditarSaidaEsperada({ perfil, onSalvo }: { perfil: NetworkProfil
   const bloqueio = !mudou ? 'Nada mudou.' : motivoObrigatorio && !motivo.trim() ? 'Diga o motivo da troca.' : null;
 
   return (
-    <div className={styles.saidaEditor}>
+    <div className={styles.saidaEditor} ref={raiz}>
       <div className={styles.saidaTopo}>
         <Button size="sm" variant="ghost" icon={Pencil} onClick={() => (aberto ? setAberto(false) : abrir())}
                 aria-expanded={aberto} label={`Editar a saída esperada de ${perfil.name}`}>

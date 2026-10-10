@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o painel de rede mostra a saída medida × esperada e leva ao editor (31.303)
+
+- `features/rede/RedePage.tsx`, `EditarSaidaEsperada.tsx`, `Rede.module.css`: o aparelho que o backend marcou com `egress_matches: false`
+  mostra, na linha, medida × esperada por família (com "diverge") e "Corrigir a esperada", que abre o editor do perfil que declara a
+  saída (31.301) e rola até ele. Acima da tabela, um resumo conta os aparelhos divergentes e dá o atalho por perfil. O aviso lembra que
+  trocar o esperado só vale se o IP mudou de propósito: proxy que rotaciona pede sessão fixa. Só dados que a API já expõe
+  (`egress_expected`, `egress_matches`, saída medida); o veredito é sempre o do backend, nunca um palpite do painel.
+- Prova `simulated`: `features/rede/RedePage.test.tsx` (4 testes novos 31.303: detalhe só no divergente, resumo e contagem, nada em
+  backend antigo ou sem divergência, atalho que reabre o editor), 41 testes da Rede, tsc e build. Percurso no navegador contra o backend
+  isolado do worktree, com a resposta de `/network/devices` reescrita no navegador para simular a divergência (o harness não mede
+  saída). **Real no central: não executada.**
+
 ## 2026-10-10 — o painel de rede troca a saída esperada do perfil (31.301, adendo v1.134)
 
 - `features/rede/EditarSaidaEsperada.tsx` (novo), `RedePage.tsx`, `api/client.ts` (`updateNetworkProfileSaida`), `api/types.ts`:

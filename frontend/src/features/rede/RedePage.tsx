@@ -12,7 +12,7 @@
  * personas falhava (achado do revisor no 25.8): com o backend já resolvendo tudo numa chamada só, essa classe de
  * bug não existe mais.
  */
-import { Eye, Home, KeyRound, Plus, RefreshCw, RotateCw, Send, Server, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
+import { Eye, Home, KeyRound, Pencil, Plus, RefreshCw, RotateCw, Send, Server, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type {
@@ -87,6 +87,9 @@ export function RedePage() {
   // montagem lia tudo de novo (2× por carga, medido no deploy 10).
   const temDados = useRef(false);
   const [ocupadoPorId, setOcupadoPorId] = useState<Record<string, 'verify' | 'reapply' | undefined>>({});
+  // Atalho "corrigir a esperada" (31.303): o token novo reabre o editor mesmo do perfil que a pessoa já tinha fechado.
+  const [editarSaida, setEditarSaida] = useState<{ perfilId: string; token: number } | null>(null);
+  const pedirEditor = useCallback((perfilId: string) => setEditarSaida((e) => ({ perfilId, token: (e?.token ?? 0) + 1 })), []);
 
   // Só a leitura mais nova escreve: com o cadastro livre durante a releitura (29.130), dois perfis criados em seguida
   // disparam duas, e a mais velha que respondesse por último apagaria o 2º da tela.
@@ -179,7 +182,7 @@ export function RedePage() {
         cor promete mais do que isso (ADR-056 §3).
       </Banner>
 
-      <PerfisCard perfis={perfis} onCriado={carregar} onApagar={apagarPerfil} />
+      <PerfisCard perfis={perfis} onCriado={carregar} onApagar={apagarPerfil} editarSaida={editarSaida} />
 
       <AtribuirCard perfis={perfis} aparelhos={aparelhos} onFeito={carregar} />
 
@@ -188,6 +191,7 @@ export function RedePage() {
                     actions={<Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => void carregar()}>Recarregar</Button>} />
         <CardBody>
           <ResumoDaCasa aparelhos={aparelhos} central={central} />
+          <ResumoDaSaidaDivergente aparelhos={aparelhos} onCorrigir={pedirEditor} />
           <div className={s.tableWrap}>
             <table className={`${s.table} ${s.devices}`}>
               <thead>
@@ -198,7 +202,7 @@ export function RedePage() {
               </thead>
               <tbody>
                 {aparelhos.map((row) => (
-                  <LinhaAparelho key={row.instance_id} row={row} perfis={perfis} dupeIps={dupeIps}
+                  <LinhaAparelho key={row.instance_id} row={row} perfis={perfis} dupeIps={dupeIps} onCorrigirEsperada={pedirEditor}
                                  ocupado={ocupadoPorId[row.instance_id]}
                                  onVerificar={() => void verificar(row.instance_id)}
                                  onReaplicar={() => void reaplicar(row.instance_id)} />
@@ -218,8 +222,9 @@ export function RedePage() {
   );
 }
 
-function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar }: {
+function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar, onCorrigirEsperada }: {
   row: NetworkDeviceRow; perfis: NetworkProfileListed[]; dupeIps: Set<string>;
+  onCorrigirEsperada: (perfilId: string) => void;
   ocupado: 'verify' | 'reapply' | undefined; onVerificar: () => void; onReaplicar: () => void;
 }) {
   const { network: d, legacy_proxy: legado } = row;
@@ -270,7 +275,10 @@ function LinhaAparelho({ row, perfis, dupeIps, ocupado, onVerificar, onReaplicar
           </>
         ) : <span className={s.muted}>não medido</span>}
         {row.egress_home ? <SaiPelaCasa home={row.egress_home} /> : null}
-        {row.egress_expected ? <SaidaEsperada esperada={row.egress_expected} confere={row.egress_matches ?? null} /> : null}
+        {row.egress_expected ? (
+          <SaidaEsperada esperada={row.egress_expected} confere={row.egress_matches ?? null} medida={medidaDe(row)}
+                         onCorrigir={() => onCorrigirEsperada(row.egress_expected!.profile_id)} />
+        ) : null}
         {row.last_measurement ? <ResumoDaMedicao m={row.last_measurement} /> : null}
         {d && d.policy === 'exigida_com_bloqueio' ? <ProvaDeVazamento d={d} /> : null}
       </td>
@@ -359,17 +367,77 @@ function IdsResumidos({ ids }: { ids: string[] }) {
   return <>{ids.slice(0, IDS_NA_LINHA).join(', ')} <span title={ids.join(', ')}>e mais {ids.length - IDS_NA_LINHA}</span></>;
 }
 
+/** A saída medida do aparelho por família (a mesma que a coluna "IP de saída" mostra). */
+function medidaDe(a: NetworkDeviceRow): { ipv4: string | null; ipv6: string | null } {
+  const m = a.network ? { ipv4: a.network.egress_ipv4, ipv6: a.network.egress_ipv6 } : a.egress_home?.measured;
+  return { ipv4: m?.ipv4 ?? null, ipv6: m?.ipv6 ?? null };
+}
+
+/** O aparelho que o backend marcou com saída diferente da esperada (`egress_matches === false`): só o veredito dele, nunca um
+ *  palpite do painel. */
+const divergente = (a: NetworkDeviceRow): boolean => !!a.egress_expected && a.egress_matches === false;
+
 /** A saída que o perfil declara (29.6) ao lado da medida. Três leituras, e nenhuma presumida: `confere` (a medida
  *  desta revisão é a esperada), "é outra" (o aparelho fica `parcial`; com política exigida a tarefa espera) e sem
- *  veredito (a revisão pedida ainda não foi medida). Saída compartilhada é outro aviso, e continua à parte. */
-function SaidaEsperada({ esperada, confere }: { esperada: NetworkExpectedEgress; confere: boolean | null }) {
+ *  veredito (a revisão pedida ainda não foi medida). Saída compartilhada é outro aviso, e continua à parte.
+ *  Quando é outra (31.303), mostra medida × esperada por família e o atalho para o editor do perfil. */
+function SaidaEsperada({ esperada, confere, medida, onCorrigir }: {
+  esperada: NetworkExpectedEgress; confere: boolean | null; medida: { ipv4: string | null; ipv6: string | null };
+  onCorrigir: () => void;
+}) {
   const ips = [esperada.ipv4, esperada.ipv6].filter((ip): ip is string => !!ip).join(' e ');
   const difere = confere === false;
+  const familias = ([['IPv4', medida.ipv4, esperada.ipv4], ['IPv6', medida.ipv6, esperada.ipv6]] as const)
+    .filter(([, , esp]) => !!esp);
   return (
-    <div className={difere ? `${s.rowNote} ${s.dupe}` : s.rowNote}
-         title={difere ? `A saída medida não é a que o perfil ${esperada.profile_name} declara: o aparelho fica parcial até medir ${ips}.` : undefined}>
-      esperada {ips} (perfil {esperada.profile_name}){difere ? ' — a saída medida é outra' : confere ? ' — confere' : ''}
-    </div>
+    <>
+      <div className={difere ? `${s.rowNote} ${s.dupe}` : s.rowNote}
+           title={difere ? `A saída medida não é a que o perfil ${esperada.profile_name} declara: o aparelho fica parcial até medir ${ips}.` : undefined}>
+        esperada {ips} (perfil {esperada.profile_name}){difere ? ' — a saída medida é outra' : confere ? ' — confere' : ''}
+      </div>
+      {difere ? (
+        <div className={s.divergencia}>
+          <ul aria-label="Medida × esperada">
+            {familias.map(([rotulo, med, esp]) => (
+              <li key={rotulo}>
+                {rotulo}: medida <code>{med ?? 'não medida'}</code> × esperada <code>{esp}</code>
+                {med && med !== esp ? <Badge size="sm" tone="danger">diverge</Badge> : null}
+              </li>
+            ))}
+          </ul>
+          <Button size="sm" variant="ghost" icon={Pencil} label={`Corrigir a saída esperada do perfil ${esperada.profile_name}`}
+                  onClick={onCorrigir}>
+            Corrigir a esperada
+          </Button>
+          <span className={s.muted}>
+            Só se o IP mudou de propósito. Proxy que rotaciona não se resolve trocando o esperado: pede sessão fixa no proxy.
+          </span>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/** Acima da tabela: quantos aparelhos saem por um IP diferente do esperado e quais, com o atalho para o perfil de cada um.
+ *  Sem divergência (ou backend de antes do 29.6), não ocupa lugar. */
+function ResumoDaSaidaDivergente({ aparelhos, onCorrigir }: { aparelhos: NetworkDeviceRow[]; onCorrigir: (perfilId: string) => void }) {
+  const lista = aparelhos.filter(divergente);
+  if (lista.length === 0) return null;
+  const perfis = new Map<string, string>();
+  for (const a of lista) perfis.set(a.egress_expected!.profile_id, a.egress_expected!.profile_name);
+  return (
+    <Banner tone="warning" icon={ShieldAlert} compact
+            title={`${lista.length} ${lista.length === 1 ? 'aparelho sai' : 'aparelhos saem'} por um IP diferente do esperado`}>
+      <p>{lista.map((a) => a.instance_id).join(', ')}. Com política exigida, a tarefa desses aparelhos espera.</p>
+      <div className={s.actions}>
+        {[...perfis].map(([id, nome]) => (
+          <Button key={id} size="sm" variant="ghost" icon={Pencil} label={`Editar a saída esperada do perfil ${nome} (resumo)`}
+                  onClick={() => onCorrigir(id)}>
+            Editar a esperada de {nome}
+          </Button>
+        ))}
+      </div>
+    </Banner>
   );
 }
 
@@ -463,8 +531,9 @@ function saidaDeclarada(p: NetworkProfileListed): string {
     .filter((ip): ip is string => typeof ip === 'string' && ip.length > 0).join(' e ');
 }
 
-function PerfisCard({ perfis, onCriado, onApagar }: {
+function PerfisCard({ perfis, onCriado, onApagar, editarSaida }: {
   perfis: NetworkProfileListed[]; onCriado: () => Promise<void>; onApagar: (id: string, nome: string) => Promise<void>;
+  editarSaida: { perfilId: string; token: number } | null;
 }) {
   const [nome, setNome] = useState('');
   const [kind, setKind] = useState<NetworkProfileKind>('vpn');
@@ -547,7 +616,7 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
                 <span className={s.grow} />
                 <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label={`Apagar ${p.name}`}
                         onClick={() => void onApagar(p.id, p.name)} />
-                <EditarSaidaEsperada perfil={p} onSalvo={onCriado} />
+                <EditarSaidaEsperada perfil={p} onSalvo={onCriado} pedido={editarSaida?.perfilId === p.id ? editarSaida.token : null} />
               </li>
             ))}
           </ul>
