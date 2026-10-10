@@ -8521,8 +8521,9 @@ exploração real e o painel, que é do Portal).
 - **Eventos:** `exploracao.iniciada` e `exploracao.concluida` ganham `data.com_efeito` (booleano); evento novo `exploracao.efeito_liberado`
   (`data: {run_id, step_id, profile_id, chave, politica, origem: own|group|default, aprovada, dispensada_pelo_grupo}`), emitido quando a porta
   libera (política autônoma, grupo sem aprovação ou o sim do dono). Vira aviso no Telegram, na hora, só com ids e códigos fechados.
+- **Nunca explora, nem com o interruptor ligado:** pedido com `entrar`, `logar`, `autenticar`, `sair`, `cadastrar` ou `registrar` (em qualquer posição do pedido) segue recusado como antes: credencial e sessão têm mecanismo próprio (ADR-040, ADR-087, `sessao.yaml`).
 - **O efeito descoberto nunca é oferecido a outra execução** (`molde_da_exploracao` devolve `None` para `side_effect`): a política julga de novo
   cada vez.
 
-**Prova:** `simulated` (`backend/tests/test_exploracao_de_efeito.py`, 41 casos). `real`: `not_run` (efeito numa conta real; o dono liga o
+**Prova:** `simulated` (`backend/tests/test_exploracao_de_efeito.py`, 48 casos). `real`: `not_run` (efeito numa conta real; o dono liga o
 interruptor e escolhe a política).

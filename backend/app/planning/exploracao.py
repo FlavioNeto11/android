@@ -66,6 +66,9 @@ _EFEITO_CANONICO: dict[str, str] = {
 }
 #: Os verbos canônicos que podem aparecer na chave de um efeito (os que a tabela não junta ficam como são).
 VERBOS_DE_EFEITO = frozenset(_EFEITO_CANONICO.get(v, v) for v in _EFEITO)
+#: 31.297: os verbos de EFEITO que a exploração NUNCA cobre, nem com o interruptor ligado e a política liberada: entrar, sair e
+#: cadastrar são credencial e sessão (ADR-040, ADR-087, sessao.yaml). Têm mecanismo próprio; a IA livre não digita senha nem abre conta.
+_SEM_EXPLORACAO = frozenset({"entrar", "logar", "autenticar", "sair", "cadastrar", "registrar"})
 #: Palavras de lugar e de coisa do app que podem entrar na chave. Sem acento, em minúsculas.
 OBJETOS = frozenset({
     "caixa", "entrada", "saida", "lixeira", "lixo", "spam", "eletronico", "configuracoes", "ajustes", "perfil", "perfis",
@@ -100,6 +103,7 @@ class Exploracao:
     objetos: tuple[str, ...]     # só vocabulário
     chave: str                   # `explorar_…`, válida como `PlanStep.key`
     de_leitura: bool             # o verbo é de leitura/navegação conhecido (senão, a ordem de não mudar nada vai no objetivo)
+    de_credencial: bool = False  # 31.297: entrar/sair/cadastrar: nunca explora, nem com o interruptor de efeito ligado
 
 
 def _normal(texto: str) -> str:
@@ -128,12 +132,16 @@ def classificar(pedido: str) -> Exploracao:
     resto = palavras[1:] if palavras else []
     objetos = tuple(dict.fromkeys(p for p in resto if p in OBJETOS))[:_MAX_OBJETOS]
     de_efeito = next((p for p in palavras[:2] if p in _EFEITO), None)
+    if de_efeito is None:
+        # credencial e sessão em QUALQUER posição ("fazer logout: sair da conta") contam como efeito, e efeito dessas nunca explora
+        de_efeito = next((p for p in palavras if p in _SEM_EXPLORACAO), None)
     if de_efeito is not None:
         # 31.297: a chave do efeito tem a forma da de leitura (`explorar_<verbo>_<objeto…>`), com o verbo canônico: é por ela
         # que a política do dono casa com o pedido. Sem objeto reconhecido leva o sufixo de letras (o dono usa a genérica).
         verbo_efeito = _EFEITO_CANONICO.get(de_efeito, de_efeito)
         corpo_efeito = [verbo_efeito, *(objetos or (_sufixo(pedido),))]
-        return Exploracao(Destino.EFEITO, verbo_efeito, objetos, (PREFIXO + "_".join(corpo_efeito))[:40].rstrip("_"), False)
+        return Exploracao(Destino.EFEITO, verbo_efeito, objetos, (PREFIXO + "_".join(corpo_efeito))[:40].rstrip("_"), False,
+                          any(p in _SEM_EXPLORACAO for p in palavras))
     verbo = _LEITURA.get(verbo_cru, "")
     corpo = [verbo or "navegar", *(objetos or (_sufixo(pedido),))]
     chave = (PREFIXO + "_".join(corpo))[:40].rstrip("_")

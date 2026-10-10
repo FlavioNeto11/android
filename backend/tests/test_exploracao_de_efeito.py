@@ -127,6 +127,14 @@ def test_o_aviso_de_inicio_e_de_fim_dizem_que_ha_efeito() -> None:
     assert leitura is not None and "Só leitura e navegação: nada foi alterado" in leitura.corpo
 
 
+@pytest.mark.parametrize("pedido", ["entrar na conta", "fazer logout: sair da conta", "enviar e entrar na conta",
+                                    "cadastrar uma conta nova", "registrar um usuário", "logar com a senha"])
+def test_credencial_e_sessao_nunca_exploram_nem_com_o_efeito_ligado(pedido: str) -> None:
+    e = ex.classificar(pedido)
+    assert e.destino is ex.Destino.EFEITO and e.de_credencial
+    assert not ex.classificar("enviar uma mensagem").de_credencial and not ex.classificar("ver a caixa").de_credencial
+
+
 # ------------------------------------------------------------------ política e porta (estado do harness)
 OID = "run-x:android-01"
 
@@ -367,5 +375,18 @@ async def test_ligada_o_efeito_livre_de_um_plano_do_modelo_continua_recusado(tmp
         await h.wait_run(run.id, ("needs_input", "failed", "planned"))
         (recusa,) = _eventos(state, run.id, "plan.refused")
         assert recusa["data"]["motivo"] == "efeito_fora_do_catalogo"
+    finally:
+        await state.stop()
+
+
+async def test_ligada_e_liberada_a_credencial_ainda_e_recusada(tmp_path: Any) -> None:
+    """O pior caso do ADR-040: interruptor ligado e o pedido de entrar na conta. A recusa de antes, sem etapa nenhuma."""
+    linha, state, _ = await _planejar(tmp_path, "entrar na conta do Outlook", ligada=True)
+    try:
+        assert linha["status"] == "failed"
+        (recusa,) = _eventos(state, linha["id"], "plan.refused")
+        assert recusa["data"]["motivo"] == "sem_acao_do_catalogo"
+        assert _eventos(state, linha["id"], "exploracao.iniciada") == []
+        assert state.db.scalar("SELECT COUNT(*) FROM steps WHERE run_id=?", (linha["id"],)) == 0
     finally:
         await state.stop()

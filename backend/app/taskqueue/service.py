@@ -1497,8 +1497,8 @@ class RunService:
         if not s.exploracao_ligada:
             return plan, None
         decididos = [(f, exploracao.classificar(f.pedido)) for f in plan.fora_do_catalogo]
-        if any((e.destino is exploracao.Destino.EFEITO and not s.exploracao_efeito_ligada) or not f.app_id
-               for f, e in decididos):
+        if any((e.destino is exploracao.Destino.EFEITO and (e.de_credencial or not s.exploracao_efeito_ligada))
+               or not f.app_id for f, e in decididos):
             return plan, None
         conhecidas: dict[tuple[str, str], etapas_ensinadas.EtapaEnsinada] = {}
         try:

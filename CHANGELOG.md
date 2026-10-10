@@ -57,9 +57,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - `limits.exploracao_efeito_ligada` (desligado de fábrica): o pedido de efeito vira uma etapa exploratória `side_effect` (chave
   `explorar_<verbo canônico>_<objeto…>`) julgada pela porta 13.2 por uma ação sintética de risco alto (aprovação por padrão), pela política do
-  perfil/grupo (`explorar_efeito` ou a chave do pedido). Sem perfil não passa; o efeito do modelo sem a marca do sistema segue recusado; o efeito
+  perfil/grupo (`explorar_efeito` ou a chave do pedido). Sem perfil não passa; entrar/sair/cadastrar nunca exploram; o efeito do modelo sem a marca do sistema segue recusado; o efeito
   descoberto não é oferecido a outras execuções. Evento novo `exploracao.efeito_liberado` (aviso na hora) e `com_efeito` nos eventos de início e fim.
-- Prova **simulada**: `tests/test_exploracao_de_efeito.py` (41 casos) e a bateria dirigida (216 passaram). **Real: não executada** (efeito numa
+- Prova **simulada**: `tests/test_exploracao_de_efeito.py` (48 casos) e a bateria dirigida (265 passaram). **Real: não executada** (efeito numa
   conta real exige o dono ligar o interruptor e escolher a política); o executor contra aparelho real e o painel de política (Portal) ficam de fora.
 
 ## 2026-10-10 — "Ensinar a corrigir" na etapa em que a exploração da IA parou (31.313, adendo v1.138)

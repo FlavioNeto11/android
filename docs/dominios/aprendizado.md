@@ -2855,12 +2855,13 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
   `approval_required`) quando a etapa é exploração de efeito montada pelo sistema (`e_exploracao_de_efeito`: marca `exploratoria`, `side_effect`
   e prefixo `explorar_`). Daí em diante é o caminho de sempre: `PolicyEngine.check` (chave do pedido antes da genérica `explorar_efeito`, perfil
   antes do grupo), aprovação, teto `preparar`; sem perfil não passa. Ao liberar a porta emite `exploracao.efeito_liberado`.
+- **Nunca explora:** `entrar`, `logar`, `autenticar`, `sair`, `cadastrar`, `registrar` em qualquer posição do pedido (`_SEM_EXPLORACAO`, `Exploracao.de_credencial`): seguem recusados com o interruptor ligado (ADR-040, ADR-087).
 - **O que NÃO muda:** a leitura exploratória segue livre; o efeito livre que o modelo escreve sem a marca do sistema segue recusado pela 13.2; a
   receita de efeito descoberta não é oferecida a outras execuções (`molde_da_exploracao` devolve `None`); o executor mantém o caminho livre com
   efeito (guarda do commit, não repetir, comprovar) e os tetos `exploracao_*`.
-- **Prova:** `simulated`, `backend/tests/test_exploracao_de_efeito.py` (41 casos: chave canônica, validação das chaves, política em dois níveis,
+- **Prova:** `simulated`, `backend/tests/test_exploracao_de_efeito.py` (48 casos: chave canônica, validação das chaves, política em dois níveis,
   porta com aprovação/recusa/autonomia/grupo, planejamento ligado e desligado, aviso). `real`: `not_run`. Contrato: adendo v1.140 do
   [api-contract](../api-contract.md).
-- **Limites conhecidos:** o executor rodando a etapa de efeito contra aparelho real não foi exercido (só a porta e o planejamento); o painel (Portal)
+- **Limites conhecidos:** o aviso `exploracao.efeito_liberado` sai a cada passagem da porta pela mesma etapa (a chave de dedup colapsa no Telegram, mas `events` pode ganhar linhas repetidas); a receita candidata que a execução de efeito deixa, achada por `step_hash` em outra execução, não foi testada com `driven_by=recipe` (a porta roda antes do executor, então a política julga do mesmo jeito); o executor rodando a etapa de efeito contra aparelho real não foi exercido (só a porta e o planejamento); o painel (Portal)
   ainda não tem linha para `explorar_efeito` em Política (aparece na resposta do `GET` só quando escolhida); a pergunta da aprovação mostra o
   título da ação sintética, sem o pedido (que pode ter nome).
