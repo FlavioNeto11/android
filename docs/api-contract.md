@@ -8426,7 +8426,7 @@ que só ela resolve (CAPTCHA, "confirme que você é humano", telefone). Aditivo
   declara `cadastro.yaml`), **409** `sem_caixa_de_email` (o app declara passo de código por e-mail e a conta não tem caixa),
   **409** `sem_credencial` / `sem_consentimento` (as de `iniciar_cadastro`), **409** `sem_nascimento` / `persona_menor_de_idade` (31.324,
   aditivos: o app declara campo de data de nascimento e a persona não tem `birth_date` válido, ou tem menos de 18 anos; a conferência é
-  ANTES de tocar no aparelho e a mensagem nunca traz a data; adendo a numerar pela orquestradora), **409** `cadastro_em_andamento` (outro
+  ANTES de tocar no aparelho e a mensagem nunca traz a data; adendo v1.144), **409** `cadastro_em_andamento` (outro
   `session.cadastrar` aberto no parque: uma conta por vez), **409** `aparelho_ocupado` (trabalho, controle manual ou aparelho
   fora do ar; nunca liga o aparelho).
 - **O que o comando faz** (cada passo é uma transição do ciclo do v1.132 com `estado_esperado`; reiniciar no meio retoma pelo
@@ -8599,3 +8599,22 @@ Aditivo: nenhuma rota, coluna ou migração nova. A regra vale para aparelho com
 
 **Prova:** `simulated` (`backend/tests/test_egresso_na_janela.py`, 8 casos). `real`: `not_run`; a regra nasceu da ressalva da H2 de 10/10
 (login 10 min depois da última medição, sticky girou até a seguinte).
+
+## Adendo v1.144 (10/10/2026; número da orquestradora; item 31.324 G1) — o cadastro guiado confere a data de nascimento da persona
+
+Aditivo; nenhuma rota nova, nenhuma migração. O cadastro guiado (v1.137, `POST …/provisioning/signup`) passa a poder digitar a data de
+nascimento da persona quando o `cadastro.yaml` do app a pede, e a recusar ANTES de tocar no aparelho quando não pode.
+
+- **Dois 409 novos na rota** (somam-se aos do v1.137), conferidos só quando o `cadastro.yaml` do app declara algum campo `nascimento_*`:
+  - `sem_nascimento`: a persona não tem `birth_date` válido (`AAAA-MM-DD`, não futuro);
+  - `persona_menor_de_idade`: a persona tem menos de 18 anos (`MAIORIDADE`, a mesma regra do resto da identidade).
+  A mensagem nunca traz a data nem o ano. Nenhum comando é despachado e o aparelho não é tocado. App que não pede a data não exige nada.
+- **Vocabulário do `cadastro.yaml`** (dado do app, validado na carga): `nascimento_dia`, `nascimento_mes` e `nascimento_ano` (números sem zero à
+  esquerda; a conferência na tela compara só os dígitos); critérios do alvo `classe`, `abaixo_do_rotulo`, `ordem` e `senha`; telas
+  `dispara_codigo` e `antes_do_envio` (o código que o app manda antes de criar a conta); `envia` também em `tocar`. Ver
+  `docs/dominios/persona.md` (cadastro guiado).
+- **Nada mais muda no contrato:** estados, eventos (`identity.conta.provisionamento`, `identity.cadastro`) e paradas (`Parada`) são os do v1.137.
+  A data de nascimento é dado pessoal e não entra em evento, log, evidência nem mensagem.
+
+**Prova:** `simulated` (`backend/tests/test_cadastro_instagram_like.py`, 48 casos, e `test_cadastro_guiado.py`, 58). `real`: `not_run`; nenhum app real
+declara o cadastro ainda (o do Instagram espera a captura da igfarm).
