@@ -183,6 +183,23 @@ export function execucoesEmAndamento(runs: readonly RunSummary[]): number {
   return runs.filter((r) => grupoDoStatus(r.status) === 'andamento').length;
 }
 
+/** Execuções paradas pedindo informação: fora do contador de andamento, dentro das Pendências (D1). */
+export function execucoesAguardandoResposta(runs: readonly RunSummary[]): number {
+  return runs.filter((r) => r.status === 'needs_input').length;
+}
+
+/**
+ * A dica do contador de execuções (31.295). "0 execuções" ao lado de três esperando resposta lia-se como erro: o
+ * contador conta só o que está andando, e as que pedem informação são pendência. A dica diz isso com o número.
+ */
+export function dicaDoContadorDeExecucoes(paradas: number): string {
+  const base = 'Execuções em andamento (planejando, em execução, pausadas ou cancelando). Um plano pronto que ainda não foi executado não conta.';
+  const fora = paradas > 0
+    ? ` ${paradas === 1 ? '1 execução espera' : `${paradas} execuções esperam`} a sua resposta e ${paradas === 1 ? 'está' : 'estão'} em Pendências, não aqui.`
+    : ' Execuções que esperam a sua resposta ficam em Pendências, não aqui.';
+  return `${base}${fora} Clique para ver a lista filtrada.`;
+}
+
 /** Para onde o contador de execuções leva: a lista já filtrada pelo mesmo grupo que ele conta. */
 export const DESTINO_EM_ANDAMENTO: Destino = { tela: 'execucoes', query: { status: 'andamento' } };
 
@@ -321,6 +338,11 @@ export function useContagemDeAparelhos(): ContagemDeAparelhos {
   const instanceOrder = useAppStore((s) => s.instanceOrder);
   const workers = useAppStore((s) => s.workers);
   return useMemo(() => contarAparelhos({ instances, instanceOrder }, workers), [instances, instanceOrder, workers]);
+}
+
+export function useExecucoesAguardandoResposta(): number {
+  const runs = useAppStore((s) => s.runs);
+  return useMemo(() => execucoesAguardandoResposta(runs), [runs]);
 }
 
 export function useExecucoesEmAndamento(): number {

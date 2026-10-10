@@ -6,7 +6,8 @@ import { hydrateFromSnapshot, initialDataState, mergeRuns, MAX_RUNS } from './re
 import { grupoDoStatus } from '../features/runs/filtroExecucoes';
 import { montarPendencias } from '../features/pendencias/modelo';
 import {
-  DESTINO_EM_ANDAMENTO, contarAparelhos, contarSelecao, execucoesEmAndamento, nivelDoAmbiente,
+  DESTINO_EM_ANDAMENTO, contarAparelhos, contarSelecao, dicaDoContadorDeExecucoes, execucoesAguardandoResposta,
+  execucoesEmAndamento, nivelDoAmbiente,
   ocupacaoDoServidor, ocupacoesDoParque, personasBloqueadas,
 } from './metricas';
 
@@ -239,6 +240,15 @@ describe('aguardando você e personas bloqueadas', () => {
     expect(execucoesEmAndamento(runs)).toBe(4);
     expect(execucoesEmAndamento(runs)).toBe(runs.filter((r) => grupoDoStatus(r.status) === 'andamento').length);
     expect(DESTINO_EM_ANDAMENTO).toEqual({ tela: 'execucoes', query: { status: 'andamento' } });
+  });
+
+  it('31.295: "0 execuções" ao lado de execuções esperando resposta diz onde elas estão', () => {
+    const runs = (['needs_input', 'needs_input', 'needs_input', 'completed'] as const).map((status, i) => makeRun({ id: `r-${i}`, status }));
+    expect(execucoesEmAndamento(runs)).toBe(0);
+    expect(execucoesAguardandoResposta(runs)).toBe(3);
+    expect(dicaDoContadorDeExecucoes(3)).toContain('3 execuções esperam a sua resposta e estão em Pendências, não aqui.');
+    expect(dicaDoContadorDeExecucoes(1)).toContain('1 execução espera a sua resposta e está em Pendências');
+    expect(dicaDoContadorDeExecucoes(0)).toContain('Execuções que esperam a sua resposta ficam em Pendências');
   });
 
   it('RF-05: o contador de em andamento vale desde o primeiro carregamento e não muda ao visitar Execuções', () => {

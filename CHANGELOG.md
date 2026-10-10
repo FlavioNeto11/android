@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — "0 execuções" diz onde estão as que esperam resposta (31.295)
+
+- `store/metricas.ts` (`execucoesAguardandoResposta`, `dicaDoContadorDeExecucoes`) e `features/topbar/TopBar.tsx`: a dica
+  do contador de execuções passa a dizer quantas esperam a resposta da pessoa e que elas estão em Pendências. O número
+  não muda (andamento e pendência seguem separados, D1). O e-mail de exemplo restante de `ProfilesPage.test.tsx` não
+  existe mais: os endereços ali são todos `@exemplo.com`.
+- Prova `simulated`: `store/metricas.test.ts::31.295` e 146 testes dirigidos (store e topbar). Real: não executada (painel do navegador embutido oculto, o contador não é desenhado).
+
 ## 2026-10-10 — o painel sai do tratamento de tela sensível (31.289, ADR-089)
 
 - `frontend/src/api/types.ts` (`FrameInfo`), `features/focus/Screen.tsx`, `features/devices/DeviceCard.tsx`,
