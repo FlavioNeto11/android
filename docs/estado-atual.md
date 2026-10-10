@@ -1,10 +1,15 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `7156f0df77e958` (migração 132, deploy 66); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 10/10/2026: runtime do backend em `6536ad04d6c99e` (migração 133, deploy 69); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploys 67, 68 e 69 no ar (10/10/2026, central `6536ad04d6c99e`, migração 133; sem tag).** Feitos de madrugada por outras sessões, com `PularFrontend` e `SemTag`; a linha de cada um está em `data/deploys.jsonl`.
+  - 67: 00:33:33Z, `7d187acb` → `972633a7` (egresso da ponte confirma o aparelho da própria persona), backup `20261009-213213` (do ensaio), 72,7 s.
+  - 68: 02:16:41Z, `972633a7` → `9ad2907f` (ADR-089, a plataforma não esconde tela de ninguém), backup `20261009-231605` (do ensaio), 32,2 s.
+  - 69: 02:30:40Z, `9ad2907f` → `6536ad04` (ADR-090, o código do e-mail entra no login automático), backup `20261009-233006`, 33,5 s.
+  - `real`: os três com resultado `ok` no jsonl; saúde ok em 10/10 ~12:55Z, commit `6536ad04d6c99e`, migração `133_egresso_igfarm` (já era a migração antes do deploy 67). `simulated`: só o que cada entrada do CHANGELOG de 10/10 cita (`test_egresso_igfarm`, `test_previa_sem_tela_escondida`, `test_codigo_por_email` e os dirigidos de cada commit); funil reduzido. `not_run`: PostgreSQL, vitest e SQLite inteiros; a prova real de ADR-089 e ADR-090 no aparelho; prova de fora e agente do notebook (sem registro desses deploys).
 - **Deploy 66 no ar (09/10/2026, 17:16:06Z, central `7156f0df77e958`, migração 132; ponte Android⇄igfarm, ADR-088).**
   - `real`: deploy rc=0, tag `deploy-20261009-1716`, saúde ok, migração 132, prova de fora, agente `0.1.0+7156f0d`. `simulated`: funil reduzido (SQLite dirigido e PG da migração, sem vitest). `not_run`: vitest, PG e SQLite inteiros, ponte real com o igfarm.
 - **Deploy 65 no ar (08/10/2026, 19:37:51Z, central `2e990961c3426c`, sem migração nova; Jev 31.287: a receita concorda por alvo).**
