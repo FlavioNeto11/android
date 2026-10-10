@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — tela humana = bloqueio definitivo: motivo como dado e rótulo "bloqueada" (31.322, migração 136)
+
+- Migração 136 aditiva: `contas_retiradas.motivo_do_bloqueio` (JSON). `identity/infrastructure/motivo_bloqueio.py` monta o objeto ANTES da
+  retirada (a linha do igfarm sai na transação): egresso esperado × medido, IPs distintos desde a criação, minutos até o primeiro login e o
+  trecho da tela. Vai à lápide e ao evento `profile.account_retired`; falhar na montagem não impede a retirada.
+- `session.needs_person` leva `rotulo` `bloqueada`|`aguardando` (o enum não muda). `PersonaDTO.contas_retiradas` expõe a lápide sem o @.
+- Contrato: adendo v1.142 em `docs/api-contract.md`; `docs/banco.md` com a linha da 136.
+- Prova `simulated`: `tests/test_motivo_do_bloqueio.py` (7), 706 testes relacionados, catracas 103, mypy 257 (teto). `real`: `not_run` para o
+  motivo gravado pelo código novo; a H1 de 10/10 19:02Z (android-07) é a ocorrência real, anterior ao deploy.
+
 ## 2026-10-10 — o reconciliador fecha o `device.network` incerto quando a rede prova a revisão
 
 - `commands/reconciler.py::_prova_de_rede` (e `VERIFICAVEL_POR_REDE`, usado também por `verifiable` em
