@@ -1385,6 +1385,8 @@ do dono (31.8 em diante); o Jev não decide por persona (D-J5, só de decisão d
 | 31.324 | **cadastro.yaml do Instagram com caixa IMAP do parque** (P-045: D1 b, D2 b; 12.3 parte 2 / 31.310): dado nascimento da persona, ação de data por rodas, código disparado antes do envio final; a partir da captura real das telas | jev | M |
 | 31.325 | **Política por verbo na exploração de efeito** (regra do dono "executar sem pedir, salvo ação destrutiva"): explorar_<verbo> entre a do pedido e a genérica; destrutivos = approval_required, demais = autonomous; pré-requisito do P-046; adendo v1.141 | aprendizado | P |
 | 31.326 | **Painel mostra "bloqueada" e o motivo do bloqueio** (não "aguardando intervenção") na ficha e na lista de contas bloqueadas; depende do v1.142 | portal | P |
+| 31.327 | **Receita da exploração guarda o caminho desde a tela de partida** (hoje só a última ação; replay por receita respondeu nao_aplicavel "tela de partida diferente" na prova real do P-043, 10/10) | aprendizado | M |
+| 31.328 | **Modo misto com caixa real sem falso positivo do guarda** (ADR-009/058 viu "formato de verificação da conta" no remetente e parou em waiting_user na prova real do P-043): guarda distingue remetente de assunto e a caixa de prova não começa por mensagem de verificação | aprendizado | P |
 
 **Fecha quando:** a porta existe com provedor nulo e privacidade fechada por padrão, a sombra do curador mediu concordância, aceite errado, latência e
 custo contra limiares pré-registrados, e o GO/NO-GO por consumidor está registrado.

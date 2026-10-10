@@ -897,4 +897,6 @@ orquestradora; ela anota aqui antes de responder.
 | migração 135 | Jev | 135_indice_dos_eventos_por_instancia: índice events(instance_id, kind, id) (31.307; o de learning_signals saiu: 310 linhas, 0,1 ms) | Jev | reservado 10/10 18:38Z |
 | migração 136 | Ponte | contas_retiradas.motivo_do_bloqueio (31.322) | Ponte | reservado 10/10 18:38Z |
 | K-113 | Jev | suíte PG no mesmo disco estrangula o SQLite do central; farm-pg com fsync satura o disco mesmo ocioso; boot da adoção não cabe em 240 s sem índice (31.307) | Jev | reservado 10/10 18:38Z |
-| próximos livres (atualização 10/10 18:38Z) | 31.327, 29.212, 28.78; ADR-092; migração 137; adendo v1.143; K-114 | |
+| 31.327 | Aprendizado | receita da exploração de efeito guarda o caminho desde a tela de partida conhecida (hoje só a última ação: replay falhou com "tela de partida diferente" em 10/10, P-043) | Aprendizado | reservado 10/10 19:12Z |
+| 31.328 | Aprendizado | modo misto (31.298) com caixa real: guarda ADR-009/058 reconhece "formato de verificação da conta" no remetente e para em waiting_user; distinguir remetente de assunto no guarda e usar caixa de prova cuja 1ª mensagem não pareça verificação | Aprendizado | reservado 10/10 19:12Z |
+| próximos livres (atualização 10/10 19:12Z) | 31.329, 29.212, 28.78; ADR-092; migração 137; adendo v1.143; K-114 | |
