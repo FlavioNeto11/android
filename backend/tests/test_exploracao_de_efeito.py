@@ -132,9 +132,13 @@ CREDENCIAL = ["entrar na conta", "fazer logout: sair da conta", "enviar e entrar
               "registrar um usuário", "logar com a senha", "fazer login no app", "entre na conta", "fazer logout",
               "redefinir a senha", "cadastre-se no app", "autentique-se", "desconectar a conta", "inscrever-se", "login",
               "digitar a senha", "alterar a senha", "criar uma conta nova", "adicionar conta", "abrir a conta",
-              "ver o código de verificação", "copiar o token", "ativar a verificação 2FA", "confirmar o código do SMS",
+              "ver o código de verificação", "copiar o token", "entre no app", "entre com a senha", "entre com o e-mail e a senha",
+              "entre no perfil", "enviar o código de segurança", "digitar o código de acesso", "ler o código por e-mail",
+              "o código enviado por SMS", "confirmar o código", "ativar a verificação 2FA", "confirmar o código do SMS",
               "trocar de conta", "alternar a conta", "trocar a senha", "verificar código", "conectar a conta google"]
-LEITURA_PARECIDA = ["ver a caixa de entrada", "abrir as configurações da conta", "ver o perfil da conta", "listar as contas do app",
+LEITURA_PARECIDA = ["escolha entre as fotos", "entre os comentários, ler o mais recente", "aplicar o código do cupom",
+                    "ler o código de barras", "ver o código postal", "buscar o código de rastreio do pedido",
+                    "ver a caixa de entrada", "abrir as configurações da conta", "ver o perfil da conta", "listar as contas do app",
                     "ver a conta"]
 
 
@@ -144,7 +148,8 @@ def test_credencial_e_sessao_nunca_exploram_nem_com_o_efeito_ligado(pedido: str)
     assert e.destino is ex.Destino.EFEITO and e.de_credencial, pedido
 
 
-@pytest.mark.parametrize("pedido", LEITURA_PARECIDA + ["enviar uma mensagem", "apagar a pasta de spam"])
+@pytest.mark.parametrize("pedido", LEITURA_PARECIDA + ["enviar uma mensagem", "apagar a pasta de spam",
+                                                      "mover mensagens entre pastas"])
 def test_o_que_nao_e_credencial_continua_como_antes(pedido: str) -> None:
     assert not ex.classificar(pedido).de_credencial, pedido
     assert (ex.classificar(pedido).destino is ex.Destino.EXPLORAR) == (pedido in LEITURA_PARECIDA)
