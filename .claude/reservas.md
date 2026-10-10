@@ -862,3 +862,5 @@ orquestradora; ela anota aqui antes de responder.
 | próximos livres (atualização 10/10 14:03Z) | 31.308, 29.212, 28.78; ADR-092; migração 134; adendo v1.136; K-112 | |
 | próximos livres (atualização 10/10 14:10Z) | 31.308, 29.212, 28.78; ADR-092; migração 134; adendo v1.137 (v1.135 é do 31.305, ainda não escrito; v1.136 foi usado pelo 31.302); K-112 | |
 | próximos livres (atualização 10/10 14:10Z) | 31.308, 29.212, 28.78; ADR-092; migração 134; adendo v1.137 (v1.135 é do 31.305, v1.136 foi ao 31.302); K-112 | |
+| 31.308 | Jev | código morto do ADR-089: parâmetro sempre_sensivel e MOTIVO_LOJA em hierarchy.py e o que mais o 31.290 apontou; sem mudar comportamento; testes dirigidos | Jev | reservado 10/10 14:13Z |
+| próximos livres (atualização 10/10 14:13Z) | 31.309, 29.212, 28.78; ADR-092; migração 134; adendo v1.137; K-112 | |
