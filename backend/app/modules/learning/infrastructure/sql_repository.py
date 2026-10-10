@@ -18,6 +18,7 @@ stance`) e o agregado diário, recalculado por inteiro (DELETE do intervalo + IN
 from __future__ import annotations
 
 import secrets
+import time
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -433,19 +434,30 @@ class SqlLearningRepository:
     # ================================================================== régua diária durável
     def recalcular_diario(self, desde_dia: str, ate_dia: str) -> int:
         """Recalcula `learning_daily` POR INTEIRO em [desde_dia, ate_dia). Só execuções reais. Quem chama garante
-        que os dias ainda estão intactos (nenhuma chamada deles purgada)."""
-        grupos = self._agregar(desde_dia, ate_dia)
-        agora = self._clock()
-        with self._db.tx():
-            self._db.execute("DELETE FROM learning_daily WHERE day>=? AND day<?", (desde_dia, ate_dia))
-            for (dia, pacote, acao, tipo, conduzida), g in sorted(grupos.items()):
-                self._db.execute(
-                    "INSERT INTO learning_daily(day, app_package, capability, failure_kind, driven_by, attempts, steps,"
-                    " ai_calls, usd, seconds, interventions, human_negative, computed_at)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (dia, pacote, acao, tipo, conduzida, g.attempts, g.steps, g.ai_calls, round(g.usd, 6),
-                     round(g.seconds, 3), g.interventions, g.human_negative, agora))
-        return len(grupos)
+        que os dias ainda estão intactos (nenhuma chamada deles purgada).
+
+        UM DIA POR VEZ (31.293): cada dia lê, grava e solta o lock do `Database` antes do seguinte, com uma pausa entre
+        eles. Antes o intervalo inteiro era lido numa tacada só (quatro consultas largas e uma transação) e a curadoria,
+        numa thread, segurava o lock enquanto o laço de eventos esperava por ele: o laço ficou sem batida 10 s três vezes
+        em 10/10 (13:01Z, 13:07Z, 13:24Z; `data/logs/laco-travado-20261010T130127Z-1.txt` e `...T132412Z-1.txt`, curar →
+        _regua_diaria → recalcular_diario → _agregar). O resultado é o mesmo: a dona de cada chamada não depende do
+        intervalo (`_chamadas`), e cada dia se recalcula por inteiro."""
+        total = 0
+        for dia, proximo in _dias_do_intervalo(desde_dia, ate_dia):
+            grupos = self._agregar(dia, proximo)
+            agora = self._clock()
+            with self._db.tx():
+                self._db.execute("DELETE FROM learning_daily WHERE day>=? AND day<?", (dia, proximo))
+                for (d, pacote, acao, tipo, conduzida), g in sorted(grupos.items()):
+                    self._db.execute(
+                        "INSERT INTO learning_daily(day, app_package, capability, failure_kind, driven_by, attempts,"
+                        " steps, ai_calls, usd, seconds, interventions, human_negative, computed_at)"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (d, pacote, acao, tipo, conduzida, g.attempts, g.steps, g.ai_calls, round(g.usd, 6),
+                         round(g.seconds, 3), g.interventions, g.human_negative, agora))
+            total += len(grupos)
+            time.sleep(PAUSA_ENTRE_DIAS_S)       # solta o lock de verdade: quem espera por ele entra antes do próximo dia
+        return total
 
     def dias_com_diario(self, desde_dia: str, ate_dia: str) -> frozenset[str]:
         return frozenset(linhas.texto(r, "day") for r in self._db.query(
@@ -576,6 +588,23 @@ class SqlLearningRepository:
 
 
 # ------------------------------------------------------------------ apoio
+#: Pausa entre os dias da régua diária (31.293): o `RLock` do `Database` não é justo, e sem ela a thread da curadoria
+#: reabre a próxima consulta antes de quem espera pelo lock (o laço de eventos) conseguir entrar.
+PAUSA_ENTRE_DIAS_S = 0.02
+
+
+def _dias_do_intervalo(desde_dia: str, ate_dia: str) -> list[tuple[str, str]]:
+    """[(dia, dia seguinte)] de cada dia de [desde_dia, ate_dia); vazio se o intervalo não tem dia."""
+    dia = datetime.strptime(desde_dia, "%Y-%m-%d")
+    fim = datetime.strptime(ate_dia, "%Y-%m-%d")
+    saida: list[tuple[str, str]] = []
+    while dia < fim:
+        proximo = dia + timedelta(days=1)
+        saida.append((dia.strftime("%Y-%m-%d"), proximo.strftime("%Y-%m-%d")))
+        dia = proximo
+    return saida
+
+
 @dataclass(slots=True)
 class _Grupo:
     attempts: int = 0

@@ -190,6 +190,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   main (`identity/application/egresso` importa `app.devices.rede` e `app.state`; `ponte_igfarm` com 3 imports tardios). `real`: `not_run` (o travamento
   só se prova no central, depois do deploy, com as pilhas de `data/logs/laco-travado-*` sem o curador).
 
+- **31.293 (mesmo branch): a régua diária do curador solta o lock um dia por vez.** O laço travou de novo três vezes em 10/10 (13:01Z, 13:07Z, 13:24Z, ~10 s
+  cada), agora com a pilha curar → `_regua_diaria` → `recalcular_diario` → `_agregar`/`_chamadas` presa em `db.query`
+  (`data/logs/laco-travado-20261010T130127Z-1.txt` e `...T132412Z-1.txt`, prova **real** do sintoma). `recalcular_diario` lia o intervalo inteiro em quatro
+  consultas largas e gravava numa só transação; agora lê, grava e solta o lock **um dia por vez**, com `PAUSA_ENTRE_DIAS_S` (20 ms) entre eles, porque o
+  `RLock` não é justo e a thread da curadoria reabria a consulta antes de quem esperava entrar. O resultado gravado é o mesmo (`_chamadas` já não dependia do
+  intervalo). Sem migração, sem mudança de contrato.
+- Limite do que foi provado: as consultas da régua leem ~2,9 mil tentativas e ~4 mil chamadas no banco central e levam ~30 ms com o disco quente (medido em
+  leitura sobre o banco central); o travamento de ~10 s só aparece com a máquina carregada (suíte PG, CPU 96 %) e **não foi reproduzido**. A correção reduz o
+  tempo de cada posse do lock e a chance de privar o laço dele, mas não elimina uma parada de disco: se travar de novo, o próximo passo é tirar o acesso do
+  laço de eventos ao banco compartilhado, não mais consultas. Prova `simulated`: `tests/test_regua_diaria_em_blocos.py` (4: dias do intervalo, mesmo
+  resultado da agregação inteira, uma janela de um dia por consulta com pausa entre elas, falha no meio não deixa linha pela metade). `real`: `not_run` (só
+  depois do deploy, com as pilhas do vigia do laço).
+
 ## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
 
 - O motor de sessão (`integrations/app_declarado/sessao.py`) lê o código mais novo da caixa da conta (porta
