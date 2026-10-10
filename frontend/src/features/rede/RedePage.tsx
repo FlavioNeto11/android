@@ -33,6 +33,7 @@ import { metaOf, NETWORK_STATE, type Tone } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import lojaStyles from '../loja/Loja.module.css';
+import { EditarSaidaEsperada } from './EditarSaidaEsperada';
 import styles from './Rede.module.css';
 
 const s = { ...lojaStyles, ...styles }; // classes das duas folhas, sem redeclarar o layout comum
@@ -546,6 +547,7 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
                 <span className={s.grow} />
                 <Button size="sm" variant="dangerGhost" icon={Trash2} iconOnly label={`Apagar ${p.name}`}
                         onClick={() => void onApagar(p.id, p.name)} />
+                <EditarSaidaEsperada perfil={p} onSalvo={onCriado} />
               </li>
             ))}
           </ul>

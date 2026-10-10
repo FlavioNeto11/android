@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o painel de rede troca a saída esperada do perfil (31.301, adendo v1.134)
+
+- `features/rede/EditarSaidaEsperada.tsx` (novo), `RedePage.tsx`, `api/client.ts` (`updateNetworkProfileSaida`), `api/types.ts`:
+  cada perfil ganha "Editar saída esperada" (IPv4 e IPv6, vazio tira), com antes e depois, `PUT /api/network/profiles/{id}` só com o
+  que mudou, o 409 `egress_esperado_protegido` (mostra o porquê e a conta, exige motivo e libera "Trocar mesmo assim"), o 422
+  `invalid_egress` no próprio campo e as trocas `network.updated` · `perfil_atualizado` da sessão sob o perfil. Motivo: no android-05 a
+  saída foi regravada por SQL direto porque o painel não tinha como.
+- Prova `simulated`: `features/rede/RedePage.test.tsx` (5 testes novos: PUT só do campo mudado, `null` ao esvaziar, 409 → motivo → segundo
+  PUT, 422 inline sem toast de erro, linha do evento), 154 dirigidos, tsc e build. Percurso no navegador contra o backend do worktree
+  (harness de testes, 409 com motivo, sucesso com evento e 422 inline). **Real no central: não executada** (o PUT só chega com o deploy 70).
+
 ## 2026-10-10 — selo de exploração no painel (31.299, adendo v1.130)
 
 - `components/SeloDeExploracao.tsx`, `features/runs/InstancesTab.tsx`, `features/runs/PlanTab.tsx`,

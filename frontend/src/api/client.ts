@@ -28,6 +28,7 @@ import type {
   NetworkProfile,
   NetworkProfileCreateRequest,
   NetworkProfileList,
+  NetworkProfileSaidaRequest,
   NetworkRemoteAccess,
   NetworkRequestAccepted,
   NetworkServerStatus,
@@ -904,6 +905,8 @@ export const api = {
   /** O segredo (chave, senha, certificado) vai só nesta chamada, uma vez; nunca volta em nenhuma leitura. */
   createNetworkProfile: (body: NetworkProfileCreateRequest) =>
     request<NetworkProfile>('POST', '/network/profiles', { body }),
+  updateNetworkProfileSaida: (id: string, body: NetworkProfileSaidaRequest) =>
+    request<NetworkProfile>('PUT', `/network/profiles/${enc(id)}`, { body }),
   deleteNetworkProfile: (id: string) => request<void>('DELETE', `/network/profiles/${enc(id)}`),
   /** Uma linha por aparelho do parque (a loja já vem de fora): desejado × observado novo, o legado da 041, conta
    *  real vinculada e o que falta — tudo resolvido pelo backend, nunca recombinado aqui. */

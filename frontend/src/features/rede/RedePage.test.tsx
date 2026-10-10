@@ -798,3 +798,86 @@ it('duas releituras fora de ordem: vale a mais nova, e o 2º perfil criado não 
   await flush();
   expect(text()).toContain('Dedicada-02');
 });
+
+// ---- 31.301: editar a saída esperada do perfil (PUT /api/network/profiles/{id}, adendo v1.134) -----------------------------------
+
+const COM_SAIDA = perfil({ id: 'igfarm-1', name: 'igfarm-acc-1', kind: 'proxy', protocol: 'socks5', has_secret: true,
+                           params: { egress_esperado: '203.0.113.10' }, in_use: ['android-05'] });
+
+async function abrirEditor(perfilAtual: NetworkProfileListed = COM_SAIDA): Promise<void> {
+  backend.on('GET', /\/network\/profiles$/, () => json({ profiles: [perfilAtual] }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes(perfilAtual.name));
+  await click(byRole('button', new RegExp(`Editar a saída esperada de ${perfilAtual.name}`)));
+}
+
+it('31.301: troca o IPv4 e manda só o que mudou, com antes e depois à vista', async () => {
+  backend.on('PUT', /\/network\/profiles\/igfarm-1$/, () => json(COM_SAIDA));
+  await abrirEditor();
+  expect(byRole('button', /Salvar saída esperada/).getAttribute('aria-disabled')).toBe('true');   // nada mudou
+  await setValue(byRole('textbox', /Saída esperada IPv4/) as HTMLInputElement, '198.51.100.7');
+  expect(text()).toContain('IPv4: 203.0.113.10 → 198.51.100.7');
+  await click(await botaoPronto(/Salvar saída esperada/));
+  await waitFor(() => backend.callsTo('PUT', /\/network\/profiles\/igfarm-1$/).length === 1);
+  expect(backend.callsTo('PUT', /\/network\/profiles\/igfarm-1$/)[0]?.body).toEqual({ egress_esperado: '198.51.100.7' });
+  await waitFor(() => useToastStore.getState().toasts.some((t) => (t.message ?? '').includes('Nada foi reavaliado')));
+});
+
+it('31.301: esvaziar o campo tira a saída daquela família (null); campo vazio sem valor antes não manda nada', async () => {
+  backend.on('PUT', /\/network\/profiles\/igfarm-1$/, () => json(COM_SAIDA));
+  await abrirEditor();
+  await setValue(byRole('textbox', /Saída esperada IPv4/) as HTMLInputElement, '');
+  expect(text()).toContain('IPv4: 203.0.113.10 → sem saída esperada');
+  await click(await botaoPronto(/Salvar saída esperada/));
+  await waitFor(() => backend.callsTo('PUT', /\/network\/profiles\/igfarm-1$/).length === 1);
+  expect(backend.callsTo('PUT', /\/network\/profiles\/igfarm-1$/)[0]?.body).toEqual({ egress_esperado: null });
+});
+
+it('31.301: 409 egress_esperado_protegido explica o porquê, pede o motivo e repete o PUT com ele', async () => {
+  let chamadas = 0;
+  backend.on('PUT', /\/network\/profiles\/igfarm-1$/, (c) => {
+    chamadas += 1;
+    if ((c.body as { motivo?: string }).motivo) return json(COM_SAIDA);
+    return new Response(JSON.stringify({ detail: {
+      code: 'egress_esperado_protegido', message: "O perfil 'igfarm-acc-1' é o da conta acc-1 do igfarm, em uso por android-05: trocar apaga a prova.",
+      profile_id: 'igfarm-1', account_id: 'acc-1', in_use: ['android-05'], motivo_obrigatorio: true,
+      antes: { egress_esperado: '203.0.113.10', egress_esperado_ipv6: null }, depois: { egress_esperado: '198.51.100.7', egress_esperado_ipv6: null },
+    } }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+  });
+  await abrirEditor();
+  await setValue(byRole('textbox', /Saída esperada IPv4/) as HTMLInputElement, '198.51.100.7');
+  await click(await botaoPronto(/Salvar saída esperada/));
+  await waitFor(() => text().includes('trocar apaga a prova'));
+  expect(text()).toContain('Conta do igfarm: acc-1');
+  expect(text()).toContain('Em uso por: android-05');
+  const trocar = byRole('button', /Trocar mesmo assim/);
+  expect(trocar.getAttribute('aria-disabled')).toBe('true');          // sem motivo não há como repetir
+  await setValue(byRole('textbox', /Motivo da troca/) as HTMLInputElement, 'o proxy foi recriado com outro IP de saída');
+  await click(await botaoPronto(/Trocar mesmo assim/));
+  await waitFor(() => chamadas === 2);
+  expect(backend.callsTo('PUT', /\/network\/profiles\/igfarm-1$/)[1]?.body)
+    .toEqual({ egress_esperado: '198.51.100.7', motivo: 'o proxy foi recriado com outro IP de saída' });
+});
+
+it('31.301: 422 invalid_egress aparece no campo, sem toast de erro genérico, e nada é gravado', async () => {
+  backend.on('PUT', /\/network\/profiles\/igfarm-1$/, () => apiError(422, 'invalid_egress', 'egress_esperado deve ser um IPv4 público.'));
+  await abrirEditor();
+  await setValue(byRole('textbox', /Saída esperada IPv4/) as HTMLInputElement, '10.0.0.1');
+  await click(await botaoPronto(/Salvar saída esperada/));
+  await waitFor(() => text().includes('deve ser um IPv4 público'));
+  expect(useToastStore.getState().toasts.filter((t) => t.tone === 'danger')).toHaveLength(0);
+});
+
+it('31.301: a troca que chegou pelo evento network.updated aparece na linha do perfil, com antes, depois, motivo e quem', async () => {
+  useAppStore.setState({ recentEvents: [{
+    id: 501, ts: '2026-10-10T13:40:00Z', kind: 'network.updated', level: 'info', run_id: null, instance_id: null, objective_id: null,
+    step_id: null, attempt_id: null, message: 'Rede: saída esperada do perfil igfarm-acc-1 mudou',
+    data: { acao: 'perfil_atualizado', profile_id: 'igfarm-1', antes: { egress_esperado: '203.0.113.10', egress_esperado_ipv6: null },
+            depois: { egress_esperado: '198.51.100.7', egress_esperado_ipv6: null }, motivo: 'proxy recriado', quem: 'Flavio' },
+  }] });
+  await abrirEditor();
+  const lista = container.querySelector('ul[aria-label^="Trocas da saída esperada de igfarm-acc-1"]') as HTMLElement;
+  expect(text(lista)).toContain('203.0.113.10 → 198.51.100.7');
+  expect(text(lista)).toContain('motivo: proxy recriado');
+  expect(text(lista)).toContain('por Flavio');
+});

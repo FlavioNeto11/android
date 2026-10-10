@@ -2600,6 +2600,17 @@ export interface NetworkProfileCreateRequest {
   params?: Record<string, unknown>;
 }
 
+/**
+ * `PUT /api/network/profiles/{id}` (31.291, adendo v1.134): a única edição de perfil, só a saída esperada. Campo omitido
+ * fica como está; `null` tira a saída esperada daquela família; pelo menos um dos dois é obrigatório.
+ */
+export interface NetworkProfileSaidaRequest {
+  egress_esperado?: string | null;
+  egress_esperado_ipv6?: string | null;
+  /** Até 300 caracteres, sem segredo. Obrigatório (409 `egress_esperado_protegido`) no perfil de uma conta do igfarm em uso. */
+  motivo?: string;
+}
+
 /** Um perfil na listagem, com os aparelhos que o pedem hoje (`rede.listar_perfis` → `_em_uso`). */
 export interface NetworkProfileListed extends NetworkProfile {
   in_use: string[];
