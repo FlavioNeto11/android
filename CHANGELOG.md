@@ -27,7 +27,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   worker em manutenção), com o portão do botão "Verificar conta" aberto e a CPU do host abaixo do limite. Despacha o verbo
   `session.verify` (autor `verificacao-periodica`) com `observe_only`: o desafio visto cai no caminho do ADR-068, sem código
   novo de bloqueio. Evento `session.verificacao_periodica` (ids e códigos) e a linha `saude.verificacoes_de_sessao` no relatório de
-  falhas. Nada liga no deploy. Prova **simulada**: `tests/test_verificacao_periodica_de_sessao.py` (18 casos). **Real: não
+  falhas. Nada liga no deploy. Prova **simulada**: `tests/test_verificacao_periodica_de_sessao.py` (20 casos). **Real: não
   executada** — sem releitura numa conta real e sem medir o custo no aparelho.
 ## 2026-10-10 — os avisos de tela sensível deixam de prometer o que o ADR-089 revogou (31.290)
 

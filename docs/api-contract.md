@@ -8308,8 +8308,9 @@ Chaves de `config.yaml` (bloco `contas`, **desligado de fábrica**): `verificaca
 - **Relatório:** `GET /api/learning/falhas` (e o markdown) ganha `saude.verificacoes_de_sessao`, um mapa `{resultado: n}` da
   janela (mais `bloqueou`, as releituras que acharam a persona bloqueada). Campo aditivo; vazio com o recurso desligado.
 - **Limites, por desenho:** uma conta por volta e uma releitura por vez no parque; a mais antiga (ou sem leitura) primeiro. Não
-  há sinal dentro do processo para um funil ou uma suíte rodando por fora: o que protege é a CPU do host (a última batida do
-  worker; sem medição recente, pula), a pausa de reparo do dono e o recurso desligado de fábrica.
-- **Prova:** `simulated` (`backend/tests/test_verificacao_periodica_de_sessao.py`: 18 casos, com o motor de sessão de verdade
+  há sinal dentro do processo para um funil ou uma suíte rodando por fora: o que protege é a CPU do host (aparelho da máquina do
+  central: a amostra do gerente de aparelhos, a mesma do reparo e do boot; aparelho de worker: a última batida dele; sem
+  medição recente, pula), a pausa de reparo do dono e o recurso desligado de fábrica.
+- **Prova:** `simulated` (`backend/tests/test_verificacao_periodica_de_sessao.py`: 20 casos, com o motor de sessão de verdade
   sobre o Instagram de mentira para a cadeia do desafio). `real`: `not_run` (nada liga sozinho no deploy; ligar no central é
   decisão de config).

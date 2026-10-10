@@ -955,8 +955,18 @@ class Scheduler:
     def cpu_do_host_acima(self, rt: DeviceRuntime, limiar_cpu_percent: float) -> str | None:
         """31.302: a frase de espera quando o host que hospeda `rt` está com CPU acima do limiar, ou SEM medição recente.
         Diferente de `cpu_acima` do worker, "não sei" aqui pula: quem pergunta é a releitura periódica, que pode esperar,
-        e o funil/suíte é exatamente o que pesa na CPU sem aviso. Host sem registro (agendador isolado): pula também."""
-        cap = self._capacidade(rt.worker_id or self.cfg.owner_id)
+        e o funil/suíte é exatamente o que pesa na CPU sem aviso. Local: a amostra do gerente de aparelhos; remoto: a
+        última batida do worker. Sem nenhuma das duas, pula."""
+        if not rt.worker_id or rt.worker_id == self.cfg.owner_id:
+            # O aparelho da máquina do central: a amostra do laço de métricas (a cada 3 s), a MESMA que o reparo e o
+            # boot leem. A linha do dono no registro de workers não é a fonte da CPU dele.
+            medida = self.devices.last_metrics
+            if medida is None:
+                return "sem medição de CPU do host"
+            if medida.cpu_percent <= limiar_cpu_percent:
+                return None
+            return f"CPU do host em {medida.cpu_percent:.0f} % (limite {limiar_cpu_percent:.0f} %)"
+        cap = self._capacidade(rt.worker_id)
         if cap is None:
             return "sem medição de CPU do host"
         if cap.stale or cap.cpu_percent is None:

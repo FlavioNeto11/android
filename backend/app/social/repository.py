@@ -1085,7 +1085,7 @@ class SocialRepository:
         chamador: aqui só o que o banco sabe. Conta de site (`host`) fica de fora: o navegador não tem sessão de app."""
         return self.db.query(
             "SELECT s.account_id, s.instance_id, s.verified_at, a.profile_id FROM account_sessions s"
-            " JOIN profile_accounts a ON a.id=s.account_id AND COALESCE(a.host,'')=''"
+            " JOIN profile_accounts a ON a.id=s.account_id AND COALESCE(a.host,'')='' AND a.status='active'"
             " JOIN instagram_profiles p ON p.id=a.profile_id AND p.status='active'"
             " JOIN device_profile_bindings b ON b.profile_id=a.profile_id AND b.instance_id=s.instance_id AND b.active=1"
             " WHERE s.status='session_ready' AND (s.verified_at IS NULL OR s.verified_at < ?)"

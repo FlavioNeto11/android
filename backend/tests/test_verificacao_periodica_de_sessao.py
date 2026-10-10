@@ -24,6 +24,7 @@ from typing import Any
 
 import pytest
 
+from app.config import ContasCfg
 from app.integrations.app_declarado.conhecimento import do_app
 from app.integrations.app_declarado.sessao import AuthResult, Outcome, SessaoDeclarada
 from app.models import ControlOwner, InstanceState, ProfileCreate, SessionStatus
@@ -111,7 +112,7 @@ async def test_desligada_de_fabrica_nao_toca_em_nada(harness: Harness, monkeypat
     s = _estado(harness)
     _perfil(s, "conta_a")
     espiao = _ligar(s, monkeypatch, horas=0)
-    assert s.cfg.file.contas.verificacao_periodica_h == 0           # o padrão do arquivo de exemplo e do modelo
+    assert ContasCfg().verificacao_periodica_h == 0                    # o padrão do modelo: nada liga sozinho
     assert await s.verificacao_periodica.uma_volta() is None
     assert espiao.chamadas == [] and _comandos(s) == [] and _eventos(s) == []
 
@@ -310,9 +311,25 @@ async def test_pula_sem_provedor_de_sessao(harness: Harness, monkeypatch: pytest
 
 
 # ---------------------------------------------------------------- a CPU do host (leitura real da capacidade)
-def test_cpu_do_host_sem_medicao_ou_acima_pula_e_abaixo_libera(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cpu_do_host_local_le_a_amostra_do_gerente_de_aparelhos(harness: Harness) -> None:
+    """O aparelho da máquina do central: a amostra do laço de métricas, a mesma do reparo e do boot."""
+    from app.models import Metrics
+
     s = _estado(harness)
     rt = s.devices.get(IID)
+    rt.worker_id = s.cfg.owner_id
+    s.devices.last_metrics = None
+    assert s.scheduler.cpu_do_host_acima(rt, 50.0) is not None                    # sem amostra: pula
+    for cpu, pula in ((91.0, True), (50.0, False), (12.0, False)):
+        s.devices.last_metrics = Metrics(ts=to_iso(now()), cpu_percent=cpu, mem_total_gb=16.0, mem_available_gb=8.0,
+                                         mem_used_percent=50.0)
+        assert (s.scheduler.cpu_do_host_acima(rt, 50.0) is not None) is pula, cpu
+
+
+def test_cpu_do_host_remoto_le_a_batida_do_worker(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    s = _estado(harness)
+    rt = s.devices.get(IID)
+    rt.worker_id = "worker-remoto"
 
     class Cap:
         def __init__(self, cpu: float | None, stale: bool = False) -> None:
@@ -325,6 +342,19 @@ def test_cpu_do_host_sem_medicao_ou_acima_pula_e_abaixo_libera(harness: Harness,
                                (Cap(30.0), False)):
         monkeypatch.setattr(s.scheduler, "_capacidade", lambda _w, c=cap: c)
         assert (s.scheduler.cpu_do_host_acima(rt, 50.0) is not None) is esperado_pula
+
+
+# ---------------------------------------------------------------- o portão da sessão de verdade
+@pytest.mark.asyncio
+async def test_o_portao_do_botao_verificar_conta_vale_para_o_laco(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sem trocar o `_motivo_do_portao`: o aparelho do harness não tem o Instagram instalado, e a regra que desabilita o
+    botão "Verificar conta" (`session_actions.verify`) é a mesma que impede o laço de abrir um app que não existe."""
+    s = _estado(harness)
+    _perfil(s, "conta_a")
+    espiao = _ligar(s, monkeypatch, portao_livre=False)
+    assert await s.verificacao_periodica.uma_volta() is None
+    assert espiao.chamadas == [] and _comandos(s) == []
+    assert [e.get("motivo") for e in _eventos(s)] == [regras.PORTAO]
 
 
 # ---------------------------------------------------------------- a cadeia do ADR-068 é a do motor de sessão

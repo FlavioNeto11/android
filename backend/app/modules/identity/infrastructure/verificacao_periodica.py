@@ -157,6 +157,8 @@ class VerificacaoPeriodica:
         if not resposta.get("accepted"):
             self._registrar_pulo(alvo, regras.APARELHO_OCUPADO)
             return False
+        if resposta.get("deduplicated"):
+            return False               # mesma chave de uma tentativa anterior (reinício na janela): nada foi agendado agora
         self._tentadas[chave] = time.monotonic()
         self._em_voo = rt.id
         return True
