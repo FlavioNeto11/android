@@ -260,10 +260,13 @@ Fecha o ciclo `credencial_preparada` → `confirmada` sem IA e sem que a platafo
   texto comum pelo caminho comum (conferindo o que ficou no campo), senha pelo canal sensível e só em campo que o Android diz ser de senha,
   código do e-mail pelo mesmo canal, um toque em enviar e um em continuar. Reiniciar no meio retoma pelo estado gravado e pela tela, e o
   formulário nunca é enviado duas vezes (só com a conta em `aguardando_cadastro_externo`, uma vez por execução, e a tela que volta ao
-  formulário depois do envio é `tela_desconhecida`). Uma parada depois do toque em enviar registra `enviado` antes de ir a `falha`
-  (o `resume_state` vira `aguardando_verificacao`), exceto `usuario_indisponivel`, que volta ao cadastro. O campo do código não é
+  formulário depois do envio é `tela_desconhecida`). O `enviado` é gravado ANTES do toque em enviar (queda ou cancelamento depois do toque não reabrem o formulário); toda
+  parada depois dele guarda `resume_state: aguardando_verificacao`, exceto `usuario_indisponivel`, que volta ao cadastro. O campo do código não é
   conferido como `password` (é texto do e-mail, mas entra pelo canal sensível); e no `cadastro.yaml` o `tocar` de uma tela nunca é
-  o envio (só `preencher` + `envia: true` conta como tal).
+  o envio (só `preencher` + `envia: true` conta como tal). Limites conhecidos: o e-mail, o @ e o nome vão por `type_text` comum (o log do
+  Appium pode mostrá-los; não são credencial); o campo do código normalmente não é de senha, então a hierarquia relida o traz em claro
+  em `rt.last_tree` e na prévia ao vivo (nunca vira evidência); retomar com a tela do código ainda aberta digita o código de novo, a pedido
+  da pessoa.
 - **Paradas** (`identity/domain/cadastro.py::Parada`, códigos fechados): `captcha`, `desafio` ("confirme que você é humano", pela detecção
   genérica de conta travada: nada toca nela; a conta nem existe ainda, então nada a bloqueia), `telefone`, `usuario_indisponivel`,
   `tela_desconhecida`, `codigo_nao_chegou`, `conta_nao_lida`, `app_fora_do_ar`, `falha_interna` (erro nosso; só o nome do tipo vai ao log). Cada uma é `falhar` com o código em `provisioning_detail`,

@@ -93,11 +93,16 @@ def destino(evento: Evento, resume_state: Estado | None = None) -> Estado | None
     return _DE_PARA[evento][1]
 
 
-def aplicar(evento: Evento, *, atual: Estado, esperado: Estado, resume_state: Estado | None = None) -> Resultado:
+def aplicar(evento: Evento, *, atual: Estado, esperado: Estado, resume_state: Estado | None = None,
+            volta_ao_cadastro: bool = False) -> Resultado:
     """A transição de `evento` com a conta em `atual` (e o chamador esperando `esperado`).
 
     `EstadoInesperado` quando `esperado != atual` e o evento não é um repeteco; `TransicaoInvalida` quando o estado
     não aceita o evento. Repetir o evento no estado de destino dele devolve `mudou=False`, nos dois casos de `esperado`.
+
+    `volta_ao_cadastro` (31.310, uso interno do cadastro guiado, nunca vem da rota): o provedor RECUSOU o formulário (o @
+    desejado já existe), então nada foi criado e `falhar` partindo de `aguardando_verificacao` guarda
+    `aguardando_cadastro_externo` como `resume_state`: a pessoa corrige o @ e retoma para um novo envio.
     """
     alvo = destino(evento, resume_state)
     if alvo is not None and alvo is atual and evento is not Evento.RETOMAR:
@@ -117,7 +122,9 @@ def aplicar(evento: Evento, *, atual: Estado, esperado: Estado, resume_state: Es
     partidas, para = _DE_PARA[evento]
     if atual not in partidas:
         raise TransicaoInvalida(evento, atual)
-    return Resultado(para, mudou=True, resume_state=atual if para is Estado.FALHA else None)
+    guardado = Estado.AGUARDANDO_CADASTRO_EXTERNO if (
+        volta_ao_cadastro and evento is Evento.FALHAR and atual is Estado.AGUARDANDO_VERIFICACAO) else atual
+    return Resultado(para, mudou=True, resume_state=guardado if para is Estado.FALHA else None)
 
 
 def eventos_aceitos(atual: Estado) -> list[str]:

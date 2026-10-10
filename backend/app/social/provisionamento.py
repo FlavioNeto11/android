@@ -248,7 +248,8 @@ class ProvisionamentoDeContas:
 
     # ------------------------------------------------------------------ transições
     def transicao(self, profile_id: str, account_id: str, body: ProvisioningEventBody, *,
-                  by: str, passo: str | None = None) -> ProfileAccountDTO | dict[str, object]:
+                  by: str, passo: str | None = None,
+                  volta_ao_cadastro: bool = False) -> ProfileAccountDTO | dict[str, object]:
         social = self.social
         social.get_account(profile_id, account_id)
         linha = self.repo.account_row(profile_id, account_id)
@@ -257,7 +258,7 @@ class ProvisionamentoDeContas:
         evento, esperado = Evento(body.evento), Estado(body.estado_esperado)
         resume = Estado(linha["resume_state"]) if linha["resume_state"] else None
         try:
-            r = prov.aplicar(evento, atual=atual, esperado=esperado, resume_state=resume)
+            r = prov.aplicar(evento, atual=atual, esperado=esperado, resume_state=resume, volta_ao_cadastro=volta_ao_cadastro)
         except prov.EstadoInesperado as exc:
             raise SocialError("estado_inesperado", str(exc), 409, {"estado_atual": exc.atual.value}) from None
         except prov.TransicaoInvalida as exc:

@@ -8432,10 +8432,12 @@ que só ela resolve (CAPTCHA, "confirme que você é humano", telefone). Aditivo
      `sessao` (`ref` = o aparelho). Qualquer outra coisa não confirma.
 - **Paradas** (a pessoa assume; o comando termina `failed`; sem segunda tentativa, sem solver, sem proxy): o ciclo vai a `falha`
   pelo evento `falhar`, com `resume_state` e o motivo fechado em `provisioning.detail`, e `provisioning.proximo_passo` o repete
-  como código. **Enviado é enviado:** se o formulário já foi tocado nesta execução e a parada não é `usuario_indisponivel` (a única
-  recusa declarada do provedor), a conta passa a `aguardando_verificacao` ANTES de ir a `falha`, e então o `resume_state` é
-  `aguardando_verificacao`: retomar não reabre o formulário, a tela decide. Nada é tocado se um desafio surge entre o preenchimento e o
-  toque em enviar.
+  como código. **Enviado é enviado:** o `enviado` (`aguardando_verificacao`) é gravado ANTES do toque em "Cadastrar", não depois: se
+  o processo cair ou a tarefa for cancelada com o toque já feito, a conta já está em `aguardando_verificacao` e nenhuma execução nova
+  reabre o formulário (a gravação que falha impede o toque). Toda parada depois do envio guarda `resume_state: aguardando_verificacao`;
+  a única exceção é `usuario_indisponivel` (o provedor recusou o @ e nada foi criado), que guarda `aguardando_cadastro_externo` por
+  um parâmetro interno do serviço, nunca da rota. Antes de tocar em QUALQUER campo, na senha e no código o motor relê a tela e para em
+  `desafio` (ou `app_fora_do_ar`, se outro app passou para a frente): nada é digitado às cegas.
 - **Campo novo (aditivo) `ProvisioningInfo.proximo_passo`:** `null` ou um de `aguardando_pessoa:captcha`,
   `aguardando_pessoa:desafio` ("confirme que você é humano"; a conta pode estar a caminho de ser perdida: nada toca nela),
   `aguardando_pessoa:telefone`, `aguardando_pessoa:usuario_indisponivel` (o @ desejado foi recusado pelo provedor: edite o @ e

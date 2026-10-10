@@ -179,7 +179,11 @@ class MotorDeCadastro:
                 momento = self._relogio()
 
                 def marcar_o_envio() -> None:
+                    # Grava `enviado` ANTES do toque: se o processo cair ou a tarefa for cancelada entre o toque e a gravação, o
+                    # banco já diz `aguardando_verificacao` e nenhuma execução nova reabre o formulário (no máximo uma vez). Se a
+                    # gravação falhar, o toque não acontece.
                     nonlocal enviado_em
+                    self.ciclo.enviado(Passo.ENVIO)
                     enviado_em = momento
                     self._envios += 1
 
@@ -212,15 +216,6 @@ class MotorDeCadastro:
     # ------------------------------------------------------------------ passos
     def _parar(self, parada: Parada, passo: Passo) -> Desfecho:
         log.info("cadastro guiado de %s parou: %s (%s)", self.k.rotulo, parada.value, passo.value)
-        if (self._envios and parada is not Parada.USUARIO_INDISPONIVEL
-                and self.ciclo.estado() is Estado.AGUARDANDO_CADASTRO_EXTERNO):
-            # O formulário JÁ foi enviado nesta execução e o provedor não o recusou (a recusa declarada é só o @ indisponível).
-            # Registrar o envio ANTES de parar é o que faz o "nunca duas vezes" valer depois de CAPTCHA, desafio, telefone, tela
-            # desconhecida ou queda: retomar não volta a `aguardando_cadastro_externo`, então o formulário não é reenviado.
-            try:
-                self.ciclo.enviado(Passo.ENVIO)
-            except Exception as exc:  # noqa: BLE001 - a parada acontece de qualquer jeito
-                log.warning("cadastro guiado: o envio não pôde ser registrado (%s)", type(exc).__name__)
         try:
             self.ciclo.parar(parada, passo)
         except Exception as exc:  # noqa: BLE001
@@ -267,9 +262,27 @@ class MotorDeCadastro:
                 return parada
         return None
 
+    async def _tela_segura(self) -> Parada | None:
+        """A tela de AGORA, antes de qualquer toque ou digitação num campo: é o app do cadastro e não é um desafio. Sem isto, um
+        desafio que surgisse entre dois campos só seria visto pelo seletor que não casa (e chamado de tela desconhecida), e a
+        senha iria a um campo `password` de outro app que tenha o mesmo seletor."""
+        try:
+            tree, pacote = await self.mesa.observar()
+        except FalhaNaMesa:
+            return Parada.APP_FORA_DO_AR
+        if pacote != self.k.app:
+            return Parada.APP_FORA_DO_AR
+        trava = tree.conta_travada
+        if trava is not None and trava.subtipo == SUBTIPO_CONTA_TRAVADA:
+            return Parada.DESAFIO
+        return None
+
     async def _campo(self, campo: Campo, valor: str) -> Parada | None:
         esperado = _arrobas(valor) if campo.dado == "usuario" else normalizar_texto_de_tela(valor)
         for _ in range(TENTATIVAS_DO_CAMPO):
+            parada = await self._tela_segura()
+            if parada is not None:
+                return parada
             try:
                 tree, pacote = await self.mesa.observar()
                 alvo = campo.alvo.unico(tree, editavel=True) if pacote == self.k.app else None
@@ -281,6 +294,9 @@ class MotorDeCadastro:
                 tree, _ = await self.mesa.observar()
             except FalhaNaMesa:
                 return Parada.TELA_DESCONHECIDA
+            trava = tree.conta_travada
+            if trava is not None and trava.subtipo == SUBTIPO_CONTA_TRAVADA:
+                return Parada.DESAFIO                          # o desafio surgiu logo depois da digitação
             atual = campo.alvo.unico(tree, editavel=True)
             if atual is None:
                 return Parada.TELA_DESCONHECIDA
@@ -294,6 +310,9 @@ class MotorDeCadastro:
             e = campo.alvo.unico(tree, editavel=True)
             return e if e is not None and e.password else None         # senha só vai a campo que o Android diz ser de senha
 
+        parada = await self._tela_segura()
+        if parada is not None:
+            return parada
         try:
             await self.mesa.digitar_sensivel(localizar, self.dados.senha)
         except FalhaNaMesa:
@@ -330,6 +349,9 @@ class MotorDeCadastro:
             return campo.unico(tree, editavel=True)
 
         try:
+            parada = await self._tela_segura()
+            if parada is not None:
+                return parada
             await self.mesa.digitar_sensivel(localizar, lambda: codigo)
         except FalhaNaMesa:
             return Parada.TELA_DESCONHECIDA

@@ -10,6 +10,7 @@ até o dono autorizar (decisões D1 e D2 do desenho).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import secrets as pysecrets
@@ -28,9 +29,9 @@ from app.integrations.app_declarado import cadastro_conhecimento
 from app.integrations.app_declarado.cadastro import FalhaNaMesa, MotorDeCadastro
 from app.integrations.app_declarado.cadastro_conhecimento import CadastroInvalido, de_dados
 from app.models import InstanceState
-from app.modules.identity.domain.cadastro import Parada
+from app.modules.identity.domain.cadastro import Parada, Passo
 from app.modules.identity.infrastructure import cadastro_guiado
-from app.modules.identity.infrastructure.cadastro_guiado import VERBO, CadastroGuiado
+from app.modules.identity.infrastructure.cadastro_guiado import VERBO, CadastroGuiado, CicloNoBanco
 from app.social.erros import SocialError
 
 from .conftest import Harness
@@ -91,13 +92,15 @@ class AppFalso:
     digitados: list[str] = field(default_factory=list)     # texto COMUM digitado (a senha e o código nunca entram aqui)
     sensiveis: list[tuple[str, str]] = field(default_factory=list)   # (campo, valor) recebidos pelo canal sensível
     fora_do_ar: bool = False
-    humano_apos_senha: bool = False                       # o desafio surge entre o preenchimento e o toque em "Cadastrar"
+    humano_apos: str | None = None                        # o desafio surge depois deste campo ser preenchido (id do campo)
+    outro_app_apos: str | None = None                     # idem, mas é outro app que passa para a frente
+    cancela_apos_envio: bool = False                      # a tarefa é cancelada logo depois do toque em "Cadastrar"
 
     def _elementos(self) -> list[tuple[str, str, str, str, bool, bool]]:
         """(classe, id, texto, nome-do-toque, senha, clicável) da tela de agora, de cima para baixo."""
         v = self.valores
         t = self.tela
-        if t == "formulario" and self.humano_apos_senha and v["password"]:
+        if t == "formulario" and self.humano_apos and v[self.humano_apos]:
             t = "humano"
         if t == "inicio":
             return [("android.widget.TextView", "", "Bem-vindo ao Exemplo", "", False, False),
@@ -148,10 +151,16 @@ class MesaFalsa:
     async def observar(self) -> tuple[UiTree, str | None]:
         if self.app.fora_do_ar:
             raise FalhaNaMesa("DriverTimeout")
-        return self.app.arvore(), PACOTE
+        a = self.app
+        if a.outro_app_apos and a.tela == "formulario" and a.valores[a.outro_app_apos]:
+            return a.arvore(), "com.outro.app"
+        return a.arvore(), PACOTE
 
     async def tocar(self, x: int, y: int) -> None:
+        enviados = self.app.envios
         self.app.tocar(x, y)
+        if self.app.cancela_apos_envio and self.app.envios > enviados:
+            raise asyncio.CancelledError                       # o toque chegou ao app; a tarefa morre antes de qualquer gravação
 
     async def digitar(self, texto: str) -> None:
         assert self.app.foco is not None
@@ -396,13 +405,79 @@ async def test_o_usuario_indisponivel_volta_ao_cadastro_e_pode_tentar_outro(harn
 
 async def test_desafio_que_surge_entre_o_preenchimento_e_o_toque_nao_e_tocado(harness: Harness, tmp_path: Path,
                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
-    app = AppFalso(humano_apos_senha=True)
+    app = AppFalso(humano_apos="password")
     cen = await _cenario(harness, tmp_path, monkeypatch, app=app)
     _iniciar(cen)
     erro = await cen.rodar()
     assert erro is not None and str(erro) == "cadastro guiado parado: desafio"
     assert app.envios == 0 and "cadastrar" not in app.toques
     assert cen.info().resume_state == "aguardando_cadastro_externo"
+
+
+async def test_desafio_entre_dois_campos_para_antes_de_digitar_a_senha(harness: Harness, tmp_path: Path,
+                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    app = AppFalso(humano_apos="fullname")
+    cen = await _cenario(harness, tmp_path, monkeypatch, app=app)
+    _iniciar(cen)
+    erro = await cen.rodar()
+    assert erro is not None and str(erro) == "cadastro guiado parado: desafio"
+    assert app.sensiveis == [] and app.envios == 0 and not app.valores["email"]
+
+
+async def test_a_senha_nunca_vai_a_campo_de_outro_app_que_passou_para_a_frente(harness: Harness, tmp_path: Path,
+                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    app = AppFalso(outro_app_apos="fullname")
+    cen = await _cenario(harness, tmp_path, monkeypatch, app=app)
+    _iniciar(cen)
+    erro = await cen.rodar()
+    assert erro is not None and str(erro) == "cadastro guiado parado: app_fora_do_ar"
+    assert app.sensiveis == [] and app.envios == 0
+
+
+async def test_tarefa_cancelada_logo_depois_do_toque_em_enviar_nao_reabre_o_formulario(
+        harness: Harness, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O toque chegou ao app e a tarefa morreu (cancelamento não é `Exception`) antes de qualquer gravação POSTERIOR: o envio
+    já estava gravado ANTES do toque, então a conta está em `aguardando_verificacao` e uma nova execução continua pela tela."""
+    app = AppFalso(cancela_apos_envio=True)
+    cen = await _cenario(harness, tmp_path, monkeypatch, app=app)
+    cen.caixa.chegou(CODIGO, ha_s=-1)
+    _iniciar(cen)
+    with pytest.raises(asyncio.CancelledError):
+        await cen.rodar()
+    assert app.envios == 1 and cen.estado() == "aguardando_verificacao"
+    app.cancela_apos_envio = False
+    _iniciar(cen)
+    await cen.rodar()
+    assert cen.estado() == "confirmada" and app.envios == 1 and app.toques.count("cadastrar") == 1
+
+
+async def test_se_o_envio_nao_puder_ser_gravado_o_botao_nao_e_tocado(harness: Harness, tmp_path: Path,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    cen = await _cenario(harness, tmp_path, monkeypatch)
+    _iniciar(cen)
+
+    def quebra(self: CicloNoBanco, passo: Passo) -> None:
+        raise ValueError("banco fora")
+
+    monkeypatch.setattr(CicloNoBanco, "enviado", quebra)
+    erro = await cen.rodar()
+    assert erro is not None and str(erro) == "cadastro guiado parado: falha_interna"
+    assert cen.app.envios == 0 and "cadastrar" not in cen.app.toques
+
+
+async def test_usuario_indisponivel_retomado_pode_enviar_de_novo_com_outro_arroba(
+        harness: Harness, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O provedor recusou o @: nada foi criado, então esta é a única parada em que retomar volta ao formulário."""
+    app = AppFalso(depois_do_envio="usuario_indisponivel")
+    cen = await _cenario(harness, tmp_path, monkeypatch, app=app)
+    _iniciar(cen)
+    await cen.rodar()
+    assert cen.info().resume_state == "aguardando_cadastro_externo"
+    async with _api(harness) as c:
+        r = await c.post(f"/api/instagram/profiles/{cen.pid}/accounts/{cen.aid}/provisioning",
+                         json={"evento": "retomar", "estado_esperado": "falha"})
+        assert r.status_code == 200, r.text
+    assert cen.estado() == "aguardando_cadastro_externo"
 
 
 async def test_erro_inesperado_vira_falha_interna_sem_a_mensagem_do_erro(harness: Harness, tmp_path: Path,

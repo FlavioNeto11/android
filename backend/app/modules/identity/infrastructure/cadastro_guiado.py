@@ -101,10 +101,11 @@ class CicloNoBanco:
         return quando.astimezone(UTC) if quando is not None else None
 
     def _evento(self, evento: str, esperado: Estado, passo: Passo, *, motivo: str | None = None,
-                evidencia: ConfirmationEvidence | None = None) -> None:
+                evidencia: ConfirmationEvidence | None = None, volta_ao_cadastro: bool = False) -> None:
         corpo = ProvisioningEventBody(evento=evento, estado_esperado=esperado.value, motivo=motivo,  # type: ignore[arg-type]
                                       evidencia=evidencia)
-        self.s.social.provisionamento.transicao(self.profile_id, self.account_id, corpo, by=self.by, passo=passo.value)
+        self.s.social.provisionamento.transicao(self.profile_id, self.account_id, corpo, by=self.by, passo=passo.value,
+                                                   volta_ao_cadastro=volta_ao_cadastro)
 
     def iniciar(self) -> None:
         self._evento("iniciar_cadastro", Estado.CREDENCIAL_PREPARADA, Passo.INICIO)
@@ -114,7 +115,9 @@ class CicloNoBanco:
 
     def parar(self, parada: Parada, passo: Passo) -> None:
         try:
-            self._evento("falhar", self.estado(), passo, motivo=detalhe_da_parada(parada))
+            # O @ recusado pelo provedor é a única parada em que nada foi criado: a retomada volta ao formulário.
+            self._evento("falhar", self.estado(), passo, motivo=detalhe_da_parada(parada),
+                         volta_ao_cadastro=parada is Parada.USUARIO_INDISPONIVEL)
         except SocialError:
             # Outra aba mexeu na conta no meio: a parada já não é o estado dela. O comando termina `failed` do mesmo jeito.
             log.warning("cadastro guiado: a parada %s não pôde ser gravada (a conta mudou de estado)", parada.value)
