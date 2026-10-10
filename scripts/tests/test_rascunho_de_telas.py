@@ -103,3 +103,72 @@ def test_dois_arquivos_com_o_mesmo_nome_de_tela_sao_recusados(tmp_path: Path, xm
     copia.write_text(xmls[0].read_text(encoding="utf-8"), encoding="utf-8")
     with pytest.raises(SystemExit):
         _modulo().rascunhar(PACOTE, [xmls[0], copia])
+
+
+# ---- higiene 12.3 (revisão da Aprendizado): a identidade de quem percorreu o app nunca vira sinal
+def _casa(tmp_path: Path) -> Path:
+    casa = tmp_path / "casa.xml"
+    casa.write_text('<hierarchy rotation="0">' + _no("TextView", "Ana Correio", "toolbar_nome_conta", y=0)
+                    + _no("TextView", "Olá, Ana Correio", y=60)
+                    + _no("TextView", "Caixa de entrada", y=120)
+                    + _no("TextView", "Maria Souza", "campo_nome_exibicao", y=180)
+                    + _no("TextView", "Escrever", "botao_escrever", y=240) + "</hierarchy>", encoding="utf-8")
+    return casa
+
+
+def _vira_sinal(dados: dict, texto: str) -> bool:
+    """Algum sinal do rascunho casa com este texto (já sem acento nem caixa, como o carregador de telas compara)?"""
+    return any(re.search(v, texto) for v in dados["sinais"]["pt"].values())
+
+
+def test_o_nome_de_exibicao_dado_em_ignorar_nunca_vira_sinal(tmp_path: Path) -> None:
+    dados = _modulo().rascunhar(PACOTE, [_casa(tmp_path)], ("Ana Correio",))
+    assert not _vira_sinal(dados, "ana correio") and not _vira_sinal(dados, "ola, ana correio")
+    assert _vira_sinal(dados, "caixa de entrada")
+
+
+def test_sem_ignorar_a_saudacao_com_o_nome_ainda_vira_sinal_e_o_cabecalho_avisa(tmp_path: Path,
+                                                                                 capsys: pytest.CaptureFixture[str]) -> None:
+    """Sem `--ignorar` a ferramenta não adivinha o nome: o aviso do cabeçalho segue valendo (por isso o `--ignorar` existe)."""
+    assert _modulo().main(["--app", PACOTE, str(_casa(tmp_path))]) == 0
+    assert "NOME da conta" in capsys.readouterr().out
+
+
+def test_o_ignorar_ignora_acento_e_caixa(tmp_path: Path) -> None:
+    casa = tmp_path / "casa.xml"
+    casa.write_text('<hierarchy rotation="0">' + _no("TextView", "JOÃO PÉREZ", y=0) + _no("TextView", "Caixa de entrada", y=60)
+                    + "</hierarchy>", encoding="utf-8")
+    dados = _modulo().rascunhar(PACOTE, [casa], ("joao perez",))
+    assert not _vira_sinal(dados, "joao perez") and _vira_sinal(dados, "caixa de entrada")
+
+
+def test_elemento_de_identidade_pelo_resource_id_sai_sem_precisar_do_ignorar(tmp_path: Path) -> None:
+    """O nome na barra de ferramentas e o campo de nome de exibição são identidade pelo `resource-id`, mesmo sem `--ignorar`."""
+    dados = _modulo().rascunhar(PACOTE, [_casa(tmp_path)])
+    assert not _vira_sinal(dados, "maria souza") and not _vira_sinal(dados, "ana correio")
+    assert _vira_sinal(dados, "caixa de entrada")
+
+
+def test_ignorar_curto_demais_e_recusado(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert _modulo().main(["--app", PACOTE, "--ignorar", "an", str(_casa(tmp_path))]) == 2
+    assert "pelo menos 3 letras" in capsys.readouterr().err
+
+
+def test_senha_nunca_vira_sinal_mesmo_com_texto_que_parece_estavel(tmp_path: Path) -> None:
+    casa = tmp_path / "login.xml"
+    casa.write_text('<hierarchy rotation="0">' + _no("EditText", "Senha Segura Aqui", "campo_senha", senha=True, y=0)
+                    + _no("View", "Outra Senha Longa", "campo_custom", senha=True, y=60)
+                    + _no("TextView", "Entre na sua conta", y=120) + "</hierarchy>", encoding="utf-8")
+    dados = _modulo().rascunhar(PACOTE, [casa])
+    assert not _vira_sinal(dados, "senha segura aqui") and not _vira_sinal(dados, "outra senha longa")
+    assert _vira_sinal(dados, "entre na sua conta")
+
+
+def test_saida_igual_a_entrada_e_recusada_mesmo_escrita_de_outro_jeito(xmls: list[Path],
+                                                                       capsys: pytest.CaptureFixture[str]) -> None:
+    """`pasta/sub/../arquivo.xml` é o mesmo arquivo que a entrada: a comparação é pelo caminho resolvido."""
+    antes = xmls[1].read_text(encoding="utf-8")
+    (xmls[1].parent / "sub").mkdir()
+    outro_jeito = xmls[1].parent / "sub" / ".." / xmls[1].name
+    assert _modulo().main(["--app", PACOTE, "--saida", str(outro_jeito), *map(str, xmls)]) == 2
+    assert xmls[1].read_text(encoding="utf-8") == antes and "recusado" in capsys.readouterr().err

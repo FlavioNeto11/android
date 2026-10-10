@@ -14,7 +14,7 @@ código e este documento estão registradas no início do Adendo v0.11.
 ## Tipos (TypeScript)
 
 ```ts
-type InstanceState = 'absent' | 'stopped' | 'booting' | 'online' | 'stopping' | 'error';
+type InstanceState = 'absent' | 'stopped' | 'hibernated' | 'booting' | 'online' | 'stopping' | 'error';   // `hibernated` desde o Adendo v0.2
 type ControlOwner = 'none' | 'ai' | 'user';
 type AutomationState = 'none' | 'starting' | 'ready' | 'error';
 
@@ -995,7 +995,7 @@ quando ninguém se identificou.
 controle de acesso por pessoa. Senha por usuário (hash, papéis, quem pode o quê) é decisão de quem cuida do
 parque e continua fora do escopo.
 
-## Adendo v0.9 — o central é um worker, capacidades declaradas e o log do emulador
+## Adendo v0.9b — o central é um worker, capacidades declaradas e o log do emulador
 
 **`LocalWorker`.** O servidor central se registra na tabela `workers` com o `OWNER_ID` e aparece em
 `GET /api/workers` como qualquer outra máquina, marcado com `local: true`. Os aparelhos desta máquina passam a
@@ -1072,12 +1072,12 @@ A adoção cria a instância com a porta do túnel **alocada pelo central**, gra
 
 ### Divergências encontradas nesta revisão
 
-1. **Dois adendos com o mesmo nome "v0.9"** — um em `## Adendo v0.9 — autenticação: a API deixa de depender só
-   do loopback` (por volta da linha 881) e outro em `## Adendo v0.9 — o central é um worker, capacidades
+1. **[Resolvido na higiene 12.3/B10, 10/10/2026: o segundo virou `v0.9b`; o de autenticação segue `v0.9`.]** **Dois adendos com o mesmo nome "v0.9"** — um em `## Adendo v0.9 — autenticação: a API deixa de depender só
+   do loopback` (por volta da linha 881) e outro em `## Adendo v0.9b — o central é um worker, capacidades
    declaradas e o log do emulador` (por volta da linha 965). Não foram renumerados nesta revisão para não
    quebrar âncoras/links existentes; o pedido é para o próximo editor corrigir a numeração (um dos dois deveria
    ser v0.85 ou os adendos de v0.9 em diante precisam deslizar).
-2. **`InstanceState` do topo do arquivo não lista `hibernated`** — o bloco de tipos no início (seção "Tipos
+2. **[Resolvido na higiene 12.3/B10, 10/10/2026: o tipo do topo lista `hibernated`.]** **`InstanceState` do topo do arquivo não lista `hibernated`** — o bloco de tipos no início (seção "Tipos
    (TypeScript)") define `InstanceState` sem `hibernated`; só o Adendo v0.2 corrige isso
    (`'absent' | 'stopped' | 'hibernated' | 'booting' | 'online' | 'stopping' | 'error'`). O código
    (`backend/app/models.py`, `class InstanceState`) tem `hibernated` desde sempre — é só o texto do topo deste

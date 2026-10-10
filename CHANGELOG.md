@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — higiene 12.3/B10: o rascunho de telas não leva a identidade da pessoa, e o `api-contract.md` perde a numeração repetida
+
+- `scripts/rascunho-de-telas.py`: o texto de um elemento cujo `resource-id` diz nome, conta, usuário, perfil, avatar ou contato nunca vira sinal, e a
+  opção repetível `--ignorar <texto>` (o nome de exibição, o @ ou o e-mail da conta que percorreu o app; mínimo de 3 letras) tira o que casar, sem
+  acento nem caixa, nos dois sentidos. Campo de senha e `--saida` igual a uma entrada já estavam cobertos (7f5e036d) e ganharam teste de borda (texto
+  que parece estável, caminho escrito de outro jeito). `simulated`: `scripts/tests/test_rascunho_de_telas.py` (14 casos).
+- `docs/api-contract.md` (B10): o segundo "Adendo v0.9" virou `v0.9b` (o de autenticação, citado como "o portão do adendo v0.9", segue `v0.9`) e o
+  `InstanceState` do topo lista `hibernated`. Só documentação. `real`: `not_run`.
+
 ## 2026-10-10 — a persona de teste tem selo, fica escondida por padrão e nasce marcada (31.315, adendo v1.139 do 31.314)
 
 - `api/types.ts` (`InstagramProfile.teste`, `PersonaCreateRequest.teste`), `components/SeloDeTeste.tsx`,

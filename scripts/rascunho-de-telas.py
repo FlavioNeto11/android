@@ -9,11 +9,14 @@ estáveis da tela, para um humano EDITAR. O esboço:
   palpites marcados para conferir; quem classifica é a pessoa;
 - é conferido pelo carregador (`conhecimento_de_telas.de_dados`) e o resultado vai para o stderr: se o esboço não carrega, o que
   falta aparece lá (não existe `estado_conhecido` sem você dizer quais são as telas de casa);
+- deixa de fora o que identifica a pessoa: o texto de campo editável e de senha, o texto de um elemento cujo `resource-id` diz
+  nome, conta, usuário, perfil, avatar ou contato, e tudo que casar com `--ignorar` (o nome de exibição, o @ ou o e-mail da
+  conta que a pessoa percorreu). O nome de quem percorreu o app é dado pessoal, muda a cada conta e nunca serve de sinal;
 - NUNCA grava em `backend/app/conhecimento/apps/`: a saída vai para o stdout ou para `--saida`, e um destino dentro dessa
   pasta é recusado. Promover o esboço para o app é um commit seu, depois da decisão do dono sobre qual app vem primeiro.
 
 Exemplo (a partir da raiz do repositório):
-    backend/.venv/Scripts/python.exe scripts/rascunho-de-telas.py --app com.exemplo.email entrada.xml caixa.xml --saida rascunho.yaml
+    backend/.venv/Scripts/python.exe scripts/rascunho-de-telas.py --app com.exemplo.email --ignorar "Ana Correio" entrada.xml caixa.xml --saida rascunho.yaml
 """
 from __future__ import annotations
 
@@ -36,8 +39,27 @@ from app.planning.capabilities import CONHECIMENTO_DE_APPS  # noqa: E402
 
 #: Texto que muda de uma abertura para a outra (hora, contagem, e-mail, @) não serve de sinal.
 _INSTAVEL = re.compile(r"\d|@|https?://")
+#: O `resource-id` de um elemento que mostra a IDENTIDADE da pessoa (o nome na barra, o e-mail da conta, o avatar): o texto dele
+#: nunca é sinal, mesmo que pareça estável.
+_ID_DE_IDENTIDADE = re.compile(r"name|nome|account|conta|user|usuario|profile|perfil|avatar|display|owner|sender|contact|contato|"
+                               r"e?mail_?address|handle", re.IGNORECASE)
+MINIMO_DO_IGNORAR = 3
 SINAIS_POR_TELA = 2
 IDS_POR_TELA = 3
+
+
+def _normal(texto: str) -> str:
+    return unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii").lower().strip()
+
+
+def _e_da_pessoa(e: UiElement, ignorar: tuple[str, ...]) -> bool:
+    """O texto do elemento é a identidade de quem percorreu o app? Pelo `resource-id` de identidade ou por casar (um contém o
+    outro, sem acento nem caixa) com um dos `--ignorar`. 'Ana' dentro de 'Ana Correio' e 'Ana Correio' dentro de 'Olá, Ana Correio'
+    casam; o `--ignorar` curto demais (menos de 3 letras) é recusado pelo `main`, porque casaria quase tudo."""
+    if e.resource_id and _ID_DE_IDENTIDADE.search(e.resource_id.rsplit("/", 1)[-1]):
+        return True
+    texto = _normal(e.text or "")
+    return bool(texto) and any(i in texto or texto in i for i in ignorar)
 
 
 def _slug(texto: str) -> str:
@@ -47,8 +69,7 @@ def _slug(texto: str) -> str:
 
 def _regex_do_texto(texto: str) -> str:
     """O texto inteiro, sem acento nem caixa (o conhecimento de telas normaliza a tela antes de comparar)."""
-    sem_acento = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii").lower().strip()
-    return r"^\s*" + re.escape(sem_acento) + r"\s*$"
+    return r"^\s*" + re.escape(_normal(texto)) + r"\s*$"
 
 
 def _ids(elementos: list[UiElement]) -> list[str]:
@@ -60,16 +81,18 @@ def _ids(elementos: list[UiElement]) -> list[str]:
     return vistos[:IDS_POR_TELA]
 
 
-def _textos_estaveis(elementos: list[UiElement]) -> list[str]:
+def _textos_estaveis(elementos: list[UiElement], ignorar: tuple[str, ...] = ()) -> list[str]:
     achados: list[str] = []
     for e in elementos:
         t = (e.text or "").strip()
-        if 3 <= len(t) <= 40 and not _INSTAVEL.search(t) and not e.editable and not e.password and t not in achados:
+        if (3 <= len(t) <= 40 and not _INSTAVEL.search(t) and not e.editable and not e.password
+                and not _e_da_pessoa(e, ignorar) and t not in achados):
             achados.append(t)
     return achados[:SINAIS_POR_TELA]
 
 
-def rascunhar(app: str, arquivos: list[Path]) -> dict[str, Any]:
+def rascunhar(app: str, arquivos: list[Path], ignorar: tuple[str, ...] = ()) -> dict[str, Any]:
+    ignorar = tuple(n for n in (_normal(i) for i in ignorar) if len(n) >= MINIMO_DO_IGNORAR)
     sinais: dict[str, str] = {}
     regras: list[dict[str, Any]] = []
     nomes: set[str] = set()
@@ -85,7 +108,7 @@ def rascunhar(app: str, arquivos: list[Path]) -> dict[str, Any]:
         ids = _ids(arvore.elements)
         if ids:
             regra["ids"] = ids
-        for i, texto in enumerate(_textos_estaveis(arvore.elements)):
+        for i, texto in enumerate(_textos_estaveis(arvore.elements, ignorar)):
             chave = f"{nome}_{i + 1}"
             sinais[chave] = _regex_do_texto(texto)
             regra.setdefault("sinal", chave)
@@ -123,6 +146,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--app", required=True, help="o pacote Android (com.exemplo.app)")
     ap.add_argument("--saida", type=Path, help="grava aqui em vez de imprimir (nunca dentro de app/conhecimento/apps)")
+    ap.add_argument("--ignorar", action="append", default=[], metavar="TEXTO",
+                    help="o nome de exibição, o @ ou o e-mail da conta que percorreu o app; o texto que casar nunca vira sinal "
+                         "(repita a opção para mais de um; pelo menos 3 letras)")
     ap.add_argument("xml", nargs="+", type=Path, help="hierarquias XML, uma por tela")
     args = ap.parse_args(argv)
     if args.saida is not None and not _destino_permitido(args.saida):
@@ -135,7 +161,11 @@ def main(argv: list[str] | None = None) -> int:
     if faltando:
         print(f"arquivo não encontrado: {', '.join(faltando)}", file=sys.stderr)
         return 2
-    dados = rascunhar(args.app, list(args.xml))
+    curtos = [i for i in args.ignorar if len(_normal(i)) < MINIMO_DO_IGNORAR]
+    if curtos:
+        print(f"recusado: --ignorar precisa de pelo menos {MINIMO_DO_IGNORAR} letras (casaria quase tudo): {curtos}", file=sys.stderr)
+        return 2
+    dados = rascunhar(args.app, list(args.xml), tuple(args.ignorar))
     texto = ("# RASCUNHO gerado por scripts/rascunho-de-telas.py: revise tipos, sinais e estado_conhecido antes de promover.\n"
              "# ATENÇÃO: o texto das telas pode conter o NOME da conta ou da pessoa (ex.: a tela de casa). Troque por um rótulo fixo\n"
              "# do app ou apague o sinal ANTES de commitar: nome próprio é dado pessoal e muda a cada conta.\n"
