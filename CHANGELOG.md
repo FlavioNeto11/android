@@ -202,6 +202,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   laço de eventos ao banco compartilhado, não mais consultas. Prova `simulated`: `tests/test_regua_diaria_em_blocos.py` (4: dias do intervalo, mesmo
   resultado da agregação inteira, uma janela de um dia por consulta com pausa entre elas, falha no meio não deixa linha pela metade). `real`: `not_run` (só
   depois do deploy, com as pilhas do vigia do laço).
+## 2026-10-10 — 31.284: validação ponta a ponta da conta planejada com provedor simulado (branch feat/31-284-validacao-conta-planejada, sobre 31.281 e 31.282)
+
+- Três personas sem Outlook percorrem o pedido de 08/10: o refinador (com o dublê que ainda faz a pergunta circular) devolve `acoes_de_conta` e nenhuma
+  pergunta de senha; sugestão de endereço pelos dados da persona, edição, planejar, senha gerada e independente por persona no cofre; volta ao
+  refinador e a pendência está resolvida; cadastro externo, verificação, falha, retomada e desistência, com um provedor simulado que decide o desfecho
+  (Ana confirma por sessão observada, Bruno falha e retoma e a pessoa declara, Carla desiste e o cofre perde a senha). Varredura final: a senha não está
+  em nenhuma tabela de texto, nem em evento, nem em `ai_calls`, nem em resposta HTTP que o painel leu, nem no pedido ao modelo.
+- A validação achou dois defeitos do 31.281, corrigidos: (a) o Outlook real tem provedor de sessão, então a senha da conta em cadastro não chegava ao
+  `type_secret` (a conta não confirmada passa a não ser `managed`); (b) `provisioning.authenticated` olhava a sessão mais recente de qualquer aparelho e
+  agora exige o aparelho vinculado.
+- Regressão: conta criada pelo caminho de sempre nasce `confirmada`; consentimento continua exigido (409); o clone nasce sem consentimento; o refinador não
+  acusa nem oferece ação para conta que já existe.
+- Prova `simulated`: `tests/test_conta_planejada_ponta_a_ponta.py` (2), `test_conta_planejada.py` (24), `test_refinador_por_estado.py` (8). `not_run`: o
+  percurso no navegador do painel (31.283, Portal) e o cadastro com aparelho e provedor reais.
+
 ## 2026-10-10 — 31.282: o refinador conhece o estado das contas e a senha deixa de ser pergunta (branch feat/31-282-refinador-por-estado, sobre o 31.281)
 
 - Defeito de 08/10: o modelo perguntava "a senha da nova conta já está guardada ou será definida?" e as duas respostas caíam no 409

@@ -232,6 +232,10 @@ linhas anteriores são `confirmada`):
   reconciliador de sessão (`account_session.py::_conta`, `active=False`), o login gerenciado (`sessao.py`, `UNCERTAIN`) e as rotas
   `session/connect|verify|logout` (409 `conta_nao_confirmada`). Os dados ao plano (`profile_data.py`) trazem o desejado no lugar do
   usuário e a senha sigilosa, para o plano que preenche o cadastro. A conta da ponte igfarm nasce `confirmada` com evidência `igfarm`.
+- **Login gerenciado × cadastro:** para o app com provedor de sessão (o Outlook, a conta Microsoft), a conta CONFIRMADA é `managed`: o provedor
+  entra sozinho e o `type_secret` não recebe a senha. A conta ainda não confirmada não é `managed` (`profile_data.py`): não há login a
+  fazer, e `conta_<app>_senha` (sigilosa) e `conta_<app>_usuario` ficam disponíveis ao plano que preenche o formulário de cadastro.
+  `provisioning.authenticated` só é verdadeiro com a conta confirmada e a sessão `session_ready` no aparelho VINCULADO.
 - **Onde a conta planejada CONTA como conta (de propósito):** `AppState._tem_conta_no_app` (entrega do app ao aparelho) e o portão
   de conta esperada do `Scheduler` (`scheduler.py`, `status='active'`). A entrega precisa do app no aparelho para o cadastro, e a etapa
   que cria a conta precisa passar pelo portão "a persona tem conta neste app"; fora do cadastro, `conta_esperada` não acha handle (vazio)

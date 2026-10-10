@@ -1393,7 +1393,8 @@ class SocialService:
                 consent_by=cred["consent_by"] if cred else None),
             consent_at=cred["consent_at"] if cred else None,
             provisioning=self.provisionamento.info(
-                row, sessao_pronta=bool(sessao) and sessao["status"] == SessionStatus.session_ready.value),
+                row, sessao_pronta=bool(sessao) and aparelho is not None and sessao["instance_id"] == aparelho
+                and sessao["status"] == SessionStatus.session_ready.value),
             notes=row["notes"] or "", created_at=row["created_at"], updated_at=row["updated_at"])
 
     def list_accounts(self, profile_id: str) -> list[ProfileAccountDTO]:

@@ -38,7 +38,7 @@ class SqlProfileDataStore:
             " CASE WHEN a.provisioning_state = 'confirmada' THEN a.handle"
             "      ELSE COALESCE(NULLIF(a.handle, ''), a.desired_handle, '') END AS handle,"
             " a.host, ap.package, ap.name AS app_name,"
-            " c.login_identifier, c.secret_ref, c.status AS credential_status, c.consent_at"
+            " c.login_identifier, c.secret_ref, c.status AS credential_status, c.consent_at, a.provisioning_state"
             " FROM profile_accounts a LEFT JOIN apps ap ON ap.id = a.app_id"
             " LEFT JOIN account_credentials c ON c.account_id = a.id"
             " WHERE a.profile_id=? AND a.status='active' ORDER BY a.created_at, a.id", (profile_id,))
@@ -51,5 +51,8 @@ class SqlProfileDataStore:
                 host=_texto(r["host"]), login_identifier=_texto(r["login_identifier"]),
                 has_credential=r["secret_ref"] is not None, credential_status=_texto(r["credential_status"]),
                 consent_at=_texto(r["consent_at"]), secret_ref=_texto(r["secret_ref"]),
-                managed=bool(pacote) and self._tem_provedor(pacote or "")))
+                # Conta ainda não confirmada (31.281): não há login gerenciado a fazer (ela nem existe no provedor); a senha
+                # preparada é a que a automação dita pelo canal sensível no formulário de cadastro.
+                managed=bool(pacote) and self._tem_provedor(pacote or "")
+                and str(r["provisioning_state"] or "confirmada") == "confirmada"))
         return saida
