@@ -13722,15 +13722,15 @@
   "31.283": {
    "id": "31.283",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "7e38d8dd",
-   "evidence": "Commits 7e38d8dd e 7f677f14 (sugestão só da parte local do endereço), no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/features/profiles/ContaPlanejada.test.tsx (15), 315 dirigidos de profiles e command, tsc 0, build ok, revisão de segredos sem vazamento. Percurso no navegador de 10/10 contra o backend do 31.281 e 31.282 do worktree com aparelhos falsos (simulated, não o central). Real: not_run no central.",
-   "grupo": "janela79",
+   "proof": "real",
+   "commit": "d0fbcc5d",
+   "evidence": "Real no central d0fbcc5d, 10/10/2026 ~15:50Z (Portal, .claude/handoffs/portal-resultado-31283-real.json): persona de teste ig-d3n4tia1rHELrY10 ('TESTE Portal 31.283 (nao usar)'); conta qa-messenger planejada pela tela, senha gerada no cofre sem aparecer, iniciar_cadastro e confirmar com evidência declarada até confirmada; 1 chamada real de POST /api/commands/refine devolveu acoes_de_conta (outlook, 4 ações, reutilizavel_de qa-messenger), custo ≈ US$ 0,011 (livro-caixa); cartão 'Contas a preparar' desenhado; 'Preparar credencial' e 'Cancelar a conta' pelo cartão. not_run: 'continuar' relido pelo servidor, 'Usar credencial existente' (clone), 'Marcar como falha'/'Retomar'. simulated anterior mantido.",
+   "grupo": "janela80",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T15:46:27+00:00"
+   "quando": "2026-10-10T18:38:32+00:00"
   },
   "31.284": {
    "id": "31.284",
@@ -13865,28 +13865,28 @@
   "31.294": {
    "id": "31.294",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "8d4968ce",
-   "evidence": "Commit 8d4968ce, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/lib/time.test.ts::fuso a vista, 244 dirigidos (time, host, operacao), tsc 0, build ok. Observação no navegador contra o central, sem ids e com hora aproximada (cerca de 13:35Z): a página Host mostrou Lido às 10:32:11 (UTC-3); por isso a prova fica simulated. Not_run: a página de Operação.",
-   "grupo": "janela79",
+   "proof": "real",
+   "commit": "d0fbcc5d",
+   "evidence": "Real no central d0fbcc5d, 10/10/2026 15:40Z (percurso pós-deploy 70, .claude/handoffs/portal-resultado-percurso-real-deploy70.json): Host 'Lido às 12:39:53 (UTC-3)' e Operação 'Lido às 12:40:30 (UTC-3)' com o relógio do navegador em America/Sao_Paulo; rótulo presente e hora certa.",
+   "grupo": "janela80",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T15:46:27+00:00"
+   "quando": "2026-10-10T18:38:32+00:00"
   },
   "31.295": {
    "id": "31.295",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "a1436f3e",
-   "evidence": "Commit a1436f3e, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/store/metricas.test.ts::31.295 e 146 dirigidos (store, topbar), tsc 0. Not_run: a dica no navegador (painel embutido oculto e nenhuma execução em needs_input no central).",
-   "grupo": "janela79",
+   "proof": "real",
+   "commit": "d0fbcc5d",
+   "evidence": "Real parcial no central d0fbcc5d, 10/10/2026 15:4xZ: contador '0 execuções' bate com GET /api/runs (570 lidas: 0 em andamento, 0 needs_input) e a dica aponta Pendências. not_run: o contador com execução em andamento de verdade.",
+   "grupo": "janela80",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T15:46:27+00:00"
+   "quando": "2026-10-10T18:38:32+00:00"
   },
   "31.296": {
    "id": "31.296",
@@ -13943,15 +13943,15 @@
   "31.301": {
    "id": "31.301",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "fe8c973f",
-   "evidence": "Commit fe8c973f, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/features/rede/RedePage.test.tsx (5 testes novos: PUT só do campo mudado, null ao esvaziar, 409 pede motivo e repete, 422). Real: not_run.",
-   "grupo": "janela79",
+   "proof": "real",
+   "commit": "d0fbcc5d",
+   "evidence": "Real no central d0fbcc5d, 10/10/2026 15:4xZ: PUT real em perfil de teste criado e apagado (vpn-teste-31301, sem aparelho): 422 invalid_egress inline em 10.0.0.1 sem gravar; troca 8.8.8.8→1.1.1.1 gravada com antes/depois e evento 'por Flavio'; volta e perfil apagado; perfil igfarm do android-07 intocado. Ajuste 6041f07c (ordem das trocas, mais nova primeiro) entra no deploy 71: real da ordem not_run até o percurso pós-71.",
+   "grupo": "janela80",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T15:46:27+00:00"
+   "quando": "2026-10-10T18:38:32+00:00"
   },
   "31.302": {
    "id": "31.302",
@@ -13969,15 +13969,15 @@
   "31.303": {
    "id": "31.303",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "05002082",
-   "evidence": "Commit 05002082, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/features/rede/RedePage.test.tsx (4 testes novos: detalhe só no divergente, resumo e contagem). Real: not_run.",
-   "grupo": "janela79",
+   "proof": "real",
+   "commit": "d0fbcc5d",
+   "evidence": "Real parcial no central d0fbcc5d, 10/10/2026 15:4xZ: GET /network/devices real com 1 aparelho com esperada (android-07, confere), nenhum divergente; resumo e detalhe de divergência corretamente ausentes. not_run: aparelho divergente de verdade.",
+   "grupo": "janela80",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T15:46:27+00:00"
+   "quando": "2026-10-10T18:38:32+00:00"
   },
   "31.304": {
    "id": "31.304",
@@ -14008,15 +14008,15 @@
   "31.306": {
    "id": "31.306",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "bc56f36e",
-   "evidence": "Commit bc56f36e, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/features/runs/filtroExecucoes.test.ts (3 testes novos) e RunsPage.test.tsx. Real: not_run.",
-   "grupo": "janela79",
+   "proof": "real",
+   "commit": "d0fbcc5d",
+   "evidence": "Real parcial no central d0fbcc5d, 10/10/2026 15:4xZ: GET /api/runs real traz etapas_exploratorias em todas as 200 lidas (v1.135); filtro 'Com etapa descoberta pela IA (0 nas carregadas)' aparece. not_run: execução com etapa descoberta de verdade (o central não tem exploração).",
+   "grupo": "janela80",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T15:46:27+00:00"
+   "quando": "2026-10-10T18:38:32+00:00"
   },
   "31.308": {
    "id": "31.308",
@@ -14095,6 +14095,58 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-10T15:46:27+00:00"
+  },
+  "31.297": {
+   "id": "31.297",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "e8901622",
+   "evidence": "Exploração de EFEITO pela política (ADR-091, adendo v1.140): f74b1d64, 37dd0522, 50cb5b07, aacecbe9 e correções da revisão da Jev 95a3f551, 0f417c27, 9ff44754, e8901622 (lista única de credencial/sessão em contracts/credencial_e_sessao.py valendo para leitura e efeito, 'entre' e 'código' só por contexto; capability sintética montada no carregador). limits.exploracao_efeito_ligada nasce desligado; ligar só com P-046. tests/test_exploracao_de_efeito.py 99 casos + tabela de credencial; 148 dirigidos; test_catalogo_como_dado 45 (conferido pela orquestradora em worktree); catracas; docs-check 0. Real: not_run (roteiro .claude/handoffs/aprendizado-prova-real-exploracao-de-efeito.md, ≈US$ 1,50, só com o sim do dono).",
+   "grupo": "janela80",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T18:38:32+00:00"
+  },
+  "31.314": {
+   "id": "31.314",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "264940dd",
+   "evidence": "Persona de TESTE formal (v1.139, migração 134 aditiva instagram_profiles.teste): test_persona_de_teste.py 11 casos; 368 dirigidos + 105 de persona e avisos; catracas 103; scripts/tests 1270; mypy 257/257; docs-check 0. Real: a 134 foi aplicada no SQLite do central às 16:33:39Z de 10/10 pela religada do supervisor com o checkout em 332c04f6 (fora do deploy, sem backup próprio; aditiva) e conferida pelo deploy 71; comportamento no painel not_run.",
+   "grupo": "janela80",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T18:38:32+00:00"
+  },
+  "31.315": {
+   "id": "31.315",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "332c04f6",
+   "evidence": "Selo, filtro e marca de persona de teste no painel, com marcar/desmarcar na ficha via PATCH: features/profiles/PersonaDeTeste.test.tsx (8 testes), 392 dirigidos (profiles, command, pedidos), tsc e build. Real: not_run (roteiro .claude/handoffs/portal-percurso-real-31315-pos-deploy-71.md; vira real na janela 81).",
+   "grupo": "janela80",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T18:38:32+00:00"
+  },
+  "31.316": {
+   "id": "31.316",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "63d9a18a",
+   "evidence": "B6 fechado pelo mecanismo (tests/unit → simulated na mensagem de validar() de scripts/claude-plan-100.py, com testes) e causa do cache do verificador documentada no 7.4 (piso do Haiku: prefixo ~1920 tokens < 4096; Opus cacheia os mesmos 1920; ~US$ 0,2/dia; sem correção, sem chamada paga): scripts/tests inteiro 1272 passed (-n 4); test_claude_plan_100 + catracas de scripts 41; docs-check 0. 45bb8f67 levou marcadores de conflito ao CHANGELOG por ~1 min, corrigido em 63d9a18a.",
+   "grupo": "janela80",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T18:38:32+00:00"
   }
  },
  "rodadas": [
@@ -18002,6 +18054,24 @@
    ],
    "grupos": [
     "janela79"
+   ]
+  },
+  {
+   "quando": "2026-10-10T18:38:32+00:00",
+   "itens": [
+    "31.283",
+    "31.294",
+    "31.301",
+    "31.295",
+    "31.303",
+    "31.306",
+    "31.297",
+    "31.314",
+    "31.315",
+    "31.316"
+   ],
+   "grupos": [
+    "janela80"
    ]
   }
  ]
