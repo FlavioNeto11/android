@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ..db import Row, loads
+from ..db import Database, Row, loads
 from ..models import CommandState, InstanceState
 from ..devices.manager import ESTADO_ALVO
 from .states import COMMAND_UNSETTLED
@@ -37,6 +37,12 @@ log = logging.getLogger("poc.commands")
 #: de fora de propósito: um aparelho `online` não diz se os dados foram apagados nem se o APK entrou, e é
 #: exatamente para esses que existe a decisão humana.
 VERIFICAVEL_POR_ESTADO = frozenset({"start", "wake", "restart", "stop", "hibernate"})
+
+#: `device.network` (a rede por aparelho, ADR-056) é observável pela linha `device_network`: a revisão aplicada, o estado
+#: e quando o tráfego foi verificado dizem se o passo que o comando pedia chegou ao fim. `desfazer` fica de fora de
+#: propósito: o que ele promete é a linha SUMIR, e isso a sonda não distingue de uma linha que nunca existiu.
+VERIFICAVEL_POR_REDE = frozenset({"device.network"})
+_ACOES_DE_REDE_VERIFICAVEIS = frozenset({"aplicar", "conectar", "verificar"})
 
 #: Como o inventário do worker (estado do PROCESSO na máquina dele) se traduz no estado do aparelho — e SÓ para
 #: ausência. O recorte é o do próprio agente: "o worker sabe do processo; o central sabe do Android". `running`
@@ -60,6 +66,26 @@ def _estado_no_worker(workers: Any, worker_id: str | None, instance_id: str) -> 
         estado = _AUSENCIA_NO_WORKER.get(str(bruto.get("state") or ""))
         return estado, (f"a batida do worker relata o aparelho '{bruto.get('state')}'" if estado else "")
     return None, ""
+
+
+def _prova_de_rede(db: Database, row: Row) -> str | None:
+    """A frase que prova um `device.network` incerto, ou `None`. Prova só SUCESSO, e só da MESMA revisão que o comando
+    tratava: a rede já estar em `trafego_verificado` na revisão `rev` do comando, com a verificação feita DEPOIS de ele
+    começar. Revisão que mudou desde então (outra configuração) não prova nada deste comando, e o que não se prova
+    espera a pessoa."""
+    params = loads(row["params"], {}) or {}
+    rev = params.get("rev")
+    if params.get("acao") not in _ACOES_DE_REDE_VERIFICAVEIS or not isinstance(rev, int) or isinstance(rev, bool):
+        return None
+    linha = db.one("SELECT applied_rev, state, verified_at FROM device_network WHERE instance_id=?",
+                   (row["instance_id"],))
+    if linha is None or linha["applied_rev"] != rev or linha["state"] != "trafego_verificado":
+        return None
+    inicio = row["started_at"] or row["created_at"]
+    if not linha["verified_at"] or not inicio or str(linha["verified_at"]) < str(inicio):
+        return None
+    return (f"verificado pelo estado real: a rede do aparelho está na revisão {rev}, com o tráfego verificado em "
+            f"{linha['verified_at']}, que é o que 'device.network' ({params.get('acao')}) prometia")
 
 
 def _prova(devices: Any, workers: Any, row: Row) -> str | None:
@@ -90,7 +116,8 @@ def verificar_comando(s: Any, row: Row) -> Row:
     """
     if CommandState(row["state"]) not in COMMAND_UNSETTLED:
         return row
-    motivo = _prova(s.devices, s.workers, row)
+    motivo = (_prova_de_rede(s.db, row) if row["verb"] in VERIFICAVEL_POR_REDE
+              else _prova(s.devices, s.workers, row))
     if motivo is None:
         return row
     try:

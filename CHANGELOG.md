@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o reconciliador fecha o `device.network` incerto quando a rede prova a revisão
+
+- `commands/reconciler.py::_prova_de_rede` (e `VERIFICAVEL_POR_REDE`, usado também por `verifiable` em
+  `POST /api/commands/{id}/verify`): um `device.network` `uncertain` (`aplicar`, `conectar` ou `verificar`) fecha como
+  `succeeded` só se `device_network` do aparelho está em `trafego_verificado` na MESMA revisão (`params.rev`) do comando,
+  com `verified_at` depois do início dele. Revisão trocada, outro estado, verificação anterior, `desfazer`, `rev` ausente
+  ou outro aparelho esperam a pessoa; a sonda segue só concluindo sucesso. Origem: 4 comandos de 30/09 a 07/10 incertos
+  porque o backend reiniciou no meio. Hoje fecharia 3 (android-03 ×2 e android-06, rev 1 = rev 1); o do android-05 (rev 1,
+  linha na rev 3) fica para a pessoa.
+- Prova **simulada**: `backend/tests/test_incertos_device_network.py` (16 casos) com `test_incertos_com_saida.py` e as
+  catracas; mypy sem subir. **Real: não executada.**
+
 ## 2026-10-10 — a persona de teste tem selo, fica escondida por padrão e nasce marcada (31.315, adendo v1.139 do 31.314)
 
 - `api/types.ts` (`InstagramProfile.teste`, `PersonaCreateRequest.teste`), `components/SeloDeTeste.tsx`,
