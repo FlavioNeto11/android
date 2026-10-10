@@ -753,6 +753,7 @@ class DeviceManager:
             self.capacidades_do_avd_local(rt, publicar=False)
 
     async def start(self) -> None:
+        await self._pre_carregar_dtos_persistidos()
         await asyncio.gather(*(self._adopt(rt) for rt in self.devices.values()))
         self._bg.append(asyncio.create_task(self._monitor_loop(), name="device-monitor"))
         self._bg.append(asyncio.create_task(self._metrics_loop(), name="metrics"))
@@ -908,23 +909,44 @@ class DeviceManager:
                                                if rend.get(k) is None and rend_ref.get(k) is not None}}
         return comparado
 
+    async def _pre_carregar_dtos_persistidos(self) -> None:
+        """31.307: lê o último DTO gravado de TODOS os aparelhos de uma vez, numa thread, ANTES da adoção. Sem isto a primeira
+        `publish` de cada aparelho fazia a consulta na thread do laço de eventos (`_ultimo_dto_persistido`), e o laço parou 70 s no
+        boot de 10/10/2026 esperando o banco. Falha na leitura deixa tudo como estava: a leitura sob demanda segue valendo."""
+        pendentes = [rt for rt in self.devices.values() if rt.dto_persistido is None and not rt.dto_persistido_lido]
+        if not pendentes:
+            return
+        ids = [rt.id for rt in pendentes]
+        try:
+            lidos = await asyncio.to_thread(lambda: {i: self._ler_dto_persistido(i) for i in ids})
+        except Exception:  # noqa: BLE001 - sem a pré-leitura, o caminho de sempre lê quando precisar
+            log.exception("pré-leitura do último DTO dos aparelhos falhou; a leitura será sob demanda")
+            return
+        for rt in pendentes:
+            rt.dto_persistido_lido = True
+            rt.dto_persistido = lidos.get(rt.id)
+
+    def _ler_dto_persistido(self, instance_id: str) -> dict[str, object] | None:
+        """A referência é o último DTO gravado COM o worker falando (renderizador conhecido), entre as 20 linhas mais
+        recentes: as publicações do seed com mensagem gravam o DTO provisório, e lê-lo como referência fazia a
+        saída da janela parecer troca (deploy 26, 04/10: 6 trocas de verbos e 10 de renderizador às 13:15Z). Índice
+        `idx_events_instance_kind_id` (migração 135) serve ao filtro e à ordem."""
+        linhas = self.db.query("SELECT data FROM events WHERE kind='instance.updated' AND instance_id=?"
+                               " ORDER BY id DESC LIMIT 20", (instance_id,))
+        for linha in linhas:
+            try:
+                instancia = loads(linha["data"], {}).get("instance") if linha["data"] else None
+            except (ValueError, AttributeError):
+                instancia = None
+            rend = instancia.get("renderer") if isinstance(instancia, dict) else None
+            if isinstance(rend, dict) and rend.get("configured") is not None:
+                return instancia
+        return None
+
     def _ultimo_dto_persistido(self, rt: DeviceRuntime) -> dict[str, object] | None:
         if rt.dto_persistido is None and not rt.dto_persistido_lido:
             rt.dto_persistido_lido = True              # uma leitura por aparelho e processo, achando ou não
-            # A referência é o último DTO gravado COM o worker falando (renderizador conhecido), entre as 20 linhas mais
-            # recentes: as publicações do seed com mensagem gravam o DTO provisório, e lê-lo como referência fazia a
-            # saída da janela parecer troca (deploy 26, 04/10: 6 trocas de verbos e 10 de renderizador às 13:15Z).
-            linhas = self.db.query("SELECT data FROM events WHERE kind='instance.updated' AND instance_id=?"
-                                   " ORDER BY id DESC LIMIT 20", (rt.id,))
-            for linha in linhas:
-                try:
-                    instancia = loads(linha["data"], {}).get("instance") if linha["data"] else None
-                except (ValueError, AttributeError):
-                    instancia = None
-                rend = instancia.get("renderer") if isinstance(instancia, dict) else None
-                if isinstance(rend, dict) and rend.get("configured") is not None:
-                    rt.dto_persistido = instancia
-                    break
+            rt.dto_persistido = self._ler_dto_persistido(rt.id)
         return rt.dto_persistido
 
     def _set_state(self, rt: DeviceRuntime, state: InstanceState, detail: str | None = None,

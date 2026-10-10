@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o laço de eventos não espera o banco no boot: índice dos eventos por aparelho, pré-leitura fora do laço e aviso (31.307, migração 135)
+
+- **Causa** (3 despejos de 16:33Z, laço parado 10,9 → 71 s): a thread do laço estava numa só consulta, `SELECT data FROM events WHERE kind='instance.updated' AND instance_id=? ORDER BY id DESC LIMIT 20`
+  (`DeviceManager._ultimo_dto_persistido`, na adoção), sem índice que sirva ao filtro e à ordem, com o disco estrangulado pela suíte PG no mesmo host. Os despejos de 13:01 e 13:24 foram outras
+  consultas síncronas no laço (a classe é a mesma).
+- **Migração 135** (aditiva, mesma instrução nos dois bancos): `idx_events_instance_kind_id` em `events(instance_id, kind, id)`. O `CREATE INDEX` trava a escrita enquanto roda: o deploy aplica com o backend parado.
+- **Pré-leitura fora do laço:** `DeviceManager.start()` lê o último DTO de todos os aparelhos numa thread antes de adotar (`_pre_carregar_dtos_persistidos`); `publish` passa a só ler o cache. Falha na pré-leitura mantém a leitura sob demanda.
+- **Aviso:** `Database` loga (`poc.db`, no máximo um a cada 5 s) a consulta síncrona que a thread do laço esperou mais de 1 s, com o chamador, e conta em `consultas_lentas_no_laco`. Aponta o próximo ponto sem esperar outro travamento.
+- Prova: `simulated` (`tests/test_laco_sem_sql_sincrono.py`, 8 casos; SQLite, o PG pela fábrica quando houver `TEST_DATABASE_URL`). `real`: `not_run` (medida do EXPLAIN e do tempo no SQLite do central só depois da suíte PG).
+
 ## 2026-10-10 — a persona de teste tem selo, fica escondida por padrão e nasce marcada (31.315, adendo v1.139 do 31.314)
 
 - `api/types.ts` (`InstagramProfile.teste`, `PersonaCreateRequest.teste`), `components/SeloDeTeste.tsx`,

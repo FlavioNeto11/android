@@ -15,12 +15,15 @@ Três coisas o resto do código não precisa saber:
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 import re
 import sqlite3
 import threading
+import time
+import traceback
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -29,6 +32,12 @@ from typing import Any, Callable, Iterator
 from .util import now, now_iso, to_iso
 
 log = logging.getLogger("poc.db")
+
+#: 31.307: a consulta SÍNCRONA que a thread do laço de eventos espera por mais que isto vira aviso no log, com o primeiro quadro de
+#: fora deste arquivo. O laço parado é o sintoma (ver `vigia_do_laco.py`); isto aponta QUAL chamada o segura, sem esperar outro
+#: travamento de 70 s. No máximo um aviso por `INTERVALO_DO_AVISO_NO_LACO_S`.
+LIMITE_DA_CONSULTA_NO_LACO_S = 1.0
+INTERVALO_DO_AVISO_NO_LACO_S = 5.0
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 
@@ -120,6 +129,9 @@ class Database:
         self.dialect = "postgres" if _e_postgres(self.dsn) else "sqlite"
         self._lock = threading.RLock()
         self._tx_depth = 0
+        #: 31.307: quantas consultas passaram de `LIMITE_DA_CONSULTA_NO_LACO_S` NA THREAD DO LAÇO (o aviso é limitado no tempo).
+        self.consultas_lentas_no_laco = 0
+        self._ultimo_aviso_no_laco = float("-inf")
         #: O que espera o `COMMIT` da transação de fora para rodar (`depois_do_commit`). Some no `ROLLBACK`.
         self._depois_do_commit: list[Callable[[], None]] = []
         #: A conexão pode estar podre sem ter falhado ainda (um ROLLBACK que não completou). A próxima chamada
@@ -316,6 +328,26 @@ class Database:
             i += 1
         return "".join(saida)
 
+    def _avisar_se_no_laco(self, gasto: float) -> None:
+        """31.307: chamada na thread que roda um laço de eventos e que levou `gasto` s (esperar a trava incluso)? Avisa, com o
+        primeiro quadro da pilha fora deste arquivo, e conta em `consultas_lentas_no_laco`. Nunca levanta."""
+        try:
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return                                  # thread comum (pool, vigia, scripts): esperar ali não para o laço
+            self.consultas_lentas_no_laco += 1
+            agora = time.monotonic()
+            if agora - self._ultimo_aviso_no_laco < INTERVALO_DO_AVISO_NO_LACO_S:
+                return
+            self._ultimo_aviso_no_laco = agora
+            de_fora = next((q for q in reversed(traceback.extract_stack()) if not q.filename.endswith("db.py")), None)
+            onde = f"{Path(de_fora.filename).name}:{de_fora.lineno} em {de_fora.name}" if de_fora else "?"
+            log.warning("consulta síncrona no laço de eventos levou %.1f s (%s): o laço ficou parado esse tempo; mova a "
+                        "chamada para fora dele (asyncio.to_thread)", gasto, onde)
+        except Exception:  # noqa: BLE001 - a medida nunca derruba a consulta
+            pass
+
     def _com_reconexao(self, operacao: Callable[[Any], Any]) -> Any:
         """Executa e, se a CONEXÃO tiver morrido, reabre e tenta uma vez mais.
 
@@ -326,17 +358,23 @@ class Database:
         repetir só a última instrução gravaria metade do trabalho. O erro sobe, o `tx()` desfaz o que der e a
         próxima chamada de fora reabre.
         """
-        with self._lock:
-            if self._suspeita and self._tx_depth == 0:
-                self._reabrir()
-            try:
-                return operacao(self._conn)
-            except ERROS_DE_CONEXAO:
-                if self._tx_depth > 0:
-                    self._suspeita = True
-                    raise
-                self._reabrir()
-                return operacao(self._conn)
+        inicio = time.monotonic()                       # 31.307: a espera da trava entra na medida
+        try:
+            with self._lock:
+                if self._suspeita and self._tx_depth == 0:
+                    self._reabrir()
+                try:
+                    return operacao(self._conn)
+                except ERROS_DE_CONEXAO:
+                    if self._tx_depth > 0:
+                        self._suspeita = True
+                        raise
+                    self._reabrir()
+                    return operacao(self._conn)
+        finally:
+            gasto = time.monotonic() - inicio
+            if gasto >= LIMITE_DA_CONSULTA_NO_LACO_S:
+                self._avisar_se_no_laco(gasto)
 
     def depois_do_commit(self, fn: Callable[[], None]) -> None:
         """Roda `fn` depois do `COMMIT` da transação aberta NESTA thread, fora da trava; sem transação, roda já. No
