@@ -10,10 +10,3 @@
 -- linha é tocada. O `CREATE INDEX` trava a escrita em `events` enquanto roda: o deploy aplica com o backend parado, e a janela é
 -- a do tamanho da tabela (data/poc.sqlite3 tinha 204 MB em 10/10/2026).
 CREATE INDEX IF NOT EXISTS idx_events_instance_kind_id ON events(instance_id, kind, id);
-
--- 4º ponto (despejo das 16:56:41Z, laço parado 10 s): `/health` esperava, NA thread do laço, a trava do banco que a curadoria do aprendizado
--- segurava numa consulta só (`relatorio_sql._intervencoes_ligadas`):
---     SELECT attempt_id, step_id FROM learning_signals WHERE kind IN (?,?) AND created_at >= ? AND created_at < ? [AND simulated = 0]
--- `learning_signals` só tinha índice em (kind, source_ref, created_by), (app_package, capability, kind, created_at) e (run_id): o filtro por
--- `kind` + janela de tempo lia todas as linhas desses `kind`. (kind, created_at) o resolve por faixa.
-CREATE INDEX IF NOT EXISTS ix_learning_signals_kind_criado ON learning_signals(kind, created_at);
