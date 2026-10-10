@@ -8532,3 +8532,25 @@ exploração real e o painel, que é do Portal).
 
 **Prova:** `simulated` (`backend/tests/test_exploracao_de_efeito.py`, 99 casos). `real`: `not_run` (efeito numa conta real; o dono liga o
 interruptor e escolhe a política).
+
+## Adendo v1.142 (10/10/2026; número da orquestradora; item 31.322, migração 136) — tela humana = bloqueio definitivo, com o motivo como dado
+
+Decisão do dono (10/10): a tela humana ("Confirm you're human", subtipo `conta_travada`) é bloqueio DEFINITIVO. A conta sai da plataforma
+na hora (ADR-055/068, como antes) e agora o MOTIVO fica registrado como dado. Tudo ADITIVO; nenhuma rota nova.
+
+- **Migração 136:** coluna `contas_retiradas.motivo_do_bloqueio` (texto JSON, anulável). As lápides anteriores ficam com `NULL`.
+- **O objeto** (sem segredo e sem o @): `egresso_esperado` (o `ip_criacao` do igfarm), `egresso_medido` (a última saída medida de um
+  aparelho com sessão da conta), `egresso_divergente` (booleano; `null` se falta um dos dois), `ips_distintos_desde_criacao` (saídas
+  diferentes medidas desde `criada_em_igfarm`), `minutos_ate_o_primeiro_login` (da criação à primeira tentativa) e `trecho_da_tela`
+  (evidência já sem o rastro da conta, até 200 caracteres). Campo desconhecido é `null`: nada se inventa.
+- **Onde aparece:** no evento `profile.account_retired` (`data.motivo_do_bloqueio`, objeto ou `null`) e no GET da persona
+  (`GET /api/personas/{id}` e o perfil do Instagram): campo novo `contas_retiradas: [{app_id, retirada_em, motivo_do_bloqueio}]`, da mais
+  recente para a mais antiga, uma entrada por retirada (a âncora grava duas lápides e aparece uma). Sem o @ nem o hash.
+- **Rótulo:** o evento `session.needs_person` ganha `data.rotulo` = `"bloqueada"` (detalhe com `conta_travada:` ou a retirada por
+  bloqueio) ou `"aguardando"` (o código por e-mail e o desafio comum seguem esperando uma pessoa). O enum `SessionStatus` NÃO muda; a mensagem
+  do evento passa a dizer `(<status>, <rótulo>)`. Mostrar o rótulo no painel é do Portal (31.326).
+- Falha ao montar o motivo nunca impede a retirada: a lápide fica com `NULL` e o evento com `null`.
+
+**Prova:** `simulated` (`backend/tests/test_motivo_do_bloqueio.py`, 7 casos; catracas, arquitetura e mypy no teto). `real`: a H1 do teste de
+bifurcação (10/10 19:02Z, android-07) caiu na tela humana com o egresso casado e foi retirada antes do deploy desta migração; o motivo dela
+está só em `.claude/handoffs/ponte-bifurcacao-3-contas.json`.
