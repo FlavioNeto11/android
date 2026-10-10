@@ -860,3 +860,4 @@ orquestradora; ela anota aqui antes de responder.
 | próximos livres (atualização 10/10 13:59Z) | 31.307, 29.212, 28.78; ADR-092; migração 134; adendo v1.136; K-112 | |
 | 31.307 | Jev (Aprendizado revisa) | laço de eventos sem acesso síncrono ao banco compartilhado (ressalva do 31.293: a régua e a testemunha em blocos reduzem a posse do lock, mas não eliminam parada de disco); só se o laço travar de novo depois do deploy 70; desenho primeiro (3 linhas para a orquestradora) | Jev | reservado 10/10 14:03Z; condicional |
 | próximos livres (atualização 10/10 14:03Z) | 31.308, 29.212, 28.78; ADR-092; migração 134; adendo v1.136; K-112 | |
+| próximos livres (atualização 10/10 14:10Z) | 31.308, 29.212, 28.78; ADR-092; migração 134; adendo v1.137 (v1.135 é do 31.305, ainda não escrito; v1.136 foi usado pelo 31.302); K-112 | |
