@@ -29,6 +29,7 @@ import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 
+from ..contracts.credencial_e_sessao import FORMAS_DE_CREDENCIAL, e_credencial
 from ..models import PlanStep, Postcondition
 from .capabilities import Capability
 
@@ -64,30 +65,9 @@ _EFEITO_CANONICO: dict[str, str] = {
     "assinar": "comprar", "pagar": "comprar", "arquivar": "mover", "reservar": "agendar", "aprovar": "aceitar",
     "confirmar": "aceitar",
 }
-#: 31.297: os verbos de EFEITO que a exploração NUNCA cobre, nem com o interruptor ligado e a política liberada: entrar, sair e
-#: cadastrar são credencial e sessão (ADR-040, ADR-087, sessao.yaml). Têm mecanismo próprio; a IA livre não digita senha nem abre conta.
-#: As formas que o modelo pode devolver (infinitivo, imperativo, substantivo, inglês) e as palavras do segredo em si. "entrada" não está
-#: aqui de propósito: "caixa de entrada" é leitura.
-_SEM_EXPLORACAO = frozenset({
-    "entrar", "entre", "logar", "logue", "login", "logout", "logoff", "signin", "signout", "signup", "sair", "saia",
-    "autenticar", "autentique", "autenticacao", "cadastrar", "cadastre", "cadastro", "registrar", "registre", "inscrever",
-    "inscreva", "inscricao", "desconectar", "desconecte", "conectar", "conecte", "senha", "senhas", "password", "credencial",
-    "credenciais", "token", "tokens", "codigo", "codigos"})
-#: "criar/adicionar/abrir (uma) conta (nova)" é cadastro (ADR-087): só com a conta logo depois do verbo, para "abrir as
-#: configurações da conta" seguir sendo leitura.
-_ABRE_CONTA = frozenset({"criar", "crie", "adicionar", "adicione", "abrir", "abra"})
 #: Os verbos canônicos que podem aparecer na chave de um efeito (os que a tabela não junta ficam como são). Credencial e sessão
-#: ficam de fora: não têm política, porque nunca exploram.
-VERBOS_DE_EFEITO = frozenset(_EFEITO_CANONICO.get(v, v) for v in _EFEITO) - _SEM_EXPLORACAO
-
-
-def e_credencial(palavras: list[str]) -> bool:
-    """O pedido mexe em credencial ou sessão (entrar, sair, cadastrar, senha, código…): nunca explora, nem com o interruptor de
-    efeito ligado. Vale para QUALQUER posição e para qualquer forma do verbo; o planejador devolve "no infinitivo" só por prompt."""
-    if any(p in _SEM_EXPLORACAO for p in palavras):
-        return True
-    util = [p for p in palavras if p not in ("novo", "nova")]
-    return any(a in _ABRE_CONTA and b in ("conta", "contas") for a, b in zip(util, util[1:]))
+#: (`contracts/credencial_e_sessao.py`, lista única) ficam de fora: não têm política, porque nunca exploram.
+VERBOS_DE_EFEITO = frozenset(_EFEITO_CANONICO.get(v, v) for v in _EFEITO) - FORMAS_DE_CREDENCIAL
 #: Palavras de lugar e de coisa do app que podem entrar na chave. Sem acento, em minúsculas.
 OBJETOS = frozenset({
     "caixa", "entrada", "saida", "lixeira", "lixo", "spam", "eletronico", "configuracoes", "ajustes", "perfil", "perfis",
@@ -154,7 +134,7 @@ def classificar(pedido: str) -> Exploracao:
     credencial = e_credencial(palavras)
     if credencial and de_efeito is None:
         # credencial e sessão em QUALQUER posição ("fazer login", "redefinir a senha") contam como efeito, e esse efeito nunca explora
-        de_efeito = next((p for p in palavras if p in _SEM_EXPLORACAO), "credencial")
+        de_efeito = next((p for p in palavras if p in FORMAS_DE_CREDENCIAL), "credencial")
     if de_efeito is not None:
         # 31.297: a chave do efeito tem a forma da de leitura (`explorar_<verbo>_<objeto…>`), com o verbo canônico: é por ela
         # que a política do dono casa com o pedido. Sem objeto reconhecido leva o sufixo de letras (o dono usa a genérica).
@@ -268,6 +248,6 @@ def molde_da_exploracao(passo: PlanStep) -> PlanStep | None:
         "precondition": None, "commit_guard": [], "bindings": {}, "saidas": [], "variables": {}})
 
 
-__all__ = ["CHAVE_GENERICA_DE_EFEITO", "Destino", "Exploracao", "OBJETOS", "PREFIXO", "VERBOS_DE_EFEITO", "VOCABULARIO",
-           "capability_da_exploracao", "chave_de_politica_valida", "e_exploracao_de_efeito", "chave_oferecivel", "chaves_da_politica", "classificar",
+__all__ = ["CHAVE_GENERICA_DE_EFEITO", "Destino", "Exploracao", "FORMAS_DE_CREDENCIAL", "OBJETOS", "PREFIXO", "VERBOS_DE_EFEITO", "VOCABULARIO",
+           "capability_da_exploracao", "chave_de_politica_valida", "e_exploracao_de_efeito", "chave_oferecivel", "chaves_da_politica", "classificar", "e_credencial",
            "molde_da_exploracao", "passo_da_exploracao"]

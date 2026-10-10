@@ -132,8 +132,10 @@ CREDENCIAL = ["entrar na conta", "fazer logout: sair da conta", "enviar e entrar
               "registrar um usuário", "logar com a senha", "fazer login no app", "entre na conta", "fazer logout",
               "redefinir a senha", "cadastre-se no app", "autentique-se", "desconectar a conta", "inscrever-se", "login",
               "digitar a senha", "alterar a senha", "criar uma conta nova", "adicionar conta", "abrir a conta",
-              "ver o código de verificação", "copiar o token"]
-LEITURA_PARECIDA = ["ver a caixa de entrada", "abrir as configurações da conta", "ver o perfil da conta", "listar as contas do app"]
+              "ver o código de verificação", "copiar o token", "ativar a verificação 2FA", "confirmar o código do SMS",
+              "trocar de conta", "alternar a conta", "trocar a senha", "verificar código", "conectar a conta google"]
+LEITURA_PARECIDA = ["ver a caixa de entrada", "abrir as configurações da conta", "ver o perfil da conta", "listar as contas do app",
+                    "ver a conta"]
 
 
 @pytest.mark.parametrize("pedido", CREDENCIAL)
@@ -146,6 +148,14 @@ def test_credencial_e_sessao_nunca_exploram_nem_com_o_efeito_ligado(pedido: str)
 def test_o_que_nao_e_credencial_continua_como_antes(pedido: str) -> None:
     assert not ex.classificar(pedido).de_credencial, pedido
     assert (ex.classificar(pedido).destino is ex.Destino.EXPLORAR) == (pedido in LEITURA_PARECIDA)
+
+
+def test_a_lista_de_credencial_e_uma_so_e_mora_nos_contratos() -> None:
+    from app.contracts import credencial_e_sessao as c
+
+    assert ex.FORMAS_DE_CREDENCIAL is c.FORMAS_DE_CREDENCIAL and ex.e_credencial is c.e_credencial
+    assert "fa" in c.FORMAS_DE_CREDENCIAL and "entrada" not in c.FORMAS_DE_CREDENCIAL        # "2FA" entra; "caixa de entrada" não
+    assert not (ex.FORMAS_DE_CREDENCIAL & ex.VERBOS_DE_EFEITO)                                 # sem chave de política
 
 
 def test_verbo_de_credencial_nao_tem_chave_de_politica() -> None:
