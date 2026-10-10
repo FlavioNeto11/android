@@ -8182,6 +8182,87 @@ serialização), a forma proposta pelo Portal em `portal-para-jev-receita-candid
   `not_run`; o `GET /api/aprendizado` de uma candidata depois da primeira operação pós-deploy.
 
 
+## Adendo v1.132 (10/10/2026; número concedido ao 31.281, migração 131; ADR-087) — a conta planejada: estados, credencial preparada e a ação estruturada do refinador
+
+Contrato do 31.281 (backend), consumido pelo 31.282 (refinador) e pelo 31.283 (painel). Tudo aditivo: nenhuma rota e nenhum campo existente muda de significado. A migração 131 só adiciona colunas a `profile_accounts`; as linhas existentes entram `confirmada`. Quatro coisas separadas (ADR-087): a persona, a conta externa (desejada ou existente), a credencial (cofre) e a sessão observada. **A senha nunca tem campo de resposta**: nem na conta, nem no evento, nem na ação do refinador.
+
+### 1. Estados e campos
+
+`ProfileAccountDTO` ganha o objeto **`provisioning`** (sempre presente; `state: "confirmada"` nas contas que já existiam):
+
+| Campo | Tipo | Sentido |
+|---|---|---|
+| `state` | `planejada`, `credencial_preparada`, `aguardando_cadastro_externo`, `aguardando_verificacao`, `confirmada` ou `falha` | Ciclo de provisionamento (coluna `provisioning_state`). |
+| `desired_handle` | `string` ou `null` | Endereço DESEJADO (editável até `confirmada`). |
+| `detail` | `string` ou `null` | Motivo da última falha ou o que falta, redigido e cortado em 300 caracteres. |
+| `resume_state` | estado ou `null` | Só em `falha`: para onde `retomar` volta. |
+| `confirmed_at` | ISO ou `null` | Quando virou `confirmada` (conta que já existia: `null`). |
+| `evidence` | `{kind, ref}` ou `null` | `kind` = `sessao` (`ref` = id da sessão observada), `declarada` (`ref` = quem declarou) ou `igfarm` (`ref` = `igfarm_account_id`, ADR-088). |
+| `actions` | lista de eventos | Os `evento` que a rota de transição aceita AGORA neste estado (como `session_actions`). |
+| `authenticated` | `bool` | Derivado e só de leitura: `confirmada` e sessão `session_ready` no aparelho vinculado. NÃO é estado gravado. |
+
+- **Desejado x confirmado:** `desired_handle` é o que a pessoa quer; `handle` (campo que já existe) segue sendo o endereço CONFIRMADO e fica `""` enquanto a conta não está `confirmada`. `login_identifier` e `credential` seguem como estão.
+- A conta que não está `confirmada` não é "conta real logada": sai do roteamento do Automático, do pré-voo de sessão e da lista de dados ao plano (seção 5).
+
+### 2. Rotas (em `/api/instagram/profiles/{profile_id}`)
+
+- **`POST /accounts/planned`**, corpo `{app_id, host?, desired_handle?}` → `ProfileAccountDTO`. 201 na primeira vez (`state: planejada`, `handle: ""`); **200 idempotente** se já existe conta planejada deste (perfil, app, host): devolve a mesma linha, e um `desired_handle` diferente só a EDITA (enquanto não `confirmada`). Erros: 404 `not_found` (perfil ou app), 409 `duplicate_account` (já existe conta confirmada neste app/host), 422 `desired_handle_invalido`. O `POST /accounts` de sempre continua criando conta já `confirmada`.
+- **`GET /accounts/handle-suggestions?app_id=`** → `{suggestions: [{handle, source}]}`, `source` = `persona_nome`, `persona_dados` ou `alternativa`. Local e determinístico (nome, sobrenome e data da persona; alternativas numeradas), sem IA e sem rede. Não afirma disponibilidade no provedor.
+- **`PATCH /accounts/{account_id}`** ganha `desired_handle`; 409 `conta_confirmada` depois de confirmada.
+- **`POST /accounts/{account_id}/credential/prepare`**, corpo `{modo, consent, substituir?, senha?, reutilizar_de?, tamanho?}`:
+  - `modo: "gerar"`: o servidor gera a senha com `secrets` (CSPRNG; `tamanho` 16 a 64, padrão 20; maiúscula, minúscula, dígito e símbolo), grava direto no cofre e **não a devolve**. A IA nunca participa.
+  - `modo: "digitar"`: `senha` (`SecretStr`, como no `PUT …/credential`); o 422 do validador não devolve o corpo.
+  - `modo: "reutilizar"`: `reutilizar_de` = id de OUTRA conta da MESMA persona que já tem credencial; nunca é o padrão e a escolha é expressa. Copia como o `credential/clone` (31.103).
+  - `consent` tem de ser `true`: gerar ou digitar na tela com a caixa marcada vale como o consentimento do ADR-040 para ESTA conta. Reutilizar não herda o consentimento da origem; vale a caixa marcada agora.
+  - Estado: `planejada` passa a `credencial_preparada`. Em `credencial_preparada`, só com `substituir: true` (troca a senha antes da confirmação). De `aguardando_cadastro_externo` em diante, 409 `estado_nao_permite_credencial` (depois de `confirmada` é a troca de senha pela rota de hoje).
+  - Resposta: `ProfileAccountDTO` (credencial só com metadados). Erros: 409 `consentimento_de_credencial`, 422 `credencial_modo_invalido` (campo do modo errado, ou `senha` junto com `reutilizar_de`), 404/409 `reutilizar_de_invalido` (outra persona, sem credencial ou a própria conta), 503 `secret_store_unavailable`.
+  - O `PUT …/credential` numa conta `planejada` faz o mesmo que `modo: "digitar"` e avança o estado.
+- **`POST /accounts/{account_id}/provisioning`**, corpo `{evento, estado_esperado, motivo?, evidencia?}` → `ProfileAccountDTO`. **`estado_esperado` é obrigatório (comparar e trocar):**
+
+| De | `evento` | Para | Regra |
+|---|---|---|---|
+| `credencial_preparada` | `iniciar_cadastro` | `aguardando_cadastro_externo` | Exige credencial gravada e consentimento. O cadastro no provedor é da pessoa (CAPTCHA, código e e-mail são dela, ADR-009); a automação preenche e dita a senha pelo canal sensível. |
+| `aguardando_cadastro_externo` | `enviado` | `aguardando_verificacao` | A pessoa enviou o formulário. |
+| `aguardando_verificacao` | `confirmar` | `confirmada` | Exige `evidencia` (abaixo). `handle` passa a ser o endereço confirmado e `confirmed_at` é gravado. |
+| qualquer ativo (`planejada` a `aguardando_verificacao`) | `falhar` (`motivo`) | `falha` | Grava `resume_state`; nada é apagado. |
+| `falha` | `retomar` | `resume_state` | Preserva credencial e dados; não reinicia. |
+| `planejada` a `aguardando_verificacao` | `cancelar` | (conta removida) | Só apaga a senha do cofre se nenhuma outra conta a referencia (regra do clone). Resposta `{removida: true, credencial_removida: bool}`. |
+
+  - `evidencia` do `confirmar`: `{tipo: "sessao", sessao_id}` (sessão observada cujo usuário é IGUAL ao desejado; o `handle` vem dela) ou `{tipo: "declarada", handle_confirmado}` (marcação nominal da pessoa, gravada como evidência `declarada` com o autor). `confirmar` sem evidência não existe.
+  - **Idempotência:** repetir o evento quando a conta já está no estado de destino dele devolve 200 com a conta, sem efeito e sem novo evento. Estado diferente do esperado e do destino: 409 `estado_inesperado` (`details.estado_atual`).
+  - Erros: 409 `transicao_invalida` (evento que o estado não aceita), 409 `sem_credencial`, 409 `sem_consentimento`, 422 `sem_evidencia`, 409 `evidencia_nao_confere` (sessão de outro usuário), 404 `not_found`.
+- **Eventos:** `identity.conta.provisionamento` `{profile_id, account_id, app_id, evento, de, para, evidencia_tipo?}`. Sem `handle`, sem `desired_handle` e sem nenhum valor de segredo.
+
+### 3. A ação estruturada do refinador
+
+`POST /api/commands/refine` (e o refinar com `run_id`) ganha, aditivo, **`acoes_de_conta`**: lista de itens, um por par (persona, app) do comando cuja credencial não está pronta. O backend calcula isso ANTES de chamar o modelo (o estado de cada par vai ao prompt, nunca valor), e a lista não passa pela triagem de resposta: não tem campo de texto.
+
+```json
+{"persona_id": "…", "persona_nome": "…", "app_id": "…", "app_nome": "Outlook",
+ "estado": "sem_conta",
+ "acoes": ["preparar_credencial", "abrir_contas_e_acesso", "usar_credencial_existente", "continuar"],
+ "reutilizavel_de": [{"account_id": "…", "app_id": "…", "app_nome": "…"}]}
+```
+
+- `estado`: `sem_conta` (nenhuma linha), `planejada` ou `falha`. Pares em `credencial_preparada` ou depois não entram na lista.
+- `acoes` (nunca texto livre; o painel executa cada uma pelos ids): `preparar_credencial` (planejar se for `sem_conta`, com `desired_handle` sugerido, e `credential/prepare`), `abrir_contas_e_acesso` (navegar à guia da persona), `usar_credencial_existente` (só quando `reutilizavel_de` não está vazio; `credential/prepare` com `modo: "reutilizar"` e a escolha expressa), `continuar` (refazer o refinar com o mesmo corpo: a pendência é reavaliada).
+- `ready` é `false` enquanto houver item na lista. **Senha nunca vira pergunta:** pergunta do modelo que a triagem marca como sensível é descartada; se o app não tem credencial pronta, aparece como item de `acoes_de_conta`. A pergunta "a senha já está guardada ou será definida?" deixa de existir.
+- Retomada: o `successor` e o refinar com `run_id` seguem preservando alvos, intenção, dados e etapas concluídas; credencial preparada não pede recomeçar.
+
+### 4. Cenários do brief
+
+A) conta existente (`confirmada`): nada na lista; o plano autentica. B) conta nova: `sem_conta` e `preparar_credencial` direto na persona. C) credencial indisponível: o item acima em vez de pergunta ao modelo. D) cadastro externo parcial: o estado (`aguardando_*` ou `falha`) fica na conta e `retomar` volta à etapa certa.
+
+### 5. Consumidores e dados do plano
+
+- Conta com `provisioning.state` diferente de `confirmada`: fora de `orquestrador._candidatas` e `_impossiveis`; `session/connect`, `verify` e `logout` respondem 409 `conta_nao_confirmada`; os dados ao plano trazem só `conta_<app>_usuario` (o `desired_handle`) e `conta_<app>_senha` (sigiloso, `type_secret`), para o plano que preenche o cadastro.
+- A conta da ponte igfarm (ADR-088) nasce `confirmada`, com `desired_handle` = sugestão, `handle` = @ confirmado e `evidence {kind: "igfarm", ref: igfarm_account_id}`.
+
+### 6. Compatibilidade e prova
+
+- Aditivo: cliente antigo ignora `provisioning` e `acoes_de_conta`. Central anterior: sem `provisioning` (o painel trata como `confirmada`) e sem `acoes_de_conta` (lista vazia).
+- Prova: `not_run` até o código (31.281) e a validação (31.284, provedor SIMULADO; nunca conta real na Microsoft).
+
 ## Adendo v1.133 (09/10/2026; número reservado pelo usuário com a migração 132) — ponte android ⇄ igfarm
 
 Três rotas novas em `/api/instagram` e a migração 132 (`persona_reservas`, `caixas_email`, `contas_igfarm`). Detalhe do
