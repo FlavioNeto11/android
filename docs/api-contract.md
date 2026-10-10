@@ -8402,6 +8402,6 @@ Chaves de `config.yaml` (bloco `contas`, **desligado de fábrica**): `verificaca
   há sinal dentro do processo para um funil ou uma suíte rodando por fora: o que protege é a CPU do host (aparelho da máquina do
   central: a amostra do gerente de aparelhos, a mesma do reparo e do boot; aparelho de worker: a última batida dele; sem
   medição recente, pula), a pausa de reparo do dono e o recurso desligado de fábrica.
-- **Prova:** `simulated` (`backend/tests/test_verificacao_periodica_de_sessao.py`: 20 casos, com o motor de sessão de verdade
+- **Prova:** `simulated` (`backend/tests/test_verificacao_periodica_de_sessao.py`: 21 casos, com o motor de sessão de verdade
   sobre o Instagram de mentira para a cadeia do desafio). `real`: `not_run` (nada liga sozinho no deploy; ligar no central é
   decisão de config).

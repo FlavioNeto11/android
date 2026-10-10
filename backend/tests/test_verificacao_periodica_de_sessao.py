@@ -425,3 +425,32 @@ async def test_a_saude_do_aprendizado_conta_as_releituras_da_janela(harness: Har
 
     saude = FontesDeFalhaSql(s.db).saude(*janela, simulados=True)
     assert dict(saude.verificacoes_de_sessao) == {"verificada": 1, "pulada": 1}
+
+
+# ---------------------------------------------------------------- reinício na janela: a fila anda
+@pytest.mark.asyncio
+async def test_depois_de_um_reinicio_o_alvo_deduplicado_nao_trava_a_fila(harness: Harness,
+                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """A releitura anterior quebrou (a sessão não foi atualizada) e o central reiniciou dentro da mesma janela da chave: o
+    mesmo alvo volta a ser o primeiro, o despacho devolve o comando ORIGINAL (deduplicado) e nada é agendado. Ele precisa
+    sair da frente (`tentada_ha_pouco`) para a conta de trás ser relida."""
+    from app.modules.identity.infrastructure.verificacao_periodica import VerificacaoPeriodica
+
+    s = _estado(harness)
+    _perfil(s, "primeira", "android-01", horas_atras=30)
+    _p2, c2 = _perfil(s, "segunda", "android-02", horas_atras=20)
+    espiao = _ligar(s, monkeypatch, espiao=Espiao(falha=RuntimeError("driver caiu")))
+    monkeypatch.setattr(VerificacaoPeriodica, "_janela", lambda _self: 7)        # a mesma janela antes e depois do reinício
+
+    assert await s.verificacao_periodica.uma_volta() is not None
+    await _terminar(s, "android-01")
+    assert [c[0] for c in espiao.chamadas] == ["android-01"]
+
+    s.verificacao_periodica = VerificacaoPeriodica(s)                            # o reinício: a memória volta vazia
+    monkeypatch.setattr(s.verificacao_periodica, "_motivo_do_portao", lambda _alvo, _rt: None)
+    assert await s.verificacao_periodica.uma_volta() is None                     # deduplicado: nada agendado agora
+    assert len(_comandos(s)) == 1
+    proximo = await s.verificacao_periodica.uma_volta()
+    assert proximo is not None and proximo.account_id == c2                      # a fila andou
+    await _terminar(s, "android-02")
+    assert [c[0] for c in espiao.chamadas] == ["android-01", "android-02"]

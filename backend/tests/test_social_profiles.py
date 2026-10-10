@@ -284,7 +284,10 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                # 31.281 (ADR-087): a unicidade do @ de uma conta PLANEJADA vale por app, entre todas as personas (dois
                # cadastros externos não podem pedir o mesmo endereço). Devolve só um booleano, nunca linha nem conteúdo
                # de perfil, e recebe o app, não o perfil.
-               "handle_ocupado"}
+               "handle_ocupado",
+               # 31.302: a releitura periódica pergunta à FROTA quais sessões prontas estão vencidas e recebe só ids
+               # (conta, aparelho, persona) e a data da última leitura; nunca conteúdo de perfil.
+               "sessoes_prontas_a_reler"}
     # Categoria à parte, e não um nome a mais em `globais`: método que olha a FROTA INTEIRA de propósito. A regra
     # existe para conteúdo de um perfil não vazer para outro, e isto não devolve conteúdo — só agregado. Entrar
     # aqui custa duas condições, conferidas abaixo: precisa receber `exclude_profile_id` (a assinatura declara que

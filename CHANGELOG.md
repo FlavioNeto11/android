@@ -33,7 +33,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   worker em manutenção), com o portão do botão "Verificar conta" aberto e a CPU do host abaixo do limite. Despacha o verbo
   `session.verify` (autor `verificacao-periodica`) com `observe_only`: o desafio visto cai no caminho do ADR-068, sem código
   novo de bloqueio. Evento `session.verificacao_periodica` (ids e códigos) e a linha `saude.verificacoes_de_sessao` no relatório de
-  falhas. Nada liga no deploy. Prova **simulada**: `tests/test_verificacao_periodica_de_sessao.py` (20 casos). **Real: não
+  falhas. Nada liga no deploy. Prova **simulada**: `tests/test_verificacao_periodica_de_sessao.py` (21 casos). **Real: não
   executada** — sem releitura numa conta real e sem medir o custo no aparelho.
 ## 2026-10-10 — os avisos de tela sensível deixam de prometer o que o ADR-089 revogou (31.290)
 
@@ -2097,7 +2097,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Nova tela `#/operacoes` (menu "Operação"): lista de operações e, por operação, a faixa de capacidade (solicitados, contas existentes, sessões válidas, disponíveis, em curso, concluídas, bloqueadas e os motivos), o agregado por app e uma linha por alvo (persona, conta só como rótulo, aparelho, pipeline de 14 estágios, estado, ação final ou motivo, "Verificada / Não verificada") com detalhe (resposta, conhecimento, evidências, estágios). "Liberar" abre a lista dos textos dos alvos parados em "ação preparada", nada marcado de início, até o limite que ainda sobra (conta os já executados); envia exatamente os textos exibidos (`{itens:[{profile_id, texto}]}`) e mostra a decisão item a item (liberados e recusados com o motivo: texto mudou, limite, sem ação preparada). "Cancelar a operação" com confirmação. A linha do alvo usa o `parou_em` do backend. A operação mostra o custo (`custo.total_usd` de um teto `max_usd`, com a divisão pesquisa × agentes), o assunto e as fontes indicadas (só viram link as `https` sem usuário nem query), conforme o adendo v1.94 fechado em 530d5af0. Prova: simulada (`OperacaoPage.test.tsx`, 21 casos, 3 mutações mortas; 1878 testes do frontend verdes).
 - Lê o contrato do rascunho do adendo v1.94 (Jev, 9da5017d) com leitor tolerante; sem a rota no central (404), cai num exemplo fixo e AVISA. Nenhum campo de login, e-mail de entrada ou credencial existe na tela.
 - Configurações → Limites: grupo "Orquestração de operações" com `orquestracao_max_escolhidas`, `orquestracao_max_candidatas` e `operacao_max_acoes_executadas`; só aparece se o servidor mandar os campos; candidatas nunca menores que as escolhidas.
-- Prova `simulated`: `OperacaoPage.test.tsx` (20 casos), `LimitsSection.test.tsx` e `validation.test.ts`; vitest inteiro e tsc limpos, mutações mortas; `real` `not_run` (a rota `/api/operacoes` ainda não existe).
+- Prova `simulated`: `OperacaoPage.test.tsx` (21 casos), `LimitsSection.test.tsx` e `validation.test.ts`; vitest inteiro e tsc limpos, mutações mortas; `real` `not_run` (a rota `/api/operacoes` ainda não existe).
 
 ## 2026-10-06 — 31.147 (Portal, parte simulada): varredura de código cru no Treino (branch feat/31-147-varredura-de-codigo-cru)
 

@@ -54,6 +54,11 @@ class VerificacaoPeriodica:
         martelada a cada tique, e uma que leu avança o `verified_at`, que já a tira da fila por `horas()`."""
         return min(3600.0, self.horas() * 3600.0 / 2)
 
+    def _janela(self) -> int:
+        """O número da janela da chave de idempotência: a mesma releitura, na mesma janela, é um comando só (o reinício do
+        central dentro dela devolve o comando original em vez de abrir outro)."""
+        return int(time.time() // max(600, self._espera_s()))
+
     # ------------------------------------------------------------------ o laço
     async def laco(self) -> None:
         while True:
@@ -87,29 +92,33 @@ class VerificacaoPeriodica:
     # ------------------------------------------------------------------ quando pular
     def _motivo_de_pulo(self, alvo: Alvo) -> str | None:
         s = self.s
-        pacote = s.social_repo.pacote_da_conta(alvo.profile_id, alvo.account_id)
-        if pacote is None or pacote != pacote_ancora():
-            return regras.NAO_E_ANCORA
-        if s.sessoes.for_package(pacote) is None:
-            return regras.SEM_PROVEDOR
+        # Só memória primeiro: a volta roda no laço de eventos, para TODOS os alvos vencidos, e o banco (o lock do
+        # `Database`) fica para quem já passou pelas travas baratas.
         rt = s.devices.devices.get(alvo.instance_id)
         if rt is None or rt.state != InstanceState.online:
             return regras.APARELHO_FORA_DO_AR                            # nunca liga aparelho para verificar
         if rt.control != ControlOwner.none:
             return regras.CONTROLE_MANUAL
-        if rt.id in s.scheduler.workers or s.commands.open_for_instance(rt.id, verbs=set(VERBOS_EXCLUSIVOS)) is not None:
+        if rt.id in s.scheduler.workers:
             return regras.APARELHO_OCUPADO
-        if s.quarentena(rt.id) is not None:
-            return regras.QUARENTENA
         if s.devices.pausa_de_reparo(rt) is not None:
             return regras.PAUSA_DE_REPARO
         if rt.worker_id and s.scheduler.worker_gate and s.scheduler.worker_gate(rt.worker_id) is not None:
             return regras.WORKER_EM_MANUTENCAO
         if s.scheduler.cpu_do_host_acima(rt, float(s.cfg.file.contas.verificacao_periodica_cpu_max_percent)) is not None:
             return regras.HOST_CARREGADO
-        if (feita := self._tentadas.get((alvo.account_id, alvo.instance_id))) is not None \
-                and time.monotonic() - feita < self._espera_s():
+        feita = self._tentadas.get((alvo.account_id, alvo.instance_id))
+        if feita is not None and time.monotonic() - feita < self._espera_s():
             return regras.TENTADA_HA_POUCO
+        pacote = s.social_repo.pacote_da_conta(alvo.profile_id, alvo.account_id)
+        if pacote is None or pacote != pacote_ancora():
+            return regras.NAO_E_ANCORA
+        if s.sessoes.for_package(pacote) is None:
+            return regras.SEM_PROVEDOR
+        if s.commands.open_for_instance(rt.id, verbs=set(VERBOS_EXCLUSIVOS)) is not None:
+            return regras.APARELHO_OCUPADO
+        if s.quarentena(rt.id) is not None:
+            return regras.QUARENTENA
         return self._motivo_do_portao(alvo, rt)
 
     def _motivo_do_portao(self, alvo: Alvo, rt: DeviceRuntime) -> str | None:
@@ -152,14 +161,16 @@ class VerificacaoPeriodica:
         resposta = pedir_trabalho_de_app(
             s, rt, "session.verify", reler, label="verificação periódica da sessão",
             params={"profile_id": alvo.profile_id, "account_id": alvo.account_id},
-            idempotency_key=f"{AUTOR}:{alvo.account_id}:{alvo.instance_id}:{int(time.time() // max(600, self._espera_s()))}",
+            idempotency_key=f"{AUTOR}:{alvo.account_id}:{alvo.instance_id}:{self._janela()}",
             requested_by=AUTOR)
         if not resposta.get("accepted"):
             self._registrar_pulo(alvo, regras.APARELHO_OCUPADO)
             return False
-        if resposta.get("deduplicated"):
-            return False               # mesma chave de uma tentativa anterior (reinício na janela): nada foi agendado agora
+        # A tentativa vale mesmo quando a resposta é a do comando ORIGINAL (mesma chave, reinício dentro da janela): sem
+        # isto o alvo seguia primeiro da fila a cada tique e as contas atrás dele nunca eram avaliadas.
         self._tentadas[chave] = time.monotonic()
+        if resposta.get("deduplicated"):
+            return False               # nada foi agendado agora
         self._em_voo = rt.id
         return True
 
