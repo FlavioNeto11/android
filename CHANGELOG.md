@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — a troca do grupo de política da persona deixa trilha (31.269; adendo v1.131)
+
+- `social/service.py::update_profile` emite `profile.policy_group` (`{profile_id, anterior, novo, autor}`, só ids) quando o
+  PATCH muda o grupo; o script `grupo-liberado-todas.py` usa o mesmo PATCH e gera o mesmo evento. Sem mudança de fato,
+  nenhum evento. Prova **simulada**: `tests/test_evento_grupo_de_politica.py`. **Real: não executada** (troca pela tela
+  depois do deploy).
+
 ## 2026-10-10 — o pedido fora do catálogo explora em vez de recusar, e o que a IA descobre volta ao planejador (31.273, ADR-084; migração 130, adendo v1.130)
 
 - **Explorar.** O pedido que nenhuma ação do catálogo cobre (`fora_do_catalogo`) vira UMA etapa livre de exploração por

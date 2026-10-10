@@ -8246,3 +8246,13 @@ Sem rota nova. Campos aditivos; a forma do resto não muda.
 - **Prova:** `simulated` (`backend/tests/test_etapas_descobertas.py`, `test_exploracao_fora_do_catalogo.py`,
   `test_migracao_130.py`, `test_learning_backlog.py`). `real`: `not_run` (a exploração real no Outlook depende do sim do
   dono para o custo de API).
+
+## Adendo v1.131 (10/10/2026; número da orquestradora; item 31.269) — o evento `profile.policy_group`
+
+Sem rota nova. `PATCH /api/instagram/profiles/{id}` com `policy_group_id` que MUDA o grupo de política da persona emite o
+evento `profile.policy_group` (nível `info`): `data: {profile_id, anterior, novo, autor}`, com os ids dos dois grupos
+(`null` = sem grupo) e o autor (`operador_atual()` ou `painel`). Nunca o nome do grupo, o @ nem o nome da pessoa na
+mensagem ou nos dados. Sem mudança de fato (mesmo grupo) ou sem o campo no corpo, nenhum evento. O
+`scripts/grupo-liberado-todas.py` troca o grupo por esse mesmo PATCH, então gera o mesmo evento, sem código novo.
+**Prova:** `simulated` (`backend/tests/test_evento_grupo_de_politica.py`). `real`: `not_run` (a troca de grupo pela tela
+depois do deploy).

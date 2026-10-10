@@ -241,13 +241,18 @@ class SocialService:
             alvo = fields.pop("persona_id")
             if alvo:
                 self._absorver_persona(profile_id, alvo)
+        grupo_anterior: str | None = None
         if "policy_group_id" in fields:
             self._check_group(fields["policy_group_id"])
+            linha = self.repo.profile_row(profile_id)
+            grupo_anterior = str(linha["policy_group_id"]) if linha is not None and linha["policy_group_id"] else None
         # O status é DECLARAÇÃO de uma pessoa (a tela do perfil): vai por `mudar_status`, com origem e autor, e
         # nunca como coluna solta — era assim que cinco perfis ficaram `blocked` sem quando nem por quê (ADR-055).
         status = fields.pop("status", None)
         if fields:
             self.repo.update_profile(profile_id, fields)
+        if "policy_group_id" in fields:
+            self._anunciar_grupo_de_politica(profile_id, grupo_anterior, fields["policy_group_id"] or None)
         if status is not None:
             autor = operador_atual() or "painel"
             self.repo.mudar_status(profile_id, str(status), origem="declarado", autor=autor,
@@ -255,6 +260,17 @@ class SocialService:
         if instance_id != "__ausente__":
             self._rebind(profile_id, instance_id, confirmado=confirmado)
         return self.get_profile(profile_id)
+
+    def _anunciar_grupo_de_politica(self, profile_id: str, anterior: str | None, novo: str | None) -> None:
+        """Evento `profile.policy_group` (31.269, adendo v1.131): o grupo de política da persona mudou. Trocar de grupo
+        tira a persona da aprovação ou a põe sob ela, e a troca não deixava trilha (o 31.265 só anunciava o status).
+        Só os ids do grupo e o autor, nunca o nome do grupo, o @ nem a pessoa; sem mudança de fato, nenhum evento."""
+        if anterior == novo:
+            return
+        autor = operador_atual() or "painel"
+        self.bus.emit("profile.policy_group", "O grupo de política da persona mudou"
+                      f" ({anterior or 'nenhum'} → {novo or 'nenhum'}, por {autor}).",
+                      data={"profile_id": profile_id, "anterior": anterior, "novo": novo, "autor": autor})
 
     def _anunciar_status(self, profile_id: str, anterior: str, novo: str, origem: str, autor: str,
                          evidencia: str | None) -> None:

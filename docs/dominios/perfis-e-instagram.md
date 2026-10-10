@@ -273,6 +273,8 @@ Resolver a tela não reativa sozinho: quem reativa é a pessoa, na tela do perfi
   `conhecimento_de_telas.py::detectar_conta_travada`) casa na união dos idiomas, com o texto normalizado (apóstrofo
   tipográfico, acento), e roda depois de cada observação e na sessão, antes do ANR, da receita e do ator; sai sem tocar.
   Todo status passa por `mudar_status` (`blocked_at`, `blocked_evidence`, `blocked_origin`, evento `profile.status`).
+  A troca do grupo de política (`policy_group_id`) pelo PATCH do perfil emite `profile.policy_group` (31.269, adendo
+  v1.131): ids dos dois grupos e o autor, sem nome nem @.
 - **Quarentena do aparelho.** A conta travada logada vira marcador do APARELHO (`device_locked_accounts`, migração 054),
   que sobrevive ao desvínculo: sem confirmação explícita (`confirm_locked_account`), só parar e hibernar; nenhuma outra
   persona se vincula ali (409 `aparelho_em_quarentena`); nada de entrega, escada de reparo nem reinício por irq;
