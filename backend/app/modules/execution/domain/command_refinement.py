@@ -58,6 +58,12 @@ O que o sistema sabe fazer (use para decidir o que falta, não para prometer al�
   entra sozinho, digitando a senha pelo nome, sem que ela passe por você. Se não traz, diga em `notes` que a senha
   deve ser guardada na conta da persona (aba Contas, com consentimento) — NUNCA peça a senha, nunca a escreva no
   comando e nunca aceite uma que venha nas respostas. O Instagram entra sozinho antes da tarefa.
+- Contas e senhas NUNCA são pergunta. Nem "a senha já está guardada ou será definida?", nem de onde ela vem, nem se
+  a conta já existe: o bloco "Contas das personas" abaixo diz, por persona e app, o estado (`sem_conta`, `planejada`,
+  `credencial_preparada`, `aguardando_cadastro_externo`, `aguardando_verificacao`, `confirmada`, `falha`) e o sistema
+  resolve a credencial pelo painel (gera ou guarda a senha direto no cofre, sem passar por você). Cadastrar uma conta
+  nova é um objetivo legítimo: descreva-o nos passos (abrir o cadastro, preencher com os dados da persona) e deixe a
+  senha para o sistema; só a verificação por código, e-mail ou CAPTCHA é da pessoa, e isso vai em `notes`.
 - Ações com efeito externo (enviar, publicar, comentar, seguir, salvar, pagar) acontecem de verdade: deixe claro no
   comando o conteúdo exato e o destinatário.
 
@@ -107,6 +113,9 @@ class RefineRequest:
     targets: list[str] = field(default_factory=list)
     #: Perguntas que o PLANEJADOR já fez numa execução em `needs_input`: o refinador precisa fechá-las.
     pending: list[dict[str, object]] = field(default_factory=list)
+    #: 31.282 (ADR-087): o ESTADO da conta de cada persona escolhida em cada app do comando, uma linha cada (nunca valor
+    #: de segredo, nunca o endereço): é o que permite ao modelo não perguntar "a senha já está guardada?".
+    contas: list[str] = field(default_factory=list)
 
 
 class RefineQuestion(BaseModel):
@@ -118,12 +127,42 @@ class RefineQuestion(BaseModel):
     why: str = ""
 
 
+#: As ações estruturadas de conta (adendo v1.132): o painel as executa pelos ids, sem texto livre e fora da triagem de resposta.
+ACAO_PREPARAR_CREDENCIAL = "preparar_credencial"
+ACAO_ABRIR_CONTAS = "abrir_contas_e_acesso"
+ACAO_USAR_EXISTENTE = "usar_credencial_existente"
+ACAO_CONTINUAR = "continuar"
+
+
+class ContaReutilizavel(BaseModel):
+    """Uma conta da MESMA persona que já tem credencial e de onde a senha pode ser reutilizada por escolha expressa."""
+    account_id: str
+    app_id: str
+    app_nome: str = ""
+
+
+class AcaoDeConta(BaseModel):
+    """Um par (persona, app) do comando cuja credencial não está pronta (31.282, adendo v1.132). Sem campo de texto livre."""
+    persona_id: str
+    persona_nome: str = ""
+    app_id: str
+    app_nome: str = ""
+    #: Conta do app inteiro (`null`) ou de um site (apps de navegador).
+    host: str | None = None
+    #: `sem_conta` | `planejada` | `falha`
+    estado: str
+    acoes: list[str] = Field(default_factory=list)
+    reutilizavel_de: list[ContaReutilizavel] = Field(default_factory=list)
+
+
 class CommandRefinement(BaseModel):
     command: str
     summary: str = ""
     questions: list[RefineQuestion] = Field(default_factory=list)
     ready: bool = False
     notes: list[str] = Field(default_factory=list)
+    #: 31.282: preenchido pelo SERVIDOR (nunca pelo modelo): `RefineOut` não tem este campo.
+    acoes_de_conta: list[AcaoDeConta] = Field(default_factory=list)
 
 
 class RefineOut(BaseModel):
@@ -147,10 +186,13 @@ def refine_user(req: RefineRequest) -> str:
     if req.answers:
         linhas = "\n".join(f"- [{a.field or '?'}] {a.question}\n  resposta: {a.answer}" for a in req.answers)
         partes.append(f"<respostas>\n{linhas}\n</respostas>")
+    contas = "\n".join(f"- {c}" for c in req.contas)
     partes += [f"Apps configurados:\n{apps}",
                "Dados da persona disponíveis (só NOMES; variáveis entre chaves resolvem-se sozinhas; SIGILOSO nunca "
                f"vem com valor):\n{dados}",
                f"Alvos da seleção (só contexto):\n{alvos}"]
+    if contas:
+        partes.append("Contas das personas escolhidas, por app (SÓ o estado; nunca valor nem endereço):\n" + contas)
     return "\n\n".join(partes)
 
 
@@ -206,7 +248,8 @@ def normalizar(r: CommandRefinement, redigir: Callable[[str], str]) -> CommandRe
                                 why=q.why.strip()[:200])
                  for q in r.questions if q.question.strip()][:5]
     return CommandRefinement(command=comando, summary=r.summary.strip(), questions=perguntas,
-                             ready=bool(r.ready) and not perguntas, notes=notas)
+                             ready=bool(r.ready) and not perguntas, notes=notas,
+                             acoes_de_conta=list(r.acoes_de_conta))
 
 
 # ---------------------------------------------------------------------- simulado

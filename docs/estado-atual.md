@@ -5,6 +5,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 
 ## Onde estamos
 
+- **31.282 (refinador por estado) pronto no branch `feat/31-282-refinador-por-estado` (10/10/2026), sobre o 31.281; sem migração, adendo v1.132.** A pergunta "a senha já está guardada?" deixa de existir: o servidor lê o estado das contas, descarta a pergunta de credencial do modelo e devolve `acoes_de_conta`. `simulated`: 8 testes novos; `not_run`: modelo real, painel (31.283) e validação ponta a ponta (31.284).
 - **31.281 (conta planejada) pronto no branch `feat/31-281-conta-planejada` (10/10/2026), ainda não na main nem implantado; migração 131 e adendo v1.132.** Backend do ADR-087: planejar, credencial gerada/digitada/reutilizada no cofre, ciclo de provisionamento e conta não confirmada fora do roteamento e da sessão. `simulated`: 22 testes novos e a bateria dirigida; `not_run`: o refinador por estado (31.282), o painel (31.283) e a validação ponta a ponta (31.284).
 - **Deploys 67, 68 e 69 no ar (10/10/2026, central `6536ad04d6c99e`, migração 133; sem tag).** Feitos de madrugada por outras sessões, com `PularFrontend` e `SemTag`; a linha de cada um está em `data/deploys.jsonl`.
   - 67: 00:33:33Z, `7d187acb` → `972633a7` (egresso da ponte confirma o aparelho da própria persona), backup `20261009-213213` (do ensaio), 72,7 s.

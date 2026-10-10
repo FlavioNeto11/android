@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — 31.282: o refinador conhece o estado das contas e a senha deixa de ser pergunta (branch feat/31-282-refinador-por-estado, sobre o 31.281)
+
+- Defeito de 08/10: o modelo perguntava "a senha da nova conta já está guardada ou será definida?" e as duas respostas caíam no 409
+  `credencial_na_resposta`. O servidor agora lê o estado de cada par persona × app de conta ANTES da chamada (`taskqueue/contas_do_comando.py`),
+  põe só o estado no prompt (regra nova: contas e senhas nunca são pergunta) e, depois do modelo, descarta a pergunta que a triagem marca como
+  sensível (`ComandoAssistido._sem_pergunta_de_credencial`, vale para qualquer provedor).
+- `POST /api/commands/refine` ganha `acoes_de_conta` (adendo v1.132): por par com credencial não pronta (`sem_conta`, `planejada`, `falha`), as ações
+  `preparar_credencial`, `abrir_contas_e_acesso`, `usar_credencial_existente` e `continuar`, por id, sem campo de texto; `ready` é falso enquanto houver item.
+- Prova `simulated`: `tests/test_refinador_por_estado.py` (8: pergunta circular some e vira ação, credencial preparada reavalia a pendência, falha e
+  reutilização, sem persona só a nota, só-senha com o modelo pronto, rota, prompt, esquema sem texto livre) e `test_assistente_do_comando.py` (11) verdes.
+  `real`: `not_run` (modelo real não chamado; o saldo da API é pequeno e a validação ponta a ponta é o 31.284).
+
 ## 2026-10-10 — 31.281: a conta planejada, a credencial preparada no cofre e o ciclo de provisionamento (branch feat/31-281-conta-planejada)
 
 - Contrato antes do código: adendo v1.132 (`provisioning` no `ProfileAccountDTO`, `POST …/accounts/planned`, `…/handle-suggestions`,
