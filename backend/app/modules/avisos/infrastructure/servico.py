@@ -26,7 +26,7 @@ from datetime import datetime
 from app.config import Config
 from app.db import loads
 from app.contracts import persona_de_teste
-from app.contracts.origem import PREFIXO_LOTE, PREFIXO_OPERACAO, e_execucao_do_sistema
+from app.contracts.origem import PREFIXO_LOTE, PREFIXO_OPERACAO, canal_da_pergunta, e_execucao_do_sistema
 from app.events import EventBus
 from app.models import Problem
 from app.planning import costs
@@ -175,7 +175,8 @@ class ServicoDeAvisos:
             data = self._com_o_custo_da_exploracao(data)
         aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir,
                                 nomes=nomes, conversa=conversa)
-        if aviso is None or self._e_de_prova(kind, data) or self._e_de_persona_de_teste(kind, data):
+        if (aviso is None or self._e_de_prova(kind, data) or self._e_de_persona_de_teste(kind, data)
+                or self._pergunta_de_outro_canal(aviso, data)):
             return False
         try:
             return self.fila.enfileirar(aviso)
@@ -427,6 +428,29 @@ class ServicoDeAvisos:
         contas = self.fila.db.query("SELECT id FROM profile_accounts WHERE profile_id=? AND app_id=? AND status='active'",
                                     (persona, etapa["app_id"]))
         return str(contas[0]["id"]) if len(contas) == 1 else None
+
+    def _pergunta_de_outro_canal(self, aviso: Aviso, data: dict[str, object] | None) -> bool:
+        """31.279 (ADR-086): a pergunta da execução (`run.needs_input`) e o objetivo parado esperando pessoa
+        (`objective.waiting_user`) vão só ao canal de ORIGEM do comando. Este é o Telegram: o aviso só sai se o comando veio
+        de lá (`telegram:` na chave). Comando do painel pergunta no painel; do Trello, no Trello (o espelho). A execução do
+        sistema também não passa (canal `None`), mesmo que `_e_de_prova` não a pegue. A que nasceu de um pedido persistente
+        segue avisando, como antes: o canal dela é o do pedido. A aprovação NÃO é pergunta: segue o canal de aprovação.
+        Sem execução achada, ou com falha na consulta, o aviso segue (o dono nunca perde um de pessoa)."""
+        if aviso.tipo not in ("run.needs_input", "objective.waiting_user"):
+            return False
+        d = data or {}
+        filho = d.get("run") if aviso.tipo == "run.needs_input" else d.get("objective")
+        run_id = filho.get("id" if aviso.tipo == "run.needs_input" else "run_id") if isinstance(filho, dict) else None
+        if not isinstance(run_id, str) or not run_id:
+            return False
+        try:
+            linha = self.fila.db.one("SELECT prova_fluxo_id, idempotency_key, pedido_id FROM runs WHERE id=?", (run_id,))
+        except Exception:  # noqa: BLE001 - na dúvida, avisa
+            log.exception("avisos: não foi possível conferir o canal de origem da execução %s", run_id)
+            return False
+        if linha is None or linha["pedido_id"]:
+            return False
+        return canal_da_pergunta(linha["prova_fluxo_id"], linha["idempotency_key"]) != "telegram"
 
     def _e_de_persona_de_teste(self, kind: str, data: dict[str, object] | None) -> bool:
         """31.314: o fato é SÓ de persona de teste? Então o dono não é avisado (a persona de teste existe para provar o produto,

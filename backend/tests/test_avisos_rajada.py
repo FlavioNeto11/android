@@ -251,7 +251,8 @@ def test_execucao_de_lote_nao_vira_aviso_e_a_do_dono_vira(tmp_path: Path) -> Non
     assert needs("rl") is False, "a execução do lote de frente avisou o dono"
     # A aprovação que o lote abre SEGUE avisando: só o dono decide (orquestradora, 04/10 01:20Z).
     assert servico.enfileirar_evento("approval.pending", {"approval": {"id": "ap-l", "run_id": "rl"}}, 2) is True
-    assert needs("rt") is True and needs("rp") is True, "pedido de pessoa (Telegram ou painel) segue avisando"
+    assert needs("rt") is True, "pedido de pessoa pelo Telegram segue avisando"
+    assert needs("rp") is False, "31.279 (ADR-086): a pergunta de um comando do painel fica no painel, não vai ao Telegram"
 
 
 def test_o_link_do_agrupado_e_o_da_caixa_mesmo_sem_link_na_primeira_linha(tmp_path: Path) -> None:

@@ -15,12 +15,15 @@ O autor de tudo isto é o operador do ContextVar (`telegram:dono`), que o servi�
 """
 from __future__ import annotations
 
+import copy
 import logging
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Literal
 
 from pydantic import ValidationError
 
 from app.contracts import persona_de_teste
+from app.contracts.origem import canal_da_pergunta
 from app.db import Database, loads
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
 from app.modules.avisos.application.entrada import casar_ref
@@ -110,6 +113,33 @@ def sha_da_imagem_na_porta(db: Database, run_id: str, step_id: str) -> str | Non
 
 
 class PortasReais:
+    #: 31.279 (ADR-086): o canal por onde esta vista da central fala com o dono. `None` = a central inteira (testes, painel);
+    #: `para("telegram")` e `para("trello")` só enxergam as perguntas cujo comando veio daquele canal.
+    _canal: Literal["telegram", "trello"] | None = None
+
+    def para(self, canal: Literal["telegram", "trello"]) -> PortasReais:
+        """A MESMA central vista por um canal (31.279, ADR-086): a pergunta de uma execução só aparece, e só se responde, no
+        canal de ORIGEM do comando. A execução do sistema (validação, avaliação, lote, ensaio, operação) não aparece em
+        nenhum: quem a disparou responde pelo painel ou cancela. Cópia rasa: serviços e banco são os mesmos."""
+        vista = copy.copy(self)
+        vista._canal = canal
+        return vista
+
+    def _perguntas(self, limite: int) -> Sequence[Mapping[str, object]]:
+        """As execuções `needs_input` que ESTE canal enxerga, da mais nova à mais antiga. A que nasceu de um pedido
+        persistente (`pedido_id`) segue em todos os canais, como antes: a origem dela é o pedido, e o aviso do pedido é
+        quem decide o canal."""
+        linhas = self.db.query(
+            "SELECT id, status_detail, prova_fluxo_id, idempotency_key, pedido_id FROM runs WHERE status='needs_input'"
+            f" AND NOT ({self._RUN_SO_DE_TESTE}) ORDER BY created_at DESC LIMIT 400")
+        achadas = []
+        for r in linhas:
+            canal = canal_da_pergunta(r["prova_fluxo_id"], r["idempotency_key"])
+            if canal is None or not (self._canal is None or r["pedido_id"] or canal == self._canal):
+                continue
+            achadas.append(r)
+        return achadas[:limite]
+
     def __init__(self, *, db: Database, runs: RunService, aprovacoes: ApprovalService, saude: Callable[[], Health],
                  online: Callable[[], list[str]],
                  capturar: Callable[[str], Awaitable[tuple[bytes | None, str | None]]] | None = None,
@@ -203,9 +233,7 @@ class PortasReais:
                         " WHERE o.run_id = runs.id AND " + persona_de_teste.sem_teste("p") + ")")
 
     def execucoes_esperando(self) -> list[str]:
-        return [str(r["id"]) for r in self.db.query(
-            f"SELECT id FROM runs WHERE status='needs_input' AND NOT ({self._RUN_SO_DE_TESTE})"
-            " ORDER BY created_at DESC LIMIT 200")]
+        return [str(r["id"]) for r in self._perguntas(200)]
 
     def pendencias(self) -> list[Pendencia]:
         de_teste = {str(r["id"]) for r in self.db.query(persona_de_teste.SQL_IDS)}
@@ -213,8 +241,7 @@ class PortasReais:
                  for a in self.aprovacoes.list(status="pending", limit=50)
                  if str(a.get("profile_id") or "") not in de_teste]
         itens += [Pendencia("pergunta", str(r["id"]), str(r["status_detail"] or "a execução espera uma resposta"))
-                  for r in self.db.query("SELECT id, status_detail FROM runs WHERE status='needs_input'"
-                                         f" AND NOT ({self._RUN_SO_DE_TESTE}) ORDER BY created_at DESC LIMIT 50")]
+                  for r in self._perguntas(50)]
         return itens
 
     def online(self) -> list[str]:
@@ -385,6 +412,11 @@ class PortasReais:
         row = self.runs.repo.run_row(run_id)
         if row is None:
             raise RecusaDaCentral("Execução não encontrada.")
+        if canal_da_pergunta(row["prova_fluxo_id"], row["idempotency_key"]) is None:
+            # ADR-086: a execução do sistema (validação, avaliação, lote, ensaio, operação) nunca vira sucessora por
+            # resposta do dono num canal; quem a disparou responde pelo painel (ou cancela) na hora.
+            raise RecusaDaCentral("Esta execução é de validação ou avaliação: quem a disparou responde pelo painel ou a "
+                                  "cancela. Não há resposta por aqui.")
         modo = "plan" if row["mode"] == "plan" else "execute"
         comando = f"{row['command']}\n{texto}"
         try:

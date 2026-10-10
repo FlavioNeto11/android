@@ -5899,7 +5899,7 @@ respeita o teto de emuladores por host (29.33). Prova: `not_run` até o 31.274 p
 
 ## ADR-086 — Pergunta de execução vai a quem mandou o comando; validação nunca pergunta ao dono
 
-**Data:** 07/10/2026 · **Estado:** aceito; implementação pendente (31.279, Jev). Decisão do dono pelo Telegram, literal:
+**Data:** 07/10/2026 · **Estado:** aceito; implementado no ramo `feat/31-279-pergunta-so-ao-canal-de-origem` (31.279, Jev, 10/10/2026; `simulated`, `real` `not_run`). Decisão do dono pelo Telegram, literal:
 21:13Z "isso não deveria ter parado comigo" e 22:54Z "esse tipo de pergunta não é pra chegar pra mim", as duas em
 resposta a avisos de execuções da bateria de validação de provedor (§ 31 de `docs/relatorio-validacao.md`) no
 aparelho de QA.
@@ -5916,8 +5916,9 @@ dono, e a resposta dele no Telegram ainda criou uma execução sucessora.
   dono, nunca cria sucessora a partir de resposta dele, e quem a dispara responde ou cancela na hora.
 - Complementa o ADR-085: o que a automação pode resolver sozinha não para com ninguém.
 
-**Consequências.** O harness de avaliação responde ou pula os casos que pedem entrada. Prova: `not_run` até o
-31.279.
+**Consequências.** O harness de avaliação responde ou pula os casos que pedem entrada (`scripts/eval_run.py` cancela o caso que
+terminou em `needs_input`). Prova: `simulated` no 31.279 (`tests/test_pergunta_so_ao_canal_de_origem.py`); `real` e PostgreSQL:
+`not_run`. Limite: a execução de um pedido persistente aparece nos dois canais, porque o pedido não guarda o canal de origem.
 
 ## ADR-087 — Conta planejada: persona, conta externa, credencial e sessão observada são quatro coisas
 
