@@ -34,7 +34,9 @@ CONSULTA = ("SELECT data FROM events WHERE kind='instance.updated' AND instance_
 
 def _indices(db: db_mod.Database, tabela: str = "events") -> set[str]:
     if db.dialect == "postgres":
-        return {str(r["indexname"]) for r in db.query("SELECT indexname FROM pg_indexes WHERE tablename=?", (tabela,))}
+        # O esquema do teste (cada teste migra o seu): sem filtrar, os índices dos esquemas dos outros workers entram.
+        return {str(r["indexname"]) for r in db.query(
+            "SELECT indexname FROM pg_indexes WHERE tablename=? AND schemaname=current_schema()", (tabela,))}
     return {str(r["name"]) for r in db.query(f"PRAGMA index_list({tabela})")}
 
 

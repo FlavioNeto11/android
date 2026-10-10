@@ -37,8 +37,12 @@ def _comando(harness, *, cid: str = "c-teste-rede-1", acao: str = "verificar", r
 def _rede(harness, *, iid: str = "android-03", applied: int | None = 1, desired: int = 1,
           state: str = "trafego_verificado", verificado: str | None = DEPOIS) -> None:
     harness.state.db.execute(
-        "INSERT OR REPLACE INTO device_network(instance_id, policy, desired_rev, applied_rev, state, verified_at, "
-        "updated_at) VALUES (?, 'livre', ?, ?, ?, ?, '2026-10-10T00:00:00.000Z')",
+        # Upsert portável (SQLite e PostgreSQL); `INSERT OR REPLACE` só existe no SQLite.
+        "INSERT INTO device_network(instance_id, policy, desired_rev, applied_rev, state, verified_at, "
+        "updated_at) VALUES (?, 'livre', ?, ?, ?, ?, '2026-10-10T00:00:00.000Z') "
+        "ON CONFLICT(instance_id) DO UPDATE SET policy=excluded.policy, desired_rev=excluded.desired_rev, "
+        "applied_rev=excluded.applied_rev, state=excluded.state, verified_at=excluded.verified_at, "
+        "updated_at=excluded.updated_at",
         (iid, desired, applied, state, verificado))
 
 
