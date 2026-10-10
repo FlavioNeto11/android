@@ -59,6 +59,8 @@ CONNECT_TIMEOUT_S = 5
 
 #: Uma linha do banco. `dict` de propósito: é o que os dois drivers entregam e o que o resto do código já usava.
 Row = dict[str, Any]
+#: A conexão do dialeto de agora (`sqlite3.Connection` ou `psycopg.Connection`): o que a thread guarda em `_Fio`.
+_Conexao = Any
 
 #: Diferenças de DDL entre os dialetos. Ficam aqui, e não espalhadas pelas migrações.
 _DIALETO: dict[str, dict[str, str]] = {
@@ -161,7 +163,7 @@ class _Fio:
 
     __slots__ = ("conn", "tx_depth", "suspeita", "depois", "escrita_n", "quem", "__weakref__")
 
-    def __init__(self, conn: Any) -> None:
+    def __init__(self, conn: _Conexao) -> None:
         self.conn = conn
         self.tx_depth = 0
         self.suspeita = False
@@ -240,11 +242,11 @@ class Database:
     # Os abaixo eram atributos da instância; os testes (`_ConexaoFragil`, `ConexaoQueAbortaComoOPostgres`) e o `test_operacoes` os
     # leem e trocam, então seguem existindo, agora como a conexão e o estado da THREAD ATUAL.
     @property
-    def _conn(self) -> Any:
+    def _conn(self) -> _Conexao:
         return self._fio().conn
 
     @_conn.setter
-    def _conn(self, valor: Any) -> None:
+    def _conn(self, valor: _Conexao) -> None:
         self._fio().conn = valor
 
     @property
