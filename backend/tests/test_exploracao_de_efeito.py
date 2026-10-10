@@ -56,7 +56,7 @@ def test_sinonimos_de_efeito_dao_a_mesma_chave_canonica(pedido: str, chave: str 
 
 def test_o_nome_e_o_valor_nao_entram_na_chave_do_efeito() -> None:
     e = ex.classificar("enviar para joao.silva123 o boleto 4455 por e-mail")
-    assert e.chave == "explorar_enviar_mail" and ex.chaves_da_politica(e.chave) == ("explorar_enviar_mail", "explorar_efeito")
+    assert e.chave == "explorar_enviar_mail" and ex.chaves_da_politica(e.chave) == ("explorar_enviar_mail", "explorar_enviar", "explorar_efeito")
     sem_objeto = ex.classificar("enviar para o zunzum")
     assert sem_objeto.chave.startswith("explorar_enviar_") and sem_objeto.chave.isalpha() is False
     assert not ex.chave_de_politica_valida(sem_objeto.chave)           # o sufixo de letras o dono não sabe: para isso há a genérica
