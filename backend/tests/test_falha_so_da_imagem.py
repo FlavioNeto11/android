@@ -293,11 +293,11 @@ async def test_evidencia_da_captura_que_falhou_nao_diz_tela_sensivel(
                 or "(captura da tela falhou)" in r["note"]), r["note"]
 
 
-async def test_tardia_que_devolve_none_segue_tela_sensivel_no_caminho_policy(
+async def test_tardia_que_devolve_none_vira_imagem_ausente_no_caminho_policy(
         harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Leitura do delta do 31.76: `imagem_tardia` devolve `None` quando a tela é (ou pode ser) sensível, ou a geração
-    trocou. No caminho `policy` (observação só de árvore), esse `None` segue "tela sensível" com `redacted`, como antes
-    do 31.76; não vira "imagem ausente"."""
+    """Leitura do delta do 31.76, ajustada ao ADR-089 (a plataforma não esconde tela de ninguém): `imagem_tardia` devolve
+    `None` quando a geração trocou. No caminho `policy` (observação só de árvore), esse `None` vira "imagem ausente",
+    SEM evidência de "tela sensível" e SEM `redacted` por sensibilidade; a evidência sem imagem não guarda arquivo."""
     from app.devices.manager import DeviceManager
 
     async def tardia_none(self: Any, rt: Any, *, timeout: float) -> None:
@@ -313,9 +313,9 @@ async def test_tardia_que_devolve_none_segue_tela_sensivel_no_caminho_policy(
     await harness.wait_run(run.id, timeout=90)
     assert harness.state is not None
     linhas = harness.state.db.query("SELECT note, path, redacted FROM evidence WHERE run_id=? ORDER BY id", (run.id,))
-    sensiveis = [r for r in linhas if "tela sensível" in (r["note"] or "")]
-    assert sensiveis and all(r["redacted"] and not r["path"] for r in sensiveis), [r["note"] for r in linhas]
-    assert not [r["note"] for r in linhas if "(imagem ausente)" in (r["note"] or "")]
+    assert not [r["note"] for r in linhas if "tela sensível" in (r["note"] or "")], [r["note"] for r in linhas]
+    ausentes = [r for r in linhas if "(imagem ausente)" in (r["note"] or "")]
+    assert ausentes and all(not r["redacted"] and not r["path"] for r in ausentes), [r["note"] for r in linhas]
 
 
 async def test_ator_pede_a_imagem_e_a_captura_falha_uma_vez_segue_pela_arvore(

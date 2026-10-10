@@ -350,6 +350,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   trilha sem endereço nem senha, consumidores) e 803 testes dirigidos de contas, sessão, ponte, rotas, catracas verdes. `test_arquitetura.py`
   estava com 2 falhas que já vinham da main (egresso/ponte) e passou a verde no rebase sobre o 31.292; no rebase de 10/10 só a catraca de `profile_id` pediu ajuste (`handle_ocupado` declarado global) e `test_ordem_das_rotas` segue vermelho na main pela rota `PUT /api/network/profiles/{profile_id}` do 31.301. `real`: `not_run` (a validação ponta a ponta com provedor simulado é o 31.284).
 
+## 2026-10-10 — 31.309: três testes da PG inteira consertados, sem enfraquecer (só teste)
+
+- `test_perfil_esforco_e_dieta::test_estavel_nao_depende_da_observacao` deixou de passar `sensitive=` ao `ScreenInput` (campo removido no ADR-089).
+- `test_falha_so_da_imagem::test_tardia_que_devolve_none_vira_imagem_ausente_no_caminho_policy` (renomeado) afirma o contrato do ADR-089: sem nota de
+  "tela sensível", com "(imagem ausente)", sem `redacted` e sem arquivo.
+- `test_backup::test_teto_mantem_dez_copias_de_deploy_e_nao_toca_nas_outras` conta as pastas por exclusão das três fixas, não pelo prefixo `2026100`
+  (o backup novo leva a data de hoje; o teste falhava desde 10/10). Origem: PG inteira de 10/10 (ba3653ea), 5 failed + 1 error; os outros 3 foram flakes (K-112).
+- Prova **simulated**: `tests/test_backup.py`, `tests/test_falha_so_da_imagem.py` e `tests/test_perfil_esforco_e_dieta.py` (43 passed, SQLite, 10/10).
+
 ## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
 
 - O motor de sessão (`integrations/app_declarado/sessao.py`) lê o código mais novo da caixa da conta (porta

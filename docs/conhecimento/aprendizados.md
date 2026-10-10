@@ -2931,3 +2931,18 @@ espera foi 29 ms.
 **Aplicabilidade.** Vigente. Consulta com `IS NULL` em coluna indexada no SQLite não ganha de índice parcial; confira o plano com `EXPLAIN QUERY PLAN` na
 cópia do banco (`sqlite3.backup`) antes de pedir migração. Outros pontos que travaram o laço no mesmo lock (`active_runs`, `run_detail`, `validations_of`
 nas pilhas de 07/10 e 09/10) não foram tratados aqui: o `Database` chama o banco direto do laço de eventos por desenho.
+
+### K-112 — Suíte de uma hora: testes que leem o HEAD do checkout e a porta efêmera do Windows geram falha que passa solta
+
+**Data:** 10/10/2026 · **Área:** Android (funil de testes), PG inteira
+
+**O que aconteceu.** Na PG inteira de 10/10 (ba3653ea, `-n 6`, 1 h 02 min) três falhas passaram quando reexecutadas soltas: dois testes
+(`test_backup.py::test_commit_em_execucao_sai_do_git_sem_chamar_git` e `test_instalacao_do_worker.py::test_o_agente_declara_a_versao_derivada_e_nao_uma_constante`)
+compararam o HEAD do checkout com um valor lido antes, e o HEAD andou durante a hora (outras sessões fizeram pull); e um erro de setup
+(`psycopg.OperationalError ... Address already in use (10048)` na porta 55433 do `farm-pg`) veio de esgotamento de porta efêmera do Windows com milhares de conexões curtas.
+
+**Mitigação sugerida (sem código aqui).** Teste que depende do HEAD lê o commit UMA vez por teste (ou fixa o commit por fixture) e não compara com um valor
+guardado fora dele. No PG, reutilizar conexão (pool por worker do xdist) ou ampliar o intervalo de portas dinâmicas do host (`MaxUserPort`/`netsh int ipv4 set dynamicport tcp`),
+o que mexe no sistema e pede o sim do dono. Reexecute solto o teste que falhou antes de declará-lo defeito; ele só vale como defeito se falhar de novo.
+
+**Aplicabilidade.** Vigente em 10/10/2026 (sem correção de código). Não confundir com os três defeitos reais da mesma corrida, tratados no 31.309.

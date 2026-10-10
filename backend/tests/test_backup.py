@@ -200,7 +200,8 @@ def test_teto_mantem_dez_copias_de_deploy_e_nao_toca_nas_outras(tmp_path: Path) 
     saida = rodar()
     assert saida.count("removido (teto") == 5
     ficaram = sorted(p.name for p in destino.iterdir() if p.is_dir())
-    contadas = [n for n in ficaram if n.startswith("2026100")]
+    fixas = {"20260801-000000", "20260802-000000", "20260803-000000-antes-ra20b"}   # diária, manual e nome à mão
+    contadas = [n for n in ficaram if n not in fixas]       # as demais levam a data de HOJE (não de 01/10)
     assert len(contadas) == 10
     assert contadas[:8] == [f"20261001-0000{i:02d}" for i in range(4, 12)] and nova in contadas
     assert "20260901-000001" not in ficaram and "20260901-000002" not in ficaram

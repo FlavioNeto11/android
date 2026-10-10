@@ -148,7 +148,7 @@ def test_estavel_nao_depende_da_observacao() -> None:
     """O 2º ponto de cache só paga se o bloco estável é igual entre as decisões da tentativa."""
     a = prompts.actor_user_partes(DecisionRequest(ctx=ctx(), screen=SCREEN, history=[]))
     outra_tela = type(SCREEN)(width=720, height=1280, jpeg=None, elements=["e9 | Text | text=\"Outra\""],
-                              package="com.outro", sensitive=False)
+                              package="com.outro")
     b = prompts.actor_user_partes(DecisionRequest(ctx=ctx(), screen=outra_tela, history=["a", "b"]))
     assert a[0] == b[0] and a[1] != b[1]
 
