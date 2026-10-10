@@ -788,7 +788,8 @@ class Repository:
             resultado = ("parou_no_teto" if detail and "Teto da exploração" in detail
                          else _DESFECHO_DA_EXPLORACAO[alvo])
             self.bus.emit("exploracao.concluida", f"Exploração {resultado.replace('_', ' ')}.", run_id=row["run_id"],
-                          data={"run_id": row["run_id"], "step_id": row["id"], "resultado": resultado})
+                          data={"run_id": row["run_id"], "step_id": row["id"], "resultado": resultado,
+                                "com_efeito": bool(_col(row, "side_effect"))})
         except Exception:  # noqa: BLE001
             log.exception("exploração %s: evento de fim não emitido", row["id"])
 

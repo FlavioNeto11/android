@@ -42,12 +42,13 @@ from pathlib import Path
 
 AQUI = Path(__file__).resolve().parent
 sys.path.insert(0, str(AQUI))
+import modelo_de_foco as MF  # noqa: E402
 
 # a chave e o token do Trello ficam no checkout central; o worktree não os tem (lidos por EnvSettings, nunca impressos)
 BACKEND_CENTRAL = Path(r"C:\git\android\backend")
 RAIZ_CENTRAL = BACKEND_CENTRAL.parent
 
-LISTA_PROXIMAS = "6ac13b17a670feab8e9d3f4c"
+LISTA_PROXIMAS = MF.POS_PROXIMAS          # posição lógica: EM CURSO com a etiqueta "Estado · Próximas"
 QUADROS = ("6ac13aeda5570365d020f8e2",   # Execução
            "6ac13aeffc0ac80f9dc4edb3",   # Programa
            "6ac13af1b3229189f1741536")   # Histórico
@@ -223,7 +224,8 @@ def _novo_cliente():  # noqa: ANN202 - o tipo vem do backend do central
     from app.config import EnvSettings  # noqa: PLC0415 - só no modo de rede
     from app.modules.avisos.adapters.trello import ClienteTrello  # noqa: PLC0415
     e = EnvSettings()
-    return ClienteTrello(e.trello_api_key.get_secret_value().strip(), e.trello_token.get_secret_value().strip())
+    return MF.ClienteDePosicoes(ClienteTrello(e.trello_api_key.get_secret_value().strip(),
+                                              e.trello_token.get_secret_value().strip()))
 
 
 async def nomes_dos_cartoes_abertos(cl) -> list[str]:  # noqa: ANN001

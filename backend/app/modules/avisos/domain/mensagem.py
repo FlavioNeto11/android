@@ -108,6 +108,9 @@ NIVEL_POR_TIPO: dict[str, int] = {
     # sai na hora (`NA_HORA_SEM_PEDIR`): quem mandou o pedido quer saber que a IA foi explorar e quanto custou.
     "exploracao.iniciada": ROTINA,
     "exploracao.concluida": ROTINA,
+    # 31.297 (ADR-091): a porta liberou uma exploração COM EFEITO (política, grupo sem aprovação ou o sim do dono). Notícia,
+    # sai na hora: o efeito é em conta real e quem configurou a política quer saber que ele aconteceu.
+    "exploracao.efeito_liberado": ROTINA,
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
 PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado", "portal.resumo", "portal.borda",
@@ -119,7 +122,7 @@ PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado"
 PREFIXO_DE_LOTE = "pedido.lote."
 LOTE_NA_HORA = frozenset({"aprovacao_pendente", "ocorrencia_incerta"})
 #: Notícias que não pedem o dono mas saem na hora, não na janela da rotina (31.298: a exploração começou/terminou).
-NA_HORA_SEM_PEDIR = frozenset({"exploracao.iniciada", "exploracao.concluida"})
+NA_HORA_SEM_PEDIR = frozenset({"exploracao.iniciada", "exploracao.concluida", "exploracao.efeito_liberado"})
 #: Os tipos que esperam a janela, para a fila separá-los já na consulta (a entrega é do tipo).
 TIPOS_DA_JANELA: frozenset[str] = frozenset(t for t, n in NIVEL_POR_TIPO.items() if n != PRECISA_DE_VOCE
                                             and t not in PARARAM_ALGO and t not in NA_HORA_SEM_PEDIR)
@@ -148,6 +151,7 @@ ROTULOS: dict[str, str] = {
     "operacao.encerrada": "Uma operação foi encerrada",
     "exploracao.iniciada": "A IA foi explorar um app fora do catálogo",
     "exploracao.concluida": "Uma exploração fora do catálogo terminou",
+    "exploracao.efeito_liberado": "A porta liberou uma exploração com efeito",
     "learning.ensinado_rebaixado": "Algo que você ensinou foi rebaixado",
     "learning.ensinado_sem_receita": "Algo que você ensinou caiu, e a etapa ficou sem receita",
 }
@@ -674,6 +678,27 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         assunto, linhas = _da_operacao(_texto(d.get("status")) or "", _filho(d, "capacidade"), _filho(d, "custo"),
                                        nomes, redigir)
         link = link_da_tela(url_painel, "#/operacoes")
+    elif kind == "exploracao.efeito_liberado":
+        # 31.297: só ids e códigos fechados (a chave da exploração é vocabulário fechado ou o sufixo de letras; nunca o pedido).
+        d = dados or {}
+        ident = _id_valido(ID_DE_EXECUCAO, d.get("run_id"))
+        chave_da_acao = _texto(d.get("chave"))
+        if ident is None or chave_da_acao is None or not _CHAVE_DE_CATALOGO.match(chave_da_acao):
+            return None
+        tipo = kind
+        chave = chave_do_fato("exploracao", ident, "efeito", chave_da_acao)
+        link = link_da_tela(url_painel, f"#/execucoes/{ident}")
+        origem = {"own": "a política do perfil", "group": "a política do grupo", "default": "o padrão (aprovação)"
+                  }.get(_texto(d.get("origem")) or "", "a política")
+        assunto = "⚠️ Exploração com efeito liberada"
+        if d.get("aprovada"):
+            como = "Você aprovou: a IA vai fazer pela tela o que o pedido mandou."
+        elif d.get("dispensada_pelo_grupo"):
+            como = "A persona está no grupo sem aprovação: a IA vai fazer pela tela o que o pedido mandou, sem pedir o sim."
+        else:
+            como = f"Pela {origem}, a IA vai fazer pela tela o que o pedido mandou, sem pedir o sim."
+        linhas = [como, "É um efeito de verdade na conta; a IA não digita senha. Aviso ao concluir.",
+                  "Para voltar a pedir aprovação, mude a política `explorar_efeito` do perfil ou do grupo."]
     elif kind in ("exploracao.iniciada", "exploracao.concluida"):
         # 31.298: só ids, contagens e dinheiro. Nem o pedido, nem a chave da etapa, nem nome de persona ou handle. A
         # exploração que só reaproveitou a receita descoberta (nenhum app novo) não avisa o início: não custa IA.
@@ -689,10 +714,12 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
                 return None
             tetos = _filho(d, "tetos")
             assunto = "🧭 Explorando um app fora do catálogo"
+            com_efeito = d.get("com_efeito") is True
             linhas = ["O catálogo do app não tem essa ação, então a IA vai descobrir como fazer pela tela.",
                       f"Tetos: {_inteiro(tetos.get('acoes'))} ações, {_inteiro(tetos.get('chamadas_ia'))} chamadas de IA e "
                       f"{_dolar(_numero(tetos.get('usd')) or 0.0)}.",
-                      "Só leitura e navegação: nada é alterado. Aviso ao concluir."]
+                      ("Tem etapa COM efeito: ela só age depois que a política do perfil libera (por padrão, pede o seu sim)."
+                       if com_efeito else "Só leitura e navegação: nada é alterado.") + " Aviso ao concluir."]
         else:
             resultado = _texto(d.get("resultado")) or ""
             assunto = {"concluida": "✅ Exploração concluída", "parou_no_teto": "⚠️ A exploração parou no teto",
@@ -711,7 +738,8 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
                 linhas.append("Dá para ensinar o caminho na execução (Ensinar a corrigir): ensinado uma vez, serve a todas as personas.")
             elif resultado == "concluida":
                 linhas.append("O que a IA descobriu vira receita candidata e, provada, passa a valer sem IA.")
-            linhas.append("Só leitura e navegação: nada foi alterado.")
+            linhas.append("Houve etapa com efeito: confira na execução o que foi feito."
+                          if d.get("com_efeito") is True else "Só leitura e navegação: nada foi alterado.")
     else:
         return None
     return Aviso(chave=chave, tipo=tipo, titulo=titulo_do_aviso(assunto), corpo="\n".join(linhas), link=link,
@@ -736,6 +764,7 @@ ROTULOS_AGRUPADOS: dict[str, str] = {
     "operacao.encerrada": "{n} operações foram encerradas",
     "exploracao.iniciada": "{n} explorações começaram",
     "exploracao.concluida": "{n} explorações terminaram",
+    "exploracao.efeito_liberado": "{n} explorações com efeito foram liberadas",
     "learning.ensinado_rebaixado": "{n} coisas que você ensinou foram rebaixadas",
     "learning.ensinado_sem_receita": "{n} coisas que você ensinou caíram, e as etapas ficaram sem receita",
     "pendencia.vence_em": "{n} pendências vencem nas próximas 2 h",

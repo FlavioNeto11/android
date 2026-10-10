@@ -12,6 +12,7 @@ from typing import Any, Callable
 from ..db import loads
 from ..models import InteractionStatus, InteractionType
 from ..planning.capabilities import Capability
+from ..planning.exploracao import chaves_da_politica
 from ..modules.applications.infrastructure.registry import pacote_ancora
 from .repository import SocialRepository
 
@@ -117,16 +118,22 @@ class PolicyEngine:
             return {}
         return {"capabilities": loads(grupo["capabilities"], {}) or {}, "limits": loads(grupo["limits"], {}) or {}}
 
+    def _escolha(self, camada: Mapping[str, object], cap: Capability, package: str | None) -> str | None:
+        """A política que a camada (perfil ou grupo) escolheu para a ação. 31.297: a exploração de efeito tem duas chaves, a
+        do pedido e a genérica `explorar_efeito`; a mais específica vence. Ação do catálogo tem uma chave só."""
+        do_app = politicas_do_app(camada.get("capabilities"), package)
+        return next((str(do_app[k]) for k in chaves_da_politica(cap.key) if _valida(do_app.get(k))), None)
+
     def origin_for(self, profile_id: str, cap: Capability, package: str | None = None) -> str:
-        if _valida(politicas_do_app(self._own(profile_id).get("capabilities"), package).get(cap.key)):
+        if _valida(self._escolha(self._own(profile_id), cap, package)):
             return "own"
-        if _valida(politicas_do_app(self._group(profile_id).get("capabilities"), package).get(cap.key)):
+        if _valida(self._escolha(self._group(profile_id), cap, package)):
             return "group"
         return "default"
 
     def policy_for(self, profile_id: str, cap: Capability, package: str | None = None) -> str:
         for camada in (self._own(profile_id), self._group(profile_id)):
-            escolhido = politicas_do_app(camada.get("capabilities"), package).get(cap.key)
+            escolhido = self._escolha(camada, cap, package)
             if _valida(escolhido):
                 return escolhido
         return cap.default_policy

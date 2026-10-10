@@ -257,7 +257,7 @@ def test_secao_com_verificacao_nao_lida_nunca_diz_nada_fora_do_lugar() -> None:
     assert "nada fora do lugar" not in A.secao_do_resumo(sem_plano) and "não consegui ler o plano (sem cartão)" in A.secao_do_resumo(sem_plano)
     com_achado = _res(duplicados=1)
     com_achado["verificacoes"]["concluido_fora"] = None
-    assert A.secao_do_resumo(com_achado).endswith("1 achado (duplicados 1); sem leitura de concluídos fora de Concluído.")
+    assert A.secao_do_resumo(com_achado).endswith("1 achado (duplicados 1); sem leitura de concluídos fora do FEITO.")
 
 
 def test_secao_e_uma_linha_so_e_sem_contato() -> None:

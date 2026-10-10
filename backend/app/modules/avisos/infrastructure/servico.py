@@ -66,7 +66,7 @@ KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_
                               # 28.62: o fim da operação com N agentes (rotina, um aviso por operação).
                               "operacao.encerrada",
                               # 31.298: a exploração fora do catálogo começou / terminou (só ids, contagens e US$).
-                              "exploracao.iniciada", "exploracao.concluida"})
+                              "exploracao.iniciada", "exploracao.concluida", "exploracao.efeito_liberado"})
 #: De quanto em quanto tempo o laço varre incertos, vencidos e purga (a entrega roda a cada volta).
 FAXINA_S = 3600.0
 #: De quanto em quanto tempo, com o canal desligado, vencem os contatos do site pendentes (28.32).

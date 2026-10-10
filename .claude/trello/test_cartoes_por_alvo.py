@@ -344,7 +344,7 @@ def test_ensaio_nao_grava_e_imprime_as_acoes():
     t = TrelloFalso()
     c, saida = ciclo(t, [op4()], aplicar=False)
     assert t.cartoes == {} and t.chamadas == [] and len(c.plano.acoes) == 4
-    assert saida[0].startswith("  criaria: Prova 07/10 · P01 · resposta gerada (op-abc123) -> Em execução")
+    assert saida[0].startswith("  criaria: Prova 07/10 · P01 · resposta gerada (op-abc123) -> EM CURSO · Em execução")
     assert saida[-1].startswith("operações 1 (encerradas 0); alvos 4; criar 4; atualizar 0; movidos 0;")
 
 

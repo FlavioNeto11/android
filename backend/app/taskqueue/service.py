@@ -1350,8 +1350,8 @@ class RunService:
         por_id = {a.id: a for a in apps if a.id}
         recusadas: dict[str, dict[str, object]] = {}
         for passo in plan.steps:
-            if not passo.side_effect:
-                continue
+            if not passo.side_effect or exploracao.e_exploracao_de_efeito(passo.key, passo.exploratoria, True):
+                continue         # a exploração de efeito (31.297) é julgada pela porta, pela política do perfil
             for inst in instances or ({},):
                 app_id = passo.app_id or plan.app_id or inst.get("app_id")
                 app = por_id.get(str(app_id)) if app_id else None
@@ -1489,14 +1489,16 @@ class RunService:
         """Item 31.273 (ADR-084): o pedido que nenhuma ação do catálogo cobre vira UMA etapa livre de exploração por
         pedido (`planning.exploracao`), de leitura e navegação, em vez de recusa. Devolve o plano com as etapas e sem
         `fora_do_catalogo`, ou o plano de volta (a recusa de sempre) quando: a exploração está desligada
-        (`exploracao_ligada`); algum pedido é de efeito externo (a porta 13.2 não é contornada); o app é desconhecido; ou o
+        (`exploracao_ligada`); algum pedido é de efeito externo e `exploracao_efeito_ligada` está desligada (31.297: ligada, a etapa
+        de efeito vai à porta 13.2 e à política do perfil, nunca por fora delas); o app é desconhecido; ou o
         teto do dia por app (`exploracao_max_por_dia`) acabou. Quando já há receita ativa descoberta para a mesma chave,
         a etapa é o molde dela (o executor a roda sem IA). Só ids, chaves e contagens vão à trilha e ao evento."""
         s = self.scheduler.get_settings()
         if not s.exploracao_ligada:
             return plan, None
         decididos = [(f, exploracao.classificar(f.pedido)) for f in plan.fora_do_catalogo]
-        if any(e.destino is exploracao.Destino.EFEITO or not f.app_id for f, e in decididos):
+        if any((e.destino is exploracao.Destino.EFEITO and (e.de_credencial or not s.exploracao_efeito_ligada))
+               or not f.app_id for f, e in decididos):
             return plan, None
         conhecidas: dict[tuple[str, str], etapas_ensinadas.EtapaEnsinada] = {}
         try:
@@ -1541,6 +1543,7 @@ class RunService:
                            data={"run_id": run_id, "etapas": chaves, "reaproveitadas": reaproveitadas,
                                  "app_ids": sorted({str(f.app_id) for f, e in decididos
                                                     if f.app_id and (f.app_id, e.chave) not in conhecidas}),
+                                 "com_efeito": any(p.side_effect for p in passos),
                                  "tetos": {"acoes": int(s.exploracao_max_acoes),
                                            "chamadas_ia": int(s.exploracao_max_chamadas_ia),
                                            "usd": float(s.exploracao_max_usd)}})

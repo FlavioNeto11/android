@@ -8502,3 +8502,30 @@ exploração real e o painel, que é do Portal).
     feito de propósito, por uma pessoa). O painel (Portal, 31.315) faz o selo e o filtro a partir do campo.
 
 **Prova:** `simulated` (`backend/tests/test_persona_de_teste.py`, 11 casos). `real`: `not_run`; PostgreSQL da 134: `not_run`.
+
+## Adendo v1.140 (10/10/2026; número tomado da fila de `.claude/reservas.md`; item 31.297, ADR-091) — a exploração de EFEITO pela política do perfil
+
+- **Interruptor novo `limits.exploracao_efeito_ligada`** (booleano, padrão `false`), lido ao vivo por `GET`/`PUT /api/settings` como os outros
+  `exploracao_*`. Desligado, o pedido de efeito segue recusado (`plan.refused`, `sem_acao_do_catalogo`) como no ADR-091 original. Ligado, o
+  pedido vira UMA etapa exploratória com `side_effect: true`, chave `explorar_<verbo>_<objeto…>` (vocabulário fechado, sinônimos num verbo só:
+  mandar/encaminhar → `enviar`, postar → `publicar`, excluir/remover → `apagar`, mudar/editar → `alterar`…) e a ordem de não digitar senha.
+- **A política do perfil e do grupo ganha duas chaves** em `capabilities` de `GET`/`PUT /api/instagram/profiles/{id}/policy` e dos grupos:
+  `explorar_efeito` (vale para toda exploração de efeito do app) e `explorar_<verbo de efeito>[_<objeto>…]` (a do pedido, que vence a genérica).
+  Valores: os de sempre (`autonomous`, `approval_required`, `manual_only`, `disabled`). Padrão sem escolha: `approval_required`. Qualquer outra
+  chave de exploração (leitura, objeto fora do vocabulário, o sufixo de letras de um pedido sem objeto) é recusada com `unknown_capability`
+  (400). Afrouxar abaixo do padrão deixa o aviso de sempre (ação de risco alto). Na resposta do `GET` as chaves aparecem em `capabilities`,
+  `defaults`, `origin`, `own` e `group` **só quando o perfil ou o grupo as escolheu**; sem escolha a resposta não muda.
+- **A porta 13.2 julga a etapa** (`GET /api/runs/{id}/porta` incluso): uma ação SINTÉTICA (risco alto, sem texto gerado) faz a etapa passar
+  por `policies.check` e pela aprovação como qualquer ação do catálogo. Sem perfil vinculado não passa. O teto `preparar` exige o sim. A etapa
+  de efeito escrita pelo modelo, sem a marca do sistema (campo `exploratoria` e chave `explorar_…`), segue recusada pela 13.2.
+- **Eventos:** `exploracao.iniciada` e `exploracao.concluida` ganham `data.com_efeito` (booleano); evento novo `exploracao.efeito_liberado`
+  (`data: {run_id, step_id, profile_id, chave, politica, origem: own|group|default, aprovada, dispensada_pelo_grupo}`), emitido quando a porta
+  libera (política autônoma, grupo sem aprovação ou o sim do dono). Vira aviso no Telegram, na hora, só com ids e códigos fechados.
+- **Nunca explora, nem com o interruptor ligado:** o pedido que mexe em credencial ou sessão, em QUALQUER posição e em qualquer forma (`entrar`/`entre`, `logar`/`login`/`logout`, `sair`/`saia`, `autenticar`/`autentique`, `cadastrar`/`cadastre`/`cadastro`, `registrar`, `inscrever`, `conectar`/`desconectar`, e as palavras `senha`, `password`, `credencial`, `token`, `2FA`/`MFA`/`OTP`; `entre` só como imperativo (logo antes de conta/app/perfil/senha/e-mail/usuário) e `código` só com verificação/confirmação/acesso/segurança/SMS/e-mail/enviado (nunca com cupom, barras, postal, rastreio…: "escolha entre as fotos" e "ler o código de barras" seguem leitura); mais "criar/adicionar/abrir/trocar/alternar conta"; lista única em `app/contracts/credencial_e_sessao.py`) segue recusado como antes (`sem_acao_do_catalogo`): credencial e sessão têm mecanismo próprio (ADR-040, ADR-087, `sessao.yaml`). Esses verbos também não têm chave de política. "Caixa de entrada" e "configurações da conta" seguem leitura.
+- **Fora da sintética (decisão do dono, não bug):** a ação sintética não tem balde de limite nem contraparte, então o limite diário, a coordenação de frota (ADR-083) e a regra "pessoa real sem conversa passa por aprovação" (30.62) NÃO se aplicam a ela; com `explorar_efeito: autonomous` o dono libera o efeito sem teto por dia. O padrão é aprovação. Dentro de cada camada a chave do pedido vence a genérica; a camada do perfil vence a do grupo inteira (a genérica do perfil vence a específica do grupo).
+- A chave do efeito leva palavras inteiras (no máximo 40 caracteres, sem cortar objeto no meio).
+- **O efeito descoberto nunca é oferecido a outra execução** (`molde_da_exploracao` devolve `None` para `side_effect`): a política julga de novo
+  cada vez.
+
+**Prova:** `simulated` (`backend/tests/test_exploracao_de_efeito.py`, 99 casos). `real`: `not_run` (efeito numa conta real; o dono liga o
+interruptor e escolhe a política).

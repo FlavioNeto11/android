@@ -2845,3 +2845,24 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
   chave `explorar_…` e seja oferecida pelo nome **não foi verificado**: `not_run`). Contrato: [v1.138](../api-contract.md#adendo-v1138-10102026-número-da-orquestradora-item-31312--a-exploração-que-parou-vira-pedido-de-ensino).
 - **Limite conhecido:** a receita `candidate` que a própria exploração deixou, se houver, não é retirada pelo ensino; o ensino da pessoa nasce
   ativo e a substitui pela regra de sempre (`test_ensino_da_pessoa_segue_nascendo_ativa_e_substitui_a_candidata`). O botão no painel é do Portal.
+
+## A exploração de EFEITO pela política do perfil (31.297, ADR-091)
+
+- **O que muda:** com `limits.exploracao_efeito_ligada` (desligado de fábrica) o pedido de efeito não é mais recusado: vira uma etapa
+  exploratória `side_effect` (`planning/exploracao.py`: `passo_da_exploracao` ramo de efeito), cuja ordem manda fazer SÓ o pedido e não digitar
+  senha (ADR-040). A chave é `explorar_<verbo canônico>_<objeto…>` (`_EFEITO_CANONICO`: sinônimos num verbo só) e é o que a política casa.
+- **A porta:** `gates.vereditos_da_porta` troca a falta de ação do catálogo pela `capability_da_exploracao` (sintética, risco alto, padrão
+  `approval_required`) quando a etapa é exploração de efeito montada pelo sistema (`e_exploracao_de_efeito`: marca `exploratoria`, `side_effect`
+  e prefixo `explorar_`). Daí em diante é o caminho de sempre: `PolicyEngine.check` (chave do pedido antes da genérica `explorar_efeito`, perfil
+  antes do grupo), aprovação, teto `preparar`; sem perfil não passa. Ao liberar a porta emite `exploracao.efeito_liberado`.
+- **Nunca explora:** `e_credencial` (lista única `FORMAS_DE_CREDENCIAL` em `app/contracts/credencial_e_sessao.py`; `Exploracao.de_credencial`) casa por CONJUNTO de formas (entrar/entre, logar/login/logout, sair/saia, autenticar, cadastrar/cadastre, registrar, inscrever, conectar/desconectar, senha, password, credencial, token, 2FA/MFA/OTP; "entre" só como imperativo antes de conta/app/perfil/senha/e-mail e "código" só com contexto de verificação/acesso/SMS/e-mail) em qualquer posição, e "criar/adicionar/abrir/trocar/alternar/mudar" logo antes de "conta"; vale também para o pedido que a classificação de efeito não pegaria ("fazer login", "redefinir a senha"). Seguem recusados com o interruptor ligado OU desligado (ADR-040, ADR-087; muda a recusa do 31.273, que antes deixava "fazer login" explorar em leitura) e não têm chave de política. "escolha entre as fotos", "aplicar o código do cupom" e "ler o código de barras" seguem exploráveis (casam por contexto, não sozinhos). "Caixa de entrada" e "configurações da conta" continuam leitura.
+- **Fora da sintética:** sem balde de limite nem contraparte, então limite diário, frota (ADR-083) e 30.62 não se aplicam; é do dono liberar. A chave do efeito leva palavras inteiras (sem cortar objeto no meio).
+- **O que NÃO muda:** a leitura exploratória segue livre; o efeito livre que o modelo escreve sem a marca do sistema segue recusado pela 13.2; a
+  receita de efeito descoberta não é oferecida a outras execuções (`molde_da_exploracao` devolve `None`); o executor mantém o caminho livre com
+  efeito (guarda do commit, não repetir, comprovar) e os tetos `exploracao_*`.
+- **Prova:** `simulated`, `backend/tests/test_exploracao_de_efeito.py` (99 casos: chave canônica, validação das chaves, política em dois níveis,
+  porta com aprovação/recusa/autonomia/grupo, planejamento ligado e desligado, aviso). `real`: `not_run`. Contrato: adendo v1.140 do
+  [api-contract](../api-contract.md).
+- **Limites conhecidos:** o aviso `exploracao.efeito_liberado` sai a cada passagem da porta pela mesma etapa (a chave de dedup colapsa no Telegram, mas `events` pode ganhar linhas repetidas); a receita candidata que a execução de efeito deixa, achada por `step_hash` em outra execução, não foi testada com `driven_by=recipe` (a porta roda antes do executor, então a política julga do mesmo jeito); o executor rodando a etapa de efeito contra aparelho real não foi exercido (só a porta e o planejamento); o painel (Portal)
+  ainda não tem linha para `explorar_efeito` em Política (aparece na resposta do `GET` só quando escolhida); a pergunta da aprovação mostra o
+  título da ação sintética, sem o pedido (que pode ter nome).
