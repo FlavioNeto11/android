@@ -127,12 +127,37 @@ def test_o_aviso_de_inicio_e_de_fim_dizem_que_ha_efeito() -> None:
     assert leitura is not None and "Só leitura e navegação: nada foi alterado" in leitura.corpo
 
 
-@pytest.mark.parametrize("pedido", ["entrar na conta", "fazer logout: sair da conta", "enviar e entrar na conta",
-                                    "cadastrar uma conta nova", "registrar um usuário", "logar com a senha"])
+# As frases que o modelo pode devolver além do infinitivo (achado da revisão da Jev): imperativo, substantivo, inglês, a senha em si.
+CREDENCIAL = ["entrar na conta", "fazer logout: sair da conta", "enviar e entrar na conta", "cadastrar uma conta nova",
+              "registrar um usuário", "logar com a senha", "fazer login no app", "entre na conta", "fazer logout",
+              "redefinir a senha", "cadastre-se no app", "autentique-se", "desconectar a conta", "inscrever-se", "login",
+              "digitar a senha", "alterar a senha", "criar uma conta nova", "adicionar conta", "abrir a conta",
+              "ver o código de verificação", "copiar o token"]
+LEITURA_PARECIDA = ["ver a caixa de entrada", "abrir as configurações da conta", "ver o perfil da conta", "listar as contas do app"]
+
+
+@pytest.mark.parametrize("pedido", CREDENCIAL)
 def test_credencial_e_sessao_nunca_exploram_nem_com_o_efeito_ligado(pedido: str) -> None:
     e = ex.classificar(pedido)
-    assert e.destino is ex.Destino.EFEITO and e.de_credencial
-    assert not ex.classificar("enviar uma mensagem").de_credencial and not ex.classificar("ver a caixa").de_credencial
+    assert e.destino is ex.Destino.EFEITO and e.de_credencial, pedido
+
+
+@pytest.mark.parametrize("pedido", LEITURA_PARECIDA + ["enviar uma mensagem", "apagar a pasta de spam"])
+def test_o_que_nao_e_credencial_continua_como_antes(pedido: str) -> None:
+    assert not ex.classificar(pedido).de_credencial, pedido
+    assert (ex.classificar(pedido).destino is ex.Destino.EXPLORAR) == (pedido in LEITURA_PARECIDA)
+
+
+def test_verbo_de_credencial_nao_tem_chave_de_politica() -> None:
+    for chave in ("explorar_entrar_conta", "explorar_sair_conta", "explorar_cadastrar_conta", "explorar_login_conta"):
+        assert not ex.chave_de_politica_valida(chave)
+    assert ex.chaves_da_politica("explorar_sair_conta") == ("explorar_sair_conta",)
+
+
+def test_a_chave_do_efeito_nunca_e_cortada_no_meio_de_uma_palavra() -> None:
+    e = ex.classificar("apagar " + " ".join(sorted(ex.OBJETOS)))
+    assert len(e.chave) <= 40 and all(p in ex.VOCABULARIO or p in ("explorar", "apagar") for p in e.chave.split("_"))
+    assert ex.chave_de_politica_valida(e.chave)
 
 
 # ------------------------------------------------------------------ política e porta (estado do harness)
@@ -379,9 +404,10 @@ async def test_ligada_o_efeito_livre_de_um_plano_do_modelo_continua_recusado(tmp
         await state.stop()
 
 
-async def test_ligada_e_liberada_a_credencial_ainda_e_recusada(tmp_path: Any) -> None:
+@pytest.mark.parametrize("pedido", ["entrar na conta do Outlook", "fazer login no Outlook", "redefinir a senha do Outlook"])
+async def test_ligada_e_liberada_a_credencial_ainda_e_recusada(tmp_path: Any, pedido: str) -> None:
     """O pior caso do ADR-040: interruptor ligado e o pedido de entrar na conta. A recusa de antes, sem etapa nenhuma."""
-    linha, state, _ = await _planejar(tmp_path, "entrar na conta do Outlook", ligada=True)
+    linha, state, _ = await _planejar(tmp_path, pedido, ligada=True)
     try:
         assert linha["status"] == "failed"
         (recusa,) = _eventos(state, linha["id"], "plan.refused")

@@ -2855,11 +2855,12 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
   `approval_required`) quando a etapa é exploração de efeito montada pelo sistema (`e_exploracao_de_efeito`: marca `exploratoria`, `side_effect`
   e prefixo `explorar_`). Daí em diante é o caminho de sempre: `PolicyEngine.check` (chave do pedido antes da genérica `explorar_efeito`, perfil
   antes do grupo), aprovação, teto `preparar`; sem perfil não passa. Ao liberar a porta emite `exploracao.efeito_liberado`.
-- **Nunca explora:** `entrar`, `logar`, `autenticar`, `sair`, `cadastrar`, `registrar` em qualquer posição do pedido (`_SEM_EXPLORACAO`, `Exploracao.de_credencial`): seguem recusados com o interruptor ligado (ADR-040, ADR-087).
+- **Nunca explora:** `e_credencial` (`_SEM_EXPLORACAO`, `Exploracao.de_credencial`) casa por CONJUNTO de formas (entrar/entre, logar/login/logout, sair/saia, autenticar, cadastrar/cadastre, registrar, inscrever, conectar/desconectar, senha, password, credencial, token, código) em qualquer posição, e "criar/adicionar/abrir" logo antes de "conta"; vale também para o pedido que a classificação de efeito não pegaria ("fazer login", "redefinir a senha"). Seguem recusados com o interruptor ligado (ADR-040, ADR-087) e não têm chave de política. "Caixa de entrada" e "configurações da conta" continuam leitura.
+- **Fora da sintética:** sem balde de limite nem contraparte, então limite diário, frota (ADR-083) e 30.62 não se aplicam; é do dono liberar. A chave do efeito leva palavras inteiras (sem cortar objeto no meio).
 - **O que NÃO muda:** a leitura exploratória segue livre; o efeito livre que o modelo escreve sem a marca do sistema segue recusado pela 13.2; a
   receita de efeito descoberta não é oferecida a outras execuções (`molde_da_exploracao` devolve `None`); o executor mantém o caminho livre com
   efeito (guarda do commit, não repetir, comprovar) e os tetos `exploracao_*`.
-- **Prova:** `simulated`, `backend/tests/test_exploracao_de_efeito.py` (48 casos: chave canônica, validação das chaves, política em dois níveis,
+- **Prova:** `simulated`, `backend/tests/test_exploracao_de_efeito.py` (74 casos: chave canônica, validação das chaves, política em dois níveis,
   porta com aprovação/recusa/autonomia/grupo, planejamento ligado e desligado, aviso). `real`: `not_run`. Contrato: adendo v1.140 do
   [api-contract](../api-contract.md).
 - **Limites conhecidos:** o aviso `exploracao.efeito_liberado` sai a cada passagem da porta pela mesma etapa (a chave de dedup colapsa no Telegram, mas `events` pode ganhar linhas repetidas); a receita candidata que a execução de efeito deixa, achada por `step_hash` em outra execução, não foi testada com `driven_by=recipe` (a porta roda antes do executor, então a política julga do mesmo jeito); o executor rodando a etapa de efeito contra aparelho real não foi exercido (só a porta e o planejamento); o painel (Portal)
