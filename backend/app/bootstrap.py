@@ -60,6 +60,7 @@ from .modules.applications.infrastructure.registry import pacote_ancora
 from .modules.email_do_parque.adapters.imap import construir_email_do_parque
 from .modules.identity.application.egresso import limpar_egresso, vincular_egresso
 from .modules.identity.application.sessions import SessionProviders
+from .modules.identity.infrastructure.codigo_de_email import CodigoDoEmailDoParque
 from .modules.identity.infrastructure.persona_images import compor_servico_de_imagens, imagens_dto
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.learning import esquecer_conta
@@ -384,7 +385,10 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
     # seu (o do Instagram é o login determinístico, fora do laço da IA, com a senha só pelo canal sensível).
     # Fabricado na primeira pergunta, com as dependências DESTA composição, e o mesmo para todo mundo depois.
     dependencias = SessionDeps(cfg=cfg, devices=self.devices, repo=self.social_repo, secrets=self.secrets,
-                               sensitive_input=self.sensitive_input, bus=self.bus)
+                               sensitive_input=self.sensitive_input, bus=self.bus,
+                               # ADR-090: a caixa de e-mail só é montada mais abaixo; lida na hora de usar
+                               codigo_de_email=CodigoDoEmailDoParque(
+                                   self.db, lambda: getattr(self, "email_parque", None)))
     self.sessoes = SessionProviders(
         session_factory_of, lambda fabrica: fabrica(dependencias))
     # O hub de IA (item 7.1) é construído antes do banco existir — é ele que decide quem atende cada função.

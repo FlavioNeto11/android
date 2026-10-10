@@ -112,6 +112,19 @@ class PassoDeNavegacao:
 
 
 @dataclass(frozen=True, slots=True)
+class CodigoPorEmail:
+    """O código de confirmação que o app manda por e-mail depois do envio (ADR-090). Só quando a tela `tela` mostra o
+    `sinal_da_tela` (o código foi para um e-mail, não para o autenticador nem para o SMS): o motor lê o código da caixa
+    da própria conta, digita no campo pelo canal sensível e toca no botão (`sinal_do_botao`). Uma tentativa por login:
+    o código recusado, vencido ou ausente devolve a tela à pessoa como qualquer desafio."""
+
+    tela: str                    # a tela `dois_fatores` do `telas.yaml` em que o código é pedido
+    sinal_da_tela: str           # o sinal no texto que diz que o código foi por e-mail
+    sinal_do_botao: str          # o rótulo do botão que envia o código ("continuar")
+    espera_s: float              # quanto esperar o e-mail chegar (depois do envio do login)
+
+
+@dataclass(frozen=True, slots=True)
 class EtapaDoUsuario:
     """Login em etapas (item 23.6): o identificador numa tela, a senha na seguinte."""
 
@@ -256,6 +269,7 @@ class ConhecimentoDeSessao:
     textos: Textos
     navegador: Navegador | None = None
     troca: TrocaDeConta | None = None
+    codigo_por_email: CodigoPorEmail | None = None
 
     # ------------------------------------------------------------------ leituras de tela, pelo dado
     def reconhecer(self, tree: UiTree, *, package: str | None, locale: str | None = None) -> TelaReconhecida:
@@ -288,6 +302,30 @@ class ConhecimentoDeSessao:
             return None
         sig = self.telas.sinais_de(locale)
         return geometria.botao_unico(tree, pacote=self.app, rotulo=sig[etapa.entrada.sinal_do_botao],
+                                     exclusao=sig[self.formulario.sinal_de_exclusao])
+
+    def pede_codigo_por_email(self, tree: UiTree, r: TelaReconhecida, locale: str | None) -> bool:
+        """A tela é a do código e diz que ele foi por e-mail (ADR-090). Sem o bloco declarado, nunca."""
+        c = self.codigo_por_email
+        if c is None or r.tela != c.tela or (r.trava is not None and r.trava.subtipo == SUBTIPO_CONTA_TRAVADA):
+            return False
+        texto = chr(10).join(f"{e.text} {e.desc}".strip() for e in tree.elements if e.text or e.desc)
+        return bool(self.telas.sinais_de(locale)[c.sinal_da_tela].search(texto))
+
+    def campo_do_codigo(self, tree: UiTree) -> UiElement | None:
+        """O campo do código: o ÚNICO campo de texto habilitado do app na tela do código."""
+        campos = [e for e in tree.elements
+                  if e.enabled and (e.editable or e.class_name.endswith("EditText"))
+                  and (not e.package or e.package == self.app)]
+        return campos[0] if len(campos) == 1 else None
+
+    def botao_do_codigo(self, tree: UiTree, locale: str | None) -> UiElement | None:
+        """O botão que envia o código, com um candidato só."""
+        c = self.codigo_por_email
+        if c is None:
+            return None
+        sig = self.telas.sinais_de(locale)
+        return geometria.botao_unico(tree, pacote=self.app, rotulo=sig[c.sinal_do_botao],
                                      exclusao=sig[self.formulario.sinal_de_exclusao])
 
     def botao_da_alternativa(self, tree: UiTree, r: TelaReconhecida, locale: str | None) -> UiElement | None:
@@ -654,11 +692,29 @@ def _troca(valor: object, telas: ConhecimentoDeTelas) -> TrocaDeConta:
     return TrocaDeConta(sair=sair)
 
 
+def _codigo_por_email(valor: object, telas: ConhecimentoDeTelas) -> CodigoPorEmail:
+    """A tela do código tem de ser `dois_fatores` (nunca conta travada: nada se toca nela, ADR-055)."""
+    onde = "codigo_por_email"
+    campos = frozenset({"tela", "sinal_da_tela", "sinal_do_botao", "espera_s"})
+    c = _mapa(valor, onde, permitidos=campos, obrigatorios=campos)
+    tela = _tela(c["tela"], f"{onde}.tela", telas)
+    regra = telas.regra(tela)
+    if regra is None or regra.tipo != "dois_fatores":
+        raise SessaoInvalida(f"{onde}.tela: a tela {tela!r} precisa ser do tipo `dois_fatores` no `telas.yaml`")
+    espera = c["espera_s"]
+    if isinstance(espera, bool) or not isinstance(espera, (int, float)) or not 5 <= espera <= 300:
+        raise SessaoInvalida(f"{onde}.espera_s: esperava um número entre 5 e 300 segundos")
+    return CodigoPorEmail(tela=tela, sinal_da_tela=_sinal(c["sinal_da_tela"], f"{onde}.sinal_da_tela", telas),
+                          sinal_do_botao=_sinal(c["sinal_do_botao"], f"{onde}.sinal_do_botao", telas),
+                          espera_s=float(espera))
+
+
 def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
     """Valida e monta o conhecimento de sessão sobre o conhecimento de telas do MESMO app."""
     topo = frozenset({"app", "versao", "rotulo", "ajustes", "formulario", "dispensa", "conta", "depois_do_envio",
-                      "textos", "navegador", "troca"})
-    raiz = _mapa(dados, "o arquivo", permitidos=topo, obrigatorios=topo - {"versao", "navegador", "troca"})
+                      "textos", "navegador", "troca", "codigo_por_email"})
+    raiz = _mapa(dados, "o arquivo", permitidos=topo,
+                 obrigatorios=topo - {"versao", "navegador", "troca", "codigo_por_email"})
     app = _texto(raiz["app"], "app").strip()
     if app != telas.app:
         raise SessaoInvalida(f"`app` ({app!r}) difere do `telas.yaml` ({telas.app!r})")
@@ -714,7 +770,9 @@ def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
                                 ajustes=_ajustes(raiz["ajustes"]), formulario=form, dispensa=dispensa, conta=conta,
                                 depois_do_envio=regras, textos=_textos(raiz["textos"]),
                                 navegador=_navegador(raiz["navegador"], app) if "navegador" in raiz else None,
-                                troca=_troca(raiz["troca"], telas) if "troca" in raiz else None)
+                                troca=_troca(raiz["troca"], telas) if "troca" in raiz else None,
+                                codigo_por_email=_codigo_por_email(raiz["codigo_por_email"], telas)
+                                if "codigo_por_email" in raiz else None)
 
 
 def carregar(pasta: Path) -> ConhecimentoDeSessao:

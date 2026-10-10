@@ -224,7 +224,8 @@ def fabrica_de_sessao(k: ConhecimentoDeSessao) -> SessionProviderFactory:
     de entrada sensível (ADR-025/040), como em qualquer app declarado."""
 
     def sessao(deps: SessionDeps) -> SessaoDeclarada:
-        return SessaoDeclarada(k, deps.cfg, deps.devices, deps.repo, deps.secrets, deps.sensitive_input, deps.bus)
+        return SessaoDeclarada(k, deps.cfg, deps.devices, deps.repo, deps.secrets, deps.sensitive_input, deps.bus,
+                              codigo_de_email=deps.codigo_de_email)
 
     return sessao
 

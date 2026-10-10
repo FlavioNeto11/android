@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from app.modules.identity.application.ports import SessionProvider
+from app.modules.identity.application.ports import CodigoDeEmail, SessionProvider
 
 if TYPE_CHECKING:  # pragma: no cover - só para o verificador de tipos
     from app.config import Config
@@ -36,6 +36,8 @@ class SessionDeps:
     secrets: SecretStore
     sensitive_input: SensitiveInputChannel
     bus: EventBus
+    #: ADR-090: o código que o app manda por e-mail à conta. `None` = o motor entrega a tela à pessoa, como sempre.
+    codigo_de_email: CodigoDeEmail | None = None
 
 
 #: A fábrica que o manifesto de um app declara. Chamada uma vez por composição (`SessionProviders` guarda o provedor).

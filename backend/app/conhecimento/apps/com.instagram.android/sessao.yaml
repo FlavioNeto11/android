@@ -94,6 +94,17 @@ depois_do_envio:
   # Continuar no login sem mensagem de erro costuma ser envio que não pegou, ou tela ainda carregando.
   - {tipos: [login], desfecho: uncertain, detalhe: 'continuou na tela de login, sem mensagem de erro'}
 
+# ADR-090: o código de confirmação que o Instagram manda por e-mail depois do envio do login. Só quando a tela do código
+# diz que ele foi para um e-mail E a conta tem caixa registrada pela ponte (igfarm): o motor lê o código MAIS NOVO que o
+# envio do login (nunca um antigo), digita no campo pelo canal sensível e toca no botão — uma vez. Sem caixa, sem código
+# no prazo ou com a tela de código ainda de pé depois do envio, a pessoa assume como em qualquer desafio. A tela "Confirm
+# you're human" que vem depois NUNCA é tocada (conta travada, ADR-055).
+codigo_por_email:
+  tela: two_factor
+  sinal_da_tela: codigo_por_email
+  sinal_do_botao: continuar_codigo
+  espera_s: 90                  # o e-mail chega em segundos; 90 cobre a fila do provedor sem esperar à toa
+
 textos:
   # A pessoa precisa saber o que fazer, venha o desafio de onde vier: antes ou depois do envio. "Devolva o controle:
   # a verificação recomeça sozinha" é promessa cumprida pela reobservação ao devolver o controle (achado #106).

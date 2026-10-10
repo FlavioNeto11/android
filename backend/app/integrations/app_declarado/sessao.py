@@ -76,6 +76,7 @@ if TYPE_CHECKING:  # pragma: no cover - só para o verificador de tipos
     from ...db import Row
     from ...devices.manager import DeviceManager, DeviceRuntime
     from ...events import EventBus
+    from ...modules.identity.application.ports import CodigoDeEmail
     from ...security.secret_store import SecretStore
     from ...security.sensitive_input import SensitiveInputChannel
     from ...social.repository import SocialRepository
@@ -438,7 +439,8 @@ class SessaoDeclarada:
     """`SessionProvider` de um app declarado: garante a conta do perfil aberta no aparelho, pelo conhecimento dele."""
 
     def __init__(self, conhecimento: ConhecimentoDeSessao, cfg: Config | None, devices: DeviceManager,
-                 repo: SocialRepository, secrets: SecretStore, sensitive: SensitiveInputChannel, bus: EventBus):
+                 repo: SocialRepository, secrets: SecretStore, sensitive: SensitiveInputChannel, bus: EventBus,
+                 codigo_de_email: CodigoDeEmail | None = None):
         self.conhecimento = conhecimento
         self.cfg = cfg
         self.devices = devices
@@ -446,6 +448,7 @@ class SessaoDeclarada:
         self.secrets = secrets
         self.sensitive = sensitive
         self.bus = bus
+        self.codigo_de_email = codigo_de_email
         self.focus_poll_s = LAUNCH_POLL_S          # intervalo entre leituras de foco enquanto o app abre
 
     @property
@@ -886,6 +889,7 @@ class SessaoDeclarada:
         # Envio: registrado ANTES de acontecer. Depois disso, timeout nunca autoriza repetir.
         self.repo.finish_auth_attempt(profile_id, attempt, outcome="", detail=None, stage="submitting")
         fired = True
+        enviado_em = datetime.now(UTC)          # o código do e-mail só vale se chegou DEPOIS deste instante (ADR-090)
         botao: UiElement = form.submit  # type: ignore[assignment]  # as três formas garantem o botão
         try:
             await self._tap(rt, *botao.center)
@@ -901,12 +905,87 @@ class SessaoDeclarada:
             return AuthResult(Outcome.RETRYABLE, detail, attempted_login=True)
 
         verdict = await self._watch_after_submit(rt, k, conta, locale)
+        verdict = await self._codigo_do_email(rt, k, conta, locale, verdict, enviado_em)
         if verdict.outcome is Outcome.UNCERTAIN:
             verdict = await self._retocar_se_intacto(rt, k, conta, attempt, identificador, locale, verdict,
                                                      automatic=automatic)
         self._apply_verdict(conta, rt.id, attempt, verdict)
         return AuthResult(verdict.outcome, verdict.detail, verdict.observed_username,
                           self._status_for(verdict.outcome), attempted_login=True)
+
+    async def _codigo_do_email(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao, locale: str | None,
+                               verdict: Verdict, enviado_em: datetime) -> Verdict:
+        """ADR-090: depois do envio, o app pediu o código que mandou por e-mail à conta. Lê o código da caixa DA CONTA
+        (só um recebido depois do envio), digita pelo canal sensível, toca em "continuar" UMA vez e observa o que vem.
+
+        Qualquer coisa fora do caminho comprovado devolve o `verdict` de antes, e a pessoa assume como em todo desafio:
+        a conta sem caixa registrada, o e-mail que não chegou no prazo, a tela que mudou durante a espera, o campo ou
+        o botão que não se acha com um candidato só, o canal sensível que falhou. Nunca repete: nenhum segundo código,
+        nenhum reenvio, nenhum segundo toque. A tela que o app mostra DEPOIS (inclusive "confirme que você é humano")
+        passa pela tabela de desfechos de sempre — conta travada nunca é tocada (ADR-055)."""
+        c = k.codigo_por_email
+        if (c is None or self.codigo_de_email is None or verdict.outcome is not Outcome.AUTH_CHALLENGE
+                or verdict.tela != c.tela):
+            return verdict
+        try:
+            tree, package = await self._observe(rt)
+        except DriverError:
+            return verdict
+        if package != k.app or not k.pede_codigo_por_email(tree, self._reconhecer(k, tree, package, locale), locale):
+            return verdict
+        codigo = await self.codigo_de_email.codigo_depois_de(conta.id, enviado_em, espera_s=c.espera_s)
+        if not codigo:
+            log.info("%s: %s pediu o código por e-mail, e nenhum código novo chegou na caixa da conta %s", rt.id,
+                     self.conhecimento.rotulo, conta.id)
+            return verdict
+        pacote_da_frente: list[str | None] = [None]
+
+        async def observe_tree() -> UiTree:
+            arvore, pacote = await self._observe(rt)
+            pacote_da_frente[0] = pacote
+            return arvore
+
+        def localizar(arvore: UiTree) -> UiElement | None:
+            if pacote_da_frente[0] != k.app:
+                return None
+            return k.campo_do_codigo(arvore)
+
+        try:
+            await self.sensitive.fill(call=rt.executor.run, io=rt.io, observe=observe_tree, locate=localizar,
+                                      secret=lambda: codigo)
+        except (SensitiveInputError, SensitiveInputUnavailable, DriverError) as exc:
+            log.warning("%s: o código do e-mail não foi digitado (%s)", rt.id, type(exc).__name__)
+            return verdict
+        finally:
+            del codigo
+        try:
+            tree, package = await self._observe(rt)
+        except DriverError:
+            return verdict
+        botao = k.botao_do_codigo(tree, locale) if package == k.app else None
+        if botao is None or not botao.enabled:
+            log.warning("%s: o botão que envia o código não foi achado com um candidato só", rt.id)
+            return verdict
+        try:
+            await self._tap(rt, *botao.center)
+        except DriverError as exc:
+            if not exc.effect_possible:
+                return verdict
+        self.bus.emit("log", f"{rt.id}: código de confirmação do e-mail da conta digitado e enviado ao "
+                             f"{self.conhecimento.rotulo}", instance_id=rt.id)
+        # Enquanto a tela do código segue de pé (o app mostra "carregando" por uns segundos), ainda não houve resposta:
+        # `_watch_after_submit` a leria como desafio na hora. Espera sair dela, até o mesmo prazo de uma resposta.
+        prazo = time.monotonic() + float(self.ajustes.submit_wait_s)
+        while time.monotonic() < prazo:
+            await asyncio.sleep(OBSERVAR_DEPOIS_DO_ENVIO_S)
+            try:
+                tree, package = await self._observe(rt)
+            except DriverError:
+                continue
+            r = self._reconhecer(k, tree, package, locale)
+            if not (package == k.app and r.tela == c.tela):
+                break
+        return await self._watch_after_submit(rt, k, conta, locale)
 
     async def _retocar_se_intacto(self, rt: DeviceRuntime, k: ConhecimentoDeSessao, conta: ContaDaSessao,
                                   attempt: int, identificador: str, locale: str | None, incerto: Verdict, *,

@@ -87,6 +87,12 @@ class FakeInstagram:
     # comportamentos injetáveis
     challenge_on_login: bool = False
     two_factor_on_login: bool = False
+    # ADR-090: depois do envio o app pede o código que mandou por E-MAIL ("Check your email"). `codigo_certo` é o que ele
+    # aceita; `apos_codigo` é a tela seguinte quando o código confere ("feed" ou "challenge", a verificação humana).
+    two_factor_email_on_login: bool = False
+    codigo_certo: str = "123456"
+    apos_codigo: str = "feed"
+    code_field: str = ""
     wrong_password_message: bool = True
     submit_fault: str | None = None            # "lost" (não chega) | "timeout" (demora e o efeito ocorre)
     # 29.64: quantos toques em Entrar o app IGNORA (o toque chega, nada acontece), e como a tela fica depois:
@@ -236,6 +242,16 @@ class FakeInstagram:
                 Node("android.widget.TextView", (40, 200, 680, 280), text="Enter the 6-digit security code"),
                 Node("android.widget.EditText", (40, 320, 680, 390), rid="code", clickable=True, editable=True),
             ]
+        if self.screen == "two_factor_email":
+            return [
+                Node("android.widget.TextView", (40, 120, 680, 180), text="Check your email"),
+                Node("android.widget.TextView", (40, 200, 680, 280), text="Enter the code we sent to r*******8@n*****.br"),
+                Node("android.widget.EditText", (40, 320, 680, 390), text=self.code_field, rid="code_field",
+                     clickable=True, editable=True, action="focus:code"),
+                Node("android.widget.Button", (32, 952, 688, 1040), text="Continue", clickable=True, action="submit_code"),
+                Node("android.widget.TextView", (40, 1060, 680, 1110), text="Get a new code", clickable=True,
+                     action="new_code"),
+            ]
         if self.screen == "save_login":
             return [
                 Node("android.widget.TextView", (40, 300, 680, 380), text="Save your login info?"),
@@ -362,6 +378,15 @@ class FakeInstagram:
             self._focus = hit.action.split(":", 1)[1]
         elif hit.action == "submit":
             self._submit()
+        elif hit.action == "submit_code":
+            self.calls.append("submit_code")
+            if self.code_field == self.codigo_certo:
+                if self.apos_codigo == "feed":
+                    self.account = self.username_field.lstrip("@")
+                self.screen = self.apos_codigo
+            self.code_field = ""
+        elif hit.action == "new_code":
+            self.calls.append("new_code")
 
     def _submit(self) -> None:
         self.calls.append("submit")
@@ -402,6 +427,9 @@ class FakeInstagram:
         if self.two_factor_on_login:
             self.screen = "two_factor"
             return
+        if self.two_factor_email_on_login:
+            self.screen = "two_factor_email"
+            return
         self.account = self.username_field.lstrip("@")
         self.password_field = ""
         self.screen = "feed"
@@ -423,6 +451,8 @@ class FakeInstagram:
             self.composer_text = text if clear_first else self.composer_text + text
         elif campo == "password":
             self.password_field = text if clear_first else self.password_field + text
+        elif campo == "code":
+            self.code_field = text if clear_first else self.code_field + text
         else:
             self.username_field = text if clear_first else self.username_field + text
 
@@ -450,7 +480,7 @@ class FakeInstagram:
             return
         # Reabrir o app não faz um desafio sumir, nem o "Salvar dados de login?" pendente: eles voltam a aparecer até
         # serem resolvidos na tela.
-        if self.screen in ("challenge", "two_factor", "save_login"):
+        if self.screen in ("challenge", "two_factor", "two_factor_email", "save_login"):
             return
         if self.retoma_tela_ao_abrir and self.account and self.screen not in ("launcher", "login", "login_error"):
             return

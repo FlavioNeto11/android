@@ -6012,3 +6012,25 @@ evento e leitura. Risco principal: o filtro de conta não confirmada nos consumi
 - **Prova:** `simulated`, `tests/test_previa_sem_tela_escondida.py` (4 testes) e os dirigidos de prévia e observação
   reescritos; o teste `test_previa_tela_sensivel.py` foi removido junto com a regra que ele provava.
 
+## ADR-090 — O código de confirmação que o app manda por e-mail entra no login automático
+
+- **Data e autor:** 10/10/2026, pedido do dono ("hoje nós fazemos o login automático na plataforma, temos que adicionar
+  esse passo do e-mail junto com o login automático"). Contexto: no android-07 o login parou na tela "Check your email" e
+  uma pessoa leu e digitou o código; o Instagram o aceitou e passou para "Confirm you're human", e a plataforma retirou a
+  conta sozinha (ADR-055).
+- **Decisão:** depois do envio do login, se a tela é a do código **e** diz que ele foi por e-mail (`sinal codigo_por_email`
+  do `telas.yaml`), o motor de sessão lê da caixa DA CONTA (a que a ponte do igfarm registrou, `caixas_email`) o código
+  mais novo que o instante do envio, digita pelo canal sensível (`SensitiveInputChannel`, só no campo único do app),
+  toca em "continuar" **uma vez** e deixa a tabela `depois_do_envio` julgar a tela seguinte. Declarado no bloco
+  `codigo_por_email` do `sessao.yaml` (tela, sinais, `espera_s`), validado na carga; a porta é `CodigoDeEmail`
+  (`identity/application/ports.py`), o adaptador `identity/infrastructure/codigo_de_email.py`.
+- **O que continua com a pessoa:** conta sem caixa registrada, e-mail que não chega no prazo (`espera_s`), código mais velho
+  que o envio (nunca serve), código recusado (sem segundo código, sem "Get a new code", sem segundo toque), código por SMS
+  ou autenticador (a tela não diz e-mail), e toda tela de verificação humana ("Confirm you're human"): nada é tocado nela
+  (ADR-055). Não abre tentativa nova nem gasta o teto diário de logins: é a mesma tentativa.
+- **Relação com o ADR-040:** o código é lido da caixa da própria conta e digitado só no app dela, como a senha guardada;
+  o valor nunca vai a log, evento, evidência ou resposta. Substitui, para o código por e-mail, o "2FA com a pessoa" do
+  ADR-025.
+- **Não resolve:** a conta cair em verificação humana depois do código (visto em 2 contas do igfarm); e o login que
+  ainda não atravessa a tela de boas-vindas "Join Instagram" (não declarada no `sessao.yaml`).
+- **Prova:** `simulated`, `tests/test_codigo_por_email.py` (13 testes). `real`: `not_run`.

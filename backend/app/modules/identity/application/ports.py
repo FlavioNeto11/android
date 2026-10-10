@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from app.modules.identity.domain.persona_image import PersonaImageRecord, PersonaImageSpec
@@ -29,6 +30,16 @@ class SessionOutcome(Protocol):
 
     @property
     def detail(self) -> str: ...
+
+
+class CodigoDeEmail(Protocol):
+    """O código de confirmação que um app manda por e-mail à conta (ADR-090). O valor só existe entre a caixa e o
+    canal de entrada sensível: nunca vai a log, evento, evidência ou resposta."""
+
+    async def codigo_depois_de(self, account_id: str, desde: datetime, *, espera_s: float) -> str | None:
+        """O código MAIS NOVO que `desde` (UTC) na caixa da conta, esperando até `espera_s`; `None` se a conta não tem
+        caixa, o leitor não está disponível ou nada chegou no prazo. Código mais antigo que `desde` nunca serve."""
+        ...
 
 
 class SessionProvider(Protocol):

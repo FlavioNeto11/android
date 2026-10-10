@@ -35,6 +35,10 @@ sinais:
     # Diálogo genérico depois de Entrar (android-06): NÃO diz a causa, então nunca é "senha errada".
     login_error: '(unable to log ?in|an unexpected error occurred|please try logging in again)'
     switcher: '(switch accounts?|log into another account)'
+    # ADR-090: o código foi para um E-MAIL (a tela mostra o endereço mascarado: "r*******8@n*****.br"). Medido no
+    # android-07 em 10/10/2026, tela "Check your email". O código por SMS/autenticador não casa: segue para a pessoa.
+    codigo_por_email: 'enter the code we sent to \S+@'
+    continuar_codigo: '^\s*continue\s*$'
     inbox: '^\s*(messages|direct)\s*$'
     # 29.87: a folha da 1ª vez na tela da legenda (android-13, 05/10 01:27Z): "Sharing posts", "Your account is
     # public…", com OK e "Manage settings". Casa junto dos ids da folha (`ids_todos` da regra), nunca sozinho.
@@ -51,6 +55,9 @@ sinais:
     user_not_found: '(n[ãa]o foi poss[íi]vel encontrar|usu[áa]rio n[ãa]o encontrado)'
     login_error: '(n[ãa]o foi poss[íi]vel (entrar|fazer login)|ocorreu um erro inesperado|tente (entrar|fazer login) novamente)'
     switcher: '(trocar de conta|entrar em outra conta)'
+    # NÃO MEDIDO em português: o texto é palpite (a tela mascara o endereço com asteriscos, como em inglês).
+    codigo_por_email: '(insira|digite) o c[óo]digo que enviamos para \S+@'
+    continuar_codigo: '^\s*continuar\s*$'
     inbox: '^\s*(mensagens|direct)\s*$'
     # NÃO MEDIDO em português: o texto é palpite; os ids da folha (`ids_todos`) é que decidem.
     aviso_de_compartilhar: '(?m)^\s*(compartilhamento de publica[çc][õo]es|compartilhando publica[çc][õo]es|sharing posts)\s*$'

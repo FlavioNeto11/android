@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
+
+- O motor de sessão (`integrations/app_declarado/sessao.py`) lê o código mais novo da caixa da conta (porta
+  `CodigoDeEmail`), digita pelo canal sensível e toca em "continuar" uma vez quando a tela diz que o código foi por
+  e-mail. Declarado em `codigo_por_email` (`sessao.yaml`/`telas.yaml` do Instagram), validado em `conhecimento.py`.
+  Sem caixa, sem código novo, código recusado ou verificação humana: a pessoa assume, sem segunda tentativa.
+- Prova **simulada**: `tests/test_codigo_por_email.py` (13 testes) e 318 dirigidos de sessão verdes; as 2 falhas de
+  `test_arquitetura` já existiam (importes do `egresso.py`). **Real: não executada** — a conta do android-07 foi
+  retirada pela verificação humana do Instagram antes de o passo existir.
+
 ## 2026-10-10 — a plataforma não esconde tela de ninguém (ADR-089, revoga o C4)
 
 - Saíram o marcador de tela sensível, o 404 `sensitive_screen` de `GET /frame`, a omissão de imagem na observação da IA
