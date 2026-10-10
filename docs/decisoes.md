@@ -6072,3 +6072,12 @@ evento e leitura. Risco principal: o filtro de conta não confirmada nos consumi
 - **Escolhas:** o efeito descoberto não é oferecido a outras execuções (a política julga cada vez e a receita de efeito pede duas concordâncias);
   a chave do pedido leva só vocabulário fechado, e o sufixo de letras (pedido sem objeto) não é configurável: para esse caso há a genérica.
 - **Prova:** `simulated`, `tests/test_exploracao_de_efeito.py`. `real`: `not_run`. Contrato: adendo v1.140.
+
+### Atualização 10/10/2026 (noite) — o padrão da exploração de efeito é por verbo (31.325)
+
+- **Decisão do dono (10/10, em chat, relatada pela orquestradora):** o padrão passa a ser "executar sem pedir aprovação por request, salvo ação destrutiva".
+  Por isso a política da exploração de efeito ganha um nível por **verbo** (`explorar_<verbo>`, entre a do pedido e a genérica) e um padrão por verbo: o
+  destrutivo (apagar, comprar, transferir, encerrar, desinstalar, resetar; lista única em `contracts/efeito_destrutivo.py`) mantém `approval_required` e não
+  herda a genérica `explorar_efeito`; o comum roda sem pedir o sim e avisa.
+- **Efeito:** a decisão do 31.297 ("aprovação por padrão") vale agora só para o destrutivo. O interruptor `exploracao_efeito_ligada` segue desligado de fábrica.
+- **Prova:** `simulated`. Contrato: adendo v1.141.

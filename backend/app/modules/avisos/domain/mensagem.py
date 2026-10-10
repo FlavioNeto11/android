@@ -688,7 +688,7 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         tipo = kind
         chave = chave_do_fato("exploracao", ident, "efeito", chave_da_acao)
         link = link_da_tela(url_painel, f"#/execucoes/{ident}")
-        origem = {"own": "a política do perfil", "group": "a política do grupo", "default": "o padrão (aprovação)"
+        origem = {"own": "a política do perfil", "group": "a política do grupo", "default": "o padrão da exploração (sem pedir o sim, salvo destrutiva)"
                   }.get(_texto(d.get("origem")) or "", "a política")
         assunto = "⚠️ Exploração com efeito liberada"
         if d.get("aprovada"):
@@ -698,7 +698,7 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         else:
             como = f"Pela {origem}, a IA vai fazer pela tela o que o pedido mandou, sem pedir o sim."
         linhas = [como, "É um efeito de verdade na conta; a IA não digita senha. Aviso ao concluir.",
-                  "Para voltar a pedir aprovação, mude a política `explorar_efeito` do perfil ou do grupo."]
+                  "Para voltar a pedir aprovação, mude a política `explorar_efeito` (ou `explorar_<verbo>`) do perfil ou do grupo."]
     elif kind in ("exploracao.iniciada", "exploracao.concluida"):
         # 31.298: só ids, contagens e dinheiro. Nem o pedido, nem a chave da etapa, nem nome de persona ou handle. A
         # exploração que só reaproveitou a receita descoberta (nenhum app novo) não avisa o início: não custa IA.
@@ -718,7 +718,7 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
             linhas = ["O catálogo do app não tem essa ação, então a IA vai descobrir como fazer pela tela.",
                       f"Tetos: {_inteiro(tetos.get('acoes'))} ações, {_inteiro(tetos.get('chamadas_ia'))} chamadas de IA e "
                       f"{_dolar(_numero(tetos.get('usd')) or 0.0)}.",
-                      ("Tem etapa COM efeito: ela só age depois que a política do perfil libera (por padrão, pede o seu sim)."
+                      ("Tem etapa COM efeito: a destrutiva (apagar, comprar…) pede o seu sim; as demais seguem a política do perfil."
                        if com_efeito else "Só leitura e navegação: nada é alterado.") + " Aviso ao concluir."]
         else:
             resultado = _texto(d.get("resultado")) or ""

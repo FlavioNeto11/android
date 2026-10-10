@@ -122,6 +122,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   na ordem de chegada). Prova `simulated`: `features/rede/RedePage.test.tsx` (1 teste novo, 42 da Rede), tsc. Real: visto no percurso do
   deploy 70; o ajuste só chega com o próximo deploy.
 
+## 2026-10-10 — o padrão da exploração de efeito é por verbo, salvo o destrutivo (31.325, ADR-091, adendo v1.141)
+
+- Regra do dono: executar sem pedir aprovação por request, salvo ação destrutiva. A política da exploração de efeito ganha o nível `explorar_<verbo>` (pedido →
+  verbo → genérica) e o padrão por verbo: apagar, comprar, transferir, encerrar, desinstalar e resetar (lista única em `contracts/efeito_destrutivo.py`) mantêm
+  `approval_required` e não herdam a genérica `explorar_efeito`; os demais rodam sem pedir o sim e avisam. O interruptor segue desligado de fábrica.
+- Prova **simulada**: `tests/test_exploracao_politica_por_verbo.py` e os ajustes de `test_exploracao_de_efeito.py`. **Real: não executada.**
+
 ## 2026-10-10 — a exploração de EFEITO pela política do perfil (31.297, ADR-091, adendo v1.140)
 
 - `limits.exploracao_efeito_ligada` (desligado de fábrica): o pedido de efeito vira uma etapa exploratória `side_effect` (chave

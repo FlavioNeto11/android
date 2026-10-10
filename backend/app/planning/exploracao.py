@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from ..contracts.credencial_e_sessao import FORMAS_DE_CREDENCIAL, e_credencial
+from ..contracts.efeito_destrutivo import e_verbo_destrutivo
 from ..models import PlanStep, Postcondition
 from .capabilities import Capability, capability_sintetica_de_efeito
 
@@ -53,7 +54,7 @@ _EFEITO = frozenset({
     "criar", "cadastrar", "registrar", "adicionar", "marcar", "arquivar", "mover", "transferir", "reservar", "agendar",
     "escrever", "digitar", "preencher", "aceitar", "recusar", "confirmar", "aprovar", "doar", "votar", "anexar", "trocar",
     "atualizar", "sair", "entrar", "logar", "autenticar", "desfazer", "restaurar", "esvaziar", "limpar", "reiniciar",
-    "resetar", "parar", "deixar",
+    "resetar", "parar", "deixar", "encerrar",
 })
 #: 31.297: o sinônimo → o verbo canônico de efeito que vai na chave ("mandar" e "enviar" são a mesma política do dono). O que
 #: não está aqui fica como está (`_EFEITO` é a lista de quais verbos são de efeito; a tabela só junta os que dizem o mesmo).
@@ -202,11 +203,16 @@ def _passo_de_efeito(pedido: str, e: Exploracao, frase: str, *, app_id: str | No
 def capability_da_exploracao(chave: str, *, titulo: str | None = None) -> Capability:
     """31.297: a ação SINTÉTICA da etapa exploratória de efeito, para a política do perfil e a aprovação a tratarem como as
     do catálogo. Padrão `approval_required` e risco alto: sem o dono liberar, a etapa pede o sim antes de tocar no aparelho.
-    Não tem texto gerado (o efeito é o da tela), nem balde de limite, nem contraparte: o que o perfil controla é a política."""
+    Não tem texto gerado (o efeito é o da tela), nem balde de limite, nem contraparte: o que o perfil controla é a política.
+
+    31.325: o padrão é por VERBO. O destrutivo (`contracts/efeito_destrutivo.py`: apagar, comprar, transferir, encerrar…) mantém risco alto
+    e `approval_required`; o resto roda sem pedir o sim (regra do dono: executar sem aprovação por request, salvo ação destrutiva)."""
     frase = _frase_da_chave(chave)
+    destrutivo = e_destrutiva(chave)
     return capability_sintetica_de_efeito(
         chave, titulo=titulo or f"Explorar com efeito: {frase}", objetivo=f"Fazer pela interface: {frase}",
-        pos_valor=f"a tela mostra: {frase}", pos_descricao=f"O pedido foi feito: {frase}.")
+        pos_valor=f"a tela mostra: {frase}", pos_descricao=f"O pedido foi feito: {frase}.",
+        risco="high" if destrutivo else "medium", politica_padrao="approval_required" if destrutivo else "autonomous")
 
 
 def e_exploracao_de_efeito(passo_key: str, exploratoria: bool, side_effect: bool) -> bool:
@@ -215,11 +221,32 @@ def e_exploracao_de_efeito(passo_key: str, exploratoria: bool, side_effect: bool
     return bool(exploratoria and side_effect and passo_key.startswith(PREFIXO))
 
 
+def verbo_da_chave(chave: str) -> str | None:
+    """O verbo canônico de efeito da chave `explorar_<verbo>[_…]`, ou `None` (leitura, a genérica, ação de catálogo)."""
+    partes = chave.split("_")
+    if chave == CHAVE_GENERICA_DE_EFEITO or len(partes) < 2 or partes[0] != PREFIXO.rstrip("_"):
+        return None
+    return partes[1] if partes[1] in VERBOS_DE_EFEITO else None
+
+
+def e_destrutiva(chave: str) -> bool:
+    """A chave é de um verbo destrutivo (a lista única está em `contracts/efeito_destrutivo.py`)."""
+    verbo = verbo_da_chave(chave)
+    return verbo is not None and e_verbo_destrutivo(verbo)
+
+
 def chaves_da_politica(chave: str) -> tuple[str, ...]:
-    """Da mais específica à mais geral: a chave da exploração e, só para a exploração de efeito, a genérica."""
-    if chave.startswith(PREFIXO) and chave != CHAVE_GENERICA_DE_EFEITO and chave.split("_")[1] in VERBOS_DE_EFEITO:
-        return (chave, CHAVE_GENERICA_DE_EFEITO)
-    return (chave,)
+    """Da mais específica à mais geral (31.325): a do pedido, a do VERBO (`explorar_<verbo>`) e a genérica `explorar_efeito`. A
+    exploração DESTRUTIVA não herda a genérica: liberar tudo de uma vez não libera apagar nem comprar."""
+    verbo = verbo_da_chave(chave)
+    if verbo is None:
+        return (chave,)
+    chaves = [chave]
+    if chave != PREFIXO + verbo:
+        chaves.append(PREFIXO + verbo)
+    if not e_verbo_destrutivo(verbo):
+        chaves.append(CHAVE_GENERICA_DE_EFEITO)
+    return tuple(chaves)
 
 
 def chave_de_politica_valida(chave: str) -> bool:
@@ -248,5 +275,5 @@ def molde_da_exploracao(passo: PlanStep) -> PlanStep | None:
 
 
 __all__ = ["CHAVE_GENERICA_DE_EFEITO", "Destino", "Exploracao", "FORMAS_DE_CREDENCIAL", "OBJETOS", "PREFIXO", "VERBOS_DE_EFEITO", "VOCABULARIO",
-           "capability_da_exploracao", "chave_de_politica_valida", "e_exploracao_de_efeito", "chave_oferecivel", "chaves_da_politica", "classificar", "e_credencial",
+           "capability_da_exploracao", "chave_de_politica_valida", "e_destrutiva", "verbo_da_chave", "e_exploracao_de_efeito", "chave_oferecivel", "chaves_da_politica", "classificar", "e_credencial",
            "molde_da_exploracao", "passo_da_exploracao"]

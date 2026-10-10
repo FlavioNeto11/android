@@ -8532,3 +8532,21 @@ exploração real e o painel, que é do Portal).
 
 **Prova:** `simulated` (`backend/tests/test_exploracao_de_efeito.py`, 99 casos). `real`: `not_run` (efeito numa conta real; o dono liga o
 interruptor e escolhe a política).
+
+## Adendo v1.141 (10/10/2026; número da fila de `.claude/reservas.md`; item 31.325, ADR-091) — a política da exploração de efeito por VERBO
+
+Muda só o que o v1.140 deixou para a exploração de efeito (sem rota nova, sem campo novo):
+
+- **Regra do dono:** "executar sem pedir aprovação por request, salvo ação destrutiva". Lista única dos verbos **destrutivos** (canônicos da chave):
+  `apagar` (excluir, deletar, remover, esvaziar, limpar), `comprar` (pagar, assinar), `transferir`, `encerrar`, `desinstalar`, `resetar`
+  (`app/contracts/efeito_destrutivo.py`). `desconectar` e os de credencial seguem fora da exploração (v1.140).
+- **Chaves de política em `capabilities`** (perfil e grupo): `explorar_efeito` (genérica), **`explorar_<verbo>`** (novo, o verbo canônico) e
+  `explorar_<verbo>_<objeto…>` (a do pedido). Ordem da busca: pedido → verbo → genérica; a camada do perfil vence a do grupo.
+- **Padrão por verbo** (o que vale sem escolha do dono): verbo comum = `autonomous` (roda sem pedir o sim; o dono é avisado na hora, `origem: default`);
+  verbo destrutivo = `approval_required`, risco alto. **A genérica `explorar_efeito` não alcança o destrutivo**: só `explorar_<verbo>` ou a do pedido o libera.
+  `GET .../policy` mostra o padrão certo em `defaults` (`explorar_apagar` = `approval_required`; `explorar_efeito` e os comuns = `autonomous`); o aviso de
+  afrouxamento de ação de risco alto sai só para o destrutivo.
+- **Texto dos avisos:** o início da exploração diz que a etapa destrutiva pede o sim; `exploracao.efeito_liberado` com `origem: default` diz que o padrão da
+  exploração roda sem pedir, salvo destrutiva.
+
+**Prova:** `simulated` (`backend/tests/test_exploracao_politica_por_verbo.py`, `test_exploracao_de_efeito.py`). `real`: `not_run`.

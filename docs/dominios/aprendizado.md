@@ -2866,3 +2866,14 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
 - **Limites conhecidos:** o aviso `exploracao.efeito_liberado` sai a cada passagem da porta pela mesma etapa (a chave de dedup colapsa no Telegram, mas `events` pode ganhar linhas repetidas); a receita candidata que a execução de efeito deixa, achada por `step_hash` em outra execução, não foi testada com `driven_by=recipe` (a porta roda antes do executor, então a política julga do mesmo jeito); o executor rodando a etapa de efeito contra aparelho real não foi exercido (só a porta e o planejamento); o painel (Portal)
   ainda não tem linha para `explorar_efeito` em Política (aparece na resposta do `GET` só quando escolhida); a pergunta da aprovação mostra o
   título da ação sintética, sem o pedido (que pode ter nome).
+
+## O padrão da exploração de efeito é por verbo (31.325, ADR-091)
+
+- **Ordem das chaves** (`planning/exploracao.chaves_da_politica`): `explorar_<verbo>_<objeto…>` (pedido), `explorar_<verbo>` (verbo) e `explorar_efeito`
+  (genérica, só para o verbo comum). Perfil antes do grupo dentro de cada nível de busca (`PolicyEngine._escolha`).
+- **Padrão** (`capability_da_exploracao`): destrutivo (`contracts/efeito_destrutivo.VERBOS_DESTRUTIVOS`: apagar, comprar, transferir, encerrar,
+  desinstalar, resetar; sinônimos pelo verbo canônico) = `approval_required` e risco alto; o resto = `autonomous`, risco médio. A genérica não libera o
+  destrutivo: liberar tudo de uma vez nunca libera apagar nem comprar.
+- **Para ligar o P-046:** interruptor + `explorar_efeito: autonomous` (só alcança os comuns, que já rodam por padrão; vale para o dono poder apertar para
+  `approval_required` num só passo). Os destrutivos só se liberam por `explorar_<verbo>` ou pelo pedido.
+- **Prova:** `simulated`, `backend/tests/test_exploracao_politica_por_verbo.py`. `real`: `not_run`. Contrato: adendo v1.141 do [api-contract](../api-contract.md).

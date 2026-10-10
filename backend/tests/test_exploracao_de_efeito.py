@@ -91,10 +91,14 @@ def test_o_passo_de_efeito_manda_nao_digitar_senha_e_nunca_vira_molde() -> None:
     assert not ex.e_exploracao_de_efeito(passo.key, True, False)
 
 
-def test_a_acao_sintetica_pede_aprovacao_por_padrao_e_e_de_risco_alto() -> None:
-    cap = ex.capability_da_exploracao("explorar_enviar_email")
-    assert cap.side_effect and cap.risk == "high" and cap.default_policy == "approval_required"
-    assert not cap.needs_draft and cap.limit_bucket is None and cap.counterparty is None
+def test_a_acao_sintetica_segue_o_padrao_do_verbo() -> None:
+    """31.325: o destrutivo mantém aprovação e risco alto; o resto roda sem pedir (regra do dono)."""
+    destrutiva = ex.capability_da_exploracao("explorar_apagar_pasta")
+    comum = ex.capability_da_exploracao("explorar_enviar_email")
+    for cap in (destrutiva, comum):
+        assert cap.side_effect and not cap.needs_draft and cap.limit_bucket is None and cap.counterparty is None
+    assert (destrutiva.risk, destrutiva.default_policy) == ("high", "approval_required")
+    assert (comum.risk, comum.default_policy) == ("medium", "autonomous")
 
 
 def test_o_aviso_vai_na_hora_e_leva_so_ids_e_codigos() -> None:
@@ -221,22 +225,32 @@ def _avisos(state: Any) -> list[dict[str, Any]]:
         "SELECT data FROM events WHERE kind='exploracao.efeito_liberado' ORDER BY id")]
 
 
-async def test_sem_escolha_do_dono_a_exploracao_de_efeito_pede_aprovacao_antes_de_agir(harness: Harness) -> None:
+async def test_sem_escolha_do_dono_a_exploracao_destrutiva_pede_aprovacao_antes_de_agir(harness: Harness) -> None:
     state = harness.state
     assert state is not None
-    _semear(state)
-    veredito = await _porta(state)
+    destrutiva = "explorar_apagar_mensagens"
+    _semear(state, chave=destrutiva)
+    veredito = await _porta(state, destrutiva)
     assert veredito is not None and not veredito.allowed and veredito.policy == "approval_required"
     assert "aprovação" in veredito.reason
     assert len(state.approval_service.list()) == 1
     assert _avisos(state) == []                                      # ainda não liberou: nada de aviso
     # o dono aprova: a porta libera e avisa, dizendo que foi ele
-    state.scheduler._hold(state.repo.objective_row(OID), state.repo.step_row(_passo_id()), veredito)  # noqa: SLF001
+    state.scheduler._hold(state.repo.objective_row(OID), state.repo.step_row(_passo_id(destrutiva)), veredito)  # noqa: SLF001
     state.approval_service.decide(state.approval_service.list()[0]["id"], "approve")
-    assert await _porta(state) is None
+    assert await _porta(state, destrutiva) is None
     (aviso,) = _avisos(state)
-    assert aviso["chave"] == "explorar_enviar_mensagem" and aviso["aprovada"] is True and aviso["origem"] == "default"
-    assert aviso["step_id"] == _passo_id() and aviso["run_id"] == "run-x" and "pedido" not in json.dumps(aviso)
+    assert aviso["chave"] == destrutiva and aviso["aprovada"] is True and aviso["origem"] == "default"
+    assert aviso["step_id"] == _passo_id(destrutiva) and aviso["run_id"] == "run-x" and "pedido" not in json.dumps(aviso)
+
+
+async def test_sem_escolha_do_dono_a_exploracao_comum_roda_sem_pedir_e_avisa(harness: Harness) -> None:
+    state = harness.state
+    assert state is not None
+    _semear(state)
+    assert await _porta(state) is None and state.approval_service.list() == []
+    (aviso,) = _avisos(state)
+    assert aviso["politica"] == "autonomous" and aviso["origem"] == "default" and aviso["aprovada"] is False
 
 
 @pytest.mark.parametrize(("politica", "libera", "origem"), [
@@ -266,12 +280,13 @@ async def test_a_politica_do_perfil_decide_com_a_chave_do_pedido_antes_da_generi
 async def test_o_grupo_sem_aprovacao_dispensa_o_sim_e_o_aviso_diz_isso(harness: Harness) -> None:
     state = harness.state
     assert state is not None
-    pid = _semear(state)
+    destrutiva = "explorar_apagar_mensagens"
+    pid = _semear(state, chave=destrutiva)
     state.db.execute("INSERT INTO policy_groups(id, name, capabilities, limits, created_at, updated_at)"
                      " VALUES ('liberado','Liberado','{}','{}','2026-10-10T16:00:00Z','2026-10-10T16:00:00Z')")
     state.db.execute("UPDATE instagram_profiles SET policy_group_id='liberado' WHERE id=?", (pid,))
     state.scheduler.get_settings().grupo_sem_aprovacao = "liberado"
-    assert await _porta(state) is None
+    assert await _porta(state, destrutiva) is None
     (aviso,) = _avisos(state)
     assert aviso["dispensada_pelo_grupo"] is True and aviso["aprovada"] is False and aviso["politica"] == "autonomous"
     assert state.approval_service.list() == []
@@ -340,22 +355,23 @@ async def test_a_politica_so_aceita_as_chaves_que_o_dono_escreve(harness: Harnes
         def __init__(self, caps: dict[str, Any]) -> None:
             self.capabilities, self.limits = caps, None
 
-    dto = state.social.set_policy(pid, _Corpo({"explorar_efeito": "autonomous", "explorar_enviar_email": "manual_only"}))
+    dto = state.social.set_policy(pid, _Corpo({"explorar_efeito": "autonomous", "explorar_enviar_email": "manual_only",
+                                               "explorar_apagar": "autonomous"}))
     assert dto.capabilities["explorar_efeito"] == "autonomous" and dto.capabilities["explorar_enviar_email"] == "manual_only"
     assert dto.own["explorar_efeito"] == "autonomous" and dto.origin["explorar_efeito"] == "own"
-    assert dto.defaults["explorar_efeito"] == "approval_required"
+    assert dto.defaults["explorar_efeito"] == "autonomous" and dto.defaults["explorar_apagar"] == "approval_required"
+    assert "explorar_apagar" in dto.loosened and "explorar_efeito" not in dto.loosened
     for ruim in ("explorar_ver_caixa_lixo", "explorar_enviar_abcdef", "NAO_EXISTE"):
         with pytest.raises(SocialError) as erro:
             state.social.set_policy(pid, _Corpo({ruim: "autonomous"}))
         assert erro.value.code == "unknown_capability"
     # afrouxar abaixo do padrão uma ação de risco alto continua aceito, mas nunca calado
-    avisos = state.db.query("SELECT message FROM events WHERE message LIKE '%explorar_efeito%afrouxado%'")
+    avisos = state.db.query("SELECT message FROM events WHERE message LIKE '%explorar_apagar afrouxado%'")
     assert len(list(avisos)) == 1
     # apagar (None) volta a herdar: some do perfil e a porta pede aprovação de novo
-    state.social.set_policy(pid, _Corpo({"explorar_efeito": None, "explorar_enviar_email": None}))
+    state.social.set_policy(pid, _Corpo({"explorar_efeito": None, "explorar_enviar_email": None, "explorar_apagar": None}))
     assert "explorar_efeito" not in loads(state.social_repo.profile_row(pid)["automation_policy"], {}).get("capabilities", {})
-    veredito = await _porta(state)
-    assert veredito is not None and veredito.policy == "approval_required"
+    assert await _porta(state) is None                                  # sem escolha: o padrão do verbo comum roda sem pedir
 
 
 # ------------------------------------------------------------------ o planejamento (Outlook)
