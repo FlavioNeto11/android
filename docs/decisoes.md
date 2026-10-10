@@ -6057,3 +6057,15 @@ evento e leitura. Risco principal: o filtro de conta não confirmada nos consumi
   chegar a outra persona.
 - **Prova:** `simulated`, `tests/test_exploracao_fora_do_catalogo.py`, `tests/test_etapas_descobertas.py`. `real`:
   `not_run` (a exploração no Outlook gasta API e pede o sim do dono).
+
+### Atualização 10/10/2026 — a exploração de efeito pela política (31.297)
+
+- **Decisão da orquestradora (10/10, tarde):** implementar o que o ADR-091 deixou para depois, atrás de um interruptor **desligado de fábrica**
+  (`limits.exploracao_efeito_ligada`). O ADR-091 acima segue valendo como o padrão: sem o interruptor, o verbo de efeito é recusado.
+- **Como:** o pedido de efeito vira uma etapa exploratória `side_effect` com a chave `explorar_<verbo canônico>_<objeto…>`; a porta 13.2 a julga
+  por uma ação sintética (risco alto, aprovação por padrão) pela política do perfil/grupo, na chave do pedido ou na genérica `explorar_efeito`.
+  O grupo sem aprovação e a política `autonomous` liberam e o dono é avisado na hora (`exploracao.efeito_liberado`). Nada passa por fora da
+  política: sem perfil não passa, o teto `preparar` pede o sim, e o efeito que o modelo escreveu sem a marca do sistema continua recusado.
+- **Escolhas:** o efeito descoberto não é oferecido a outras execuções (a política julga cada vez e a receita de efeito pede duas concordâncias);
+  a chave do pedido leva só vocabulário fechado, e o sufixo de letras (pedido sem objeto) não é configurável: para esse caso há a genérica.
+- **Prova:** `simulated`, `tests/test_exploracao_de_efeito.py`. `real`: `not_run`. Contrato: adendo v1.140.

@@ -883,3 +883,4 @@ orquestradora; ela anota aqui antes de responder.
 | próximos livres (atualização 10/10 16:03Z) | 31.317, 29.212, 28.78; ADR-092; migração 135; adendo v1.140; K-113 | |
 | 31.317 | Ponte | egresso: ao retirar conta (ex.: android-07, 02:18Z de 10/10), limpar_egresso (identity/infrastructure/egresso.py) engoliu aparelho_em_quarentena e network_profile_in_use e o aparelho ficou com o perfil de proxy e o egress_esperado da conta morta; desatribuir tolerando quarentena ou deixar aviso visível na conta, com teste | Ponte | reservado 10/10 16:16Z |
 | próximos livres (atualização 10/10 16:16Z) | 31.318, 29.212, 28.78; ADR-092; migração 135; adendo v1.140; K-113 | |
+| adendo v1.140 | 31.297 (Aprendizado): exploração de efeito pela política (interruptor, chaves de política explorar_efeito e explorar_<verbo>_<objeto>, evento exploracao.efeito_liberado) | Aprendizado | concedido 10/10 16:14Z (fila da orquestradora); próximo livre v1.141 |

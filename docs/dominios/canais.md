@@ -1176,3 +1176,11 @@ numerado é lacuna, a levar à orquestradora antes de desligar a operação pela
 
 - O aviso `exploracao.concluida` com `parou_no_teto` ou `falhou` acrescenta uma linha: o caminho pode ser ensinado na execução ("Ensinar a
   corrigir"), uma vez, para todas as personas. Sem pedido, sem @, sem chave da etapa.
+
+## O aviso da exploração com efeito (31.297, ADR-091)
+
+- **Tipo novo `exploracao.efeito_liberado`** (nível 3, **na hora**: `NA_HORA_SEM_PEDIR`): a porta liberou uma exploração com efeito (política
+  `autonomous`, grupo sem aprovação ou o sim do dono). Diz como foi liberada e como voltar a pedir aprovação (política `explorar_efeito`). Só
+  ids e códigos fechados (run, chave de política, origem): nem o pedido, nem o alvo.
+- `exploracao.iniciada` e `exploracao.concluida` ganham `com_efeito`: o texto troca "Só leitura e navegação" por "Tem etapa COM efeito" / "Houve
+  etapa com efeito". **Prova:** `simulated`, `backend/tests/test_exploracao_de_efeito.py`. `real`: `not_run` (canal real).
