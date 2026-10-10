@@ -836,3 +836,19 @@ receber contas novas.
   10 min antes do login, depois girou) terminou numa tela branca do próprio app, sem desfecho; a H3 não teve saída pelo proxy e não
   logou. n=1 de desfecho: não prova que o IP casado basta nem que não basta. O JSON de prova fica fora do Git, em
   `.claude/handoffs/ponte-bifurcacao-3-contas.json`.
+
+## "Can't find account" é desfecho próprio, não tela desconhecida (31.332)
+
+- **A tela.** Depois do envio, o app pode abrir um diálogo de dois botões (TRY AGAIN, SIGN UP) com o título "Can't find
+  account" e o corpo "We can't find an account with <identificador>…". Medido na H2 (android-08, 10/10/2026); a
+  hierarquia fica fora do Git, em `.claude/handoffs/bifurcacao/h2-retry-tela-final.json`.
+- **O desfecho `conta_nao_encontrada`** (`depois_do_envio` do `sessao.yaml`, sinal `user_not_found` do `telas.yaml`).
+  Não é bloqueio: não passa pelo detector de conta travada e **a conta não é retirada** (nenhuma lápide, nenhum
+  `profile.account_retired`). Não é senha errada: a credencial vai a `review` (o login automático para até uma pessoa
+  conferir o identificador guardado), nunca a `invalid`. A sessão fica `auth_required`; o "Conectar" manual continua
+  podendo tentar de novo.
+- **O motivo** traz o identificador usado **mascarado** (`f***@dominio` para e-mail, primeiro caractere para os demais);
+  o texto da tela não vai para o motivo. Os botões do diálogo nunca são tocados.
+- **Prova:** `simulated` (`backend/tests/test_conta_nao_encontrada.py`, 12 casos: a hierarquia da captura real com o
+  identificador trocado, a máscara e o motor de sessão contra o aparelho falso). `real`: `not_run`. O português não foi
+  medido (o texto é palpite da tradução).

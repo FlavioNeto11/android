@@ -50,7 +50,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
@@ -117,6 +117,7 @@ AVISO_FORA_DA_FRENTE = "App fora do primeiro plano"
 class Outcome(StrEnum):
     SESSION_READY = "session_ready"            # conta certa aberta
     INVALID_CREDENTIAL = "invalid_credential"  # a tela disse que a senha está errada
+    CONTA_NAO_ENCONTRADA = "conta_nao_encontrada"  # a tela disse que não existe conta com o identificador usado (31.332)
     AUTH_CHALLENGE = "auth_challenge"          # 2FA, captcha, confirmação: só uma pessoa resolve
     WRONG_ACCOUNT = "wrong_account"            # abriu, mas é outra conta
     RETRYABLE = "retryable"                    # falhou antes de qualquer efeito; pode tentar de novo
@@ -125,7 +126,8 @@ class Outcome(StrEnum):
     @property
     def terminal(self) -> bool:
         """Desfecho que nunca gera nova tentativa automática — é o que evita bloquear a conta."""
-        return self in (Outcome.INVALID_CREDENTIAL, Outcome.AUTH_CHALLENGE, Outcome.WRONG_ACCOUNT)
+        return self in (Outcome.INVALID_CREDENTIAL, Outcome.CONTA_NAO_ENCONTRADA, Outcome.AUTH_CHALLENGE,
+                        Outcome.WRONG_ACCOUNT)
 
 
 @dataclass(slots=True)
@@ -300,6 +302,18 @@ def _dados_da_trava(profile_id: str, trava: ContaTravada | None) -> dict[str, st
 
 
 # ---------------------------------------------------------------------------------------------------- desfechos
+def mascarar_identificador(identificador: str) -> str:
+    """O identificador do login sem entregar a conta: e-mail vira `t***@dominio` (o domínio não é segredo), qualquer
+    outro (usuário, telefone) mostra só o primeiro caractere. Serve para o motivo que a pessoa lê e para o evento."""
+    ident = identificador.strip().lstrip("@")
+    if not ident:
+        return "(identificador vazio)"
+    local, arroba, dominio = ident.partition("@")
+    if arroba and local:
+        return f"{local[0]}***@{dominio}"
+    return f"{ident[0]}***"
+
+
 def classificar_depois_do_envio(k: ConhecimentoDeSessao, tree: UiTree, *, package: str | None,
                                 expected_username: str, locale: str | None = None,
                                 aceitos: Iterable[str] = ()) -> Verdict:
@@ -916,6 +930,10 @@ class SessaoDeclarada:
 
         verdict = await self._watch_after_submit(rt, k, conta, locale)
         verdict = await self._codigo_do_email(rt, k, conta, locale, verdict, enviado_em)
+        if verdict.outcome is Outcome.CONTA_NAO_ENCONTRADA:
+            # O motivo diz QUAL identificador foi recusado, mascarado: a tela repete o texto inteiro, e o motivo vai
+            # para o histórico, a fila e o evento.
+            verdict = replace(verdict, detail=f"{verdict.detail} (identificador {mascarar_identificador(identificador)})")
         if verdict.outcome is Outcome.UNCERTAIN:
             verdict = await self._retocar_se_intacto(rt, k, conta, attempt, identificador, locale, verdict,
                                                      automatic=automatic)
@@ -1766,6 +1784,7 @@ class SessaoDeclarada:
         return {
             Outcome.SESSION_READY: SessionStatus.session_ready,
             Outcome.INVALID_CREDENTIAL: SessionStatus.auth_required,
+            Outcome.CONTA_NAO_ENCONTRADA: SessionStatus.auth_required,
             Outcome.AUTH_CHALLENGE: SessionStatus.auth_challenge,
             Outcome.WRONG_ACCOUNT: SessionStatus.wrong_account,
         }.get(outcome, SessionStatus.unknown)

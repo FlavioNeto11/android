@@ -81,7 +81,12 @@ conta:
 # leitura pela aba de perfil). Sem regra que case: incerto, com a razão da tela.
 depois_do_envio:
   - {sinal: wrong_password, desfecho: invalid_credential, detalhe: a tela informou senha incorreta}
-  - {sinal: user_not_found, desfecho: invalid_credential, detalhe: a tela informou que a conta não existe}
+  # 31.332 (H2, android-08, 10/10/2026): o diálogo "Can't find account" ("We can't find an account with <identificador>…",
+  # TRY AGAIN / SIGN UP) NÃO é bloqueio: a conta não é retirada. Também não é senha errada (a senha nem foi lida): a
+  # sessão fica `auth_required` e o login automático para até uma pessoa conferir o identificador guardado. O motor
+  # acrescenta o identificador usado, mascarado. Os botões do diálogo nunca são tocados.
+  - {sinal: user_not_found, desfecho: conta_nao_encontrada,
+     detalhe: 'o app informou que não existe conta com o identificador usado'}
   - {tipos: [desafio, dois_fatores], desfecho: auth_challenge,
      detalhe: 'o Instagram exige confirmação adicional; só uma pessoa pode resolver'}
   # Diálogo genérico depois de Entrar (android-06): o app recusou com erro GENÉRICO. A causa não está na tela (pode

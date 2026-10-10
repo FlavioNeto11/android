@@ -31,7 +31,9 @@ sinais:
     save_login: 'save (your )?login info'
     save_dismiss: '^\s*not now\s*$'
     wrong_password: '(incorrect password|password (you )?entered .* incorrect|wrong password)'
-    user_not_found: "(couldn'?t find|user not found|no account found)"
+    # 31.332: o diálogo medido (android-08, 10/10/2026) tem o título "Can't find account" e o corpo "We can't find an
+    # account with <identificador>. Try another mobile number or email…", com TRY AGAIN e SIGN UP.
+    user_not_found: "(couldn['’]?t find|can['’]?t find (an )?account|user not found|no account found)"
     # Diálogo genérico depois de Entrar (android-06): NÃO diz a causa, então nunca é "senha errada".
     login_error: '(unable to log ?in|an unexpected error occurred|please try logging in again)'
     switcher: '(switch accounts?|log into another account)'
@@ -52,7 +54,8 @@ sinais:
     save_login: 'salvar (suas )?informa[çc][õo]es de login'
     save_dismiss: '^\s*agora n[ãa]o\s*$'
     wrong_password: '(senha incorreta|senha .* incorreta)'
-    user_not_found: '(n[ãa]o foi poss[íi]vel encontrar|usu[áa]rio n[ãa]o encontrado)'
+    # NÃO MEDIDO em português além do primeiro alternativo: o resto é palpite da tradução do diálogo em inglês.
+    user_not_found: '(n[ãa]o foi poss[íi]vel encontrar|n[ãa]o (conseguimos encontrar|encontramos) (uma )?conta|usu[áa]rio n[ãa]o encontrado)'
     login_error: '(n[ãa]o foi poss[íi]vel (entrar|fazer login)|ocorreu um erro inesperado|tente (entrar|fazer login) novamente)'
     switcher: '(trocar de conta|entrar em outra conta)'
     # NÃO MEDIDO em português: o texto é palpite (a tela mascara o endereço com asteriscos, como em inglês).

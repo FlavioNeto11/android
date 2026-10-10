@@ -94,6 +94,8 @@ class FakeInstagram:
     apos_codigo: str = "feed"
     code_field: str = ""
     wrong_password_message: bool = True
+    # 31.332: o app responde ao envio com o diálogo "Can't find account" (medido no android-08, 10/10/2026).
+    conta_inexistente: bool = False
     submit_fault: str | None = None            # "lost" (não chega) | "timeout" (demora e o efeito ocorre)
     # 29.64: quantos toques em Entrar o app IGNORA (o toque chega, nada acontece), e como a tela fica depois:
     # "intacto" (preenchido, sem erro, o caso do android-13 em 04/10), "carregando" (um ProgressBar na tela) ou
@@ -236,6 +238,17 @@ class FakeInstagram:
                      text="We detected an unusual login attempt", rid="challenge_title"),
                 Node("android.widget.TextView", (40, 300, 680, 360), text="Help us confirm it's you"),
                 Node("android.widget.Button", (40, 900, 680, 960), text="Continue", clickable=True),
+            ]
+        if self.screen == "conta_nao_encontrada":
+            return [
+                Node("android.widget.TextView", (50, 436, 670, 521), text="Can't find account"),
+                Node("android.widget.TextView", (50, 537, 670, 732), rid="android:id/message",
+                     text=f"We can't find an account with {self.username_field}. Try another mobile number or email, "
+                          "or if you don't have an account, you can sign up."),
+                Node("android.widget.Button", (291, 740, 487, 836), text="TRY AGAIN", rid="android:id/button2",
+                     clickable=True, action="dismiss"),
+                Node("android.widget.Button", (487, 740, 646, 836), text="SIGN UP", rid="android:id/button1",
+                     clickable=True, action="dismiss"),
             ]
         if self.screen == "two_factor":
             return [
@@ -417,6 +430,10 @@ class FakeInstagram:
         self._apply_login()
 
     def _apply_login(self) -> None:
+        if self.conta_inexistente:
+            self.screen = "conta_nao_encontrada"
+            self.password_field = ""
+            return
         if self.password_field != self.stored_password:
             self.screen = "login_error"
             self.password_field = ""

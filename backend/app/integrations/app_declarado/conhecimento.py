@@ -57,7 +57,8 @@ PASTA_DOS_APPS = CONHECIMENTO_DE_APPS
 #: sessão pronta, conta errada e incerto (motor). De propósito NÃO há `retryable` nem `session_ready`: depois que a
 #: senha foi enviada, nada autoriza repetir o envio, e sucesso só com a conta lida na tela.
 CONFERIR_CONTA = "conferir_conta"
-DESFECHOS_DEPOIS_DO_ENVIO = frozenset({"invalid_credential", "auth_challenge", "uncertain", CONFERIR_CONTA})
+DESFECHOS_DEPOIS_DO_ENVIO = frozenset({"invalid_credential", "conta_nao_encontrada", "auth_challenge", "uncertain",
+                                       CONFERIR_CONTA})
 #: A etapa gravada na tentativa quando a regra não nomeia outra.
 ETAPA_PADRAO = "classified"
 #: Os textos que o app declara e as lacunas que cada um pode ter (o motor só preenche estas).

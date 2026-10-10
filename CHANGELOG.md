@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o diálogo "Can't find account" vira o desfecho `conta_nao_encontrada` (31.332)
+
+- A tela do login que diz que não existe conta com o identificador usado (medida na H2, android-08) deixou de cair em
+  "tela desconhecida" (e, no `user_not_found` antigo, que nunca casava com o texto real). Novo `Outcome.CONTA_NAO_ENCONTRADA`
+  (terminal): sessão `auth_required`, credencial em `review`, **conta não retirada**, motivo com o identificador mascarado,
+  botões do diálogo intocados. Sem migração, sem rota nova, sem enum novo no painel (o status da sessão é o de sempre).
+- Prova `simulated`: `tests/test_conta_nao_encontrada.py` (12), `test_sessao_declarada`, `test_instagram_auth`,
+  `test_aparelho_persona_sessao`, `test_egresso_na_janela`, `test_arquitetura`. `real`: `not_run`.
+
 ## 2026-10-10 — o login mede o egresso dentro da janela e aborta se não casar (31.329)
 
 - `ConvergenciaDeRede.medir_para_o_login` mede a saída do aparelho AGORA e o motor de sessão (`_login`) a confere ANTES de digitar a
