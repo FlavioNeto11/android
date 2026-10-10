@@ -38,6 +38,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-10 — o cadastro guiado da conta planejada (31.310, ADR-087, adendo v1.137)
 
+- **Correção da revisão (88ac3774):** `enviado` é gravado ANTES do toque em enviar (queda ou cancelamento depois do toque não reabrem o formulário; a gravação que
+  falha impede o toque); a trava "Confirm you're human" e o app em primeiro plano são relidos antes de cada campo, da senha e do código (`desafio`/`app_fora_do_ar`, não
+  `tela_desconhecida`); o @ indisponível volta ao cadastro por parâmetro interno. **Limitações conhecidas, sem mudar:** e-mail, @ e nome vão por `type_text` comum (o log do
+  Appium pode mostrá-los; não são credencial); o campo do código normalmente não é de senha, então a hierarquia relida traz o código em claro em `rt.last_tree` e na prévia ao
+  vivo (nunca vira evidência; o ADR-089 aceita).
 - **Rota nova** `POST /api/instagram/profiles/{profile_id}/accounts/{account_id}/provisioning/signup` (202, verbo `session.cadastrar`) e campo aditivo
   `ProvisioningInfo.proximo_passo` (`aguardando_pessoa:<captcha|desafio|telefone|usuario_indisponivel|tela_desconhecida|codigo_nao_chegou|conta_nao_lida|app_fora_do_ar>`).
   Sem migração. O adendo v1.137 descreve estados, recusas (409 com código) e paradas.
