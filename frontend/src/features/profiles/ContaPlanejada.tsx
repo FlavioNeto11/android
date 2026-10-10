@@ -214,7 +214,7 @@ export function PrepararConta({ profileId, contas, appFixo, hostInicial, modoIni
       </Field>
       {sugestoes.length > 0 ? (
         <div className={styles.accountWide}>
-          <span className={styles.muted}>Sugestões pelos dados da pessoa: </span>
+          <span className={styles.muted}>Sugestões pelos dados da pessoa (só a parte antes do @; em app de e-mail, complete com o domínio): </span>
           <span className={styles.accountBadges}>
             {sugestoes.map((s) => (
               <button key={s.handle} type="button" className={styles.sugestao} aria-pressed={desejado === s.handle}
