@@ -91,12 +91,13 @@ def test_as_rotas_de_workers_e_limites_seguem_no_app_e_cada_uma_uma_vez() -> Non
     assert not _casa("/api/workers/{worker_id}", "/api/workers/devices/unbound")        # 1 segmento x 3: sem sobreposição
 
 
-def test_as_dez_rotas_de_rede_seguem_no_app_e_cada_uma_uma_vez() -> None:
+def test_as_onze_rotas_de_rede_seguem_no_app_e_cada_uma_uma_vez() -> None:
     """15.15 F4f: `/api/network/*` saiu de `api.py` para `modules/fleet/presentation/rede.py`; o conjunto (método e modelo) é o de
-    antes, sem repetição nem rota perdida."""
+    antes, sem repetição nem rota perdida. O `PUT` do perfil (só a saída esperada) entrou no 31.291."""
     rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/network")]
     assert sorted(rotas) == sorted([
-        ("GET", "/api/network/profiles"), ("POST", "/api/network/profiles"), ("DELETE", "/api/network/profiles/{profile_id}"),
+        ("GET", "/api/network/profiles"), ("POST", "/api/network/profiles"), ("PUT", "/api/network/profiles/{profile_id}"),
+        ("DELETE", "/api/network/profiles/{profile_id}"),
         ("GET", "/api/network/devices"), ("POST", "/api/network/assign"),
         ("POST", "/api/network/devices/{instance_id}/verify"), ("POST", "/api/network/devices/{instance_id}/reapply"),
         ("POST", "/api/network/devices/{instance_id}/apply"), ("GET", "/api/network/server"),
