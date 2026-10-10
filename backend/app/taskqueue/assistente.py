@@ -21,6 +21,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..contracts.origem import chave_da_sucessora
 from ..db import loads
 from ..models import RunCreate, RunStatus, RunSummary
 from ..modules.identity.application.available_data import common_data
@@ -193,7 +194,7 @@ class ComandoAssistido:
         if not (instance_ids or profile_ids or targets):
             # Execução distribuída (a foto guarda o pedido ANTES do sorteio) ou anterior à foto: os aparelhos dela.
             instance_ids = list(loads(run["instance_ids"], []))
-        chave = f"sucessora-{run_id[-40:]}-{hashlib.sha256(body.command.strip().encode()).hexdigest()[:16]}"
+        chave = chave_da_sucessora(run["idempotency_key"], run_id, hashlib.sha256(body.command.strip().encode()).hexdigest()[:16])
         if RunStatus(run["status"]) != RunStatus.needs_input:
             # Duplo clique ou nova aba: a sucessora deste mesmo texto já existe e a antiga já foi cancelada.
             existente = runs.repo.db.one("SELECT id FROM runs WHERE idempotency_key=?", (chave,))

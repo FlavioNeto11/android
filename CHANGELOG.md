@@ -19,6 +19,31 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — a pergunta de execução vai só ao canal de origem do comando; validação e avaliação não avisam (31.279, ADR-086)
+
+- **Aviso:** `run.needs_input` e `objective.waiting_user` só saem no Telegram quando o comando veio do Telegram (`telegram:` na chave de
+  idempotência). Comando do painel pergunta no painel; do Trello, no Trello (o espelho). A aprovação NÃO é pergunta e segue o canal de
+  aprovação. A execução que nasceu de um pedido persistente (`runs.pedido_id`) segue avisando como antes (o canal é o do pedido).
+- **Portas da conversa:** `PortasReais.para("telegram" | "trello")` é a mesma central vista por um canal: `execucoes_esperando` e
+  `pendencias` só trazem as perguntas do canal. O Telegram, o espelho do Trello e o leitor do Trello recebem a vista do próprio canal
+  (`bootstrap.py`). A execução do sistema (validação, **avaliação `eval-*`**, lote, ensaio, operação) não aparece em canal algum, e
+  `responder` a recusa: nunca nasce sucessora de resposta do dono num canal; quem a disparou responde pelo painel ou cancela.
+- **Sucessora herda a origem:** `chave_da_sucessora` mantém o prefixo da respondida (`telegram:`, `trello:`, `validacao:`, `eval-`,
+  `lote:`, `op:`, `ensaio:`). Antes a chave `sucessora-…` perdia a origem: a conversa do Telegram virava "painel" e a sucessora de uma
+  avaliação virava execução de pessoa.
+- `scripts/eval_run.py` cancela na hora a avaliação que termina em `needs_input` (a bateria a disparou, a bateria a encerra).
+- Contrato: `contracts/origem.py` (`PREFIXO_AVALIACAO`, `canal_da_pergunta`, `chave_da_sucessora`; `eval-` entra em
+  `e_execucao_do_sistema`). Sem API nova, sem migração.
+- Prova: `simulated` (`test_pergunta_so_ao_canal_de_origem.py`, 28 casos; `test_avisos_objetivo_parado.py`, `test_avisos_rajada.py` e
+  `test_avisos_servico.py` ajustados: a execução "comum que avisa" agora é a do Telegram). `real`: `not_run`; PostgreSQL: `not_run`.
+## 2026-10-10 — 31.318 higiene 12.3/B10: o rascunho de telas não leva a identidade da pessoa, e o `api-contract.md` perde a numeração repetida
+
+- `scripts/rascunho-de-telas.py`: o texto de um elemento cujo `resource-id` diz nome, conta, usuário, perfil, avatar ou contato nunca vira sinal, e a
+  opção repetível `--ignorar <texto>` (o nome de exibição, o @ ou o e-mail da conta que percorreu o app; mínimo de 3 letras) tira o que casar, sem
+  acento nem caixa, nos dois sentidos. Campo de senha e `--saida` igual a uma entrada já estavam cobertos (7f5e036d) e ganharam teste de borda (texto
+  que parece estável, caminho escrito de outro jeito). `simulated`: `scripts/tests/test_rascunho_de_telas.py` (14 casos).
+- `docs/api-contract.md` (B10): o segundo "Adendo v0.9" virou `v0.9b` (o de autenticação, citado como "o portão do adendo v0.9", segue `v0.9`) e o
+  `InstanceState` do topo lista `hibernated`. Só documentação. `real`: `not_run`.
 ## 2026-10-10 — o laço de eventos não espera o banco no boot: índice dos eventos por aparelho, pré-leitura fora do laço e aviso (31.307, migração 135)
 
 - **Causa** (3 despejos de 16:33Z, laço parado 10,9 → 71 s): a thread do laço estava numa só consulta, `SELECT data FROM events WHERE kind='instance.updated' AND instance_id=? ORDER BY id DESC LIMIT 20`
@@ -34,10 +59,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   e `esperando_desfecho`. O rearme e as duas leituras em lote passam a rodar em thread (`asyncio.to_thread`); o envio e as marcas por linha seguem como eram.
 - **Parte 2 (a orquestradora reserva o número; fora desta entrega):** a camada `Database` com execução fora do laço por padrão. Os pontos medidos hoje, 10/10/2026, todos "SQL síncrono na thread do laço ou na espera da trava":
   (1) adoção, `_ultimo_dto_persistido` (71 s, 16:33Z; índice 135 e pré-leitura, nesta entrega); (2) `workers.registry.rows` em `_probe_transport` (12 s, 13:01Z); (3) régua diária do curador, `sql_repository._agregar`
-  (10 s, 13:01Z e 13:24Z; o 31.293 já a fez em blocos); (4) `/health` esperando a trava da curadoria de falhas (10 s, 16:56Z; `/health` em thread e índice dos sinais, nesta entrega);
+  (10 s, 13:01Z e 13:24Z; o 31.293 já a fez em blocos); (4) `/health` esperando a trava da curadoria de falhas (10 s, 16:56Z; `/health` em thread, nesta entrega; sem índice novo);
   (5) desfechos da conversa (10 s, 16:59Z; em thread, nesta entrega). (6) `GET` da lista de operações (10 s, 17:34Z, disco em ~136 % nas dirigidas do funil): `operacoes.router.listar_operacoes` → `servico.listar` → `_ler_com_lote` → `planning/custo_por_passo.por_execucao` → `db.query`, na thread do laço; `GET /api/operacoes` passa a chamar `servico.listar` em thread (`asyncio.to_thread`), nesta entrega. O aviso do `Database` (>1 s na thread do laço, `poc.db`) aponta os próximos sem esperar outro travamento. A causa de fundo é a conexão única com trava global
   e o disco da máquina disputado pela suíte PG (K-113): uma consulta longa em QUALQUER thread faz esperar toda chamada síncrona do laço.
-- Prova: `simulated` (`tests/test_laco_sem_sql_sincrono.py`, 13 casos; SQLite, o PG pela fábrica quando houver `TEST_DATABASE_URL`). `real`: `not_run` (medida do EXPLAIN e do tempo no SQLite do central só depois da suíte PG).
+- **Medição `real` (somente leitura, 10/10/2026, central, SQLite `data/poc.sqlite3` de 194,5 MB em WAL, migração 134 aplicada, deploy 71 `6f525673`; nenhum índice criado nem escrita; scripts de medida no escopo da sessão):** a consulta da adoção usa `idx_events_kind_ts (kind=?)` mais B-tree temporário e lê 3.541 linhas de `instance.updated` (6,54 MB) por aparelho, ~137 MB nos 21 aparelhos a cada boot: 7–12 ms por aparelho a quente (182 ms no total), 71 s sob a fila de disco do K-113. Numa cópia EM MEMÓRIA de `events`, o índice 135 leva a consulta de 29,0 ms para 0,7 ms (~40x; plano `SEARCH … idx_events_instance_kind_id (instance_id=? AND kind=?)`; `CREATE INDEX` em 51,8 ms em memória). Sem índice novo, porque a medida não o justifica: `learning_signals` 310 linhas, 0,1 ms (usa `ux_learning_signals`); `canal_entradas` 2.676 linhas (telegram 53, trello 2.623), `desfechos_parados` 0,1–9,6 ms; `steps` das 50 runs mais novas 8,1 ms; `contas_travadas_abertas` 0,1 ms. O `CREATE INDEX` real no central (tempo e trava de escrita) só se mede no deploy 72: `not_run`.
+- Prova: `simulated` (`tests/test_laco_sem_sql_sincrono.py`, 12 casos; SQLite, o PG pela fábrica quando houver `TEST_DATABASE_URL`). PostgreSQL (suíte e EXPLAIN no PG do harness): `not_run`.
 
 ## 2026-10-10 — a persona de teste tem selo, fica escondida por padrão e nasce marcada (31.315, adendo v1.139 do 31.314)
 

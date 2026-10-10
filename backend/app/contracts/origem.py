@@ -61,6 +61,12 @@ PREFIXO_ENSAIO = "ensaio:"
 PREFIXO_OPERACAO = "op:"
 
 
+#: 31.279 (ADR-086): a chave das execuções da BATERIA DE AVALIAÇÃO (`eval-<uuid>`, `scripts/eval_run.py`). Uma avaliação
+#: pergunta de propósito ("para qual contato?"), e a pergunta é de quem a disparou: nunca avisa o dono nem cria sucessora a
+#: partir de resposta dele. Fora de `PREFIXOS_DE_ORIGEM` (não é uma origem que o painel mostre), como o lote.
+PREFIXO_AVALIACAO = "eval-"
+
+
 def eh_ensaio_de_leitura(idempotency_key: str | None) -> bool:
     """A execução é um ensaio só de leitura (30.31, fatia 2): para antes da primeira etapa com efeito externo."""
     return (idempotency_key or "").startswith(PREFIXO_ENSAIO)
@@ -70,8 +76,36 @@ def e_execucao_do_sistema(prova_fluxo_id: str | None, idempotency_key: str | Non
     """A execução é do sistema, e não de uma pessoa (28.19): prova de fluxo, validação do QA, ensaio só de leitura ou
     lote de frente. Nada dela vira aviso individual ao dono. Telegram e Trello são pedidos de pessoa: seguem avisando."""
     origem, _ = origem_da_execucao(prova_fluxo_id, idempotency_key)
-    return (origem in ("prova_fluxo", "validacao_qa") or (idempotency_key or "").startswith(PREFIXO_LOTE)
-            or (idempotency_key or "").startswith(PREFIXO_OPERACAO) or eh_ensaio_de_leitura(idempotency_key))
+    chave = idempotency_key or ""
+    return (origem in ("prova_fluxo", "validacao_qa") or chave.startswith((PREFIXO_LOTE, PREFIXO_OPERACAO, PREFIXO_AVALIACAO))
+            or eh_ensaio_de_leitura(idempotency_key))
+
+
+CanalDaPergunta = Literal["painel", "telegram", "trello"]
+
+
+def canal_da_pergunta(prova_fluxo_id: str | None, idempotency_key: str | None) -> CanalDaPergunta | None:
+    """31.279 (ADR-086): para ONDE vai a pergunta de uma execução (e o aviso de parada esperando pessoa): só ao canal de
+    ORIGEM do comando. Comando pelo painel (sem marca), pergunta no painel; pelo Telegram, no Telegram; pelo Trello, no
+    Trello. `None` = a execução é do sistema (validação, avaliação, lote, ensaio, operação): quem a dispara responde ou
+    cancela, e o dono não é avisado nem responde por ela. A sucessora herda a origem da chave (`chave_da_sucessora`)."""
+    if e_execucao_do_sistema(prova_fluxo_id, idempotency_key):
+        return None
+    origem, _ = origem_da_execucao(prova_fluxo_id, idempotency_key)
+    return "telegram" if origem == "telegram" else "trello" if origem == "trello" else "painel"
+
+
+#: Os prefixos que a SUCESSORA herda do pedido respondido: a origem (canal, validação) e a marca de sistema (lote, ensaio,
+#: operação, avaliação). Sem isto a resposta a uma pergunta do Telegram nascia sem marca e a conversa virava "painel".
+_PREFIXOS_QUE_A_SUCESSORA_HERDA = (*PREFIXOS_DE_ORIGEM, PREFIXO_LOTE, PREFIXO_ENSAIO, PREFIXO_OPERACAO, PREFIXO_AVALIACAO)
+
+
+def chave_da_sucessora(chave_da_respondida: str | None, run_id: str, resumo_da_resposta: str) -> str:
+    """A chave de idempotência da sucessora de `run_id` para ESTA resposta (`resumo_da_resposta`: o hash dela). Leva o
+    prefixo de origem da respondida, quando ele existe: a sucessora de uma execução do Telegram segue sendo do Telegram, e a
+    de uma avaliação ou validação segue sendo do sistema."""
+    herdado = next((p for p in _PREFIXOS_QUE_A_SUCESSORA_HERDA if (chave_da_respondida or "").startswith(p)), "")
+    return f"{herdado}sucessora-{run_id[-40:]}-{resumo_da_resposta}"
 
 
 def origem_da_execucao(prova_fluxo_id: str | None,

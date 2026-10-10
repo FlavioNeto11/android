@@ -241,7 +241,7 @@ def test_o_lote_de_frente_cala_pelo_mesmo_predicado_e_a_execucao_comum_avisa(tmp
 
 def test_uma_mensagem_por_parada_e_a_aprovacao_nao_entra(tmp_path: Path) -> None:
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
-    _run(banco, "rc", chave="k-comum")
+    _run(banco, "rc", chave="telegram:k-comum")
     assert _parou(servico, "rc") is True
     assert _parou(servico, "rc") is False, "a reemissão da mesma espera virou outra mensagem"
     assert _parou(servico, "rc", desde="2026-10-05T06:00:00.000Z") is True, "a espera seguinte não avisou"
@@ -253,7 +253,7 @@ def test_uma_mensagem_por_parada_e_a_aprovacao_nao_entra(tmp_path: Path) -> None
 def test_o_aviso_de_conta_da_mesma_execucao_cala_o_objetivo(tmp_path: Path) -> None:
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     criada = now()
-    _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _run(banco, "rc", chave="telegram:k-comum", criada=to_iso(criada))
     _objetivo(banco, "rc")
     _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)))
     assert _parou(servico, "rc") is False, "a conta já avisou: o objetivo da mesma execução repetiu a mensagem"
@@ -270,7 +270,7 @@ def test_so_o_aviso_de_conta_da_mesma_persona_cala_o_objetivo(tmp_path: Path, pe
     """Na dúvida, avisa: um aviso em dobro custa menos que uma parada muda (orquestradora, 05/10 04:06Z)."""
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     criada = now()
-    _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _run(banco, "rc", chave="telegram:k-comum", criada=to_iso(criada))
     _objetivo(banco, "rc", persona=persona_do_objetivo)
     _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)), persona=persona_da_conta)
     assert _parou(servico, "rc") is True
@@ -311,7 +311,7 @@ def test_com_a_conta_no_aviso_so_a_mesma_conta_cala_o_objetivo(tmp_path: Path, c
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     _personas_e_contas(banco)
     criada = now()
-    _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _run(banco, "rc", chave="telegram:k-comum", criada=to_iso(criada))
     _objetivo(banco, "rc")
     for seq, (status, app) in enumerate(etapas, start=1):
         _etapa(banco, "rc", seq, status, app)
@@ -331,7 +331,7 @@ def test_com_a_mesma_conta_so_o_motivo_de_conta_cala(tmp_path: Path, failure_kin
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     _personas_e_contas(banco)
     criada = now()
-    _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _run(banco, "rc", chave="telegram:k-comum", criada=to_iso(criada))
     _objetivo(banco, "rc")
     _etapa(banco, "rc", 1, "waiting_user", "instagram")
     _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)), conta="c-ig-p1")
@@ -350,7 +350,7 @@ def test_so_com_a_persona_no_aviso_cala_so_o_motivo_de_conta(tmp_path: Path, fai
                                                              cala: bool) -> None:
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     criada = now()
-    _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _run(banco, "rc", chave="telegram:k-comum", criada=to_iso(criada))
     _objetivo(banco, "rc")
     if com_etapa:
         _etapa(banco, "rc", 1, "waiting_user", "instagram")
@@ -363,7 +363,7 @@ def test_o_aviso_de_conta_de_uma_execucao_anterior_nao_cala_o_objetivo_novo(tmp_
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     agora = now()
     _conta(banco, "android-13", ativa=True, ts=to_iso(agora - timedelta(hours=3)))   # de uma execução de antes
-    _run(banco, "rc", chave="k-comum", criada=to_iso(agora))
+    _run(banco, "rc", chave="telegram:k-comum", criada=to_iso(agora))
     _objetivo(banco, "rc")                                              # a mesma persona: só a hora discrimina
     assert _parou(servico, "rc") is True
 
@@ -371,7 +371,7 @@ def test_o_aviso_de_conta_de_uma_execucao_anterior_nao_cala_o_objetivo_novo(tmp_
 def test_a_conta_que_ja_saiu_da_espera_nao_cala_o_objetivo(tmp_path: Path) -> None:
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     agora = now()
-    _run(banco, "rc", chave="k-comum", criada=to_iso(agora))
+    _run(banco, "rc", chave="telegram:k-comum", criada=to_iso(agora))
     _objetivo(banco, "rc")
     _conta(banco, "android-13", ativa=True, ts=to_iso(agora + timedelta(seconds=10)))
     _conta(banco, "android-13", ativa=False, ts=to_iso(agora + timedelta(seconds=20)))
@@ -382,7 +382,7 @@ def test_o_servico_poe_a_etapa_que_espera_pelo_nome_do_catalogo(tmp_path: Path) 
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     servico._redigir = REDIGIR                                         # noqa: SLF001
     servico.nome_da_capability = {"SEND_MESSAGE": "Mandar mensagem"}.get
-    _run(banco, "rc", chave="k-comum")
+    _run(banco, "rc", chave="telegram:k-comum")
     banco.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version) VALUES (?,?,?,?,?)",
                   ("rc:o1", "rc", "android-13", "waiting_user", 1))
     for seq, (cap, status) in enumerate([("OPEN_APP", "succeeded"), ("SEND_MESSAGE", "waiting_user")], start=1):
@@ -399,7 +399,7 @@ def test_o_servico_poe_a_etapa_que_espera_pelo_nome_do_catalogo(tmp_path: Path) 
 def test_banco_fora_na_conferencia_o_aviso_sai_mesmo_assim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Na dúvida, avisa: o dono recebe um aviso a mais, nunca perde um de pessoa."""
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
-    _run(banco, "rc", chave="k-comum")
+    _run(banco, "rc", chave="telegram:k-comum")
     leitura = banco.one
 
     def one(sql: str, params: tuple[object, ...] = ()) -> object:
@@ -437,7 +437,7 @@ def test_o_motivo_livre_do_objetivo_parado_nao_vira_evidencia(tmp_path: Path) ->
     """O2 da revisão do #372: o objetivo parado tem o `finished_at` mais novo, e o `status_detail` dele traz texto de
     tela ou de conta. A evidência é a do objetivo terminado; sem um, nenhuma."""
     _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
-    _run(banco, "r1", chave="k-comum")
+    _run(banco, "r1", chave="telegram:k-comum")
     for oid, aparelho, status, detalhe, fim in (
             ("r1:o1", "android-12", "succeeded", "mensagem comprovada na tela", "2026-10-05T03:00:00.000Z"),
             ("r1:o2", "android-13", "waiting_user", "MARCADOR tela pede @fulana", "2026-10-05T03:30:00.000Z")):
@@ -457,7 +457,7 @@ def test_a_evidencia_e_de_objetivo_que_terminou_nos_dois_bancos(tmp_path: Path) 
     """N3 da revisão do #372: na execução falha, o objetivo ainda aberto (sem `finished_at`) não é a evidência. O `DESC`
     põe `NULL` primeiro no PostgreSQL e por último no SQLite: sem o filtro, os dois bancos escolheriam diferente."""
     _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
-    _run(banco, "r1", chave="k-comum")
+    _run(banco, "r1", chave="telegram:k-comum")
     for oid, aparelho, status, detalhe, fim in (
             ("r1:o1", "android-12", "failed", "a falha que terminou", "2026-10-05T03:00:00.000Z"),
             ("r1:o2", "android-13", "running", "MARCADOR ainda aberto", None)):
@@ -550,7 +550,7 @@ def test_responder_ao_agrupado_nao_vira_execucao_nem_decide(tipo: str, texto: st
 def test_o_status_conta_o_objetivo_parado_sem_contar_a_aprovacao_duas_vezes(tmp_path: Path) -> None:
     """R2: o `/status` dizia só aprovações e perguntas."""
     _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
-    _run(banco, "r1", chave="k-comum")
+    _run(banco, "r1", chave="telegram:k-comum")
     for oid, aparelho, bloqueio in (("r1:o1", "android-12", None), ("r1:o2", "android-13", "approval"),
                                     ("r1:o3", "android-14", "ai")):
         banco.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, blocked_kind)"
@@ -568,7 +568,7 @@ def test_a_recusa_no_planejamento_nao_leva_o_texto_do_pedido(tmp_path: Path) -> 
     do motivo, e o texto do pedido nunca."""
     from app.modules.avisos.infrastructure.portas_da_central import MOTIVO_DA_RECUSA, MOTIVO_DA_RECUSA_GENERICO
     _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
-    _run(banco, "r1", chave="k-comum")
+    _run(banco, "r1", chave="telegram:k-comum")
     banco.execute("INSERT INTO events(ts, kind, level, run_id, message, data) VALUES (?,?,?,?,?,?)",
                   (to_iso(now()), "plan.refused", "warn", "r1", "MARCADOR do pedido",
                    json.dumps({"motivo": "sem_acao_do_catalogo", "pedidos": [{"pedido": "MARCADOR do pedido"}]})))
@@ -681,7 +681,7 @@ def test_o_gesto_do_desfecho_segue_o_motivo_da_parada(tmp_path: Path, bloqueios:
     """Leitura do #382: o objetivo parado numa aprovação se resolve na caixa de Pendências, não no aparelho."""
     from app.modules.avisos.domain.mensagem import GESTO_DA_APROVACAO_NO_DESFECHO
     _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
-    _run(banco, "r1", chave="k-comum")
+    _run(banco, "r1", chave="telegram:k-comum")
     for n, bloqueio in enumerate(bloqueios):
         banco.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, blocked_kind)"
                       " VALUES (?,?,?,?,?,?)", (f"r1:o{n}", "r1", f"android-1{n}", "waiting_user", 1, bloqueio))
