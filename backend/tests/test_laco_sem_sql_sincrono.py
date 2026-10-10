@@ -29,13 +29,14 @@ NOVA = "135_indice_dos_eventos_por_instancia"
 ORIGEM = Path(db_mod.__file__).resolve().parents[1] / "migrations"
 ANTERIOR = max(f.stem for f in ORIGEM.glob("*.sql") if f.stem < NOVA)
 INDICE = "idx_events_instance_kind_id"
+INDICE_DOS_SINAIS = "ix_learning_signals_kind_criado"
 CONSULTA = ("SELECT data FROM events WHERE kind='instance.updated' AND instance_id=? ORDER BY id DESC LIMIT 20")
 
 
-def _indices(db: db_mod.Database) -> set[str]:
+def _indices(db: db_mod.Database, tabela: str = "events") -> set[str]:
     if db.dialect == "postgres":
-        return {str(r["indexname"]) for r in db.query("SELECT indexname FROM pg_indexes WHERE tablename='events'")}
-    return {str(r["name"]) for r in db.query("PRAGMA index_list(events)")}
+        return {str(r["indexname"]) for r in db.query("SELECT indexname FROM pg_indexes WHERE tablename=?", (tabela,))}
+    return {str(r["name"]) for r in db.query(f"PRAGMA index_list({tabela})")}
 
 
 def test_a_migracao_135_cria_o_indice_sem_tocar_nas_linhas_e_e_idempotente(tmp_path: Path,
@@ -50,7 +51,7 @@ def test_a_migracao_135_cria_o_indice_sem_tocar_nas_linhas_e_e_idempotente(tmp_p
         shutil.copy2(ORIGEM / f"{NOVA}.sql", destino / f"{NOVA}.sql")
         assert db.migrate() == [NOVA]
         assert db.divergencias() == []
-        assert INDICE in _indices(db)
+        assert INDICE in _indices(db) and INDICE_DOS_SINAIS in _indices(db, "learning_signals")
         assert db.scalar("SELECT COUNT(*) FROM events") == 1                  # nenhuma linha tocada
         assert db.migrate() == []                                             # idempotente
     finally:
@@ -68,6 +69,7 @@ def test_banco_novo_e_banco_atualizado_tem_o_mesmo_indice(tmp_path: Path, monkey
         assert novo.migrate()[-1] == NOVA
         for db in (novo, atualizado):
             assert db.divergencias() == [] and INDICE in _indices(db)
+            assert INDICE_DOS_SINAIS in _indices(db, "learning_signals")
     finally:
         novo.close()
         atualizado.close()
@@ -81,6 +83,20 @@ def test_o_plano_da_consulta_do_boot_usa_o_indice(tmp_path: Path) -> None:
             pytest.skip("EXPLAIN QUERY PLAN é do SQLite; no PostgreSQL a medida é manual (EXPLAIN no harness)")
         plano = " ".join(str(r["detail"]) for r in db.query("EXPLAIN QUERY PLAN " + CONSULTA, ("android-01",)))
         assert INDICE in plano, plano
+    finally:
+        db.close()
+
+
+def test_o_plano_da_leitura_das_intervencoes_usa_o_indice_dos_sinais(tmp_path: Path) -> None:
+    db = _banco(tmp_path)
+    try:
+        db.migrate()
+        if db.dialect != "sqlite":
+            pytest.skip("EXPLAIN QUERY PLAN é do SQLite")
+        plano = " ".join(str(r["detail"]) for r in db.query(
+            "EXPLAIN QUERY PLAN SELECT attempt_id, step_id FROM learning_signals WHERE kind IN (?,?) AND created_at >= ?"
+            " AND created_at < ? AND simulated = 0", ("a", "b", "2026-10-01", "2026-10-10")))
+        assert INDICE_DOS_SINAIS in plano, plano
     finally:
         db.close()
 
@@ -195,3 +211,58 @@ async def test_a_consulta_rapida_no_laco_nao_avisa(tmp_path: Path, caplog: pytes
         assert db.consultas_lentas_no_laco == 0
     finally:
         db.close()
+
+
+# ===================================================================== a saúde fora do laço (4º ponto, 16:56Z)
+@pytest.mark.asyncio
+async def test_a_saude_roda_fora_da_thread_do_laco(harness: Harness) -> None:
+    """O despejo das 16:56Z: `/health` esperava a trava do banco NA thread do laço enquanto a curadoria (`curar`, que o agendador
+    despacha numa thread do pool) segurava a trava numa consulta longa. A rota agora chama `saude.health` numa thread."""
+    import httpx
+
+    from app.main import create_app
+
+    st = harness.state
+    assert st is not None
+    laco = threading.get_ident()
+    vistas: list[int] = []
+    original = st.saude.health
+
+    def espia():
+        vistas.append(threading.get_ident())
+        return original()
+    st.saude.health = espia                                                    # type: ignore[method-assign]
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 123)),
+                                     base_url="http://127.0.0.1") as c:
+            r = await c.get("/api/health")
+        assert r.status_code == 200
+        assert vistas and all(t != laco for t in vistas), "a saúde rodou na thread do laço"
+    finally:
+        st.saude.health = original                                             # type: ignore[method-assign]
+
+
+@pytest.mark.asyncio
+async def test_a_curadoria_nao_consulta_o_banco_na_thread_do_laco(harness: Harness) -> None:
+    """A leitura do relatório de falhas (`executar` → `_ler` → `relatorio_sql._intervencoes_ligadas`) vem de `_curadoria_uma_vez`,
+    que a despacha com `asyncio.to_thread(learning.curar)`: nenhuma consulta dela roda na thread do laço."""
+    st = harness.state
+    assert st is not None
+    laco = threading.get_ident()
+    vistas: list[tuple[int, str]] = []
+    original = st.db.query
+
+    def espia(sql, params=()):
+        if "learning_signals" in sql:
+            vistas.append((threading.get_ident(), sql[:60]))
+        return original(sql, params)
+    st.db.query = espia                                                        # type: ignore[method-assign]
+    try:
+        if not await st._curadoria_uma_vez():
+            pytest.skip("esta instância não é a líder da curadoria")
+    finally:
+        st.db.query = original                                                 # type: ignore[method-assign]
+    assert vistas, "a curadoria não leu os sinais: o teste não mede nada"
+    assert all(t != laco for t, _ in vistas), f"consulta de sinais na thread do laço: {vistas}"

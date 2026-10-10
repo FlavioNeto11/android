@@ -186,7 +186,10 @@ async def logout(request: Request, response: Response) -> Any:
 # ====================================================================== sistema
 @router.get("/health")
 async def health(request: Request) -> Any:
-    return st(request).health()
+    # 31.307: a saúde lê o banco (contas travadas, migração…). Na thread do laço, uma consulta longa de OUTRA thread (a curadoria
+    # do aprendizado) segurava a trava do banco e o laço inteiro esperava com ela: 10 s parado às 16:56Z de 10/10/2026. Numa thread
+    # do pool a espera é só desta chamada; o laço segue batendo.
+    return await asyncio.to_thread(st(request).health)
 
 
 # O snapshot traz as 20 execuções mais recentes E TODAS as que não terminaram, exceto `planned`: as em andamento e as

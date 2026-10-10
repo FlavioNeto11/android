@@ -27,7 +27,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Migração 135** (aditiva, mesma instrução nos dois bancos): `idx_events_instance_kind_id` em `events(instance_id, kind, id)`. O `CREATE INDEX` trava a escrita enquanto roda: o deploy aplica com o backend parado.
 - **Pré-leitura fora do laço:** `DeviceManager.start()` lê o último DTO de todos os aparelhos numa thread antes de adotar (`_pre_carregar_dtos_persistidos`); `publish` passa a só ler o cache. Falha na pré-leitura mantém a leitura sob demanda.
 - **Aviso:** `Database` loga (`poc.db`, no máximo um a cada 5 s) a consulta síncrona que a thread do laço esperou mais de 1 s, com o chamador, e conta em `consultas_lentas_no_laco`. Aponta o próximo ponto sem esperar outro travamento.
-- Prova: `simulated` (`tests/test_laco_sem_sql_sincrono.py`, 8 casos; SQLite, o PG pela fábrica quando houver `TEST_DATABASE_URL`). `real`: `not_run` (medida do EXPLAIN e do tempo no SQLite do central só depois da suíte PG).
+- **4º ponto (despejo das 16:56:41Z, 10 s, o backend voltou sozinho):** a thread do laço estava em `/health` (`contas_travadas_abertas`) esperando a trava do banco, que uma thread do pool segurava na leitura do relatório de falhas da
+  curadoria (`falhas.executar` → `relatorio_sql._intervencoes_ligadas`, `learning_signals` por `kind` + janela, sem índice que sirva). A curadoria já rodava em thread (`asyncio.to_thread(learning.curar)`): o laço parou foi na ESPERA da trava. Por isso:
+  `GET /api/health` chama `saude.health` em thread (`asyncio.to_thread`) e a migração 135 ganha `ix_learning_signals_kind_criado` em `learning_signals(kind, created_at)`.
+- Prova: `simulated` (`tests/test_laco_sem_sql_sincrono.py`, 11 casos; SQLite, o PG pela fábrica quando houver `TEST_DATABASE_URL`). `real`: `not_run` (medida do EXPLAIN e do tempo no SQLite do central só depois da suíte PG).
 
 ## 2026-10-10 — a persona de teste tem selo, fica escondida por padrão e nasce marcada (31.315, adendo v1.139 do 31.314)
 
