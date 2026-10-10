@@ -30,7 +30,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **4º ponto (despejo das 16:56:41Z, 10 s, o backend voltou sozinho):** a thread do laço estava em `/health` (`contas_travadas_abertas`) esperando a trava do banco, que uma thread do pool segurava na leitura do relatório de falhas da
   curadoria (`falhas.executar` → `relatorio_sql._intervencoes_ligadas`, `learning_signals` por `kind` + janela, sem índice que sirva). A curadoria já rodava em thread (`asyncio.to_thread(learning.curar)`): o laço parou foi na ESPERA da trava. Por isso:
   `GET /api/health` chama `saude.health` em thread (`asyncio.to_thread`) e a migração 135 ganha `ix_learning_signals_kind_criado` em `learning_signals(kind, created_at)`.
-- Prova: `simulated` (`tests/test_laco_sem_sql_sincrono.py`, 11 casos; SQLite, o PG pela fábrica quando houver `TEST_DATABASE_URL`). `real`: `not_run` (medida do EXPLAIN e do tempo no SQLite do central só depois da suíte PG).
+- **5º ponto (despejo das 16:59:43Z, 10 s, voltou sozinho):** a volta da conversa do canal (`ConversaDoCanal._contar_desfechos`) lia, NA thread do laço, `desfechos_parados` (um `LIKE` no `previa` de cada linha do canal)
+  e `esperando_desfecho`. O rearme e as duas leituras em lote passam a rodar em thread (`asyncio.to_thread`); o envio e as marcas por linha seguem como eram.
+- **Parte 2 (a orquestradora reserva o número; fora desta entrega):** a camada `Database` com execução fora do laço por padrão. Os pontos medidos hoje, 10/10/2026, todos "SQL síncrono na thread do laço ou na espera da trava":
+  (1) adoção, `_ultimo_dto_persistido` (71 s, 16:33Z; índice 135 e pré-leitura, nesta entrega); (2) `workers.registry.rows` em `_probe_transport` (12 s, 13:01Z); (3) régua diária do curador, `sql_repository._agregar`
+  (10 s, 13:01Z e 13:24Z; o 31.293 já a fez em blocos); (4) `/health` esperando a trava da curadoria de falhas (10 s, 16:56Z; `/health` em thread e índice dos sinais, nesta entrega);
+  (5) desfechos da conversa (10 s, 16:59Z; em thread, nesta entrega). O aviso do `Database` (>1 s na thread do laço, `poc.db`) aponta os próximos sem esperar outro travamento. A causa de fundo é a conexão única com trava global
+  e o disco da máquina disputado pela suíte PG (K-113): uma consulta longa em QUALQUER thread faz esperar toda chamada síncrona do laço.
+- Prova: `simulated` (`tests/test_laco_sem_sql_sincrono.py`, 12 casos; SQLite, o PG pela fábrica quando houver `TEST_DATABASE_URL`). `real`: `not_run` (medida do EXPLAIN e do tempo no SQLite do central só depois da suíte PG).
 
 ## 2026-10-10 — a persona de teste tem selo, fica escondida por padrão e nasce marcada (31.315, adendo v1.139 do 31.314)
 

@@ -266,3 +266,32 @@ async def test_a_curadoria_nao_consulta_o_banco_na_thread_do_laco(harness: Harne
         st.db.query = original                                                 # type: ignore[method-assign]
     assert vistas, "a curadoria não leu os sinais: o teste não mede nada"
     assert all(t != laco for t, _ in vistas), f"consulta de sinais na thread do laço: {vistas}"
+
+
+# ===================================================================== os desfechos da conversa fora do laço (5º ponto, 16:59Z)
+@pytest.mark.asyncio
+async def test_os_desfechos_da_conversa_sao_lidos_fora_da_thread_do_laco(harness: Harness) -> None:
+    """O despejo das 16:59:43Z: `_contar_desfechos` → `_rearmar_desfechos` → `desfechos_parados` (um `LIKE` no `previa` de cada linha
+    do canal) rodava na thread do laço. As duas leituras em lote e o rearme agora rodam numa thread."""
+    st = harness.state
+    assert st is not None
+    conversa = st.telegram_entrada.conversa
+    repo = conversa.repo
+    laco = threading.get_ident()
+    vistas: dict[str, list[int]] = {"parados": [], "esperando": []}
+    parados, esperando = repo.desfechos_parados, repo.esperando_desfecho
+
+    def espia_parados(*a, **k):
+        vistas["parados"].append(threading.get_ident())
+        return parados(*a, **k)
+
+    def espia_esperando(*a, **k):
+        vistas["esperando"].append(threading.get_ident())
+        return esperando(*a, **k)
+    repo.desfechos_parados, repo.esperando_desfecho = espia_parados, espia_esperando    # type: ignore[method-assign]
+    try:
+        await conversa._contar_desfechos(None)                                 # type: ignore[arg-type]  # sem linhas, a saída não é usada
+    finally:
+        repo.desfechos_parados, repo.esperando_desfecho = parados, esperando   # type: ignore[method-assign]
+    assert vistas["parados"] and vistas["esperando"], "o teste não mediu: as leituras não rodaram"
+    assert all(t != laco for ts in vistas.values() for t in ts), f"leitura de desfecho na thread do laço: {vistas}"

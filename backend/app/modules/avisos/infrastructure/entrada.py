@@ -1748,15 +1748,19 @@ class ConversaDoCanal:
         execução terminal ele é a ÚNICA linha ao dono (28.36), e marcado sem sair o dono não saberia do fim (28.38). A
         falha passageira para a volta (o canal está fora) e a linha tenta de novo na seguinte, nunca antes do que o 429
         pediu (`espera_s`). Sem teto de tentativas: no máximo uma falha por volta, e a linha `feita` sai pela faxina da
-        retenção (28.16)."""
-        self._rearmar_desfechos()
+        retenção (28.16).
+
+        31.307 (5º ponto, despejo das 16:59:43Z): as leituras em lote (`desfechos_parados`, que lê o `previa` de cada linha do canal
+        com `LIKE`, e `esperando_desfecho`) e o rearme rodam numa thread, não na do laço: a volta é do laço e o disco lento parava o laço
+        inteiro nelas."""
+        await asyncio.to_thread(self._rearmar_desfechos)
         if self._agora() < self._desfecho_espera_ate:
             return
         # O lote gira (28.39): com 20 linhas antigas de execução longa à frente, as novas esperariam para sempre. O cursor
         # só anda quando a volta trata o lote inteiro; a falha passageira (o `return` abaixo) repete o mesmo lote.
-        linhas = self.repo.esperando_desfecho(depois_de=self._desfecho_depois_de)
+        linhas = await asyncio.to_thread(self.repo.esperando_desfecho, depois_de=self._desfecho_depois_de)
         if not linhas and self._desfecho_depois_de:
-            linhas = self.repo.esperando_desfecho()
+            linhas = await asyncio.to_thread(self.repo.esperando_desfecho)
         for linha in linhas:
             run_id = str(linha["run_id"])
             texto = self.portas.desfecho(run_id)
