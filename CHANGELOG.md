@@ -131,6 +131,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Achados para itens próprios:** (1) a receita da exploração precisa do caminho desde uma tela de partida conhecida (hoje só a última ação) para o replay valer fora de uma tela
   específica; (2) o misto precisa de caixa cuja primeira mensagem não pareça verificação, ou de um teste melhor no guarda.
 
+## 2026-10-10 — a fração de interrupção é gravada fora do laço (31.320, ponto 9 do 31.307)
+
+- Medida do período 72 (`scripts/laco-por-hora.py`, 20:10Z–23:33Z): zero episódios de laço parado ≥ 10 s em 3,4 h (contra 0,36/h antes) e UMA
+  consulta síncrona > 1 s na thread do laço: `DeviceManager._gravar_interrupcao`, o INSERT em `measurements(kind='irq')`, 1,1 s às 21h UTC,
+  esperando a trava de escrita do modelo antigo.
+- `_conferir_interrupcoes` e `_gravar_interrupcao` viram `async`; o conteúdo da linha (estado em memória) é montado no laço e só o INSERT vai
+  para `asyncio.to_thread`. A linha continua gravada quando a sonda de saúde devolve (o `await` espera).
+- Prova `simulated`: `tests/test_laco_sem_sql_sincrono.py::test_a_fracao_de_interrupcao_e_gravada_fora_da_thread_do_laco` (falha com o INSERT de
+  volta ao laço, conferido por mutação); 267 verdes entre as sondas de saúde, as catracas e a arquitetura; mypy 257 (teto). `real`: `not_run`;
+  a medida de 11/10 com o 73 coberto por horas diz se o ponto 9 era o último.
+
 ## 2026-10-10 — o banco tem uma conexão por thread e uma trava só de escrita: leitura lenta não para mais o laço (31.320, etapa 1)
 - **Causa** (quatro despejos do vigia, 16:33Z, 18:06Z, 18:31Z e 18:50Z): `Database` tinha UMA conexão e UM `RLock`; uma leitura longa numa thread do pool segurava o lock e o `emit` (INSERT em `events`) e o `_tick` do scheduler, que rodam na thread do laço, esperavam por ele. O 31.307 tirou chamadas do laço uma a uma; o inventário de 10/10 (A1 `emit`, A2 `_tick` a cada 1 s, A3 `Lideranca.tomar`) mostrou que o modelo de conexão é o defeito.
 - **Modelo** (`backend/app/db.py`, `docs/banco.md`, "Uma conexão por thread"): `threading.local` com uma conexão por thread (mesmos PRAGMAs, `check_same_thread=False`), fechada pelo finalizador do objeto da thread; `_tx_depth`, `_suspeita` e os efeitos de `depois_do_commit` por thread, com `db._conn`, `db._tx_depth` e `db._suspeita` mantidos como propriedades da thread atual. No SQLite, UMA trava só de escrita (`tx()`, `savepoint()` de fora e toda instrução que não começa por `SELECT`/`EXPLAIN`, depois de espaço e comentário; `WITH`, `PRAGMA`, `INSERT…RETURNING` e `(SELECT …)` contam como escrita). Leitura não pega trava e vê o último estado comitado. No PostgreSQL, a mesma conexão por thread, sem trava (o servidor arbitra), sem `psycopg_pool`.

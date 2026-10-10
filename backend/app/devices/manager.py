@@ -1182,7 +1182,7 @@ class DeviceManager:
             return
         if not p:
             return
-        self._conferir_interrupcoes(rt, p)
+        await self._conferir_interrupcoes(rt, p)
         total = float(p.get("mem_total_mb") or 0)
         livre = float(p.get("mem_available_mb") or 0)
         load1 = float(p.get("load1") or 0)
@@ -1227,7 +1227,7 @@ class DeviceManager:
             return None
         return dict(c) if c else None
 
-    def _conferir_interrupcoes(self, rt: DeviceRuntime, p: dict[str, float]) -> None:
+    async def _conferir_interrupcoes(self, rt: DeviceRuntime, p: dict[str, float]) -> None:
         """Fração de CPU em interrupção entre duas sondas; sustentada acima do teto com o aparelho OCIOSO, pede um
         reinício a frio (o que devolveu o android-06 e o android-04 ao normal em 28/09).
 
@@ -1252,7 +1252,7 @@ class DeviceManager:
         # próxima, com o host calmo, volta a contar. Aparelho remoto: o host dele é o do worker, fora daqui.
         cpu_host = None if rt.external else self._cpu_do_host()
         host_saturado = cpu_host is not None and cpu_host > self.android_de(rt).max_cpu_percent_before_boot
-        self._gravar_interrupcao(rt, frac, p, ocioso, host_cpu=cpu_host, ignorada=host_saturado)
+        await self._gravar_interrupcao(rt, frac, p, ocioso, host_cpu=cpu_host, ignorada=host_saturado)
         if host_saturado:
             metricas.contar("irq.amostra_ignorada", motivo="host_saturado")
             return
@@ -1284,7 +1284,7 @@ class DeviceManager:
         self.publish(rt, f"{rt.id}: {motivo}" + (f" — comando {cid}" if cid else " — reinício não aberto"),
                      level="warn")
 
-    def _gravar_interrupcao(self, rt: DeviceRuntime, frac: float, p: dict[str, float], ocioso: bool, *,
+    async def _gravar_interrupcao(self, rt: DeviceRuntime, frac: float, p: dict[str, float], ocioso: bool, *,
                             host_cpu: float | None = None, ignorada: bool = False) -> None:
         """Cada fração medida vira uma linha `measurements(kind='irq')`: a causa do acúmulo (21–90% com dias no ar,
         ~2% depois do reinício) não é conhecida, e em memória a série morria com o processo. Controle e interesse
@@ -1297,13 +1297,18 @@ class DeviceManager:
         (que vêm depois desta chamada), por isso é engolida com registro. Load e vCPU vão como lidos: ausente
         fica nulo na linha, não zero (a regra do ocioso é que trata o ausente como carga baixa)."""
         try:
-            self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "irq", dumps({
+            linha = dumps({
                 "instance_id": rt.id, "irq_frac": round(frac, 4), "load1": p.get("load1"), "ncpu": p.get("ncpu"),
                 "ocioso": ocioso, "controle": rt.control.value, "interesse": self.nivel_de_interesse(rt),
                 "cpu_total_ticks": p.get("cpu_total_ticks"), "cpu_irq_ticks": p.get("cpu_irq_ticks"),
                 # 29.67: a CPU do host na amostra e se ela ficou fora da regra (host saturado). É a medida visível da
                 # decisão de não contar, sem evento por sonda.
-                "host_cpu": host_cpu, "ignorada": ignorada})))
+                "host_cpu": host_cpu, "ignorada": ignorada})
+            # 31.320 (ponto 9 do 31.307): o INSERT numa thread. Na thread do laço ele esperava a trava de escrita (1,1 s em
+            # 10/10 21h UTC, medido pelo aviso de consulta lenta) e parava todos os aparelhos junto. O conteúdo (estado em
+            # memória) é lido aqui, no laço; só o acesso ao banco sai.
+            await asyncio.to_thread(self.db.execute, "INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)",
+                                    (now_iso(), "irq", linha))
         except Exception:  # noqa: BLE001 - medir nunca pode derrubar a sonda de saúde
             log.exception("%s: não foi possível gravar a fração de interrupção", rt.id)
 

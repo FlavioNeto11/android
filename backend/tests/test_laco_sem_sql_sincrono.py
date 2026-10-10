@@ -367,3 +367,38 @@ async def test_a_volta_das_decisoes_automaticas_roda_fora_da_thread_do_laco() ->
     with pytest.raises(asyncio.CancelledError):
         await tarefa
     assert vistas and all(t != laco for t in vistas), "a volta das decisões rodou na thread do laço"
+
+
+# ===================================================================== a fração de interrupção gravada fora do laço (9º ponto, 21h UTC)
+async def test_a_fracao_de_interrupcao_e_gravada_fora_da_thread_do_laco(tmp_path: Path) -> None:
+    """O aviso de consulta lenta de 10/10 21h UTC (1,1 s): `DeviceManager._gravar_interrupcao` fazia o INSERT em `measurements`
+    (`kind='irq'`) na thread do laço, atrás da trava de escrita de outra thread. O INSERT agora vai para uma thread, e a linha
+    continua gravada ANTES de a sonda de saúde devolver (o `await` espera)."""
+    from .test_interrupcoes_persistidas import _aparelho_no_ar, _linhas_irq, _ticks
+
+    h = Harness(tmp_path, 1)
+    rt = await _aparelho_no_ar(h)
+    try:
+        assert h.state is not None
+        d = h.state.devices
+        d.on_health_restart = lambda iid, motivo: None
+        d._cpu_do_host = lambda: 10.0  # type: ignore[method-assign]  # host calmo: a regra conta (29.67)
+        laco = threading.get_ident()
+        vistas: list[int] = []
+        original = h.state.db.execute
+
+        def espia(sql, params=()):
+            if "INTO measurements" in sql and "irq" in params:
+                vistas.append(threading.get_ident())
+            return original(sql, params)
+        h.state.db.execute = espia  # type: ignore[method-assign]
+        total, irq = 1000.0, 0.0
+        rt.io.pressure = _ticks(total, irq)
+        await d.conferir_saude(rt)                      # primeira leitura: só guarda os ticks
+        rt.io.pressure = _ticks(total + 1000, irq + 300)
+        await d.conferir_saude(rt)
+        assert len(_linhas_irq(h)) == 1, "a linha tem de estar gravada quando a sonda devolve"
+        assert vistas and all(t != laco for t in vistas), "o INSERT da fração de interrupção rodou na thread do laço"
+    finally:
+        assert h.state is not None
+        await h.state.stop()
