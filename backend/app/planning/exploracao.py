@@ -131,13 +131,16 @@ def passo_da_exploracao(pedido: str, e: Exploracao, *, app_id: str | None, nome_
     """A etapa livre, só de leitura e navegação, para o `pedido`. O pedido (que pode ter nome) vai só no objetivo e na
     pós-condição DESTA execução; o molde oferecido às outras personas sai de `molde_da_exploracao`."""
     pedido = " ".join(pedido.split())[:200]
+    frase = _frase_da_chave(e.chave)
     ordem = ("Só leitura e navegação: não envie, publique, siga, curta, comente, apague, salve nem altere nada, e não "
              "digite senha. Se chegar a um ponto que exigiria isso, pare e diga o que viu.")
     return PlanStep(
         key=e.chave, title=f"Explorar o {nome_do_app}: {pedido}"[:200],
         goal=(f"O catálogo de ações do {nome_do_app} não cobre este pedido: {pedido}. Descubra como fazê-lo pela "
               f"interface e comprove o resultado na tela. {ordem}"),
-        postcondition=Postcondition(kind="model_judged", value=f"a tela mostra o que foi pedido: {pedido}"[:300],
+        # O `value` entra no hash da etapa e é IGUAL ao do molde (`molde_da_exploracao`): a receita aprendida aqui é achada
+        # pelo molde de outra execução. O pedido (que pode ter nome) vai só na `description`, que o hash não lê.
+        postcondition=Postcondition(kind="model_judged", value=f"a tela mostra: {frase}",
                                     description=f"O pedido '{pedido}' foi atendido: a tela mostra o resultado, sem "
                                                 "nenhuma alteração feita."),
         side_effect=False, app_id=app_id, exploratoria=True, timeout_s=300, max_attempts=1)

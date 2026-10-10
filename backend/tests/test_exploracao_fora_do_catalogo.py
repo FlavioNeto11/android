@@ -21,11 +21,17 @@ import pytest
 
 from app.models import ForaDoCatalogo, Plan, PlannerInfo, PlanStep, Postcondition
 from app.planning import exploracao as ex
+from app.taskqueue.recipes import hash_generico_da_etapa, step_template_hash
 from app.util import now_iso
 
 from .conftest import CountingProvider, Harness
 from .test_etapas_descobertas import _semear
 from .test_recusa_no_planejamento import Roteiro, _contagem, _eventos, _parque
+
+
+def evento_ok(state: Any, run_id: str) -> bool:
+    (e,) = _eventos(state, run_id, "exploracao.iniciada")
+    return e["data"]["app_ids"] == ["outlook"]
 
 
 def _fora(pedido: str) -> ForaDoCatalogo:
@@ -72,6 +78,9 @@ def test_o_passo_e_so_leitura_e_o_molde_nao_leva_o_pedido() -> None:
     texto = " ".join([molde.title, molde.goal, molde.postcondition.value, molde.postcondition.description or ""])
     assert "ana" not in texto and "x.com" not in texto and "caixa lixo eletronico" in texto
     assert molde.postcondition.kind == passo.postcondition.kind
+    # a receita aprendida na etapa é achada pelo molde: mesmo hash específico e mesmo genérico
+    assert step_template_hash(molde) == step_template_hash(passo)
+    assert hash_generico_da_etapa(molde) == hash_generico_da_etapa(passo) is not None
     sem_vocabulario = passo.model_copy(update={"key": "explorar_buscar_abcdef"})
     assert ex.molde_da_exploracao(sem_vocabulario) is None
 
@@ -97,6 +106,8 @@ async def test_o_pedido_de_leitura_vira_uma_etapa_de_exploracao(tmp_path: Any) -
     try:
         assert linha["status"] == "planned", linha["status_detail"]
         plano = json.loads(linha["plan"])
+        assert json.loads(linha["app_ids"]) == ["outlook"]                          # o que o teto do dia filtra
+        assert evento_ok(state, linha["id"])
         assert plano["fora_do_catalogo"] == [] and plano["missing"] == []
         (passo,) = plano["steps"]
         assert passo["key"] == "explorar_ver_caixa_lixo_eletronico" and passo["exploratoria"] is True
@@ -140,18 +151,15 @@ async def test_o_que_nao_explora_segue_recusado_como_antes(tmp_path: Any, pedido
         await state.stop()
 
 
-async def test_o_teto_do_dia_por_app_recusa_com_o_motivo(tmp_path: Any) -> None:
-    def _ja_exploraram_hoje(state: Any) -> None:
-        for n in range(2):
-            plano = Plan(summary="s", app_id="outlook", steps=[PlanStep(
-                key="explorar_ver_ajuda", title="t", goal="g", exploratoria=True,
-                postcondition=Postcondition(kind="model_judged", value="v", description="d"))],
-                planner=PlannerInfo(provider="t", model="t", simulated=True))
-            state.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, app_ids, created_at,"
-                             " plan) VALUES (?,?,?,?,?,?,?,?,?)",
-                             (f"r-antiga-{n}", f"k{n}", "c", "execute", "succeeded", '["android-01"]', '["outlook"]',
-                              now_iso(), plano.model_dump_json()))
+def _ja_exploraram_hoje(state: Any, n: int = 2) -> None:
+    """`n` explorações NOVAS (com IA) de hoje no outlook: é o que o teto do dia conta."""
+    for k in range(n):
+        state.db.execute("INSERT INTO events(ts, kind, level, run_id, message, data) VALUES (?,?,?,?,?,?)",
+                         (now_iso(), "exploracao.iniciada", "info", None, "x",
+                          json.dumps({"etapas": ["explorar_ver_ajuda"], "reaproveitadas": [], "app_ids": ["outlook"]})))
 
+
+async def test_o_teto_do_dia_por_app_recusa_com_o_motivo(tmp_path: Any) -> None:
     linha, state, _ = await _executar(tmp_path, _plano("ver a caixa de lixo eletrônico"), "veja o lixo do Outlook",
                                       ajustes={"exploracao_max_por_dia": 2}, depois=_ja_exploraram_hoje)
     try:
@@ -159,6 +167,7 @@ async def test_o_teto_do_dia_por_app_recusa_com_o_motivo(tmp_path: Any) -> None:
         (recusa,) = _eventos(state, linha["id"], "plan.refused")
         assert recusa["data"]["motivo"] == "teto_de_exploracao_por_dia" and recusa["data"]["feitas"] == 2
         assert "limite 2 por dia" in recusa["message"]
+        assert _eventos(state, linha["id"], "exploracao.iniciada") == []
     finally:
         await state.stop()
 
@@ -172,8 +181,12 @@ async def test_a_segunda_vez_usa_a_receita_descoberta_e_o_molde_nao_leva_o_pedid
         state.db.execute("UPDATE runs SET plan=REPLACE(plan, '\"qa-messenger\"', '\"outlook\"')")
         state.db.execute("UPDATE steps SET app_id='outlook'")
 
+    def _receita_e_teto_esgotado(state: Any) -> None:
+        _receita_de_antes(state)
+        _ja_exploraram_hoje(state, 5)                       # o teto do dia (5) já foi usado: a receita não paga, então passa
+
     linha, state, _ = await _executar(tmp_path, _plano("ver a caixa de lixo eletrônico"), "veja o lixo do Outlook",
-                                      depois=_receita_de_antes)
+                                      depois=_receita_e_teto_esgotado)
     try:
         assert linha["status"] == "planned", linha["status_detail"]
         (passo,) = json.loads(linha["plan"])["steps"]
@@ -181,6 +194,7 @@ async def test_a_segunda_vez_usa_a_receita_descoberta_e_o_molde_nao_leva_o_pedid
         assert "ana@x.com" not in json.dumps(passo)                                         # o molde, não o pedido
         (evento,) = _eventos(state, linha["id"], "exploracao.iniciada")
         assert evento["data"]["reaproveitadas"] == ["explorar_ver_caixa_lixo_eletronico"]
+        assert evento["data"]["app_ids"] == []                                       # a reaproveitada não conta no teto do dia
     finally:
         await state.stop()
 

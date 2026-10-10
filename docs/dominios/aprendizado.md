@@ -2805,7 +2805,9 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
 - **Decisão (`planning/exploracao.py`, puro).** Verbo de leitura ou navegação explora; verbo que não está em nenhuma lista
   explora também, com a ordem escrita no objetivo de não mudar nada; verbo de EFEITO (lista fechada) segue recusado, porque
   efeito sem ação do catálogo passaria por fora da política do perfil (porta do 13.2). Também recusam: app desconhecido,
-  `limits.exploracao_ligada: false` e o teto do dia por app (`exploracao_max_por_dia`). A recusa por teto diz o motivo.
+  `limits.exploracao_ligada: false` e o teto do dia por app (`exploracao_max_por_dia`), que conta só a exploração NOVA
+  (com IA; o evento `exploracao.iniciada` leva em `app_ids` o app do pedido sem receita descoberta). A recusa por teto diz o
+  motivo (`plan.refused` com `teto_de_exploracao_por_dia`, que o Telegram também conhece).
 - **Tetos (ao vivo, `limits.exploracao_*`).** 25 ações do executor na etapa; 30 chamadas de IA e US$ 0,60 (tokens x
   preço, planejamento incluído) por execução, conferidos em `Executor._ai` antes de cada chamada; 5 explorações por dia por
   app. Estourar não é falha calada: a etapa fecha como `budget` com a frase do que foi gasto.
@@ -2817,7 +2819,9 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
   nome) e nunca saem dela. Piso `ai.descobertas_sem_uso_dias` (90). A versão do app já está na chave da receita: versão nova
   não a acha e a exploração roda de novo. Dois caminhos usam o molde: o bloco `<etapas_descobertas>` do planejador livre
   (apps sem catálogo) e a própria exploração (a segunda vez do mesmo pedido, em app com catálogo), que reaproveita o molde e
-  roda por receita, sem IA.
+  roda por receita, sem IA. O `value` da pós-condição da etapa e o do molde são o mesmo (a frase da chave; o pedido vai só
+  na `description`, que o hash não lê), então a receita aprendida na exploração é achada pelo molde. Provado: o hash da etapa
+  e o do molde coincidem; **não provado**: o replay pelo executor num app com catálogo (`not_run`).
 - **Degrau do catálogo.** A etapa exploratória já cai em `acoes_livres` (sem ação do catálogo). O limiar é 2 execuções reais
   comprovadas (`ACAO_EXECUCOES_EXPLORADA`), a regra do Livro, e o fragmento sai preenchido com a chave, a prova por tela e
   `side_effect: false`; política, risco e tela de partida ficam `A_DEFINIR`. Só chave e contagens vão ao texto.
@@ -2825,4 +2829,6 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
   ou atalho (0 chamadas de IA). É a medida de que o sistema aprende o que descobre.
 - **Prova.** `simulated`: `tests/test_exploracao_fora_do_catalogo.py`, `test_etapas_descobertas.py`, `test_migracao_130.py`,
   `test_learning_backlog.py`. `real`: `not_run` (exploração real no Outlook: gasta API, pede o sim do dono). Faltam o aviso
-  no Telegram ao começar e ao concluir, e o selo da exploração no painel (o `exploracao` do GET do run é do Portal).
+  no Telegram ao começar e ao concluir, e o selo da exploração no painel (o `exploracao` do GET do run é do Portal). Limite:
+  o pedido misto (parte no catálogo, parte fora) perde a parte do catálogo, porque o planejador devolve `steps` vazio com
+  `fora_do_catalogo`; melhorar isso muda o prompt e o parsing, e pede validação com o modelo real.

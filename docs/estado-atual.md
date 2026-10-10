@@ -5,6 +5,8 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 
 ## Onde estamos
 
+- **31.273 (Aprendizado, 10/10/2026): o pedido fora do catálogo explora em vez de recusar; NÃO está na `main` nem no ar.** Ramo `feat/31-273-ensino` (migração 130, adendo v1.130). O que faz e o que falta: [`docs/dominios/aprendizado.md`](dominios/aprendizado.md) (seção da exploração).
+  - `simulated`: `tests/test_exploracao_fora_do_catalogo.py`, `test_etapas_descobertas.py`, `test_migracao_130.py`. `not_run`: exploração real no Outlook (API paga, pede o sim do dono), PostgreSQL, replay da etapa exploratória num app com catálogo, Telegram e painel (Portal).
 - **Deploy 66 no ar (09/10/2026, 17:16:06Z, central `7156f0df77e958`, migração 132; ponte Android⇄igfarm, ADR-088).**
   - `real`: deploy rc=0, tag `deploy-20261009-1716`, saúde ok, migração 132, prova de fora, agente `0.1.0+7156f0d`. `simulated`: funil reduzido (SQLite dirigido e PG da migração, sem vitest). `not_run`: vitest, PG e SQLite inteiros, ponte real com o igfarm.
 - **Deploy 65 no ar (08/10/2026, 19:37:51Z, central `2e990961c3426c`, sem migração nova; Jev 31.287: a receita concorda por alvo).**

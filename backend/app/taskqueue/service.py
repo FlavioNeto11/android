@@ -1494,21 +1494,23 @@ class RunService:
         decididos = [(f, exploracao.classificar(f.pedido)) for f in plan.fora_do_catalogo]
         if any(e.destino is exploracao.Destino.EFEITO or not f.app_id for f, e in decididos):
             return plan, None
-        teto_dia = int(s.exploracao_max_por_dia)
-        if teto_dia > 0:
-            for app_id in dict.fromkeys(f.app_id for f, _ in decididos if f.app_id):
-                feitas = self._exploracoes_de_hoje(app_id)
-                if feitas >= teto_dia:
-                    texto = (f"Hoje já foram {feitas} explorações no app {app_id} (limite {teto_dia} por dia): não vou "
-                             "explorar de novo agora. Tente amanhã ou peça só o que o catálogo do app faz.")
-                    return plan, {"motivo": "teto_de_exploracao_por_dia", "texto": texto, "app_id": app_id,
-                                  "feitas": feitas, "teto": teto_dia}
         conhecidas: dict[tuple[str, str], etapas_ensinadas.EtapaEnsinada] = {}
         try:
             conhecidas = {(e.app_id, e.nome): e for e in self.flows.etapas_descobertas(
                 sem_uso_dias=self.scheduler.cfg.file.ai.descobertas_sem_uso_dias)}
         except Exception as exc:  # noqa: BLE001
             log.info("etapas descobertas não lidas (%s): explora sem elas", exc)
+        # O teto do dia limita o CUSTO (explorar com IA): o pedido que a receita descoberta já cobre não paga e não conta.
+        teto_dia = int(s.exploracao_max_por_dia)
+        if teto_dia > 0:
+            for app_id in dict.fromkeys(f.app_id for f, e in decididos
+                                        if f.app_id and (f.app_id, e.chave) not in conhecidas):
+                feitas = self._exploracoes_de_hoje(app_id)
+                if feitas >= teto_dia:
+                    texto = (f"Hoje já foram {feitas} explorações no app {app_id} (limite {teto_dia} por dia): não vou "
+                             "explorar de novo agora. Tente amanhã ou peça só o que o catálogo do app faz.")
+                    return plan, {"motivo": "teto_de_exploracao_por_dia", "texto": texto, "app_id": app_id,
+                                  "feitas": feitas, "teto": teto_dia}
         passos: list[PlanStep] = []
         reaproveitadas: list[str] = []
         for f, e in decididos:
@@ -1531,6 +1533,8 @@ class RunService:
             f"US$ {float(s.exploracao_max_usd):.2f}.", run_id=run_id)
         self.repo.bus.emit("exploracao.iniciada", "O app não tem essa ação no catálogo: vou explorar.", run_id=run_id,
                            data={"etapas": chaves, "reaproveitadas": reaproveitadas,
+                                 "app_ids": sorted({str(f.app_id) for f, e in decididos
+                                                    if f.app_id and (f.app_id, e.chave) not in conhecidas}),
                                  "tetos": {"acoes": int(s.exploracao_max_acoes),
                                            "chamadas_ia": int(s.exploracao_max_chamadas_ia),
                                            "usd": float(s.exploracao_max_usd)}})
@@ -1539,11 +1543,14 @@ class RunService:
             "success_criteria": [p.postcondition.description for p in passos]}), None
 
     def _exploracoes_de_hoje(self, app_id: str) -> int:
-        """Quantas execuções de hoje (UTC) já tiveram etapa exploratória no app: o teto do dia por app."""
+        """Quantas explorações NOVAS (com IA) começaram hoje (UTC) no app: o teto do dia por app. Lê o evento
+        `exploracao.iniciada`, cujo `app_ids` só leva o app de pedido sem receita descoberta (a reaproveitada não paga)."""
         inicio = to_iso(parse_iso(now_iso()).replace(hour=0, minute=0, second=0, microsecond=0))
-        return int(self.repo.db.scalar(
-            "SELECT COUNT(*) FROM runs WHERE created_at >= ? AND app_ids LIKE ? AND plan LIKE ?",
-            (inicio, f'%"{app_id}"%', '%"exploratoria":true%')) or 0)
+        n = 0
+        for r in self.repo.db.query("SELECT data FROM events WHERE kind='exploracao.iniciada' AND ts >= ?", (inicio,)):
+            dados = loads(r["data"], {})
+            n += isinstance(dados, dict) and app_id in (dados.get("app_ids") or [])
+        return n
 
     def _recusar_fora_do_catalogo(self, run_id: str, plan: Plan, motivo: dict[str, object] | None = None) -> None:
         """Item 31.33: o comando pede o que nenhuma ação do catálogo do app faz. Antes virava `needs_input` com uma

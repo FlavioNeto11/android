@@ -30,14 +30,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Achar de novo.** A chave da etapa é vocabulário fechado (`explorar_<verbo>_<objeto…>`, sem nome nem dígito).
   `FlowStore.etapas_descobertas` oferece a receita ATIVA de etapa exploratória, sem efeito e sem valor de pessoa, com
   molde refeito só com a chave (o pedido nunca vai a outra persona), piso de `ai.descobertas_sem_uso_dias` (90). Bloco
-  `<etapas_descobertas>` à parte no prompt; a ensinada por pessoa vence o nome repetido. Na segunda vez o pedido
-  explorado entra por receita, sem IA.
+  `<etapas_descobertas>` à parte no prompt; a ensinada por pessoa vence o nome repetido. Na vez seguinte o mesmo pedido
+  reaproveita o molde (mesmo hash da etapa aprendida, provado em teste) e deve rodar por receita, sem IA; o replay pelo
+  executor num app com catálogo é a receita comum e **não foi provado ponta a ponta** (`not_run`). O teto do dia
+  conta só a exploração NOVA (com IA): o pedido que a receita cobre não paga e não conta.
 - **O que fica.** Selo `nasceu_de_exploracao` na linha do Livro; a proposta `ACAO_DE_CATALOGO` da etapa exploratória sai
   com 2 execuções (não 3) e o fragmento preenchido (nada grava o `catalogo.yaml` sozinho); `saude.exploracoes`
   (por condução e `pct_sem_ia`) no relatório do aprendizado.
 - Prova **simulada**: `tests/test_exploracao_fora_do_catalogo.py`, `test_etapas_descobertas.py`, `test_migracao_130.py`
   e os casos novos de `test_learning_backlog.py`. **Real: não executada** (a exploração no Outlook gasta API e pede o sim
-  do dono). PostgreSQL: não executado. Telegram e painel da exploração (Portal): não feitos.
+  do dono). PostgreSQL: não executado. Telegram ao começar e ao concluir e painel da exploração (Portal): não feitos.
+  Limite conhecido: o pedido misto ("abra a caixa de entrada e veja a lixeira") perde a parte do catálogo, porque o
+  planejador devolve `steps` vazio com `fora_do_catalogo` (a regra do prompt de hoje).
 
 ## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
 

@@ -8239,7 +8239,8 @@ Sem rota nova. Campos aditivos; a forma do resto não muda.
 - **Exploração no planejamento:** o plano do pedido fora do catálogo deixa de vir sem etapas: traz uma etapa por pedido,
   com `exploratoria: true` e a chave `explorar_<verbo>_<objeto…>`. Evento novo `exploracao.iniciada`
   (`data: {etapas, reaproveitadas, tetos {acoes, chamadas_ia, usd}}`). `plan.refused` ganha o motivo
-  `teto_de_exploracao_por_dia` (`data: {app_id, feitas, teto}`); o pedido de efeito segue `sem_acao_do_catalogo`.
+  `teto_de_exploracao_por_dia` (`data: {app_id, feitas, teto}`; conta só a exploração nova, com IA, e `exploracao.iniciada`
+  leva `app_ids` com o app do pedido sem receita descoberta); o pedido de efeito segue `sem_acao_do_catalogo`.
 - **`GET` do relatório do aprendizado (`saude.exploracoes`):** `{por_conducao: {<condução>: n}, pct_sem_ia: number|null}`,
   das etapas exploratórias que terminaram na janela; `pct_sem_ia` = parte conduzida por receita ou atalho.
 - **Prova:** `simulated` (`backend/tests/test_etapas_descobertas.py`, `test_exploracao_fora_do_catalogo.py`,
