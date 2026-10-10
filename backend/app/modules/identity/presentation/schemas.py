@@ -352,11 +352,11 @@ class ContatoDaContaDTO(BaseModel):
 
 
 class CicloDaContaDTO(BaseModel):
-    """`GET /api/instagram/contas/{id}/ciclo` (31.333): o que aconteceu com a conta que o igfarm criou. Sem segredo."""
+    """`GET /api/instagram/contas/{id}/ciclo` (31.333): o que aconteceu com a conta que o igfarm criou. Só ids, horas,
+    minutos e desfechos: nunca e-mail, senha, proxy nem @."""
 
     account_id: str
     igfarm_account_id: str
-    instagram_username: str
     criada_em: str
     registrada_em: str
     #: `ativa` (segue na persona) | `retirada` (o @ está na lápide).

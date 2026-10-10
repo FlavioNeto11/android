@@ -84,6 +84,7 @@ async def test_contatos_em_ordem_com_minutos_desde_a_criacao_e_o_desfecho_novo(h
     assert [t["minutos_desde_a_criacao"] for t in d["contatos"]] == [18.0, 56.5]
     assert d["minutos_ate_o_primeiro_contato"] == 18.0
     assert d["ultimo_desfecho"] == "conta_nao_encontrada"
+    assert "@" not in str(d) and "<e-mail omitido>" in d["contatos"][1]["detalhe"], "nem o e-mail mascarado vai"
     assert d["estado"] == "ativa", "conta_nao_encontrada não retira a conta"
 
 
@@ -107,7 +108,7 @@ async def test_conta_desconhecida_e_404_e_nada_de_segredo_na_resposta(harness: H
         conta = await _registrar(c, pid)
         assert (await c.get("/api/instagram/contas/nao-existe/ciclo")).status_code == 404
         corpo = (await c.get(f"/api/instagram/contas/{conta['account_id']}/ciclo")).text
-    for proibido in (SENHA_EMAIL, SENHA_IG, "proxy", "ip_criacao", "secret"):
+    for proibido in (SENHA_EMAIL, SENHA_IG, "proxy", "ip_criacao", "secret", "ana.ceramica", "ana.lima1234", "@"):
         assert proibido not in corpo
 
 

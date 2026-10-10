@@ -173,7 +173,6 @@ class CicloDaConta:
 
     account_id: str
     igfarm_account_id: str
-    instagram_username: str
     criada_em: str
     registrada_em: str
     #: A conta segue na persona (`ativa`) ou o @ está na lápide (`retirada`, 29.23).

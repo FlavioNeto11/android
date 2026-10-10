@@ -715,7 +715,7 @@ async def ciclo_da_conta(request: Request, conta_id: str) -> CicloDaContaDTO:
     except ErroDaPonte as exc:
         raise _erro_da_ponte(exc) from exc
     return CicloDaContaDTO(
-        account_id=c.account_id, igfarm_account_id=c.igfarm_account_id, instagram_username=c.instagram_username,
+        account_id=c.account_id, igfarm_account_id=c.igfarm_account_id,
         criada_em=c.criada_em, registrada_em=c.registrada_em, estado=c.estado, retirada_em=c.retirada_em,
         minutos_ate_o_primeiro_contato=c.minutos_ate_o_primeiro_contato, ultimo_desfecho=c.ultimo_desfecho,
         contatos=[ContatoDaContaDTO(iniciado_em=t.iniciado_em, minutos_desde_a_criacao=t.minutos_desde_a_criacao,

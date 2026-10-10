@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, cast
 
@@ -167,18 +168,26 @@ class ArmazemSql:
             ContatoDaConta(iniciado_em=str(t["started_at"]),
                            minutos_desde_a_criacao=minutos_entre(criada, t["started_at"]),
                            desfecho=str(t["outcome"] or "sem_desfecho"), etapa=str(t["stage"] or ""),
-                           detalhe=str(t["detail"] or "")[:200])
+                           detalhe=_sem_email(str(t["detail"] or ""))[:200])
             for t in self.db.query("SELECT started_at, outcome, stage, detail FROM authentication_attempts"
                                    " WHERE account_id=? ORDER BY started_at, id", (g["account_id"],)))
         lapide = self.db.one("SELECT retirada_em FROM contas_retiradas WHERE handle_sha256=?",
                              (hash_do_handle(username),))
         return CicloDaConta(
-            account_id=str(g["account_id"]), igfarm_account_id=str(g["igfarm_account_id"]), instagram_username=username,
+            account_id=str(g["account_id"]), igfarm_account_id=str(g["igfarm_account_id"]),
             criada_em=criada, registrada_em=str(g["registrada_em"]),
             estado="retirada" if lapide is not None else "ativa",
             retirada_em=str(lapide["retirada_em"]) if lapide is not None else None, contatos=contatos,
             minutos_ate_o_primeiro_contato=contatos[0].minutos_desde_a_criacao if contatos else None,
             ultimo_desfecho=contatos[-1].desfecho if contatos else None)
+
+
+_EMAIL = re.compile(r"\S*@\S+")
+
+
+def _sem_email(texto: str) -> str:
+    """O ciclo nunca mostra e-mail, nem o mascarado que o motor de sessão põe no motivo (31.332)."""
+    return _EMAIL.sub("<e-mail omitido>", texto)
 
 
 def _erro(exc: SocialError) -> ErroDaPonte:

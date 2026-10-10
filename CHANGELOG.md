@@ -37,7 +37,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `GET /api/instagram/contas/{id}/ciclo` junta `contas_igfarm`, `authentication_attempts` e a lápide: `estado` (`ativa` ou
   `retirada`), minutos até o primeiro contato e, por contato, minutos desde a criação e desfecho (inclusive o
   `conta_nao_encontrada` do 31.332). Sem migração, sem segredo, sem evento novo. Análise de por que essas contas somem, com
-  hipóteses e as perguntas ao igfarm, em `docs/dominios/perfis-e-instagram.md` (adendo v1.145 no contrato).
+  hipóteses e as perguntas ao igfarm, em `docs/dominios/perfis-e-instagram.md` (adendo v1.145 no contrato; o JSON só traz ids, horas, minutos e desfechos).
 - Prova `simulated`: `tests/test_ciclo_da_conta_igfarm.py` (5). `real`: `not_run` (a análise usa os dados reais da bifurcação,
   mas a rota nova só roda no deploy seguinte).
 
