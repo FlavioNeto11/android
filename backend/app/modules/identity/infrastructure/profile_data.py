@@ -32,7 +32,12 @@ class SqlProfileDataStore:
 
     def accounts_of_profile(self, profile_id: str) -> Sequence[AccountRecord]:
         linhas = self._db.query(
-            "SELECT a.id AS account_id, a.app_id, a.handle, a.host, ap.package, ap.name AS app_name,"
+            "SELECT a.id AS account_id, a.app_id,"
+            # Conta ainda não confirmada: o endereço DESEJADO faz as vezes do usuário (31.281, ADR-087), para o plano que
+            # preenche o cadastro; `handle` segue vazio no banco.
+            " CASE WHEN a.provisioning_state = 'confirmada' THEN a.handle"
+            "      ELSE COALESCE(NULLIF(a.handle, ''), a.desired_handle, '') END AS handle,"
+            " a.host, ap.package, ap.name AS app_name,"
             " c.login_identifier, c.secret_ref, c.status AS credential_status, c.consent_at"
             " FROM profile_accounts a LEFT JOIN apps ap ON ap.id = a.app_id"
             " LEFT JOIN account_credentials c ON c.account_id = a.id"

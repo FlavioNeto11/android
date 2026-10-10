@@ -146,6 +146,53 @@ class ProfileAccountPatch(BaseModel):
     #: aparelho vinculado ao perfil.
     session_status: Literal["unknown", "session_ready", "auth_required", "needs_person"] | None = None
     notes: str | None = Field(default=None, max_length=400)
+    #: O endereço que se quer para a conta ainda não confirmada (31.281, adendo v1.132). Depois de `confirmada`, 409.
+    desired_handle: str | None = Field(default=None, max_length=200)
+
+
+class PlannedAccountCreate(BaseModel):
+    """`POST …/accounts/planned` (31.281, ADR-087): a conta que ainda NÃO existe no provedor. Sem senha aqui: a
+    credencial se prepara depois, por `…/credential/prepare`."""
+
+    model_config = ConfigDict(extra="forbid")
+    app_id: str = Field(min_length=1, max_length=120)
+    host: str | None = Field(default=None, max_length=253)
+    desired_handle: str | None = Field(default=None, max_length=200)
+
+
+class CredentialPrepare(BaseModel):
+    """`POST …/credential/prepare`: gerar (o servidor, com `secrets`), digitar ou reutilizar a senha de uma conta ainda
+    planejada. Só escrita; nenhuma resposta devolve a senha. O `password` é `SecretStr` e a recusa de campo trocado é do
+    serviço (o 422 do validador devolveria o corpo, com a senha)."""
+
+    model_config = ConfigDict(extra="forbid")
+    modo: Literal["gerar", "digitar", "reutilizar"]
+    consent: bool = False
+    substituir: bool = False
+    password: SecretStr | None = None
+    clonar_de: str | None = Field(default=None, min_length=1, max_length=120)
+    tamanho: int | None = Field(default=None, ge=16, le=64)
+    login_identifier: str | None = Field(default=None, max_length=200)
+
+
+class ConfirmationEvidence(BaseModel):
+    """A prova de que a conta existe no provedor: a sessão observada, ou a marcação nominal da pessoa."""
+
+    model_config = ConfigDict(extra="forbid")
+    tipo: Literal["sessao", "declarada"]
+    sessao_id: str | None = Field(default=None, max_length=200)
+    handle_confirmado: str | None = Field(default=None, max_length=200)
+
+
+class ProvisioningEventBody(BaseModel):
+    """`POST …/provisioning`: um evento do ciclo da conta planejada, com o estado que o chamador viu (comparar e trocar)."""
+
+    model_config = ConfigDict(extra="forbid")
+    evento: Literal["iniciar_cadastro", "enviado", "confirmar", "falhar", "retomar", "cancelar"]
+    estado_esperado: Literal["planejada", "credencial_preparada", "aguardando_cadastro_externo",
+                             "aguardando_verificacao", "confirmada", "falha"]
+    motivo: str | None = Field(default=None, max_length=300)
+    evidencia: ConfirmationEvidence | None = None
 
 
 class PolicyGroupCreate(BaseModel):

@@ -23,10 +23,12 @@ from app.devices import conectividade
 from app.devices.manager import DeviceRuntime
 from app.models import (
     CredentialClone,
+    CredentialPrepare,
     CredentialUpdate,
     InstagramProfileDTO,
     InstanceState,
     MemoryCreate,
+    PlannedAccountCreate,
     PolicyGroupCreate,
     PolicyGroupPatch,
     ProfileAccountCreate,
@@ -35,6 +37,7 @@ from app.models import (
     ProfileCreate,
     ProfilePatch,
     ProfilePolicyPatch,
+    ProvisioningEventBody,
     SessionStatus,
 )
 from app.modules.identity.application.ponte_igfarm import ErroDaPonte
@@ -261,6 +264,7 @@ async def _logout_job(request: Request, profile_id: str, *, account_id: str | No
     s = _st(request)
     rt, profile = _profile_device(s, profile_id, instance_id)
     conta = _conta_da_sessao(s, profile_id, account_id, rt.id)
+    _exigir_confirmada(conta)
     _recusa_pelo_portao(conta, "logout")
     # "Sair da conta" APAGA os dados do app: é a operação mais destrutiva desta tela e era a que menos registro
     # tinha. Agora é um comando, com id, desfecho e `uncertain` quando o adb não responde.
@@ -269,6 +273,13 @@ async def _logout_job(request: Request, profile_id: str, *, account_id: str | No
                                   label=f"logout de {conta.app_name or pacote}",
                                   params={"profile_id": profile_id, "account_id": conta.id}),
             "profile_id": profile_id, "account_id": conta.id}
+
+
+def _exigir_confirmada(conta: ProfileAccountDTO) -> None:
+    """31.281 (ADR-087): conta planejada ou em cadastro não é conta real logada; não há o que conectar, verificar ou sair."""
+    if conta.provisioning.state != "confirmada":
+        raise _err(409, "conta_nao_confirmada", "Esta conta ainda não foi confirmada no provedor "
+                   f"({conta.provisioning.state}): conclua o cadastro antes de conectar, verificar ou sair.")
 
 
 def _conta_da_sessao(s: AppState, profile_id: str, account_id: str | None, instance_id: str) -> ProfileAccountDTO:
@@ -337,6 +348,7 @@ async def _start_session_job(request: Request, profile_id: str, *, force_login: 
     s = _st(request)
     rt, profile = _profile_device(s, profile_id, instance_id)
     conta = _conta_da_sessao(s, profile_id, account_id, rt.id)
+    _exigir_confirmada(conta)
     if conta.host:
         # Conta de portal (um site, pelo navegador): o login gerenciado é o da conta do app inteiro, a única que a
         # porta de sessão e o despacho acham (item 23.4). O provedor também recusa; aqui a recusa é HTTP e imediata.
@@ -471,6 +483,48 @@ async def list_profile_accounts(request: Request, profile_id: str) -> object:
 async def add_profile_account(request: Request, profile_id: str, body: ProfileAccountCreate) -> object:
     try:
         return _st(request).social.add_account(profile_id, body, by=quem(request))
+    except SocialError as exc:
+        raise social_error(exc) from exc
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/planned", response_model=None)
+async def plan_profile_account(request: Request, profile_id: str, body: PlannedAccountCreate,
+                               response: Response) -> object:
+    """31.281 (ADR-087, v1.132): a conta que ainda NÃO existe no provedor. 201 na primeira vez; 200 idempotente se a
+    conta planejada deste (perfil, app, host) já existe (um `desired_handle` diferente só a edita)."""
+    try:
+        conta, criada = _st(request).social.provisionamento.planejar(profile_id, body, by=quem(request))
+    except SocialError as exc:
+        raise social_error(exc) from exc
+    response.status_code = 201 if criada else 200
+    return conta
+
+
+@router.get("/instagram/profiles/{profile_id}/accounts/handle-suggestions", response_model=None)
+async def suggest_account_handles(request: Request, profile_id: str, app_id: str = Query(min_length=1)) -> object:
+    """Endereços sugeridos pelos dados da persona (local, sem IA e sem rede; não afirma que estão livres no provedor)."""
+    try:
+        return {"suggestions": _st(request).social.provisionamento.sugestoes(profile_id, app_id)}
+    except SocialError as exc:
+        raise social_error(exc) from exc
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/credential/prepare", response_model=None)
+async def prepare_account_credential(request: Request, profile_id: str, account_id: str,
+                                     body: CredentialPrepare) -> object:
+    """Gerar (o servidor), digitar ou reutilizar a senha de uma conta planejada. Nenhuma resposta devolve a senha."""
+    try:
+        return _st(request).social.provisionamento.preparar_credencial(profile_id, account_id, body, by=quem(request))
+    except SocialError as exc:
+        raise social_error(exc) from exc
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/provisioning", response_model=None)
+async def provision_account_event(request: Request, profile_id: str, account_id: str,
+                                  body: ProvisioningEventBody) -> object:
+    """Um evento do ciclo da conta planejada, com o `estado_esperado` (comparar e trocar). Idempotente."""
+    try:
+        return _st(request).social.provisionamento.transicao(profile_id, account_id, body, by=quem(request))
     except SocialError as exc:
         raise social_error(exc) from exc
 

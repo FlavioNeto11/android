@@ -202,6 +202,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   laço de eventos ao banco compartilhado, não mais consultas. Prova `simulated`: `tests/test_regua_diaria_em_blocos.py` (4: dias do intervalo, mesmo
   resultado da agregação inteira, uma janela de um dia por consulta com pausa entre elas, falha no meio não deixa linha pela metade). `real`: `not_run` (só
   depois do deploy, com as pilhas do vigia do laço).
+## 2026-10-10 — 31.281: a conta planejada, a credencial preparada no cofre e o ciclo de provisionamento (branch feat/31-281-conta-planejada)
+
+- Contrato antes do código: adendo v1.132 (`provisioning` no `ProfileAccountDTO`, `POST …/accounts/planned`, `…/handle-suggestions`,
+  `…/credential/prepare` com gerar, digitar e reutilizar, `…/provisioning` com `estado_esperado`, e a ação estruturada `acoes_de_conta` do refinador
+  para o 31.282). Migração 131 (colunas aditivas em `profile_accounts`; as linhas anteriores entram `confirmada`).
+- Máquina de estados pura (`identity/domain/provisionamento.py`), serviço `social/provisionamento.py`, gerador de senha com `secrets`
+  (`security/gerador_de_senha.py`), `SocialError` e `normalizar_host` em `social/erros.py` (o serviço de contas reexporta; evita o ciclo de import).
+- Consumidores: `_mundo` (contas e sessões prontas) e o reconciliador de sessão só contam conta `confirmada`; o login gerenciado e as rotas
+  `session/connect|verify|logout` recusam a não confirmada (409 `conta_nao_confirmada`); os dados ao plano trazem o usuário desejado e a senha
+  sigilosa; a conta da ponte igfarm nasce `confirmada` com evidência `igfarm` (ADR-088, emenda).
+- Prova `simulated`: `tests/test_conta_planejada.py` (22: domínio, planejar idempotente, sugestões, gerar sem devolver a senha, digitar,
+  reutilizar da mesma persona, ciclo completo, evidência por sessão e declarada, comparar e trocar, falha e retomada, cancelar com cofre,
+  trilha sem endereço nem senha, consumidores) e 803 testes dirigidos de contas, sessão, ponte, rotas, catracas verdes. `test_arquitetura.py`
+  segue com as 2 falhas que já estão na main (egresso/ponte). `real`: `not_run` (a validação ponta a ponta com provedor simulado é o 31.284).
 
 ## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
 

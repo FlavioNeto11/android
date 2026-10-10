@@ -42,6 +42,8 @@ from .contas_nossas import emails_so_desta_conta, handle_vivo, sem_o_rastro
 from .limpeza_de_conta import PedidoDeLimpeza
 from .memory import MemoryRefused, MemoryStore, reescrever_memoria
 from .excecoes import ExcecoesDePolitica
+from .erros import SocialError, normalizar_host
+from .provisionamento import ProvisionamentoDeContas
 from .policy import CONTAM, DEFAULT_LIMITS, PolicyEngine, com_politicas_do_app, politicas_do_app
 from .repository import (AparelhoEmQuarentena, BindingConflict, SocialRepository, campos_de_persona,
                          sessao_vencida)
@@ -90,14 +92,6 @@ def _repetido(draft: SocialDraftDTO, proibidos: Sequence[str]) -> bool:
     return any(alvo == _normalizar(p) for p in proibidos)
 
 
-class SocialError(RuntimeError):
-    def __init__(self, code: str, message: str, status: int = 409):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.status = status
-
-
 class SocialService:
     def __init__(self, repo: SocialRepository, secrets: SecretStore, bus: EventBus,
                  known_instances: Any = None, *, provider: Any = None, usage_sink: Any = None,
@@ -107,6 +101,8 @@ class SocialService:
         self.owner_id = owner_id
         self.secrets = secrets
         self.bus = bus
+        #: A conta planejada (31.281, ADR-087): planejar, preparar a credencial e andar o ciclo.
+        self.provisionamento = ProvisionamentoDeContas(self)
         self._known_instances = known_instances or (lambda: [])
         self._store_instance = store_instance or (lambda: None)     # id do aparelho-loja, que nunca recebe perfil
         self.memory = MemoryStore(repo)
@@ -1395,8 +1391,10 @@ class SocialService:
                 blocked_until=cred["blocked_until"] if cred else None, updated_at=cred["updated_at"] if cred else None,
                 last_used_at=cred["last_used_at"] if cred else None, consent_at=cred["consent_at"] if cred else None,
                 consent_by=cred["consent_by"] if cred else None),
-            consent_at=cred["consent_at"] if cred else None, notes=row["notes"] or "", created_at=row["created_at"],
-            updated_at=row["updated_at"])
+            consent_at=cred["consent_at"] if cred else None,
+            provisioning=self.provisionamento.info(
+                row, sessao_pronta=bool(sessao) and sessao["status"] == SessionStatus.session_ready.value),
+            notes=row["notes"] or "", created_at=row["created_at"], updated_at=row["updated_at"])
 
     def list_accounts(self, profile_id: str) -> list[ProfileAccountDTO]:
         self.get_profile(profile_id)
@@ -1460,6 +1458,8 @@ class SocialService:
         conta = self.get_account(profile_id, account_id)
         campos = body.model_dump(exclude_unset=True, exclude_none=True)
         marca = campos.pop("session_status", None)
+        if "desired_handle" in campos:
+            self.provisionamento.editar_desejado(profile_id, account_id, campos.pop("desired_handle"))
         if marca is not None:
             if conta.automated_login:
                 # Em app com provedor a sessão é do provedor (conectar/verificar), não uma marcação à mão.
@@ -1711,11 +1711,14 @@ class SocialService:
         assert conta is not None
         self._gravar_credencial(profile_id, conta, password=body.password, login_identifier=body.login_identifier,
                                 consent=bool(body.consent), by=by)
+        self.provisionamento.credencial_gravada(profile_id, account_id)
         return self.get_account(profile_id, account_id)
 
     def delete_account_credential(self, profile_id: str, account_id: str) -> ProfileAccountDTO:
         self.get_account(profile_id, account_id)
+        self.provisionamento.antes_de_apagar_credencial(profile_id, account_id)
         self._apagar_credencial(profile_id, self.repo.delete_account_credential(profile_id, account_id))
+        self.provisionamento.credencial_apagada(profile_id, account_id)
         return self.get_account(profile_id, account_id)
 
     def consent_account_credential(self, profile_id: str, account_id: str, *, by: str = "painel") -> ProfileAccountDTO:
@@ -1743,6 +1746,7 @@ class SocialService:
         if self.secrets.status() != "ready":
             raise SocialError("secret_store_unavailable", self._vault_message(), 503)
         self._clonar_credencial(profile_id, conta, body.clonar_de, login_identifier=body.login_identifier, by=by)
+        self.provisionamento.credencial_gravada(profile_id, account_id, modo="reutilizar")
         return self.get_account(profile_id, account_id)
 
     def _origem_do_clone(self, profile_id: str, origem_id: str, *, destino_id: str | None) -> Row:
@@ -2098,15 +2102,7 @@ def thread_de_dm(counterparty: str | None) -> str | None:
     return f"dm:{alvo}" if alvo else None
 
 
-def _host_da_conta(valor: str | None) -> str | None:
-    """O `host` de uma conta de portal, normalizado como a barra de endereço o mostra: minúsculo, sem esquema, sem
-    caminho, sem porta. Vazio vira `None` (conta do app inteiro), que a unicidade trata como ''."""
-    if not valor:
-        return None
-    t = valor.strip().casefold()
-    t = t.split("://", 1)[1] if "://" in t else t
-    t = t.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0]
-    return t or None
+_host_da_conta = normalizar_host      # o nome antigo, que o resto do arquivo e os testes usam
 
 
 def _counterparty(valor: str | None) -> str | None:

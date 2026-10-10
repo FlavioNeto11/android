@@ -211,6 +211,33 @@ vinculado e, sem linha nele, a mais recente (é ela que diz "a sessão pronta é
 `profile_accounts.session_status` (037) ficou na tabela e ninguém a lê; `apps_overview.py` conta prontas por
 `account_sessions`. Sessão é cache do observado, nunca a verdade.
 
+### Conta planejada (31.281, ADR-087, adendo v1.132)
+
+A conta de uma persona num app pode existir só como PLANO, antes de existir no provedor. A linha é a mesma de
+`profile_accounts` (o índice único (perfil, app, host) dá a idempotência), com o ciclo `provisioning_state` (migração 131; as
+linhas anteriores são `confirmada`):
+
+- **Estados:** `planejada` → `credencial_preparada` → `aguardando_cadastro_externo` → `aguardando_verificacao` → `confirmada`;
+  `falha` guarda `resume_state` e `retomar` volta a ele; `cancelar` só antes de `confirmada`. A máquina é função pura
+  (`modules/identity/domain/provisionamento.py`); o serviço (`social/provisionamento.py::ProvisionamentoDeContas`, pendurado em
+  `SocialService.provisionamento`) lê o banco, mexe no cofre e emite `identity.conta.provisionamento` (só ids e estados: nunca o
+  endereço nem a senha). Toda transição leva o `estado_esperado` (comparar e trocar, `set_provisioning` com `WHERE` no estado);
+  repetir o evento no estado de destino devolve 200 sem efeito.
+- **Desejado x confirmado:** `desired_handle` é o que se quer; `handle` segue sendo o CONFIRMADO e fica vazio até `confirmar`, que exige
+  evidência (a sessão observada com o usuário igual ao desejado, ou a marcação nominal da pessoa, gravada como `declarada`).
+- **Senha:** `credential/prepare` gera (`security/gerador_de_senha.py`, `secrets`, sem IA), recebe ou reutiliza (o mesmo `clonar`
+  do cofre do `credential/clone`). Gerar ou digitar com `consent: true` vale como o consentimento do ADR-040 para aquela conta.
+  A senha nunca volta em resposta, log ou evento (`tests/test_conta_planejada.py` varre as tabelas de texto).
+- **Quem não a trata como conta real:** `Mundo`/Automático (`taskqueue/service.py::_mundo`, contas e sessões prontas), o
+  reconciliador de sessão (`account_session.py::_conta`, `active=False`), o login gerenciado (`sessao.py`, `UNCERTAIN`) e as rotas
+  `session/connect|verify|logout` (409 `conta_nao_confirmada`). Os dados ao plano (`profile_data.py`) trazem o desejado no lugar do
+  usuário e a senha sigilosa, para o plano que preenche o cadastro. A conta da ponte igfarm nasce `confirmada` com evidência `igfarm`.
+- **Onde a conta planejada CONTA como conta (de propósito):** `AppState._tem_conta_no_app` (entrega do app ao aparelho) e o portão
+  de conta esperada do `Scheduler` (`scheduler.py`, `status='active'`). A entrega precisa do app no aparelho para o cadastro, e a etapa
+  que cria a conta precisa passar pelo portão "a persona tem conta neste app"; fora do cadastro, `conta_esperada` não acha handle (vazio)
+  e devolve `None`.
+- **Não faz:** o cadastro no provedor (CAPTCHA, código e e-mail são da pessoa, ADR-009) e o refinador por estado (31.282).
+
 ### Sessão por conta (item 23.4)
 
 [ADR-057](../decisoes.md#adr-057--outlook-como-primeiro-app-novo-conta-por-app-sessão-por-conta-e-credencial-clonada-no-cofre).

@@ -141,7 +141,7 @@ def test_as_vinte_rotas_de_personas_seguem_no_app_e_cada_uma_uma_vez() -> None:
         ("DELETE", "/api/personas/{persona_id}/images/{image_id}")])
 
 
-def test_as_quarenta_e_quatro_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_vez() -> None:
+def test_as_quarenta_e_oito_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_vez() -> None:
     """15.15 F4i: `/api/instagram/*` saiu de `api.py` para `modules/identity/presentation/instagram.py`; o conjunto (método e modelo) é o de
     antes, sem repetição nem rota perdida."""
     rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/instagram")]
@@ -190,7 +190,12 @@ def test_as_quarenta_e_quatro_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_ve
         # Ponte android <-> igfarm (ADR-088, migração 132, adendo v1.133).
         ("GET", "/api/instagram/personas-pendentes"),
         ("POST", "/api/instagram/contas"),
-        ("GET", "/api/instagram/contas/{conta_id}/codigo")])
+        ("GET", "/api/instagram/contas/{conta_id}/codigo"),
+        # Conta planejada (31.281, ADR-087, adendo v1.132).
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/planned"),
+        ("GET", "/api/instagram/profiles/{profile_id}/accounts/handle-suggestions"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/credential/prepare"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/provisioning")])
 
 
 def test_as_vinte_rotas_de_proxies_comandos_e_apps_seguem_no_app_e_cada_uma_uma_vez() -> None:
