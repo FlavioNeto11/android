@@ -59,6 +59,7 @@ from .modules.decisoes.infrastructure.servico import ServicoDeDecisoes
 from .modules.applications.infrastructure.registry import pacote_ancora
 from .modules.email_do_parque.adapters.imap import construir_email_do_parque
 from .modules.identity.infrastructure.egresso import limpar_egresso, vincular_egresso
+from .modules.identity.infrastructure.motivo_bloqueio import motivo_do_bloqueio
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.codigo_de_email import CodigoDoEmailDoParque
 from .modules.identity.infrastructure.persona_images import compor_servico_de_imagens, imagens_dto
@@ -413,6 +414,7 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
     # Egresso por IP residencial (133): liga o vínculo persona↔device e a retirada da conta ao perfil de rede.
     self.social.ao_vincular_egresso = lambda pid, iid: vincular_egresso(self, pid, iid)
     self.social.ao_limpar_egresso = lambda pid, aid, ref: limpar_egresso(self, pid, aid, ref)
+    self.social.motivo_do_bloqueio = lambda pid, aid, ev: motivo_do_bloqueio(self.db, pid, aid, ev)
     # 29.27 (emenda do ADR-068): conta retirada de app que declara `limpar_ao_retirar` leva os dados do app embora dos
     # aparelhos onde estava logada (`pm clear` só desse pacote), numa tarefa de fundo; a quarentena resolve ao fim.
     self.limpeza_ao_retirar = LimpezaAoRetirar(self)

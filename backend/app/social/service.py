@@ -137,6 +137,8 @@ class SocialService:
         #: Limpeza do egresso (migração 133, §9): quando uma conta é retirada, desatribui+remove o perfil e apaga
         #: o segredo de rastreio. O AppState liga a rotina de rede aqui.
         self.ao_limpar_egresso: Callable[[str, str, str | None], None] | None = None
+        # Motivo do bloqueio como dado (136, 31.322): lido ANTES da retirada, que apaga a linha do igfarm.
+        self.motivo_do_bloqueio: Callable[[str, str, str | None], dict[str, object]] | None = None
         self._retirando: set[tuple[str, str]] = set()
         #: O SINAL FORTE de bloqueio (29.23): `instance_id -> a atividade de desafio do Instagram está em foco agora`.
         #: O AppState liga ao que `DeviceManager.observe` leu (`DeviceRuntime.atividade_de_desafio`). Só texto na tela
@@ -1547,6 +1549,14 @@ class SocialService:
         # Egresso (133, §9): lê o proxy_secret_ref ANTES da tx (a conta sai dentro dela).
         egresso_row = self.repo.db.one("SELECT proxy_secret_ref FROM contas_igfarm WHERE account_id=?", (account_id,))
         proxy_secret_ref = str(egresso_row["proxy_secret_ref"]) if egresso_row and egresso_row["proxy_secret_ref"] else None
+        motivo_json: str | None = None
+        motivo_dado: dict[str, object] | None = None
+        if self.motivo_do_bloqueio is not None:
+            try:
+                motivo_dado = self.motivo_do_bloqueio(profile_id, account_id, texto)
+                motivo_json = dumps(motivo_dado)
+            except Exception:  # noqa: BLE001 - o motivo é dado de apoio: a retirada nunca depende dele
+                motivo_dado = motivo_json = None
         # Sessões que estavam na fila "Aguardando intervenção": a conta sai, e o item sai da fila junto. O `unknown`
         # no teto (29.92) também abriu item, e a conta é lida ANTES de a retirada apagar o vínculo que dá o teto 1.
         na_fila: list[tuple[str, str, bool]] = []
@@ -1569,7 +1579,8 @@ class SocialService:
                                                 handle=None if vivo else handle, account_id=account_id,
                                                 emails=emails))
             refs = self.repo.retirar_conta_bloqueada(profile_id, account_id, ancora=ancora,
-                                                     motivo="conta retirada por bloqueio")
+                                                     motivo="conta retirada por bloqueio",
+                                                     motivo_do_bloqueio=motivo_json)
             for ref in dict.fromkeys(refs):
                 # Com as DUAS linhas (conta e legada) já fora, nada mais segura o ciphertext: o `_apagar_credencial`
                 # só poupa o segredo que outra conta ou linha ainda referencia.
@@ -1582,7 +1593,8 @@ class SocialService:
                       level="warn",
                       data={"profile_id": profile_id, "account_id": account_id, "app_id": app_id, "ancora": ancora,
                             "origem": origem, "autor": autor, "evidencia": redact(texto),
-                            "limpezas": contagens, "status_da_persona": self._status_do(profile_id)})
+                            "limpezas": contagens, "status_da_persona": self._status_do(profile_id),
+                            "motivo_do_bloqueio": motivo_dado})
         for iid, anterior, anterior_no_teto in na_fila:
             emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=iid,
                                      status=SessionStatus.unknown.value, anterior_status=anterior,
