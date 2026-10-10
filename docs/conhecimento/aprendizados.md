@@ -2904,7 +2904,8 @@ vai só na `description`, que o hash não lê e o juiz lê. Os dois hashes (espe
 **O que não funcionou.** Confiar só no hash genérico: ele não cobre a receita cujas ações dependem do texto.
 
 **Aplicabilidade.** Vigente. Todo molde oferecido a outra execução tem de ter o mesmo hash da etapa que gerou a receita; texto
-que pode ter valor de pessoa vai em campo que o hash não lê. Não provado: o replay pelo executor num app com catálogo (`not_run`).
+que pode ter valor de pessoa vai em campo que o hash não lê. O replay pelo executor foi provado no simulado (31.311, `tests/test_replay_da_etapa_descoberta.py`: candidata, ativa, 3ª execução por
+receita sem IA); não provado no Outlook real (`not_run`).
 
 ### K-110 — `MIN(ts) ... WHERE run_id IS NULL` no SQLite lê todas as linhas sem execução: percorra pelo índice de `ts` em blocos
 
