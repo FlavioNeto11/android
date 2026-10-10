@@ -15,6 +15,7 @@ import { handleDe, nomeDe } from './pessoa';
  * - `grupo`: id do grupo de acesso, ou `nenhum`.
  * - `app`: id do app de algum vínculo da persona (`instagram`, `outlook`…).
  * - `q`: texto; casa com nome e @ (sem acento, sem caixa, com ou sem o "@").
+ * - `testes`: `1` = mostra também as personas de teste (31.315); sem ele, ficam escondidas.
  * - `ordem`: `nome` (padrão, omitido) | `situacao` | `atividade`.
  * - `visao`: `cards` | `tabela`. Sem `visao` no link vale a última escolhida neste navegador (`lib/visao.ts`, decisão
  *   D3); por isso ela vai sempre explícita no link (um link sem ela abriria na preferência de quem o recebe).
@@ -42,6 +43,9 @@ export const VISOES: readonly Visao[] = ['cards', 'tabela'];
 /** Chave da preferência no navegador (`lib/storage` põe o prefixo). */
 export const CHAVE_VISAO = 'personas.visao';
 
+/** A persona é de teste (31.315): só a marca `teste === true` do servidor; ausente vale falso. */
+export const ehTeste = (p: Pick<PersonaDTO, 'teste'>): boolean => p.teste === true;
+
 export interface FiltroPersonas {
   q: string;
   situacao: Situacao | null;
@@ -49,12 +53,14 @@ export interface FiltroPersonas {
   capacidade: RecorteDeCapacidade | null;
   grupo: string | null;
   app: string | null;
+  /** 31.315: mostrar também as personas de teste. Desligado por padrão. */
+  testes: boolean;
   ordem: OrdemPersona;
   visao: Visao;
 }
 
 export const FILTRO_VAZIO: FiltroPersonas = {
-  q: '', situacao: null, vinculo: null, capacidade: null, grupo: null, app: null, ordem: 'nome', visao: 'cards',
+  q: '', situacao: null, vinculo: null, capacidade: null, grupo: null, app: null, testes: false, ordem: 'nome', visao: 'cards',
 };
 
 function umDe<T extends string>(lista: readonly T[], v: string | undefined): T | null {
@@ -73,6 +79,7 @@ export function lerFiltroPersonas(query: Readonly<Record<string, string>>, prefe
     capacidade: umDe(CAPACIDADES, query.capacidade),
     grupo: query.grupo || null,
     app: query.app || null,
+    testes: query.testes === '1',
     ordem: umDe(ORDENS_PERSONA, query.ordem) ?? 'nome',
     visao: umDe(VISOES, query.visao) ?? preferida,
   };
@@ -90,6 +97,7 @@ export function queryDoFiltro(f: Partial<FiltroPersonas>): Record<string, string
   if ('capacidade' in f) out.capacidade = f.capacidade ?? undefined;
   if ('grupo' in f) out.grupo = f.grupo ?? undefined;
   if ('app' in f) out.app = f.app ?? undefined;
+  if ('testes' in f) out.testes = f.testes ? '1' : undefined;
   if ('ordem' in f) out.ordem = f.ordem && f.ordem !== 'nome' ? f.ordem : undefined;
   if ('visao' in f) out.visao = f.visao === 'tabela' ? 'tabela' : 'cards';
   return out;
@@ -102,7 +110,7 @@ export function filtroAtivo(f: FiltroPersonas): boolean {
 
 /** Limpa só o que filtra; ordem e visão são preferência de leitura e ficam. */
 export const LIMPAR_FILTROS: Record<string, undefined> = {
-  q: undefined, situacao: undefined, vinculo: undefined, capacidade: undefined, grupo: undefined, app: undefined,
+  q: undefined, situacao: undefined, vinculo: undefined, capacidade: undefined, grupo: undefined, app: undefined, testes: undefined,
 };
 
 /** Sem acento e sem caixa: "Vinícius" acha com "vinicius". */
@@ -222,7 +230,8 @@ export function filtrarPersonas(pessoas: readonly PersonaDTO[], f: FiltroPersona
     && (excluir === 'vinculo' || !f.vinculo || (f.vinculo === 'com') === temAparelho(p))
     && (excluir === 'capacidade' || !f.capacidade || casaCapacidade(p, f.capacidade))
     && (excluir === 'grupo' || !f.grupo || (f.grupo === 'nenhum' ? !p.policy_group_id : p.policy_group_id === f.grupo))
-    && (excluir === 'app' || !f.app || appsDe(p).includes(f.app)));
+    && (excluir === 'app' || !f.app || appsDe(p).includes(f.app))
+    && (excluir === 'testes' || f.testes || !ehTeste(p)));
 }
 
 /** Ordem da situação: o que pede alguém primeiro. */

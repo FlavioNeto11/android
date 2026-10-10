@@ -747,6 +747,8 @@ export interface ProfileLocality {
 }
 
 export interface InstagramProfile {
+  /** 31.315 (adendo v1.139, `personas.teste`): persona criada só para provas; não é uma pessoa do parque. Ausente em backend anterior (vale falso). */
+  teste?: boolean;
   id: string;
   username: string;
   display_name: string | null;
@@ -948,6 +950,8 @@ export interface PersonaImage {
 
 /** `POST /personas` (e o rascunho de `POST /personas/generate`, que tem este formato e não é gravado). */
 export interface PersonaCreateRequest {
+  /** 31.315: cria a persona já marcada como de teste. Só se manda quando verdadeiro. */
+  teste?: boolean;
   name: string;
   summary?: string | null;
   persona_prompt?: string;
@@ -964,6 +968,7 @@ export interface PersonaCreateRequest {
 
 /** `PATCH /personas/{id}`: POR SEÇÃO. `traits`/`visual`/`biography` são mesclados no servidor; `null` apaga. */
 export type PersonaPatchRequest = Partial<Omit<PersonaCreateRequest, 'generation'>> & { display_name?: string | null };
+// `teste` no PATCH: verdadeiro marca, falso desmarca, ausente (ou null) não mexe (v1.139); por isso o PATCH manda o booleano explícito.
 
 /** `POST /personas/generate`: chamada PAGA pelo papel social; devolve um rascunho não gravado. */
 export interface PersonaGenerateRequest {

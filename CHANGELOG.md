@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — a persona de teste tem selo, fica escondida por padrão e nasce marcada (31.315, adendo v1.139 do 31.314)
+
+- `api/types.ts` (`InstagramProfile.teste`, `PersonaCreateRequest.teste`), `components/SeloDeTeste.tsx`,
+  `features/profiles/{filtroPersonas.ts, ProfilesPage.tsx, ListaDePersonas.tsx, PersonaHeader.tsx, NovaPersona.tsx, VincularForm.tsx}`,
+  `features/command/PersonaTarget.tsx`, `features/pedidos/ListaDePedidos.tsx`, `lib/rotas.ts`: a persona com `teste: true` leva o selo
+  "teste" no cartão, na linha da tabela e na ficha, e "· teste" nos seletores (Comando, vínculo de aparelho, filtro de Pedidos). A lista
+  de Personas a esconde por padrão; o controle "Mostrar as de teste (N)" só aparece se houver alguma, vai no link (`testes=1`) e "Limpar
+  filtros" o desliga; se só há personas de teste, a lista diz que estão escondidas. Os dois formulários de criação (manual e por
+  prompt, na revisão) ganham "Persona de teste", que manda `teste: true` só quando marcada. A ficha abre por id e não é filtrada.
+- **Suposição a conferir contra o adendo v1.139 quando ele chegar à origin:** campo booleano `teste`, ausente valendo falso, na persona
+  (`GET /api/personas`) e no corpo de `POST /api/personas`; o filtro é do painel (não há parâmetro de servidor). Se o nome ou a forma
+  mudarem, só `ehTeste` e o tipo mudam.
+- Prova `simulated`: `features/profiles/PersonaDeTeste.test.tsx` (8 testes: regras puras, lista escondida e mostrada com selo, só de teste,
+  ficha, criação com e sem a marca, seletores); 273 dirigidos de profiles, 383 de profiles, command e pedidos, tsc e build. Percurso no
+  navegador contra o backend isolado do worktree, com o campo `teste` injetado na resposta (o backend ainda não o tem): lista escondida
+  por padrão, controle "(1)", mostrar com o selo, ficha com o selo. **Real no central: não executada** (depende do 31.314).
+
 ## 2026-10-10 — as trocas da saída esperada aparecem da mais nova para a mais antiga (31.301, ajuste)
 
 - `features/rede/EditarSaidaEsperada.tsx`: o painel guardava os eventos na ordem de chegada e listava as três MAIS ANTIGAS trocas do perfil;

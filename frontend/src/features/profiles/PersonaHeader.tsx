@@ -3,6 +3,7 @@ import { profileAvatarUrl } from '../../api/client';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
+import { SeloDeTeste } from '../../components/SeloDeTeste';
 import { StatusBadge } from '../../components/StatusBadge';
 import { PROFILE_STATUS, metaOf } from '../../lib/status';
 import { tempoRelativo, useNow } from '../../lib/time';
@@ -44,6 +45,7 @@ export function PersonaHeader({ profile, onBack, irPara }: {
           <h1 className={styles.title}>{nome}</h1>
           <p className={styles.cabecalhoHandle}>{handle ? `@${handle}` : 'Sem conta de cadastro'}</p>
           <div className={styles.cabecalhoSelos}>
+            <SeloDeTeste teste={profile.teste} />
             {profile.status !== 'active' ? <StatusBadge meta={metaOf(PROFILE_STATUS, profile.status)} /> : null}
             {handle ? (
               sessao.acao ? (

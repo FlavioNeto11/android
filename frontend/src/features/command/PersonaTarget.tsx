@@ -90,11 +90,12 @@ export function PersonaTarget({ pessoas, selecionadas, politica, estreitar, onPe
             return (
               <button key={p.id} type="button" className={cx(ui.chip, styles.personaChip)}
                       aria-pressed={selecionadas.includes(p.id)}
-                      aria-label={`${nome}${handle ? ` (@${handle})` : ''}${n === 0 ? ', sem aparelho' : ''}`}
+                      aria-label={`${nome}${p.teste === true ? ' (teste)' : ''}${handle ? ` (@${handle})` : ''}${n === 0 ? ', sem aparelho' : ''}`}
                       title={`${handle ? `@${handle} · ` : 'sem conta de cadastro · '}${n ? plural(n, 'aparelho', 'aparelhos') : 'sem aparelho vinculado'}`}
                       onClick={() => onPessoas(alternar(selecionadas, p.id))}>
                 <Avatar src={profileAvatarUrl(p.id, p.has_avatar)} name={nome} size={20} />
                 <span className={styles.personaChipNome}>{nome}</span>
+                {p.teste === true ? <span className={styles.previaNota}>teste</span> : null}
                 {n === 0 ? <span className={styles.previaNota}>sem aparelho</span> : null}
               </button>
             );

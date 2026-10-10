@@ -131,7 +131,7 @@ export function ListaDePedidos() {
     {
       chave: 'persona', rotulo: 'Persona', tipo: 'lista', rotuloTodos: 'Toda persona', valor: filtro.profile_id ?? '',
       onChange: (v) => trocarQuery({ profile_id: v || undefined }),
-      opcoes: (pessoas ?? []).map((p) => ({ valor: p.id, rotulo: nomeDe(p) })),
+      opcoes: (pessoas ?? []).map((p) => ({ valor: p.id, rotulo: `${nomeDe(p)}${p.teste === true ? ' · teste' : ''}` })),
     },
   ];
 

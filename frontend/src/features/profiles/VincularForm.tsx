@@ -68,7 +68,7 @@ export function VincularForm({ personaId, instanceId, jaVinculados = [], onVincu
             <Select id={id} value={pessoa} onChange={(e) => setPessoa(e.target.value)}>
               <option value="">{pessoas === null ? 'Carregando…' : 'Escolha…'}</option>
               {(pessoas ?? []).map((p) => (
-                <option key={p.id} value={p.id}>{nomeDe(p)}{p.username ? ` (@${p.username})` : ''}</option>
+                <option key={p.id} value={p.id}>{nomeDe(p)}{p.username ? ` (@${p.username})` : ''}{p.teste === true ? ' · teste' : ''}</option>
               ))}
             </Select>
           )}

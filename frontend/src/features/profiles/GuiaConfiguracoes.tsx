@@ -14,6 +14,7 @@ import { useAppStore } from '../../store/app';
 import { toastError } from '../../store/toasts';
 import { Carregando, useVersaoAoVivo } from './detalheComum';
 import { EFEITO_DE_SAIR_DO_GRUPO_LIBERADO, efeitoDeEntrarNoGrupoLiberado, ehGrupoLiberado } from './grupoLiberado';
+import { MarcaDeTeste } from './MarcaDeTeste';
 import { nomeDe, type Pessoa } from './pessoa';
 import { type Origem, PolicyActionsEditor } from './PolicyEditor';
 import styles from './Profiles.module.css';
@@ -146,6 +147,7 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
   return (
     <div className={styles.configStack}>
       {erro ? <LoadErrorBanner error={erro} onRetry={() => setTentativa((t) => t + 1)} /> : null}
+      <MarcaDeTeste profile={profile} onChanged={onChanged} />
       <Card>
         <CardHeader title="Grupo de acesso"
                     subtitle="A persona herda as políticas do grupo. O que você mudar aqui é desta persona e sobrepõe o grupo." />

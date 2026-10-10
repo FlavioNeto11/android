@@ -4,6 +4,7 @@ import { api, profileAvatarUrl } from '../../api/client';
 import type { PersonaDTO } from '../../api/types';
 import { Avatar } from '../../components/Avatar';
 import { Badge } from '../../components/Badge';
+import { SeloDeTeste } from '../../components/SeloDeTeste';
 import { Button } from '../../components/Button';
 import { Card, CardBody } from '../../components/Card';
 import { confirm } from '../../components/Confirm';
@@ -188,7 +189,7 @@ export function PersonaCard({ pessoa, onChanged, onOpen, selecionada, onSelecion
       <div className={styles.cartaoTopo}>
         <Avatar src={profileAvatarUrl(pessoa.id, pessoa.has_avatar)} name={nome} size={40} />
         <div className={styles.cartaoIdentidade}>
-          <h2 className={styles.cartaoNome}><Truncado texto={nome} /></h2>
+          <h2 className={styles.cartaoNome}><Truncado texto={nome} /> <SeloDeTeste teste={pessoa.teste} /></h2>
           <Truncado texto={handle ? `@${handle}` : 'sem conta de cadastro'} className={styles.cartaoHandle} />
         </div>
         <NumeroDaPersona numero={numero} />
@@ -306,6 +307,7 @@ export function TabelaPersonas({ pessoas, selecionadas, onSelecionar, onOpen, on
                   <span className={styles.tabelaPessoa}>
                     <Avatar src={profileAvatarUrl(p.id, p.has_avatar)} name={nome} size={28} />
                     <Truncado texto={nome} />
+                    <SeloDeTeste teste={p.teste} />
                   </span>
                 </td>
                 <td>{handle ? <Truncado texto={`@${handle}`} /> : <span className={styles.muted}>sem conta</span>}</td>

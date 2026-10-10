@@ -29,7 +29,7 @@
  *   levado ao slug por substituição de hash (sem empilhar histórico). Resolve pela lista já carregada, sem endpoint.
  * - Filtros de lista (`situacao`, `q`, `ordem`, `visao`, `estado`): da tela que os lê; quem compõe um hash novo a
  *   partir da rota atual preserva os que não são seus.
- *   - Personas (tarefa UX 05, `features/profiles/filtroPersonas.ts`): `q` (nome ou @), `situacao` = `ativa` |
+ *   - Personas (tarefa UX 05, `features/profiles/filtroPersonas.ts`): `testes=1` (mostra também as personas de teste, 31.315; escondidas por padrão), `q` (nome ou @), `situacao` = `ativa` |
  *     `atencao` | `bloqueada` (status `blocked`, o mesmo do contador da saúde do ambiente) | `pausada` | `sem-conta`;
  *     `vinculo` = `com` | `sem` (aparelho vinculado); `grupo` = id do grupo de acesso ou `nenhum`; `app` = id do app
  *     de um vínculo; `ordem` = `situacao` | `atividade` (sem = nome); `visao` = `cards` | `tabela`.

@@ -30,7 +30,7 @@ import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
 import { abaDoPedido, type Aba } from './abas';
 import {
-  appsDe, CHAVE_VISAO, contagemPorCapacidade, contagemPorSituacao, filtrarPersonas, filtroAtivo, lerFiltroPersonas, LIMPAR_FILTROS, nomeDoApp,
+  appsDe, CHAVE_VISAO, ehTeste, contagemPorCapacidade, contagemPorSituacao, filtrarPersonas, filtroAtivo, lerFiltroPersonas, LIMPAR_FILTROS, nomeDoApp,
   ordenarPersonas, queryDoFiltro, ROTULO_SITUACAO, SITUACOES, textoSemResultado, VISOES,
   type FiltroPersonas, type OrdemPersona, type Situacao,
 } from './filtroPersonas';
@@ -228,6 +228,8 @@ export function ProfilesPage() {
   const contagem = contagemPorSituacao(pessoas, filtro);
   const contagemCapacidade = contagemPorCapacidade(pessoas, filtro);
   const escondeAlguem = filtroAtivo(filtro);
+  // 31.315: as personas de teste ficam fora da lista até a pessoa pedir; a contagem diz quantas existem.
+  const quantasDeTeste = pessoas.filter(ehTeste).length;
   const appsConhecidos = [...new Set(pessoas.flatMap(appsDe))].sort();
   // Selecionadas que o filtro escondeu continuam no lote: a barra diz quantas, para ninguém agir sem ver.
   const selecionadasForaDoFiltro = [...selecionadas].filter((id) => !visiveis.some((p) => p.id === id)).length;
@@ -302,6 +304,11 @@ export function ProfilesPage() {
               { chave: 'grupo', rotulo: 'Grupo de acesso', tipo: 'lista', rotuloTodos: 'Todos os grupos',
                 valor: filtro.grupo ?? '', onChange: (v) => mudarFiltro({ grupo: v || null }),
                 opcoes: [{ valor: 'nenhum', rotulo: 'Sem grupo' }, ...grupos.map((g) => ({ valor: g.id, rotulo: g.name }))] },
+              ...(quantasDeTeste > 0 || filtro.testes ? [{
+                chave: 'testes', rotulo: 'Personas de teste', tipo: 'lista' as const, rotuloTodos: 'Esconder as de teste',
+                valor: filtro.testes ? '1' : '', onChange: (v: string) => mudarFiltro({ testes: v === '1' }),
+                opcoes: [{ valor: '1', rotulo: `Mostrar as de teste (${quantasDeTeste})` }],
+              }] : []),
               ...(appsConhecidos.length > 0 ? [{
                 chave: 'app', rotulo: 'Aplicativo', tipo: 'lista' as const, rotuloTodos: 'Todos os aplicativos',
                 valor: filtro.app ?? '', onChange: (v: string) => mudarFiltro({ app: v || null }),
@@ -327,7 +334,9 @@ export function ProfilesPage() {
           </div>
           {visiveis.length === 0 ? (
             <EmptyState icon={SearchX} compact title={textoSemResultado(filtro)}
-                        hint="Os filtros escondem todas as personas. Limpe os filtros para ver a lista inteira."
+                        hint={quantasDeTeste > 0 && !filtro.testes && !escondeAlguem
+                          ? `Só há ${quantasDeTeste === 1 ? '1 persona de teste' : `${quantasDeTeste} personas de teste`}, escondidas por padrão. Mostre-as para ver.`
+                          : 'Os filtros escondem todas as personas. Limpe os filtros para ver a lista inteira.'}
                         actions={<Button variant="outline" onClick={() => trocarQuery(LIMPAR_FILTROS, 'replace')}>Limpar filtros</Button>} />
           ) : filtro.visao === 'tabela' ? (
             <TabelaPersonas pessoas={visiveis} selecionadas={selecionadas} onSelecionar={alternarSelecao}

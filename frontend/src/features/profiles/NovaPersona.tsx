@@ -18,7 +18,7 @@ import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
-import { Field, TextArea, TextInput } from '../../components/Field';
+import { Checkbox, Field, TextArea, TextInput } from '../../components/Field';
 import { toast, toastError } from '../../store/toasts';
 import { politicaDe, religiaoDe, resumoDaPolitica, resumoDaReligiao } from './CrencasPersona';
 import { type LinhaDeCusto, custoDaGeracao, custoDasFotos, fotosAutomaticas, papelDaPersona, personaSimulado } from './custos';
@@ -63,6 +63,16 @@ interface Revisao {
   gender: string;
   city: string;
   profession: string;
+  /** 31.315: criar já marcada como persona de teste. */
+  teste: boolean;
+}
+
+/** 31.315: a marca de persona de teste ao criar. Só vai no corpo quando marcada. */
+function CampoDeTeste({ marcada, onChange }: { marcada: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <Checkbox label="Persona de teste" aria-label="Persona de teste" checked={marcada} onChange={(e) => onChange(e.target.checked)}
+              title="Serve só para provar o painel e as rotinas. Fica escondida da lista de Personas, a menos que você peça para mostrá-las." />
+  );
 }
 
 function revisaoDe(r: PersonaCreateRequest): Revisao {
@@ -73,6 +83,7 @@ function revisaoDe(r: PersonaCreateRequest): Revisao {
     gender: r.gender ?? '',
     city: r.biography?.home?.city ?? '',
     profession: r.biography?.work?.profession ?? '',
+    teste: r.teste === true,
   };
 }
 
@@ -85,6 +96,7 @@ function aplicarRevisao(r: PersonaCreateRequest, v: Revisao): PersonaCreateReque
     summary: v.summary.trim() || null,
     birth_date: v.birth_date.trim() || null,
     gender: v.gender.trim() || null,
+    ...(v.teste ? { teste: true } : {}),
     biography: {
       ...bio,
       home: { ...(bio.home ?? {}), city: v.city.trim() || null },
@@ -198,7 +210,7 @@ export function NovaPersonaPorPrompt({ onClose, onCriada, onLote, onAbrir }: {
     }
   }
 
-  function editar<K extends keyof Revisao>(k: K, v: string) {
+  function editar<K extends Exclude<keyof Revisao, 'teste'>>(k: K, v: string) {
     setRevisao((r) => (r ? { ...r, [k]: v } : r));
   }
 
@@ -327,6 +339,7 @@ export function NovaPersonaPorPrompt({ onClose, onCriada, onLote, onAbrir }: {
                 {({ id }) => <TextInput id={id} value={revisao.profession} onChange={(e) => editar('profession', e.target.value)} />}
               </Field>
             </div>
+            <CampoDeTeste marcada={revisao.teste} onChange={(teste) => setRevisao((r) => (r ? { ...r, teste } : r))} />
             <div className={styles.draft}>
               <p className={styles.draftText}><strong>Voz</strong>{voz.tone ? ` · ${voz.tone}` : ''}{voz.formality ? ` · ${voz.formality}` : ''}</p>
               {voz.personality ? <p className={styles.detail}>“{voz.personality}”</p> : null}
@@ -415,6 +428,7 @@ export function NovaPersonaManual({ onClose, onCriada }: {
   const [nascimento, setNascimento] = useState('');
   const [genero, setGenero] = useState('');
   const [resumo, setResumo] = useState('');
+  const [teste, setTeste] = useState(false);
   const [erros, setErros] = useState<Record<string, string>>({});
   const [salvando, setSalvando] = useState(false);
 
@@ -431,6 +445,7 @@ export function NovaPersonaManual({ onClose, onCriada }: {
         birth_date: nascimento.trim() || null,
         gender: genero.trim() || null,
         summary: resumo.trim() || null,
+        ...(teste ? { teste: true } : {}),
       });
       toast({ tone: 'success', title: `${criada.name} criada`,
               message: avisoDaFoto(ai) ?? 'Complete a biografia, a voz e as contas dentro da persona.' });
@@ -483,6 +498,7 @@ export function NovaPersonaManual({ onClose, onCriada }: {
                       onChange={(e) => setResumo(e.target.value)} />
           )}
         </Field>
+        <CampoDeTeste marcada={teste} onChange={setTeste} />
         {avisoDaFoto(ai) ? <p className={styles.detail}>{avisoDaFoto(ai)}</p> : null}
       </div>
     </Dialog>
