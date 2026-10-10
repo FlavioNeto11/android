@@ -727,7 +727,10 @@ aparelho que alguém acabou de mandar não subir.
 
 1. **Verificação pelo estado real** (`POST /commands/{id}/verify`, a batida de cada worker e um laço periódico).
    Vale para `start`, `wake`, `restart`, `stop` e `hibernate`, cujo desfecho o estado do aparelho comprova
-   (tabela `devices.manager.ESTADO_ALVO`). A sonda é **assimétrica**: ver o aparelho no estado prometido prova o
+   (tabela `devices.manager.ESTADO_ALVO`) e, desde 10/10/2026, para `device.network` (`aplicar`, `conectar` e `verificar`),
+   que a linha `device_network` comprova: fecha como `succeeded` só quando a rede está em `trafego_verificado` na MESMA
+   revisão (`params.rev`) do comando, verificada depois de ele começar (`desfazer` e revisão trocada esperam a pessoa).
+   A sonda é **assimétrica**: ver o aparelho no estado prometido prova o
    sucesso; **não** ver não prova o fracasso (podem tê-lo desligado depois), então ela nunca conclui `failed`.
    `changed:false` com `verifiable:true` significa "ainda não dá para afirmar"; é resposta 200, não erro.
 2. **Decisão de uma pessoa** (`POST /commands/{id}/resolve`). É a única saída possível para `reset`,

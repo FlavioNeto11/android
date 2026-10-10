@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.commands.despacho import _entregar_cancelamento, _publish_command
-from app.commands.reconciler import VERIFICAVEL_POR_ESTADO, verificar_comando
+from app.commands.reconciler import VERIFICAVEL_POR_ESTADO, VERIFICAVEL_POR_REDE, verificar_comando
 from app.commands.states import COMMAND_OPEN, COMMAND_UNSETTLED, InvalidCommandTransition
 from app.commands.store import command_dto
 from app.db import Row, loads
@@ -122,7 +122,7 @@ async def verify_command(request: Request, command_id: str) -> object:
     if mudou:
         _publish_command(s, novo)
     return {"command": command_dto(novo).model_dump(mode="json"), "changed": mudou,
-            "verifiable": row["verb"] in VERIFICAVEL_POR_ESTADO}
+            "verifiable": row["verb"] in VERIFICAVEL_POR_ESTADO | VERIFICAVEL_POR_REDE}
 
 
 @router.post("/commands/{command_id}/cancel", response_model=None)
