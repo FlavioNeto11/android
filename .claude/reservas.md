@@ -874,3 +874,5 @@ orquestradora; ela anota aqui antes de responder.
 | 31.312 | Aprendizado (gancho no painel: Portal, ID próprio depois) | exploração que termina parou_no_teto ou falhou abre pedido de ensino (Modo treinamento) na tela e no app onde a IA parou, com o pedido de origem pré-preenchido e sem copiar texto da tela | Aprendizado | reservado 10/10 14:56Z |
 | próximos livres (atualização 10/10 14:56Z) | 31.313, 29.212, 28.78; ADR-092; migração 134; adendo v1.138; K-113 | |
 | próximos livres (atualização 10/10 15:05Z) | 31.313, 29.212, 28.78; ADR-092; migração 134; adendo v1.139 (v1.138 usado pelo 31.312); K-113 | |
+| 31.313 | Portal | gancho no painel do 31.312: botão "Ensinar a corrigir" na etapa exploratória que falhou/parou (GET ensino-sugerido, adendo v1.138); pedido de origem nunca no campo de intenção; ramo feat/31-313-ensinar-a-corrigir-exploracao | Portal | reservado 10/10 15:37Z (prometido 15:06Z) |
+| próximos livres (atualização 10/10 15:37Z) | 31.314, 29.212, 28.78; ADR-092; migração 134; adendo v1.139; K-113 | |
