@@ -16,7 +16,7 @@ repositório e o banco continuam sendo a verdade**; o Trello é espelho + canal:
 
 | Quadro | URL | Listas |
 |---|---|---|
-| Execução | https://trello.com/b/GalGk5Ya | 📌 Como ler · 🧭 Próximas · 🛠 Em execução · 🧪 Em validação · 🚧 Bloqueado/decisão do dono · ✅ Concluído nesta semana · 🤖 Central (automático) · ✅ Aprovado · ⛔ Vetado |
+| Execução | https://trello.com/b/GalGk5Ya | 📌 Como ler · 🎯 FOCO · 🔄 EM CURSO (estado na etiqueta `Estado · …`) · 🧾 DÍVIDA DE PROVA · ✅ FEITO · ⏸ PAUSADO · ❓ Perguntas · 🤖 Central (automático) · ✅ Aprovado · ⛔ Vetado |
 | Programa | https://trello.com/b/rf9PaM2E | 🎯 Objetivos · 📏 Métricas (meta × atual) · 🌱 Maturidade · 💰 Custos · 📅 Marcos e deploys · ⚖️ Decisões do dono · ⚠️ Riscos |
 | Histórico | https://trello.com/b/1wCjXnBn | uma lista por grupo de fases (0–5, 6–10, 11, 14–15, 16–17, 18–20, 21–22, 23–27, 28, 29, 30, 31) |
 
@@ -49,12 +49,12 @@ Validação no navegador → Prova real.
 
 | Evento | Ação |
 |---|---|
-| ID novo reservado/aprovado | cartão em **Próximas** com prazo e frente |
-| executora começou (branch/worktree) | mover para **Em execução**; hora de início no desc |
-| PR pronto / entrou numa suíte | mover para **Em validação**; marcar etapas do checklist |
+| ID novo reservado/aprovado | cartão em **EM CURSO**, etiqueta `Estado · Próximas`, com prazo e frente |
+| executora começou (branch/worktree) | etiqueta `Estado · Em execução`; hora de início no desc |
+| PR pronto / entrou numa suíte | etiqueta `Estado · Em validação`; marcar etapas do checklist |
 | deploy no ar | marcar “Deploy”; cartão do marco em **Programa › Marcos** (commit, migração, o que subiu) |
-| validação Chrome / prova real feita | marcar etapa; se o item fechou: mover para **Concluído nesta semana** + `mark_done` |
-| decisão do dono pendente / bloqueio | mover para **Bloqueado**; escrever “O que destrava” |
+| validação Chrome / prova real feita | marcar etapa; se o item fechou: mover para **FEITO** + `mark_done` |
+| decisão do dono pendente / bloqueio | etiqueta `Estado · Bloqueado` (ou **PAUSADO**, se adiado pelo dono); escrever “O que destrava” e `Motivo do bloqueio: …` |
 | decisão do dono tomada | cartão em **Programa › Decisões** (data, texto curto) |
 | custo medido (rodada, P4, QA pareado) | atualizar **Programa › Custos › Gasto de hoje** |
 
