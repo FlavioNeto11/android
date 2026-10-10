@@ -14,7 +14,8 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.models import TrainingSaveBody, TrainingStartBody
-from app.modules.learning.domain.ensino_da_falha import intencao_sugerida, pergunta_da_etapa
+from app.modules.learning.domain.ensino_da_falha import (intencao_da_exploracao, intencao_sugerida, pergunta_da_etapa,
+                                                         pergunta_da_exploracao)
 from app.modules.learning.infrastructure.rendimento_sql import LeitorDoRendimento
 from app.modules.skills.presentation.schemas import TrainingDeFalhaBody, TrainingStopBody, TrainingUndoBody
 from app.planning.provider import AIError
@@ -75,7 +76,9 @@ async def start_training_from_run(request: Request, body: TrainingDeFalhaBody) -
         # 31.111 F4: sem intenção escrita pela pessoa, a sugerida leva a causa provável da tentativa (30.13, sem IA)
         diagnostico = (s.training.diagnostico_da_falha(origem.attempt_id)
                        if origem.attempt_id and s.training.diagnostico_da_falha is not None else None)
-        intent = body.intent or intencao_sugerida(origem.titulo, diagnostico)
+        # 31.312: a exploração que parou sugere ensinar o caminho (pela chave, sem o pedido); a falha de sempre, corrigir.
+        intent = body.intent or (intencao_da_exploracao(origem.step_key) if origem.exploratoria
+                                 else intencao_sugerida(origem.titulo, diagnostico))
         return s.training.start(origem.instance_id, intent=intent, lease_id=body.lease_id, app_id=body.app_id,
                                 operator=getattr(request.state, "operator", None), profile_id=body.profile_id,
                                 origem=origem)
@@ -98,6 +101,13 @@ async def ensino_sugerido(request: Request, run_id: str, step_id: str) -> dict[s
         return None
     diagnostico = (s.training.diagnostico_da_falha(origem.attempt_id)
                    if s.training.diagnostico_da_falha is not None else None)
+    if origem.exploratoria:
+        # 31.312 (adendo v1.138): a IA explorou e não chegou lá; a causa vem do diagnóstico (quando houver), a pergunta é a da exploração
+        return {"intent": intencao_da_exploracao(origem.step_key),
+                "pergunta": pergunta_da_exploracao(origem.parou_no_teto),
+                "rotulo": diagnostico.get("rotulo") if diagnostico else None,
+                "causa": diagnostico.get("causa") if diagnostico else None,
+                "exploracao": True, "parou_no_teto": origem.parou_no_teto}
     # v1.82: `causa` é o código do diagnóstico (o painel escolhe ícone e texto por ele); a pergunta é a do ESTADO da etapa
     return {"intent": intencao_sugerida(origem.titulo, diagnostico),
             "pergunta": pergunta_da_etapa(origem.status, diagnostico),

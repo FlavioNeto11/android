@@ -2835,3 +2835,13 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
   em `fora_do_catalogo`, e a exploração entra depois da última etapa do catálogo; o aviso no Telegram ao começar e ao concluir
   está em [Canais](canais.md). Falta o selo/campo `exploracao` no painel (Portal, 31.299), e o prompt novo não foi validado
   com o modelo real (API paga, `not_run`).
+
+## A exploração que parou vira pedido de ensino (31.312)
+
+- A etapa exploratória (31.273) que termina `failed`/`uncertain` ou `parou_no_teto` já abria o "Ensinar a corrigir" (31.111). Agora o
+  ensino sabe que veio de exploração: a intenção sugerida é «Ensinar à IA como fazer: <frase da chave>» (`ensino_da_falha.intencao_da_exploracao`,
+  vocabulário fechado, nunca o pedido), a pergunta é a da exploração e a sessão carrega `origin.exploracao`. A pessoa mostra o caminho
+  uma vez e o que ela ensina vale para todas as personas (o ensino entra no Livro como qualquer outro; que a etapa ensinada case com a
+  chave `explorar_…` e seja oferecida pelo nome **não foi verificado**: `not_run`). Contrato: [v1.138](../api-contract.md#adendo-v1138-10102026-número-da-orquestradora-item-31312--a-exploração-que-parou-vira-pedido-de-ensino).
+- **Limite conhecido:** a receita `candidate` que a própria exploração deixou, se houver, não é retirada pelo ensino; o ensino da pessoa nasce
+  ativo e a substitui pela regra de sempre (`test_ensino_da_pessoa_segue_nascendo_ativa_e_substitui_a_candidata`). O botão no painel é do Portal.

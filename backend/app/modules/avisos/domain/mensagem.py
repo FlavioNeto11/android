@@ -706,6 +706,9 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
                 linhas = [f"Custo: {_dolar(custo)}" + (f" em {_inteiro(chamadas)} chamadas de IA." if chamadas is not None else ".")]
             if resultado == "parou_no_teto":
                 linhas.append("Parou sem concluir: o teto da exploração foi atingido. O que foi visto está na execução.")
+            if resultado in ("parou_no_teto", "falhou"):
+                # 31.312: o que a IA não descobriu sozinha uma pessoa ensina uma vez ("Ensinar a corrigir", na execução).
+                linhas.append("Dá para ensinar o caminho na execução (Ensinar a corrigir): ensinado uma vez, serve a todas as personas.")
             elif resultado == "concluida":
                 linhas.append("O que a IA descobriu vira receita candidata e, provada, passa a valer sem IA.")
             linhas.append("Só leitura e navegação: nada foi alterado.")
