@@ -65,8 +65,19 @@ Quando a conta é retirada (`retirar_conta_bloqueada`), na ordem:
 | `backend/app/devices/rede.py` | `_parse_proxy`, `criar_perfil_de_conta`, `reaquecer_da_conta`, hook em `registrar_medicao` |
 | `backend/app/modules/identity/domain/ponte_igfarm.py` | `proxy_url` e `ip_criacao` em `ComandoDeRegistro` |
 | `backend/app/modules/identity/infrastructure/ponte_igfarm.py` | `gravar_egresso`, `RedeSocial` adaptador |
+| `backend/app/modules/identity/infrastructure/egresso.py` | gatilhos `vincular_egresso` e `limpar_egresso` (ligados em `bootstrap.py`) |
 | `backend/app/modules/identity/application/ponte_igfarm.py` | fluxo de egresso no `registrar()` + auto-assign |
 | `backend/app/modules/identity/presentation/schemas.py` | `ContaIgfarmBody` (+2 campos) |
 | `backend/app/modules/identity/presentation/instagram.py` | passar os campos |
 | `backend/app/social/service.py` | gatilho do vínculo + limpeza do egresso |
 | `backend/tests/test_egresso_igfarm.py` | testes |
+| `backend/tests/test_rede_saida_esperada_edicao.py` | `PUT /api/network/profiles/{id}` (31.291) |
+
+## Trocar o IP esperado (31.291)
+
+O `egress_esperado` do perfil é a prova de que o aparelho sai pelo IP da criação. Ele só muda por
+`PUT /api/network/profiles/{id}` ({`egress_esperado`, `egress_esperado_ipv6`, `motivo`}), que valida o IP, grava e emite
+`network.updated` `perfil_atualizado` com o valor de antes e o de depois. Para o perfil de uma conta do igfarm em uso, a
+troca exige `motivo` (409 `egress_esperado_protegido` sem ele). Caso que motivou: no android-05 (10/10/2026) o esperado
+foi trocado por fora do app para o IP medido, e a comparação deixou de provar algo. Trocar o esperado não é remédio para
+proxy que rotaciona: o remédio é sessão fixa no proxy. Contrato: adendo v1.134.

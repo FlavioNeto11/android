@@ -1,4 +1,4 @@
-"""Gatilhos do egresso por IP residencial (migração 133).
+"""Gatilhos do egresso por IP residencial (migração 133). Infraestrutura: tocam `AppState` e o subsistema de rede.
 
 Duas rotinas, ligadas em `bootstrap.py` aos callbacks do `SocialService`:
 
@@ -17,6 +17,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from app.devices.rede import NetworkAssignBody, RedeError, atribuir, remover_perfil
+from app.models import NetworkPolicy
 
 if TYPE_CHECKING:
     from app.state import AppState
@@ -47,8 +48,9 @@ def vincular_egresso(st: AppState, profile_id: str, instance_id: str) -> None:
         if (atual is not None and str(atual["proxy_profile_id"] or "") == perfil_id
                 and str(atual["policy"]) in ("exigida", "exigida_com_bloqueio")):
             continue                                    # já está pedido: não reatribui nem rebaixa a política
-        politica = ("exigida_com_bloqueio" if (atual is not None
-                                               and str(atual["policy"]) == "exigida_com_bloqueio") else "exigida")
+        politica: NetworkPolicy = ("exigida_com_bloqueio" if (atual is not None
+                                                              and str(atual["policy"]) == "exigida_com_bloqueio")
+                                   else "exigida")
         try:
             atribuir(st, NetworkAssignBody(instance_ids=[instance_id], proxy_profile_id=perfil_id,
                                            policy=politica), quem="igfarm")

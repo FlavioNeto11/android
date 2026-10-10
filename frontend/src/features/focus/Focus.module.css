@@ -298,18 +298,6 @@
   line-height: 1.3;
 }
 
-/* Tela sensível (C4): estado neutro por cima da caixa, que continua recebendo os gestos do controle manual. */
-.screenSensitive {
-  pointer-events: none;
-  color: var(--neutral-text);
-}
-
-.sensitiveOutline {
-  position: absolute;
-  border: 1px dashed var(--neutral-border);
-  border-radius: 6px;
-}
-
 /* Prévia suspensa (C3): mesma posição do selo de desatualizado, em tom neutro — não é falha. */
 .pausedTag {
   position: absolute;

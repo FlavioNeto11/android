@@ -271,8 +271,8 @@ painel (`frontend/src/features/focus`) e também pelo modo treinamento (`trainin
   - o controle manual conta como foco, e o foco do `watch` renova o lease manual;
   - a grade não impede hibernação nem rodízio: só o foco e o controle manual contam (`rt.focused`);
   - volta atrás sem reinício: `PUT /api/settings {"preview_mode": "always"}`.
-- **Tela sensível:** a prévia nunca mostra tela sensível. Vale para o frame marcador sem imagem, para `/frame` (404
-  `sensitive_screen`), para a captura durante `type_secret` e para a VM-loja, que é sempre o marcador (ADR-014).
+- **Tela sensível:** a prévia mostra toda tela, sem marcador, sem 404 `sensitive_screen` e sem pausa durante o
+  `type_secret` (ADR-089, que revoga o C4). O painel (31.289) também não trata mais `sensitive` no frame.
 - **Observação para a IA** (`DeviceManager.observe(imagem=…)`):
   - a árvore vem primeiro, e a imagem só quando a política, o julgamento, a evidência ou uma divergência de
     receita pedem;

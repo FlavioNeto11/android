@@ -37,7 +37,9 @@ import { useAppStore } from '../../store/app';
 import { reconnectNow } from '../../store/live';
 import { useSessionStore } from '../../store/session';
 import { hashForView, useUiStore } from '../../store/ui';
-import { DESTINO_EM_ANDAMENTO, useContagemDeAparelhos, useExecucoesEmAndamento } from '../../store/metricas';
+import {
+  DESTINO_EM_ANDAMENTO, dicaDoContadorDeExecucoes, useContagemDeAparelhos, useExecucoesAguardandoResposta, useExecucoesEmAndamento,
+} from '../../store/metricas';
 import { AVISO_ORIGEM_NAO_CARREGOU, falaDoTotal, numeroExibido } from '../pendencias/exibicao';
 import { usePendencias } from '../pendencias/usePendencias';
 import { SaudeAmbiente } from './SaudeAmbiente';
@@ -256,6 +258,7 @@ function Counters({ partes = 'todos', painel = false }: { partes?: PartesDosCont
   const { total: aguardando, falhou: aguardandoIncompleto } = usePendencias();
   // A mesma conta do chip "Em andamento" de Execuções, e o clique abre a lista já nesse filtro (RF-05).
   const active = useExecucoesEmAndamento();
+  const paradasPedindoInfo = useExecucoesAguardandoResposta();
 
   if (!hydrated) return <Skeleton width={painel ? 240 : 420} height={24} radius={6} />;
   const mostraPrincipais = partes !== 'recursos';
@@ -285,7 +288,7 @@ function Counters({ partes = 'todos', painel = false }: { partes?: PartesDosCont
           <span className={styles.counterLabel}>online</span>
         </div>
       </Tooltip>
-      <Tooltip content="Execuções em andamento (planejando, em execução, pausadas ou cancelando). Um plano pronto que ainda não foi executado não conta. Clique para ver a lista filtrada.">
+      <Tooltip content={dicaDoContadorDeExecucoes(paradasPedindoInfo)}>
         <button type="button" className={cx(styles.counter, active > 0 && styles.counterLive)} onClick={() => navegar(DESTINO_EM_ANDAMENTO)}>
           <Activity size={14} aria-hidden />
           <span className={styles.counterValue}>{formatInt(active)}</span>

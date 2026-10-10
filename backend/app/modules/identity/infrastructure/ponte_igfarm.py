@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from pydantic import SecretStr
 
 from app.db import Database
+from app.devices.rede import NetworkAssignBody, _parse_proxy, atribuir, criar_perfil_de_conta
+from app.devices.rede import RedeError as RedeErrorDoDevice
 from app.events import EventBus
+from app.models import NetworkPolicy, NetworkProtocol
 from app.modules.email_do_parque.application.servico import EmailDoParque
 from app.modules.identity.application.persona_images import PersonaImageService
 from app.modules.identity.application.ponte_igfarm import ErroDaPonte, PonteIgfarm, RedeError
@@ -16,6 +19,7 @@ from app.modules.identity.domain.persona_image import (GeracaoFalhou, GeracaoRec
                                                        OrcamentoEsgotado)
 from app.modules.identity.domain.ponte_igfarm import ContaRegistrada, FichaDaPessoa, ImagemDaPessoa, Sugestao
 from app.modules.identity.infrastructure.persona_images import identidade_para_foto
+from app.planning.catalog import pacote_ancora
 from app.security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from app.social.contas_nossas import eh_conta_nossa, foi_retirada
 from app.social.service import SocialError, SocialService
@@ -130,8 +134,8 @@ class ArmazemSql:
             "SELECT DISTINCT b.instance_id FROM device_profile_bindings b "
             "LEFT JOIN apps a ON a.id = b.app_id "
             "WHERE b.profile_id=? AND b.active=1 "
-            "AND (b.app_id IS NULL OR a.package='com.instagram.android') "
-            "ORDER BY b.instance_id", (persona_id,))]
+            "AND (b.app_id IS NULL OR a.package=?) "
+            "ORDER BY b.instance_id", (persona_id, pacote_ancora()))]
 
     def perfis_vinculados(self, instance_id: str) -> list[str]:
         """As personas com vínculo ativo no aparelho (qualquer app): conta vinculada é conta real logada (ADR-055)."""
@@ -280,15 +284,13 @@ class RedeSocial:
     def __init__(self, st: AppState) -> None:
         self.st = st
 
-    def parse_proxy(self, proxy_url: str) -> tuple:
-        from app.devices.rede import _parse_proxy  # noqa: PLC0415
+    def parse_proxy(self, proxy_url: str) -> tuple[str, str, int, str | None, str | None]:
         return _parse_proxy(proxy_url)
 
-    def criar_perfil_de_conta(self, account_id: str, *, host: str, port: int, protocol: NetworkProtocol, username: str | None,
-                              secret, ip_criacao: str | None, quem: str | None) -> str:
-        from app.devices.rede import NetworkProtocol, criar_perfil_de_conta  # noqa: PLC0415
+    def criar_perfil_de_conta(self, account_id: str, *, host: str, port: int, protocol: str, username: str | None,
+                              secret: SecretStr | None, ip_criacao: str | None, quem: str | None) -> str:
         return criar_perfil_de_conta(
-            self.st, account_id, host=host, port=port, protocol=protocol,
+            self.st, account_id, host=host, port=port, protocol=cast(NetworkProtocol, protocol),
             username=username, secret=secret, ip_criacao=ip_criacao, quem=quem)
 
     def pedido_atual(self, instance_id: str) -> tuple[str | None, str] | None:
@@ -300,11 +302,11 @@ class RedeSocial:
 
     def atribuir(self, instance_ids: list[str], proxy_profile_id: str | None, policy: str, quem: str | None,
                  confirm_real_account: list[str] | None = None) -> dict[str, object]:
-        from app.devices.rede import NetworkAssignBody, RedeError as RedeErrorDoDevice, atribuir  # noqa: PLC0415
         try:
             return atribuir(
                 self.st, NetworkAssignBody(
-                    instance_ids=instance_ids, proxy_profile_id=proxy_profile_id, policy=policy,
+                    instance_ids=instance_ids, proxy_profile_id=proxy_profile_id,
+                    policy=cast(NetworkPolicy, policy),
                     confirm_real_account=confirm_real_account or []), quem=quem)
         except RedeErrorDoDevice as exc:
             raise RedeError(exc.status, exc.code, exc.message) from None

@@ -152,7 +152,7 @@ class TestEgressoNoRegistrar:
         def atribuir_que_recusa(st, body, quem):
             raise RedeErrorDevice(409, "real_account_confirm_required", "conta real")
 
-        monkeypatch.setattr("app.devices.rede.atribuir", atribuir_que_recusa)
+        monkeypatch.setattr("app.modules.identity.infrastructure.ponte_igfarm.atribuir", atribuir_que_recusa)
         adapter = RedeSocial(harness.state)
         with pytest.raises(RedeErrorApp) as exc:
             adapter.atribuir(instance_ids=["android-01"], proxy_profile_id="perfil-1", policy="exigida", quem="t")
@@ -237,7 +237,7 @@ def _semear_perfil_de_rede(harness, *, perfil_id="np-1", account_id="acc-1",
 
 def test_gatilho_atribui_perfil_existente(harness, monkeypatch):
     """Vínculo criado DEPOIS do registro: o gatilho acha o perfil pelo nome e o atribui (política exigida)."""
-    from app.modules.identity.application import egresso
+    from app.modules.identity.infrastructure import egresso
     chamadas: list[tuple[list[str], str | None, str]] = []
     monkeypatch.setattr(egresso, "atribuir",
                         lambda st, body, quem: chamadas.append((list(body.instance_ids), body.proxy_profile_id,
@@ -250,7 +250,7 @@ def test_gatilho_atribui_perfil_existente(harness, monkeypatch):
 
 def test_gatilho_conta_real_fica_pendente(harness, monkeypatch, caplog):
     """`real_account_confirm_required` não derruba o vínculo: fica pendente e é registrado."""
-    from app.modules.identity.application import egresso
+    from app.modules.identity.infrastructure import egresso
     from app.devices.rede import RedeError
 
     def recusa(st, body, quem):
@@ -264,7 +264,7 @@ def test_gatilho_conta_real_fica_pendente(harness, monkeypatch, caplog):
 
 def test_limpeza_desatribui_remove_perfil_e_apaga_segredo(harness, monkeypatch):
     """Ordem da limpeza: unassign (com confirmação) -> remove perfil -> apaga segredo de rastreio."""
-    from app.modules.identity.application import egresso
+    from app.modules.identity.infrastructure import egresso
     eventos: list[tuple[object, ...]] = []
     monkeypatch.setattr(egresso, "atribuir",
                         lambda st, body, quem: eventos.append(("unassign", list(body.instance_ids),
@@ -283,7 +283,7 @@ def test_limpeza_desatribui_remove_perfil_e_apaga_segredo(harness, monkeypatch):
 
 def test_limpeza_sem_perfil_ainda_apaga_segredo(harness, monkeypatch):
     """Proxy sem perfil criado (ou já removido): só o segredo de rastreio é apagado, sem erro."""
-    from app.modules.identity.application import egresso
+    from app.modules.identity.infrastructure import egresso
     segredos: list[str] = []
     monkeypatch.setattr(egresso, "remover_perfil", lambda st, pid: None)
     monkeypatch.setattr(harness.state.secrets, "delete_secret", lambda ref: segredos.append(ref))
@@ -421,7 +421,7 @@ def test_reaquecer_marca_1_quando_a_saida_divergir(harness):
 
 def test_gatilho_nao_reatribui_o_que_ja_esta_pedido(harness, monkeypatch):
     """Device já com este perfil e política que segura: o gatilho sai sem chamar `atribuir`."""
-    from app.modules.identity.application import egresso
+    from app.modules.identity.infrastructure import egresso
     chamadas: list[object] = []
     monkeypatch.setattr(egresso, "atribuir", lambda st, body, quem: chamadas.append(body))
     _semear_conta_igfarm(harness)
@@ -435,7 +435,7 @@ def test_gatilho_nao_reatribui_o_que_ja_esta_pedido(harness, monkeypatch):
 
 def test_gatilho_preserva_exigida_com_bloqueio(harness, monkeypatch):
     """Device em `exigida_com_bloqueio` e ainda SEM o proxy: o gatilho atribui o proxy mas mantém o bloqueio."""
-    from app.modules.identity.application import egresso
+    from app.modules.identity.infrastructure import egresso
     politicas: list[object] = []
     monkeypatch.setattr(egresso, "atribuir", lambda st, body, quem: politicas.append(body.policy))
     _semear_conta_igfarm(harness)

@@ -34,6 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 from ..db import Row, dumps, loads
 from ..models import (_CHAVE_DE_SEGREDO, DeviceNetworkDTO, NetworkMeasurementDTO, NetworkPolicy, NetworkProfileDTO,
                       NetworkProfileKind, NetworkProtocol, NetworkState)
+from ..planning.catalog import pacote_ancora
 from ..security.redaction import redact
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..util import novo_id_de_app, now_iso, parse_iso
@@ -189,6 +190,35 @@ def ler_cadastro(corpo: object) -> NetworkProfileInput:
     if isinstance(segredo, str):
         body.secret = SecretStr(segredo)
     return body
+
+
+class NetworkProfileSaidaBody(BaseModel):
+    """`PUT /api/network/profiles/{id}` (item 31.291): a ÚNICA edição de perfil que existe, e só da saída esperada.
+
+    Campo omitido = fica como está; `null` = tirar a saída esperada daquela família (o perfil deixa de ser comparado
+    nela). `motivo` é texto livre para o evento e é OBRIGATÓRIO quando o perfil é o de uma conta do igfarm em uso:
+    trocar o esperado pelo medido apaga a prova de que o aparelho saiu pelo IP da criação."""
+
+    model_config = ConfigDict(extra="forbid")
+    egress_esperado: str | None = None
+    egress_esperado_ipv6: str | None = None
+    motivo: str | None = Field(default=None, max_length=300)
+
+    @field_validator("motivo")
+    @classmethod
+    def _motivo(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if redact(v) != v:
+            raise ValueError("o motivo parece conter um segredo: diga só por que a saída esperada muda")
+        return v or None
+
+    @model_validator(mode="after")
+    def _algo_a_mudar(self) -> NetworkProfileSaidaBody:
+        if not ({"egress_esperado", "egress_esperado_ipv6"} & self.model_fields_set):
+            raise ValueError("mande egress_esperado e/ou egress_esperado_ipv6 (null tira a saída esperada)")
+        return self
 
 
 class NetworkAssignBody(BaseModel):
@@ -453,6 +483,62 @@ def criar_perfil_de_conta(st: AppState, account_id: str, *, host: str, port: int
                                endpoint_host=host, endpoint_port=port,
                                params=params, secret=secret)
     return criar_perfil(st, body, quem).id
+
+
+def _conta_igfarm_do_perfil(st: AppState, nome: str) -> str | None:
+    """O `account_id` da conta do igfarm que o perfil `igfarm-{account_id}` serve, se ela existe em `contas_igfarm`."""
+    if not nome.startswith("igfarm-"):
+        return None
+    conta = st.db.one("SELECT account_id FROM contas_igfarm WHERE account_id=?", (nome[len("igfarm-"):],))
+    return str(conta["account_id"]) if conta is not None else None
+
+
+def atualizar_saida_esperada(st: AppState, profile_id: str, body: NetworkProfileSaidaBody,
+                             quem: str | None) -> NetworkProfileDTO:
+    """Muda `params.egress_esperado*` de um perfil pelo app, com rastro (item 31.291). Antes, nada no app editava um
+    perfil e o campo foi regravado por fora (android-05, 10/10: 188.72.57.98 → o IP medido, sem evento), o que
+    anula a comparação saída medida × esperada. Valida como no cadastro (IP público), recusa (409) trocar o esperado
+    do perfil de uma conta do igfarm em uso sem `motivo`, e emite `network.updated` com o valor de antes e o de
+    depois. Segredo nunca passa por aqui: só os dois campos."""
+    row = st.db.one("SELECT * FROM network_profiles WHERE id=?", (profile_id,))
+    if row is None:
+        raise RedeError(404, "not_found", "Perfil de rede não encontrado.")
+    antes: dict[str, object] = loads(row["params"], {}) or {}
+    novo = dict(antes)
+    for chave, _tipo in _CHAVES_DA_SAIDA_ESPERADA:
+        if chave not in body.model_fields_set:
+            continue
+        valor = getattr(body, chave)
+        if valor is None:
+            novo.pop(chave, None)
+            continue
+        try:
+            novo[chave] = _saida_esperada_valida({chave: valor})[chave]
+        except ValueError as exc:
+            raise RedeError(422, "invalid_egress", str(exc)) from None
+    ant = {k: antes.get(k) for k, _ in _CHAVES_DA_SAIDA_ESPERADA}
+    dep = {k: novo.get(k) for k, _ in _CHAVES_DA_SAIDA_ESPERADA}
+    if ant == dep:
+        return _perfil_dto(row)
+    em_uso = _em_uso(st, profile_id)
+    conta = _conta_igfarm_do_perfil(st, str(row["name"])) if em_uso else None
+    if conta is not None and not body.motivo:
+        raise RedeError(
+            409, "egress_esperado_protegido",
+            f"O perfil '{row['name']}' é o da conta {conta} do igfarm, em uso por {', '.join(em_uso)}: o IP esperado é "
+            "o IP da criação da conta, e trocá-lo pelo medido apaga a prova de que o aparelho sai por ele. Se a troca "
+            "é mesmo certa, repita o PUT com `motivo` (texto curto, sem segredo); ele vai ao evento.",
+            profile_id=profile_id, account_id=conta, in_use=em_uso, motivo_obrigatorio=True,
+            antes=ant, depois=dep)
+    with st.db.tx():
+        st.db.execute("UPDATE network_profiles SET params=? WHERE id=?", (dumps(novo), profile_id))
+    saida = " e ".join(f"{k}: {ant[k] or '—'} → {dep[k] or '—'}" for k in ant if ant[k] != dep[k])
+    _emitir(st, f"Rede: saída esperada do perfil {row['name']} mudou ({saida})", profile_id=profile_id,
+            acao="perfil_atualizado", profile_name=str(row["name"]), antes=ant, depois=dep, motivo=body.motivo,
+            quem=quem, in_use=em_uso, conta_igfarm=conta)
+    atual = st.db.one("SELECT * FROM network_profiles WHERE id=?", (profile_id,))
+    assert atual is not None
+    return _perfil_dto(atual)
 
 
 def remover_perfil(st: AppState, profile_id: str) -> None:
@@ -1523,7 +1609,7 @@ def reaquecer_da_conta(st: AppState, instance_id: str) -> None:
         "JOIN device_profile_bindings b ON b.profile_id = ci.profile_id "
         "LEFT JOIN apps a ON a.id = b.app_id "
         "WHERE b.instance_id=? AND b.active=1 AND ci.ip_criacao IS NOT NULL "
-        "AND (b.app_id IS NULL OR a.package='com.instagram.android') LIMIT 1", (instance_id,))
+        "AND (b.app_id IS NULL OR a.package=?) LIMIT 1", (instance_id, pacote_ancora()))
     if conta is None:
         return
     esperada = saida_esperada(st, dn["vpn_profile_id"], dn["proxy_profile_id"])

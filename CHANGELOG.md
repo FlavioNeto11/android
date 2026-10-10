@@ -49,6 +49,50 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   do dono). PostgreSQL: não executado. Telegram ao começar e ao concluir e painel da exploração (Portal): não feitos.
   Limite conhecido: o pedido misto ("abra a caixa de entrada e veja a lixeira") perde a parte do catálogo, porque o
   planejador devolve `steps` vazio com `fora_do_catalogo` (a regra do prompt de hoje).
+## 2026-10-10 — "0 execuções" diz onde estão as que esperam resposta (31.295)
+
+- `store/metricas.ts` (`execucoesAguardandoResposta`, `dicaDoContadorDeExecucoes`) e `features/topbar/TopBar.tsx`: a dica
+  do contador de execuções passa a dizer quantas esperam a resposta da pessoa e que elas estão em Pendências. O número
+  não muda (andamento e pendência seguem separados, D1). O e-mail de exemplo restante de `ProfilesPage.test.tsx` não
+  existe mais: os endereços ali são todos `@exemplo.com`.
+- Prova `simulated`: `store/metricas.test.ts::31.295` e 146 testes dirigidos (store e topbar). Real: não executada (painel do navegador embutido oculto, o contador não é desenhado).
+
+## 2026-10-10 — o painel sai do tratamento de tela sensível (31.289, ADR-089)
+
+- `frontend/src/api/types.ts` (`FrameInfo`), `features/focus/Screen.tsx`, `features/devices/DeviceCard.tsx`,
+  `streamState.ts`, `Focus.module.css`: saem o campo `sensitive`, o marcador "Tela sensível — prévia oculta", o
+  tratamento do 404 `sensitive_screen` e o contorno do toque às cegas. A prévia mostra toda imagem que o servidor
+  entrega. `docs/dominios/parque.md` corrigido.
+- Prova `simulated`: tsc, build e 341 testes dirigidos. Prova `real` (10/10 13:15Z, central 2e5d22ca): foco do
+  android-08 com imagem 720x1280 e sem marcador. `not_run`: miniatura da grade (painel embutido oculto).
+
+## 2026-10-10 — a saída esperada de um perfil só muda pelo app (31.291)
+
+- `PUT /api/network/profiles/{id}` (`devices/rede.py::atualizar_saida_esperada`, `fleet/presentation/rede.py`): troca
+  `egress_esperado`/`egress_esperado_ipv6` com a mesma validação do cadastro, grava e emite `network.updated`
+  `perfil_atualizado` com antes e depois. No perfil de conta do igfarm em uso, sem `motivo`: 409
+  `egress_esperado_protegido`. Origem: o esperado do android-05 foi regravado fora do app (10/10, entre 00:47Z e 01:01Z).
+  Adendo v1.134; seção em `docs/egresso-por-proxy.md`.
+- Prova **simulada**: `backend/tests/test_rede_saida_esperada_edicao.py` (7 testes) e 115 dirigidos de rede, egresso,
+  rotas e arquitetura verdes, fora 3 catracas que JÁ falhavam na main (`test_imports_tardios_so_diminuem`,
+  `test_contratos_dominio_e_aplicacao_nao_veem_infraestrutura`, `test_texto_do_instagram_no_codigo_so_desce`: importes e
+  SQL do `ponte_igfarm`/`egresso`/`reaquecer_da_conta`). mypy: 268 erros contra o teto de 257, nenhum no código desta
+  mudança. **Real: não executada.**
+
+## 2026-10-10 — o egresso volta a respeitar a arquitetura e o mypy (31.292)
+
+- `identity/application/egresso.py` (gatilhos que tocam `AppState` e o subsistema de rede) passou para
+  `identity/infrastructure/egresso.py`; `bootstrap.py` e os testes importam de lá. A porta `RedeDaPonte` ganhou tipos
+  (`tuple[str, str, int, str | None, str | None]`, `protocol: str`, `policy: str`, `SecretStr | None`) e o adaptador
+  `RedeSocial` importa `app.devices.rede` no topo (sem import tardio) e converte para `NetworkProtocol`/`NetworkPolicy`.
+  `PonteIgfarm.registrar` não deixa mais `account_id` ser `None` nem desempacota `None`.
+- O pacote do Instagram deixou de ser texto em SQL (`rede.py::reaquecer_da_conta`, `ponte_igfarm.py`): vem de
+  `pacote_ancora()` do registro, como o resto do núcleo (catraca `test_texto_do_instagram_no_codigo_so_desce`).
+- Teste ajustado só no alvo do patch: `test_auto_assign_conta_real_fica_pendente` troca o `atribuir` onde ele agora é
+  usado. Nenhum teto subiu e nenhuma regra foi afrouxada.
+- Prova **simulada**: `tests/test_arquitetura.py` e `test_apps_fora_do_nucleo.py` verdes (eram 3 vermelhas), catracas
+  (`@tests/catracas.txt`, 89), 217 dirigidos de egresso, ponte, rotas e rede, e o mypy-catraca em 257 (teto 257, era
+  268). **Real: não executada** (muda estrutura, não comportamento).
 
 ## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
 
@@ -1548,6 +1592,27 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Achados da prova F2 (06/10, deploy 51). A única sugestão ("Back") era a descrição do botão voltar: com `element_present`, trocar só o valor deixaria um seletor que só olha o texto. E a prévia parava no 409 `duplicate_command`, escondendo as pós-condições que já valem.
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
+
+## 2026-10-10 — Deploy 69 (ADR-090: o código do e-mail entra no login automático; migração 133 já aplicada)
+
+- **Implantado** às 02:30:40Z, sem tag (`SemTag`), sem frontend (`PularFrontend`) e com `PularDependencias`: central `9ad2907f` → `6536ad04`, backup `20261009-233006`, 33,5 s (`data/deploys.jsonl`).
+- Prova `real`: `resultado: ok`; `GET /api/health` em 10/10 ~12:55Z: ok, commit `6536ad04d6c99e`, migração `133_egresso_igfarm`.
+- Prova `simulated`: a do commit `6536ad04` (entrada de 10/10 acima; funil reduzido, sem log de funil do corte).
+- `not_run`: PostgreSQL, vitest e SQLite inteiros desde o corte 63; prova real do ADR-090 no aparelho; prova de fora e versão do agente do notebook.
+
+## 2026-10-10 — Deploy 68 (ADR-089: a plataforma não esconde tela de ninguém)
+
+- **Implantado** às 02:16:41Z, sem tag e sem frontend: central `972633a7` → `9ad2907f`, backup `20261009-231605` (do ensaio), 32,2 s.
+- Prova `real`: `resultado: ok`; migração `133_egresso_igfarm` antes e depois.
+- Prova `simulated`: a do commit `9ad2907f` (entrada de 10/10 acima; funil reduzido).
+- `not_run`: suítes inteiras; prova real do ADR-089 no aparelho; prova de fora.
+
+## 2026-10-10 — Deploy 67 (egresso da ponte: aparelho da própria persona confirmado e pendente exposto; migração 133 já aplicada)
+
+- **Implantado** às 00:33:33Z, sem tag e sem frontend: central `7d187acb` → `972633a7`, backup `20261009-213213` (do ensaio), 72,7 s. `migracao_antes` já era `133_egresso_igfarm`.
+- Prova `real`: `resultado: ok`.
+- Prova `simulated`: a do commit `972633a7` (entrada de 10/10 acima; funil reduzido).
+- `not_run`: suítes inteiras; prova de fora.
 
 ## 2026-10-09 — Deploy 66 (ponte Android⇄igfarm: personas pendentes, registro de conta e e-mail do parque; migração 132; ADR-088)
 
