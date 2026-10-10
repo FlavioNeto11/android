@@ -133,6 +133,12 @@ class ArmazemSql:
             "AND (b.app_id IS NULL OR a.package='com.instagram.android') "
             "ORDER BY b.instance_id", (persona_id,))]
 
+    def perfis_vinculados(self, instance_id: str) -> list[str]:
+        """As personas com vínculo ativo no aparelho (qualquer app): conta vinculada é conta real logada (ADR-055)."""
+        return [str(r["profile_id"]) for r in self.db.query(
+            "SELECT DISTINCT profile_id FROM device_profile_bindings WHERE instance_id=? AND active=1 "
+            "ORDER BY profile_id", (instance_id,))]
+
     def endereco_da_conta(self, conta_id: str) -> str | None:
         r = self.db.one("SELECT endereco FROM caixas_email WHERE account_id=? OR account_id IN"
                         " (SELECT account_id FROM contas_igfarm WHERE igfarm_account_id=?)", (conta_id, conta_id))
@@ -284,6 +290,13 @@ class RedeSocial:
         return criar_perfil_de_conta(
             self.st, account_id, host=host, port=port, protocol=protocol,
             username=username, secret=secret, ip_criacao=ip_criacao, quem=quem)
+
+    def pedido_atual(self, instance_id: str) -> tuple[str | None, str] | None:
+        """(perfil de proxy, política) hoje pedidos ao aparelho, ou `None` se ele não tem linha de rede."""
+        r = self.st.db.one("SELECT proxy_profile_id, policy FROM device_network WHERE instance_id=?", (instance_id,))
+        if r is None:
+            return None
+        return (str(r["proxy_profile_id"]) if r["proxy_profile_id"] else None, str(r["policy"]))
 
     def atribuir(self, instance_ids: list[str], proxy_profile_id: str | None, policy: str, quem: str | None,
                  confirm_real_account: list[str] | None = None) -> dict[str, object]:

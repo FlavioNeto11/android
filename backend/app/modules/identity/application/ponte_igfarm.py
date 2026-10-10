@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
@@ -28,7 +29,7 @@ from app.modules.email_do_parque.application.servico import EmailDoParque, ErroE
 from app.modules.identity.domain.persona import MAIORIDADE
 from app.modules.identity.domain.ponte_igfarm import (SYSTEM_DO_USERNAME, TENTATIVAS_DE_USERNAME, TTL_RESERVA_HORAS,
                                                        CodigoDaConta, ComandoDeRegistro, ContaRegistrada,
-                                                       FichaDaPessoa, ImagemDaPessoa, PersonaPendente, Sugestao,
+                                                       EgressoDoDevice, FichaDaPessoa, ImagemDaPessoa, PersonaPendente, Sugestao,
                                                        normalizar_username, pedido_do_username, username_do_modelo,
                                                        username_valido)
 from app.util import to_iso
@@ -64,6 +65,7 @@ class ArmazemDaPonte(Protocol):
     def gravar_egresso(self, account_id: str, proxy_secret_ref: str | None, proxy_key_id: str | None,
                        ip_criacao: str | None) -> None: ...
     def _instance_ids_da_persona(self, persona_id: str) -> list[str]: ...
+    def perfis_vinculados(self, instance_id: str) -> list[str]: ...
     def endereco_da_conta(self, conta_id: str) -> str | None: ...
 
 
@@ -108,6 +110,7 @@ class RedeDaPonte(Protocol):
                               secret, ip_criacao: str | None, quem: str | None) -> str: ...
     def atribuir(self, instance_ids: list[str], proxy_profile_id: str | None, policy, quem: str | None,
                  confirm_real_account: list[str] | None = None) -> dict[str, object]: ...
+    def pedido_atual(self, instance_id: str) -> tuple[str | None, str] | None: ...
 
 
 class PonteIgfarm:
@@ -278,10 +281,10 @@ class PonteIgfarm:
 
         # Egresso roda nos DOIS caminhos (a tx principal já fechou). Perfil é idempotente por nome;
         # o gravar_egresso tem guarda no SQL.
-        self._registrar_egresso(cmd, existente.account_id if existente is not None else account_id)
+        egresso = self._registrar_egresso(cmd, existente.account_id if existente is not None else account_id)
 
         if existente is not None:
-            return existente
+            return replace(existente, egresso=egresso)
 
         self.barramento.emitir(
             "identity.conta.registrada", f"Conta @{username} registrada pela ponte do igfarm",
@@ -289,12 +292,12 @@ class PonteIgfarm:
              "username": username, "email": email})
         return ContaRegistrada(persona_id=cmd.persona_id, account_id=account_id, igfarm_account_id=cmd.igfarm_account_id,
                                email=email, instagram_username=username, criada_em=cmd.criada_em, registrada_em=agora,
-                               idempotente=False)
+                               idempotente=False, egresso=egresso)
 
-    def _registrar_egresso(self, cmd: ComandoDeRegistro, account_id: str) -> None:
+    def _registrar_egresso(self, cmd: ComandoDeRegistro, account_id: str) -> tuple[EgressoDoDevice, ...]:
         """Cria o perfil de proxy do egresso e atribui aos devices vinculados. Parse defensivo: proxy inválido não derruba."""
         if self.rede is None:
-            return
+            return ()
         scheme = host = port = username = password = None
         if cmd.proxy_url and cmd.proxy_url.strip():
             try:
@@ -303,7 +306,7 @@ class PonteIgfarm:
                 log.warning("proxy_url inválido para conta %s", account_id)
                 host = None
         if host is None:
-            return
+            return ()
         with self.armazem.tx():
             # Só na 1ª vez: re-POST não acumula segredo (a guarda do SQL também protege)
             conta = self.armazem.conta_igfarm(cmd.persona_id, normalizar_username(cmd.instagram_username))
@@ -317,20 +320,42 @@ class PonteIgfarm:
                 account_id, host=host, port=port, protocol=scheme, username=username,
                 secret=SecretStr(password) if password else None, ip_criacao=cmd.ip_criacao, quem="igfarm")
         # Auto-assign: roda nos DOIS caminhos (com e sem vínculo)
-        self._auto_assign(cmd.persona_id, perfil_id)
+        return self._auto_assign(cmd.persona_id, perfil_id, account_id)
 
-    def _auto_assign(self, persona_id: str, perfil_id: str) -> None:
-        """Atribui o perfil de proxy aos devices vinculados à persona."""
+    def _auto_assign(self, persona_id: str, perfil_id: str, account_id: str) -> tuple[EgressoDoDevice, ...]:
+        """Atribui o perfil de proxy aos devices vinculados à persona e DIZ o que aconteceu com cada um.
+
+        O aparelho que já tem a conta desta mesma persona não pede confirmação: a conta real que a rede protege é a que
+        está sendo registrada agora, e o vínculo veio antes da conta (o gatilho do vínculo nasce sem perfil). Só há
+        confirmação genuína quando o aparelho tem conta de OUTRA persona: aí o egresso fica `pendente_confirmacao`, vai
+        no retorno do registro e num evento, em vez de sumir num log. Repetir é seguro: o aparelho que já pede este
+        perfil com política que segura sai sem reatribuir, e o bloqueio de `exigida_com_bloqueio` nunca é rebaixado."""
         if self.rede is None:
-            return
-        iids = self.armazem._instance_ids_da_persona(persona_id)
-        for iid in iids:
+            return ()
+        resultado: list[EgressoDoDevice] = []
+        for iid in self.armazem._instance_ids_da_persona(persona_id):
+            atual = self.rede.pedido_atual(iid)
+            if atual is not None and atual[0] == perfil_id and atual[1] in ("exigida", "exigida_com_bloqueio"):
+                resultado.append(EgressoDoDevice(iid, "ja_atribuido"))
+                continue
+            politica = "exigida_com_bloqueio" if atual is not None and atual[1] == "exigida_com_bloqueio" else "exigida"
+            de_outras = [p for p in self.armazem.perfis_vinculados(iid) if p != persona_id]
             try:
-                self.rede.atribuir(instance_ids=[iid], proxy_profile_id=perfil_id, policy="exigida", quem="igfarm")
+                self.rede.atribuir(instance_ids=[iid], proxy_profile_id=perfil_id, policy=politica, quem="igfarm",
+                                   confirm_real_account=None if de_outras else [iid])
             except RedeError as exc:
                 if exc.code != "real_account_confirm_required":
                     raise
-                log.info("device %s: atribuição pendente (conta real)", iid)
+                motivo = f"o aparelho tem conta real de outra persona ({', '.join(de_outras) or 'desconhecida'})"
+                log.warning("egresso: %s com %s: %s", iid, perfil_id, motivo)
+                resultado.append(EgressoDoDevice(iid, "pendente_confirmacao", motivo))
+                self.barramento.emitir(
+                    "identity.egresso.pendente", f"Egresso da conta {account_id} pendente em {iid}",
+                    {"persona_id": persona_id, "account_id": account_id, "instance_id": iid,
+                     "perfil_id": perfil_id, "motivo": motivo})
+                continue
+            resultado.append(EgressoDoDevice(iid, "atribuido"))
+        return tuple(resultado)
 
     # ------------------------------------------------------------------ código de confirmação
     async def codigo(self, conta_id: str) -> CodigoDaConta:

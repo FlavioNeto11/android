@@ -41,6 +41,7 @@ from app.modules.identity.application.ponte_igfarm import ErroDaPonte
 from app.modules.identity.domain.ponte_igfarm import SENHAS_MASCARADAS, ComandoDeRegistro, PersonaPendente
 from app.modules.identity.infrastructure.ponte_igfarm import compor_ponte_igfarm
 from app.modules.identity.presentation.schemas import (CodigoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
+                                                       EgressoDoDeviceDTO,
                                                        PersonaPendenteDTO)
 from app.modules.identity.presentation.comum import device, mime_da_chave, quem, servir_do_storage, social_error
 from app.social.capacidades import capacidades_do_perfil
@@ -632,7 +633,9 @@ async def registrar_conta_igfarm(request: Request, body: ContaIgfarmBody) -> JSO
     dto = ContaRegistradaDTO(persona_id=r.persona_id, account_id=r.account_id, igfarm_account_id=r.igfarm_account_id,
                              email=r.email, instagram_username=r.instagram_username, criada_em=r.criada_em,
                              registrada_em=r.registrada_em, senhas=SENHAS_MASCARADAS, criada=not r.idempotente,
-                             idempotente=r.idempotente)
+                             idempotente=r.idempotente,
+                             egresso=[EgressoDoDeviceDTO(instance_id=e.instance_id, estado=e.estado, motivo=e.motivo)
+                                      for e in r.egresso])
     return JSONResponse(status_code=200 if r.idempotente else 201, content=dto.model_dump())
 
 

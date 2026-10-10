@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — egresso da ponte: o aparelho com a conta da própria persona é confirmado, e o pendente aparece (migração 133)
+
+- `_auto_assign` (`modules/identity/application/ponte_igfarm.py`) não engole mais `real_account_confirm_required`: o aparelho
+  cujo único vínculo é a persona que está sendo registrada recebe o perfil com `confirm_real_account`; com conta de OUTRA
+  persona o egresso fica `pendente_confirmacao` no retorno de `POST /contas` (campo `egresso`) e no evento
+  `identity.egresso.pendente`. Preserva `exigida_com_bloqueio` e não reatribui o que já está pedido (re-POST idempotente).
+- Prova **simulada**: `tests/test_egresso_igfarm.py` (5 testes novos, 36 verdes com `test_contas_igfarm_api.py`). Prova **real**
+  parcial (10/10/2026, central, ainda sem deploy da correção): atribuição direta do perfil `igfarm-acc-b_3anCPZMs-4Vjbg` ao
+  android-05 aplicou o proxy, mas a saída medida (#4486) foi `91.126.178.139`, não o `ip_criacao` `188.72.57.98`: o proxy
+  residencial não devolve mais o IP da criação (3 medições seguidas pelo proxy da conta deram o mesmo IP novo). `reaquecer = 1`.
+
 ## 2026-10-09 — ponte android ⇄ igfarm: personas pendentes, registro da conta e e-mail do parque (implantada no deploy 66; migração 132, adendo v1.133, ADR-088)
 
 - **Entregue:** `GET /api/instagram/personas-pendentes`, `POST /api/instagram/contas`, `GET /api/instagram/contas/{id}/codigo`,

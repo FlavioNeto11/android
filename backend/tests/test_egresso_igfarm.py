@@ -299,6 +299,9 @@ class _RedeFalsa:
         self.perfis: list[str] = []
         self.secrets: list[object] = []
         self.atribuicoes: list[tuple[list[str], str | None, str]] = []
+        self.confirmacoes: list[list[str] | None] = []
+        self.pedidos: dict[str, tuple[str | None, str]] = {}      # o que cada aparelho pede hoje
+        self.recusar_conta_real = False                           # simula o aparelho com conta de OUTRA persona
 
     def parse_proxy(self, proxy_url: str):
         return _parse_proxy(proxy_url)
@@ -309,8 +312,17 @@ class _RedeFalsa:
         return f"np-{account_id}"
 
     def atribuir(self, instance_ids, proxy_profile_id, policy, quem, confirm_real_account=None):
+        from app.modules.identity.application.ponte_igfarm import RedeError
+        if self.recusar_conta_real and not confirm_real_account:
+            raise RedeError(409, "real_account_confirm_required", "conta real")
         self.atribuicoes.append((list(instance_ids), proxy_profile_id, policy))
+        self.confirmacoes.append(confirm_real_account)
+        for iid in instance_ids:
+            self.pedidos[iid] = (proxy_profile_id, policy)
         return {}
+
+    def pedido_atual(self, instance_id):
+        return self.pedidos.get(instance_id)
 
 
 def _ponte_com_fakes(harness, rede):
@@ -340,7 +352,8 @@ def _ponte_com_fakes(harness, rede):
         def confere_dominio(self, e, d): return None
 
     class Bus:
-        def emitir(self, *a, **k): pass
+        def __init__(self): self.eventos: list[tuple[str, dict]] = []
+        def emitir(self, tipo, mensagem, dados): self.eventos.append((tipo, dados))
 
     ponte = PonteIgfarm(armazem=ArmazemSql(harness.state.db), pessoas=Pessoas(), textos=None,
                         imagens=None, contas=Contas(), cofre=Cofre(), email=Email(), barramento=Bus(),
@@ -433,3 +446,76 @@ def test_gatilho_preserva_exigida_com_bloqueio(harness, monkeypatch):
     egresso.vincular_egresso(harness.state, "p1", "android-01")
     assert politicas == ["exigida_com_bloqueio"]
 
+
+
+# ============================================================================ 8. _auto_assign: conta real da MESMA persona
+def _vincular(harness, profile_id: str, instance_id: str) -> None:
+    harness.state.db.execute(
+        "INSERT INTO device_profile_bindings(profile_id, instance_id, app_id, active, bound_at) "
+        "VALUES (?,?, NULL, 1, '2026-01-01')", (profile_id, instance_id))
+
+
+def test_auto_assign_confirma_quando_a_conta_real_e_da_mesma_persona(harness):
+    """O vínculo veio ANTES da conta: o aparelho só tem a persona que está sendo registrada, então a atribuição é confirmada
+    (e não engolida) e o retorno diz `atribuido`."""
+    _semear_persona_sem_conta(harness)
+    _vincular(harness, "p1", "android-01")
+    rede = _RedeFalsa()
+    r = _ponte_com_fakes(harness, rede).registrar(_cmd())
+    assert rede.confirmacoes == [["android-01"]]
+    assert [(e.instance_id, e.estado) for e in r.egresso] == [("android-01", "atribuido")]
+
+
+def test_auto_assign_conta_de_outra_persona_fica_pendente_e_visivel(harness):
+    """Conta real de OUTRA persona no aparelho: não se confirma sozinho; o pendente vai no retorno e num evento."""
+    _semear_persona_sem_conta(harness)
+    harness.state.db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at) "
+                             "VALUES ('p2','outra.conta','active','2026-01-01','2026-01-01')")
+    _vincular(harness, "p1", "android-01")
+    _vincular(harness, "p2", "android-01")
+    rede = _RedeFalsa()
+    rede.recusar_conta_real = True
+    ponte = _ponte_com_fakes(harness, rede)
+    r = ponte.registrar(_cmd())
+    assert rede.atribuicoes == []                                  # nada foi forçado
+    assert [(e.instance_id, e.estado) for e in r.egresso] == [("android-01", "pendente_confirmacao")]
+    assert "p2" in r.egresso[0].motivo
+    assert [t for t, _ in ponte.barramento.eventos].count("identity.egresso.pendente") == 1
+
+
+def test_auto_assign_preserva_exigida_com_bloqueio(harness):
+    _semear_persona_sem_conta(harness)
+    _vincular(harness, "p1", "android-01")
+    rede = _RedeFalsa()
+    rede.pedidos["android-01"] = (None, "exigida_com_bloqueio")
+    _ponte_com_fakes(harness, rede).registrar(_cmd())
+    assert rede.atribuicoes == [(["android-01"], "np-acc-1", "exigida_com_bloqueio")]
+
+
+def test_auto_assign_repetir_o_registro_nao_reatribui(harness):
+    """Re-POST: o aparelho que já pede o perfil sai como `ja_atribuido`, sem nova atribuição nem rebaixar a política."""
+    _semear_persona_sem_conta(harness)
+    _vincular(harness, "p1", "android-01")
+    rede = _RedeFalsa()
+    ponte = _ponte_com_fakes(harness, rede)
+    r1 = ponte.registrar(_cmd())
+    r2 = ponte.registrar(_cmd())
+    assert len(rede.atribuicoes) == 1
+    assert [e.estado for e in r1.egresso] == ["atribuido"]
+    assert r2.idempotente and [e.estado for e in r2.egresso] == ["ja_atribuido"]
+
+
+def test_re_post_completa_a_amarracao_que_ficou_pendente(harness):
+    """O 1º POST ficou pendente (aparelho com outra conta); depois que a outra conta sai, o re-POST amarra sem duplicar."""
+    _semear_persona_sem_conta(harness)
+    harness.state.db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at) "
+                             "VALUES ('p2','outra.conta','active','2026-01-01','2026-01-01')")
+    _vincular(harness, "p1", "android-01")
+    _vincular(harness, "p2", "android-01")
+    rede = _RedeFalsa()
+    rede.recusar_conta_real = True
+    ponte = _ponte_com_fakes(harness, rede)
+    assert ponte.registrar(_cmd()).egresso[0].estado == "pendente_confirmacao"
+    harness.state.db.execute("UPDATE device_profile_bindings SET active=0 WHERE profile_id='p2'")
+    r = ponte.registrar(_cmd())
+    assert [e.estado for e in r.egresso] == ["atribuido"] and len(rede.atribuicoes) == 1

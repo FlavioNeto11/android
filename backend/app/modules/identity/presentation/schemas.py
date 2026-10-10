@@ -266,6 +266,13 @@ class ContaIgfarmBody(BaseModel):
     ip_criacao: str | None = Field(default=None, max_length=45)
 
 
+class EgressoDoDeviceDTO(BaseModel):
+    instance_id: str
+    #: `atribuido` | `ja_atribuido` | `pendente_confirmacao` (conta real de OUTRA persona no aparelho).
+    estado: str
+    motivo: str = ""
+
+
 class ContaRegistradaDTO(BaseModel):
     persona_id: str
     account_id: str
@@ -278,6 +285,8 @@ class ContaRegistradaDTO(BaseModel):
     senhas: str
     criada: bool
     idempotente: bool
+    #: A saída de cada aparelho vinculado à persona; vazio se não há vínculo ou a conta veio sem proxy.
+    egresso: list[EgressoDoDeviceDTO] = []
 
 
 class CodigoDaContaDTO(BaseModel):

@@ -124,6 +124,16 @@ class ComandoDeRegistro:
 
 
 @dataclass(frozen=True)
+class EgressoDoDevice:
+    """O que a ponte fez com a saída de UM aparelho vinculado à persona: `atribuido` (perfil pedido agora),
+    `ja_atribuido` (o aparelho já o tinha: nada mudou) ou `pendente_confirmacao` (há conta real de OUTRA persona
+    no aparelho: só a pessoa confirma, e o `motivo` diz por quê)."""
+    instance_id: str
+    estado: str
+    motivo: str = ""
+
+
+@dataclass(frozen=True)
 class ContaRegistrada:
     persona_id: str
     account_id: str
@@ -134,6 +144,7 @@ class ContaRegistrada:
     registrada_em: str
     idempotente: bool
     proxy_secret_ref: str | None = None
+    egresso: tuple[EgressoDoDevice, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -8187,6 +8187,13 @@ serialização), a forma proposta pelo Portal em `portal-para-jev-receita-candid
 Três rotas novas em `/api/instagram` e a migração 132 (`persona_reservas`, `caixas_email`, `contas_igfarm`). Detalhe do
 fluxo e do e-mail: [`email-do-parque.md`](email-do-parque.md).
 
+- **`POST /api/instagram/contas`, campo `egresso`** (aditivo, sem mudar o que já existia): lista com um item por aparelho
+  vinculado à persona, `{instance_id, estado, motivo}`, com `estado` em `atribuido` (o perfil `igfarm-{account_id}` foi pedido
+  agora), `ja_atribuido` (o aparelho já o pedia; repetir o POST não reatribui nem rebaixa `exigida_com_bloqueio`) ou
+  `pendente_confirmacao` (o aparelho tem conta real de OUTRA persona: só a pessoa confirma; vai também no evento
+  `identity.egresso.pendente`). Aparelho que só tem a conta da própria persona é confirmado pela ponte. Lista vazia: sem
+  vínculo ou conta sem proxy.
+
 - **`GET /api/instagram/personas-pendentes`**: query `dominio` (obrigatório, allowlist `EMAIL_ALLOWLIST_DOMINIOS`, senão
   422 `dominio_nao_permitido`), `limite` (1–50, padrão 10), `locale`, `com_imagem` (padrão `true`), `reservar` (padrão
   `false`). Devolve lista de `{persona_id, nome, primeiro_nome, sobrenome, nome_exibicao, birth_date, genero, biografia,
