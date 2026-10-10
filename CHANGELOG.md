@@ -34,6 +34,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_aviso_de_tela_adr089.py` (7 testes), 314 dirigidos, catracas (89), mypy no teto (257) e `docs-check`.
   **Real: não verificada**; o painel só mostra a frase nova depois do deploy. Fica aberto para a orquestradora: o executor ainda não
   leva a imagem da tela sensível à decisão de rotina, o que o ADR-089 permite mas não manda; mudar isso é comportamento, não texto.
+
+## 2026-10-10 — o Livro filtra as receitas descobertas pela IA, com contagem (31.304, parte do Livro)
+
+- `features/aprendizado/AprendidoTab.tsx`: na contagem das receitas aparece "N descobertas pela IA" (receitas com
+  `nasceu_de_exploracao`, 31.299); clicar mostra só elas, e clicar de novo tira o filtro. O estado vai no endereço
+  (`descoberta=1`), soma com a busca e diz "O filtro olha os N itens carregados, de TOTAL" quando a lista veio cortada, porque o
+  servidor não filtra nem conta por essa marca. Sem receita descoberta (ou backend sem a marca), o botão não aparece; com o filtro
+  ligado e nenhuma descoberta, a lista diz isso.
+- **Fora do escopo, por falta de dado na API:** o filtro das Execuções. A lista (`GET /api/runs`, `RunSummary`) não traz marca de
+  exploração; só o detalhe de cada execução tem `steps[].exploratoria`. Sem campo novo na lista, não há como filtrar nem contar
+  sem uma leitura por execução. Pedi o campo à orquestradora.
+- Prova `simulated`: `features/aprendizado/DescobertasNoLivro.test.tsx` (4 testes: contagem e filtro ligando e desligando, botão
+  ausente sem descobertas, endereço somado à busca com aviso de lista cortada, lista vazia com o filtro ligado), 297 testes do
+  aprendizado, tsc e build. Percurso no navegador contra o backend isolado do worktree, com a resposta de `/aprendizado` reescrita
+  no navegador (o harness não tem receita descoberta). **Real no central: não executada** (a 31.273 ainda não está no central).
+
 ## 2026-10-10 — o painel de rede mostra a saída medida × esperada e leva ao editor (31.303)
 
 - `features/rede/RedePage.tsx`, `EditarSaidaEsperada.tsx`, `Rede.module.css`: o aparelho que o backend marcou com `egress_matches: false`

@@ -21,7 +21,11 @@ import {
 import styles from './Aprendizado.module.css';
 
 /** Quantos itens por tipo e estado (a memória conta lembranças, não linhas). */
-function Contagem({ contagem, deProva }: { contagem: NonNullable<ListaDoLivro['contagem']>; deProva: { n: number; ativo: boolean; alternar: () => void } }) {
+function Contagem({ contagem, deProva, descobertas }: {
+  contagem: NonNullable<ListaDoLivro['contagem']>; deProva: { n: number; ativo: boolean; alternar: () => void };
+  /** 31.304: as receitas que a IA descobriu numa exploração, entre as carregadas (o servidor não conta por essa marca). */
+  descobertas: { n: number; ativo: boolean; alternar: () => void };
+}) {
   const tipos = Object.entries(contagem).filter(([, porEstado]) => Object.keys(porEstado).length > 0);
   if (tipos.length === 0) return null;
   return (
@@ -39,6 +43,12 @@ function Contagem({ contagem, deProva }: { contagem: NonNullable<ListaDoLivro['c
             <button type="button" className={styles.resumoBotao} aria-pressed={deProva.ativo} onClick={deProva.alternar}
                     title={deProva.ativo ? 'Tirar o filtro "Só os nascidos de uma prova".' : 'Mostrar só os fluxos que nasceram de uma prova.'}>
               {formatInt(deProva.n)} de prova
+            </button>
+          ) : null}
+          {kind === 'receita' && (descobertas.n > 0 || descobertas.ativo) ? (
+            <button type="button" className={styles.resumoBotao} aria-pressed={descobertas.ativo} onClick={descobertas.alternar}
+                    title={descobertas.ativo ? 'Tirar o filtro "Só as descobertas pela IA".' : 'Mostrar só as receitas que a IA descobriu numa exploração (ninguém as demonstrou).'}>
+              {formatInt(descobertas.n)} {descobertas.n === 1 ? 'descoberta pela IA' : 'descobertas pela IA'}
             </button>
           ) : null}
         </span>
@@ -109,6 +119,9 @@ export function AprendidoTab() {
   const qAssunto = useUiStore((s) => s.rota.query[PARAMS_DO_FILTRO.assunto]);
   // 31.209: a busca por trecho é do painel (o servidor só filtra por assunto exato); vive no endereço, sem empilhar histórico.
   const busca = useUiStore((s) => s.rota.query.busca) ?? '';
+  // 31.304: "só as descobertas pela IA" (`nasceu_de_exploracao`, 31.299). O servidor não filtra por essa marca: o painel filtra as
+  // linhas carregadas, como a busca, e diz isso quando a lista veio cortada.
+  const soDescobertas = useUiStore((s) => s.rota.query.descoberta) === '1';
   const outros = useMemo(() => lerFiltroDoEndereco({ tipo: qTipo, estado: qEstado, origem: qOrigem, prova: qProva, visao: qVisao, assunto: qAssunto }),
     [qTipo, qEstado, qOrigem, qProva, qVisao, qAssunto]);
   // O app vem do link (`?aba=aprendido&app=<pacote>`), para a navegação do detalhe do app ao catálogo e de volta.
@@ -195,7 +208,11 @@ export function AprendidoTab() {
     if (novos.length) setAssuntosVistos((v) => (novos.every((a) => v.includes(a)) ? v : [...new Set([...v, ...novos])].sort((x, y) => x.localeCompare(y, 'pt-BR'))));
   }, [lista]);
   const opcoesDeAssunto = useMemo(() => (filtro.assunto && !assuntosVistos.includes(filtro.assunto) ? [...assuntosVistos, filtro.assunto] : assuntosVistos), [assuntosVistos, filtro.assunto]);
-  const itensVisiveis = useMemo(() => buscarNoLivro(lista?.itens ?? [], busca, titulos), [lista, busca, titulos]);
+  const quantasDescobertas = useMemo(() => (lista?.itens ?? []).filter((i) => i.kind === 'receita' && i.nasceu_de_exploracao === true).length, [lista]);
+  const itensDescobertos = useMemo(
+    () => (soDescobertas ? (lista?.itens ?? []).filter((i) => i.kind === 'receita' && i.nasceu_de_exploracao === true) : lista?.itens ?? []),
+    [lista, soDescobertas]);
+  const itensVisiveis = useMemo(() => buscarNoLivro(itensDescobertos, busca, titulos), [itensDescobertos, busca, titulos]);
   const filtrarAssunto = (a: string) => setFiltro((f) => ({ ...f, assunto: a }));
   // RA-19: o conjunto que valeu é o escolhido, senão o que o servidor aplicou (sem app, o padrão esconde o de teste).
   const rotulo = filtro.rotulo ?? lista?.rotulo ?? (app ? 'todos' : 'produto');
@@ -301,11 +318,19 @@ export function AprendidoTab() {
           {lista.contagem ? (
             <Contagem contagem={lista.contagem}
                       deProva={{ n: quantosDeProva, ativo: filtro.prova === 'so_prova',
-                                 alternar: () => setFiltro((f) => ({ ...f, prova: f.prova === 'so_prova' ? undefined : 'so_prova' })) }} />
+                                 alternar: () => setFiltro((f) => ({ ...f, prova: f.prova === 'so_prova' ? undefined : 'so_prova' })) }}
+                      descobertas={{ n: quantasDescobertas, ativo: soDescobertas,
+                                     alternar: () => trocarQuery({ descoberta: soDescobertas ? undefined : '1' }) }} />
           ) : null}
-          {busca.trim() && lista.itens.length > 0 ? (
+          {soDescobertas && lista.itens.length > 0 ? (
+            <p className={styles.secaoLead} role="status" data-descobertas>
+              {formatInt(quantasDescobertas)} de {formatInt(lista.itens.length)} itens são receitas descobertas pela IA.
+              {lista.total > lista.itens.length ? ` O filtro olha os ${formatInt(lista.itens.length)} itens carregados, de ${formatInt(lista.total)}.` : ''}
+            </p>
+          ) : null}
+          {busca.trim() && itensDescobertos.length > 0 ? (
             <p className={styles.secaoLead} role="status" data-busca>
-              {formatInt(itensVisiveis.length)} de {formatInt(lista.itens.length)} itens com “{busca.trim()}”.
+              {formatInt(itensVisiveis.length)} de {formatInt(itensDescobertos.length)} itens com “{busca.trim()}”.
               {lista.total > lista.itens.length ? ` A busca olha os ${formatInt(lista.itens.length)} itens carregados, de ${formatInt(lista.total)}.` : ''}
             </p>
           ) : null}
@@ -313,7 +338,9 @@ export function AprendidoTab() {
             <EmptyState icon={BookOpen} compact title="Nada aprendido com este filtro"
                         hint={ocultos ? `Há ${ocultos} pelo filtro de apps: escolha "Todos" para vê-los.` : undefined} />
           ) : itensVisiveis.length === 0 ? (
-            <EmptyState icon={BookOpen} compact title="Nenhum item com esta busca" hint="Apague a busca ou use menos palavras: todas precisam aparecer no item." />
+            soDescobertas && !busca.trim()
+              ? <EmptyState icon={BookOpen} compact title="Nenhuma receita descoberta pela IA nesta lista" hint="Tire o filtro das descobertas, ou aguarde uma exploração virar receita." />
+              : <EmptyState icon={BookOpen} compact title="Nenhum item com esta busca" hint="Apague a busca ou use menos palavras: todas precisam aparecer no item." />
           ) : (
             <ul className={styles.lista} aria-label="Catálogo do aprendizado">
               {itensVisiveis.map((e) => (
