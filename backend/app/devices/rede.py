@@ -810,6 +810,9 @@ def listar_aparelhos(st: AppState) -> dict[str, object]:
 #: O `method` da sonda de IP do aparelho SEM rede pedida (item 29.20) em `network_measurements` (≤ 60): é o que separa
 #: esta medida das da rede pedida, e a convergência nunca a trata como uma (não há linha em `device_network`).
 METODO_SEM_REDE = "sonda de IP sem rede pedida (uid 2000)"
+#: O `method` da medição feita DENTRO da janela do login (31.329): a sonda de IP de saída como uid 2000, pedida pelo motor de
+#: sessão logo antes de digitar a senha. Não muda o estado da rede (é leitura, como a sem rede pedida); a decisão é do login.
+METODO_DO_LOGIN = "sonda de IP na janela do login (uid 2000)"
 #: Quantos `reverificar_s` uma medida de aparelho sem rede vale: depois disso o aparelho volta a "presumido".
 _VALIDADE_SEM_REDE_EM_VEZES = 3
 
@@ -838,6 +841,15 @@ def registrar_saida_sem_rede(st: AppState, instance_id: str, ipv4: str | None, i
         " udp_ok, per_app, leak_blocked, detail) VALUES (?,?,?,?,?,?,?,?,?,?)",
         (instance_id, medicao.measured_at or now_iso(), METODO_SEM_REDE, medicao.egress_ipv4, medicao.egress_ipv6, None,
          None, dumps({}), None, medicao.detail)))
+
+
+def registrar_saida_do_login(st: AppState, instance_id: str, ipv4: str | None, ipv6: str | None, detalhe: str) -> int:
+    """Acrescenta ao histórico a medição da janela do login (31.329) e devolve o id. Só leitura da saída: não mexe em
+    `device_network` (a deriva de uma rede pedida segue sendo achado da convergência)."""
+    return int(st.db.inserted_id(
+        "INSERT INTO network_measurements(instance_id, measured_at, method, egress_ipv4, egress_ipv6, dns_resolver,"
+        " udp_ok, per_app, leak_blocked, detail) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (instance_id, now_iso(), METODO_DO_LOGIN, ipv4, ipv6, None, None, dumps({}), None, detalhe[:500])))
 
 
 def sonda_sem_rede_devida(st: AppState, instance_id: str, agora: float) -> bool:

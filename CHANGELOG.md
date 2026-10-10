@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o login mede o egresso dentro da janela e aborta se não casar (31.329)
+
+- `ConvergenciaDeRede.medir_para_o_login` mede a saída do aparelho AGORA e o motor de sessão (`_login`) a confere ANTES de digitar a
+  senha: saída diferente do `egress_esperado` do perfil, medição sem IP ou fora da janela de 30 s aborta com `egresso não casou`
+  (`UNCERTAIN`), sem abrir tentativa e sem tocar na tela. Evento novo `session.egresso_na_janela` com IP medido, hora e distância em
+  segundos; a medição entra em `network_measurements` (`method` próprio). Sem proxy esperado no aparelho, nada muda.
+- Prova `simulated`: `tests/test_egresso_na_janela.py` (8), `test_instagram_auth`, `test_codigo_por_email`, redes e catracas verdes;
+  mypy 257 (teto). `real`: `not_run` (a regra nasceu da ressalva da H2 de 10/10; a próxima conta do igfarm a exercita).
 ## 2026-10-10 — o painel diz "bloqueada" e mostra o motivo (31.326, adendo v1.142) e os 2 achados da varredura de UX dos deploys 70/71
 
 - Rótulo: a sessão na tela humana (`conta_travada:` ou "retirada por bloqueio" no detalhe, ou `data.rotulo` do evento `session.needs_person`) vira "Conta bloqueada" no selo,

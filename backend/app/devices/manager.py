@@ -12,7 +12,7 @@ import re
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Collection
+from collections.abc import Awaitable, Collection
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -35,6 +35,7 @@ from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessI
                       InstanceDTO, InstancePorts, InstanceResources, InstanceState, ManualInput, Metrics, RendererInfo,
                       RepairPauseInfo)
 # A porta do aprendizado (ADR-054): só o contrato, do kernel — `devices` não conhece a fila nem o livro.
+from ..shared.egresso import EgressoNaJanela
 from ..shared.costuras import SEM_COSTURAS_DE_GESTO, CosturaDeControle, TomadaDeControle, avisar
 from ..util import new_token, now, now_iso, parse_iso, to_iso
 from . import emulator as emu
@@ -575,6 +576,11 @@ def janela_completa(pacote: str | None, atividade: str | None) -> str | None:
     return f"{pacote}/{nome}".lower()
 
 
+async def _sem_egresso_a_conferir(rt: "DeviceRuntime") -> EgressoNaJanela | None:
+    """O padrão do gancho de egresso na janela do login (31.329): nada a conferir."""
+    return None
+
+
 class DeviceManager:
     def __init__(self, cfg: Config, db: Database, bus: EventBus, tools: SdkTools, appium: AppiumServer,
                  *, settings_getter: Callable[[], Any], io_factory: Callable[[DeviceRuntime], DeviceIO] | None = None,
@@ -654,6 +660,9 @@ class DeviceManager:
         #: AppState, que conhece o domínio social. Aparelho com conta travada fica fora do reinício de saúde e o
         #: cartão diz por quê (ADR-055).
         self.conta_travada_em: Callable[[str], str | None] = lambda instance_id: None
+        #: 31.329: a medição de egresso DENTRO da janela do login, pedida pelo motor de sessão antes de digitar a senha.
+        #: Injetado pelo AppState (conhece a rede). `None` = nada a conferir neste aparelho.
+        self.egresso_na_janela: Callable[[DeviceRuntime], Awaitable[EgressoNaJanela | None]] = _sem_egresso_a_conferir
         #: O RODÍZIO precisa ligar/desligar um aparelho que mora em OUTRA máquina. O gerenciador não fala com o
         #: agente (quem despacha é a camada da API, pelo mesmo caminho rastreável do painel), então ela se
         #: inscreve aqui. Devolve o id do comando aberto, ou `None` quando não deu para abrir (verbo recusado,

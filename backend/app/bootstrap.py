@@ -415,6 +415,8 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
     self.social.ao_vincular_egresso = lambda pid, iid: vincular_egresso(self, pid, iid)
     self.social.ao_limpar_egresso = lambda pid, aid, ref: limpar_egresso(self, pid, aid, ref)
     self.social.motivo_do_bloqueio = lambda pid, aid, ev: motivo_do_bloqueio(self.db, pid, aid, ev)
+    # 31.329: o motor de sessão mede o egresso dentro da janela do login e aborta se não casar com o esperado.
+    self.devices.egresso_na_janela = lambda rt: self.rede_convergencia.medir_para_o_login(rt)
     # 29.27 (emenda do ADR-068): conta retirada de app que declara `limpar_ao_retirar` leva os dados do app embora dos
     # aparelhos onde estava logada (`pm clear` só desse pacote), numa tarefa de fundo; a quarentena resolve ao fim.
     self.limpeza_ao_retirar = LimpezaAoRetirar(self)
