@@ -59,6 +59,10 @@ SEM_CONDUCAO = "-"
 ESPERANDO_A_PESSOA = "esperando_pessoa"
 #: Propostas (ADR-054, tipos "ação nova", "lição" e "tela").
 ACAO_EXECUCOES_MIN = 3
+#: 31.273 (ADR-084): a etapa que a IA DESCOBRIU por exploração (`steps.exploratoria`) já nasce de um pedido que o catálogo
+#: não cobria, então a proposta de ação sai com menos repetição: o limiar do Livro para a receita (2 execuções reais
+#: comprovadas), não as 3 da etapa livre comum. Decisão da orquestradora em 07/10.
+ACAO_EXECUCOES_EXPLORADA = 2
 #: 30.59: a etapa livre que já fecha sem IA (receita ou atalho do executor) em pelo menos esta fração das vezes não vira
 #: proposta de ação do catálogo: o ganho já está colhido.
 ACAO_SEM_IA_MAX = 0.8
@@ -626,27 +630,53 @@ class AcaoLivre:
     modelos: tuple[str, ...] = ()
     etapas: int = 0
     sem_ia: int = 0
+    #: 31.273: alguma etapa do grupo nasceu de exploração (`steps.exploratoria`, migração 130).
+    exploratoria: bool = False
 
 
 def proposta_de_acao(a: AcaoLivre) -> Proposta | None:
     """Etapa livre comprovada em ≥3 execuções: candidata a ação do catálogo. SEMPRE pessoa: a ação entra por habilidade
     publicada ou fragmento commitado, nunca por catálogo sobreposto no banco. 30.59: a que já fecha sem IA em
     `ACAO_SEM_IA_MAX` das vezes não é proposta (o ganho de virar ação já foi colhido pela receita)."""
-    if a.execucoes < ACAO_EXECUCOES_MIN:
+    if a.execucoes < (ACAO_EXECUCOES_EXPLORADA if a.exploratoria else ACAO_EXECUCOES_MIN):
         return None
     if a.etapas and a.sem_ia / a.etapas >= ACAO_SEM_IA_MAX:
         return None
     modelos = ", ".join(a.modelos) or "?"
-    fragmento = (f"# proposta: ação de catálogo a partir da etapa livre '{a.chave}' (template_hash {modelos})\n"
-                 f"# comprovada em {a.execucoes} execuções reais em {a.app}; revise antes de commitar\n"
-                 "- id: A_DEFINIR\n"
-                 f"  # chave da etapa: {a.chave}\n"
-                 "  side_effect: A_DEFINIR\n"
-                 "  postcondition: A_DEFINIR")
+    if a.exploratoria:
+        fragmento = _fragmento_da_exploracao(a, modelos)
+    else:
+        fragmento = (f"# proposta: ação de catálogo a partir da etapa livre '{a.chave}' (template_hash {modelos})\n"
+                     f"# comprovada em {a.execucoes} execuções reais em {a.app}; revise antes de commitar\n"
+                     "- id: A_DEFINIR\n"
+                     f"  # chave da etapa: {a.chave}\n"
+                     "  side_effect: A_DEFINIR\n"
+                     "  postcondition: A_DEFINIR")
     sem_ia = f"; {a.sem_ia} de {a.etapas} etapas já fecharam sem IA" if a.etapas else ""
     return Proposta(TipoDeProposta.ACAO_DE_CATALOGO, f"{a.app}|etapa:{a.chave}", a.app,
                     f"{a.app} · etapa livre '{a.chave}': virar ação do catálogo",
                     f"comprovada em {a.execucoes} execuções{sem_ia}", fragmento)
+
+
+def _fragmento_da_exploracao(a: AcaoLivre, modelos: str) -> str:
+    """31.273: o fragmento do `catalogo.yaml` para a etapa descoberta por exploração, preenchido com o que a etapa
+    sabe: a chave (vocabulário fechado, sem nome nem valor), a frase dela, a prova por tela julgada e o efeito (a
+    exploração só lê e navega). A política, o risco e a tela de partida ficam `A_DEFINIR`: são decisão de pessoa. Só a
+    chave e as contagens entram aqui, nunca o título nem o objetivo da etapa (a regra do 30.59: podem trazer nome)."""
+    frase = a.chave.removeprefix("explorar_").replace("_", " ").strip() or "pedido"
+    sugestao = re.sub(r"[^A-Z0-9]+", "_", frase.upper()).strip("_") or "A_DEFINIR"
+    return (f"# proposta: ação de catálogo DESCOBERTA por exploração da IA a partir da etapa '{a.chave}' "
+            f"(template_hash {modelos})\n"
+            f"# comprovada em {a.execucoes} execuções reais em {a.app}; nada grava o catalogo.yaml sozinho: revise e commite\n"
+            f"- key: A_DEFINIR                  # sugestão: {sugestao}\n"
+            f"  title: A_DEFINIR                # sugestão: \"{frase[:1].upper() + frase[1:]}\"\n"
+            f"  goal: Chegar à tela do pedido ({frase}) e comprovar o resultado.\n"
+            "  post_kind: model_judged\n"
+            f"  post_value: a tela mostra: {frase}\n"
+            "  side_effect: false              # a exploração só lê e navega\n"
+            "  risk: A_DEFINIR\n"
+            "  default_policy: A_DEFINIR\n"
+            "  # tela de partida e seletor: A_DEFINIR (ver as ações da etapa na execução de origem)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -691,6 +721,8 @@ class SaudeDasExecucoes:
     fluxos_distintos: int
     etapas_por_conducao: Mapping[str, int]
     intervencoes: int
+    #: 31.273: as etapas exploratórias que terminaram na janela, por condução (a métrica do ADR-084).
+    exploracoes_por_conducao: Mapping[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -701,6 +733,16 @@ class Saude:
     fluxos_distintos: int
     etapas_por_conducao: Mapping[str, int] = field(default_factory=dict)
     intervencoes: int = 0
+    exploracoes_por_conducao: Mapping[str, int] = field(default_factory=dict)
+
+    @property
+    def exploracoes_sem_ia_pct(self) -> float | None:
+        """31.273 (ADR-084): de cada exploração que terminou, quantas já entraram por receita ou atalho, sem chamada de IA
+        ("a próxima vez entrou por receita, 0 chamadas de IA"): é a medida de que o sistema aprende o que descobre. `None`
+        sem exploração com condução registrada."""
+        total = sum(n for k, n in self.exploracoes_por_conducao.items() if k not in (SEM_CONDUCAO, ESPERANDO_A_PESSOA))
+        sem_ia = sum(n for k, n in self.exploracoes_por_conducao.items() if k in ("recipe", "sem_ator"))
+        return sem_ia / total if total else None
 
     @property
     def pct_por_receita(self) -> float | None:
@@ -713,7 +755,7 @@ class Saude:
         return round(self.intervencoes * 10 / self.execucoes, 2) if self.execucoes else None
 
 
-__all__ = ["ACAO_EXECUCOES_MIN", "BASE_DIAS", "ESTADOS_DA_PESSOA", "EXEMPLOS", "IDS_DA_PROVA", "JANELA_DA_REINCIDENCIA",
+__all__ = ["ACAO_EXECUCOES_EXPLORADA", "ACAO_EXECUCOES_MIN", "BASE_DIAS", "ESTADOS_DA_PESSOA", "EXEMPLOS", "IDS_DA_PROVA", "JANELA_DA_REINCIDENCIA",
            "LIMITE_DE_OUTRO", "QUALQUER", "ROTULO", "SEM_CONDUCAO", "ESPERANDO_A_PESSOA", "AcaoLivre", "ChamadaDeTela",
            "ChaveDoGrupo",
            "Exemplo", "FonteDaOcorrencia", "GrupoDeFalha", "ItemParaPromover", "LinhaDoBacklog", "Medida", "Ocorrencia",

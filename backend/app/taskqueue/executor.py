@@ -51,6 +51,7 @@ from ..modules.identity.application.available_data import (account_hosts, availa
 from ..modules.identity.domain.available_data import ResolvedSecret, SecretResolution
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.learning.infrastructure.segredo import TriagemDeCredencial
+from ..planning import costs
 from ..planning.capabilities import (CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao,
                                      load_catalog, marcas_de_entrega)
 from ..planning.catalog import session_provider_of
@@ -1060,6 +1061,10 @@ class StepExecutor:
         if step_id is not None and objective_id is not None and self.cfg.file.ai.step_budget.enabled:
             self._conferir_orcamento_da_etapa(run_id, objective_id, step_id, role, run["app_ids"] if run else None,
                                               attempt_id, marca)
+        if step_id is not None and (parada := self._teto_da_exploracao(run_id, step_id, s)) is not None:
+            exc = AIError(parada, kind="budget")
+            self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id, marca)
+            raise exc
         if run and (run["ai_input_tokens"] + run["ai_output_tokens"]) >= s.ai_max_tokens_per_run:
             exc = AIError(f"Orçamento de {s.ai_max_tokens_per_run} tokens da execução esgotado.", kind="budget")
             self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id, marca)
@@ -1125,6 +1130,28 @@ class StepExecutor:
             await asyncio.sleep(float(self.get_settings().ai_retry_wait_s) * (attempt + 1))
         assert last is not None
         raise last
+
+    def _teto_da_exploracao(self, run_id: str, step_id: str, s: LimitsCfg) -> str | None:
+        """Item 31.273 (ADR-084): a etapa exploratória para quando as chamadas de IA das etapas exploratórias da execução
+        chegam a `exploracao_max_chamadas_ia`, ou o gasto da execução (tokens x preço, planejamento incluído) chega a
+        `exploracao_max_usd`. Devolve a frase do motivo (o que foi gasto e o que vale), ou `None`. A etapa que não é
+        exploratória não paga nada aqui além de uma leitura de uma linha."""
+        marca = self.repo.db.one("SELECT exploratoria FROM steps WHERE id=?", (step_id,))
+        if marca is None or not marca["exploratoria"]:
+            return None
+        feitas = int(self.repo.db.scalar(
+            "SELECT COUNT(*) FROM ai_calls WHERE run_id=? AND step_id IN"
+            " (SELECT id FROM steps WHERE run_id=? AND exploratoria=1)", (run_id, run_id)) or 0)
+        if feitas >= int(s.exploracao_max_chamadas_ia):
+            return (f"Teto da exploração: {feitas} chamadas de IA (limite {int(s.exploracao_max_chamadas_ia)}). "
+                    "Parei sem concluir; o que vi está nas ações da etapa.")
+        teto_usd = float(s.exploracao_max_usd)
+        if teto_usd > 0:
+            gasto = costs.spent_usd(self.repo.db, self.cfg.file.ai.prices, run_id=run_id)
+            if gasto >= teto_usd:
+                return (f"Teto da exploração: US$ {gasto:.2f} gastos (limite US$ {teto_usd:.2f}). Parei sem concluir; "
+                        "o que vi está nas ações da etapa.")
+        return None
 
     def _teto_de_chamadas(self, objective_id: str, feitas: int, s: LimitsCfg) -> tuple[int, str]:
         """Item 17.12: o teto de chamadas deste objetivo — `ai_max_calls_per_objective` fixo, ou proporcional aos itens do
@@ -2274,6 +2301,8 @@ class StepExecutor:
         falhas_de_captura = 0              # 31.76: capturas seguidas que falharam com a árvore já lida (zera com imagem)
         declared: StepDone | None = None
         max_actions = int(s.max_actions_per_step)
+        if step.exploratoria:              # item 31.273: a exploração tem o teto próprio de ações (e o de chamadas e US$ em `_ai`)
+            max_actions = int(s.exploracao_max_acoes)
         opcional = step.opcional and self.cfg.file.ai.limpeza_opcional
         if opcional:                       # item 31.36: limpar a tela vale no máximo 3 decisões do ator
             max_actions = min(max_actions, LIMITE_DA_ETAPA_OPCIONAL)

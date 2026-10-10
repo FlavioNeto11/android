@@ -8233,5 +8233,15 @@ Sem rota nova. Campos aditivos; a forma do resto não muda.
   `<etapas_ensinadas>` (o planejador sabe que nenhuma pessoa a demonstrou), só com nome, app e parâmetros. A ensinada por
   pessoa vence a descoberta de mesmo nome. A trilha do plano diz "etapa DESCOBERTA pela IA numa exploração (31.273;
   ninguém a demonstrou)".
-- **Prova:** `simulated` (`backend/tests/test_etapas_descobertas.py`, `backend/tests/test_migracao_130.py`). `real`:
-  `not_run` (a exploração real no Outlook depende do sim do dono para o custo de API).
+- **`limits.exploracao_ligada`, `exploracao_max_acoes`, `exploracao_max_chamadas_ia`, `exploracao_max_usd`,
+  `exploracao_max_por_dia`** (config, lidos ao vivo por `PUT /api/settings`): padrões `true`, 25, 30, 0,60 e 5. Com
+  `exploracao_ligada: false` o pedido fora do catálogo é recusado como antes (31.33).
+- **Exploração no planejamento:** o plano do pedido fora do catálogo deixa de vir sem etapas: traz uma etapa por pedido,
+  com `exploratoria: true` e a chave `explorar_<verbo>_<objeto…>`. Evento novo `exploracao.iniciada`
+  (`data: {etapas, reaproveitadas, tetos {acoes, chamadas_ia, usd}}`). `plan.refused` ganha o motivo
+  `teto_de_exploracao_por_dia` (`data: {app_id, feitas, teto}`); o pedido de efeito segue `sem_acao_do_catalogo`.
+- **`GET` do relatório do aprendizado (`saude.exploracoes`):** `{por_conducao: {<condução>: n}, pct_sem_ia: number|null}`,
+  das etapas exploratórias que terminaram na janela; `pct_sem_ia` = parte conduzida por receita ou atalho.
+- **Prova:** `simulated` (`backend/tests/test_etapas_descobertas.py`, `test_exploracao_fora_do_catalogo.py`,
+  `test_migracao_130.py`, `test_learning_backlog.py`). `real`: `not_run` (a exploração real no Outlook depende do sim do
+  dono para o custo de API).

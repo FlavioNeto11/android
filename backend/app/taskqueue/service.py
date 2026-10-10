@@ -53,7 +53,7 @@ from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
 from .sombra_intencao import SombraDaIntencao
 from .vizinhos import aplicar as aplicar_vizinhos, linha_da_trilha as linha_vizinhos
-from ..planning import etapas_ensinadas, habilidades
+from ..planning import etapas_ensinadas, exploracao, habilidades
 
 log = logging.getLogger("poc.runs")
 
@@ -1273,8 +1273,13 @@ class RunService:
         # RA-7: a porta do item 13.2 também no PLANEJAMENTO, para todo plano (planejador, fluxo, skill), antes de
         # qualquer etapa existir. No despacho ela só recusava ao chegar na etapa com efeito, depois que os preparativos
         # (abrir, preencher destinatário, assunto…) já tinham gastado decisões.
+        motivo_da_recusa: dict[str, object] | None = None
         if plan.fora_do_catalogo:
-            self._recusar_fora_do_catalogo(run_id, plan)
+            # 31.273 (ADR-084): descobrir, não recusar. Só o impossível (efeito sem ação do catálogo, teto do dia, app
+            # desconhecido) segue recusado, com o motivo dito.
+            plan, motivo_da_recusa = self._explorar_ou_recusar(run_id, plan)
+        if plan.fora_do_catalogo:
+            self._recusar_fora_do_catalogo(run_id, plan, motivo_da_recusa)
             return
         if self._teto_observar(run_id) and (com_efeito := [s for s in plan.steps if s.side_effect or s.commit_guard]):
             self._recusar_pelo_teto(run_id, plan, com_efeito)
@@ -1476,17 +1481,84 @@ class RunService:
                            data={"motivo": "acima_da_autonomia", "teto": "observar", "etapas": chaves})
         self.repo.set_run_status(run_id, RunStatus.failed, texto, level="warn", message=f"Execução {run_id}: {texto}")
 
-    def _recusar_fora_do_catalogo(self, run_id: str, plan: Plan) -> None:
+    def _explorar_ou_recusar(self, run_id: str, plan: Plan) -> tuple[Plan, dict[str, object] | None]:
+        """Item 31.273 (ADR-084): o pedido que nenhuma ação do catálogo cobre vira UMA etapa livre de exploração por
+        pedido (`planning.exploracao`), de leitura e navegação, em vez de recusa. Devolve o plano com as etapas e sem
+        `fora_do_catalogo`, ou o plano de volta (a recusa de sempre) quando: a exploração está desligada
+        (`exploracao_ligada`); algum pedido é de efeito externo (a porta 13.2 não é contornada); o app é desconhecido; ou o
+        teto do dia por app (`exploracao_max_por_dia`) acabou. Quando já há receita ativa descoberta para a mesma chave,
+        a etapa é o molde dela (o executor a roda sem IA). Só ids, chaves e contagens vão à trilha e ao evento."""
+        s = self.scheduler.get_settings()
+        if not s.exploracao_ligada:
+            return plan, None
+        decididos = [(f, exploracao.classificar(f.pedido)) for f in plan.fora_do_catalogo]
+        if any(e.destino is exploracao.Destino.EFEITO or not f.app_id for f, e in decididos):
+            return plan, None
+        teto_dia = int(s.exploracao_max_por_dia)
+        if teto_dia > 0:
+            for app_id in dict.fromkeys(f.app_id for f, _ in decididos if f.app_id):
+                feitas = self._exploracoes_de_hoje(app_id)
+                if feitas >= teto_dia:
+                    texto = (f"Hoje já foram {feitas} explorações no app {app_id} (limite {teto_dia} por dia): não vou "
+                             "explorar de novo agora. Tente amanhã ou peça só o que o catálogo do app faz.")
+                    return plan, {"motivo": "teto_de_exploracao_por_dia", "texto": texto, "app_id": app_id,
+                                  "feitas": feitas, "teto": teto_dia}
+        conhecidas: dict[tuple[str, str], etapas_ensinadas.EtapaEnsinada] = {}
+        try:
+            conhecidas = {(e.app_id, e.nome): e for e in self.flows.etapas_descobertas(
+                sem_uso_dias=self.scheduler.cfg.file.ai.descobertas_sem_uso_dias)}
+        except Exception as exc:  # noqa: BLE001
+            log.info("etapas descobertas não lidas (%s): explora sem elas", exc)
+        passos: list[PlanStep] = []
+        reaproveitadas: list[str] = []
+        for f, e in decididos:
+            if any(p.key == e.chave for p in passos):
+                continue                                                   # o mesmo pedido dito duas vezes: uma etapa
+            achada = conhecidas.get((f.app_id or "", e.chave))
+            if achada is not None:
+                passo = achada.passo.model_copy(update={"exploratoria": True})
+                reaproveitadas.append(e.chave)
+            else:
+                passo = exploracao.passo_da_exploracao(f.pedido, e, app_id=None, nome_do_app=f.app)
+            passos.append(passo.model_copy(update={
+                "app_id": f.app_id if f.app_id != plan.app_id else None,
+                "depends_on": [passos[-1].key] if passos else []}))
+        chaves = [p.key for p in passos]
+        self.repo.decision(
+            "Exploração (31.273, ADR-084): o catálogo do app não cobre o pedido; explorando em vez de recusar — "
+            + "; ".join(f"{k}{' (receita descoberta antes: sem IA)' if k in reaproveitadas else ''}" for k in chaves)
+            + f". Tetos: {int(s.exploracao_max_acoes)} ações, {int(s.exploracao_max_chamadas_ia)} chamadas de IA, "
+            f"US$ {float(s.exploracao_max_usd):.2f}.", run_id=run_id)
+        self.repo.bus.emit("exploracao.iniciada", "O app não tem essa ação no catálogo: vou explorar.", run_id=run_id,
+                           data={"etapas": chaves, "reaproveitadas": reaproveitadas,
+                                 "tetos": {"acoes": int(s.exploracao_max_acoes),
+                                           "chamadas_ia": int(s.exploracao_max_chamadas_ia),
+                                           "usd": float(s.exploracao_max_usd)}})
+        return plan.model_copy(update={
+            "steps": passos, "missing": [], "fora_do_catalogo": [],
+            "success_criteria": [p.postcondition.description for p in passos]}), None
+
+    def _exploracoes_de_hoje(self, app_id: str) -> int:
+        """Quantas execuções de hoje (UTC) já tiveram etapa exploratória no app: o teto do dia por app."""
+        inicio = to_iso(parse_iso(now_iso()).replace(hour=0, minute=0, second=0, microsecond=0))
+        return int(self.repo.db.scalar(
+            "SELECT COUNT(*) FROM runs WHERE created_at >= ? AND app_ids LIKE ? AND plan LIKE ?",
+            (inicio, f'%"{app_id}"%', '%"exploratoria":true%')) or 0)
+
+    def _recusar_fora_do_catalogo(self, run_id: str, plan: Plan, motivo: dict[str, object] | None = None) -> None:
         """Item 31.33: o comando pede o que nenhuma ação do catálogo do app faz. Antes virava `needs_input` com uma
         pergunta ("Como devo fazer isso?") que a pessoa não tinha como responder: não há resposta que crie a ação. A
         execução termina recusada, sem etapa e sem pergunta, com o texto montado dos dados do catálogo (ADR-052): vale
         para qualquer app declarado, sem nome de app nem ação no código."""
         texto = " ".join(texto_fora_do_catalogo(f.pedido, f.app, f.disponiveis) for f in plan.fora_do_catalogo)
+        dados: dict[str, object] = {"motivo": "sem_acao_do_catalogo"}
+        if motivo is not None:                       # 31.273: a exploração foi negada por um teto, e o motivo diz qual
+            texto = str(motivo["texto"])
+            dados = {k: v for k, v in motivo.items() if k != "texto"}
         self.repo.save_plan(run_id, plan)
         self.repo.decision(f"Recusado no planejamento (item 31.33): {texto}", run_id=run_id)
         self.repo.bus.emit("plan.refused", texto, level="warn", run_id=run_id,
-                           data={"motivo": "sem_acao_do_catalogo",
-                                 "pedidos": [f.model_dump() for f in plan.fora_do_catalogo]})
+                           data={**dados, "pedidos": [f.model_dump() for f in plan.fora_do_catalogo]})
         self.repo.set_run_status(run_id, RunStatus.failed, texto, level="warn", message=f"Execução {run_id}: {texto}")
 
     def _recusar_no_planejamento(self, run_id: str, plan: Plan, recusadas: list[dict[str, object]]) -> None:

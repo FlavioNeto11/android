@@ -364,6 +364,13 @@ class LimitsCfg(BaseModel):
     # ausente: a porta pergunta de novo na execução; "Renovar" na prévia estende sem reabrir os itens.
     aprovacao_no_plano_validade_h: int = Field(24, ge=1, le=72)
     max_actions_per_step: int = Field(12, ge=1, le=60)
+    # 31.273 (ADR-084): o pedido fora do catálogo do app explora em vez de recusar. Tetos por exploração, lidos ao vivo
+    # (PUT /api/settings): medir e ajustar. Estourar um teto NÃO é falha silenciosa: a etapa para com o motivo dito.
+    exploracao_ligada: bool = True              # false = a recusa de antes (31.33)
+    exploracao_max_acoes: int = Field(25, ge=1, le=200)       # ações do executor na etapa exploratória
+    exploracao_max_chamadas_ia: int = Field(30, ge=1, le=500)  # chamadas de IA nas etapas exploratórias da execução
+    exploracao_max_usd: float = Field(0.60, ge=0, le=1000)    # US$ da execução (tokens x preço); 0 = sem teto em dinheiro
+    exploracao_max_por_dia: int = Field(5, ge=0, le=1000)     # explorações por dia por app; 0 = sem teto
     max_attempts_per_step: int = Field(3, ge=1, le=10)
     step_timeout_s: int = Field(180, ge=10, le=3600)
     objective_timeout_s: int = Field(900, ge=30, le=14400)

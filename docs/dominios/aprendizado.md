@@ -2795,3 +2795,34 @@ marca antes da leitura e com o Livro consultado pelo assunto da leitura; o assun
 antes; o Livro cobrindo não paga; o minerador; a porta com dois alvos e uma pesquisa). `real`: `not_run`. A 1ª
 operação sem assunto depois do deploy faz uma chamada paga, até o teto de US$ 0,25 por operação; ela pede o sim do
 dono para a validação.
+
+## A exploração e o que ela deixa (31.273, ADR-084)
+
+O pedido que nenhuma ação do catálogo do app cobre deixou de ser recusa. O planejador com catálogo segue devolvendo
+`fora_do_catalogo` (app e pedido, no infinitivo); o serviço de planejamento (`_explorar_ou_recusar`) o transforma em UMA
+etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `steps.exploratoria`, migração 130).
+
+- **Decisão (`planning/exploracao.py`, puro).** Verbo de leitura ou navegação explora; verbo que não está em nenhuma lista
+  explora também, com a ordem escrita no objetivo de não mudar nada; verbo de EFEITO (lista fechada) segue recusado, porque
+  efeito sem ação do catálogo passaria por fora da política do perfil (porta do 13.2). Também recusam: app desconhecido,
+  `limits.exploracao_ligada: false` e o teto do dia por app (`exploracao_max_por_dia`). A recusa por teto diz o motivo.
+- **Tetos (ao vivo, `limits.exploracao_*`).** 25 ações do executor na etapa; 30 chamadas de IA e US$ 0,60 (tokens x
+  preço, planejamento incluído) por execução, conferidos em `Executor._ai` antes de cada chamada; 5 explorações por dia por
+  app. Estourar não é falha calada: a etapa fecha como `budget` com a frase do que foi gasto.
+- **A chave é vocabulário.** `explorar_<verbo>_<objeto…>` só com palavras das listas do módulo: a mesma exploração, pedida de
+  outro jeito, dá a mesma chave. Sem objeto reconhecido a chave leva um sufixo de letras do hash do pedido e nunca é
+  oferecida. Quem amplia o vocabulário é pessoa (arquivo versionado), nunca o modelo.
+- **Achar de novo (`FlowStore.etapas_descobertas`).** Receita `active` cuja etapa de origem é exploratória, sem efeito, com o
+  molde refeito só com a chave (`molde_da_exploracao`): o título e o objetivo da execução levam o pedido (que pode ter um
+  nome) e nunca saem dela. Piso `ai.descobertas_sem_uso_dias` (90). A versão do app já está na chave da receita: versão nova
+  não a acha e a exploração roda de novo. Dois caminhos usam o molde: o bloco `<etapas_descobertas>` do planejador livre
+  (apps sem catálogo) e a própria exploração (a segunda vez do mesmo pedido, em app com catálogo), que reaproveita o molde e
+  roda por receita, sem IA.
+- **Degrau do catálogo.** A etapa exploratória já cai em `acoes_livres` (sem ação do catálogo). O limiar é 2 execuções reais
+  comprovadas (`ACAO_EXECUCOES_EXPLORADA`), a regra do Livro, e o fragmento sai preenchido com a chave, a prova por tela e
+  `side_effect: false`; política, risco e tela de partida ficam `A_DEFINIR`. Só chave e contagens vão ao texto.
+- **Medida.** `saude.exploracoes.por_conducao` e `pct_sem_ia`: das explorações que terminaram, quantas entraram por receita
+  ou atalho (0 chamadas de IA). É a medida de que o sistema aprende o que descobre.
+- **Prova.** `simulated`: `tests/test_exploracao_fora_do_catalogo.py`, `test_etapas_descobertas.py`, `test_migracao_130.py`,
+  `test_learning_backlog.py`. `real`: `not_run` (exploração real no Outlook: gasta API, pede o sim do dono). Faltam o aviso
+  no Telegram ao começar e ao concluir, e o selo da exploração no painel (o `exploracao` do GET do run é do Portal).

@@ -34,6 +34,7 @@ from ..util import now, now_iso, to_iso
 from .parecidos import parecidos as parecidos_do_texto
 from .vizinhos import Vizinho, pares_dos_fluxos
 from ..planning.etapas_ensinadas import EtapaEnsinada, oferecivel, oferecivel_descoberta
+from ..planning.exploracao import PREFIXO as PREFIXO_DA_EXPLORACAO, molde_da_exploracao
 
 RESERVED = {"instance_id", "run_id", "account_label"}
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
@@ -702,7 +703,13 @@ class FlowStore:
             plano = planos[run_id]
             passo = next((p for p in plano.steps if p.key == r["key"]), None) if plano else None
             app = (passo and passo.app_id) or (plano and plano.app_id) or r["app_id"]
-            if plano is None or passo is None or not app or not oferecivel_descoberta(passo, plano.parameters.values()):
+            if plano is None or passo is None or not app:
+                continue
+            if passo.key.startswith(PREFIXO_DA_EXPLORACAO):
+                # a exploração montada pelo sistema leva o pedido (que pode ter nome) no título e no objetivo: o molde
+                # oferecido às outras personas é refeito só com a chave, que é vocabulário fechado
+                passo = molde_da_exploracao(passo)
+            if passo is None or not oferecivel_descoberta(passo, plano.parameters.values()):
                 continue
             saida.append(EtapaEnsinada(nome=passo.key, app_id=str(app), passo=passo, receita=int(r["id"]),
                                        reproducoes=max(int(r["replay_ok"]), int(r["shadow_agree"])),

@@ -19,6 +19,26 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o pedido fora do catálogo explora em vez de recusar, e o que a IA descobre volta ao planejador (31.273, ADR-084; migração 130, adendo v1.130)
+
+- **Explorar.** O pedido que nenhuma ação do catálogo cobre (`fora_do_catalogo`) vira UMA etapa livre de exploração por
+  pedido (`planning/exploracao.py`, `PlanStep.exploratoria`), só de leitura e navegação, com a ordem de não mudar nada no
+  objetivo. Fica recusado, com o motivo dito, o pedido de EFEITO (verbo de lista fechada: enviar, publicar, seguir,
+  apagar, mudar…), o app desconhecido, a exploração desligada e o teto do dia por app. Tetos em `limits.exploracao_*`
+  (25 ações, 30 chamadas de IA, US$ 0,60, 5 por dia por app; `exploracao_ligada`), ao vivo; a etapa para com o motivo
+  dito (`_teto_da_exploracao` em `_ai`). Evento `exploracao.iniciada`.
+- **Achar de novo.** A chave da etapa é vocabulário fechado (`explorar_<verbo>_<objeto…>`, sem nome nem dígito).
+  `FlowStore.etapas_descobertas` oferece a receita ATIVA de etapa exploratória, sem efeito e sem valor de pessoa, com
+  molde refeito só com a chave (o pedido nunca vai a outra persona), piso de `ai.descobertas_sem_uso_dias` (90). Bloco
+  `<etapas_descobertas>` à parte no prompt; a ensinada por pessoa vence o nome repetido. Na segunda vez o pedido
+  explorado entra por receita, sem IA.
+- **O que fica.** Selo `nasceu_de_exploracao` na linha do Livro; a proposta `ACAO_DE_CATALOGO` da etapa exploratória sai
+  com 2 execuções (não 3) e o fragmento preenchido (nada grava o `catalogo.yaml` sozinho); `saude.exploracoes`
+  (por condução e `pct_sem_ia`) no relatório do aprendizado.
+- Prova **simulada**: `tests/test_exploracao_fora_do_catalogo.py`, `test_etapas_descobertas.py`, `test_migracao_130.py`
+  e os casos novos de `test_learning_backlog.py`. **Real: não executada** (a exploração no Outlook gasta API e pede o sim
+  do dono). PostgreSQL: não executado. Telegram e painel da exploração (Portal): não feitos.
+
 ## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
 
 - O motor de sessão (`integrations/app_declarado/sessao.py`) lê o código mais novo da caixa da conta (porta

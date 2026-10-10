@@ -857,3 +857,38 @@ def test_saude_do_aprendizado(mundo: Mundo) -> None:
     assert saude.etapas_por_conducao == {"recipe": 1, "ai": 2, "-": 1}         # "-": sem registro de quem conduziu
     assert saude.intervencoes == 1 and saude.intervencoes_por_10_execucoes == 5.0
     assert saude.pct_por_receita == pytest.approx(1 / 3)                        # só entre as que registraram
+
+def test_acao_de_catalogo_da_exploracao_sai_com_2_execucoes_e_o_fragmento_preenchido(mundo: Mundo) -> None:
+    """31.273 (ADR-084): a etapa que a IA descobriu por exploração (`steps.exploratoria`) propõe com 2 execuções reais
+    comprovadas (o limiar do Livro), não 3, e o fragmento do catálogo vem preenchido com a chave e a prova por tela."""
+    db = mundo.db
+    for i in range(2):
+        semear(db, f"r-expl{i}", dias(1 + i * 0.1), [Etapa("explorar_ver_caixa_lixo", None, "succeeded", [T("succeeded")],
+                                                            verificada=True, template_hash="th-expl")])
+    for i in range(2):   # a etapa livre comum com 2 execuções continua sem proposta
+        semear(db, f"r-comum{i}", dias(1 + i * 0.1), [Etapa("ver_ajuda", None, "succeeded", [T("succeeded")],
+                                                             verificada=True, template_hash="th-comum")])
+    db.execute("UPDATE steps SET exploratoria=1 WHERE key='explorar_ver_caixa_lixo'")
+    acoes = [p.proposta for p in mundo.falhas.relatorio(dias=14).propostas
+             if p.proposta.tipo is TipoDeProposta.ACAO_DE_CATALOGO]
+    assert [a.ref for a in acoes] == [f"{PACOTE}|etapa:explorar_ver_caixa_lixo"]
+    f = acoes[0].fragmento
+    assert "DESCOBERTA por exploração" in f and "th-expl" in f and "2 execuções reais" in f
+    assert "sugestão: VER_CAIXA_LIXO" in f and "post_value: a tela mostra: ver caixa lixo" in f
+    assert "side_effect: false" in f and "risk: A_DEFINIR" in f and "default_policy: A_DEFINIR" in f
+
+def test_saude_mede_quantas_exploracoes_ja_entram_sem_ia(mundo: Mundo) -> None:
+    """31.273 (ADR-084): a métrica de que o sistema aprende o que descobre: das explorações que terminaram, quantas
+    foram conduzidas por receita ou atalho (0 chamadas de IA)."""
+    db = mundo.db
+    for i, conducao in enumerate(["ai", "ai", "recipe", "recipe", "recipe"]):
+        semear(db, f"r-ex{i}", dias(1 + i * 0.1), [Etapa("explorar_ver_ajuda", None, "succeeded", [T("succeeded")],
+                                                          driven_by=conducao, verificada=True, template_hash="th-ex")])
+    semear(db, "r-comum", dias(1), [Etapa("ver_sobre", None, "succeeded", [T("succeeded")], driven_by="recipe",
+                                          verificada=True, template_hash="th-comum")])
+    db.execute("UPDATE steps SET exploratoria=1 WHERE key='explorar_ver_ajuda'")
+    saude = mundo.falhas.relatorio(dias=14).saude
+    assert dict(saude.exploracoes_por_conducao) == {"ai": 2, "recipe": 3}
+    assert saude.exploracoes_sem_ia_pct == 0.6
+    assert saude.pct_por_receita is not None                                  # a medida de sempre segue
+

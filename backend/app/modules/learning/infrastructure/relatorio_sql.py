@@ -395,9 +395,10 @@ class FontesDeFalhaSql:
         execucoes: dict[tuple[str, str], set[str]] = defaultdict(set)
         modelos: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
         sem_ia: Counter[tuple[str, str]] = Counter()
+        exploradas: set[tuple[str, str]] = set()
         for s in self._db.query(
-                "SELECT s.template_hash, s.template_key, s.key, s.app_id, s.run_id, s.result, s.driven_by, r.app_ids"
-                " FROM steps s JOIN runs r ON r.id = s.run_id WHERE r.simulated = 0 AND s.capability IS NULL"
+                "SELECT s.template_hash, s.template_key, s.key, s.app_id, s.run_id, s.result, s.driven_by, s.exploratoria,"
+                " r.app_ids FROM steps s JOIN runs r ON r.id = s.run_id WHERE r.simulated = 0 AND s.capability IS NULL"
                 " AND s.status = 'succeeded' AND s.template_hash IS NOT NULL AND s.finished_at >= ?"
                 " AND s.finished_at < ?", (desde, ate)):
             if not _comprovada(linhas.texto_ou_nulo(s, "result")):
@@ -407,9 +408,12 @@ class FontesDeFalhaSql:
             execucoes[k].add(linhas.texto(s, "run_id"))
             modelos[k][linhas.texto(s, "template_hash")] += 1
             sem_ia[k] += linhas.texto_ou_nulo(s, "driven_by") in _SEM_IA
+            if linhas.inteiro_ou_nulo(s, "exploratoria"):
+                exploradas.add(k)
         acoes = [AcaoLivre(app=app, chave=chave, execucoes=len(runs),
                            modelos=tuple(h for h, _n in modelos[(app, chave)].most_common()),
-                           etapas=sum(modelos[(app, chave)].values()), sem_ia=sem_ia[(app, chave)])
+                           etapas=sum(modelos[(app, chave)].values()), sem_ia=sem_ia[(app, chave)],
+                           exploratoria=(app, chave) in exploradas)
                  for (app, chave), runs in execucoes.items()]
         return sorted(acoes, key=lambda a: (-a.execucoes, a.app, a.chave))
 
@@ -437,9 +441,15 @@ class FontesDeFalhaSql:
             " AND created_at < ?" + ("" if simulados else " AND simulated = 0"),
             (*sorted(k.value for k in SINAIS_DE_INTERVENCAO), desde, ate))
         intervencoes += linhas.inteiro(sinais, "n") if sinais else 0
+        exploracoes: dict[str, int] = {}
+        for r in self._db.query(
+                "SELECT s.driven_by, COUNT(*) AS n FROM steps s JOIN runs r ON r.id = s.run_id WHERE s.exploratoria = 1"
+                " AND s.status = 'succeeded' AND COALESCE(s.finished_at, s.started_at) >= ?"
+                " AND COALESCE(s.finished_at, s.started_at) < ?" + real + " GROUP BY s.driven_by", (desde, ate)):
+            exploracoes[linhas.texto_ou_nulo(r, "driven_by") or SEM_CONDUCAO] = linhas.inteiro(r, "n")
         return SaudeDasExecucoes(execucoes=len(execucoes), execucoes_com_fluxo=sum(1 for f in fluxos if f),
                                  fluxos_distintos=len({f for f in fluxos if f}), etapas_por_conducao=conducao,
-                                 intervencoes=intervencoes)
+                                 intervencoes=intervencoes, exploracoes_por_conducao=exploracoes)
 
 
 def _comprovada(resultado: str | None) -> bool:

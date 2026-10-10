@@ -200,6 +200,11 @@ limits:
   boot_parallelism: 2
   max_steps_per_objective: 12
   max_actions_per_step: 12
+  exploracao_ligada: true         # 31.273 (ADR-084): pedido fora do catálogo do app explora (leitura e navegação) em vez de recusar
+  exploracao_max_acoes: 25        # ações do executor na etapa de exploração
+  exploracao_max_chamadas_ia: 30  # chamadas de IA nas etapas de exploração da execução
+  exploracao_max_usd: 0.60        # US$ por exploração (0 = sem teto em dinheiro); estourar para a etapa e diz o que viu
+  exploracao_max_por_dia: 5       # explorações por dia por app (0 = sem teto)
   max_attempts_per_step: 3
   step_timeout_s: 180
   objective_timeout_s: 900
