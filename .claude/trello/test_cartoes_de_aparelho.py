@@ -218,7 +218,7 @@ def test_ensaio_nao_grava_e_imprime_as_acoes():
     t = TrelloFalso()
     plano, _, saida = rodar(t, PARQUE, PERSONAS, aplicar=False)
     assert len(plano.acoes) == 3 and t.cartoes == {} and t.chamadas == []
-    assert saida[0] == "  criaria: android-01 · sessão pronta → Em execução; há 3 h"
+    assert saida[0] == "  criaria: android-01 · sessão pronta → EM CURSO · Em execução; há 3 h"
     assert saida[-1].startswith("aparelhos 4; com conta real 3; criar 3; atualizar 0; concluir 0;")
 
 
@@ -232,7 +232,7 @@ def test_mudanca_de_estado_move_o_cartao_sem_duplicar():
     c = t.cartoes[id_01]
     assert (c.lista, c.nome) == (LISTA_EM_VALIDACAO, "android-01 · sessão com erro") and len(t.cartoes) == 3
     assert "Motivo: desafio do app" in c.desc and "Desde: 2026-10-06 14:30Z" in c.desc
-    assert "→ Em validação (nome, descrição, lista)" in saida[0]
+    assert "→ EM CURSO · Em validação (nome, descrição, lista)" in saida[0]
     # e a volta: pronta de novo → Em execução
     plano, _, _ = rodar(t, PARQUE, PERSONAS)
     assert t.cartoes[id_01].lista == LISTA_EM_EXECUCAO and len(plano.acoes) == 1 and len(t.cartoes) == 3

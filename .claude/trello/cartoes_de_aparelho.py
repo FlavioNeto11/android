@@ -51,15 +51,19 @@ BACKEND_CENTRAL = Path(r"C:\git\android\backend")
 RAIZ_CENTRAL = BACKEND_CENTRAL.parent
 
 import redacao  # noqa: E402
+import modelo_de_foco as MF  # noqa: E402
 from redacao import redigir  # noqa: E402
 from resumo_laco import _sem_contato  # noqa: E402
 
 BASE_PADRAO = "http://127.0.0.1:8000"
 QUADRO_EXECUCAO = "6ac13aeda5570365d020f8e2"
-LISTA_EM_EXECUCAO = "6ac13b19b13017ef2d3ead07"
-LISTA_EM_VALIDACAO = "6ac13b1a043b867572d9dc49"
-LISTA_CONCLUIDO = "6ac13b1d2b3e0ab6f1126112"
-LISTAS = {LISTA_EM_EXECUCAO: "Em execução", LISTA_EM_VALIDACAO: "Em validação", LISTA_CONCLUIDO: "Concluído"}
+# Desde 10/10 o quadro tem EM CURSO (lista única, estado na etiqueta) e FEITO. Aqui "lista" é a POSIÇÃO lógica de
+# `modelo_de_foco`: a leitura traduz (lista real + etiqueta) para ela e o `ClienteDePosicoes` traduz de volta ao gravar.
+LISTA_EM_EXECUCAO = MF.POS_EM_EXECUCAO
+LISTA_EM_VALIDACAO = MF.POS_EM_VALIDACAO
+LISTA_CONCLUIDO = MF.POS_CONCLUIDO
+LISTAS = {LISTA_EM_EXECUCAO: "EM CURSO · Em execução", LISTA_EM_VALIDACAO: "EM CURSO · Em validação",
+          LISTA_CONCLUIDO: "FEITO"}
 
 #: o id do aparelho na API (`android-01`): é rótulo de infraestrutura, não serial nem hostname. Fora desse formato o
 #: aparelho é pulado (nada vai ao Trello com texto que não se reconhece).
@@ -397,14 +401,16 @@ def _novo_cliente():  # noqa: ANN202 - o tipo vem do backend do central
     from app.config import EnvSettings  # noqa: PLC0415 - só no modo de rede
     from app.modules.avisos.adapters.trello import ClienteTrello  # noqa: PLC0415
     e = EnvSettings()
-    return ClienteTrello(e.trello_api_key.get_secret_value().strip(), e.trello_token.get_secret_value().strip())
+    return MF.ClienteDePosicoes(ClienteTrello(e.trello_api_key.get_secret_value().strip(),
+                                              e.trello_token.get_secret_value().strip()))
 
 
 async def ler_cartoes(cl) -> list[Cartao]:  # noqa: ANN001
     """Os cartões ABERTOS do quadro Execução (uma chamada), só `id`, `name`, `desc` e a lista."""
     cs = await cl._pedir("GET", f"/1/boards/{QUADRO_EXECUCAO}/cards",  # noqa: SLF001
-                         params={"fields": "id,name,desc,idList", "filter": "open"})
-    return [Cartao(str(c["id"]), str(c.get("name", "")), str(c.get("desc", "")), str(c.get("idList", "")))
+                         params={"fields": "id,name,desc,idList,idLabels", "filter": "open"})
+    return [Cartao(str(c["id"]), str(c.get("name", "")), str(c.get("desc", "")),
+                   MF.posicao_do_cartao(str(c.get("idList", "")), c.get("idLabels") or []))
             for c in cs if isinstance(c, dict) and "id" in c]
 
 
