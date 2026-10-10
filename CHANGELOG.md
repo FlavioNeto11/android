@@ -30,6 +30,25 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   linha na rev 3) fica para a pessoa.
 - Prova **simulada**: `backend/tests/test_incertos_device_network.py` (16 casos) com `test_incertos_com_saida.py` e as
   catracas; mypy sem subir. **Real: não executada.**
+
+## 2026-10-10 — a exploração no Outlook real, com o modelo real (P-043: 31.273 e 31.298, prova `real` parcial)
+
+- **Real (10/10/2026, 18:54-19:09Z, `WIN-7S2UASNLFOP`, deploy 71 `6f525673`, `android-01`, Outlook da persona Lucas Almeida, sessão relida `session_ready` antes):**
+  - **Pedido A** ("Veja a pasta de lixo eletrônico do Outlook"), `r-20261010185405-78fc3f`: o planejador real devolveu uma etapa `explorar_abrir_pasta_lixo_eletronico` (exploratória, sem
+    efeito, sem `plan.refused`); `exploracao.iniciada`/`concluida` (resultado `concluida`); a IA abriu a pasta Junk e o juiz comprovou na tela; a receita 227 nasceu `candidate` (1 ação) e
+    o fluxo `f-05fb3dd0d2d0` nasceu candidato. Custo medido (`planning.costs.spent_usd`) US$ 0,0766 em 3 chamadas.
+  - **Repetições** A2 (`r-20261010190654-d1c86c`, US$ 0,0545) e A2b (`r-20261010190832-58e496`, US$ 0,0259, plano reaproveitado do fluxo sem chamar o planejador): concluídas pela IA; a
+    receita respondeu `nao_aplicavel` nas duas ("tela de partida diferente"). **O replay por receita NÃO foi provado no real**: a receita aprendida tem uma ação ("tocar em Junk") e só se
+    aplica com "Junk" já visível; em A2 o app estava dentro da pasta, em A2b na caixa de entrada (a IA abriu o menu primeiro). `nao_aplicavel` não conta a favor nem contra, então a
+    promoção a `active` não acontece. Parei aí (roteiro: A2 sem reaproveitamento = parar e registrar; sem A3).
+  - **Pedido B** (misto), `r-20261010185557-094cfe`: o **planejador real devolveu o catálogo em `steps` (OPEN_MAIL_INBOX, COLLECT_MAIL_HEADERS) e a exploração dependente da última**,
+    sem `plan.refused`: o prompt do 31.298 funciona com o modelo real. A **execução não completou**: `open_inbox` parou em `waiting_user` porque o guarda do ADR-009/058 viu no
+    `remetente` lido "formato de verificação da conta" (nada foi gravado); cancelei a execução (US$ 0,0792, 10 chamadas). A etapa exploratória do B não rodou.
+  - **Total medido US$ 0,2362 em 20 chamadas** (teto autorizado US$ 2,30); livro-caixa conferido (0,2876 desde 12:16Z = 0,0521 antes + 0,2362 desta prova).
+- **Não real:** o aviso no Telegram (canal) segue `simulated`; PostgreSQL. Nenhum conteúdo de e-mail foi lido ou copiado (a pasta Junk estava vazia).
+- **Achados para itens próprios:** (1) a receita da exploração precisa do caminho desde uma tela de partida conhecida (hoje só a última ação) para o replay valer fora de uma tela
+  específica; (2) o misto precisa de caixa cuja primeira mensagem não pareça verificação, ou de um teste melhor no guarda.
+
 ## 2026-10-10 — a limpeza do egresso funciona com o aparelho ainda em quarentena (31.317)
 
 - `devices/rede.py::atribuir` ganha `durante_quarentena` (padrão `False`): só a limpeza do egresso
