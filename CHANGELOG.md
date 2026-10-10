@@ -28,6 +28,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_conta_nao_encontrada.py` (12), `test_sessao_declarada`, `test_instagram_auth`,
   `test_aparelho_persona_sessao`, `test_egresso_na_janela`, `test_arquitetura`. `real`: `not_run`.
 
+## 2026-10-10 — o teto da exploração conta só a exploração e o aviso de efeito sai uma vez (31.331)
+
+- Achados da prova real do P-046: o teto em US$ estourava por uma chamada (0,1075/0,10 e 0,2615/0,25) e o planejamento o consumia; a etapa exploratória caía no orçamento
+  genérico da etapa livre (16 chamadas) antes do teto próprio; `exploracao.efeito_liberado` saía a cada versão do plano. `_teto_da_exploracao` agora soma só as etapas
+  exploratórias (`spent_usd(so_exploratorias=True)`) e considera a próxima chamada (gasto + média); `_ai` não aplica o orçamento por etapa à exploratória; o aviso sai uma vez
+  por execução, instância e chave. Sem campo nem rota novos (nota em `docs/api-contract.md`).
+- Prova **simulada**: `tests/test_teto_da_exploracao_31_331.py` (6). **Real: não executada** (nada pago).
+
 ## 2026-10-10 — o login mede o egresso dentro da janela e aborta se não casar (31.329)
 
 - `ConvergenciaDeRede.medir_para_o_login` mede a saída do aparelho AGORA e o motor de sessão (`_login`) a confere ANTES de digitar a

@@ -8321,7 +8321,10 @@ Sem rota nova. Campos aditivos; a forma do resto não muda.
   ninguém a demonstrou)".
 - **`limits.exploracao_ligada`, `exploracao_max_acoes`, `exploracao_max_chamadas_ia`, `exploracao_max_usd`,
   `exploracao_max_por_dia`** (config, lidos ao vivo por `PUT /api/settings`): padrões `true`, 25, 30, 0,60 e 5. Com
-  `exploracao_ligada: false` o pedido fora do catálogo é recusado como antes (31.33).
+  `exploracao_ligada: false` o pedido fora do catálogo é recusado como antes (31.33). **31.331:** `exploracao_max_usd` conta só as
+  chamadas das etapas exploratórias (o planejamento não consome o teto) e a conferência olha a PRÓXIMA chamada (gasto + média das já
+  feitas); a etapa exploratória não sofre o orçamento por etapa do histórico (`ai.step_budget`), só o teto próprio; o aviso
+  `exploracao.efeito_liberado` sai uma vez por execução, alvo e chave.
 - **Exploração no planejamento:** o plano do pedido fora do catálogo deixa de vir sem etapas: traz uma etapa por pedido,
   com `exploratoria: true` e a chave `explorar_<verbo>_<objeto…>`. Evento novo `exploracao.iniciada`
   (`data: {etapas, reaproveitadas, tetos {acoes, chamadas_ia, usd}}`). `plan.refused` ganha o motivo

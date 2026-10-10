@@ -654,8 +654,14 @@ class Portoes:
                                      veredito: Verdict, *, aprovada: bool) -> None:
         """31.297: a porta LIBEROU uma exploração de efeito (a política deixou, o grupo dispensou a aprovação ou a pessoa
         aprovou): o dono é avisado na hora, com o porquê. Só ids e códigos fechados: nem o pedido, nem o alvo, nem o texto da
-        tela. Falha ao avisar nunca segura o efeito que a política já liberou."""
+        tela. Falha ao avisar nunca segura o efeito que a política já liberou.
+
+        31.331: UM aviso por execução, alvo e chave. A recuperação automática do plano refaz a etapa (v2, v3…) e a porta passa de
+        novo: o dono recebia o mesmo aviso a cada versão (prova do P-046, 2 avisos por execução)."""
         try:
+            if self._st.db.scalar("SELECT 1 FROM events WHERE kind='exploracao.efeito_liberado' AND run_id=? AND instance_id=?"
+                                  " AND data LIKE ? LIMIT 1", (obj["run_id"], obj["instance_id"], f'%"{cap.key}"%')):
+                return
             origem = self._st.policies.origin_for(profile_id, cap, pacote)
             self._st.bus.emit(
                 "exploracao.efeito_liberado",

@@ -79,12 +79,15 @@ def day_start_iso() -> str:
 
 
 def spent_usd(db: Any, prices: dict[str, list[float]], *, run_id: str | None = None,
-              since: str | None = None, origem: str | None = None) -> float:
+              since: str | None = None, origem: str | None = None, so_exploratorias: bool = False) -> float:
     """Quanto já se gastou, em US$, nesta execução (`run_id`) ou desde um instante (`since`).
 
     `origem` (item 31.2, migração 073) restringe a quem pediu a chamada (`ai_calls.origem`); combina com `run_id` ou
     com `since`, e sozinho não define janela nenhuma (devolve 0, como a chamada sem `run_id` nem `since`). Linhas
     antigas têm `origem` NULL e nunca entram num filtro por origem.
+
+    `so_exploratorias` (31.331, com `run_id`): só as chamadas das etapas exploratórias da execução (`steps.exploratoria`);
+    o planejamento e as etapas do catálogo não entram. É a conta do teto em dinheiro da exploração.
 
     Agrupa por modelo e soma com o preço de cada um — inclusive as linhas do fallback, que ficam no modelo que
     REALMENTE respondeu (`ai_calls.model`), como a API cobra.
@@ -101,6 +104,9 @@ def spent_usd(db: Any, prices: dict[str, list[float]], *, run_id: str | None = N
     if origem is not None:
         where += " AND origem=?"
         params = (*params, origem)
+    if so_exploratorias and run_id is not None:
+        where += " AND step_id IN (SELECT id FROM steps WHERE run_id=? AND exploratoria=1)"
+        params = (*params, run_id)
     # `usd` (migração 048) é o custo DECLARADO de uma chamada cobrada por unidade — imagem — e vale no lugar dos
     # tokens daquela linha; onde é nulo, a conta continua sendo tokens × preço do modelo.
     linhas = db.query(

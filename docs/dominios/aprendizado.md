@@ -2891,3 +2891,13 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
   (filho sem clique) e a linha clicável da IA são o mesmo alvo. O motivo da divergência traz os dois (`a IA escolheu outra ação (IA: tap e73 <classe> [limites]; receita: ...)`),
   sem o texto da tela; a classe do retorno (`receita.retorno_ia`) não muda.
 - **Prova:** `simulated`, `backend/tests/test_receita_da_exploracao_parte_do_estado_conhecido.py` (12). `real`: `not_run` (o replay por receita no Outlook real segue por provar).
+
+## O teto da exploração conta só a exploração (31.331)
+
+- **Achados da prova real do P-046 (10/10, 2 execuções do mesmo pedido de efeito no Outlook):** US$ 0,1075 contra o teto 0,10 e US$ 0,2615 contra 0,25 (a checagem era
+  `gasto >= teto` antes de cada chamada: a que cruza o teto passa); o planejamento (US$ 0,038, sempre antes) comia o teto; a etapa exploratória falhou pelo orçamento
+  genérico da etapa livre (normal 3 a 8 chamadas, para em 16) antes de achar a linha; o aviso `efeito_liberado` saía a cada versão do plano.
+- **Regra:** `Executor._teto_da_exploracao` soma só as chamadas das etapas exploratórias (`costs.spent_usd(..., so_exploratorias=True)`) e para quando gasto + média por
+  chamada já feita não cabe no teto (a 1ª chamada não tem média e passa). `_ai` não aplica `_conferir_orcamento_da_etapa` à etapa exploratória: ela tem o teto próprio
+  (chamadas, US$ e ações). `gates._avisar_exploracao_de_efeito` avisa uma vez por execução, instância e chave (a recuperação do plano refaz a etapa e a porta passa de novo).
+- **Prova:** `simulated`, `backend/tests/test_teto_da_exploracao_31_331.py`. `real`: `not_run` (a 3ª prova do P-046 precisa de mensagem não lida e do sim do dono).

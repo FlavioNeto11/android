@@ -1067,10 +1067,14 @@ class StepExecutor:
                               + (f" ({origem})." if origem != f"{teto}" else "."), kind="budget")
                 self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id, marca)
                 raise exc
-        if step_id is not None and objective_id is not None and self.cfg.file.ai.step_budget.enabled:
+        exploratoria = step_id is not None and self._etapa_exploratoria(step_id)
+        if (step_id is not None and objective_id is not None and self.cfg.file.ai.step_budget.enabled
+                and not exploratoria):
+            # 31.331: a etapa exploratória tem o teto PRÓPRIO (`_teto_da_exploracao`); o normal medido de uma etapa livre (3 a 8
+            # chamadas, parava em 16) a derrubou na prova do P-046 antes de ela achar a linha da mensagem.
             self._conferir_orcamento_da_etapa(run_id, objective_id, step_id, role, run["app_ids"] if run else None,
                                               attempt_id, marca)
-        if step_id is not None and (parada := self._teto_da_exploracao(run_id, step_id, s)) is not None:
+        if exploratoria and step_id is not None and (parada := self._teto_da_exploracao(run_id, step_id, s)) is not None:
             exc = AIError(parada, kind="budget")
             self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id, marca)
             raise exc
@@ -1140,13 +1144,21 @@ class StepExecutor:
         assert last is not None
         raise last
 
+    def _etapa_exploratoria(self, step_id: str) -> bool:
+        """31.331: a etapa é exploratória (`steps.exploratoria`)? Uma leitura de uma linha."""
+        marca = self.repo.db.one("SELECT exploratoria FROM steps WHERE id=?", (step_id,))
+        return marca is not None and bool(marca["exploratoria"])
+
     def _teto_da_exploracao(self, run_id: str, step_id: str, s: LimitsCfg) -> str | None:
         """Item 31.273 (ADR-084): a etapa exploratória para quando as chamadas de IA das etapas exploratórias da execução
-        chegam a `exploracao_max_chamadas_ia`, ou o gasto da execução (tokens x preço, planejamento incluído) chega a
-        `exploracao_max_usd`. Devolve a frase do motivo (o que foi gasto e o que vale), ou `None`. A etapa que não é
-        exploratória não paga nada aqui além de uma leitura de uma linha."""
-        marca = self.repo.db.one("SELECT exploratoria FROM steps WHERE id=?", (step_id,))
-        if marca is None or not marca["exploratoria"]:
+        chegam a `exploracao_max_chamadas_ia`, ou o gasto delas (tokens x preço) chega a `exploracao_max_usd`. Devolve a
+        frase do motivo (o que foi gasto e o que vale), ou `None`. A etapa que não é exploratória não paga nada aqui
+        além de uma leitura de uma linha.
+
+        31.331 (prova do P-046: US$ 0,1075 contra 0,10 e US$ 0,2615 contra 0,25): o gasto conta SÓ as chamadas das etapas
+        exploratórias (o planejamento, que sempre vem antes, comia 40 % do teto de US$ 0,10) e a conferência olha a
+        PRÓXIMA chamada: o gasto mais a média das já feitas (estimativa; a 1ª chamada não tem média) tem de caber no teto."""
+        if not self._etapa_exploratoria(step_id):
             return None
         feitas = int(self.repo.db.scalar(
             "SELECT COUNT(*) FROM ai_calls WHERE run_id=? AND step_id IN"
@@ -1156,10 +1168,11 @@ class StepExecutor:
                     "Parei sem concluir; o que vi está nas ações da etapa.")
         teto_usd = float(s.exploracao_max_usd)
         if teto_usd > 0:
-            gasto = costs.spent_usd(self.repo.db, self.cfg.file.ai.prices, run_id=run_id)
-            if gasto >= teto_usd:
-                return (f"Teto da exploração: US$ {gasto:.2f} gastos (limite US$ {teto_usd:.2f}). Parei sem concluir; "
-                        "o que vi está nas ações da etapa.")
+            gasto = costs.spent_usd(self.repo.db, self.cfg.file.ai.prices, run_id=run_id, so_exploratorias=True)
+            proxima = gasto / feitas if feitas else 0.0
+            if gasto + proxima >= teto_usd:
+                return (f"Teto da exploração: US$ {gasto:.2f} gastos na exploração e a próxima chamada custaria cerca de "
+                        f"US$ {proxima:.2f} (limite US$ {teto_usd:.2f}). Parei sem concluir; o que vi está nas ações da etapa.")
         return None
 
     def _teto_de_chamadas(self, objective_id: str, feitas: int, s: LimitsCfg) -> tuple[int, str]:
