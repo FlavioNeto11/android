@@ -848,3 +848,5 @@ orquestradora; ela anota aqui antes de responder.
 | próximos livres (atualização 10/10 13:32Z) | 31.300, 29.212, 28.78; ADR-092; migração 134; adendo v1.136; K-112 | |
 | 31.300 | Android | scripts/tests: test_stop_appium_orfao falha na base (visto 10/10 pela Aprendizado, 1261 passaram e 1 falhou); diagnosticar e corrigir sem enfraquecer o teste | Android | reservado 10/10 13:37Z |
 | próximos livres (atualização 10/10 13:37Z) | 31.301, 29.212, 28.78; ADR-092; migração 134; adendo v1.135 (31.299 não usa); K-112 | |
+| 31.301 | Portal | painel de rede: editar a saída esperada do perfil pela rota PUT /api/network/profiles/{id} do 31.291 (adendo v1.134): formulário com IPv4/IPv6 e motivo, mostra antes/depois, trata o 409 egresso_esperado_protegido (pede motivo) e o 422 invalid_egress; evento network.updated na linha do tempo; o caso real foi SQL direto no android-05 em 10/10 | Portal | reservado 10/10 13:39Z |
+| próximos livres (atualização 10/10 13:39Z) | 31.302, 29.212, 28.78; ADR-092; migração 134; adendo v1.135; K-112 | |
