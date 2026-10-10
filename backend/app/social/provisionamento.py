@@ -25,6 +25,7 @@ from ..db import Row
 from ..models import (CredentialPrepare, PlannedAccountCreate, ProfileAccountDTO, ProvisioningEventBody,
                       ProvisioningInfo)
 from ..modules.identity.domain import provisionamento as prov
+from ..modules.identity.domain.cadastro import proximo_passo
 from ..modules.identity.domain.provisionamento import Estado, Evento
 from ..security.gerador_de_senha import TAMANHO_PADRAO, gerar_senha
 from ..security.redaction import redact
@@ -80,7 +81,8 @@ class ProvisionamentoDeContas:
         return ProvisioningInfo(
             state=estado.value, desired_handle=linha["desired_handle"], detail=linha["provisioning_detail"],
             resume_state=resume, confirmed_at=linha["confirmed_at"], evidence=evidencia,
-            actions=prov.eventos_aceitos(estado), authenticated=estado is Estado.CONFIRMADA and sessao_pronta)
+            actions=prov.eventos_aceitos(estado), authenticated=estado is Estado.CONFIRMADA and sessao_pronta,
+            proximo_passo=proximo_passo(estado.value, linha["provisioning_detail"]))
 
     # ------------------------------------------------------------------ planejar e sugerir
     def planejar(self, profile_id: str, body: PlannedAccountCreate, *, by: str) -> tuple[ProfileAccountDTO, bool]:
@@ -246,7 +248,7 @@ class ProvisionamentoDeContas:
 
     # ------------------------------------------------------------------ transições
     def transicao(self, profile_id: str, account_id: str, body: ProvisioningEventBody, *,
-                  by: str) -> ProfileAccountDTO | dict[str, object]:
+                  by: str, passo: str | None = None) -> ProfileAccountDTO | dict[str, object]:
         social = self.social
         social.get_account(profile_id, account_id)
         linha = self.repo.account_row(profile_id, account_id)
@@ -293,7 +295,7 @@ class ProvisionamentoDeContas:
             self.repo.db.execute("UPDATE account_credentials SET login_identifier=?, updated_at=? WHERE account_id=?",
                                  (handle, now_iso(), account_id))
         self._emitir(profile_id, account_id, linha["app_id"], evento.value, atual, r.estado,
-                     evidencia_tipo=json.loads(evidencia)["kind"] if evidencia else None)
+                     evidencia_tipo=json.loads(evidencia)["kind"] if evidencia else None, passo=passo)
         return social.get_account(profile_id, account_id)
 
     def _conferir_evidencia(self, profile_id: str, linha: Row, body: ProvisioningEventBody, *,
@@ -332,10 +334,12 @@ class ProvisionamentoDeContas:
         return {"removida": True, "credencial_removida": removida}
 
     def _emitir(self, profile_id: str, account_id: str, app_id: str, evento: str, de: Estado | None,
-                para: Estado | None, *, evidencia_tipo: str | None = None) -> None:
+                para: Estado | None, *, evidencia_tipo: str | None = None, passo: str | None = None) -> None:
         """Trilha da transição: só ids e estados. Nunca o endereço (desejado ou confirmado) nem valor de segredo."""
         dados: dict[str, object] = {"profile_id": profile_id, "account_id": account_id, "app_id": app_id,
                                  "evento": evento, "de": de.value if de else None, "para": para.value if para else None}
         if evidencia_tipo:
             dados["evidencia_tipo"] = evidencia_tipo
+        if passo:
+            dados["passo"] = passo                      # 31.310: código fechado do passo do cadastro guiado
         self.social.bus.emit("identity.conta.provisionamento", f"Conta de {app_id}: {evento}", data=dados)

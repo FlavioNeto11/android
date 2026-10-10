@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o cadastro guiado da conta planejada (31.310, ADR-087, adendo v1.137)
+
+- **Rota nova** `POST /api/instagram/profiles/{profile_id}/accounts/{account_id}/provisioning/signup` (202, verbo `session.cadastrar`) e campo aditivo
+  `ProvisioningInfo.proximo_passo` (`aguardando_pessoa:<captcha|desafio|telefone|usuario_indisponivel|tela_desconhecida|codigo_nao_chegou|conta_nao_lida|app_fora_do_ar>`).
+  Sem migração. O adendo v1.137 descreve estados, recusas (409 com código) e paradas.
+- **Motor determinístico, sem IA**, em `integrations/app_declarado/cadastro.py` + `cadastro_conhecimento.py`: o cadastro de cada app é dado (`cadastro.yaml`),
+  e o motor só conhece telas, campos e botões. Texto comum pelo caminho comum; senha e código do e-mail pelo canal sensível; um envio por cadastro;
+  confirma só pela sessão observada com o @ igual ao desejado. Para e chama a pessoa em CAPTCHA, "confirme que você é humano" (nada toca nela),
+  telefone, @ indisponível, tela desconhecida, código ausente ou recusado, conta não lida e app fora do ar. Sem solver, sem proxy, sem lote, uma conta por vez.
+- `security/secret_store.py` e `tests/test_segredo_de_rede.py`: `cadastro_guiado.py` entra na lista dos consumidores de `get_secret` (mesma função que o canal
+  sensível chama ao digitar, ADR-040); o texto e o teste mudaram juntos.
+- **Nenhum `cadastro.yaml` de app real** foi escrito (decisões D1 e D2 com o dono; um teste trava isso). Prova `simulated`: `tests/test_cadastro_guiado.py` (48 casos:
+  ciclo completo, 8 paradas, retomada sem reenvio, código velho, recusas, carga do yaml, varredura de vazamento), ordem das rotas 49, cobertura de rotas, arquitetura,
+  catracas e mypy no teto. `real`: `not_run` (criar uma conta de verdade num provedor depende de autorização do dono em chat).
+
 ## 2026-10-10 — o critério "aparelho-loja" da tela sensível sai do código (31.308, ADR-089)
 
 - `automation/hierarchy.py`: removidos `MOTIVO_LOJA` e o parâmetro `sempre_sensivel` de `parse_hierarchy`, sem chamador desde o ADR-089 (o

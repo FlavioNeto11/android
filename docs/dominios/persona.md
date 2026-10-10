@@ -247,6 +247,38 @@ linhas anteriores são `confirmada`):
   Sem persona escolhida (Automático) não há item: a nota manda preparar a credencial de cada uma em Contas e acesso depois da escolha.
 - **Não faz:** o cadastro no provedor (CAPTCHA, código e e-mail são da pessoa, ADR-009).
 
+### Cadastro guiado da conta planejada (31.310, ADR-087, adendo v1.137)
+
+Fecha o ciclo `credencial_preparada` → `confirmada` sem IA e sem que a plataforma conheça app nenhum.
+
+- **Dado do app:** `app/conhecimento/apps/<pacote>/cadastro.yaml`, ao lado do `sessao.yaml`
+  (`integrations/app_declarado/cadastro_conhecimento.py`, validado na carga): telas reconhecidas por texto e por resource-id, e a ação de
+  cada uma (`tocar`, `preencher`, `codigo`, `sucesso`, `parar`). O vocabulário do que um campo recebe é fechado (`usuario`, `nome`,
+  `primeiro_nome`, `sobrenome`, `email`, `senha`), e só a `senha` é segredo. Exatamente um formulário `envia: true`, exatamente uma tela de
+  `sucesso`. **Nenhum app real o declara ainda** (`test_nenhum_app_real_declara_cadastro_ainda`): D1 e D2 estão com o dono.
+- **Motor** (`integrations/app_declarado/cadastro.py`, `MotorDeCadastro`): a TELA decide cada passo, não uma memória. Observa, reconhece, age:
+  texto comum pelo caminho comum (conferindo o que ficou no campo), senha pelo canal sensível e só em campo que o Android diz ser de senha,
+  código do e-mail pelo mesmo canal, um toque em enviar e um em continuar. Reiniciar no meio retoma pelo estado gravado e pela tela, e o
+  formulário nunca é enviado duas vezes (só com a conta em `aguardando_cadastro_externo`, uma vez por execução, e a tela que volta ao
+  formulário depois do envio é `tela_desconhecida`). Uma parada depois do toque em enviar registra `enviado` antes de ir a `falha`
+  (o `resume_state` vira `aguardando_verificacao`), exceto `usuario_indisponivel`, que volta ao cadastro. O campo do código não é
+  conferido como `password` (é texto do e-mail, mas entra pelo canal sensível); e no `cadastro.yaml` o `tocar` de uma tela nunca é
+  o envio (só `preencher` + `envia: true` conta como tal).
+- **Paradas** (`identity/domain/cadastro.py::Parada`, códigos fechados): `captcha`, `desafio` ("confirme que você é humano", pela detecção
+  genérica de conta travada: nada toca nela; a conta nem existe ainda, então nada a bloqueia), `telefone`, `usuario_indisponivel`,
+  `tela_desconhecida`, `codigo_nao_chegou`, `conta_nao_lida`, `app_fora_do_ar`, `falha_interna` (erro nosso; só o nome do tipo vai ao log). Cada uma é `falhar` com o código em `provisioning_detail`,
+  e `ProvisioningInfo.proximo_passo` o repete. A tela do PEDIDO de código (subtipo `codigo` da detecção) não é trava: é a tela `codigo` do
+  app, ou, sem declarar, tela desconhecida.
+- **Ligação ao parque** (`identity/infrastructure/cadastro_guiado.py`): a rota valida (todos os 409 com código) e despacha o verbo
+  `session.cadastrar` pelo mesmo caminho de `session.verify`; `MesaDoAparelho` traduz o driver; `CicloNoBanco` faz cada transição por
+  `ProvisionamentoDeContas.transicao` (comparar e trocar), e a confirmação grava a sessão observada (`set_account_session`, o @ lido
+  na tela) e confirma com evidência `sessao`. `get_secret` ganhou este módulo como consumidor documentado (a mesma função que o canal
+  sensível chama no instante da digitação).
+- **Uma conta por vez** no parque inteiro (`cadastro_em_andamento`), nunca liga aparelho, nunca usa IA, sem solver de CAPTCHA, sem proxy,
+  sem lote.
+- **Prova:** `simulated` (`tests/test_cadastro_guiado.py`: ciclo completo, as 8 paradas, retomada, código velho, recusas da rota,
+  carga do yaml, varredura de vazamento). `real`: `not_run`, até o dono autorizar criar UMA conta de verdade num provedor.
+
 ### Sessão por conta (item 23.4)
 
 [ADR-057](../decisoes.md#adr-057--outlook-como-primeiro-app-novo-conta-por-app-sessão-por-conta-e-credencial-clonada-no-cofre).

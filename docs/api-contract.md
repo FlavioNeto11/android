@@ -8405,3 +8405,55 @@ Chaves de `config.yaml` (bloco `contas`, **desligado de fábrica**): `verificaca
 - **Prova:** `simulated` (`backend/tests/test_verificacao_periodica_de_sessao.py`: 21 casos, com o motor de sessão de verdade
   sobre o Instagram de mentira para a cadeia do desafio). `real`: `not_run` (nada liga sozinho no deploy; ligar no central é
   decisão de config).
+
+## Adendo v1.137 (10/10/2026; número concedido pela orquestradora; item 31.310, ADR-087) — o cadastro guiado da conta planejada
+
+Fecha o ciclo da conta planejada (adendo v1.132): a plataforma GUIA o cadastro no app, lê o código de confirmação da caixa de e-mail da
+própria conta e comprova a conta pela sessão observada. Determinístico (sem IA), uma conta por vez, e sempre devolve a pessoa nas telas
+que só ela resolve (CAPTCHA, "confirme que você é humano", telefone). Aditivo: nada que o painel usa hoje muda.
+
+- **Rota nova:** `POST /api/instagram/profiles/{profile_id}/accounts/{account_id}/provisioning/signup` → **202** com o comando
+  (`verb: session.cadastrar`, `requested_by` do operador, `instance_id`; aparece em `GET /api/commands`). Corpo opcional
+  `{ "instance_id": "android-07" }` (o aparelho vinculado da persona por padrão). Erros: **404** conta inexistente; **409**
+  `estado_inesperado` (`details.estado_atual`; só parte de `credencial_preparada`, de `aguardando_cadastro_externo` e de
+  `aguardando_verificacao`; de `falha`, `retomar` primeiro), **409** `sem_usuario_desejado`, **409** `sem_conhecimento_de_cadastro` (o app não
+  declara `cadastro.yaml`), **409** `sem_caixa_de_email` (o app declara passo de código por e-mail e a conta não tem caixa),
+  **409** `sem_credencial` / `sem_consentimento` (as de `iniciar_cadastro`), **409** `cadastro_em_andamento` (outro
+  `session.cadastrar` aberto no parque: uma conta por vez), **409** `aparelho_ocupado` (trabalho, controle manual ou aparelho
+  fora do ar; nunca liga o aparelho).
+- **O que o comando faz** (cada passo é uma transição do ciclo do v1.132 com `estado_esperado`; reiniciar no meio retoma pelo
+  estado gravado e pela tela, e NUNCA envia o formulário duas vezes):
+  1. `credencial_preparada` → `iniciar_cadastro`. Preenche o formulário declarado: o @ desejado, o nome e o e-mail como texto
+     comum, conferindo o que ficou no campo; a senha só pelo canal sensível, direto do cofre.
+  2. Toca em enviar UMA vez; ao sair da tela do formulário sem erro, `enviado` (`aguardando_verificacao`).
+  3. Se o app pede o código por e-mail: lê a caixa da conta, só um e-mail recebido DEPOIS do envio, digita pelo canal sensível e
+     toca em continuar uma vez.
+  4. Lê a conta na tela de sucesso declarada; com o @ igual ao desejado grava a sessão observada e faz `confirmar` com evidência
+     `sessao` (`ref` = o aparelho). Qualquer outra coisa não confirma.
+- **Paradas** (a pessoa assume; o comando termina `failed`; sem segunda tentativa, sem solver, sem proxy): o ciclo vai a `falha`
+  pelo evento `falhar`, com `resume_state` e o motivo fechado em `provisioning.detail`, e `provisioning.proximo_passo` o repete
+  como código. **Enviado é enviado:** se o formulário já foi tocado nesta execução e a parada não é `usuario_indisponivel` (a única
+  recusa declarada do provedor), a conta passa a `aguardando_verificacao` ANTES de ir a `falha`, e então o `resume_state` é
+  `aguardando_verificacao`: retomar não reabre o formulário, a tela decide. Nada é tocado se um desafio surge entre o preenchimento e o
+  toque em enviar.
+- **Campo novo (aditivo) `ProvisioningInfo.proximo_passo`:** `null` ou um de `aguardando_pessoa:captcha`,
+  `aguardando_pessoa:desafio` ("confirme que você é humano"; a conta pode estar a caminho de ser perdida: nada toca nela),
+  `aguardando_pessoa:telefone`, `aguardando_pessoa:usuario_indisponivel` (o @ desejado foi recusado pelo provedor: edite o @ e
+  retome), `aguardando_pessoa:tela_desconhecida`, `aguardando_pessoa:codigo_nao_chegou`, `aguardando_pessoa:conta_nao_lida`,
+  `aguardando_pessoa:app_fora_do_ar`, `aguardando_pessoa:falha_interna` (erro nosso, como cofre ou caixa de e-mail; o log e o evento
+  trazem só o nome do tipo do erro, nunca a mensagem). Derivado de `state == falha` e do `detail`; nunca guarda texto livre, o @, a senha nem o código.
+  Para retomar: `POST …/provisioning` com `evento: retomar` e depois `…/provisioning/signup` de novo (o formulário recomeça do
+  início; a tela decide, não um campo lembrado).
+- **Evento:** o `identity.conta.provisionamento` de sempre (v1.132), mais `passo` (código fechado do passo do cadastro) nas
+  transições que o comando faz. Nunca o @, a senha, o código nem texto da tela. Mais um evento `identity.cadastro` (`resultado`:
+  `confirmada` | `parada`, `motivo` fechado, `instance_id`) para o aviso do dono.
+- **Código do e-mail:** só um e-mail recebido DEPOIS do envio do formulário (ou, na retomada, depois da última mudança de estado da
+  conta); o código mais velho que a caixa ainda guarda nunca serve. Uma tentativa por cadastro: o código recusado, vencido ou ausente
+  devolve a conta à pessoa (`aguardando_pessoa:codigo_nao_chegou`), sem segundo código nem reenvio.
+- **Conhecimento do app:** `app/conhecimento/apps/<pacote>/cadastro.yaml`, ao lado do `sessao.yaml` (ADR-052), validado na carga:
+  telas por sinal, campos (o @ desejado, nome, e-mail, senha), botões, tela do código, tela de sucesso e telas de parada. O motor
+  não conhece app nenhum. Sem `cadastro.yaml`, 409 `sem_conhecimento_de_cadastro`; nenhum app real o declara ainda.
+- **Sem migração.** A caixa da conta é a de `caixas_email` (migração 132). Verbo novo `session.cadastrar` em `APP_COMMAND_VERBS`.
+- **Prova:** `simulated` (app de teste com `cadastro.yaml` próprio, aparelho e caixa de e-mail falsos). `real`: `not_run`; criar uma
+  conta de verdade num provedor depende de autorização do dono em chat e das decisões D1 (de onde vem a caixa de e-mail da conta
+  planejada) e D2 (primeiro app).

@@ -195,6 +195,13 @@ class ProvisioningEventBody(BaseModel):
     evidencia: ConfirmationEvidence | None = None
 
 
+class SignupBody(BaseModel):
+    """`POST …/provisioning/signup` (31.310, v1.137): o aparelho é opcional (o vinculado da persona por padrão)."""
+
+    model_config = ConfigDict(extra="forbid")
+    instance_id: str | None = Field(default=None, min_length=1, max_length=80)
+
+
 class PolicyGroupCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=80)

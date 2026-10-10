@@ -9,6 +9,9 @@ uso:
 
 - `taskqueue/executor.py` e `integrations/app_declarado/sessao.py`: montam a função que o canal sensível
   (`type_secret`) chama no instante da digitação da senha de uma conta (ADR-040). O valor não passa pela execução;
+- `modules/identity/infrastructure/cadastro_guiado.py` (31.310, adendo v1.137): o mesmo papel no cadastro guiado da conta
+  planejada. Monta a função que o canal sensível chama ao digitar no formulário do app a senha que a pessoa preparou
+  para AQUELA conta (com o consentimento dela, ADR-040); o motor (`app_declarado/cadastro.py`) só recebe a função;
 - `security/segredo_de_rede.py`: a chave ou a senha do perfil de rede entregue ao aparelho (ADR-056 §5);
 - `security/rekey.py`: recifra o cofre inteiro.
 

@@ -33,6 +33,7 @@ from .modules.execution.presentation.schemas import (  # noqa: F401
 from .modules.fleet.presentation.schemas import (  # noqa: F401
     AdoptDeviceBody, CommandCancelBody, CommandResolveBody, InstancePatch, InstanceProvisionBody, ReleaseBody,
     RepairPauseBody, ResolverQuarentenaBody, ServerLimitsPatch, WorkerEnrollBody, WorkerMaintenanceBody, WorkerRemoveBody)
+from .modules.identity.domain.cadastro import ProximoPasso
 from .modules.identity.domain.persona import BIOGRAPHY_SCHEMA_VERSION, crenca_legada, normalizar_biografia
 from .modules.identity.presentation.schemas import (  # noqa: F401
     ConfirmationEvidence, CredentialClone, CredentialPrepare, CredentialUpdate, MemoryCreate, PersonaDeviceBody, PersonaPreviewBody, PolicyGroupCreate, PolicyGroupPatch,
@@ -1301,6 +1302,9 @@ class ProvisioningInfo(BaseModel):
     actions: list[str] = Field(default_factory=list)
     #: Derivado: confirmada e sessão pronta no aparelho vinculado. Nunca é estado gravado.
     authenticated: bool = False
+    #: 31.310 (v1.137): quando o cadastro guiado parou e chamou uma pessoa. Derivado de `falha` + `detail` (código fechado);
+    #: nulo em qualquer outro caso. Nunca texto livre, o @, a senha nem o código.
+    proximo_passo: ProximoPasso | None = None
 
 
 class ProfileAccountDTO(BaseModel):

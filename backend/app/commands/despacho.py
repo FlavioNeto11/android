@@ -172,7 +172,8 @@ def _publish_command(s: AppState, row: Row) -> None:
 #: (`devices/rede_convergencia.py`), por `comando_no_trabalho`: o verbo não tem executor próprio, o trabalho vai como
 #: `factory`.
 APP_COMMAND_VERBS = {"app.install", "app.verify", "app.canary", "app.rollback", "app.distribute", "store.sync",
-                     "session.connect", "session.verify", "session.logout", "device.proxy", "device.network"}
+                     "session.connect", "session.verify", "session.logout", "session.cadastrar", "device.proxy",
+                     "device.network"}
 #: Na quarentena (ADR-055), os verbos de app e de sessão que continuam: ler o que está instalado (`app.verify` é
 #: inspeção por adb, não abre o app) e a cópia da loja (a loja nunca tem conta de tarefa). Instalar, provar e voltar
 #: de versão terminam na prova de ABERTURA do app; os de sessão abrem a conta travada.

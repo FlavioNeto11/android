@@ -42,10 +42,10 @@ from app.models import (
 )
 from app.modules.identity.application.ponte_igfarm import ErroDaPonte
 from app.modules.identity.domain.ponte_igfarm import SENHAS_MASCARADAS, ComandoDeRegistro, PersonaPendente
+from app.modules.identity.infrastructure.cadastro_guiado import CadastroGuiado
 from app.modules.identity.infrastructure.ponte_igfarm import compor_ponte_igfarm
 from app.modules.identity.presentation.schemas import (CodigoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
-                                                       EgressoDoDeviceDTO,
-                                                       PersonaPendenteDTO)
+                                                       EgressoDoDeviceDTO, PersonaPendenteDTO, SignupBody)
 from app.modules.identity.presentation.comum import device, mime_da_chave, quem, servir_do_storage, social_error
 from app.social.capacidades import capacidades_do_perfil
 from app.social.policy import DEFAULT_LIMITS
@@ -525,6 +525,19 @@ async def provision_account_event(request: Request, profile_id: str, account_id:
     """Um evento do ciclo da conta planejada, com o `estado_esperado` (comparar e trocar). Idempotente."""
     try:
         return _st(request).social.provisionamento.transicao(profile_id, account_id, body, by=quem(request))
+    except SocialError as exc:
+        raise social_error(exc) from exc
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/provisioning/signup", status_code=202,
+             response_model=None)
+async def signup_account(request: Request, profile_id: str, account_id: str, body: SignupBody | None = None) -> object:
+    """31.310 (v1.137): o cadastro guiado da conta planejada. Valida (409 com código) e despacha o comando `session.cadastrar`:
+    preenche o formulário declarado pelo app, lê o código da caixa da conta e comprova a conta pela sessão observada. Para e
+    chama uma pessoa em CAPTCHA, telefone, @ indisponível e tela desconhecida. Uma conta por vez; nunca liga o aparelho."""
+    try:
+        return CadastroGuiado(_st(request)).iniciar(profile_id, account_id,
+                                                    instance_id=body.instance_id if body else None, by=quem(request))
     except SocialError as exc:
         raise social_error(exc) from exc
 

@@ -273,6 +273,8 @@ def test_get_secret_so_nos_consumidores_documentados() -> None:
         # O canal sensível recebe a função que resolve o valor no instante da digitação; estes dois a montam.
         "app/taskqueue/executor.py",
         "app/integrations/app_declarado/sessao.py",
+        # 31.310: o cadastro guiado monta a mesma função para o formulário do app (senha preparada para aquela conta).
+        "app/modules/identity/infrastructure/cadastro_guiado.py",
     }
     achados = {p.relative_to(BACKEND).as_posix() for p in (BACKEND / "app").rglob("*.py")
                if re.search(r"\.get_secret\(", p.read_text(encoding="utf-8"))}
