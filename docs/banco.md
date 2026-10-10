@@ -289,6 +289,36 @@ Não por preciosismo: cada uma quebraria no PostgreSQL.
   - `social/repository.py` (`marcar_conta_travada`);
   - `modules/learning/infrastructure/validacao_de_skills.py` (`add_case`).
 
+## Uma conexão por thread e uma trava só de escrita (31.320, 10/10/2026)
+
+- **O defeito.** `Database` tinha UMA conexão e UM `RLock`. Uma leitura de 5 s numa thread do pool segurava o lock, e o `emit` (INSERT em
+  `events`) e o `_tick` do scheduler, que rodam na thread do laço de eventos, esperavam por ele: o laço ficou sem batida 10 a 71 s quatro vezes
+  em 10/10 (16:33Z, 18:06Z, 18:31Z, 18:50Z; `data/logs/laco-travado-*.txt`). Mover cada chamada para `asyncio.to_thread` (31.307) não basta,
+  porque o `emit` e o `_tick` passam pela conexão única de qualquer jeito.
+- **O modelo.** Cada thread abre a sua conexão na primeira chamada (`threading.local`, `check_same_thread=False`, os mesmos PRAGMAs: WAL,
+  `synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=5000`) e a fecha ao acabar (finalizador do objeto da thread). `_tx_depth`, `_suspeita` e
+  os efeitos de `depois_do_commit` são da thread; `db._conn`, `db._tx_depth` e `db._suspeita` seguem existindo como propriedades da thread atual
+  (os testes que injetam conexão frágil dependem disso). No SQLite em WAL, a leitura de uma conexão não bloqueia leitura nem escrita de outra, e
+  vê o último estado COMITADO, nunca o meio da transação alheia.
+- **A trava de escrita** (`Database._escrita`, só SQLite; no PostgreSQL o servidor arbitra). O SQLite tem um escritor só; sem uma trava dentro do
+  processo, o `emit` do laço esperaria o `busy_timeout` e estouraria `database is locked`, perdendo evento. `tx()` e `savepoint()` de fora a pegam;
+  `execute/query/one` só pegam se a instrução não for leitura. **Leitura = o primeiro token (depois de espaço e comentário) é `SELECT` ou `EXPLAIN`**;
+  `WITH`, `PRAGMA`, `INSERT … RETURNING`, `(SELECT …)` e comentário não fechado contam como escrita (errar para esse lado custa uma fila a mais).
+- **Quem segura.** A trava guarda `(thread, chamador, desde)`. O aviso de consulta lenta na thread do laço passou a dizer quem a SEGURAVA
+  (`a trava de escrita estava com <thread> (<arquivo:linha em função>), presa há X s`), e uma posse acima de 2 s vira aviso à parte
+  (`a trava de escrita do banco ficou presa X s por …`).
+- **Limite honesto.** Escrita contra escrita segue numa fila só (limite do SQLite): uma transação de escrita LONGA numa thread (a retenção a cada
+  6 h, `_purgar_demais_tabelas`; os saldos a cada 10 min) ainda faz o laço esperar a vez. O ganho cobre leitura lenta e escrita curta, que são os
+  quatro despejos de 10/10. Os escritores longos entram na etapa 2 do 31.320, em fatias curtas, guiados pelo aviso acima.
+- **Teto de conexões.** Uma por thread viva que já falou com o banco: o executor padrão do `to_thread` (`min(32, CPU+4)`), o laço, o uvicorn e os
+  laços de fundo. `LIMITE_DE_CONEXOES = 40` avisa no log (no máximo um por minuto). No PostgreSQL cada thread é uma conexão (`max_connections` padrão
+  100); não há `psycopg_pool` de propósito (dependência e ciclo de vida novos sem ganho agora).
+- **`:memory:`** vira um arquivo temporário da instância (apagado no `close()`): com conexão por thread, cada conexão em memória seria outro banco.
+  O `tests/test_db.py` já usava arquivo em `tmp_path`; só o dublê `_Falso` fala em `:memory:`, sem abrir conexão.
+- **Prova** (`simulated`): `tests/test_db_conexao_por_thread.py`. Uma leitura artificial de 5 s numa thread (SQLite: função `sleep_s` na conexão;
+  PostgreSQL: `pg_sleep`) com a thread do laço fazendo `query`, `INSERT` e `tx()` a cada 100 ms: o maior intervalo sem batida cai de ~4,7 s (modelo
+  antigo, medido no mesmo teste) para ~0,1 s e nenhuma escrita se perde. `real` (central) e PG inteiro: `not_run`.
+
 ## Rodar a suíte contra o PostgreSQL
 
 Prova o aplicativo **inteiro** no outro banco, não só as peças conferidas à mão. Cada teste ganha um schema

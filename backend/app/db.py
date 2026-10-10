@@ -16,15 +16,20 @@ Três coisas o resto do código não precisa saber:
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import json
 import logging
 import re
+import shutil
 import sqlite3
+import sys
+import tempfile
 import threading
 import time
 import traceback
-from contextlib import contextmanager
+import weakref
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -38,6 +43,12 @@ log = logging.getLogger("poc.db")
 #: travamento de 70 s. No máximo um aviso por `INTERVALO_DO_AVISO_NO_LACO_S`.
 LIMITE_DA_CONSULTA_NO_LACO_S = 1.0
 INTERVALO_DO_AVISO_NO_LACO_S = 5.0
+#: 31.320: a trava de ESCRITA segurada por mais que isto vira aviso, com o dono (thread e chamador). Quem espera passa do limite de cima;
+#: aqui o aviso é de quem SEGURA, que é o dado que faltava para achar o escritor longo (retenção, saldos).
+LIMITE_DA_POSSE_DA_ESCRITA_S = 2.0
+#: 31.320: uma conexão por thread. O teto esperado é o executor padrão do `asyncio.to_thread` (min(32, CPU+4)) mais o laço, o uvicorn e os
+#: laços de fundo; passar disto vira aviso (no máximo um por minuto) porque o PostgreSQL tem `max_connections` (100 por padrão).
+LIMITE_DE_CONEXOES = 40
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 
@@ -121,25 +132,169 @@ def _e_postgres(dsn: str) -> bool:
     return dsn.startswith(("postgres://", "postgresql://"))
 
 
+#: Primeira palavra da instrução, depois de espaço e de comentário (`-- …` e `/* … */`) iniciais.
+_PRIMEIRA_PALAVRA = re.compile(r"(?:\s+|--[^\n]*(?:\n|$)|/\*.*?\*/)*([A-Za-z]+)", re.DOTALL)
+
+
+@functools.lru_cache(maxsize=4096)
+def _e_leitura(sql: str) -> bool:
+    """31.320: a instrução só LÊ? Conservador, pelo primeiro token: só `SELECT` e `EXPLAIN` são leitura. `WITH` (pode ser um CTE que
+    escreve), `PRAGMA`, `INSERT…RETURNING` e tudo o mais pegam a trava de escrita; comentário não fechado ou `(SELECT …)` também (sem
+    casamento = escrita). Errar para o lado da escrita custa só uma fila a mais; errar para o outro lado, um `database is locked`."""
+    achou = _PRIMEIRA_PALAVRA.match(sql)
+    return achou is not None and achou.group(1).upper() in ("SELECT", "EXPLAIN")
+
+
+def _onde_de_fora() -> str:
+    """`arquivo:linha em função` do primeiro quadro de fora deste arquivo (e do `contextlib`). Barato: anda pelos quadros, sem ler fonte."""
+    quadro = sys._getframe(1)
+    while quadro is not None and (quadro.f_code.co_filename.endswith("db.py") or quadro.f_code.co_filename.endswith("contextlib.py")):
+        quadro = quadro.f_back
+    if quadro is None:
+        return "?"
+    return f"{Path(quadro.f_code.co_filename).name}:{quadro.f_lineno} em {quadro.f_code.co_name}"
+
+
+class _Fio:
+    """O que é DE UMA THREAD (31.320): a conexão, a profundidade da transação, a suspeita de conexão podre, os efeitos que esperam o
+    `COMMIT` e a posse da trava de escrita. Antes isto era da instância, e valia porque só uma thread por vez falava com a conexão."""
+
+    __slots__ = ("conn", "tx_depth", "suspeita", "depois", "escrita_n", "quem", "__weakref__")
+
+    def __init__(self, conn: Any) -> None:
+        self.conn = conn
+        self.tx_depth = 0
+        self.suspeita = False
+        self.depois: list[Callable[[], None]] = []
+        self.escrita_n = 0                      # quantas vezes ESTA thread entrou na trava de escrita (reentrância)
+        self.quem: tuple[str, str, float] | None = None   # quem segurava a escrita quando esta thread passou do limite de espera
+
+    def __del__(self) -> None:
+        # A thread acabou e levou o objeto: a conexão dela não pode vazar (thread curta do `to_thread`, teste, script).
+        try:
+            self.conn.close()
+        except Exception:               # noqa: BLE001 - fechar na faxina nunca levanta
+            pass
+
+
 class Database:
-    """Conexão única serializada por lock. As operações são de milissegundos, então são chamadas direto."""
+    """Uma conexão por thread (31.320); no SQLite, as escritas se serializam por UMA trava só de escrita.
+
+    Antes havia uma conexão e um `RLock` para tudo: a leitura lenta de uma thread do pool segurava o lock e o laço de eventos esperava
+    por ele (despejos do vigia de 10/10: 16:33Z, 18:06Z, 18:31Z, 18:50Z). Agora cada thread tem a sua conexão: no SQLite em WAL a leitura
+    de uma não bloqueia a leitura nem a escrita de outra, e a leitura vê o último estado COMITADO, nunca o meio de uma transação alheia.
+    O SQLite tem um escritor só; sem uma trava dentro do processo, quem espera pelo escritor estouraria `database is locked` no
+    `busy_timeout`, perdendo o evento. Com a trava, espera como esperava, e o aviso diz quem a SEGURA. No PostgreSQL o servidor arbitra.
+    As operações são de milissegundos, então são chamadas direto."""
 
     def __init__(self, dsn: Path | str):
         self.dsn = str(dsn)
         self.dialect = "postgres" if _e_postgres(self.dsn) else "sqlite"
-        self._lock = threading.RLock()
-        self._tx_depth = 0
+        #: `:memory:` não serve com conexão por thread (cada conexão seria outro banco): vira um arquivo temporário da instância.
+        self._pasta_temporaria: str | None = None
+        if self.dialect == "sqlite" and self.dsn == ":memory:":
+            self._pasta_temporaria = tempfile.mkdtemp(prefix="farm-db-")
+            self.dsn = str(Path(self._pasta_temporaria) / "memoria.sqlite3")
+        self._local = threading.local()
+        self._registro: weakref.WeakSet[_Fio] = weakref.WeakSet()
+        self._trava_do_registro = threading.Lock()
+        self._escrita = threading.Lock()
+        #: (thread, chamador, desde) de quem segura a trava de escrita agora; `None` livre.
+        self._dono: tuple[str, str, float] | None = None
         #: 31.307: quantas consultas passaram de `LIMITE_DA_CONSULTA_NO_LACO_S` NA THREAD DO LAÇO (o aviso é limitado no tempo).
         self.consultas_lentas_no_laco = 0
         self._ultimo_aviso_no_laco = float("-inf")
-        #: O que espera o `COMMIT` da transação de fora para rodar (`depois_do_commit`). Some no `ROLLBACK`.
-        self._depois_do_commit: list[Callable[[], None]] = []
-        #: A conexão pode estar podre sem ter falhado ainda (um ROLLBACK que não completou). A próxima chamada
-        #: fora de transação reabre antes de tentar, em vez de gastar uma falha para descobrir.
-        self._suspeita = False
-        #: Quantas vezes esta instância reabriu a conexão. É o número que prova que a reconexão aconteceu.
+        self._ultimo_aviso_da_posse = float("-inf")
+        self._ultimo_aviso_de_conexoes = float("-inf")
+        #: Quantas vezes esta instância reabriu uma conexão. É o número que prova que a reconexão aconteceu.
         self.reconexoes = 0
-        self._conn = self._abrir()
+        self._fio()                             # abre já, nesta thread: um banco inalcançável falha no construtor, como sempre
+
+    # -- por thread -------------------------------------------------------------
+    def _fio(self) -> _Fio:
+        fio: _Fio | None = getattr(self._local, "fio", None)
+        if fio is None:
+            fio = _Fio(self._abrir())
+            self._local.fio = fio
+            with self._trava_do_registro:
+                self._registro.add(fio)
+                abertas = len(self._registro)
+            if abertas > LIMITE_DE_CONEXOES:
+                self._avisar_conexoes(abertas)
+        return fio
+
+    @property
+    def conexoes_abertas(self) -> int:
+        """Quantas conexões (uma por thread que já falou com o banco e ainda vive) esta instância mantém abertas."""
+        with self._trava_do_registro:
+            return len(self._registro)
+
+    def _avisar_conexoes(self, abertas: int) -> None:
+        agora = time.monotonic()
+        if agora - self._ultimo_aviso_de_conexoes < 60.0:
+            return
+        self._ultimo_aviso_de_conexoes = agora
+        log.warning("%d conexões abertas com o banco (%s), acima de %d: uma por thread; confira o tamanho do executor e o "
+                    "`max_connections` do PostgreSQL", abertas, self.dialect, LIMITE_DE_CONEXOES)
+
+    # Os abaixo eram atributos da instância; os testes (`_ConexaoFragil`, `ConexaoQueAbortaComoOPostgres`) e o `test_operacoes` os
+    # leem e trocam, então seguem existindo, agora como a conexão e o estado da THREAD ATUAL.
+    @property
+    def _conn(self) -> Any:
+        return self._fio().conn
+
+    @_conn.setter
+    def _conn(self, valor: Any) -> None:
+        self._fio().conn = valor
+
+    @property
+    def _tx_depth(self) -> int:
+        return self._fio().tx_depth
+
+    @property
+    def _suspeita(self) -> bool:
+        return self._fio().suspeita
+
+    @_suspeita.setter
+    def _suspeita(self, valor: bool) -> None:
+        self._fio().suspeita = valor
+
+    @contextmanager
+    def _escrevendo(self) -> Iterator[None]:
+        """A trava de ESCRITA (só SQLite; no PostgreSQL o servidor arbitra). Reentrante por thread. Guarda o dono para o aviso."""
+        if self.dialect != "sqlite":
+            yield
+            return
+        fio = self._fio()
+        if fio.escrita_n:
+            fio.escrita_n += 1
+            try:
+                yield
+            finally:
+                fio.escrita_n -= 1
+            return
+        if not self._escrita.acquire(blocking=False):
+            if not self._escrita.acquire(timeout=LIMITE_DA_CONSULTA_NO_LACO_S):
+                fio.quem = self._dono           # quem segura passado do limite: o dado que o aviso mostra
+                self._escrita.acquire()
+        self._dono = (threading.current_thread().name, _onde_de_fora(), time.monotonic())
+        fio.escrita_n = 1
+        try:
+            yield
+        finally:
+            fio.escrita_n = 0
+            dono, self._dono = self._dono, None
+            self._escrita.release()
+            if dono is not None and time.monotonic() - dono[2] >= LIMITE_DA_POSSE_DA_ESCRITA_S:
+                self._avisar_posse(dono)
+
+    def _avisar_posse(self, dono: tuple[str, str, float]) -> None:
+        agora = time.monotonic()
+        if agora - self._ultimo_aviso_da_posse < INTERVALO_DO_AVISO_NO_LACO_S:
+            return
+        self._ultimo_aviso_da_posse = agora
+        log.warning("a trava de escrita do banco ficou presa %.1f s por %s (%s): quem escreve depois espera esse tempo, e o laço de "
+                    "eventos também, se for ele; divida a escrita em fatias curtas", agora - dono[2], dono[0], dono[1])
 
     # -- abertura ---------------------------------------------------------------
     def _abrir(self) -> Any:
@@ -152,15 +307,17 @@ class Database:
         `pg_terminate_backend` ou uma rede que piscou derrubavam o backend até alguém reiniciá-lo na mão — toda
         consulta passava a falhar, e o `/health` continuava dizendo `ok` porque não olhava o banco.
         """
-        with self._lock:
-            try:
-                self._conn.close()
-            except Exception:           # noqa: BLE001 - fechar uma conexão já morta não pode impedir a nova
-                pass
-            self._conn = self._abrir()
-            self._suspeita = False
+        fio = self._fio()
+        try:
+            fio.conn.close()
+        except Exception:               # noqa: BLE001 - fechar uma conexão já morta não pode impedir a nova
+            pass
+        fio.conn = self._abrir()
+        fio.suspeita = False
+        with self._trava_do_registro:
             self.reconexoes += 1
-            log.warning("conexão com o banco reaberta (%s) — reconexão nº %d", self.dialect, self.reconexoes)
+            numero = self.reconexoes
+        log.warning("conexão com o banco reaberta (%s) — reconexão nº %d", self.dialect, numero)
 
     def _abrir_sqlite(self) -> Any:
         conn = sqlite3.connect(self.dsn, check_same_thread=False, isolation_level=None)
@@ -275,8 +432,16 @@ class Database:
 
     # -- infraestrutura -------------------------------------------------------
     def close(self) -> None:
-        with self._lock:
-            self._conn.close()
+        with self._trava_do_registro:
+            fios = list(self._registro)
+        for fio in fios:
+            try:
+                fio.conn.close()
+            except Exception:           # noqa: BLE001 - fechar uma conexão já morta não impede de fechar as outras
+                pass
+        if self._pasta_temporaria is not None:
+            shutil.rmtree(self._pasta_temporaria, ignore_errors=True)
+            self._pasta_temporaria = None
 
     def _sql(self, sql: str) -> str:
         """`?` é a convenção do projeto. O PostgreSQL quer `%s`; traduzir aqui evita duas convenções no código.
@@ -328,7 +493,7 @@ class Database:
             i += 1
         return "".join(saida)
 
-    def _avisar_se_no_laco(self, gasto: float) -> None:
+    def _avisar_se_no_laco(self, gasto: float, quem: tuple[str, str, float] | None = None) -> None:
         """31.307: chamada na thread que roda um laço de eventos e que levou `gasto` s (esperar a trava incluso)? Avisa, com o
         primeiro quadro da pilha fora deste arquivo, e conta em `consultas_lentas_no_laco`. Nunca levanta."""
         try:
@@ -343,12 +508,14 @@ class Database:
             self._ultimo_aviso_no_laco = agora
             de_fora = next((q for q in reversed(traceback.extract_stack()) if not q.filename.endswith("db.py")), None)
             onde = f"{Path(de_fora.filename).name}:{de_fora.lineno} em {de_fora.name}" if de_fora else "?"
+            segurava = (f"; a trava de escrita estava com {quem[0]} ({quem[1]}), presa há {agora - quem[2]:.1f} s"
+                        if quem is not None else "")
             log.warning("consulta síncrona no laço de eventos levou %.1f s (%s): o laço ficou parado esse tempo; mova a "
-                        "chamada para fora dele (asyncio.to_thread)", gasto, onde)
+                        "chamada para fora dele (asyncio.to_thread)%s", gasto, onde, segurava)
         except Exception:  # noqa: BLE001 - a medida nunca derruba a consulta
             pass
 
-    def _com_reconexao(self, operacao: Callable[[Any], Any]) -> Any:
+    def _com_reconexao(self, operacao: Callable[[Any], Any], *, escrita: bool = False) -> Any:
         """Executa e, se a CONEXÃO tiver morrido, reabre e tenta uma vez mais.
 
         Uma tentativa a mais, não um laço: se a segunda também falhar, o banco está fora e quem chamou precisa
@@ -357,24 +524,29 @@ class Database:
         **Nunca dentro de uma transação.** Lá a conexão morta levou junto tudo o que a transação já tinha feito;
         repetir só a última instrução gravaria metade do trabalho. O erro sobe, o `tx()` desfaz o que der e a
         próxima chamada de fora reabre.
+
+        `escrita` (31.320): a instrução pode escrever, então passa pela trava de escrita (no SQLite). A leitura não pega trava nenhuma.
         """
         inicio = time.monotonic()                       # 31.307: a espera da trava entra na medida
+        fio = self._fio()
+        fio.quem = None
         try:
-            with self._lock:
-                if self._suspeita and self._tx_depth == 0:
+            with self._escrevendo() if escrita else nullcontext():
+                if fio.suspeita and fio.tx_depth == 0:
                     self._reabrir()
                 try:
-                    return operacao(self._conn)
+                    return operacao(fio.conn)
                 except ERROS_DE_CONEXAO:
-                    if self._tx_depth > 0:
-                        self._suspeita = True
+                    if fio.tx_depth > 0:
+                        fio.suspeita = True
                         raise
                     self._reabrir()
-                    return operacao(self._conn)
+                    return operacao(fio.conn)
         finally:
             gasto = time.monotonic() - inicio
             if gasto >= LIMITE_DA_CONSULTA_NO_LACO_S:
-                self._avisar_se_no_laco(gasto)
+                self._avisar_se_no_laco(gasto, fio.quem)
+            fio.quem = None
 
     def depois_do_commit(self, fn: Callable[[], None]) -> None:
         """Roda `fn` depois do `COMMIT` da transação aberta NESTA thread, fora da trava; sem transação, roda já. No
@@ -382,24 +554,31 @@ class Database:
         que o pediu saiu com o `ROLLBACK TO SAVEPOINT`). Existe para o efeito que outra thread vai ler (o assentamento
         de uma execução, 29.93): disparado dentro da transação, ele podia esperar a trava no laço de eventos, ou ler o
         estado de antes."""
-        with self._lock:
-            if self._tx_depth > 0:
-                self._depois_do_commit.append(fn)
-                return
+        fio = self._fio()
+        if fio.tx_depth > 0:
+            fio.depois.append(fn)
+            return
         fn()
 
     @contextmanager
     def tx(self) -> Iterator[Any]:
         """Transação curta e atômica. Reentrante: o bloco de dentro entra na transação do de fora."""
         pendentes: list[Callable[[], None]] = []
-        with self._lock:
-            outer = self._tx_depth == 0
+        fio = self._fio()
+        inicio = time.monotonic()
+        fio.quem = None
+        with self._escrevendo():
+            espera = time.monotonic() - inicio
+            if espera >= LIMITE_DA_CONSULTA_NO_LACO_S:
+                self._avisar_se_no_laco(espera, fio.quem)       # esperar a vez de escrever, na thread do laço, também para o laço
+            fio.quem = None
+            outer = fio.tx_depth == 0
             if outer:
                 # BEGIN IMMEDIATE no SQLite pega a trava de escrita já na abertura, evitando o erro tardio.
-                self._conn.execute("BEGIN IMMEDIATE" if self.dialect == "sqlite" else "BEGIN")
-            self._tx_depth += 1
+                fio.conn.execute("BEGIN IMMEDIATE" if self.dialect == "sqlite" else "BEGIN")
+            fio.tx_depth += 1
             try:
-                yield self._conn
+                yield fio.conn
                 if outer:
                     if self._transacao_abortada():
                         # Defesa em profundidade (22.5): os pontos conhecidos que engolem erro dentro de uma transação
@@ -407,22 +586,22 @@ class Database:
                         # o `COMMIT` virar `ROLLBACK` calado. O `except` abaixo faz o `ROLLBACK`.
                         raise TransacaoAbortada("transação abortada por um erro engolido lá dentro (sem savepoint): "
                                                 "nada foi gravado")
-                    self._conn.execute("COMMIT")
-                    pendentes, self._depois_do_commit = self._depois_do_commit, []
+                    fio.conn.execute("COMMIT")
+                    pendentes, fio.depois = fio.depois, []
             except BaseException:
                 if outer:
-                    self._depois_do_commit = []
+                    fio.depois = []
                     try:
-                        self._conn.execute("ROLLBACK")
+                        fio.conn.execute("ROLLBACK")
                     except Exception:   # noqa: BLE001 - ver abaixo
                         # Quando a CONEXÃO é o que caiu, o ROLLBACK também falha — e, sem este `except`, a falha
                         # da faxina substituía a exceção original: quem chamasse via "não foi possível desfazer"
                         # em vez do erro que de fato derrubou a transação. O banco já desfez tudo sozinho ao
                         # perder a sessão; o que falta é não usar mais esta conexão.
-                        self._suspeita = True
+                        fio.suspeita = True
                 raise
             finally:
-                self._tx_depth -= 1
+                fio.tx_depth -= 1
         for fn in pendentes:            # já gravado e fora da trava: o efeito lê o que foi gravado
             try:
                 fn()
@@ -455,45 +634,50 @@ class Database:
         Fora de transação é um `tx()` comum (cada instrução já seria a sua própria transação; assim o bloco ao menos
         é atômico).
         """
-        with self._lock:
-            if self._tx_depth == 0:
+        fio = self._fio()
+        with self._escrevendo():
+            if fio.tx_depth == 0:
                 with self.tx():
                     yield
                 return
-            nome = f"sp_{self._tx_depth}"
-            self._conn.execute(f"SAVEPOINT {nome}")
-            self._tx_depth += 1
-            suspeita_antes = self._suspeita
-            pendentes_antes = len(self._depois_do_commit)
+            nome = f"sp_{fio.tx_depth}"
+            fio.conn.execute(f"SAVEPOINT {nome}")
+            fio.tx_depth += 1
+            suspeita_antes = fio.suspeita
+            pendentes_antes = len(fio.depois)
             try:
                 yield
             except BaseException:
                 # 29.108: o efeito pedido dentro do sub-bloco desfeito sai com ele (a escrita que o pediu foi desfeita).
-                del self._depois_do_commit[pendentes_antes:]
+                del fio.depois[pendentes_antes:]
                 try:
-                    self._conn.execute(f"ROLLBACK TO SAVEPOINT {nome}")
-                    self._conn.execute(f"RELEASE SAVEPOINT {nome}")
+                    fio.conn.execute(f"ROLLBACK TO SAVEPOINT {nome}")
+                    fio.conn.execute(f"RELEASE SAVEPOINT {nome}")
                 except Exception:       # noqa: BLE001 - a conexão caiu: a exceção original é a que conta (ver tx())
-                    self._suspeita = True
+                    fio.suspeita = True
                 else:
                     # A conexão respondeu ao ROLLBACK TO e ao RELEASE: está viva. Um deadlock ou um statement timeout
                     # lá dentro é `psycopg.OperationalError` (em ERROS_DE_CONEXAO), e `_com_reconexao` já a tinha
                     # marcado suspeita — sem isto, a primeira instrução de fora reabria uma conexão boa à toa.
-                    self._suspeita = suspeita_antes
+                    fio.suspeita = suspeita_antes
                 raise
             else:
-                self._conn.execute(f"RELEASE SAVEPOINT {nome}")
+                fio.conn.execute(f"RELEASE SAVEPOINT {nome}")
             finally:
-                self._tx_depth -= 1
+                fio.tx_depth -= 1
+
+    def _escreve(self, sql: str) -> bool:
+        """A instrução passa pela trava de escrita? Só no SQLite, e só se não for `SELECT`/`EXPLAIN` (ver `_e_leitura`)."""
+        return self.dialect == "sqlite" and not _e_leitura(sql)
 
     def execute(self, sql: str, params: tuple | dict = ()) -> Any:
-        return self._com_reconexao(lambda c: c.execute(self._sql(sql), params))
+        return self._com_reconexao(lambda c: c.execute(self._sql(sql), params), escrita=self._escreve(sql))
 
     def query(self, sql: str, params: tuple | dict = ()) -> list[Row]:
-        return self._com_reconexao(lambda c: list(c.execute(self._sql(sql), params).fetchall()))
+        return self._com_reconexao(lambda c: list(c.execute(self._sql(sql), params).fetchall()), escrita=self._escreve(sql))
 
     def one(self, sql: str, params: tuple | dict = ()) -> Row | None:
-        return self._com_reconexao(lambda c: c.execute(self._sql(sql), params).fetchone())
+        return self._com_reconexao(lambda c: c.execute(self._sql(sql), params).fetchone(), escrita=self._escreve(sql))
 
     def scalar(self, sql: str, params: tuple | dict = ()) -> Any:
         row = self.one(sql, params)
@@ -681,7 +865,7 @@ class Database:
         """Aplica as migrações pendentes. `ao_aplicar(versao)` roda depois de cada uma (29.131: a marca da partida
         anda a cada migração); um erro dele não desfaz nem interrompe nada."""
         applied: list[str] = []
-        with self._lock, self._trava_de_migracao():
+        with self._escrevendo(), self._trava_de_migracao():
             self._conn.execute(
                 "CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)")
             # `schema_migrations` é a tabela que o próprio migrador cria; ela não nasce de um arquivo de migração,
