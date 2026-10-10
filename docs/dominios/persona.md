@@ -236,7 +236,12 @@ linhas anteriores são `confirmada`):
   de conta esperada do `Scheduler` (`scheduler.py`, `status='active'`). A entrega precisa do app no aparelho para o cadastro, e a etapa
   que cria a conta precisa passar pelo portão "a persona tem conta neste app"; fora do cadastro, `conta_esperada` não acha handle (vazio)
   e devolve `None`.
-- **Não faz:** o cadastro no provedor (CAPTCHA, código e e-mail são da pessoa, ADR-009) e o refinador por estado (31.282).
+- **Refinador por estado (31.282):** `ComandoAssistido.refinar` (`taskqueue/assistente.py`) lê, antes de chamar o modelo, o estado de cada
+  par (persona escolhida × app de conta do comando) em `taskqueue/contas_do_comando.py` (só leitura). O prompt recebe só o estado
+  (`RefineRequest.contas`; regra "contas e senhas nunca são pergunta"). Depois do modelo, `_sem_pergunta_de_credencial` descarta a pergunta que a
+  triagem marca como sensível e devolve `acoes_de_conta` (sem campo de texto, fora da triagem de resposta); com ação em aberto `ready` é falso.
+  Sem persona escolhida (Automático) não há item: a nota manda preparar a credencial de cada uma em Contas e acesso depois da escolha.
+- **Não faz:** o cadastro no provedor (CAPTCHA, código e e-mail são da pessoa, ADR-009).
 
 ### Sessão por conta (item 23.4)
 

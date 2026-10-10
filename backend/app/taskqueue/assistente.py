@@ -24,10 +24,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..db import loads
 from ..models import RunCreate, RunStatus, RunSummary
 from ..modules.identity.application.available_data import common_data
-from ..modules.execution.domain.command_refinement import (AppResumo, CommandRefinement, RefinamentoInvalido,
+from ..modules.execution.domain.command_refinement import (AcaoDeConta, AppResumo, CommandRefinement, RefinamentoInvalido,
                                                           RefineAnswer, RefineRequest, normalizar)
 from ..planning.provider import AIError
 from ..security.redaction import redact
+from .contas_do_comando import contas_do_comando
 from .costuras import RespostaAPergunta, avisar
 from .perguntas import (CAMPO_DADO_DA_PERSONA, CAMPOS_DE_DESTINO, CAMPOS_SEM_RESPOSTA_POR_TEXTO,
                         MENSAGEM_DADO_DA_PERSONA, TIPO_FORMATO, TRIAGEM, acrescimo, mensagem_da_recusa,
@@ -114,13 +115,16 @@ class ComandoAssistido:
         if not status.configured:
             raise RunError("ai_not_configured", status.notice, 503)
         perfis = self._perfis(instance_ids, profile_ids)
+        # 31.282 (ADR-087): o estado das contas de cada persona escolhida nos apps do comando, lido ANTES da chamada. O
+        # modelo recebe só o estado (nunca valor) e o painel recebe as ações por id; a senha deixa de ser pergunta.
+        contas, acoes = self._contas(comando, perfis)
         req = RefineRequest(
             command=comando,
             answers=[RefineAnswer(a.field, a.question, a.answer.strip()) for a in body.answers],
             apps=self._apps(),
             available_data=list(common_data(runs.dados, perfis)) if perfis else [],
             targets=self._alvos(instance_ids, perfis, profile_ids),
-            pending=pendentes)
+            pending=pendentes, contas=contas)
         try:
             refinado, usage = await runs.provider.refine_command(req)  # type: ignore[attr-defined]
         except AIError as exc:
@@ -133,6 +137,7 @@ class ComandoAssistido:
         except RefinamentoInvalido as exc:
             raise RunError("ai_error", f"O assistente devolveu um comando vazio: {exc}", 503,
                            {"kind": "invalid_output", "retryable": True}) from exc
+        refinado = self._sem_pergunta_de_credencial(refinado, acoes)
         # Custo fora de execução (ou da execução que está sendo respondida): entra no teto do dia e no relatório.
         # RA-10: o papel é `plan`, como o do plano; o motivo separa os dois na execução respondida.
         usage.motivo = "refinamento"
@@ -141,6 +146,34 @@ class ComandoAssistido:
         except Exception:  # noqa: BLE001 - contabilizar nunca derruba a resposta que já custou
             log.exception("não foi possível registrar o custo do refinamento")
         return refinado
+
+    def _contas(self, comando: str, perfis: Sequence[str]) -> tuple[list[str], list[AcaoDeConta]]:
+        """(linhas de estado, ações) dos pares persona × app de conta do comando. Sem persona escolhida ou sem app de conta
+        citado, nada: o Automático escolhe as personas depois, e aí a credencial de cada uma se prepara no painel."""
+        runs = self.runs
+        if not perfis:
+            return [], []
+        apps = runs._app_do_comando(comando, [])  # noqa: SLF001
+        de_conta = [a for a in apps if a in runs._apps_de_conta(apps)]  # noqa: SLF001
+        if not de_conta:
+            return [], []
+        nomes = {str(r["id"]): str(r["name"] or r["id"]) for r in runs.repo.db.query("SELECT id, name FROM apps")}
+        return contas_do_comando(runs.repo.db, perfis, de_conta, nomes)
+
+    @staticmethod
+    def _sem_pergunta_de_credencial(r: CommandRefinement, acoes: list[AcaoDeConta]) -> CommandRefinement:
+        """Senha nunca vira pergunta (ADR-087). A pergunta do modelo que a triagem marca como sensível ("a senha já está
+        guardada ou será definida?") é descartada AQUI, para qualquer provedor; no lugar entram as ações estruturadas de
+        conta (o painel as executa por id, sem texto e fora da triagem de resposta). Com ações em aberto, `ready` é falso."""
+        mantidas = [q for q in r.questions if TRIAGEM.pergunta_sensivel(q.question, q.field) is None]
+        descartou = len(mantidas) != len(r.questions)
+        notas = list(r.notes)
+        if descartou:
+            notas.append("A senha das contas não é pergunta: o painel a gera ou guarda direto no cofre, sem passar pela IA."
+                         + ("" if acoes else " Depois de escolher as personas, prepare a credencial de cada uma em "
+                                             "Contas e acesso."))
+        pronto = (r.ready or (descartou and not mantidas)) and not mantidas and not acoes
+        return r.model_copy(update={"questions": mantidas, "notes": notas, "ready": pronto, "acoes_de_conta": acoes})
 
     # ------------------------------------------------------------------ sucessora
     def sucessora(self, run_id: str, body: RunSuccessorBody, *,
