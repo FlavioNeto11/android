@@ -64,6 +64,7 @@ from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                          emit_needs_person_change, motivo_do_login_parado)
 from .modules.identity.application.sessions import SessionProviders
+from .modules.identity.infrastructure.verificacao_periodica import VerificacaoPeriodica
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
 from .modules.learning import esquecer_conta
 from .modules.learning.application.falhas import ServicoDeFalhas
@@ -214,6 +215,7 @@ class AppState:
     anexos_canal: ArmazemDeAnexos
     avisos: ServicoDeAvisos
     vigia_do_host: VigiaDoHost
+    verificacao_periodica: VerificacaoPeriodica
     portal: Portal
     decisoes_registro: RegistroSql
     decisoes: ServicoDeDecisoes
@@ -1417,6 +1419,7 @@ class AppState:
                                                 name="portal-borda"))
             # O ensaio de restauração e o disco do central (28.60, 28.58): no mesmo líder, só com o aviso ligado.
             self._bg.append(asyncio.create_task(self.vigia_do_host.laco(lambda: self._lider(AVISOS)), name="vigia-do-host"))
+            self._bg.append(asyncio.create_task(self.verificacao_periodica.laco(), name="verificacao-periodica-de-sessao"))
             # O recolher das decisões automáticas (28.25) em qualquer réplica; o resumo, só no líder da trava `avisos`.
             self._bg.append(asyncio.create_task(self.decisoes.laco(), name="decisoes-automaticas"))
             # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).

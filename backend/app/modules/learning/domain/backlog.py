@@ -723,6 +723,9 @@ class SaudeDasExecucoes:
     intervencoes: int
     #: 31.273: as etapas exploratórias que terminaram na janela, por condução (a métrica do ADR-084).
     exploracoes_por_conducao: Mapping[str, int] = field(default_factory=dict)
+    #: 31.302: as releituras periódicas da sessão da conta âncora na janela, por desfecho (verificada / mudou / erro /
+    #: pulada) e quantas das que mudaram deixaram a persona bloqueada. É a prova de que o laço roda e do que ele achou.
+    verificacoes_de_sessao: Mapping[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -734,6 +737,7 @@ class Saude:
     etapas_por_conducao: Mapping[str, int] = field(default_factory=dict)
     intervencoes: int = 0
     exploracoes_por_conducao: Mapping[str, int] = field(default_factory=dict)
+    verificacoes_de_sessao: Mapping[str, int] = field(default_factory=dict)
 
     @property
     def exploracoes_sem_ia_pct(self) -> float | None:

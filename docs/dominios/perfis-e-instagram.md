@@ -805,3 +805,17 @@ receber contas novas.
   se uma pessoa já resolveu), sem retroativo na subida (retirada anterior ao deploy segue pela rota manual do 29.24), sem o @ em evento ou log.
   **Antes do deploy:** um marcador velho e já mascarado (retirada anterior ao deploy) aberto num aparelho faz a limpeza nova recusar ali
   (`outra_conta`, recusa segura, evento de erro); resolva-o antes pela rota do 29.24 (em 03/10: o do android-04).
+
+## A conta âncora ociosa é relida de tempos em tempos (31.302)
+
+- **Por quê.** A validade da sessão (`contas.session_max_age_s`) só reverifica ANTES de uma tarefa. A persona que ninguém usa
+  fica `session_ready` mesmo que o app já mostre "Confirm you're human": a conta bloqueada só é vista por observação
+  (ADR-055, ADR-068). O laço `VerificacaoPeriodica` (`modules/identity/infrastructure/verificacao_periodica.py`) fecha esse buraco.
+- **Como.** A cada `contas.verificacao_periodica_h` horas (0 = desligado, o padrão) escolhe a sessão `session_ready` mais antiga
+  de persona ativa e a relê com `ensure_session(observe_only=True)`: sem IA, sem digitar, sem ligar aparelho. Uma conta por volta
+  e uma releitura por vez. Os motivos de pulo são fechados (`application/verificacao_periodica.py`): aparelho fora do ar, controle
+  manual (o 409 `device_busy`), aparelho ocupado, quarentena, pausa de reparo, worker em manutenção, CPU do host acima do limite
+  (a proteção contra funil e suíte), portão do botão "Verificar conta" e a tentativa recente que não leu a tela.
+- **O bloqueio não mora aqui.** O desafio visto na releitura cai em `aplicar_desafio` dentro do motor de sessão (a persona vai a
+  `blocked`, o aparelho a quarentena, `session.needs_person` avisa): é o caminho único do ADR-068. Evento e relatório:
+  [contrato v1.136](../api-contract.md#adendo-v1136-10102026-número-da-orquestradora-item-31302--a-releitura-periódica-da-sessão-da-conta-âncora).

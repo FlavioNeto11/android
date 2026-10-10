@@ -1166,3 +1166,8 @@ numerado é lacuna, a levar à orquestradora antes de desligar a operação pela
   parou no teto, não concluiu, cancelada), o custo (`spent_usd` da execução, lido ao montar) e as chamadas de IA. Falha ao ler o
   custo: a linha diz "indisponível".
 - **Prova:** `simulated`, `backend/tests/test_aviso_exploracao.py`. `real`: `not_run` (canal real e exploração real).
+
+## A releitura periódica da sessão não avisa por si (31.302)
+
+- O evento `session.verificacao_periodica` fica fora de `KINDS_QUE_AVISAM`: ele conta o que o laço fez (relida, mudou, pulada),
+  não pede nada do dono. Quando a releitura acha o desafio, o aviso que sai é o de sempre, `session.needs_person`.

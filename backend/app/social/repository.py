@@ -1078,6 +1078,20 @@ class SocialRepository:
                            " AND account_id IN (SELECT id FROM profile_accounts WHERE profile_id=?)",
                            (account_id, instance_id, profile_id))
 
+    def sessoes_prontas_a_reler(self, antes_de: str) -> list[Row]:
+        """31.302: as sessões `session_ready` de persona ATIVA, num aparelho a que ela está vinculada, cuja última leitura da
+        tela é mais velha que `antes_de` (ISO) ou não existe. Do mais velho ao mais novo (sem leitura primeiro), para a volta
+        pegar a que está há mais tempo sem ser olhada. Quem decide se a conta é a ÂNCORA e se o aparelho está livre é o
+        chamador: aqui só o que o banco sabe. Conta de site (`host`) fica de fora: o navegador não tem sessão de app."""
+        return self.db.query(
+            "SELECT s.account_id, s.instance_id, s.verified_at, a.profile_id FROM account_sessions s"
+            " JOIN profile_accounts a ON a.id=s.account_id AND COALESCE(a.host,'')=''"
+            " JOIN instagram_profiles p ON p.id=a.profile_id AND p.status='active'"
+            " JOIN device_profile_bindings b ON b.profile_id=a.profile_id AND b.instance_id=s.instance_id AND b.active=1"
+            " WHERE s.status='session_ready' AND (s.verified_at IS NULL OR s.verified_at < ?)"
+            " GROUP BY s.account_id, s.instance_id, s.verified_at, a.profile_id"
+            " ORDER BY (s.verified_at IS NOT NULL), s.verified_at, s.account_id, s.instance_id", (antes_de,))
+
     def session_of_account(self, profile_id: str, account_id: str) -> Row | None:
         """A sessão da conta no aparelho PRINCIPAL do perfil; sem vínculo (ou sem linha nele), a mais recente que
         houver — é ela que diz "a sessão pronta é de OUTRO aparelho", e a coluna `instance_id` denuncia qual."""
