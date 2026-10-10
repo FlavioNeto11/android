@@ -152,3 +152,50 @@ class CodigoDaConta:
     codigo: str
     recebido_em: str
     remetente: str
+
+
+@dataclass(frozen=True)
+class ContatoDaConta:
+    """Uma tentativa de login no app (31.333): quando começou, quantos minutos depois da criação no igfarm e o desfecho.
+    `detalhe` é o texto que o motor de sessão já grava (sem senha, sem texto de tela, identificador mascarado)."""
+
+    iniciado_em: str
+    minutos_desde_a_criacao: float | None
+    desfecho: str
+    etapa: str
+    detalhe: str
+
+
+@dataclass(frozen=True)
+class CicloDaConta:
+    """O que aconteceu com uma conta que o igfarm criou: criada, registrada, cada contato com o app e retirada.
+    Só dado que a ponte já tinha; nenhum segredo (sem senha, proxy nem IP)."""
+
+    account_id: str
+    igfarm_account_id: str
+    instagram_username: str
+    criada_em: str
+    registrada_em: str
+    #: A conta segue na persona (`ativa`) ou o @ está na lápide (`retirada`, 29.23).
+    estado: str
+    retirada_em: str | None
+    contatos: tuple[ContatoDaConta, ...] = field(default_factory=tuple)
+    #: Minutos entre a criação e o PRIMEIRO contato com o app; `None` enquanto não houve contato.
+    minutos_ate_o_primeiro_contato: float | None = None
+    #: Desfecho do último contato; `None` sem contato.
+    ultimo_desfecho: str | None = None
+
+
+def minutos_entre(inicio: str | None, fim: str | None) -> float | None:
+    """Minutos entre dois instantes ISO 8601 (com `Z` ou `+00:00`); `None` se algum faltar ou não for data."""
+    from datetime import datetime, timezone
+    try:
+        a = datetime.fromisoformat(str(inicio).replace("Z", "+00:00"))
+        b = datetime.fromisoformat(str(fim).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if a.tzinfo is None:
+        a = a.replace(tzinfo=timezone.utc)
+    if b.tzinfo is None:
+        b = b.replace(tzinfo=timezone.utc)
+    return round((b - a).total_seconds() / 60.0, 1)

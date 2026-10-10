@@ -8618,3 +8618,21 @@ nascimento da persona quando o `cadastro.yaml` do app a pede, e a recusar ANTES 
 
 **Prova:** `simulated` (`backend/tests/test_cadastro_instagram_like.py`, 48 casos, e `test_cadastro_guiado.py`, 58). `real`: `not_run`; nenhum app real
 declara o cadastro ainda (o do Instagram espera a captura da igfarm).
+
+## Adendo v1.145 (10/10/2026; número a confirmar pela orquestradora; item 31.333) — `GET /api/instagram/contas/{id}/ciclo`
+
+Aditivo: uma rota de leitura nova na ponte android ⇄ igfarm. Nenhuma coluna, migração, evento nem enum novo.
+
+- **`GET /api/instagram/contas/{id}/ciclo`** (`{id}` é o `account_id` da central ou o `igfarm_account_id`): o que aconteceu com
+  a conta que o igfarm criou. Resposta `{account_id, igfarm_account_id, instagram_username, criada_em, registrada_em,
+  estado, retirada_em, minutos_ate_o_primeiro_contato, ultimo_desfecho, contatos: [{iniciado_em,
+  minutos_desde_a_criacao, desfecho, etapa, detalhe}]}`. `estado` é `ativa` (a conta segue na persona) ou `retirada` (o @ está
+  na lápide, 29.23, com `retirada_em`). `contatos` são as tentativas de login no app, em ordem, com os minutos desde a
+  criação no igfarm (`criada_em`) e o desfecho do motor de sessão (`session_ready`, `auth_challenge`, `uncertain`,
+  `conta_nao_encontrada`, …). Erro: `not_found` (404) para conta que a ponte não registrou.
+- **Sem segredo:** nem senha, nem URL de proxy, nem IP de criação, nem texto de tela; o `detalhe` é o que o motor já grava
+  (cortado em 200 caracteres) e traz, quando há, o identificador usado já mascarado (31.332).
+- **Por quê:** a bifurcação de 10/10/2026 mostrou conta que nasce, é tocada duas vezes e some; o intervalo "criada → 1º
+  contato → desfecho" só existia espalhado em `contas_igfarm`, `authentication_attempts` e `contas_retiradas`.
+
+**Prova:** `simulated` (`backend/tests/test_ciclo_da_conta_igfarm.py`, 5 casos). `real`: `not_run`.

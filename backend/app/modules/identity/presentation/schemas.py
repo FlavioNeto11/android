@@ -343,6 +343,30 @@ class ContaRegistradaDTO(BaseModel):
     egresso: list[EgressoDoDeviceDTO] = []
 
 
+class ContatoDaContaDTO(BaseModel):
+    iniciado_em: str
+    minutos_desde_a_criacao: float | None = None
+    desfecho: str
+    etapa: str
+    detalhe: str
+
+
+class CicloDaContaDTO(BaseModel):
+    """`GET /api/instagram/contas/{id}/ciclo` (31.333): o que aconteceu com a conta que o igfarm criou. Sem segredo."""
+
+    account_id: str
+    igfarm_account_id: str
+    instagram_username: str
+    criada_em: str
+    registrada_em: str
+    #: `ativa` (segue na persona) | `retirada` (o @ está na lápide).
+    estado: str
+    retirada_em: str | None = None
+    minutos_ate_o_primeiro_contato: float | None = None
+    ultimo_desfecho: str | None = None
+    contatos: list[ContatoDaContaDTO] = Field(default_factory=list)
+
+
 class CodigoDaContaDTO(BaseModel):
     codigo: str
     recebido_em: str

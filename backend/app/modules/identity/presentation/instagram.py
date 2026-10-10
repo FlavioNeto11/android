@@ -44,7 +44,7 @@ from app.modules.identity.application.ponte_igfarm import ErroDaPonte
 from app.modules.identity.domain.ponte_igfarm import SENHAS_MASCARADAS, ComandoDeRegistro, PersonaPendente
 from app.modules.identity.infrastructure.cadastro_guiado import CadastroGuiado
 from app.modules.identity.infrastructure.ponte_igfarm import compor_ponte_igfarm
-from app.modules.identity.presentation.schemas import (CodigoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
+from app.modules.identity.presentation.schemas import (CicloDaContaDTO, CodigoDaContaDTO, ContatoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
                                                        EgressoDoDeviceDTO, PersonaPendenteDTO, SignupBody)
 from app.modules.identity.presentation.comum import device, mime_da_chave, quem, servir_do_storage, social_error
 from app.social.capacidades import capacidades_do_perfil
@@ -704,6 +704,22 @@ async def registrar_conta_igfarm(request: Request, body: ContaIgfarmBody) -> JSO
                              egresso=[EgressoDoDeviceDTO(instance_id=e.instance_id, estado=e.estado, motivo=e.motivo)
                                       for e in r.egresso])
     return JSONResponse(status_code=200 if r.idempotente else 201, content=dto.model_dump())
+
+
+@router.get("/instagram/contas/{conta_id}/ciclo", response_model=None)
+async def ciclo_da_conta(request: Request, conta_id: str) -> CicloDaContaDTO:
+    """31.333: criada, registrada, cada contato com o app (minutos desde a criação, desfecho) e retirada. Só leitura, sem
+    segredo; `conta_id` é o da central ou o do igfarm."""
+    try:
+        c = compor_ponte_igfarm(_st(request)).ciclo(conta_id)
+    except ErroDaPonte as exc:
+        raise _erro_da_ponte(exc) from exc
+    return CicloDaContaDTO(
+        account_id=c.account_id, igfarm_account_id=c.igfarm_account_id, instagram_username=c.instagram_username,
+        criada_em=c.criada_em, registrada_em=c.registrada_em, estado=c.estado, retirada_em=c.retirada_em,
+        minutos_ate_o_primeiro_contato=c.minutos_ate_o_primeiro_contato, ultimo_desfecho=c.ultimo_desfecho,
+        contatos=[ContatoDaContaDTO(iniciado_em=t.iniciado_em, minutos_desde_a_criacao=t.minutos_desde_a_criacao,
+                                    desfecho=t.desfecho, etapa=t.etapa, detalhe=t.detalhe) for t in c.contatos])
 
 
 @router.get("/instagram/contas/{conta_id}/codigo", response_model=None)

@@ -28,7 +28,7 @@ from pydantic import SecretStr
 from app.modules.email_do_parque.application.servico import EmailDoParque, ErroEmailDoParque
 from app.modules.identity.domain.persona import MAIORIDADE
 from app.modules.identity.domain.ponte_igfarm import (SYSTEM_DO_USERNAME, TENTATIVAS_DE_USERNAME, TTL_RESERVA_HORAS,
-                                                       CodigoDaConta, ComandoDeRegistro, ContaRegistrada,
+                                                       CicloDaConta, CodigoDaConta, ComandoDeRegistro, ContaRegistrada,
                                                        EgressoDoDevice, FichaDaPessoa, ImagemDaPessoa, PersonaPendente, Sugestao,
                                                        normalizar_username, pedido_do_username, username_do_modelo,
                                                        username_valido)
@@ -67,6 +67,7 @@ class ArmazemDaPonte(Protocol):
     def _instance_ids_da_persona(self, persona_id: str) -> list[str]: ...
     def perfis_vinculados(self, instance_id: str) -> list[str]: ...
     def endereco_da_conta(self, conta_id: str) -> str | None: ...
+    def ciclo_da_conta(self, conta_id: str) -> CicloDaConta | None: ...
 
 
 class PessoasDaPonte(Protocol):
@@ -358,6 +359,13 @@ class PonteIgfarm:
         return tuple(resultado)
 
     # ------------------------------------------------------------------ código de confirmação
+    def ciclo(self, conta_id: str) -> CicloDaConta:
+        """31.333: o que aconteceu com a conta do igfarm (criada, contatos com o app, retirada), só leitura."""
+        achado = self.armazem.ciclo_da_conta(conta_id)
+        if achado is None:
+            raise ErroDaPonte("not_found", "Conta não registrada pela ponte.", 404)
+        return achado
+
     async def codigo(self, conta_id: str) -> CodigoDaConta:
         endereco = self.armazem.endereco_da_conta(conta_id)
         if endereco is None:

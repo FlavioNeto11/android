@@ -18,11 +18,12 @@ from app.modules.identity.application.persona_images import PersonaImageService
 from app.modules.identity.application.ponte_igfarm import ErroDaPonte, PonteIgfarm, RedeError
 from app.modules.identity.domain.persona_image import (GeracaoFalhou, GeracaoRecusada, MenorDeIdade,
                                                        OrcamentoEsgotado)
-from app.modules.identity.domain.ponte_igfarm import ContaRegistrada, FichaDaPessoa, ImagemDaPessoa, Sugestao
+from app.modules.identity.domain.ponte_igfarm import (CicloDaConta, ContaRegistrada, ContatoDaConta, FichaDaPessoa,
+                                                       ImagemDaPessoa, Sugestao, minutos_entre)
 from app.modules.identity.infrastructure.persona_images import identidade_para_foto
 from app.planning.catalog import pacote_ancora
 from app.security.secret_store import SecretStoreLocked, SecretStoreUnavailable
-from app.social.contas_nossas import eh_conta_nossa, foi_retirada
+from app.social.contas_nossas import eh_conta_nossa, foi_retirada, hash_do_handle
 from app.social.service import SocialError, SocialService
 
 if TYPE_CHECKING:
@@ -154,6 +155,30 @@ class ArmazemSql:
         r = self.db.one("SELECT endereco FROM caixas_email WHERE account_id=? OR account_id IN"
                         " (SELECT account_id FROM contas_igfarm WHERE igfarm_account_id=?)", (conta_id, conta_id))
         return str(r["endereco"]) if r is not None else None
+
+    def ciclo_da_conta(self, conta_id: str) -> CicloDaConta | None:
+        g = self.db.one("SELECT * FROM contas_igfarm WHERE account_id=? OR igfarm_account_id=?", (conta_id, conta_id))
+        if g is None:
+            return None
+        criada = str(g["criada_em_igfarm"])
+        username = str(g["username_registrado"])
+        # A tentativa é da conta e sobrevive à retirada dela (a lápide guarda só o hash do @).
+        contatos = tuple(
+            ContatoDaConta(iniciado_em=str(t["started_at"]),
+                           minutos_desde_a_criacao=minutos_entre(criada, t["started_at"]),
+                           desfecho=str(t["outcome"] or "sem_desfecho"), etapa=str(t["stage"] or ""),
+                           detalhe=str(t["detail"] or "")[:200])
+            for t in self.db.query("SELECT started_at, outcome, stage, detail FROM authentication_attempts"
+                                   " WHERE account_id=? ORDER BY started_at, id", (g["account_id"],)))
+        lapide = self.db.one("SELECT retirada_em FROM contas_retiradas WHERE handle_sha256=?",
+                             (hash_do_handle(username),))
+        return CicloDaConta(
+            account_id=str(g["account_id"]), igfarm_account_id=str(g["igfarm_account_id"]), instagram_username=username,
+            criada_em=criada, registrada_em=str(g["registrada_em"]),
+            estado="retirada" if lapide is not None else "ativa",
+            retirada_em=str(lapide["retirada_em"]) if lapide is not None else None, contatos=contatos,
+            minutos_ate_o_primeiro_contato=contatos[0].minutos_desde_a_criacao if contatos else None,
+            ultimo_desfecho=contatos[-1].desfecho if contatos else None)
 
 
 def _erro(exc: SocialError) -> ErroDaPonte:

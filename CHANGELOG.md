@@ -32,6 +32,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   recusados; o padrão das demais regiões não muda; a tela de desafio e a conta travada continuam pela árvore.
 - Prova **simulada**: `tests/test_leitura_visual_conteudo_de_terceiros.py` (13) e a bateria de leitura visual. **Real: não executada** (o pedido misto completo no Outlook segue `not_run`).
 
+## 2026-10-10 — o ciclo da conta do igfarm (criada → contatos com o app → retirada) em uma rota de leitura (31.333)
+
+- `GET /api/instagram/contas/{id}/ciclo` junta `contas_igfarm`, `authentication_attempts` e a lápide: `estado` (`ativa` ou
+  `retirada`), minutos até o primeiro contato e, por contato, minutos desde a criação e desfecho (inclusive o
+  `conta_nao_encontrada` do 31.332). Sem migração, sem segredo, sem evento novo. Análise de por que essas contas somem, com
+  hipóteses e as perguntas ao igfarm, em `docs/dominios/perfis-e-instagram.md` (adendo v1.145 no contrato).
+- Prova `simulated`: `tests/test_ciclo_da_conta_igfarm.py` (5). `real`: `not_run` (a análise usa os dados reais da bifurcação,
+  mas a rota nova só roda no deploy seguinte).
+
 ## 2026-10-10 — o diálogo "Can't find account" vira o desfecho `conta_nao_encontrada` (31.332)
 
 - A tela do login que diz que não existe conta com o identificador usado (medida na H2, android-08) deixou de cair em

@@ -852,3 +852,27 @@ receber contas novas.
 - **Prova:** `simulated` (`backend/tests/test_conta_nao_encontrada.py`, 12 casos: a hierarquia da captura real com o
   identificador trocado, a máscara e o motor de sessão contra o aparelho falso). `real`: `not_run`. O português não foi
   medido (o texto é palpite da tradução).
+
+## Por que as contas criadas pela API do igfarm morrem (31.333)
+
+Análise de leitura sobre os dados da bifurcação de 10/10/2026 (prova `real` para os fatos; as hipóteses não são
+conclusão). Contas só por A, B e C: os valores crus ficam no JSON de referência, fora do Git.
+
+- **O que se viu.** A conta B nasceu às 18:40Z e foi tocada duas vezes pelo app: com +18 min abriu um modal vazio (a busca da
+  CAA estourou o prazo) e com +56 min o login disse "Can't find account" para o e-mail guardado. O dono informou depois que o
+  perfil sumiu. A conta A (+22 min) ainda existia e caiu na tela humana. Há um único ponto de sobrevivência de B: n=1 não dá taxa.
+- **O furo da medição.** O IP da sessão sticky de B era o da criação até as 18:48Z e girou antes das 19:13Z; o primeiro login
+  (18:58Z) caiu num intervalo sem medição. O 31.329 fecha esse furo daqui para frente.
+- **Hipóteses, da mais plausível à menos:** (1) o cadastro nunca completou (sem e-mail confirmado) e o próprio Instagram limpou
+  a conta; (2) a conta foi criada e derrubada pelo antiabuso (A e B seriam dois estágios); (3) o login pela API do igfarm
+  (que devolve 429 em conta nova) queimou a conta antes de o app tocar nela; (4) a rotação do sticky agrava, mas não explica
+  sozinha (A manteve o IP e também caiu).
+- **O que só o igfarm responde:** qual e-mail e telefone o cadastro submeteu e se a confirmação do e-mail concluiu; o
+  `account_info` da conta hoje; quantos logins pela API foram tentados antes do registro e de que IPs; se o IP de criação
+  era compartilhado.
+- **A visão que a ponte passa a ter.** `GET /api/instagram/contas/{id}/ciclo` (adendo v1.145) devolve criada, registrada,
+  cada contato com o app (minutos desde a criação e desfecho, inclusive `conta_nao_encontrada`) e a retirada. Não guarda nada
+  novo: junta o que `contas_igfarm`, `authentication_attempts` e a lápide já tinham.
+- **Protocolo da próxima conta** (aprovado pela orquestradora; só roda com conta e sessão entregues pelo dono/igfarm e
+  depois do deploy 73): `account_info` do igfarm a T+5/15/30/60/120 min sem login; assuntos da caixa de e-mail; UM login pelo
+  usuário (antes do e-mail), com a janela de 30 s do 31.329; só observação. Com N≥3 contas por rodada o desfecho ganha taxa.
