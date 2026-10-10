@@ -2946,3 +2946,23 @@ guardado fora dele. No PG, reutilizar conexão (pool por worker do xdist) ou amp
 o que mexe no sistema e pede o sim do dono. Reexecute solto o teste que falhou antes de declará-lo defeito; ele só vale como defeito se falhar de novo.
 
 **Aplicabilidade.** Vigente em 10/10/2026 (sem correção de código). Não confundir com os três defeitos reais da mesma corrida, tratados no 31.309.
+
+### K-113 — A suíte PG no mesmo disco do banco do central estrangula o boot: a consulta sem índice por aparelho não coube nos 240 s do supervisor
+
+**Data:** 10/10/2026 · **Área:** operação (central, funil de testes), laço de eventos
+
+**O que aconteceu.** Com a suíte PG inteira (`-n 6`, Idle) rodando no mesmo host, o disco ficou saturado (medido pela orquestradora: `% Disk Time` perto de 400 e fila de cerca de 4,
+com a CPU em 15 %): o vhdx do Docker com `fsync`, o `tmp` do pytest e o `data/poc.sqlite3` (204 MB, WAL) estavam todos em `C:`. O backend religou entre 16:32Z e 16:41Z: o boot da
+adoção faz um `SELECT` síncrono em `events` por aparelho (`DeviceManager._ultimo_dto_persistido`, na thread do laço) e a tabela só tinha índice em `(run_id, id)`, `(ts)` e `(kind, ts)`, então
+a consulta não coube nos 240 s que o supervisor espera antes de religar. Os três despejos do vigia (16:33:51Z, 16:34:21Z, 16:34:51Z, laço parado 10,9 → 40,9 → 71 s) mostram a mesma
+chamada, com as outras threads ociosas. A saída foi suspender os 16 processos do pytest (`NtSuspendProcess`) por 4 min 28 s: o backend subiu em cerca de 2 min.
+
+**O que funcionou.** Tirar a carga de disco da suíte enquanto o backend sobe (suspender, não matar: a suíte retoma), e depois a correção do 31.307: índice `events(instance_id, kind, id)`
+(migração 135), pré-leitura do último DTO dos aparelhos numa thread antes da adoção e o aviso do `Database` para consulta síncrona > 1 s na thread do laço.
+
+**O que não funcionou.** Esperar que a prioridade Idle da suíte bastasse: ela limita a CPU, não a fila do disco, e o `fsync` do Docker disputa o mesmo dispositivo do SQLite do central.
+
+**Mitigação sugerida (sem código aqui).** Não subir nem religar o backend do central durante a PG inteira; se for inevitável, suspender a suíte durante a subida. Pôr o `tmp` do pytest e o vhdx do Docker
+em outro disco é decisão de ambiente (mexe no host) e pede o sim do dono. Nova consulta síncrona no laço aparece no log `poc.db` ("consulta síncrona no laço de eventos levou …").
+
+**Aplicabilidade.** Vigente até o deploy do 31.307 (ramo `feat/31-307-laco-sem-sql-sincrono`, prova `simulated`; a medida de EXPLAIN e de tempo no SQLite do central é `not_run` até a suíte PG acabar).
