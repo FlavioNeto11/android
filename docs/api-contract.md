@@ -8590,7 +8590,7 @@ Aditivo: nenhuma rota, coluna ou migração nova. A regra vale para aparelho com
   de login que chegou à conferência.
 - **`network_measurements`.** Cada medição da janela vira uma linha com `method = "sonda de IP na janela do login (uid 2000)"`,
   `egress_ipv4`/`egress_ipv6` medidos e `detail`; sem `per_app`, `leak_blocked`, DNS nem UDP. É só leitura: não muda `device_network` (a
-  deriva de uma rede pedida segue sendo achado da convergência). `measurement_id` do evento aponta para esta linha.
+  deriva de uma rede pedida segue sendo achado da convergência). `medicao_id` do evento aponta para esta linha.
 
 **Prova:** `simulated` (`backend/tests/test_egresso_na_janela.py`, 8 casos). `real`: `not_run`; a regra nasceu da ressalva da H2 de 10/10
 (login 10 min depois da última medição, sticky girou até a seguinte).
