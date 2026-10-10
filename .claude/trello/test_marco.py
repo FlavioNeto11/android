@@ -190,3 +190,30 @@ def test_hora_de_agora_no_formato_do_molde() -> None:
 def test_itens_que_ficaram_fora_do_deploy_nao_contam() -> None:
     texto = "Itens: 28.63, 28.64 e o teste do AnexosTab (28.62, 28.60 e 28.58 ficaram fora por conflito e vão no 59); Jev 15.15."
     assert itens_de(texto) == ["28.63", "28.64", "15.15"]
+
+
+# formato do deploy 70 (10/10/2026): "Migrações `130_x` e `131_y`", "Backup", "tag `...`", hora com segundos e linha "Entra"
+CHANGELOG_70 = """## 2026-10-10 — Deploy 70 (migrações 130 e 131; exploração de etapa, conta planejada, ponte e painel; ponta `d0fbcc5d`)
+
+- **Implantado** às 15:34:18Z: central em `d0fbcc5d6ba389b3b47f8a37eb26909082dee541`, de `5ebf237e`. Migrações `130_etapa_exploratoria` e `131_conta_planejada` aplicadas na subida. Backup `20261010-123301`, tag `deploy-20261010-1534`, 76,5 s, sem opções.
+- Entra (desde `6536ad04`): 31.273 e 31.269 (exploração, ADR-084), 31.281/282/284 (conta planejada, ADR-087; 131), 31.310 (cadastro guiado, v1.137), 12.3 (login por dado).
+- Prova `real` (10/10/2026): `deploy.ps1` rc=0 (ensaio antes, rc=0, backup `20261010-123222`); agente do notebook atualizado a `0.1.0+d0fbcc5`.
+- `not_run`: PG inteira.
+"""
+
+
+def test_formato_do_deploy_70_migracoes_hora_backup_tag_e_itens() -> None:
+    d = extrair(achar_secao(CHANGELOG_70, 70) or [])
+    assert d.migracoes == ["130", "131"]
+    assert d.hora == "15:34"
+    assert d.backup == "20261010-123301"  # o do deploy, não o do ensaio
+    assert d.tag == "deploy-20261010-1534"
+    assert d.itens == ["31.273", "31.269", "ADR-084", "31.281", "31.282", "31.284", "ADR-087", "31.310", "12.3"]
+    corpo = corpo_marco(d)
+    assert "sem migração" not in corpo and "não lista itens" not in corpo
+    assert "migrações 130 e 131" in titulo_marco(d)
+
+
+def test_migracao_do_cabecalho_vale_quando_o_corpo_nao_a_diz() -> None:
+    texto = "## 2026-10-10 — Deploy 69 (ADR-090: código do e-mail; migração 133 já aplicada)\n\n- **Implantado** às 02:30:40Z: central em `6536ad04d6c99e`.\n"
+    assert extrair(achar_secao(texto, 69) or []).migracoes == ["133"]

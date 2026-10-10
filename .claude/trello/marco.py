@@ -41,13 +41,17 @@ SEPARADOR = "\n\n---\n\n"
 PREFIXO_LEITURA = "**Leitura de "
 
 _CABECALHO = re.compile(r"^## (\d{4}-\d{2}-\d{2}) — Deploy (\d+)(?: \((.*)\))?\s*$")
-_HORA = re.compile(r"(?:Implantado|no ar)[^\d\n]{0,12}(\d{1,2}:\d{2})Z")
+_HORA = re.compile(r"(?:Implantado|no ar)[^\d\n]{0,12}(\d{1,2}:\d{2})(?::\d{2})?Z")
 _COMMIT = re.compile(r"central em `([0-9a-f]{7,40})`")
-_BACKUP = re.compile(r"backup `(\d{8}-\d{6})`")
-_TAG = re.compile(r"\btag (deploy-[\w-]+)")
+_BACKUP = re.compile(r"backup `(\d{8}-\d{6})`", re.I)
+_TAG = re.compile(r"\btag `?(deploy-[\w-]+)")
 _AGENTE = re.compile(r"`(0\.\d+\.\d+\+[0-9a-f]{6,40})`")
 #: o número seguinte só vale com 2 ou 3 dígitos e fora de "8 pontas"/"16 pontas" (a contagem de pontas vem logo depois)
-_MIGRACOES = re.compile(r"migra(?:ção|ções) (\d+(?:\s*\([^()]*\))?(?:(?:,\s*| e )\d{2,3}(?!\d|\s+pontas)(?:\s*\([^()]*\))?)*)")
+_MIGRACOES = re.compile(r"[Mm]igra(?:ção|ções) (\d+(?:\s*\([^()]*\))?(?:(?:,\s*| e )\d{2,3}(?!\d|\s+pontas)(?:\s*\([^()]*\))?)*)")
+#: "Migrações `130_etapa` e `131_conta`": o número vem colado ao nome do arquivo da migração
+_MIGRACOES_ARQUIVO = re.compile(r"[Mm]igra(?:ção|ções)((?:\s*(?:,|e)?\s*`\d{2,3}_\w+`)+)")
+#: "31.281/282/284": atalho para 31.281, 31.282 e 31.284
+_ATALHO_ITENS = re.compile(r"(\d{1,2})\.(\d{1,3})((?:/\d{1,3})+)")
 #: ID de plano (31.155, 28.61), ADR e C-número; "v1.95" (versão do contrato) e "0.1.0" (versão do agente) ficam de fora
 _ITEM = re.compile(r"(?<![\w.+/-])(\d{1,2}\.\d{1,3})(?![\w]|\.\d)|\b(ADR-\d+)\b|\b(C\d{1,3})\b")
 
@@ -120,7 +124,8 @@ def migracoes_de(texto: str) -> list[str]:
     """Números das migrações do registro; vazio quando é "sem migração" ou nada é dito. Só olha o trecho de "Implantado"."""
     m = _MIGRACOES.search(texto)
     if not m:
-        return []
+        a = _MIGRACOES_ARQUIVO.search(texto)
+        return re.findall(r"`(\d{2,3})_", a.group(1)) if a else []
     sem_parenteses = re.sub(r"\([^()]*\)", "", m.group(1))
     return re.findall(r"\d+", sem_parenteses)
 
@@ -131,6 +136,8 @@ def itens_de(texto: str) -> list[str]:
     trecho = texto[i + len("Itens:"):] if i >= 0 else texto
     # "(28.62, 28.60 e 28.58 ficaram fora ... vão no 59)": o que a frase diz que NÃO entrou não é item do deploy.
     trecho = re.sub(r"\([^()]*ficaram fora[^()]*\)", "", trecho)
+    trecho = _ATALHO_ITENS.sub(
+        lambda m: " ".join(f"{m.group(1)}.{n}" for n in [m.group(2), *m.group(3).split("/")[1:]]), trecho)
     vistos: list[str] = []
     for m in _ITEM.finditer(trecho):
         item = next(g for g in m.groups() if g)
@@ -180,6 +187,12 @@ def extrair(linhas: list[str]) -> Deploy:
     else:
         d.migracoes = migracoes_de(implantado)
     d.itens = itens_de(implantado)
+    # Registros novos listam os itens numa linha própria: "- Entra (desde `abc`): 31.273 e ..."
+    entra = next((x for x in marcadores if x.startswith("Entra")), None)
+    if entra:
+        d.itens = itens_de(entra.split(":", 1)[1] if ":" in entra else entra) or d.itens
+    if not d.migracoes:
+        d.migracoes = migracoes_de(d.resumo)
     real = next((x for x in marcadores if x.startswith("Prova `real`")), None)
     simulated = next((x for x in marcadores if x.startswith("Prova `simulated`")), None)
     not_run = next((x for x in marcadores if x.startswith("`not_run`")), None)
