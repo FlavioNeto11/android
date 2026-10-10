@@ -212,6 +212,20 @@ def aplicar_desafio(repo: RepositorioDoDesafio, bus: EventSink, *, profile_id: s
                                 app_id=app_id, evidencia=evidencia, visto_por=visto_por)
 
 
+#: Como a fila chama o item (31.322). A tela humana ("Confirm you're human", subtipo `conta_travada`) é bloqueio
+#: DEFINITIVO: a conta sai da plataforma (ADR-068) e ninguém fica "aguardando". O código por e-mail e o desafio
+#: comum continuam esperando uma pessoa. É só o rótulo: o enum `SessionStatus` não muda.
+ROTULO_BLOQUEADA = "bloqueada"
+ROTULO_AGUARDANDO = "aguardando"
+_MARCAS_DE_BLOQUEIO = ("conta_travada:", "retirada por bloqueio")   # `ContaTravada.descrever()` e o detalhe da saída
+
+
+def rotulo_da_fila(detail: str | None) -> str:
+    """`bloqueada` se o detalhe da sessão traz a tela humana (ou a retirada que ela causou); `aguardando` no resto."""
+    texto = detail or ""
+    return ROTULO_BLOQUEADA if any(m in texto for m in _MARCAS_DE_BLOQUEIO) else ROTULO_AGUARDANDO
+
+
 def emit_needs_person_change(bus: EventSink, *, profile_id: str, instance_id: str, status: str,
                              anterior_status: str | None, detail: str | None, account_id: str | None = None,
                              no_teto: bool = False, anterior_no_teto: bool = False) -> None:
@@ -232,11 +246,12 @@ def emit_needs_person_change(bus: EventSink, *, profile_id: str, instance_id: st
     estava = anterior_status in PRECISA_DE_PESSOA or anterior_no_teto
     if entrando == estava:
         return
+    rotulo = rotulo_da_fila(detail)
     dados: dict[str, object] = {"profile_id": profile_id, "instance_id": instance_id, "status": valor,
-                                "detail": detail, "active": entrando}
+                                "detail": detail, "active": entrando, "rotulo": rotulo}
     if account_id is not None:
         dados["account_id"] = account_id
     bus.emit("session.needs_person",
              f"{instance_id}: o perfil {'passou a precisar' if entrando else 'deixou de precisar'} de "
-             f"intervenção humana ({valor}) — {detail or 'sem detalhe'}", level="warn",
+             f"intervenção humana ({valor}, {rotulo}) — {detail or 'sem detalhe'}", level="warn",
              instance_id=instance_id, data=dados)

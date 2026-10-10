@@ -33,16 +33,22 @@ def hash_do_handle(handle: str | None) -> str:
     return hashlib.sha256(f"@{limpo}".encode("utf-8")).hexdigest() if limpo else ""
 
 
-def registrar_lapide(db: Database, *, app_id: str, handle: str | None, profile_id: str | None) -> bool:
-    """Grava a lápide do @ (idempotente: a unicidade é (app, hash)). Devolve se nasceu agora."""
+def registrar_lapide(db: Database, *, app_id: str, handle: str | None, profile_id: str | None,
+                     motivo_do_bloqueio: str | None = None) -> bool:
+    """Grava a lápide do @ (idempotente: a unicidade é (app, hash)). Devolve se nasceu agora. O motivo do bloqueio
+    (JSON, 136) entra junto; numa lápide que já existia sem motivo ele só PREENCHE o vazio, nunca troca um registrado."""
     h = hash_do_handle(handle)
     if not h:
         return False
     antes = db.scalar("SELECT COUNT(*) FROM contas_retiradas WHERE app_id=? AND handle_sha256=?", (app_id, h))
     if antes:
+        if motivo_do_bloqueio:
+            db.execute("UPDATE contas_retiradas SET motivo_do_bloqueio=? WHERE app_id=? AND handle_sha256=?"
+                       " AND motivo_do_bloqueio IS NULL", (motivo_do_bloqueio, app_id, h))
         return False
-    db.execute("INSERT INTO contas_retiradas(app_id, handle_sha256, retirada_em, profile_id) VALUES (?,?,?,?)"
-               " ON CONFLICT(app_id, handle_sha256) DO NOTHING", (app_id, h, now_iso(), profile_id))
+    db.execute("INSERT INTO contas_retiradas(app_id, handle_sha256, retirada_em, profile_id, motivo_do_bloqueio)"
+               " VALUES (?,?,?,?,?) ON CONFLICT(app_id, handle_sha256) DO NOTHING",
+               (app_id, h, now_iso(), profile_id, motivo_do_bloqueio))
     return True
 
 

@@ -336,7 +336,8 @@ class SocialRepository:
             "SELECT COUNT(*) FROM profile_accounts WHERE app_id=? AND id<>? AND"
             " (lower(handle)=? OR lower(COALESCE(desired_handle,''))=?)", (app_id, exceto_conta or "", chave, chave)))
 
-    def retirar_conta_bloqueada(self, profile_id: str, account_id: str, *, ancora: bool, motivo: str) -> list[str]:
+    def retirar_conta_bloqueada(self, profile_id: str, account_id: str, *, ancora: bool, motivo: str,
+                                motivo_do_bloqueio: str | None = None) -> list[str]:
         """Tira do banco TUDO o que faz a conta existir para a plataforma, sem tocar a persona (29.23, ADR-068).
         Devolve as referências de segredo que a conta tinha, para quem chama apagar no cofre (depois de conferir que
         nenhuma outra linha as usa). Quem chama já está numa transação.
@@ -378,7 +379,8 @@ class SocialRepository:
         perfil = self.profile_row(profile_id)
         for h in dict.fromkeys([conta["handle"], perfil["username"] if perfil is not None and ancora else None]):
             if hash_do_handle(h):
-                registrar_lapide(self.db, app_id=str(conta["app_id"]), handle=h, profile_id=profile_id)
+                registrar_lapide(self.db, app_id=str(conta["app_id"]), handle=h, profile_id=profile_id,
+                                 motivo_do_bloqueio=motivo_do_bloqueio)
         self.db.execute("DELETE FROM profile_accounts WHERE id=? AND profile_id=?", (account_id, profile_id))
         if ancora:
             self.db.execute("UPDATE instagram_profiles SET username='', updated_at=? WHERE id=?",
