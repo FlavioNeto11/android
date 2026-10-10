@@ -613,14 +613,14 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
         recusa=lambda t: triagem.recusa(t) or parece_codigo(t), redigir=triagem.redigir,
         status=portas_da_central.status_para_convidado)
     self.telegram_entrada = ServicoDeEntrada(
-        cfg, EntradasDoCanal(self.db, canal="telegram"), portas_da_central,
+        cfg, EntradasDoCanal(self.db, canal="telegram"), portas_da_central.para("telegram"),
         lider=self._lider, recusa=triagem.recusa, redigir=triagem.redigir, convidados=convidados,
         anexos=self.anexos_canal)
     # O espelho do Trello (32.2, ADR-072): reconciliador no líder da trava `avisos`; desligado de fábrica
     # (`trello.enabled`). Lê as MESMAS pendências do Telegram e do painel.
     self.trello_espelho = EspelhoDoTrello(
         cfg, CartoesDoTrello(self.db, self.db.agora),
-        FontesDaCentral(portas_da_central.pendencias,
+        FontesDaCentral(portas_da_central.para("trello").pendencias,
                         _FontesDoEspelhoDoTrello(lambda: self.pedidos_api, RegistroDeValidacoesSql(self.db)),
                         lambda: cfg.file.avisos.url_painel),
         lider=self._lider, versao=self._versao_do_deploy, custos=self._linhas_de_custo, relogio=self.db.agora)
@@ -630,7 +630,7 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
     self.trello_cadastro = CadastroDoWebhook(cfg)
     self.trello_leitor = LeitorDoTrello(
         cfg, EntradasDoCanal(self.db, canal="trello"), CartoesDoTrello(self.db, self.db.agora),
-        CursorDoTrello(self.db, self.db.agora), portas_da_central, lider=self._lider, recusa=triagem.recusa,
+        CursorDoTrello(self.db, self.db.agora), portas_da_central.para("trello"), lider=self._lider, recusa=triagem.recusa,
         redigir=triagem.redigir, avisar_dono=self.avisos.enfileirar_aviso, relogio=self.db.agora,
         cadastro=self.trello_cadastro)
     # 28.30: o sim do dono no Telegram ao comentário dele só vale se o comentário no Trello ainda é o mesmo.

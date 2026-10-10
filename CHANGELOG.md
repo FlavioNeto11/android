@@ -19,7 +19,24 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-10-10 — higiene 12.3/B10: o rascunho de telas não leva a identidade da pessoa, e o `api-contract.md` perde a numeração repetida
+## 2026-10-10 — a pergunta de execução vai só ao canal de origem do comando; validação e avaliação não avisam (31.279, ADR-086)
+
+- **Aviso:** `run.needs_input` e `objective.waiting_user` só saem no Telegram quando o comando veio do Telegram (`telegram:` na chave de
+  idempotência). Comando do painel pergunta no painel; do Trello, no Trello (o espelho). A aprovação NÃO é pergunta e segue o canal de
+  aprovação. A execução que nasceu de um pedido persistente (`runs.pedido_id`) segue avisando como antes (o canal é o do pedido).
+- **Portas da conversa:** `PortasReais.para("telegram" | "trello")` é a mesma central vista por um canal: `execucoes_esperando` e
+  `pendencias` só trazem as perguntas do canal. O Telegram, o espelho do Trello e o leitor do Trello recebem a vista do próprio canal
+  (`bootstrap.py`). A execução do sistema (validação, **avaliação `eval-*`**, lote, ensaio, operação) não aparece em canal algum, e
+  `responder` a recusa: nunca nasce sucessora de resposta do dono num canal; quem a disparou responde pelo painel ou cancela.
+- **Sucessora herda a origem:** `chave_da_sucessora` mantém o prefixo da respondida (`telegram:`, `trello:`, `validacao:`, `eval-`,
+  `lote:`, `op:`, `ensaio:`). Antes a chave `sucessora-…` perdia a origem: a conversa do Telegram virava "painel" e a sucessora de uma
+  avaliação virava execução de pessoa.
+- `scripts/eval_run.py` cancela na hora a avaliação que termina em `needs_input` (a bateria a disparou, a bateria a encerra).
+- Contrato: `contracts/origem.py` (`PREFIXO_AVALIACAO`, `canal_da_pergunta`, `chave_da_sucessora`; `eval-` entra em
+  `e_execucao_do_sistema`). Sem API nova, sem migração.
+- Prova: `simulated` (`test_pergunta_so_ao_canal_de_origem.py`, 28 casos; `test_avisos_objetivo_parado.py`, `test_avisos_rajada.py` e
+  `test_avisos_servico.py` ajustados: a execução "comum que avisa" agora é a do Telegram). `real`: `not_run`; PostgreSQL: `not_run`.
+## 2026-10-10 — 31.318 higiene 12.3/B10: o rascunho de telas não leva a identidade da pessoa, e o `api-contract.md` perde a numeração repetida
 
 - `scripts/rascunho-de-telas.py`: o texto de um elemento cujo `resource-id` diz nome, conta, usuário, perfil, avatar ou contato nunca vira sinal, e a
   opção repetível `--ignorar <texto>` (o nome de exibição, o @ ou o e-mail da conta que percorreu o app; mínimo de 3 letras) tira o que casar, sem

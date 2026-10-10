@@ -211,6 +211,10 @@ def main(argv: list[str] | None = None) -> int:
                 break
         if detail is None:
             raise RuntimeError(f"{case['id']}: nenhuma leitura de /api/runs/{run['id']} respondeu até o prazo")
+        if detail["status"] == "needs_input":
+            # ADR-086 (31.279): a avaliação que pergunta de propósito não fica esperando o dono; quem a disparou (esta
+            # bateria) a cancela na hora. O caso já foi lido como `needs_input`; o cancelamento é seguro de repetir.
+            http.post(f"/api/runs/{run['id']}/cancel", json={})
         secs = round(time.monotonic() - t0)
         got = "needs_input" if detail["status"] == "needs_input" else (
             sorted({o["status"] for o in detail["objectives"]}) or [detail["status"]])

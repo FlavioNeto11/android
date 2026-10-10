@@ -1195,6 +1195,19 @@ numerado é lacuna, a levar à orquestradora antes de desligar a operação pela
 - O aviso `exploracao.concluida` com `parou_no_teto` ou `falhou` acrescenta uma linha: o caminho pode ser ensinado na execução ("Ensinar a
   corrigir"), uma vez, para todas as personas. Sem pedido, sem @, sem chave da etapa.
 
+## A pergunta de execução vai só ao canal de origem do comando (31.279, ADR-086)
+
+- **Regra:** `run.needs_input` e `objective.waiting_user` saem no Telegram só se a chave de idempotência da execução começa com
+  `telegram:`; o comando do painel pergunta no painel, o do Trello no Trello. A fonte é `contracts/origem.canal_da_pergunta`. A aprovação
+  não é pergunta (canal de aprovação). A execução de um pedido persistente (`pedido_id`) mantém o aviso de antes.
+- **Execução do sistema** (validação, avaliação `eval-*`, lote, ensaio, operação, prova de fluxo): não avisa o dono, não aparece nas
+  pendências de canal e `PortasReais.responder` a recusa. A resposta do painel (`POST /runs/{id}/successor`) segue valendo para quem a
+  disparou, e a sucessora mantém a marca de sistema (`chave_da_sucessora`).
+- **Portas por canal:** `PortasReais.para("telegram")` (conversa) e `.para("trello")` (espelho e leitor) filtram `execucoes_esperando` e
+  `pendencias`. Sem `para`, a vista é a central inteira, menos a execução do sistema.
+- **Limite conhecido:** uma execução de pedido persistente aparece nos dois canais (o pedido não guarda o canal de origem). Prova
+  `simulated` (`test_pergunta_so_ao_canal_de_origem.py`); `real` e PostgreSQL: `not_run`.
+
 ## O aviso da exploração com efeito (31.297, ADR-091)
 
 - **Tipo novo `exploracao.efeito_liberado`** (nível 3, **na hora**: `NA_HORA_SEM_PEDIR`): a porta liberou uma exploração com efeito (política

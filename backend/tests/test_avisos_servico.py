@@ -414,7 +414,7 @@ def test_execucao_de_prova_nunca_vira_aviso_ao_dono(tmp_path: Path) -> None:
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     _run(banco, "rp", chave="k-prova", prova="fluxo-1")
     _run(banco, "rv", chave="validacao:p9")
-    _run(banco, "rc", chave="k-comum")
+    _run(banco, "rc", chave="telegram:k-comum")     # 31.279: a execução comum que avisa é a de comando do Telegram
     needs = lambda rid, extra=None: servico.enfileirar_evento(  # noqa: E731
         "run.updated", {"run": {"id": rid, "status": "needs_input", **(extra or {})}}, 1)
     assert needs("rp", {"prova_fluxo_id": "fluxo-1"}) is False, "o campo do evento já a denuncia"
