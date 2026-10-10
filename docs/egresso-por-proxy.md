@@ -53,7 +53,10 @@ para `exigida`.
 
 Quando a conta é retirada (`retirar_conta_bloqueada`), na ordem:
 
-1. Desatribui o perfil do device (com confirmação de conta real)
+1. Desatribui o perfil do device (com confirmação de conta real). A limpeza roda antes de a quarentena da conta
+   retirada resolver, então o pedido entra com `atribuir(..., durante_quarentena=True)` (31.317): só registra o
+   desejado, e a convergência não toca o aparelho em quarentena. Fora da limpeza, a quarentena segue recusando
+   (`aparelho_em_quarentena`, ADR-055). O que falhar vira aviso `warn` no barramento com os ids
 2. Remove o perfil de `network_profiles`
 3. Apaga o segredo de rastreio do cofre
 
