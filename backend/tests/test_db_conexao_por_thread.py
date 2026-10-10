@@ -24,6 +24,7 @@ import pytest
 from app import db as db_mod
 from app.db import Database
 
+from .conftest import Harness
 from .test_db import _banco
 
 LENTA_S = 5.0                         # a consulta lenta artificial do desenho
@@ -407,3 +408,27 @@ def test_outro_escritor_entra_entre_as_fatias(tmp_path: Path) -> None:
         assert db.scalar("SELECT COUNT(*) FROM t_fatias") == 0
     finally:
         db.close()
+
+
+# ===================================================================== o /health mostra os dois contadores
+def test_o_health_mostra_as_conexoes_abertas_e_as_consultas_lentas_no_laco(harness: Harness) -> None:
+    st = harness.state
+    assert st is not None
+    antes = st.saude.health().database
+    assert antes is not None and antes.open_connections >= 1 and antes.slow_queries_in_loop == 0
+    st.db.consultas_lentas_no_laco += 3                                     # o que o aviso do laço conta
+    liberar, prontas = threading.Event(), threading.Event()
+
+    def outra() -> None:
+        st.db.scalar("SELECT 1")
+        prontas.set()
+        liberar.wait(5)
+
+    t = threading.Thread(target=outra)
+    t.start()
+    assert prontas.wait(5)
+    depois = st.saude.health().database
+    liberar.set()
+    t.join(5)
+    assert depois is not None and depois.slow_queries_in_loop == 3
+    assert depois.open_connections == antes.open_connections + 1, "a conexão da thread nova conta enquanto ela vive"

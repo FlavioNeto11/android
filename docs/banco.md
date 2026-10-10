@@ -319,6 +319,7 @@ Não por preciosismo: cada uma quebraria no PostgreSQL.
   100); não há `psycopg_pool` de propósito (dependência e ciclo de vida novos sem ganho agora).
 - **`:memory:`** vira um arquivo temporário da instância (apagado no `close()`): com conexão por thread, cada conexão em memória seria outro banco.
   O `tests/test_db.py` já usava arquivo em `tmp_path`; só o dublê `_Falso` fala em `:memory:`, sem abrir conexão.
+- **No `/health`:** `database.open_connections` (conexões abertas) e `database.slow_queries_in_loop` (chamadas síncronas > 1 s na thread do laço desde o início do processo; zero é o esperado).
 - **Prova** (`simulated`): `tests/test_db_conexao_por_thread.py`. Uma leitura artificial de 5 s numa thread (SQLite: função `sleep_s` na conexão;
   PostgreSQL: `pg_sleep`) com a thread do laço fazendo `query`, `INSERT` e `tx()` a cada 100 ms: o maior intervalo sem batida cai de ~4,7 s (modelo
   antigo, medido no mesmo teste) para ~0,1 s e nenhuma escrita se perde. `real` (central) e PG inteiro: `not_run`.

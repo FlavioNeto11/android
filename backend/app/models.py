@@ -2251,6 +2251,11 @@ class DatabaseStatus(BaseModel):
     reachable: bool
     #: `sqlite` | `postgres://host:porta/base` — nunca o DSN inteiro, que carrega usuário e senha.
     target: str | None = None
+    #: 31.320: conexões abertas com o banco (uma por thread que já falou com ele e ainda vive). Acima de 40 o log avisa.
+    open_connections: int = 0
+    #: 31.307/31.320: quantas chamadas SÍNCRONAS ao banco passaram de 1 s na thread do laço de eventos desde que o processo subiu.
+    #: O número que o `scripts/laco-por-hora.py` tira do log, direto da API. Zero é o esperado.
+    slow_queries_in_loop: int = 0
 
 
 class Health(BaseModel):

@@ -517,7 +517,7 @@ interface Health {
   migration: string | null;
   // Qual banco este backend está usando e se ele respondeu AGORA. Opcional porque um backend anterior a esta
   // entrega não manda o campo — e o painel prefere não mostrar nada a mostrar "sqlite" por chute.
-  database?: { dialect: 'sqlite' | 'postgres'; reachable: boolean; target: string | null } | null;
+  database?: { dialect: 'sqlite' | 'postgres'; reachable: boolean; target: string | null; open_connections?: number; slow_queries_in_loop?: number } | null;
   ai: AiStatus;
   appium: { running: boolean; port: number; detail: string | null };
   sdk: { found: boolean; root: string | null; emulator_version: string | null; accel: string | null };

@@ -266,7 +266,9 @@ class SaudeDoSistema:
                 hint="O esquema DESTE banco é o que a versão antiga do arquivo gerava, e um banco novo nasceria "
                      "diferente. Migração aplicada não se edita: crie a próxima migração com a diferença. Se a "
                      "mudança foi só de comentário, o alarme some quando o arquivo voltar ao que era."))
-        return DatabaseStatus(dialect=self._e.db.dialect, reachable=alcancavel, target=self._banco_sem_segredo()), problemas
+        return DatabaseStatus(dialect=self._e.db.dialect, reachable=alcancavel, target=self._banco_sem_segredo(),
+                              open_connections=self._e.db.conexoes_abertas,
+                              slow_queries_in_loop=self._e.db.consultas_lentas_no_laco), problemas
 
     def _banco_sem_segredo(self) -> str:
         """`postgres://host:porta/base` — o DSN sem usuário nem senha. A saúde é lida pelo painel e vai para
