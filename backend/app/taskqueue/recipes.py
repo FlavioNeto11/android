@@ -357,6 +357,24 @@ def clicavel_no_ponto(tree: UiTree, x: int, y: int) -> UiElement | None:
     return min(hit, key=lambda e: (e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1])) if hit else None
 
 
+def mesmo_alvo(tree: UiTree, a: str | None, b: str | None) -> bool:
+    """31.327: dois `element_id` desta tela são o MESMO alvo do toque? Iguais, ou os dois toques caem no mesmo clicável.
+
+    A receita grava o rótulo (o texto "Junk", um filho sem clique) e a reprodução toca o centro dele; a IA escolhe a linha
+    clicável que o contém. São ids diferentes para a mesma ação (prova real do P-043, 10/10: "a IA escolheu outra ação"
+    com a IA tocando o "Junk" certo). Quem recebe o toque é o menor clicável no ponto (`clicavel_no_ponto`), e é ele que
+    se compara; sem clicável em algum dos dois pontos, só a igualdade vale."""
+    if a == b:
+        return True
+    if a is None or b is None:
+        return False
+    ea, eb = tree.by_id(a), tree.by_id(b)
+    if ea is None or eb is None:
+        return False
+    ra, rb = clicavel_no_ponto(tree, *ea.center), clicavel_no_ponto(tree, *eb.center)
+    return ra is not None and ra is rb
+
+
 def toque_no_filho_cai_no_conteiner(tree: UiTree, filho: UiElement, conteiner: str | None) -> bool:
     """A trava de hit-test (revisão da Android): o menor clicável no centro do filho contém o filho, não é ele e tem a
     classe do contêiner gravado. Um botão "Enviar" na linha, um ícone ou uma camada por cima fazem divergir ANTES do
@@ -499,7 +517,8 @@ ANCORA_ESTADO_CONHECIDO = "estado_conhecido"
 def distill(action_rows: list[Row], variables: dict[str, str], *,
             em_casa_antes: Mapping[int, bool] | None = None,
             com_trecho_da_receita: bool = False,
-            persona: Collection[str] = ()) -> tuple[list[dict[str, Any]] | None, str]:
+            persona: Collection[str] = (),
+            exploratoria: bool = False) -> tuple[list[dict[str, Any]] | None, str]:
     """Ações executadas pela IA numa tentativa limpa → receita. Devolve (ações | None, motivo).
 
     31.230: o `press_back` ANTES da 1ª ação gravada é a IA voltando a um lugar conhecido (na onda 1, o `open_profile`
@@ -514,11 +533,18 @@ def distill(action_rows: list[Row], variables: dict[str, str], *,
 
     31.244 (`persona`): os NOMES das variáveis da persona do objetivo. O `type_text` que o registro gravou com o marcador
     dela (`{perfil_nome}`, `@{conta_<app>_usuario}`) vira receita com o marcador; a reprodução o resolve pelas variáveis
-    da persona (31.87 F2). Sem a variável na persona, segue recusado."""
+    da persona (31.87 F2). Sem a variável na persona, segue recusado.
+
+    31.327 (`exploratoria`): a etapa de exploração parte de uma tela que ninguém escolheu (onde o app estava), e a receita
+    que só tem "tocar em Junk" respondia `nao_aplicavel` em qualquer outra (prova real do P-043). Em app com estado
+    conhecido declarado (`em_casa_antes` não é `None`), a receita da exploração só nasce se o caminho PARTIU dele, com a
+    âncora na 1ª ação (o executor leva o app ao estado conhecido antes de explorar, e a reprodução parte do mesmo
+    ponto); partida desconhecida não vira receita, em vez de virar uma receita que só serve em uma tela."""
     secret_values = {v for k, v in variables.items() if v and SENSITIVE_PARAM.search(k)}
     out: list[dict[str, Any]] = []
     pending_scrolls: list[str] = []
     voltas = 0
+    partida_ancorada = False
     for r in action_rows:
         tool, status = r["tool"], r["status"]
         if tool in READ_ONLY or tool in ("step_done", "step_blocked"):
@@ -535,6 +561,11 @@ def distill(action_rows: list[Row], variables: dict[str, str], *,
             return None, f"{tool} depende do estado de quem aprendeu"
         if voltas and not out and not (em_casa_antes or {}).get(int(r["id"])):
             return None, "o voltar inicial não terminou no estado conhecido do app: a receita não teria de onde partir"
+        if exploratoria and not out and not voltas and em_casa_antes is not None:
+            if not (em_casa_antes or {}).get(int(r["id"])):
+                return None, ("a exploração não partiu do estado conhecido do app: a receita não teria de onde partir "
+                              "(31.327)")
+            partida_ancorada = True
         args = loads(r["args"], {}) or {}
         target = loads(r["target"]) if r["target"] else None
         if tool == "scroll":
@@ -576,7 +607,7 @@ def distill(action_rows: list[Row], variables: dict[str, str], *,
         if pending_scrolls:
             item["scroll"] = {"direction": pending_scrolls[-1], "max": len(pending_scrolls) + 3}
             pending_scrolls = []
-        if voltas and not out:
+        if (voltas or partida_ancorada) and not out:
             item["ancora"] = ANCORA_ESTADO_CONHECIDO
         out.append(item)
         if item["commit"]:

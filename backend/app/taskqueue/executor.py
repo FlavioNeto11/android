@@ -75,7 +75,7 @@ from .projecao import HistoricoDeAcoes, app_da_etapa
 from .latencia import TemposDaTentativa, ms_desde
 from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_galeria
 from .dado_da_persona import resolver_persona, rotulo, sem_valor_na_etapa
-from .recipes import (escopo_do_alvo, NAO_APLICAVEL_CONTA_APOS, READ_ONLY, AlvoAusente, RecipeDiverged, RecipeStore, Replayer,
+from .recipes import (escopo_do_alvo, mesmo_alvo, NAO_APLICAVEL_CONTA_APOS, READ_ONLY, AlvoAusente, RecipeDiverged, RecipeStore, Replayer,
                       contar_retorno_ia, distill, eh_generica, filhos_rotulados, hash_generico_da_linha,
                       unique_selectors)
 from ..security.mascara_da_persona import USUARIO_DA_CONTA
@@ -285,6 +285,15 @@ def urls_da_pessoa(command: str) -> set[str]:
     completar "portal MTR" com um domínio que ninguém escreveu), nem `step.variables` (onde mora o `{item}` lido da
     tela). Onde `type_secret` digita é outra pergunta: o `host` da CONTA (ADR-040)."""
     return set(urls_do_texto(command))
+
+
+def _descricao_da_acao(tree: UiTree, tool: str, args: Mapping[str, object]) -> str:
+    """31.327: a ação e o alvo dela, para o motivo da divergência da receita: o `element_id` e o que NÃO é texto da tela
+    (classe e limites), sem o texto do elemento (pode ser assunto de e-mail ou nome de pessoa)."""
+    id_ = args.get("element_id")
+    el = tree.by_id(str(id_)) if id_ is not None else None
+    onde = f" {id_} {el.class_name} {list(el.bounds)}" if el is not None else (f" {id_}" if id_ is not None else "")
+    return f"{tool}{onde}"
 
 
 def pede_intervencao_humana(tree: UiTree, *, tem_credencial: bool = False) -> bool:
@@ -1384,10 +1393,15 @@ class StepExecutor:
             agreed = decision.tool == "scroll" and decision.args.get("direction") == would.args.get("direction")
         else:
             # O texto entra na conta: com o mesmo campo e outro texto, a receita digitaria o que a IA não digitou.
-            agreed = (would.tool == decision.tool and would.args.get("element_id") == decision.args.get("element_id")
+            # 31.327: o alvo é o que recebe o toque (`mesmo_alvo`), não o id: o rótulo da receita e a linha clicável da IA
+            # são ids diferentes para a mesma ação (P-043, "Junk").
+            agreed = (would.tool == decision.tool
+                      and mesmo_alvo(obs.tree, would.args.get("element_id"), decision.args.get("element_id"))
                       and (would.tool != "type_text" or would.args.get("text") == decision.args.get("text")))
         if not agreed:
-            rr.diverged = "a IA escolheu outra ação"
+            rr.diverged = ("a IA escolheu outra ação (IA: " + _descricao_da_acao(obs.tree, decision.tool, decision.args)
+                           + "; receita: " + (_descricao_da_acao(obs.tree, would.tool, would.args) if would is not None
+                                              else "nada, a receita acabou") + ")")
 
     @staticmethod
     def _desfazer_comparacao(rr: "_RecipeRun") -> None:
@@ -1789,7 +1803,8 @@ class StepExecutor:
             return
         rows = repo.db.query("SELECT * FROM actions WHERE attempt_id=? ORDER BY seq", (attempt_id,))
         actions, why = distill(rows, rr.variables, em_casa_antes=self._em_casa_antes.pop(attempt_id, None),
-                               com_trecho_da_receita=da_divergencia, persona=rr.persona)
+                               com_trecho_da_receita=da_divergencia, persona=rr.persona,
+                               exploratoria=bool(step.exploratoria))
         if actions is None:
             log.info("%s: etapa %s não virou receita: %s", iid, step.key, why)
             return
@@ -1893,6 +1908,48 @@ class StepExecutor:
             return None
         frente = next((p for p in arvore.packages if p != "com.android.systemui"), None)
         return k.em_casa(telas_do_app.classificar(k, arvore, package=frente).tela)
+
+    async def _partir_do_estado_conhecido(self, rt: DeviceRuntime, app: AppContext, *, run_id: str, iid: str,
+                                          step: StepDTO, call_timeout: float) -> list[str]:
+        """31.327: a etapa de EXPLORAÇÃO parte do estado conhecido do app, não de onde o app estava.
+
+        A receita que ela ensina é o caminho desde a 1ª ação da IA; partindo de uma tela que ninguém escolheu (a gaveta
+        aberta, a pasta da vez anterior) ela só servia nessa tela e respondia `nao_aplicavel` em qualquer outra (prova real do
+        P-043, 10/10). Aqui o app volta ao estado declarado em `telas.yaml` (`voltar_ao_estado_conhecido`: só "voltar" e,
+        no máximo uma vez, reabrir o app, sem efeito externo) ANTES da 1ª decisão, na IA e na reprodução. Sem estado
+        conhecido declarado, ou com qualquer falha, nada muda: a etapa segue de onde está (e a receita não nasce, ver
+        `distill`). Devolve os passos dados (`[]` = já estava lá, ou não se sabe)."""
+        pacote = app.package
+        if not pacote:
+            return []
+        k = telas_do_app.da_pasta(CONHECIMENTO_DE_APPS / pacote)
+        if k is None:
+            return []
+
+        async def observar() -> tuple[UiTree, str | None]:
+            obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
+            return obs.tree, next((p for p in obs.tree.packages if p != "com.android.systemui"), None)
+
+        async def voltar() -> None:
+            await rt.executor.run(rt.io.press_key, "back", timeout=30, label="voltar")
+            await asyncio.sleep(float(self.cfg.file.ai.action_settle_s))
+
+        async def reabrir() -> None:
+            await rt.executor.run(rt.io.open_app, pacote, app.activity, timeout=60, label="abrir o app")
+            await asyncio.sleep(float(self.cfg.file.ai.action_settle_s))
+
+        try:
+            _tree, _pkg, _estado, passos = await telas_do_app.voltar_ao_estado_conhecido(
+                k, observar=observar, voltar=voltar, reabrir=reabrir,
+                reconhecer=lambda t, p: telas_do_app.classificar(k, t, package=p))
+        except Exception:  # noqa: BLE001 - preparar a partida é otimização da receita; a etapa segue de onde está
+            log.exception("%s: não foi possível levar %s ao estado conhecido antes de explorar", iid, pacote)
+            return []
+        if passos:
+            self.repo.decision(f"{iid} · {step.title}: o app voltou ao estado conhecido antes de explorar ("
+                               f"{', '.join(passos)}), para a receita partir de um ponto que se repete",
+                               run_id=run_id, instance_id=iid, step_id=step.id)
+        return passos
 
     def _anotar_casa(self, attempt_id: str, aid: int, pacote: str | None, arvore: UiTree) -> None:
         """31.230: anota, para a destilação, se a ação `aid` da IA partiu do estado conhecido. Anotação nunca derruba
@@ -2494,6 +2551,8 @@ class StepExecutor:
         ultima_cobertura = ""
         # Um texto só para as duas saídas do teto: `falhas.py` o classifica como ciclo sem progresso.
         motivo_do_teto = f"Limite de {max_actions} ações por etapa atingido sem concluir."
+        if step.exploratoria:
+            await self._partir_do_estado_conhecido(rt, app, run_id=run_id, iid=iid, step=step, call_timeout=call_timeout)
         # 31.223: o commit do modelo de ação descartado e refeito no forte tem uma volta reservada (não conta como
         # ação): no limite de ações, o commit ainda chega ao forte (achado da revisão do PR 505)
         for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0) + LIMITE_DE_FOLHAS

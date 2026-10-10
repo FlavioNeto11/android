@@ -38,6 +38,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova **simulada**: `tests/test_imagem_da_tela_sensivel_na_rotina.py` (novo) e os testes de imagem/aviso ajustados; 360 + 43 dirigidos passam. **Real: não executada**
   (nenhuma chamada paga).
 
+## 2026-10-10 — a receita da exploração parte do estado conhecido e a sombra compara pelo alvo (31.327)
+
+- Achados da prova real do P-043 (Outlook): a receita da exploração só tinha "tocar em Junk", sem partida (`nao_aplicavel`), e a sombra divergiu com a IA tocando o "Junk" certo
+  (ids diferentes: o rótulo da receita e a linha clicável). `executor._partir_do_estado_conhecido` leva o app ao estado conhecido antes de toda etapa exploratória;
+  `distill(exploratoria=True)` só cria receita se o caminho partiu dele (âncora na 1ª ação) e recusa partida desconhecida; `recipes.mesmo_alvo` compara o alvo do toque
+  (menor clicável no ponto) em vez do `element_id`; o motivo da divergência traz os dois alvos, sem texto da tela.
+- Prova **simulada**: `tests/test_receita_da_exploracao_parte_do_estado_conhecido.py` (12) e 516 dirigidos de receita/exploração/sombra; mypy no teto (257). **Real: não executada**
+  (o replay no Outlook real segue `not_run`).
+
 ## 2026-10-10 — tela humana = bloqueio definitivo: motivo como dado e rótulo "bloqueada" (31.322, migração 136)
 
 - Migração 136 aditiva: `contas_retiradas.motivo_do_bloqueio` (JSON). `identity/infrastructure/motivo_bloqueio.py` monta o objeto ANTES da

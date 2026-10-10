@@ -2877,3 +2877,17 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
 - **Para ligar o P-046:** interruptor + `explorar_efeito: autonomous` (só alcança os comuns, que já rodam por padrão; vale para o dono poder apertar para
   `approval_required` num só passo). Os destrutivos só se liberam por `explorar_<verbo>` ou pelo pedido.
 - **Prova:** `simulated`, `backend/tests/test_exploracao_politica_por_verbo.py`. `real`: `not_run`. Contrato: adendo v1.141 do [api-contract](../api-contract.md).
+
+## A receita da exploração parte do estado conhecido e a sombra compara pelo alvo (31.327)
+
+- **Achado da prova real do P-043 (10/10, Outlook, `android-01`):** a receita de "abrir a pasta de lixo eletrônico" nasceu só com "tocar em Junk" (a partida era
+  onde o app estava: a gaveta aberta) e respondeu `nao_aplicavel` em qualquer outra tela; com a gaveta aberta, a IA tocou no "Junk" certo e a sombra contou "a IA
+  escolheu outra ação".
+- **Partida:** `StepExecutor._partir_do_estado_conhecido` leva o app ao `estado_conhecido` do `telas.yaml` (`voltar_ao_estado_conhecido`: só "voltar" e, no máximo uma vez,
+  reabrir; sem efeito externo) antes da 1ª decisão de toda etapa EXPLORATÓRIA, na IA e na reprodução. `distill(exploratoria=True)`: em app com estado conhecido, a receita só
+  nasce se a 1ª ação partiu dele, e leva a âncora `estado_conhecido` (a reprodução só age na caixa de entrada; fora dela é "não se aplicou"); partida desconhecida não vira
+  receita. App sem estado conhecido declarado: como antes.
+- **Comparação:** `recipes.mesmo_alvo` (o menor clicável no centro de cada elemento é o mesmo) substitui a igualdade de `element_id` em `_shadow_compare`; o rótulo da receita
+  (filho sem clique) e a linha clicável da IA são o mesmo alvo. O motivo da divergência traz os dois (`a IA escolheu outra ação (IA: tap e73 <classe> [limites]; receita: ...)`),
+  sem o texto da tela; a classe do retorno (`receita.retorno_ia`) não muda.
+- **Prova:** `simulated`, `backend/tests/test_receita_da_exploracao_parte_do_estado_conhecido.py` (12). `real`: `not_run` (o replay por receita no Outlook real segue por provar).
