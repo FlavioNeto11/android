@@ -6034,3 +6034,26 @@ evento e leitura. Risco principal: o filtro de conta não confirmada nos consumi
 - **Não resolve:** a conta cair em verificação humana depois do código (visto em 2 contas do igfarm); e o login que
   ainda não atravessa a tela de boas-vindas "Join Instagram" (não declarada no `sessao.yaml`).
 - **Prova:** `simulated`, `tests/test_codigo_por_email.py` (13 testes). `real`: `not_run`.
+
+## ADR-091 — A exploração fora do catálogo é só de leitura e navegação; o efeito segue pela política
+
+- **Data e autor:** 10/10/2026, decisão da orquestradora (13:32Z), a partir da implementação do 31.273. Número concedido em
+  `.claude/reservas.md`. Aplica o ADR-084 ("descobrir, não recusar") e não o revoga.
+- **Contexto:** o ADR-084 manda explorar o pedido que nenhuma ação do catálogo cobre. A decisão de 07/10 dizia que a política
+  do perfil decide o efeito descoberto, sem portão extra. Na implementação, a etapa descoberta não tem `capability`, então não
+  tem chave de política: "a política decide" não tem onde se apoiar, e explorar efeito contornaria a porta 13.2
+  (`efeito_fora_do_catalogo`), que existe para o efeito não passar por fora dos limites do perfil.
+- **Decisão:** a exploração é só de **leitura e navegação** (`planning/exploracao.py`). O verbo de efeito (lista fechada:
+  enviar, publicar, seguir, comentar, apagar, mudar…) segue recusado com o motivo dito (`plan.refused`,
+  `sem_acao_do_catalogo`). Verbo de leitura ou navegação explora; verbo fora das duas listas explora com a ordem escrita no
+  objetivo de não mudar nada. Também recusam: app desconhecido, `limits.exploracao_ligada: false` e o teto do dia por app. A
+  etapa de exploração tem os tetos de `limits.exploracao_*` (ações, chamadas de IA, US$, explorações por dia), lidos ao vivo.
+- **O que fica para depois:** explorar o EFEITO pela política é o 31.297 (chave de política do perfil para a etapa
+  exploratória, avaliada pela porta 13.2 como as ações do catálogo; o grupo Liberado passa sem aprovação). Não é para agora; o
+  dono prioriza.
+- **Consequências:** nada que a IA descobre muda estado em conta real sem passar pela política; a leitura e a navegação
+  descobertas viram receita candidata, ativa pela prova do Livro, e voltam ao planejador pelo nome (bloco
+  `<etapas_descobertas>`). O nome da etapa é vocabulário fechado, para o pedido (que pode ter um nome de pessoa) nunca
+  chegar a outra persona.
+- **Prova:** `simulated`, `tests/test_exploracao_fora_do_catalogo.py`, `tests/test_etapas_descobertas.py`. `real`:
+  `not_run` (a exploração no Outlook gasta API e pede o sim do dono).

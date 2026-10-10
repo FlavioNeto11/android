@@ -2885,3 +2885,23 @@ receita. O motivo só apareceu lendo o laço do executor contra a linha do tempo
 
 **Aplicabilidade.** Vigente. Toda comparação com efeito colateral no estado (cursor, contador) precisa saber se a decisão comparada vai
 agir. O teste que protege é `tests/test_receita_concorda_por_alvo.py` (com a escalada ligada, a prova soma e o envio chega a `validated`).
+
+### K-111 — O molde da etapa descoberta só acha a receita se o `value` da pós-condição for o mesmo da etapa que a aprendeu
+
+**Sintoma (achado na revisão, antes do deploy).** A exploração grava uma receita da etapa livre e o planejamento da vez seguinte
+oferece o molde da etapa; o molde tinha de ser refeito sem o pedido (que pode trazer um nome de pessoa). A primeira versão deixava o
+pedido no `value` da pós-condição da etapa de origem e uma frase genérica no molde.
+
+**Causa.** O hash da etapa (`recipes.step_template_hash`) lê a chave, o efeito, o `kind`, o `value`, o nível e a trava da
+pós-condição. O hash genérico (só `model_judged` sem efeito) ignora o `value`, mas o executor só grava a receita no genérico se as
+ações não dependem do texto (`eh_generica`). Com o `value` diferente entre a etapa e o molde, a receita gravada no hash específico não
+seria achada pelo molde: a "segunda vez" voltaria à IA sem erro nenhum.
+
+**O que funcionou.** O `value` da etapa exploratória é a própria frase da chave (vocabulário fechado), igual ao do molde; o pedido
+vai só na `description`, que o hash não lê e o juiz lê. Os dois hashes (específico e genérico) coincidem, e o teste
+`tests/test_exploracao_fora_do_catalogo.py::test_o_passo_e_so_leitura_e_o_molde_nao_leva_o_pedido` os compara.
+
+**O que não funcionou.** Confiar só no hash genérico: ele não cobre a receita cujas ações dependem do texto.
+
+**Aplicabilidade.** Vigente. Todo molde oferecido a outra execução tem de ter o mesmo hash da etapa que gerou a receita; texto
+que pode ter valor de pessoa vai em campo que o hash não lê. Não provado: o replay pelo executor num app com catálogo (`not_run`).
