@@ -34,6 +34,8 @@ ESTADO = Path('.claude/plano-100/estado.json')
 RELATORIO = Path('docs/execucao-plano-100-runner.md')
 ESTADOS = {'implemented', 'partial', 'blocked'}
 PROVAS = {'real', 'simulated', 'not_run'}
+#: Valores que registros escritos à mão já usaram para teste automatizado (B6, 31.316): são `simulated`.
+PROVAS_DE_TESTE_AUTOMATIZADO = {'tests', 'unit'}
 
 
 class ErroDoPlano(Exception):
@@ -114,6 +116,10 @@ def validar(resultado: dict, ids_validos: set[str]) -> list[dict]:
         for item in grupo.get('items', []):
             if item.get('id') not in ids_validos:
                 raise ErroDoPlano(f'ID desconhecido no resultado: {item.get("id")!r}')
+            if item.get('proof') in PROVAS_DE_TESTE_AUTOMATIZADO:
+                # B6 (31.316): teste automatizado com dublê é prova `simulated`, nunca um valor novo de vocabulário.
+                raise ErroDoPlano(f'{item["id"]}: prova {item["proof"]!r} é teste automatizado: tests/unit → simulated. '
+                                  'Registre proof=simulated e ponha arquivo::teste na evidência.')
             if item.get('status') not in ESTADOS or item.get('proof') not in PROVAS:
                 raise ErroDoPlano(f'{item["id"]}: estado ou prova inválidos.')
             if item['status'] == 'implemented' and not (item.get('evidence') or '').strip():

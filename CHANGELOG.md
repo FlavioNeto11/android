@@ -19,6 +19,7 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+<<<<<<< HEAD
 ## 2026-10-10 — a persona de teste tem selo, fica escondida por padrão e nasce marcada (31.315, adendo v1.139 do 31.314)
 
 - `api/types.ts` (`InstagramProfile.teste`, `PersonaCreateRequest.teste`), `components/SeloDeTeste.tsx`,
@@ -35,6 +36,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   ficha, criação com e sem a marca, seletores); 273 dirigidos de profiles, 383 de profiles, command e pedidos, tsc e build. Percurso no
   navegador contra o backend isolado do worktree, com o campo `teste` injetado na resposta (o backend ainda não o tem): lista escondida
   por padrão, controle "(1)", mostrar com o selo, ficha com o selo. **Real no central: não executada** (depende do 31.314).
+=======
+## 2026-10-10 — B6 resolvido e a causa do cache do verificador registrada (31.316)
+
+- `scripts/claude-plan-100.py::validar` recusa prova `tests`/`unit` com a instrução "tests/unit → simulated" e
+  `arquivo::teste` na evidência; o vocabulário não cresceu (`real`/`simulated`/`not_run`). B6 marcado resolvido em
+  `docs/estado-atual.md` e `docs/claude-plano-100.md`.
+- `docs/roadmap.md` 7.4: o cache do verificador Haiku fecha como limite do modelo (prefixo ~1920 tokens < 4096 do
+  Haiku 4.5; o Opus cacheia os mesmos 1920; ~US$ 0,2/dia). Decisão da orquestradora: sem correção e sem chamada paga.
+- Prova **simulada**: `scripts/tests/test_claude_plan_100.py` (3 testes novos ou ajustados) e `pytest scripts/tests`.
+  Real: não se aplica (script e documentação).
+>>>>>>> 32915b015 (docs(plano-100): B6 resolvido (tests/unit → simulated) e causa do cache do verificador no 7.4 (31.316))
 
 ## 2026-10-10 — as trocas da saída esperada aparecem da mais nova para a mais antiga (31.301, ajuste)
 

@@ -414,7 +414,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Prova:** `simulated` (frontend 94 arquivos/1133 testes na árvore mesclada com a `main`); `real` só contra o backend simulado
     do worktree (matriz 9 telas x 6 larguras, axe 4.13, Lighthouse 13.5 em Painel e Personas); `not_run`: semáforo no nível
     "Atenção", custos no topo, execução em andamento, origem Intervenção, leitor de tela e toque real.
-  - **Abertos (baixos):** B5, B6, B9–B11 da revalidação e RF-07r, 19, 27, 30, 32, 35, 41, 42, 48, 49 da rodada 1.
+  - **Abertos (baixos):** B5, B9–B11 da revalidação e RF-07r, 19, 27, 30, 32, 35, 41, 42, 48, 49 da rodada 1.
 
 - **Revisão de UX/UI do portal, rodada 1 (01/10, madrugada): INTEGRADA NA `main` e IMPLANTADA no runtime `5d8b545`.** Nove tarefas dos briefings do dono
   (menu lateral e rotas por objeto, números e semáforo numa fonte única, barra de seleção e drawer, textos e cards, busca e
@@ -890,7 +890,7 @@ por decisão do dono.
 | B3 | **Corrigido em 24/09 (10.6), não implantado.** O painel aceitava `boot_parallelism` até 10 e a mensagem `Limits` até 16; agora os três tetos são 10, com teste de alinhamento | `backend/app/models.py`, `backend/app/workers/protocol.py` | frente 1 |
 | B4 | **Corrigido em 25/09 e implantado em 26/09 (`57a155f`, PR #3), central e agente.** Depois de restaurar o banco, a cerca regredia e o agente recusava `start`. Agora o `hello` traz `fences` (a maior cerca por aparelho, lida do diário) e o central despacha acima dela. Só vale com central **e** agente atualizados. Prova `simulated` (`backend/tests/test_cerca_restaurada.py`) | `backend/app/commands/store.py`, `worker/agent.py` | [K-004](conhecimento/aprendizados.md) |
 | B5 | O `start` remoto `c-20260921172322-6f7fdc` está `uncertain` desde 21/09, sem reconciliação registrada | banco de produção; `commands/reconciler.py` | `relatorio-validacao.md` §13 |
-| B6 | O vocabulário de prova: os registros escritos à mão usam `tests`/`unit`. Falta decidir entre registrar essas provas como `simulated` via `aplicar` ou estender `ESTADOS`/`PROVAS` junto com o enum de `plano-100.js` | `scripts/claude-plan-100.py:35`, `.claude/workflows/plano-100.js` | [`claude-plano-100.md`](claude-plano-100.md) |
+| B6 | **Resolvido em 10/10 (31.316).** O vocabulário de prova ficou `real`/`simulated`/`not_run`: teste automatizado com dublê é `simulated`, registrado por `aplicar` com `arquivo::teste` na evidência. O `estado.json` já só tem esses três valores; `aplicar` agora recusa `tests`/`unit` dizendo "tests/unit → simulated" | `scripts/claude-plan-100.py:35`, `.claude/workflows/plano-100.js` | [`claude-plano-100.md`](claude-plano-100.md) |
 | B7 | **`npm run build` resolvido em 27/09 (job do painel no CI).** O CI não roda `npm run build`, e os testes de `scripts/tests` que usam pwsh só rodam localmente | `.github/workflows/ci.yml` | frente 2 |
 | B8 | O app de QA embutido não foi migrado para o fluxo de release; `apps` e `app_releases` continuam como duas tabelas | plano-100 6.3 (bloqueio registrado) | frente 1 |
 | B9 | Estado do worker e controle manual não são compartilhados entre backends | `backend/app/main.py` (achado #27) | `banco.md` |
@@ -935,7 +935,7 @@ por decisão do dono.
    escalado e guarda de tela vazia (7.10, ADR-024); ator declarado no Sonnet (ADR-023); saúde acusa fallback (7.11).
    Falta prova real do 7.10, que só aparece quando o erro medido se repetir; acompanhar as decisões do verificador
    em Execuções. Reavaliar o verificador com a próxima bateria (capturas novas).
-6. **Sem gasto e sem mundo real:** B6 (vocabulário de prova) é decisão do dono; B7 (`npm run build` no CI) é o
+6. **Sem gasto e sem mundo real:** B6 (vocabulário de prova) foi resolvido em 10/10 (31.316); B7 (`npm run build` no CI) é o
    próximo item de código de risco baixo (B4 foi implantado em `57a155f`).
 7. **Com autorização do dono:** o ensaio do aceite 6, derrubando o túnel no meio de um `start`. É o de menor risco
    entre os reais; o procedimento está em [`worker.md`](worker.md).
