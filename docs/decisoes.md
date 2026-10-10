@@ -6066,7 +6066,8 @@ evento e leitura. Risco principal: o filtro de conta não confirmada nos consumi
   por uma ação sintética (risco alto, aprovação por padrão) pela política do perfil/grupo, na chave do pedido ou na genérica `explorar_efeito`.
   O grupo sem aprovação e a política `autonomous` liberam e o dono é avisado na hora (`exploracao.efeito_liberado`). Nada passa por fora da
   política: sem perfil não passa, o teto `preparar` pede o sim, e o efeito que o modelo escreveu sem a marca do sistema continua recusado.
-- **Fora da exploração, sempre:** os verbos de credencial e sessão (`entrar`, `logar`, `autenticar`, `sair`, `cadastrar`, `registrar`), em qualquer posição do pedido: seguem recusados mesmo com o interruptor ligado e a política liberada (ADR-040, ADR-087).
+- **Fora da exploração, sempre:** credencial e sessão (entrar, logar/login/logout, sair, autenticar, cadastrar, registrar, inscrever, conectar, senha, token, código; "criar conta"), em QUALQUER posição e forma do pedido (revisão da Jev: o modelo nem sempre devolve o infinitivo): seguem recusados mesmo com o interruptor ligado e a política liberada (ADR-040, ADR-087).
+- **O que a política não alcança:** a ação sintética não tem balde de limite nem contraparte; o limite diário, a frota (ADR-083) e a regra 30.62 não se aplicam a ela. Com `explorar_efeito: autonomous` o efeito sai sem teto por dia; o padrão é aprovação e a decisão é do dono.
 - **Escolhas:** o efeito descoberto não é oferecido a outras execuções (a política julga cada vez e a receita de efeito pede duas concordâncias);
   a chave do pedido leva só vocabulário fechado, e o sufixo de letras (pedido sem objeto) não é configurável: para esse caso há a genérica.
 - **Prova:** `simulated`, `tests/test_exploracao_de_efeito.py`. `real`: `not_run`. Contrato: adendo v1.140.

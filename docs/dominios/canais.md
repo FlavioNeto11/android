@@ -428,6 +428,24 @@ avisos depois da faxina"), e a trava cai no TTL.
 | Métrica, custo, risco | Programa | Canais e orquestradora | A cada deploy refaz o que tem fonte automática (aparelhos e testes); o resto, na rodada semanal. A primeira linha é `Leitura de DD/MM HH:MMZ`, e a leitura com mais de 3 dias é listada |
 | Registro de rotina, estudo ou análise | Execução, Concluído nesta semana | Canais | Na virada da semana vai para a lista "Rotina, estudos e registros" do Histórico |
 
+- **Adendo de 10/10, modelo de foco (decisão do dono, opção A da orquestradora):** o quadro Execução ganhou FOCO, EM CURSO,
+  DÍVIDA DE PROVA, FEITO e PAUSADO, e as listas por estado do plano (Próximas, Em execução, Em validação, Espera você,
+  Aguardando, Bloqueado) e Concluído deixaram de existir como listas.
+  - **EM CURSO é a lista única de trabalho.** O estado do plano é a etiqueta `Estado · …` do cartão; a lista não muda
+    quando o estado muda. Cartão em EM CURSO sem etiqueta de estado vale `Próximas`.
+  - **FEITO** é o concluído e implantado (a regra de saída acima manda para ele, sem etiqueta de estado). A virada da
+    semana segue mandando o de semana anterior ao Histórico.
+  - **FOCO, DÍVIDA DE PROVA e PAUSADO são à mão**: nenhum script move cartão para dentro nem para fora delas
+    (`reconciliar` os trata como a antiga lista da prova de 07/10). PAUSADO é só o adiado pelo dono ou sem dono; o bloqueado
+    que alguma frente responde fica em EM CURSO com a etiqueta `Estado · Bloqueado` e a linha `Motivo do bloqueio: …` na
+    descrição (o campo personalizado de verdade é um clique do dono em Power-Ups › Custom Fields).
+  - **Código:** `.claude/trello/modelo_de_foco.py` guarda os ids das listas e etiquetas. Os escritores de cartão de
+    aparelho, de alvo e de achado (`cartoes_de_aparelho`, `cartoes_por_alvo`, `achados`) e o `espelho_do_deploy` falam em
+    POSIÇÃO lógica (`POS_PROXIMAS`, `POS_EM_EXECUCAO`, `POS_EM_VALIDACAO`, `POS_CONCLUIDO`); o `ClienteDePosicoes` grava a
+    lista real mais a etiqueta de estado e preserva as etiquetas de frente (`PUT` com `idLabels` substitui todas).
+    `reconciliar` deriva o estado atual de (lista, etiqueta) e, ao mover, só troca a etiqueta de estado.
+  - **Prova:** `simulated`, em `.claude/trello/test_modelo_de_foco.py` e `.claude/trello/test_reconciliar.py` (modelo de
+    foco); a passada real dos cartões é `real` e consta do retorno da Canais à orquestradora.
 - **Regra, o procedimento da resposta do dono a uma pergunta (28.65):** a Canais não escreve mais script avulso. Depois de
   conferir a resposta no banco, roda `.claude/trello/registrar_resposta.py --cartao <id> --entrada <N> --canal trello|telegram
   --quando "DD/MM HH:MMZ" --literal "<texto exato>" [--leitura "..."] [--autoria app_do_dono] [--nota "..."]` (sem `--aplicar`

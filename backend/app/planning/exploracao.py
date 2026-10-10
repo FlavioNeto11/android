@@ -29,8 +29,9 @@ import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 
+from ..contracts.credencial_e_sessao import FORMAS_DE_CREDENCIAL, e_credencial
 from ..models import PlanStep, Postcondition
-from .capabilities import Capability
+from .capabilities import Capability, capability_sintetica_de_efeito
 
 PREFIXO = "explorar_"
 #: 31.297: a chave de política que vale para TODA exploração de efeito do app quando o perfil não escolheu uma específica.
@@ -64,11 +65,9 @@ _EFEITO_CANONICO: dict[str, str] = {
     "assinar": "comprar", "pagar": "comprar", "arquivar": "mover", "reservar": "agendar", "aprovar": "aceitar",
     "confirmar": "aceitar",
 }
-#: Os verbos canônicos que podem aparecer na chave de um efeito (os que a tabela não junta ficam como são).
-VERBOS_DE_EFEITO = frozenset(_EFEITO_CANONICO.get(v, v) for v in _EFEITO)
-#: 31.297: os verbos de EFEITO que a exploração NUNCA cobre, nem com o interruptor ligado e a política liberada: entrar, sair e
-#: cadastrar são credencial e sessão (ADR-040, ADR-087, sessao.yaml). Têm mecanismo próprio; a IA livre não digita senha nem abre conta.
-_SEM_EXPLORACAO = frozenset({"entrar", "logar", "autenticar", "sair", "cadastrar", "registrar"})
+#: Os verbos canônicos que podem aparecer na chave de um efeito (os que a tabela não junta ficam como são). Credencial e sessão
+#: (`contracts/credencial_e_sessao.py`, lista única) ficam de fora: não têm política, porque nunca exploram.
+VERBOS_DE_EFEITO = frozenset(_EFEITO_CANONICO.get(v, v) for v in _EFEITO) - FORMAS_DE_CREDENCIAL
 #: Palavras de lugar e de coisa do app que podem entrar na chave. Sem acento, em minúsculas.
 OBJETOS = frozenset({
     "caixa", "entrada", "saida", "lixeira", "lixo", "spam", "eletronico", "configuracoes", "ajustes", "perfil", "perfis",
@@ -132,16 +131,20 @@ def classificar(pedido: str) -> Exploracao:
     resto = palavras[1:] if palavras else []
     objetos = tuple(dict.fromkeys(p for p in resto if p in OBJETOS))[:_MAX_OBJETOS]
     de_efeito = next((p for p in palavras[:2] if p in _EFEITO), None)
-    if de_efeito is None:
-        # credencial e sessão em QUALQUER posição ("fazer logout: sair da conta") contam como efeito, e efeito dessas nunca explora
-        de_efeito = next((p for p in palavras if p in _SEM_EXPLORACAO), None)
+    credencial = e_credencial(palavras)
+    if credencial and de_efeito is None:
+        # credencial e sessão em QUALQUER posição ("fazer login", "redefinir a senha") contam como efeito, e esse efeito nunca explora
+        de_efeito = next((p for p in palavras if p in FORMAS_DE_CREDENCIAL), "credencial")
     if de_efeito is not None:
         # 31.297: a chave do efeito tem a forma da de leitura (`explorar_<verbo>_<objeto…>`), com o verbo canônico: é por ela
         # que a política do dono casa com o pedido. Sem objeto reconhecido leva o sufixo de letras (o dono usa a genérica).
         verbo_efeito = _EFEITO_CANONICO.get(de_efeito, de_efeito)
-        corpo_efeito = [verbo_efeito, *(objetos or (_sufixo(pedido),))]
-        return Exploracao(Destino.EFEITO, verbo_efeito, objetos, (PREFIXO + "_".join(corpo_efeito))[:40].rstrip("_"), False,
-                          any(p in _SEM_EXPLORACAO for p in palavras))
+        # Palavras inteiras: a chave cortada no meio de um objeto não casaria com a que o dono configurou.
+        chave_efeito = PREFIXO + verbo_efeito
+        for parte in (*objetos, *(() if objetos else (_sufixo(pedido),))):
+            if len(chave_efeito) + 1 + len(parte) <= 40:
+                chave_efeito += "_" + parte
+        return Exploracao(Destino.EFEITO, verbo_efeito, objetos, chave_efeito, False, credencial)
     verbo = _LEITURA.get(verbo_cru, "")
     corpo = [verbo or "navegar", *(objetos or (_sufixo(pedido),))]
     chave = (PREFIXO + "_".join(corpo))[:40].rstrip("_")
@@ -201,10 +204,9 @@ def capability_da_exploracao(chave: str, *, titulo: str | None = None) -> Capabi
     do catálogo. Padrão `approval_required` e risco alto: sem o dono liberar, a etapa pede o sim antes de tocar no aparelho.
     Não tem texto gerado (o efeito é o da tela), nem balde de limite, nem contraparte: o que o perfil controla é a política."""
     frase = _frase_da_chave(chave)
-    return Capability(
-        key=chave, title=titulo or f"Explorar com efeito: {frase}", goal=f"Fazer pela interface: {frase}",
-        post_kind="model_judged", post_value=f"a tela mostra: {frase}", post_description=f"O pedido foi feito: {frase}.",
-        side_effect=True, risk="high", default_policy="approval_required", internal=True, timeout_s=300, max_attempts=1)
+    return capability_sintetica_de_efeito(
+        chave, titulo=titulo or f"Explorar com efeito: {frase}", objetivo=f"Fazer pela interface: {frase}",
+        pos_valor=f"a tela mostra: {frase}", pos_descricao=f"O pedido foi feito: {frase}.")
 
 
 def e_exploracao_de_efeito(passo_key: str, exploratoria: bool, side_effect: bool) -> bool:
@@ -245,6 +247,6 @@ def molde_da_exploracao(passo: PlanStep) -> PlanStep | None:
         "precondition": None, "commit_guard": [], "bindings": {}, "saidas": [], "variables": {}})
 
 
-__all__ = ["CHAVE_GENERICA_DE_EFEITO", "Destino", "Exploracao", "OBJETOS", "PREFIXO", "VERBOS_DE_EFEITO", "VOCABULARIO",
-           "capability_da_exploracao", "chave_de_politica_valida", "e_exploracao_de_efeito", "chave_oferecivel", "chaves_da_politica", "classificar",
+__all__ = ["CHAVE_GENERICA_DE_EFEITO", "Destino", "Exploracao", "FORMAS_DE_CREDENCIAL", "OBJETOS", "PREFIXO", "VERBOS_DE_EFEITO", "VOCABULARIO",
+           "capability_da_exploracao", "chave_de_politica_valida", "e_exploracao_de_efeito", "chave_oferecivel", "chaves_da_politica", "classificar", "e_credencial",
            "molde_da_exploracao", "passo_da_exploracao"]

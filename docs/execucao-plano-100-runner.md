@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-866 de 950 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+870 de 963 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -909,7 +909,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.280 | implemented | not_run |  | — | Documento de leitura de código na origin/main ce30a5fa (08/10), nada executado: .claude/handoffs/jev-diagnostico-31-280.md (git-excluído, sem hash próprio) e o ADR-087 em docs/decisoes.md (8a659ede). Causa: a pergunta n… |  |
 | 31.281 | implemented | simulated |  | — | Branch feat/31-281-conta-planejada, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d); migração 131_conta_planejada aplicada na subida (15:33:28Z). Commits 0f99a05a, 2c6bc3a3 (catraca de profile_id), e506e47a e… |  |
 | 31.282 | implemented | simulated |  | — | Branch feat/31-282-refinador-por-estado, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_refinador_por_estado.py (8), test_assistente_do_comando.py (11), 66 dirigidos de contas, rotas, catr… |  |
-| 31.283 | implemented | simulated |  | — | Commits 7e38d8dd e 7f677f14 (sugestão só da parte local do endereço), no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/features/profiles/ContaPlanejada.test.tsx (15), 315 dirigidos de profiles e c… |  |
+| 31.283 | implemented | real |  | — | Real no central d0fbcc5d, 10/10/2026 ~15:50Z (Portal, .claude/handoffs/portal-resultado-31283-real.json): persona de teste ig-d3n4tia1rHELrY10 ('TESTE Portal 31.283 (nao usar)'); conta qa-messenger planejada pela tela,… |  |
 | 31.284 | implemented | simulated |  | — | Branch feat/31-284-validacao-conta-planejada, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_conta_planejada_ponta_a_ponta.py (2), test_conta_planejada.py (24), test_refinador_por_estado.p… |  |
 | 31.285 | implemented | simulated |  | — | Branch fix/31-285-sem-mesmo-pedido-em-n-contas, no ar no deploy 63 (08/10 18:34:56Z, central em c74a695c). backend/tests/test_sem_porta_de_n_contas.py (1), dirigidos de gates, política, aprovação, família e arquitetura,… |  |
 | 31.286 | implemented | simulated |  | — | Branch fix/31-286-conta-so-no-proprio-perfil, no ar no deploy 64 (08/10 19:05:11Z, central em 9cb6fae3). backend/tests/test_conta_so_no_proprio_perfil.py (5), 1669 dirigidos de sessão, pré-voo, login e arquitetura, catr… |  |
@@ -920,19 +920,19 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.291 | implemented | simulated |  | — | Commits 4ef8116c e 67ba8972 (lista de rotas de rede), no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_rede_saida_esperada_edicao.py (7), 115 dirigidos de rede, egresso, rotas e arquitetura… |  |
 | 31.292 | implemented | simulated |  | — | Commit 80cfdd2d, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_arquitetura.py e test_apps_fora_do_nucleo.py verdes (eram 3 vermelhas), test_egresso_igfarm.py ajustado, catracas e mypy no… |  |
 | 31.293 | implemented | simulated |  | — | Commit 6f345ede, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_regua_diaria_em_blocos.py. Real: not_run (depois do deploy 70, sem nova pilha de laco-travado com o curador). |  |
-| 31.294 | implemented | simulated |  | — | Commit 8d4968ce, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/lib/time.test.ts::fuso a vista, 244 dirigidos (time, host, operacao), tsc 0, build ok. Observação no navegador contra o central, s… |  |
-| 31.295 | implemented | simulated |  | — | Commit a1436f3e, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/store/metricas.test.ts::31.295 e 146 dirigidos (store, topbar), tsc 0. Not_run: a dica no navegador (painel embutido oculto e nenh… |  |
+| 31.294 | implemented | real |  | — | Real no central d0fbcc5d, 10/10/2026 15:40Z (percurso pós-deploy 70, .claude/handoffs/portal-resultado-percurso-real-deploy70.json): Host 'Lido às 12:39:53 (UTC-3)' e Operação 'Lido às 12:40:30 (UTC-3)' com o relógio do… |  |
+| 31.295 | implemented | real |  | — | Real parcial no central d0fbcc5d, 10/10/2026 15:4xZ: contador '0 execuções' bate com GET /api/runs (570 lidas: 0 em andamento, 0 needs_input) e a dica aponta Pendências. not_run: o contador com execução em andamento de… |  |
 | 31.296 | implemented | not_run |  | — | Documento .claude/handoffs/ponte-prova-real-login.md, pasta git-excluída (.git/info/exclude), por isso sem hash. Nada executado; a prova real do login com código de e-mail segue not_run até autorização do dono. |  |
-| 31.297 | pendente | — | — | — |  |  |
+| 31.297 | implemented | simulated |  | — | Exploração de EFEITO pela política (ADR-091, adendo v1.140): f74b1d64, 37dd0522, 50cb5b07, aacecbe9 e correções da revisão da Jev 95a3f551, 0f417c27, 9ff44754, e8901622 (lista única de credencial/sessão em contracts/cre… |  |
 | 31.298 | implemented | simulated |  | — | Commit d03cc814, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_aviso_exploracao.py (6), casos novos de test_exploracao_fora_do_catalogo (misto, recusa zera), bateria de 372 e 90 dirigidos… |  |
 | 31.299 | implemented | simulated |  | — | Commit e18efcfb, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/features/aprendizado/SeloDeExploracao.test.tsx (3), 532 dirigidos de aprendizado, runs e components, tsc 0, build ok. Not_run: per… |  |
 | 31.300 | implemented | simulated |  | — | Commit 8dac1171, na main fora do deploy 70 (corte 71, não implantado). scripts/tests/test_stop_appium_orfao.py 24 passed (10/10/2026) e o teste solto 3 vezes passou (6,3 s cada). Causa por tempo, não reproduzida de novo… |  |
-| 31.301 | implemented | simulated |  | — | Commit fe8c973f, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/features/rede/RedePage.test.tsx (5 testes novos: PUT só do campo mudado, null ao esvaziar, 409 pede motivo e repete, 422). Real: n… |  |
+| 31.301 | implemented | real |  | — | Real no central d0fbcc5d, 10/10/2026 15:4xZ: PUT real em perfil de teste criado e apagado (vpn-teste-31301, sem aparelho): 422 invalid_egress inline em 10.0.0.1 sem gravar; troca 8.8.8.8→1.1.1.1 gravada com antes/depois… |  |
 | 31.302 | implemented | simulated |  | — | Commits b408e31e, 5e7e693b e 3478fb17, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d) (contas.verificacao_periodica_h: 12 entra na subida do deploy 70). backend/tests/test_verificacao_periodica_de_sessao.py (… |  |
-| 31.303 | implemented | simulated |  | — | Commit 05002082, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/features/rede/RedePage.test.tsx (4 testes novos: detalhe só no divergente, resumo e contagem). Real: not_run. |  |
+| 31.303 | implemented | real |  | — | Real parcial no central d0fbcc5d, 10/10/2026 15:4xZ: GET /network/devices real com 1 aparelho com esperada (android-07, confere), nenhum divergente; resumo e detalhe de divergência corretamente ausentes. not_run: aparel… |  |
 | 31.304 | implemented | simulated |  | — | Commit a341a1ce, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/features/aprendizado/DescobertasNoLivro.test.tsx (4 testes: contagem e filtro ligando e desligando). Real: not_run. |  |
 | 31.305 | implemented | simulated |  | — | Commit 30d5917f, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_run_etapas_exploratorias.py (2, rota HTTP de verdade), bateria dirigida de 94 verdes, docs-check 0. Real: not_run (depois do… |  |
-| 31.306 | implemented | simulated |  | — | Commit bc56f36e, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). frontend/src/features/runs/filtroExecucoes.test.ts (3 testes novos) e RunsPage.test.tsx. Real: not_run. |  |
+| 31.306 | implemented | real |  | — | Real parcial no central d0fbcc5d, 10/10/2026 15:4xZ: GET /api/runs real traz etapas_exploratorias em todas as 200 lidas (v1.135); filtro 'Com etapa descoberta pela IA (0 nas carregadas)' aparece. not_run: execução com e… |  |
 | 31.307 | pendente | — | — | — |  |  |
 | 31.308 | implemented | simulated |  | — | Commit 06645a68, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_sensitive_input.py (perdeu a prova do critério revogado), 1198 dirigidos (parse_hierarchy, conhecimento de telas, arquitetur… |  |
 | 31.309 | implemented | simulated |  | — | Commit d0fbcc5d, ponta do deploy 70. backend/tests/test_backup.py, test_falha_so_da_imagem.py e test_perfil_esforco_e_dieta.py: 43 passed no SQLite (10/10/2026). Real: not_run (a PG inteira não foi refeita na ponta fina… |  |
@@ -940,6 +940,19 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.311 | implemented | simulated |  | — | Commit 4b7404a2, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_replay_da_etapa_descoberta.py: 3 execuções no executor de verdade com aparelho falso do QA Messenger e provedor roteirizado… |  |
 | 31.312 | implemented | simulated |  | — | Commit ddb5c891, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_ensino_da_exploracao_que_parou.py (6), bateria dirigida de 71 e avisos e canais 1177 verdes. Não verificado: o ensino taught… |  |
 | 31.313 | implemented | simulated |  | — | Commit 0eed4e0a, na main fora do deploy 70 (corte 71, não implantado). frontend/src/features/runs/EnsinarACorrigir.test.tsx (5 testes novos: intent e pergunta do servidor, pedido fora do campo de intenção) e features/tr… |  |
+| 31.314 | implemented | simulated |  | — | Persona de TESTE formal (v1.139, migração 134 aditiva instagram_profiles.teste): test_persona_de_teste.py 11 casos; 368 dirigidos + 105 de persona e avisos; catracas 103; scripts/tests 1270; mypy 257/257; docs-check 0.… |  |
+| 31.315 | implemented | simulated |  | — | Selo, filtro e marca de persona de teste no painel, com marcar/desmarcar na ficha via PATCH: features/profiles/PersonaDeTeste.test.tsx (8 testes), 392 dirigidos (profiles, command, pedidos), tsc e build. Real: not_run (… |  |
+| 31.316 | implemented | simulated |  | — | B6 fechado pelo mecanismo (tests/unit → simulated na mensagem de validar() de scripts/claude-plan-100.py, com testes) e causa do cache do verificador documentada no 7.4 (piso do Haiku: prefixo ~1920 tokens < 4096; Opus… |  |
+| 31.317 | pendente | — | — | — |  |  |
+| 31.318 | pendente | — | — | — |  |  |
+| 31.319 | pendente | — | — | — |  |  |
+| 31.320 | pendente | — | — | — |  |  |
+| 31.321 | pendente | — | — | — |  |  |
+| 31.322 | pendente | — | — | — |  |  |
+| 31.323 | pendente | — | — | — |  |  |
+| 31.324 | pendente | — | — | — |  |  |
+| 31.325 | pendente | — | — | — |  |  |
+| 31.326 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -957,7 +970,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (84): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.156, 29.162, 29.166, 29.168, 29.172, 29.173, 29.174, 29.180, 29.182, 29.185, 29.186, 29.191, 29.200, 29.201, 29.202, 29.203, 29.204, 29.205, 29.206, 29.207, 29.208, 29.209, 29.210, 29.211, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.161, 31.162, 31.233, 31.245, 31.246, 31.247, 31.252, 31.254, 31.255, 31.256, 31.257, 31.261, 31.263, 31.264, 31.265, 31.266, 31.269, 31.279, 31.297, 31.307, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (93): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.156, 29.162, 29.166, 29.168, 29.172, 29.173, 29.174, 29.180, 29.182, 29.185, 29.186, 29.191, 29.200, 29.201, 29.202, 29.203, 29.204, 29.205, 29.206, 29.207, 29.208, 29.209, 29.210, 29.211, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.161, 31.162, 31.233, 31.245, 31.246, 31.247, 31.252, 31.254, 31.255, 31.256, 31.257, 31.261, 31.263, 31.264, 31.265, 31.266, 31.269, 31.279, 31.307, 31.317, 31.318, 31.319, 31.320, 31.321, 31.322, 31.323, 31.324, 31.325, 31.326, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

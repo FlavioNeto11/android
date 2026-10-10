@@ -698,6 +698,16 @@ def load_catalog(package: str | None) -> CapabilityCatalog | None:
 MotivoForaDoCatalogo = Literal["sem_acao_do_catalogo", "acao_de_outro_catalogo"]
 
 
+def capability_sintetica_de_efeito(chave: str, *, titulo: str, objetivo: str, pos_valor: str, pos_descricao: str) -> Capability:
+    """31.297: a ação SINTÉTICA de uma etapa de efeito que não vem de catálogo (a exploração de efeito, ADR-091), para a política do
+    perfil e a aprovação a tratarem como as do catálogo. Mora aqui, com o carregador, porque é a única parte do backend que monta
+    `Capability` (catraca de `test_catalogo_como_dado.py`). Risco alto e `approval_required`: sem o dono liberar, pede o sim antes de
+    tocar no aparelho. Sem texto gerado, balde de limite nem contraparte: o que o perfil controla é a política."""
+    return Capability(
+        key=chave, title=titulo, goal=objetivo, post_kind="model_judged", post_value=pos_valor, post_description=pos_descricao,
+        side_effect=True, risk="high", default_policy="approval_required", internal=True, timeout_s=300, max_attempts=1)
+
+
 def efeito_fora_do_catalogo(side_effect: bool, capability: str | None,
                             package: str | None) -> MotivoForaDoCatalogo | None:
     """A regra do item 13.2 num lugar só: etapa com EFEITO externo, num app que TEM catálogo, sem uma ação desse
