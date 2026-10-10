@@ -19,6 +19,11 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — a lista de contas retiradas e o grupo contam as personas sem @ (achado do percurso real do deploy 73, 31.326)
+
+- Defeito do próprio 31.326, visto no central (`a9853379e`): com 10 personas com `contas_retiradas`, a lista "Contas retiradas por bloqueio" não aparecia, e o grupo Liberado dizia "15 personas · +1 de teste" (certo: 14 e +2). A tela filtrava as personas com `comConta`, e a retirada por bloqueio apaga o @ da persona; a persona de teste sem conta também ficava fora do conjunto de testes. A lista e o grupo passam a usar todas as personas.
+- Prova `simulated`: `ContaBloqueada.test.tsx` (caso da persona de teste sem @), 290 dirigidos de profiles, tsc limpo. `real`: percurso do deploy 73 em `.claude/handoffs/portal-resultado-percurso-real-deploy73.json` (a ficha, o seletor de grupo, o 31.313 e o 31.306 positivo reais); a lista corrigida só no deploy seguinte (`not_run`).
+
 ## 2026-10-10 — o diálogo "Can't find account" vira o desfecho `conta_nao_encontrada` (31.332)
 
 - A tela do login que diz que não existe conta com o identificador usado (medida na H2, android-08) deixou de cair em

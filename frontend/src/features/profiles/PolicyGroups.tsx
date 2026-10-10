@@ -61,9 +61,11 @@ function useAcoesDoApp(pacote: string | null): {
   return { acoes, apps, pacoteEfetivo, pronto: catalogo !== null };
 }
 
-export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
+export function PolicyGroupsSection({ grupos, profiles, todas, onChanged }: {
   grupos: PolicyGroup[];
   profiles: InstagramProfile[];
+  /** Todas as personas (também as sem conta): quem é de teste se decide por elas, não só pelas que têm @. */
+  todas?: readonly { id: string; teste?: boolean }[];
   onChanged: () => Promise<void>;
 }) {
   const { acoes } = useAcoesDoApp(null);
@@ -87,7 +89,7 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
     }
   }
 
-  const idsDeTeste = useMemo(() => new Set(profiles.filter(ehTeste).map((p) => p.id)), [profiles]);
+  const idsDeTeste = useMemo(() => new Set((todas ?? profiles).filter(ehTeste).map((p) => p.id)), [todas, profiles]);
   return (
     <section className={styles.groupsSection} aria-labelledby="grupos-de-acesso">
       <div className={styles.groupsHead}>

@@ -274,9 +274,10 @@ export function ProfilesPage() {
       ) : null}
 
       <InterventionQueue profiles={contas} instances={instancesMap} workers={liveWorkers} />
-      <ListaDeContasRetiradas personas={contas} abrir={abrir} />
+      {/* Sem `comConta`: a conta retirada por bloqueio apaga o @ da persona, e é justo ela que a lista precisa mostrar. */}
+      <ListaDeContasRetiradas personas={pessoas ?? []} abrir={abrir} />
 
-      <PolicyGroupsSection grupos={grupos} profiles={contas} onChanged={load} />
+      <PolicyGroupsSection grupos={grupos} profiles={contas} todas={pessoas ?? undefined} onChanged={load} />
 
       {pessoas.length === 0 ? (
         <EmptyState

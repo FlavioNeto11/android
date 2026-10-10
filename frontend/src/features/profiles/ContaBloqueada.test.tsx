@@ -155,6 +155,22 @@ describe('telas', () => {
     expect(text(chips)).toContain('+1 de teste');
     expect(text(chips)).not.toContain('TESTE X');
   });
+  it('achado do percurso real do deploy 73: a persona de teste SEM conta (sem @) também sai da conta do grupo', async () => {
+    const grupo = {
+      id: 'g1', name: 'Liberado', description: '', capabilities: {}, loosened: [],
+      members: [{ id: 'ig-1', username: 'a.b' }, { id: 'ig-t', username: null, name: 'TESTE X' }],
+    } as unknown as PolicyGroup;
+    const be = new FakeBackend();
+    be.install();
+    be.on('GET', /app-catalog/, () => json([]));
+    await act(async () => root.render(<PolicyGroupsSection grupos={[grupo]} profiles={[{ id: 'ig-1' }] as never}
+                                                           todas={[{ id: 'ig-1' }, { id: 'ig-t', teste: true }] as never} onChanged={async () => {}} />));
+    await waitFor(() => text(container).includes('Liberado'));
+    const chips = container.querySelector('[aria-label="Personas no grupo Liberado"]') as HTMLElement;
+    expect(text(chips)).toContain('1 persona');
+    expect(text(chips)).toContain('+1 de teste');
+    expect(text(chips)).not.toContain('TESTE X');
+  });
 });
 
 describe('contas_retiradas (v1.142)', () => {
