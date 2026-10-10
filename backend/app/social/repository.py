@@ -15,7 +15,7 @@ from datetime import date
 from pydantic import ValidationError
 
 from ..db import Database, INTEGRITY_ERRORS, OPERATIONAL_ERRORS, Row, dumps, loads
-from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_POLICY_PADRAO, PersonaBiography,
+from ..models import (AppOnDevice, ContaRetiradaDTO, CredentialInfo, InstagramProfileDTO, OFFLINE_POLICY_PADRAO, PersonaBiography,
                       PersonaDeviceDTO,
                       PersonaGeneration, PersonaImageDTO, PersonaTraits, PersonaVisual, ProfileLocality,
                       SessionActions, SessionInfo, SessionStatus)
@@ -1335,7 +1335,8 @@ class SocialRepository:
             last_name=row["last_name"], birth_date=row["birth_date"], email=row["email"],
             # A persona é a própria pessoa: o painel de hoje acha "a persona do perfil" por estes dois campos.
             persona_id=row["id"], persona_name=pessoa["name"], status=row["status"],
-            teste=bool(row["teste"]), accounts_count=self.accounts_count(profile_id), images=imagens, primary_image_id=principal, has_avatar=tem_foto,
+            teste=bool(row["teste"]), accounts_count=self.accounts_count(profile_id),
+            contas_retiradas=self.contas_retiradas_de(profile_id), images=imagens, primary_image_id=principal, has_avatar=tem_foto,
             policy_group_id=row["policy_group_id"],
             policy_group_name=(self.db.scalar("SELECT name FROM policy_groups WHERE id=?", (row["policy_group_id"],))
                                if row["policy_group_id"] else None),
@@ -1454,6 +1455,21 @@ class SocialRepository:
             return None
         return self.db.one("SELECT a.* FROM profile_accounts a JOIN apps ap ON ap.id = a.app_id"
                            " WHERE a.profile_id=? AND ap.package=?", (profile_id, package))
+
+    def contas_retiradas_de(self, profile_id: str) -> list[ContaRetiradaDTO]:
+        """As lápides desta persona SEM o hash do @ (31.322). A âncora grava uma lápide por @ (conta e cadastro) com o mesmo
+        motivo no mesmo instante: aparece uma só."""
+        vistas: set[tuple[str, str, str]] = set()
+        saida: list[ContaRetiradaDTO] = []
+        for r in self.db.query("SELECT app_id, retirada_em, motivo_do_bloqueio FROM contas_retiradas WHERE profile_id=?"
+                               " ORDER BY retirada_em DESC", (profile_id,)):
+            chave = (str(r["app_id"]), str(r["retirada_em"])[:19], str(r["motivo_do_bloqueio"] or ""))
+            if chave in vistas:
+                continue
+            vistas.add(chave)
+            saida.append(ContaRetiradaDTO(app_id=str(r["app_id"]), retirada_em=str(r["retirada_em"]),
+                                          motivo_do_bloqueio=loads(r["motivo_do_bloqueio"], None)))
+        return saida
 
     def accounts_count(self, profile_id: str) -> int:
         return int(self.db.scalar("SELECT COUNT(*) FROM profile_accounts WHERE profile_id=?", (profile_id,)) or 0)
