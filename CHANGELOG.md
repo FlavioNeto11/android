@@ -26,7 +26,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   fuso do navegador ao lado ("22:20:43 (UTC-3)"). As amostras e a API seguem em UTC; quem compara com `date -u` vê a
   diferença na própria tela. O resto das horas do painel não mudou.
 - Prova `simulated`: `lib/time.test.ts::fuso à vista` e 244 dirigidos (time, host, operacao). Prova `real` (10/10 ~13:35Z,
-  central a1436f3e... no ar, build do worktree): a página Host mostrou "Lido às 10:32:11 (UTC-3)". `not_run`: a página de
+  central 5ebf237e ou anterior no ar (o health mudou durante o percurso), build do worktree): a página Host mostrou "Lido às 10:32:11 (UTC-3)". `not_run`: a página de
   Operação (não havia operação aberta).
 
 ## 2026-10-10 — "0 execuções" diz onde estão as que esperam resposta (31.295)
