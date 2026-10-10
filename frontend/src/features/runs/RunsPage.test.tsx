@@ -226,3 +226,10 @@ it('31.306: sem nenhuma execução descoberta, o filtro ligado diz que é o filt
   await act(async () => { root.render(<RunsPage />); });
   await waitFor(() => expect(text()).toContain('Nenhuma execução com esse filtro'));
 });
+
+it('achado da varredura 70/71: o filtro de exploração sem nenhuma execução descoberta diz que ainda não há nenhuma', async () => {
+  backend.on('GET', /^\/api\/runs$/, () => json({ runs: [makeRun({ id: 'r-9', short_id: 'c9', etapas_exploratorias: 0 })], total: 1, limit: 200, offset: 0 }));
+  useUiStore.getState().navegar({ tela: 'execucoes', query: { exploracao: '1' } }, 'replace');
+  await act(async () => { root.render(<RunsPage />); });
+  await waitFor(() => expect(text()).toContain('Nenhuma execução tem etapa descoberta pela IA ainda'));
+});

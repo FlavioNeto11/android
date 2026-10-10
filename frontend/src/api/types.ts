@@ -705,6 +705,19 @@ export interface OperationalContext {
   }[];
 }
 
+/**
+ * 31.322 (adendo v1.142): por que a conta caiu na tela humana, como DADO (sem segredo e sem o @). Vem no evento
+ * `profile.account_retired` e na lápide; campo que o servidor não soube fica `null`, e a tela nunca o inventa.
+ */
+export interface MotivoDoBloqueio {
+  egresso_esperado: string | null;
+  egresso_medido: string | null;
+  egresso_divergente: boolean | null;
+  ips_distintos_desde_criacao: number | null;
+  minutos_ate_o_primeiro_login: number | null;
+  trecho_da_tela: string | null;
+}
+
 export interface SessionInfo {
   status: SessionStatus;
   instance_id: string | null;
@@ -746,7 +759,16 @@ export interface ProfileLocality {
   detail: string | null;
 }
 
+/** 31.326 (adendo v1.142): uma conta que saiu da plataforma por bloqueio (lápide), sem o @. `motivo_do_bloqueio` é `null` nas antigas. */
+export interface ContaRetirada {
+  app_id: string;
+  retirada_em: string;
+  motivo_do_bloqueio: MotivoDoBloqueio | null;
+}
+
 export interface InstagramProfile {
+  /** 31.326 (v1.142): as contas retiradas por bloqueio, da mais nova à mais antiga. Ausente em backend anterior (vale lista vazia). */
+  contas_retiradas?: ContaRetirada[];
   /** 31.315 (adendo v1.139, `personas.teste`): persona criada só para provas; não é uma pessoa do parque. Ausente em backend anterior (vale falso). */
   teste?: boolean;
   id: string;

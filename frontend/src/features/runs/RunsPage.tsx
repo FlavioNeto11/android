@@ -206,8 +206,11 @@ export function RunsPage() {
                 icon={algumFiltro ? SearchX : ListChecks}
                 compact
                 title={algumFiltro ? 'Nenhuma execução com esse filtro' : 'Nenhuma execução ainda'}
-                hint={algumFiltro ? 'Nenhuma execução registrada casa com a busca e os filtros escolhidos.'
-                                  : 'Crie a primeira pelo campo de comando do Painel.'}
+                hint={algumFiltro
+                  ? (filtro.exploracao && comExploracao === 0
+                    ? 'Nenhuma execução tem etapa descoberta pela IA ainda: a exploração só aparece aqui depois que uma execução a usa.'
+                    : 'Nenhuma execução registrada casa com a busca e os filtros escolhidos.')
+                  : 'Crie a primeira pelo campo de comando do Painel.'}
                 actions={algumFiltro
                   ? <Button variant="outline" onClick={() => mudar(LIMPAR_FILTROS)}>Limpar filtros</Button>
                   : <Button variant="outline" onClick={() => setView('painel')}>Ir para o Painel</Button>}

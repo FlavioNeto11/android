@@ -19,7 +19,7 @@ import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '..
 import { conteudoAoTopo } from '../../lib/scroll';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { lembrarVisao, visaoPreferida } from '../../lib/visao';
-import { metaDaSessao } from '../../lib/status';
+import { metaDaSessao, rotuloDaFila } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
@@ -27,6 +27,7 @@ import { useUiStore } from '../../store/ui';
 import { desdeDaSessao, precisaDePessoa } from '../pendencias/modelo';
 import { BarraDeLote } from './AcoesEmLote';
 import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
+import { ListaDeContasRetiradas } from './MotivoDoBloqueio';
 import { PolicyGroupsSection } from './PolicyGroups';
 import { abaDoPedido, type Aba } from './abas';
 import {
@@ -273,6 +274,7 @@ export function ProfilesPage() {
       ) : null}
 
       <InterventionQueue profiles={contas} instances={instancesMap} workers={liveWorkers} />
+      <ListaDeContasRetiradas personas={contas} abrir={abrir} />
 
       <PolicyGroupsSection grupos={grupos} profiles={contas} onChanged={load} />
 
@@ -391,6 +393,9 @@ function InterventionQueue({ profiles, instances, workers }: {
   );
 
   if (itens.length === 0) return null;
+  // 31.322: a tela humana é bloqueio definitivo (a conta sai da plataforma), não uma espera: fica separada e sem "Assumir".
+  const bloqueadas = itens.filter((p) => rotuloDaFila(p.session.detail) === 'bloqueada');
+  const aguardando = itens.filter((p) => rotuloDaFila(p.session.detail) !== 'bloqueada');
 
   async function assumirEAbrir(instanceId: string) {
     await take(instanceId);
@@ -398,19 +403,55 @@ function InterventionQueue({ profiles, instances, workers }: {
   }
 
   return (
+    <>
+      {bloqueadas.length > 0 ? (
+        <Card>
+          <CardHeader
+            title={
+              <span className={styles.filaTitulo}>
+                <ShieldAlert size={18} aria-hidden /> Contas bloqueadas
+                <Badge tone="danger">{bloqueadas.length}</Badge>
+              </span>
+            }
+            subtitle="A plataforma pediu para provar que é uma pessoa (tela humana). O bloqueio é definitivo: a conta sai da plataforma e não há o que assumir no aparelho."
+          />
+          <CardBody>
+            <ul className={styles.filaLista}>
+              {bloqueadas.map((p) => (
+                <li key={p.id} className={styles.filaItem}>
+                  <Avatar src={profileAvatarUrl(p.id, p.has_avatar)} name={p.display_name || p.username} size={32} />
+                  <div className={styles.filaInfo}>
+                    <p className={styles.filaPerfil}>
+                      <span className={styles.filaUsuario}>@{p.username}</span>
+                      <StatusBadge meta={metaDaSessao(p.session)} />
+                    </p>
+                    <p className={styles.filaDetalhe}>
+                      <Smartphone size={13} aria-hidden />
+                      {p.instance_id ?? <span className={styles.muted}>sem aparelho vinculado</span>}
+                      <span className={styles.muted}>· {tempoRelativo(desdeDaSessao(p.session), now)}</span>
+                    </p>
+                    {p.session.detail ? <p className={styles.filaMotivo}>{p.session.detail}</p> : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      ) : null}
+      {aguardando.length > 0 ? (
     <Card>
       <CardHeader
         title={
           <span className={styles.filaTitulo}>
             <ShieldAlert size={18} aria-hidden /> Aguardando intervenção
-            <Badge tone="warning">{itens.length}</Badge>
+            <Badge tone="warning">{aguardando.length}</Badge>
           </span>
         }
         subtitle="Login, desafio de segurança, conta errada ou tela que a automação não reconheceu — só uma pessoa resolve. Assuma o controle e resolva na tela do aparelho; devolver o controle relê a tela sozinho."
       />
       <CardBody>
         <ul className={styles.filaLista}>
-          {itens.map((p) => {
+          {aguardando.map((p) => {
             const inst = p.instance_id ? instances[p.instance_id] : undefined;
             const server = inst ? serverHintOf(inst, workers) : null;
             const sess = metaDaSessao(p.session);
@@ -446,6 +487,8 @@ function InterventionQueue({ profiles, instances, workers }: {
         </ul>
       </CardBody>
     </Card>
+      ) : null}
+    </>
   );
 }
 

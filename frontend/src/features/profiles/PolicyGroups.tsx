@@ -20,6 +20,7 @@ import { plural } from '../../lib/format';
 import { toast, toastError } from '../../store/toasts';
 import { PolicyActionsEditor, resumoDePoliticas } from './PolicyEditor';
 import styles from './Profiles.module.css';
+import { ehTeste } from './filtroPersonas';
 import { nomeDe, rotuloDaConta } from './pessoa';
 
 /** Apps com catálogo de ações, o âncora primeiro (23.10). Antes o painel pegava "o primeiro app com login
@@ -86,6 +87,7 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
     }
   }
 
+  const idsDeTeste = useMemo(() => new Set(profiles.filter(ehTeste).map((p) => p.id)), [profiles]);
   return (
     <section className={styles.groupsSection} aria-labelledby="grupos-de-acesso">
       <div className={styles.groupsHead}>
@@ -104,6 +106,9 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
           {grupos.map((g) => {
             const efetivo = (c: Capability): PolicyName => g.capabilities[c.key] ?? c.default_policy;
             const mudancas = Object.keys(g.capabilities).length;
+            // 31.326: a persona de teste não entra na conta do grupo (nem nos chips); aparece à parte, como "+N de teste".
+            const membros = g.members.filter((m) => !idsDeTeste.has(m.id));
+            const deTeste = g.members.length - membros.length;
             return (
               <Card key={g.id}>
                 <CardHeader
@@ -123,14 +128,15 @@ export function PolicyGroupsSection({ grupos, profiles, onChanged }: {
                     {g.loosened.length ? <> · <Badge tone="danger" size="sm">afrouxa {g.loosened.length} ação(ões) de risco</Badge></> : null}
                   </p>
                   <div className={styles.memberChips} aria-label={`Personas no grupo ${g.name}`}>
-                    <Badge size="sm" tone={g.members.length ? 'info' : 'muted'}>
-                      <Users size={12} aria-hidden /> {plural(g.members.length, 'persona', 'personas')}
+                    <Badge size="sm" tone={membros.length ? 'info' : 'muted'}>
+                      <Users size={12} aria-hidden /> {plural(membros.length, 'persona', 'personas')}
                     </Badge>
-                    {g.members.slice(0, 8).map((m) => {
+                    {deTeste ? <Badge size="sm" tone="muted">+{deTeste} de teste</Badge> : null}
+                    {membros.slice(0, 8).map((m) => {
                       const q = rotuloDaConta(m);
                       return <span key={m.id} className={styles.memberChip} data-sem-conta={q.semConta || undefined}>{q.texto}</span>;
                     })}
-                    {g.members.length > 8 ? <span className={styles.muted}>+{g.members.length - 8}</span> : null}
+                    {membros.length > 8 ? <span className={styles.muted}>+{membros.length - 8}</span> : null}
                   </div>
                 </CardBody>
               </Card>

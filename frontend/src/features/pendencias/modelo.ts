@@ -20,7 +20,7 @@
  */
 import type { PedidoView } from '../../api/pedidos';
 import type { Approval, PersonaDTO, RunSummary } from '../../api/types';
-import { metaDaSessao } from '../../lib/status';
+import { metaDaSessao, rotuloDaFila } from '../../lib/status';
 import type { Destino } from '../../store/ui';
 import { rotuloDoKind, type EntradaDoLivro } from '../aprendizado/model';
 import { encurtar, tituloCurto } from '../runs/filtroExecucoes';
@@ -187,9 +187,9 @@ export function pendenciasDeSessoes(personas: readonly PersonaDTO[]): Pendencia[
       origem: 'intervencao',
       titulo: nome && nome !== p.username ? `${nome} (@${p.username})` : `@${p.username}`,
       detalhe: `${metaDaSessao(p.session).label} · ${aparelho ?? 'sem aparelho vinculado'}`
-        + ' · só uma pessoa resolve',
+        + (rotuloDaFila(p.session.detail) === 'bloqueada' ? ' · bloqueio definitivo, a conta sai da plataforma' : ' · só uma pessoa resolve'),
       desde: desdeDaSessao(p.session),
-      acao: 'Resolver',
+      acao: rotuloDaFila(p.session.detail) === 'bloqueada' ? 'Ver' : 'Resolver',
       destino: { tela: 'personas' },
     };
   });

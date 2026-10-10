@@ -1676,3 +1676,24 @@ it('Aparelhos mostra o aparelho com os apps e abre o Foco nele', async () => {
   await click(byRole('button', /Abrir no Foco/i));
   expect(useUiStore.getState().focusInstanceId).toBe('android-02');
 });
+
+it('achado da varredura 70/71: o seletor de grupo conta as personas SEM as de teste', async () => {
+  const politica = {
+    limits: {}, capabilities: {}, defaults: {}, loosened: [], group_id: null, group_name: null,
+    own: {}, group: {}, origin: {}, own_limits: {}, group_limits: {}, limits_origin: {},
+  };
+  montarConfigBackend([], politica);
+  backend.on('GET', /policy-groups$/, () => json([
+    { id: 'grp-2', name: 'Liberados', description: '', capabilities: {}, limits: {}, loosened: [], created_at: '', updated_at: '',
+      members: [{ id: 'ig-9', username: 'x' }, { id: 'ig-8', username: 'y' }, { id: 'ig-t', username: null }] },
+  ]));
+  backend.on('GET', /^\/api\/personas$/, () => json([{ id: 'ig-9' }, { id: 'ig-8' }, { id: 'ig-t', teste: true }]));
+  await act(async () => {
+    root.render(<ProfileDetail profile={perfil()} onBack={() => {}} onChanged={async () => {}} />);
+  });
+  await waitFor(() => text().includes('@luciana.bastos73519'));
+  await irParaGuia(/Configurações/i);
+  await waitFor(() => expect(text()).toContain('Liberados'));
+  const opcoes = [...(byRole('combobox', /^Grupo$/) as HTMLSelectElement).options].map((o) => o.textContent);
+  expect(opcoes.find((o) => o?.startsWith('Liberados'))).toContain('2 personas');
+});

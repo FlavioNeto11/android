@@ -14,6 +14,7 @@ import { useAppStore } from '../../store/app';
 import { toastError } from '../../store/toasts';
 import { Carregando, useVersaoAoVivo } from './detalheComum';
 import { EFEITO_DE_SAIR_DO_GRUPO_LIBERADO, efeitoDeEntrarNoGrupoLiberado, ehGrupoLiberado } from './grupoLiberado';
+import { ehTeste } from './filtroPersonas';
 import { MarcaDeTeste } from './MarcaDeTeste';
 import { nomeDe, type Pessoa } from './pessoa';
 import { type Origem, PolicyActionsEditor } from './PolicyEditor';
@@ -33,6 +34,8 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
   const [politica, setPolitica] = useState<ProfilePolicy | null>(null);
   const [acoes, setAcoes] = useState<Capability[]>([]);
   const [grupos, setGrupos] = useState<PolicyGroup[]>([]);
+  // 31.326 (achado da varredura de UX 70/71): o seletor de grupo conta as personas SEM as de teste, como o cartão do grupo.
+  const [idsDeTeste, setIdsDeTeste] = useState<ReadonlySet<string>>(new Set());
   // `null` = o catálogo ainda não chegou (ou falhou: aí o erro está em `erro`); `[]` = chegou, sem app nenhum.
   const [catalogo, setCatalogo] = useState<AppCatalogEntry[] | null>(null);
   // `null` = o app âncora (ou o único com catálogo); a pessoa escolhe outro quando há mais de um (23.10).
@@ -69,9 +72,11 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
       // `listCapabilities` exige o pacote: sem app com catálogo não há ações a listar, e não se pergunta.
       pacoteEfetivo ? api.listCapabilities(pacoteEfetivo) : Promise.resolve([] as Capability[]),
       api.listPolicyGroups(pacoteEfetivo).catch(() => [] as PolicyGroup[]),
+      api.listPersonas().then((l) => new Set(l.filter(ehTeste).map((x) => x.id))).catch(() => new Set<string>()),
     ])
-      .then(([p, c, g]) => {
+      .then(([p, c, g, t]) => {
         if (!vivo) return;
+        setIdsDeTeste(t);
         setPolitica(p);
         setAcoes(c);
         setGrupos(g);
@@ -159,7 +164,7 @@ export function AbaConfiguracoes({ profile, onChanged }: { profile: Pessoa; onCh
                         onChange={(e) => void trocarGrupo(e.target.value)}>
                   <option value="">Sem grupo — só o padrão do catálogo</option>
                   {grupos.map((g) => (
-                    <option key={g.id} value={g.id}>{g.name} · {plural(g.members.length, 'persona', 'personas')}{ehGrupoLiberado(g.id, settings) ? ' · sem aprovação' : ''}</option>
+                    <option key={g.id} value={g.id}>{g.name} · {plural(g.members.filter((m) => !idsDeTeste.has(m.id)).length, 'persona', 'personas')}{ehGrupoLiberado(g.id, settings) ? ' · sem aprovação' : ''}</option>
                   ))}
                 </Select>
               )}

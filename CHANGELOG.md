@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o painel diz "bloqueada" e mostra o motivo (31.326, adendo v1.142) e os 2 achados da varredura de UX dos deploys 70/71
+
+- Rótulo: a sessão na tela humana (`conta_travada:` ou "retirada por bloqueio" no detalhe, ou `data.rotulo` do evento `session.needs_person`) vira "Conta bloqueada" no selo,
+  no cabeçalho da persona (sem "Resolver"), na fila de Personas (cartão "Contas bloqueadas", sem "Assumir controle"), na caixa de Pendências e no aviso ao vivo. O que espera código ou desafio comum segue "Aguardando intervenção".
+- Motivo: cartão "Conta bloqueada" na guia Contas e acesso (saída esperada × medida, IPs distintos, minutos até o 1º login, trecho da tela) lido de `contas_retiradas` do GET da persona, com o evento ao vivo cobrindo até a releitura;
+  lista "Contas retiradas por bloqueio" na tela Personas. Campo ausente = lista vazia; campo desconhecido não se inventa.
+- Grupo de acesso sem as personas de teste: o cartão mostra "N personas" e "+N de teste" à parte, e o seletor de grupo em Configurações da persona (achado da varredura de UX) conta sem elas.
+- Achado da varredura de UX 70/71: o filtro de exploração em Execuções, sem nenhuma execução descoberta, diz "Nenhuma execução tem etapa descoberta pela IA ainda".
+- Prova `simulated`: `ContaBloqueada.test.tsx` (13), `ProfileDetail.test.tsx` e `RunsPage.test.tsx` (1 cada); 872 dirigidos verdes, tsc limpo. `real`: `not_run`, no deploy seguinte ao da `main`.
+
 ## 2026-10-10 — tela humana = bloqueio definitivo: motivo como dado e rótulo "bloqueada" (31.322, migração 136)
 
 - Migração 136 aditiva: `contas_retiradas.motivo_do_bloqueio` (JSON). `identity/infrastructure/motivo_bloqueio.py` monta o objeto ANTES da

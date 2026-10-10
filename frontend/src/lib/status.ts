@@ -229,8 +229,32 @@ export const SESSAO_PARADA_NO_TETO: StatusMeta = {
 };
 
 /** O selo da sessão: o do estado, salvo a parada no teto, que tem o seu (29.96). */
-export function metaDaSessao(session: { status?: string | null; unknown_at_cap?: boolean } | null | undefined): StatusMeta {
+/**
+ * 31.322 (adendo v1.142): a tela humana ("Confirm you're human", `conta_travada`) é bloqueio DEFINITIVO: a conta sai da
+ * plataforma e ninguém fica "aguardando". O código por e-mail e o desafio comum seguem esperando uma pessoa. É só o rótulo
+ * (o status da sessão não muda). O servidor manda `rotulo` no evento `session.needs_person`; na leitura REST só há o
+ * `detail`, e a regra é a mesma de `rotulo_da_fila` (`session_rules.py`): essas duas marcas no texto.
+ */
+export type RotuloDaFila = 'bloqueada' | 'aguardando';
+const MARCAS_DE_BLOQUEIO = ['conta_travada:', 'retirada por bloqueio'] as const;
+
+export function rotuloDaFila(detail: string | null | undefined, rotuloDoServidor?: unknown): RotuloDaFila {
+  if (rotuloDoServidor === 'bloqueada' || rotuloDoServidor === 'aguardando') return rotuloDoServidor;
+  const texto = detail ?? '';
+  return MARCAS_DE_BLOQUEIO.some((m) => texto.includes(m)) ? 'bloqueada' : 'aguardando';
+}
+
+export const SESSAO_BLOQUEADA: StatusMeta = {
+  label: 'Conta bloqueada', tone: 'danger', icon: Ban,
+  description: 'A plataforma pediu para provar que é uma pessoa (tela humana): o bloqueio é definitivo e a conta sai da '
+    + 'plataforma. Não há o que aguardar nem resolver no aparelho.',
+};
+
+export function metaDaSessao(
+  session: { status?: string | null; unknown_at_cap?: boolean; detail?: string | null } | null | undefined,
+): StatusMeta {
   if (session?.unknown_at_cap) return SESSAO_PARADA_NO_TETO;
+  if (session?.detail && rotuloDaFila(session.detail) === 'bloqueada') return SESSAO_BLOQUEADA;
   return metaOf(ACCOUNT_SESSION_STATUS, session?.status ?? 'unknown');
 }
 

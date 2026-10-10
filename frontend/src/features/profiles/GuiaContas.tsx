@@ -25,6 +25,7 @@ import { PrepararConta, ProvisionamentoDaConta } from './ContaPlanejada';
 import { TEXTO_DO_CONSENTIMENTO, ehNavegador, emPreparo, provisionamentoDe } from './provisionamento';
 import { aparelhosDe, ehEndereco, handleDe, type Pessoa } from './pessoa';
 import { SESSION_PHASE_LABEL, accountGateReason } from './sessionGate';
+import { MotivoDoBloqueio } from './MotivoDoBloqueio';
 import styles from './Profiles.module.css';
 
 // Regra de usuário do app âncora (hoje sempre o Instagram: letras, números, ponto ou sublinhado, até 30). O NOME
@@ -101,6 +102,7 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
 
   return (
     <div className={styles.configStack}>
+      <MotivoDoBloqueio profileId={profile.id} retiradas={profile.contas_retiradas} />
       <Card>
         <CardHeader title="Contas e acesso"
                     subtitle={'Uma conta por app (ou por site, no navegador), todas desta pessoa. A senha vai cifrada '

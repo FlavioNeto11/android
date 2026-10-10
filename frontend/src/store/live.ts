@@ -3,7 +3,7 @@ import type { Command, EventRecord, RunSummary } from '../api/types';
 import { EMPTY_WATCH, LiveSocket, type WatchInterest } from '../api/ws';
 import { backoffDelay } from '../lib/backoff';
 import { isRecord } from '../lib/format';
-import { isRunSemTrabalho } from '../lib/status';
+import { isRunSemTrabalho, rotuloDaFila } from '../lib/status';
 import { setServerTime } from '../lib/time';
 import { useAppStore } from './app';
 import { releaseAllLeasesOnUnload, useControlStore } from './control';
@@ -238,11 +238,17 @@ function handleEvent(ev: EventRecord): void {
   // depois de devolver o controle resolveu sozinha; não há por que avisar disso).
   if (ev.kind === 'session.needs_person' && isRecord(ev.data) && ev.data.active === true) {
     const instanceId = typeof ev.data.instance_id === 'string' ? ev.data.instance_id : ev.instance_id;
+    // 31.322: o servidor manda `rotulo`; a tela humana é bloqueio definitivo, e não há o que assumir no aparelho.
+    const bloqueada = rotuloDaFila(typeof ev.data.detail === 'string' ? ev.data.detail : null, ev.data.rotulo) === 'bloqueada';
     toast({
-      tone: 'warning',
-      title: instanceId ? `${instanceId}: uma persona precisa de intervenção` : 'Uma persona precisa de intervenção',
+      tone: bloqueada ? 'danger' : 'warning',
+      title: bloqueada
+        ? (instanceId ? `${instanceId}: uma conta foi bloqueada` : 'Uma conta foi bloqueada')
+        : (instanceId ? `${instanceId}: uma persona precisa de intervenção` : 'Uma persona precisa de intervenção'),
       message: typeof ev.data.detail === 'string' ? ev.data.detail : null,
-      hint: 'Abra "Personas" — a fila "Aguardando intervenção" tem um botão para assumir o aparelho.',
+      hint: bloqueada
+        ? 'Bloqueio definitivo (tela humana): a conta sai da plataforma. Abra "Personas" para ver o motivo.'
+        : 'Abra "Personas" — a fila "Aguardando intervenção" tem um botão para assumir o aparelho.',
       key: `needs-person-${instanceId ?? 'geral'}`,
     });
   }
