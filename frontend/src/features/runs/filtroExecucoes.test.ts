@@ -78,7 +78,7 @@ describe('filtros de execuções', () => {
 
   it('lê a URL ignorando valores desconhecidos', () => {
     expect(lerFiltroExecucoes({ status: 'pendencia', periodo: '7d', q: 'nasa', aparelho: 'android-01' }))
-      .toEqual({ q: 'nasa', status: 'pendencia', periodo: '7d', aparelho: 'android-01', servidor: '' });
+      .toEqual({ q: 'nasa', status: 'pendencia', periodo: '7d', exploracao: false, aparelho: 'android-01', servidor: '' });
     expect(lerFiltroExecucoes({ status: 'xyz', periodo: '1ano' })).toMatchObject({ status: null, periodo: null });
     expect(filtroLocalAtivo(lerFiltroExecucoes({ aparelho: 'android-01' }))).toBe(false);
     expect(filtroLocalAtivo(lerFiltroExecucoes({ q: 'x' }))).toBe(true);
@@ -118,5 +118,30 @@ describe('histórico da tela', () => {
     const u = unirExecucoes([nova, atualizada], [antiga, run('r-0', { created_at: '2026-08-01T00:00:00Z' })]);
     expect(u.map((r) => r.id)).toEqual(['r-2', 'r-1', 'r-0']);
     expect(u[1]!.status).toBe('completed');
+  });
+});
+
+describe('31.306: execuções com etapa descoberta pela IA (etapas_exploratorias, v1.135)', () => {
+  const COM = run('r-com', { etapas_exploratorias: 2 });
+  const SEM = run('r-sem', { etapas_exploratorias: 0 });
+  const ANTIGA = run('r-antiga');   // backend anterior ao 31.305: o campo não vem
+
+  it('o link `exploracao=1` liga o filtro; qualquer outro valor deixa desligado', () => {
+    expect(lerFiltroExecucoes({ exploracao: '1' }).exploracao).toBe(true);
+    for (const v of ['0', 'true', '']) expect(lerFiltroExecucoes({ exploracao: v }).exploracao).toBe(false);
+    expect(lerFiltroExecucoes({}).exploracao).toBe(false);
+  });
+
+  it('só passa quem tem contador maior que zero; sem o campo vale zero', () => {
+    const f = lerFiltroExecucoes({ exploracao: '1' });
+    expect(filtrarExecucoes([COM, SEM, ANTIGA], f, AGORA).map((r) => r.id)).toEqual(['r-com']);
+    expect(filtrarExecucoes([COM, SEM, ANTIGA], lerFiltroExecucoes({}), AGORA)).toHaveLength(3);
+  });
+
+  it('é filtro da tela (pede o histórico inteiro) e soma com a situação', () => {
+    expect(filtroLocalAtivo(lerFiltroExecucoes({ exploracao: '1' }))).toBe(true);
+    const falhou = run('r-falhou', { etapas_exploratorias: 1, status: 'failed' });
+    const f = lerFiltroExecucoes({ exploracao: '1', status: 'falha' });
+    expect(filtrarExecucoes([COM, falhou], f, AGORA).map((r) => r.id)).toEqual(['r-falhou']);
   });
 });

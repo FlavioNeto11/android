@@ -10,6 +10,7 @@ import type { RunSummary } from '../../api/types';
  *   abaixo). O
  *   código `pendencia` ficou na URL para os links antigos valerem; o rótulo é "Pede atenção" (decisão D1).
  * - `periodo`: `24h` | `7d` | `30d` (criada nesse intervalo).
+ * - `exploracao`: `1` = só as execuções com etapa descoberta pela IA (`etapas_exploratorias > 0`, 31.306).
  * - `aparelho`: id do aparelho; `servidor`: id do servidor (worker). Estes dois a API filtra (`instance_id`,
  *   `worker_id`); os outros a tela filtra sobre o histórico inteiro.
  */
@@ -62,6 +63,8 @@ export interface FiltroExecucoes {
   q: string;
   status: GrupoStatus | null;
   periodo: Periodo | null;
+  /** 31.306: só as execuções com etapa criada por exploração. */
+  exploracao: boolean;
   aparelho: string;
   servidor: string;
 }
@@ -75,6 +78,7 @@ export function lerFiltroExecucoes(query: Readonly<Record<string, string>>): Fil
     q: query.q ?? '',
     status: umDe(GRUPOS_STATUS, query.status),
     periodo: umDe(PERIODOS, query.periodo),
+    exploracao: query.exploracao === '1',
     aparelho: query.aparelho ?? '',
     servidor: query.servidor ?? '',
   };
@@ -82,7 +86,7 @@ export function lerFiltroExecucoes(query: Readonly<Record<string, string>>): Fil
 
 /** Filtros que a TELA aplica (a API não sabe filtrar por eles): com um deles ligado, a tela precisa do histórico todo. */
 export function filtroLocalAtivo(f: FiltroExecucoes): boolean {
-  return !!(f.q.trim() || f.status || f.periodo);
+  return !!(f.q.trim() || f.status || f.periodo || f.exploracao);
 }
 
 export function filtroAtivo(f: FiltroExecucoes): boolean {
@@ -90,19 +94,23 @@ export function filtroAtivo(f: FiltroExecucoes): boolean {
 }
 
 export const LIMPAR_FILTROS: Record<string, undefined> = {
-  q: undefined, status: undefined, periodo: undefined, aparelho: undefined, servidor: undefined,
+  q: undefined, status: undefined, periodo: undefined, exploracao: undefined, aparelho: undefined, servidor: undefined,
 };
 
 function normalizar(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
-/** Aplica busca, grupo de status e período. `agora` é injetado (teste e relógio da tela). */
+/** A execução tem etapa descoberta pela IA (31.305): o contador do servidor, nunca um palpite da tela. */
+export const temExploracao = (r: RunSummary): boolean => (r.etapas_exploratorias ?? 0) > 0;
+
+/** Aplica busca, grupo de status, período e exploração. `agora` é injetado (teste e relógio da tela). */
 export function filtrarExecucoes(runs: readonly RunSummary[], f: FiltroExecucoes, agora: number, excluir?: 'status'): RunSummary[] {
   const alvo = normalizar(f.q.trim());
   const desde = f.periodo ? agora - MS_PERIODO[f.periodo] : null;
   return runs.filter((r) => {
     if (alvo && !normalizar(`${r.command} ${r.short_id}`).includes(alvo)) return false;
+    if (f.exploracao && !temExploracao(r)) return false;
     if (excluir !== 'status' && f.status && grupoDoStatus(r.status) !== f.status) return false;
     if (desde !== null) {
       const t = Date.parse(r.created_at);

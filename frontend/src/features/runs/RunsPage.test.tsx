@@ -180,3 +180,49 @@ it('D2: as execuções `planned` têm chip próprio "Planejadas", fora de "Em an
   await waitFor(() => expect(text(document.querySelector('[role="tooltip"]') as HTMLElement))
     .toBe('Plano pronto para inspeção; ainda não foi executado'));
 });
+
+// ---------------------------------------------------------------- 31.306: etapa descoberta pela IA (adendo v1.135)
+
+function servirComExploracao() {
+  const todas = [
+    makeRun({ id: 'r-3', short_id: 'c3', command: 'No QA Messenger, envie "A" para QA-001.', status: 'completed', etapas_exploratorias: 2 }),
+    makeRun({ id: 'r-2', short_id: 'c2', command: 'No QA Messenger, envie "B" para QA-001.', status: 'completed', etapas_exploratorias: 0 }),
+    makeRun({ id: 'r-1', short_id: 'c1', command: 'No QA Messenger, envie "C" para QA-001.', status: 'completed' }),   // backend anterior
+  ];
+  backend.on('GET', /^\/api\/runs$/, (c) => {
+    const limit = Number(c.query.get('limit'));
+    const offset = Number(c.query.get('offset'));
+    return json({ runs: todas.slice(offset, offset + limit), total: todas.length, limit, offset });
+  });
+  backend.on('GET', /^\/api\/runs\/[^/]+/, () => json(null, 404));
+}
+
+it('31.306: a execução com etapa descoberta leva o selo e o filtro da origem mostra a contagem', async () => {
+  servirComExploracao();
+  useUiStore.getState().navegar({ tela: 'execucoes', query: {} }, 'replace');
+  await act(async () => { root.render(<RunsPage />); });
+  await waitFor(() => expect(itens()).toHaveLength(3));
+  const lista = document.querySelector('[aria-label="Lista de execuções"] ul') as HTMLElement;
+  expect(text(lista).match(/Descoberta pela IA/g)).toHaveLength(1);      // só a de contador > 0
+  const origem = byRole('combobox', /Filtrar pela origem das etapas/) as HTMLSelectElement;
+  expect([...origem.options].map((o) => o.textContent)).toEqual(['Todas as origens', 'Com etapa descoberta pela IA (1)']);
+  expect(origem.value).toBe('');
+});
+
+it('31.306: `?exploracao=1` mostra só as descobertas, marca o filtro e "Limpar filtros" o tira do link', async () => {
+  servirComExploracao();
+  useUiStore.getState().navegar({ tela: 'execucoes', query: { exploracao: '1' } }, 'replace');
+  await act(async () => { root.render(<RunsPage />); });
+  await waitFor(() => expect(itens()).toEqual(['No QA Messenger, envie "A" para QA-001.']));
+  expect((byRole('combobox', /Filtrar pela origem das etapas/) as HTMLSelectElement).value).toBe('1');
+  await click(byRole('button', /Limpar filtros/));
+  await waitFor(() => expect(itens()).toHaveLength(3));
+  expect(window.location.hash).not.toMatch(/exploracao=/);
+});
+
+it('31.306: sem nenhuma execução descoberta, o filtro ligado diz que é o filtro e oferece limpar', async () => {
+  backend.on('GET', /^\/api\/runs$/, () => json({ runs: [makeRun({ id: 'r-9', short_id: 'c9', etapas_exploratorias: 0 })], total: 1, limit: 200, offset: 0 }));
+  useUiStore.getState().navegar({ tela: 'execucoes', query: { exploracao: '1' } }, 'replace');
+  await act(async () => { root.render(<RunsPage />); });
+  await waitFor(() => expect(text()).toContain('Nenhuma execução com esse filtro'));
+});

@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — as Execuções filtram e contam as que têm etapa descoberta pela IA (31.306, adendo v1.135)
+
+- `features/runs/filtroExecucoes.ts`, `RunsPage.tsx`, `api/types.ts` (`RunSummary.etapas_exploratorias`), `lib/rotas.ts`: a barra da lista
+  ganha "Filtrar pela origem das etapas" com "Com etapa descoberta pela IA" e a contagem (`etapas_exploratorias > 0`, o contador do
+  servidor, 31.305). Com a lista cortada, o rótulo diz "N nas carregadas"; ligar o filtro traz o histórico inteiro, como a busca. O
+  estado vai no link (`exploracao=1`), soma com situação, período e busca, e "Limpar filtros" o tira. Cada execução com etapa
+  descoberta leva o selo "Descoberta pela IA" na linha. Backend sem o campo vale zero: nada aparece.
+- Prova `simulated`: `features/runs/filtroExecucoes.test.ts` (3 testes novos, e o teste de leitura do link ganhou o campo) e
+  `RunsPage.test.tsx` (3 testes novos: selo e contagem, link com filtro e limpar, vazio com filtro ligado); 686 dirigidos de runs,
+  lib e aprendizado, tsc e build. Percurso no navegador contra o backend isolado do worktree, com a resposta de `/runs` reescrita
+  no navegador (o harness não tem etapa exploratória): selo, contagem, filtro pelo seletor, link e limpar. **Real no central: não
+  executada** (o 31.305 só chega com o deploy).
+
 ## 2026-10-10 — o resumo da execução conta as etapas exploratórias (31.305; adendo v1.135)
 
 - `RunSummary.etapas_exploratorias` (inteiro, sempre presente) em `GET /api/runs` e no detalhe: contagem de `steps.exploratoria`, numa

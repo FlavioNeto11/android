@@ -8,6 +8,7 @@ import { Button } from '../../components/Button';
 import { Card, CardHeader } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
+import { SeloEtapaExploratoria } from '../../components/SeloDeExploracao';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TruncatedText } from '../../components/TruncatedText';
 import { formatUsd4, plural } from '../../lib/format';
@@ -18,7 +19,7 @@ import { useAppStore } from '../../store/app';
 import { toastError } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import {
-  contagemPorGrupo, filtrarExecucoes, filtroAtivo, filtroLocalAtivo, GRUPOS_STATUS, lerFiltroExecucoes, LIMPAR_FILTROS,
+  contagemPorGrupo, filtrarExecucoes, temExploracao, filtroAtivo, filtroLocalAtivo, GRUPOS_STATUS, lerFiltroExecucoes, LIMPAR_FILTROS,
   DICA_GRUPO, PERIODOS, ROTULO_GRUPO, ROTULO_PERIODO, tituloCurto, unirExecucoes,
 } from './filtroExecucoes';
 import styles from './Runs.module.css';
@@ -111,14 +112,16 @@ export function RunsPage() {
   const lista = useMemo(() => filtrarExecucoes(base, filtro, agora),
     // `filtro` é recriado a cada render; as chaves dele bastam.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [base, filtro.q, filtro.status, filtro.periodo, agora]);
+    [base, filtro.q, filtro.status, filtro.periodo, filtro.exploracao, agora]);
   const visiveis = lista.slice(0, mostrar);
   // As contagens dos chips só aparecem com o histórico inteiro na mão: contar só a página carregada mentiria.
   const contagem = !temMais ? contagemPorGrupo(base, filtro, agora) : null;
+  // 31.306: quantas das carregadas (com os outros filtros) têm etapa descoberta pela IA; com a lista cortada, o rótulo diz isso.
+  const comExploracao = filtrarExecucoes(base, { ...filtro, exploracao: false }, agora).filter(temExploracao).length;
   const completando = filtrandoAqui && temMais;
 
   // Trocar filtro ou busca volta ao começo da lista.
-  const chaveFiltro = `${filtro.q}|${filtro.status}|${filtro.periodo}|${filtro.aparelho}|${filtro.servidor}`;
+  const chaveFiltro = `${filtro.q}|${filtro.status}|${filtro.periodo}|${filtro.exploracao}|${filtro.aparelho}|${filtro.servidor}`;
   useEffect(() => { setMostrar(PAGINA_LISTA); }, [chaveFiltro]);
 
   // Abre a mais recente quando nada está selecionado (substitui o link, não empilha: não foi a pessoa que escolheu).
@@ -175,6 +178,10 @@ export function RunsPage() {
                 { chave: 'periodo', rotulo: 'Filtrar por período', tipo: 'lista', rotuloTodos: 'Qualquer data',
                   valor: filtro.periodo ?? '', onChange: (v) => mudar({ periodo: v || undefined }),
                   opcoes: PERIODOS.map((p) => ({ valor: p, rotulo: ROTULO_PERIODO[p] })) },
+                { chave: 'exploracao', rotulo: 'Filtrar pela origem das etapas', tipo: 'lista', rotuloTodos: 'Todas as origens',
+                  valor: filtro.exploracao ? '1' : '', onChange: (v) => mudar({ exploracao: v || undefined }),
+                  opcoes: [{ valor: '1', rotulo: temMais ? `Com etapa descoberta pela IA (${comExploracao} nas carregadas)` : 'Com etapa descoberta pela IA',
+                             ...(temMais ? {} : { contagem: comExploracao }) }] },
                 { chave: 'aparelho', rotulo: 'Filtrar por aparelho', tipo: 'lista', rotuloTodos: 'Todos os aparelhos',
                   valor: filtro.aparelho, onChange: (v) => mudar({ aparelho: v || undefined }),
                   opcoes: Object.keys(instances).sort().map((id) => ({ valor: id, rotulo: id })) },
@@ -252,6 +259,7 @@ function RunItem({ run, current, onSelect }: { run: RunSummary; current: boolean
       </span>
       <span className={styles.runItemMeta}>
         {origem ? <SeloDeOrigem origem={origem} /> : null}
+        {temExploracao(run) ? <SeloEtapaExploratoria exploratoria /> : null}
         {app ? <TruncatedText className={styles.runItemApp}>{app}</TruncatedText> : null}
         <span className={styles.shortId}>{run.short_id}</span>
         <span><Smartphone size={11} aria-hidden /> {run.instances_used}/{run.instances_requested}</span>

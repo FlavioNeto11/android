@@ -38,7 +38,7 @@
  *     neste navegador; escolher grava nos dois. O menu leva à tela limpa (sem filtros nem `visao`).
  *   - Execuções (tarefa UX 05, `features/runs/filtroExecucoes.ts`): `q` (objetivo ou código), `status` =
  *     `andamento` | `planejada` | `concluida` | `pendencia` (rótulo "Pede atenção") | `falha` | `cancelada`;
- *     `periodo` = `24h` | `7d` | `30d`;
+ *     `periodo` = `24h` | `7d` | `30d`; `exploracao=1` (só as com etapa descoberta pela IA, 31.306);
  *     `aparelho` = id do aparelho; `servidor` = id do servidor. Convivem com `aba` da execução aberta.
  *   - Pedidos (item 28.9, `features/pedidos/filtro.ts`): os nomes são os da query de `GET /api/pedidos`, para o link e a chamada
  *     serem a mesma coisa: `q` (título ou objetivo), `estado` (um ou mais, separados por vírgula), `autonomia`, `tipo`

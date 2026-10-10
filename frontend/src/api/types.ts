@@ -246,6 +246,9 @@ interface RunSummary {
   origem_ref?: string | null;
   /** 31.154: a operação com N agentes de que esta execução é um alvo; ausente/nulo fora dela. */
   operacao_id?: string | null;
+  /** 31.305 (adendo v1.135): quantas etapas da execução nasceram de exploração (o catálogo não cobria o pedido). Inteiro >= 0, sempre
+   *  presente no central novo; ausente em backend anterior (vale 0). */
+  etapas_exploratorias?: number;
   /** v1.74 (29.153): o custo de IA da execução, só no detalhe (`GET /runs/{id}`); a lista não o traz. Ausente em backend
    *  de antes do 29.153: o painel mostra "custo não lido", nunca erro. */
   costs?: RunCosts | null;
