@@ -23,7 +23,10 @@ e o esforço que o item merece.
   13.1–13.3 com prova `tests`, 10.5 com `unit` e 12.3 com estado `pending` (commits `a4237da`, `407cfce`, `bfffb0d`,
   `c0c982d`). Esses valores estão fora do vocabulário que `aplicar` e o workflow aceitam (`real`/`simulated`/`not_run`;
   `implemented`/`partial`/`blocked`). Ficaram como foram escritos, porque é histórico; `tests`/`unit` equivalem a
-  validação automatizada (não real). `scripts/docs-check.py` avisa sobre eles.
+  validação automatizada (não real). `scripts/docs-check.py` avisa sobre eles. **B6, resolvido em 10/10 (31.316):** o
+  vocabulário não cresce. Teste automatizado com dublê é `simulated`; registre-o por `aplicar` com `arquivo::teste` na
+  evidência, e `validar()` recusa `tests`/`unit` com essa instrução. O `estado.json` de hoje só tem `real`, `simulated` e
+  `not_run`.
 - Trabalho feito fora da esteira deve ser registrado por um `resultado.json` e `aplicar`, não editando o estado.
   Formato mínimo aceito por `validar()` (`scripts/claude-plan-100.py`):
   `{"resultados": [{"grupo": "<nome>", "solicitados": ["<id>"], "items": [{"id": "<id>", "status":

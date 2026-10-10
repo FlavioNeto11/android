@@ -54,6 +54,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   navegador contra o backend isolado do worktree, com o campo `teste` injetado na resposta (o backend ainda não o tem): lista escondida
   por padrão, controle "(1)", mostrar com o selo, ficha com o selo. **Real no central: não executada** (depende do 31.314).
 
+## 2026-10-10 — B6 resolvido e a causa do cache do verificador registrada (31.316)
+
+- `scripts/claude-plan-100.py::validar` recusa prova `tests`/`unit` com a instrução "tests/unit → simulated" e
+  `arquivo::teste` na evidência; o vocabulário não cresceu (`real`/`simulated`/`not_run`). B6 marcado resolvido em
+  `docs/estado-atual.md` e `docs/claude-plano-100.md`.
+- `docs/roadmap.md` 7.4: o cache do verificador Haiku fecha como limite do modelo (prefixo ~1920 tokens < 4096 do
+  Haiku 4.5; o Opus cacheia os mesmos 1920; ~US$ 0,2/dia). Decisão da orquestradora: sem correção e sem chamada paga.
+- Prova **simulada**: `scripts/tests/test_claude_plan_100.py` (3 testes novos ou ajustados) e `pytest -n 4 scripts/tests`
+  inteiro, 1272 passed. Real: não se aplica (script e documentação).
+
 ## 2026-10-10 — as trocas da saída esperada aparecem da mais nova para a mais antiga (31.301, ajuste)
 
 - `features/rede/EditarSaidaEsperada.tsx`: o painel guardava os eventos na ordem de chegada e listava as três MAIS ANTIGAS trocas do perfil;

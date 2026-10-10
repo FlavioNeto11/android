@@ -125,9 +125,22 @@ class LedgerTests(unittest.TestCase):
             plan.validar(payload, {'0.1', '0.2'})
 
     def test_validar_recusa_proof_fora_do_vocabulario(self):
-        payload = resultado(grupo([item('0.1', proof='unit')]))
-        with self.assertRaises(plan.ErroDoPlano):
+        payload = resultado(grupo([item('0.1', proof='manual')]))
+        with self.assertRaisesRegex(plan.ErroDoPlano, 'estado ou prova inválidos'):
             plan.validar(payload, {'0.1', '0.2'})
+
+    def test_validar_diz_que_tests_e_unit_sao_simulated(self):
+        # B6 (31.316): a mensagem ensina o que registrar, em vez de só dizer "inválido".
+        for valor in ('tests', 'unit'):
+            with self.subTest(proof=valor):
+                payload = resultado(grupo([item('0.1', proof=valor)]))
+                with self.assertRaisesRegex(plan.ErroDoPlano, r'tests/unit → simulated.*arquivo::teste'):
+                    plan.validar(payload, {'0.1', '0.2'})
+
+    def test_validar_aceita_simulated_com_evidencia_de_teste(self):
+        payload = resultado(grupo([item('0.1', proof='simulated', evidence='tests/test_x.py::test_y')]))
+        linhas = plan.validar(payload, {'0.1', '0.2'})
+        self.assertEqual(linhas[0]['proof'], 'simulated')
 
     def test_validar_recusa_implemented_sem_evidencia(self):
         payload = resultado(grupo([item('0.1', evidence='')]))
