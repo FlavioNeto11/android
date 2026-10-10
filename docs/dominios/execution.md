@@ -857,7 +857,8 @@ inclusive). Real: `not_run` (repetir a leitura do Outlook no android-01).
 
 Na tela cega que o app declara, o valor que o ator leu NA IMAGEM conta como saída se um segundo leitor concordar às cegas. Liga só
 com `ai.leitura_visual.enabled` e com o papel `ai.roles.leitura` ([ia.md §17](../ia.md)). O dado do app é
-`leitura_visual.regioes` no `telas.yaml` (`tela`, `dentro_de` com o resource-id do contêiner, `saidas`): o carregador recusa
+`leitura_visual.regioes` no `telas.yaml` (`tela`, `dentro_de` com o resource-id do contêiner, `saidas` e, opcional, `conteudo_de_terceiros`,
+31.328): o carregador recusa
 `dentro_de` vazio, nome de saída fora do alfabeto e tela que o arquivo não declara; `app_declarado/pacote.py` recusa saída que
 nenhuma ação do catálogo entrega.
 
@@ -869,6 +870,12 @@ nenhuma ação do catálogo entrega.
   (`saidas.codigo_na_linha`) é recusado, e a recusa leva a etapa a `waiting_user` (sem nova tentativa do ator e sem lhe dizer que a
   linha tem código), como no caminho da árvore. Orçamento, prazo, crédito e recusa por política do leitor seguem o desfecho do ator
   (`desfecho_de_ia`); só falha do provedor e saída inválida viram `leitor_falhou`.
+- **Conteúdo de terceiros (31.328):** a região que declara `conteudo_de_terceiros: true` (no Outlook, a linha da caixa de e-mail) tem
+  como recorte o texto de quem escreveu a mensagem, não a tela do app. Nela a frase de verificação humana ("Confirm you're human")
+  deixa de ser desafio na triagem do recorte e do valor: a prévia de um e-mail do Instagram parou o pedido misto da prova real do
+  P-043 em `waiting_user`. O que não muda: forma de código, número com palavra de código, token, senha e o pedido de código
+  (`SUBTIPO_CODIGO`) seguem recusados, a tela de desafio e a conta travada continuam pela árvore (`tela_sensivel`), e o padrão
+  de toda região sem a marca é o de antes.
 - **Receita:** `variaveis_da_receita` exclui as saídas `origem=visual`.
 - **Concordância:** valor do ator normalizado (NFKC, caixa, espaços, pontuação das pontas, acentos mantidos) igual ao campo do
   leitor (grava-se o valor do LEITOR, limpo) E sequência contígua de palavras inteiras de uma das linhas. O leitor recebe só o recorte e os nomes das saídas.
@@ -888,7 +895,7 @@ nenhuma ação do catálogo entrega.
 Limites da v1: a retomada de um `waiting_user` com valor visual não avança (não há confirmação do valor; as saídas são abandonar ou
 refazer), e uma falha passageira do provedor gasta a tentativa do par (a chave `repetida` é gravada antes da chamada).
 
-Prova: `simulated` (`tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`). Real: `not_run`.
+Prova: `simulated` (`tests/test_leitura_visual.py`, `tests/test_leitura_visual_papel.py`, `tests/test_leitura_visual_conteudo_de_terceiros.py`). Real: `not_run`.
 
 ## Conta e portas do app da etapa (item 24.4)
 

@@ -167,6 +167,10 @@ leitura_visual:
     - tela: caixa_de_entrada
       dentro_de: [com.microsoft.office.outlook:id/conversation_list]
       saidas: [remetente, assunto]
+      # 31.328: a linha da caixa é conteúdo de quem escreveu o e-mail. "Confirm you're human" na prévia de uma mensagem do
+      # Instagram não é a tela de desafio do app (essa o detector da árvore pega, fora daqui) e parava a leitura em
+      # `waiting_user` (P-043, 10/10). A triagem do recorte segue recusando código, senha e token.
+      conteudo_de_terceiros: true
 
 # Dicas ao juiz (item 31.46). OBSERVADO (r-…-e7bc42, 01/10): a etapa livre `verify_sent` foi recusada porque "a lista de
 # e-mails está vazia" na pasta Sent, e a linha da lista é um `ComposeView` sem texto nem descrição (ver acima). É um fato

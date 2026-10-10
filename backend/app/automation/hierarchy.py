@@ -82,6 +82,14 @@ _CODIGO = re.compile(
     r"one.?time (?:code|password)|backup code|\d.?digit(?: (?:security |login |confirmation )?code)?|"
     r"enter the code|we sent (?:you )?a code)")
 
+def detectar_pedido_de_codigo(texto_normalizado: str) -> "ContaTravada | None":
+    """O pedido de CÓDIGO ("enter the code", "verification code"…) sozinho, sem a família da conta travada. O
+    `detectar_trava_generica` devolve a conta travada primeiro quando as duas casam e esconde o código (31.328)."""
+    if m := _CODIGO.search(texto_normalizado):
+        return ContaTravada(SUBTIPO_CODIGO, m.group(0)[:80])
+    return None
+
+
 #: Subtipos do desfecho `auth_challenge` (ADR-055). `conta_travada` bloqueia o perfil (ADR-029) e avisa o dono;
 #: `codigo` só pede uma pessoa. `verificacao`: o ATOR relatou uma tela de verificação que nenhum sinal conhece — é
 #: julgamento do modelo, não casamento determinístico, então pede uma pessoa sem bloquear; quem olhar decide.

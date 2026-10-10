@@ -140,6 +140,10 @@ class RegiaoVisual:
     tela: str
     dentro_de: tuple[str, ...]
     saidas: tuple[str, ...]
+    #: 31.328: o recorte é conteúdo de TERCEIROS (a linha de uma caixa de e-mail: remetente, assunto e prévia de quem escreveu
+    #: a mensagem), não a tela do app. A frase de verificação humana ("Confirm you're human") nele é o texto do e-mail, não
+    #: uma tela de desafio; a triagem do recorte deixa de recusá-la. Código, senha e token seguem recusados.
+    conteudo_de_terceiros: bool = False
 
     def cobre(self, tree: UiTree, ancora: object, saida: str) -> bool:
         """A saída vale nesta região e a âncora está DENTRO de um dos contêineres declarados (mesma contenção de
@@ -636,7 +640,7 @@ def _regioes_visuais(bruto: object, telas: set[str]) -> tuple[RegiaoVisual, ...]
     for i, item in enumerate(_lista(bloco.get("regioes"), "leitura_visual.regioes")):
         onde = f"leitura_visual.regioes[{i}]"
         r = _mapa(item, onde)
-        if estranhos := sorted(set(r) - {"tela", "dentro_de", "saidas"}):
+        if estranhos := sorted(set(r) - {"tela", "dentro_de", "saidas", "conteudo_de_terceiros"}):
             raise ConhecimentoInvalido(f"{onde}: campo desconhecido {', '.join(estranhos)}")
         tela = str(r.get("tela") or "")
         if tela not in telas:
@@ -648,7 +652,11 @@ def _regioes_visuais(bruto: object, telas: set[str]) -> tuple[RegiaoVisual, ...]
         if not saidas or any(not _NOME_DE_SAIDA.fullmatch(n) for n in saidas):
             raise ConhecimentoInvalido(f"{onde}: `saidas` precisa listar nomes de saída (a-z, 0-9 e _)")
         # Contêiner por sufixo, como `extracoes.dentro_de`; o id completo (`pacote:id/nome`) também vale e fica inteiro.
-        out.append(RegiaoVisual(tela=tela, dentro_de=tuple(dict.fromkeys(dentro)), saidas=saidas))
+        terceiros = r.get("conteudo_de_terceiros", False)
+        if not isinstance(terceiros, bool):
+            raise ConhecimentoInvalido(f"{onde}: `conteudo_de_terceiros` é verdadeiro ou falso")
+        out.append(RegiaoVisual(tela=tela, dentro_de=tuple(dict.fromkeys(dentro)), saidas=saidas,
+                                conteudo_de_terceiros=terceiros))
     return tuple(out)
 
 

@@ -22,8 +22,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..automation.conhecimento_de_telas import ConhecimentoDeTelas
-from ..automation.hierarchy import (SUBTIPO_CODIGO, UiElement, UiTree, detectar_trava_generica,
-                                    normalizar_texto_de_tela)
+from ..automation.hierarchy import (SUBTIPO_CODIGO, ContaTravada, UiElement, UiTree, detectar_pedido_de_codigo,
+                                    detectar_trava_generica, normalizar_texto_de_tela)
 from ..devices.codificacao import recortar_jpeg
 from ..models import SAIDA_VALOR_MAX, SAIDA_VALUE_KINDS, PlanStep
 
@@ -361,7 +361,21 @@ def codigo_na_linha(texto: str | None, *, so_digitos: str | None = None, janela:
     return False
 
 
-def triagem(valor: str, *, do_elemento: str = "", da_tela: str = "", campo_de_senha: bool = False) -> str | None:
+def _trava_na_triagem(texto_normalizado: str, conteudo_de_terceiros: bool) -> ContaTravada | None:
+    """31.328: a frase de verificação do texto, para a triagem. Em conteúdo de terceiros (a linha de uma caixa de e-mail) a frase
+    de verificação HUMANA ("Confirm you're human") é o texto da mensagem e não vale como desafio. Continuam valendo: o pedido de
+    CÓDIGO, procurado à parte (o detector devolve a conta travada primeiro quando as duas famílias casam e o esconderia), e um
+    número de 4 a 8 dígitos junto da frase de desafio ("Confirm it's you - 482913"): na dúvida, a parada de sempre."""
+    trava = detectar_trava_generica(texto_normalizado, tem_onde_digitar=True)
+    if trava is None or not conteudo_de_terceiros or trava.subtipo == SUBTIPO_CODIGO:
+        return trava
+    if (pedido := detectar_pedido_de_codigo(texto_normalizado)) is not None:
+        return pedido
+    return trava if _numeros_de_codigo(texto_normalizado) else None
+
+
+def triagem(valor: str, *, do_elemento: str = "", da_tela: str = "", campo_de_senha: bool = False,
+            conteudo_de_terceiros: bool = False) -> str | None:
     """Por que o valor NÃO pode ser saída: "senha", "código de verificação" ou "token ou segredo"; `None` = dado comum.
 
     Por formato, nunca por uma lista de valores (a mesma regra de `security/redaction.py`), e conservadora de
@@ -387,7 +401,7 @@ def triagem(valor: str, *, do_elemento: str = "", da_tela: str = "", campo_de_se
     v = (valor or "").strip()
     if not v:
         return None
-    if (trava := detectar_trava_generica(normalizar_texto_de_tela(v), tem_onde_digitar=True)) is not None:
+    if (trava := _trava_na_triagem(normalizar_texto_de_tela(v), conteudo_de_terceiros)) is not None:
         return "código de verificação" if trava.subtipo == SUBTIPO_CODIGO else "verificação da conta"
     if looks_secret(v):
         return "token ou segredo"
@@ -611,8 +625,10 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
     ancora = arvore.by_id(element_id)
     if ancora is None or descendentes_com_texto(arvore, ancora):
         raise LeituraVisualRecusada("elemento_com_texto")
-    if conhecimento is None or conhecimento.regiao_visual(tela, arvore, ancora, nome) is None:
+    regiao = None if conhecimento is None else conhecimento.regiao_visual(tela, arvore, ancora, nome)
+    if regiao is None:
         raise LeituraVisualRecusada("regiao_nao_declarada")
+    de_terceiros = regiao.conteudo_de_terceiros
     if arvore.truncada:
         raise LeituraVisualRecusada("arvore_truncada")
     # A leitura NÃO serve para ler código de 2FA nem de desafio (ADR-009): tela classificada como desafio ou código, ou com
@@ -649,7 +665,7 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
     # 12 ANTES de 9 a 11: a triagem do RECORTE inteiro roda primeiro. Com código na imagem a leitura vai SEMPRE para a pessoa
     # (como na árvore): se a conferência rodasse antes, o ator receberia `nao_confere` ou `truncado` e tentaria outra âncora
     # sem que a triagem tivesse rodado. O recorte recusado não é guardado (quem chama só o grava quando esta função devolve).
-    motivo = _triagem_do_recorte(t.linhas, texto)
+    motivo = _triagem_do_recorte(t.linhas, texto, conteudo_de_terceiros=de_terceiros)
     if motivo is not None:
         raise LeituraVisualRecusada("triagem", motivo)
     try:
@@ -662,7 +678,7 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
     # pontuação das pontas), e gravar o do ator deixaria "FLAVIO PADILHA!" passar por "Flavio Padilha". O ator concordou
     # (acima), então só a forma muda.
     valor = limpar(t.campos[nome] or "")
-    motivo = triagem(valor, do_elemento=texto, da_tela=texto)
+    motivo = triagem(valor, do_elemento=texto, da_tela=texto, conteudo_de_terceiros=de_terceiros)
     # Na leitura visual o valor com FORMA de código é recusado mesmo sem palavra de contexto: a árvore tem a tela inteira para
     # ver que "482913" está sob "código de verificação"; o recorte de uma linha só tem a linha, e um código que o ator leu
     # sozinho é exatamente o que o ADR-009 veda levar a outra etapa.
@@ -673,7 +689,7 @@ async def ler_valor_visual(*, habilitado: bool, arvore: UiTree, element_id: str,
     return LeituraVisual(valor=valor, recorte=recorte, sha256=hashlib.sha256(recorte).hexdigest(), alvo=ancora)
 
 
-def _triagem_do_recorte(linhas: list[str], texto: str) -> str | None:
+def _triagem_do_recorte(linhas: list[str], texto: str, *, conteudo_de_terceiros: bool = False) -> str | None:
     """Por que o RECORTE inteiro não pode virar saída: qualquer LINHA com forma de código (`forma_de_codigo`: só número de 4 a 8
     dígitos, com separador ou de outro alfabeto; token alfanumérico curto), com número de código e palavra de código
     (`codigo_na_linha`) ou que a triagem comum recusa, ou a transcrição com sinal de desafio de conta. O código pode estar numa
@@ -681,9 +697,9 @@ def _triagem_do_recorte(linhas: list[str], texto: str) -> str | None:
     for linha in linhas:
         if forma_de_codigo(linha) or codigo_na_linha(linha):
             return "código de verificação"
-        if (m := triagem(linha, do_elemento=linha, da_tela=texto)) is not None:
+        if (m := triagem(linha, do_elemento=linha, da_tela=texto, conteudo_de_terceiros=conteudo_de_terceiros)) is not None:
             return m
-    if trava := detectar_trava_generica(normalizar_texto_de_tela(texto), tem_onde_digitar=True):
+    if (trava := _trava_na_triagem(normalizar_texto_de_tela(texto), conteudo_de_terceiros)) is not None:
         return "código de verificação" if trava.subtipo == SUBTIPO_CODIGO else "verificação da conta"
     return None
 
