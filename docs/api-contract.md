@@ -8459,3 +8459,25 @@ que só ela resolve (CAPTCHA, "confirme que você é humano", telefone). Aditivo
 - **Prova:** `simulated` (app de teste com `cadastro.yaml` próprio, aparelho e caixa de e-mail falsos). `real`: `not_run`; criar uma
   conta de verdade num provedor depende de autorização do dono em chat e das decisões D1 (de onde vem a caixa de e-mail da conta
   planejada) e D2 (primeiro app).
+
+## Adendo v1.138 (10/10/2026; número da orquestradora; item 31.312) — a exploração que parou vira pedido de ensino
+
+Sem rota nova e sem migração. A etapa exploratória (31.273, ADR-084) que termina `failed`/`uncertain` (inclusive `parou_no_teto`) já era
+"ensinável" pelo `POST /api/training/from-run` (31.111); agora o ensino lê que ela veio de exploração:
+
+- `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido`: para a etapa exploratória a resposta traz `intent` =
+  `Ensinar à IA como fazer: <frase da chave>` (a frase é o vocabulário fechado da chave `explorar_<verbo>_<objeto…>`, **nunca o
+  pedido**, que pode ter um nome e viajaria na intenção da sessão), `pergunta` = "A IA explorou e (parou no teto da exploração) sem
+  chegar lá. Mostre, a partir desta tela, o caminho toque a toque: ensinado uma vez, ele serve a todas as personas.", `rotulo` e
+  `causa` do diagnóstico (quando houver) e os campos novos `exploracao: true` e `parou_no_teto` (boolean). Etapa que não é de
+  exploração: a resposta é a de sempre, sem esses campos.
+- `POST /api/training/from-run`: sem `intent` escrito pela pessoa, a sessão de uma etapa exploratória nasce com a intenção acima
+  (a falha comum segue «Corrigir a etapa «…»»).
+- `origin.exploracao: true` na sessão de ensino (em `POST /training/from-run`, `GET /training/{id}` e `GET /training`), só quando
+  verdadeiro: o painel rotula e abre o formulário já na tela e no app onde a IA parou (o aparelho e a execução são os da etapa).
+  O pedido de origem continua visível no contexto da falha (`origin.context.esperado.description`, com o dado da persona mascarado).
+- O aviso do Telegram `exploracao.concluida` com `resultado` `parou_no_teto` ou `falhou` ganha a linha "Dá para ensinar o caminho na
+  execução (Ensinar a corrigir)…".
+
+**Prova:** `simulated` (`backend/tests/test_ensino_da_exploracao_que_parou.py`, 6 casos). `real`: `not_run` (o ensino de uma
+exploração real e o painel, que é do Portal).

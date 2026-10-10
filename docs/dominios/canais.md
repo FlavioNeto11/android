@@ -1171,3 +1171,8 @@ numerado é lacuna, a levar à orquestradora antes de desligar a operação pela
 
 - O evento `session.verificacao_periodica` fica fora de `KINDS_QUE_AVISAM`: ele conta o que o laço fez (relida, mudou, pulada),
   não pede nada do dono. Quando a releitura acha o desafio, o aviso que sai é o de sempre, `session.needs_person`.
+
+## A exploração que parou lembra que dá para ensinar (31.312)
+
+- O aviso `exploracao.concluida` com `parou_no_teto` ou `falhou` acrescenta uma linha: o caminho pode ser ensinado na execução ("Ensinar a
+  corrigir"), uma vez, para todas as personas. Sem pedido, sem @, sem chave da etapa.

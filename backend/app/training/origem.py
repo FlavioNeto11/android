@@ -29,6 +29,8 @@ class OrigemRecusada(Exception):
 #: pessoa pode corrigir qualquer das três.
 STATUS_ENSINAVEIS = ("failed", "uncertain", "waiting_user")
 MAXIMO_DO_MOTIVO = 400
+#: O começo do motivo que o executor grava quando a etapa exploratória bate no teto próprio (`Executor._teto_da_exploracao`).
+PARADA_NO_TETO = "Teto da exploração"
 MAXIMO_DA_TRILHA = 60
 MAXIMO_DE_EVIDENCIAS = 10
 
@@ -45,6 +47,10 @@ class OrigemDaFalha:
     #: O estado da etapa (um de `STATUS_ENSINAVEIS`): a sugestão do ensino pergunta diferente quando ela só parou esperando
     #: a pessoa (31.116, adendo v1.82).
     status: str = ""
+    #: 31.312: a etapa nasceu de exploração (o catálogo não cobria o pedido, ADR-084) e `parou_no_teto` diz que ela parou no
+    #: teto próprio. A sugestão do ensino fala de "a IA explorou e não chegou lá", não de "corrigir uma etapa".
+    exploratoria: bool = False
+    parou_no_teto: bool = False
 
 
 def _limpo(texto: object, limite: int = MAXIMO_DO_MOTIVO) -> str | None:
@@ -55,8 +61,8 @@ def _limpo(texto: object, limite: int = MAXIMO_DO_MOTIVO) -> str | None:
 
 
 def origem_da_falha(db: Database, run_id: str, step_id: str) -> OrigemDaFalha:
-    etapa = db.one("SELECT id, run_id, key, title, instance_id, status, status_detail FROM steps WHERE id=? AND run_id=?",
-                   (step_id, run_id))
+    etapa = db.one("SELECT id, run_id, key, title, instance_id, status, status_detail, exploratoria FROM steps"
+                   " WHERE id=? AND run_id=?", (step_id, run_id))
     if etapa is None:
         raise OrigemRecusada("step_not_found", "Etapa não encontrada nesta execução.", 404)
     if etapa["status"] not in STATUS_ENSINAVEIS:
@@ -65,7 +71,8 @@ def origem_da_falha(db: Database, run_id: str, step_id: str) -> OrigemDaFalha:
     motivo = _limpo(etapa["status_detail"] or (tentativa["error"] if tentativa else "")) or ""
     return OrigemDaFalha(run_id=run_id, step_id=step_id, step_key=str(etapa["key"]),
                          attempt_id=str(tentativa["id"]) if tentativa else None, instance_id=str(etapa["instance_id"]),
-                         titulo=str(etapa["title"]), motivo=motivo, status=str(etapa["status"]))
+                         titulo=str(etapa["title"]), motivo=motivo, status=str(etapa["status"]),
+                         exploratoria=bool(etapa["exploratoria"]), parou_no_teto=PARADA_NO_TETO in motivo)
 
 
 def origin_da_linha(db: Database, linha: dict[str, object]) -> dict[str, object] | None:
@@ -76,10 +83,14 @@ def origin_da_linha(db: Database, linha: dict[str, object]) -> dict[str, object]
     attempt_id = linha.pop("origin_attempt_id", None)
     if not run_id:
         return None
-    etapa = db.one("SELECT key, status_detail FROM steps WHERE id=?", (step_id,)) if step_id else None
+    etapa = db.one("SELECT key, status_detail, exploratoria FROM steps WHERE id=?", (step_id,)) if step_id else None
     motivo = _limpo(etapa["status_detail"]) if etapa else None
-    return {"run_id": run_id, "step_id": step_id, "step_key": str(etapa["key"]) if etapa else None,
-            "attempt_id": attempt_id, "motivo": motivo}
+    # 31.312: `exploracao` marca a sessão de ensino que nasceu de uma exploração que parou (o painel rotula e sugere).
+    origin: dict[str, object] = {"run_id": run_id, "step_id": step_id, "step_key": str(etapa["key"]) if etapa else None,
+                                 "attempt_id": attempt_id, "motivo": motivo}
+    if etapa and etapa["exploratoria"]:
+        origin["exploracao"] = True                      # só aparece quando é verdade: a sessão de uma falha comum não muda
+    return origin
 
 
 def contexto_da_falha(db: Database, run_id: str, step_id: str, attempt_id: str | None, *,

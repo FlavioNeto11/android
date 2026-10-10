@@ -65,6 +65,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   no navegador (o harness não tem etapa exploratória): selo, contagem, filtro pelo seletor, link e limpar. **Real no central: não
   executada** (o 31.305 só chega com o deploy).
 
+## 2026-10-10 — a exploração que parou vira pedido de ensino (31.312; adendo v1.138)
+
+- O ensino a partir de uma etapa exploratória que parou (`parou_no_teto`, `failed`, `uncertain`) sugere «Ensinar à IA como fazer: <frase
+  da chave>» (sem o pedido), com a pergunta da exploração, `exploracao`/`parou_no_teto` no `ensino-sugerido` e `origin.exploracao` na
+  sessão; o aviso do Telegram da exploração que parou lembra que dá para ensinar. Sem migração e sem rota. Prova **simulada**:
+  `tests/test_ensino_da_exploracao_que_parou.py`. **Real: não executada**; o gancho no painel é do Portal.
+
 ## 2026-10-10 — o replay da etapa descoberta, provado de ponta a ponta no simulado (31.311)
 
 - Só teste e documentação: `tests/test_replay_da_etapa_descoberta.py` roda três execuções no executor de verdade, com o aparelho falso do

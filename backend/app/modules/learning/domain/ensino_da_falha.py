@@ -63,6 +63,25 @@ def pergunta_da_etapa(status: str, diagnostico: dict[str, object] | None) -> str
     return pergunta if isinstance(pergunta, str) else None
 
 
+def frase_da_exploracao(chave: str) -> str:
+    """31.312: «ver perfil» de `explorar_ver_perfil`. Só o vocabulário fechado da chave (nunca o pedido, que pode ter um nome):
+    é isto que viaja na intenção da sessão e, depois, no que a pessoa ensina para as outras personas."""
+    return " ".join(chave.removeprefix("explorar_").split("_"))[:120]
+
+
+def intencao_da_exploracao(chave: str) -> str:
+    """A intenção sugerida para o ensino que nasce de uma exploração que parou: ensinar o caminho, não «corrigir» uma etapa."""
+    return f"Ensinar à IA como fazer: {frase_da_exploracao(chave)}"[:400]
+
+
+def pergunta_da_exploracao(parou_no_teto: bool) -> str:
+    """O que a pessoa lê ao ensinar o que a IA não conseguiu descobrir sozinha. O que ela ensinar vale para todas as personas."""
+    onde = ("A IA explorou e parou no teto da exploração sem chegar lá" if parou_no_teto
+            else "A IA explorou e não chegou lá")
+    return (f"{onde}. Mostre, a partir desta tela, o caminho toque a toque: ensinado uma vez, ele serve a todas as "
+            "personas.")
+
+
 def para_o_ensino(d: Diagnostico) -> dict[str, object]:
     """`origin.diagnostico` da sessão: a causa, os fatos que a sustentam, a proposta do 30.13 (se houver), o rótulo
     curto e a pergunta. `amostra` é 1 (a própria tentativa) ou 0 (só o tipo decidiu)."""
@@ -81,4 +100,5 @@ def intencao_sugerida(titulo: str, diagnostico: dict[str, object] | None) -> str
     return (f"{base}: {rotulo}" if conhecida and isinstance(rotulo, str) and rotulo else base)[:400]
 
 
-__all__ = ["PERGUNTA", "PERGUNTA_ESPERANDO", "ROTULO", "intencao_sugerida", "para_o_ensino", "pergunta_da_etapa"]
+__all__ = ["PERGUNTA", "PERGUNTA_ESPERANDO", "ROTULO", "frase_da_exploracao", "intencao_da_exploracao",
+           "intencao_sugerida", "para_o_ensino", "pergunta_da_etapa", "pergunta_da_exploracao"]
