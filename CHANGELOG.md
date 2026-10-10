@@ -1874,6 +1874,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-10 — 31.300: `test_o_appium_que_o_backend_ainda_esta_desligando_nao_e_morto` deixa de depender de 1,5 s (só teste)
+
+- O node falso do teste saía 1,5 s depois de nascer; sob carga o `pwsh` demorava mais que isso para listá-lo e a linha de comando vinha vazia (`linha de comando ilegível`), e o teste falhava em `"saiu sozinho da porta 4723"`. Agora o node vive 6 s e a carência do teste é 20 s; as afirmações não mudaram (sai sozinho, sem `Stop-Process`, sem a palavra "Encerrando"). Causa mais provável por tempo, não reproduzida de novo: a falha apareceu uma vez, com a máquina ocupada, e o teste passou em 6 corridas seguintes (3 soltas, 1 do arquivo, 2 antes do ajuste).
+- Prova **simulated** (10/10/2026): `scripts/tests/test_stop_appium_orfao.py` 24 passed; o teste solto 3 vezes passou (6,3 s cada). **Real**: `not_run`.
+
 ## 2026-10-10 — Deploy 70 (migrações 130 e 131; exploração de etapa, conta planejada, cadastro guiado, ponte e painel; ponta `d0fbcc5d`)
 
 - **Implantado** às 15:34:18Z: central em `d0fbcc5d6ba389b3b47f8a37eb26909082dee541`, de `5ebf237e` (o reinício do supervisor às 13:24Z, por laço travado, sobe o HEAD do checkout; sem linha em `deploys.jsonl`). Migrações `130_etapa_exploratoria` e `131_conta_planejada` aplicadas na subida (15:33:27Z e 15:33:28Z). Backup `20261010-123301`, tag `deploy-20261010-1534`, 76,5 s, sem opções. `config.yaml` intacto (`contas.verificacao_periodica_h: 12` entra na subida).

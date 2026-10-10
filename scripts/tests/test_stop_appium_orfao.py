@@ -235,12 +235,14 @@ def test_encerra_o_appium_da_arvore_e_poupa_o_node_de_outra(tmp_path: Path) -> N
 @precisa_node
 def test_o_appium_que_o_backend_ainda_esta_desligando_nao_e_morto(tmp_path: Path) -> None:
     """Carência: o backend que acabou de parar de responder ainda fecha as sessões e desliga o Appium dele."""
-    nossa = _arvore_com_appium(tmp_path / "android", "setTimeout(() => process.exit(0), 1500);\n")
+    # O node vive 6 s e a carência é de 20 s: com 1,5 s o node podia sair antes de o pwsh (lento sob carga) listá-lo, e a
+    # linha de comando vinha vazia ("ilegível"). O que o teste afirma (saiu sozinho, sem Stop-Process) não muda.
+    nossa = _arvore_com_appium(tmp_path / "android", "setTimeout(() => process.exit(0), 6000);\n")
     p_nosso = subprocess.Popen([NODE or "node", str(nossa), "server"])
     try:
         time.sleep(0.5)
         env = {"P1": str(p_nosso.pid), "P2": str(p_nosso.pid), "PASTA": str(tmp_path / "android" / "tools" / "appium")}
-        r = _ps(f"Stop-AppiumDoProjeto -Porta 4723 -PastaAppium $env:PASTA -CarenciaS 8 -Donos {DONOS}", **env)
+        r = _ps(f"Stop-AppiumDoProjeto -Porta 4723 -PastaAppium $env:PASTA -CarenciaS 20 -Donos {DONOS}", **env)
         saida = r.stdout + r.stderr
         assert r.returncode == 0, saida
         assert "saiu sozinho da porta 4723" in saida
