@@ -32,6 +32,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `boas_vindas`, na dívida conhecida; só os novos travam). A carga passa a recusar `depois_do_envio` sem `conferir_conta`.
 - A catraca do login gerenciado passou a derivar `managed` pela produção (`SqlProfileDataStore` + `tem_provedor_de_sessao`, banco de verdade), inclusive para o app novo
   registrado só por dado (achado da revisão da Aprendizado no 8b6d8480).
+- **Rascunho de telas** (`scripts/rascunho-de-telas.py`, só leitura): esboça um `telas.yaml` a partir de hierarquias XML que a pessoa percorreu; marca tudo como RASCUNHO, nunca
+  copia texto de campo editável e recusa gravar em `app/conhecimento/apps`. `scripts/tests/test_rascunho_de_telas.py` (5).
 - Prova: `simulated` (`test_login_gerenciado_fora_do_ator.py` 8, `test_ensaio_de_apps.py` 20, `test_coerencia_do_pacote.py` 6). `real`: `not_run`. Nenhum yaml de app real (D2, P-045 com o dono).
 
 ## 2026-10-10 — o cadastro guiado da conta planejada (31.310, ADR-087, adendo v1.137)
