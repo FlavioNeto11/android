@@ -800,6 +800,11 @@ class SessaoDeclarada:
             self._save(conta, rt.id, SessionStatus.auth_required, detail=teto)
             return AuthResult(Outcome.INVALID_CREDENTIAL, teto, session_status=SessionStatus.auth_required)
 
+        # 31.329: o egresso medido DENTRO da janela do login. Antes de qualquer digitação (e sem abrir tentativa: não conta no
+        # teto da conta), a saída do aparelho tem de ser a esperada pelo perfil de rede; senão o login aborta, sem tocar na tela.
+        if (aborto := await self._egresso_da_janela(rt, conta)) is not None:
+            return aborto
+
         etapa = k.formulario.etapa_do_usuario
         if etapa is not None and etapa.entrada is not None and estado.tela == etapa.entrada.tela:
             # A tela do app deslogado ("adicionar conta", item 23.8): um toque sem segredo abre a do identificador.
@@ -1614,6 +1619,29 @@ class SessaoDeclarada:
     def _sessao(self, conta: ContaDaSessao, instance_id: str) -> Row | None:
         """A sessão DESTA conta neste aparelho — nunca a da conta âncora do perfil (a porta de outro app)."""
         return self.repo.account_session_row(conta.profile_id, conta.id, instance_id)
+
+    async def _egresso_da_janela(self, rt: DeviceRuntime, conta: ContaDaSessao) -> AuthResult | None:
+        """Mede a saída do aparelho agora e registra no evento `session.egresso_na_janela` (ip medido, esperado, hora, distância
+        em segundos). Devolve o aborto (`UNCERTAIN`, motivo 'egresso não casou') ou `None` para seguir. Sem proxy esperado, ou
+        num aparelho sem o gancho, não há o que conferir."""
+        medir = getattr(self.devices, "egresso_na_janela", None)
+        if medir is None:
+            return None
+        try:
+            janela = await medir(rt)
+        except Exception:  # noqa: BLE001 - conferir é leitura: se a própria conferência quebrou, o login segue como antes
+            log.exception("%s: a medição do egresso na janela do login falhou (o login seguiu)", rt.id)
+            return None
+        if janela is None:
+            return None
+        dados = {"profile_id": conta.profile_id, "account_id": conta.id, **janela.como_dado()}
+        self.bus.emit("session.egresso_na_janela",
+                      f"{rt.id}: egresso na janela do login — "
+                      f"{'casou' if janela.casou else janela.motivo()}",
+                      level="info" if janela.casou else "warn", instance_id=rt.id, data=dados)
+        if janela.casou:
+            return None
+        return AuthResult(Outcome.UNCERTAIN, janela.motivo())
 
     def _recusa_sem_tocar(self, conta: ContaDaSessao, instance_id: str, motivo: str) -> AuthResult:
         """Recusa sem gravar a sessão. O desfecho acompanha o que está gravado — um desafio continua desafio para

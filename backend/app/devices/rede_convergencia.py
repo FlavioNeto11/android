@@ -46,6 +46,8 @@ from typing import TYPE_CHECKING, Literal
 
 from ..commands import despacho
 from ..models import ControlOwner, InstanceState
+from ..db import loads
+from ..shared.egresso import JANELA_DO_LOGIN_S, EgressoNaJanela
 from ..util import now, now_iso, parse_iso
 from ..vitrine import objetivo_em_andamento, objetivo_esperando_a_rede, objetivo_que_segura
 from . import rede
@@ -344,6 +346,31 @@ class ConvergenciaDeRede:
                 rede.registrar_saida_sem_rede(self.st, rt.id, None, None, f"a sonda não concluiu ({str(exc)[:200]})")
 
         return trabalho
+
+    async def medir_para_o_login(self, rt: DeviceRuntime) -> EgressoNaJanela | None:
+        """31.329: a saída do aparelho AGORA, para o motor de sessão decidir antes de digitar a senha. `None` quando não há
+        o que conferir (sem proxy pedido, ou o perfil não declara `egress_esperado`): o login segue como sempre. Medição que
+        falhou (sem IP) NÃO é "casou": devolve `casou=False` com o motivo. Nunca levanta."""
+        row = self._linha(rt.id)
+        if row is None or not row["proxy_profile_id"]:
+            return None
+        perfil = self.st.db.one("SELECT params FROM network_profiles WHERE id=?", (row["proxy_profile_id"],))
+        esperado = (loads(perfil["params"], {}) or {}).get("egress_esperado") if perfil is not None else None
+        if not esperado:
+            return None
+        esperado = str(esperado)
+        try:
+            ipv4, ipv6, detalhe = await medir_saida(self._aparelho(self.st, rt), self.cfg.sonda)
+        except Exception as exc:  # noqa: BLE001 - leitura: falha vira "não casou", nunca derruba o login
+            ipv4, ipv6, detalhe = None, None, f"a sonda não concluiu ({str(exc)[:200]})"
+        fim = time.monotonic()
+        medido_em = now_iso()
+        mid = rede.registrar_saida_do_login(self.st, rt.id, ipv4, ipv6, detalhe)
+        # A distância é até a decisão de digitar: a medição acaba de terminar, então é o tempo de agora até aqui.
+        distancia = max(0.0, time.monotonic() - fim)
+        return EgressoNaJanela(esperado=esperado, medido=ipv4, medido_em=medido_em, distancia_s=round(distancia, 3),
+                               casou=bool(ipv4) and ipv4 == esperado and distancia <= JANELA_DO_LOGIN_S,
+                               medicao_id=mid, detalhe=detalhe[:300])
 
     async def executar(self, rt: DeviceRuntime, *, motivo: Motivo) -> None:
         """Roda o passo que a linha pede AGORA (relida: entre a pergunta e o trabalho, a atribuição pode ter mudado).

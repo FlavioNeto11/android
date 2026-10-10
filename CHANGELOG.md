@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o login mede o egresso dentro da janela e aborta se não casar (31.329)
+
+- `ConvergenciaDeRede.medir_para_o_login` mede a saída do aparelho AGORA e o motor de sessão (`_login`) a confere ANTES de digitar a
+  senha: saída diferente do `egress_esperado` do perfil, medição sem IP ou fora da janela de 30 s aborta com `egresso não casou`
+  (`UNCERTAIN`), sem abrir tentativa e sem tocar na tela. Evento novo `session.egresso_na_janela` com IP medido, hora e distância em
+  segundos; a medição entra em `network_measurements` (`method` próprio). Sem proxy esperado no aparelho, nada muda.
+- Prova `simulated`: `tests/test_egresso_na_janela.py` (8), `test_instagram_auth`, `test_codigo_por_email`, redes e catracas verdes;
+  mypy 257 (teto). `real`: `not_run` (a regra nasceu da ressalva da H2 de 10/10; a próxima conta do igfarm a exercita).
+
 ## 2026-10-10 — tela humana = bloqueio definitivo: motivo como dado e rótulo "bloqueada" (31.322, migração 136)
 
 - Migração 136 aditiva: `contas_retiradas.motivo_do_bloqueio` (JSON). `identity/infrastructure/motivo_bloqueio.py` monta o objeto ANTES da

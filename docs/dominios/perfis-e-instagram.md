@@ -819,3 +819,20 @@ receber contas novas.
 - **O bloqueio não mora aqui.** O desafio visto na releitura cai em `aplicar_desafio` dentro do motor de sessão (a persona vai a
   `blocked`, o aparelho a quarentena, `session.needs_person` avisa): é o caminho único do ADR-068. Evento e relatório:
   [contrato v1.136](../api-contract.md#adendo-v1136-10102026-número-da-orquestradora-item-31302--a-releitura-periódica-da-sessão-da-conta-âncora).
+
+## O egresso é medido DENTRO da janela do login, e o que a bifurcação de 10/10 mostrou (31.329)
+
+- **A regra.** Antes de digitar a senha, o motor de sessão (`_login`, sem abrir tentativa) pede à convergência de rede uma medição NOVA
+  da saída do aparelho (`ConvergenciaDeRede.medir_para_o_login`, como uid 2000). Só vale para aparelho com proxy pedido cujo perfil
+  declara `egress_esperado` (as contas do igfarm). Saída diferente do esperado, medição sem IP ou medição mais velha que 30 s: o login
+  aborta com o motivo `egresso não casou`, sem tocar na tela e sem gastar o teto diário da conta. O resultado é `UNCERTAIN`.
+- **O registro.** A medição vira linha em `network_measurements` (`method` "sonda de IP na janela do login (uid 2000)") e o evento
+  `session.egresso_na_janela` (`data`: `esperado`, `medido`, `medido_em`, `distancia_s`, `casou`, `medicao_id`, `detalhe`, `profile_id`,
+  `account_id`).
+- **Por quê.** Em 10/10/2026 a sessão sticky do proxy girou entre uma medição das 18:48Z e o login das 18:58Z (a medição seguinte,
+  19:13Z, deu outro IP). Medição de minutos antes não prova o IP no instante em que a senha sai.
+- **O que a bifurcação mediu** (3 contas do igfarm em 3 aparelhos, prova `real`, 10/10/2026): a H1 (egresso casado nas duas medições, a
+  última 23 s antes do login) caiu em "Confirm you're human" 37 s depois do envio e foi retirada pelo caminho de sempre; a H2 (casado
+  10 min antes do login, depois girou) terminou numa tela branca do próprio app, sem desfecho; a H3 não teve saída pelo proxy e não
+  logou. n=1 de desfecho: não prova que o IP casado basta nem que não basta. O JSON de prova fica fora do Git, em
+  `.claude/handoffs/ponte-bifurcacao-3-contas.json`.
