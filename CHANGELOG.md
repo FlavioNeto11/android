@@ -1518,15 +1518,26 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
-## 2026-10-10 — Deploys 67, 68 e 69 (egresso da ponte, ADR-089 e ADR-090; migração 133 já aplicada)
+## 2026-10-10 — Deploy 69 (ADR-090: o código do e-mail entra no login automático; migração 133 já aplicada)
 
-- **Implantados** de madrugada, sem tag (`SemTag`) e sem frontend (`PularFrontend`); campos de `data/deploys.jsonl`:
-  - 67: 00:33:33Z, `7d187acb` → `972633a7`, backup `20261009-213213` (do ensaio), 72,7 s.
-  - 68: 02:16:41Z, `972633a7` → `9ad2907f`, backup `20261009-231605` (do ensaio), 32,2 s.
-  - 69: 02:30:40Z, `9ad2907f` → `6536ad04`, backup `20261009-233006`, 33,5 s (com `PularDependencias`).
-- Prova `real`: os três `resultado: ok`; `GET /api/health` em 10/10 ~12:55Z: ok, commit `6536ad04d6c99e`, migração `133_egresso_igfarm` (`migracao_antes` já era 133 no deploy 67).
-- Prova `simulated`: a de cada commit, nas entradas de 10/10 acima (funil reduzido; nenhum log de funil dos cortes 67-69 foi encontrado, então não registro contagem de testes além dessas entradas).
-- `not_run`: PostgreSQL, vitest e SQLite inteiros desde o corte 63; prova real de ADR-089 e ADR-090 no aparelho; prova de fora e versão do agente do notebook após estes deploys.
+- **Implantado** às 02:30:40Z, sem tag (`SemTag`), sem frontend (`PularFrontend`) e com `PularDependencias`: central `9ad2907f` → `6536ad04`, backup `20261009-233006`, 33,5 s (`data/deploys.jsonl`).
+- Prova `real`: `resultado: ok`; `GET /api/health` em 10/10 ~12:55Z: ok, commit `6536ad04d6c99e`, migração `133_egresso_igfarm`.
+- Prova `simulated`: a do commit `6536ad04` (entrada de 10/10 acima; funil reduzido, sem log de funil do corte).
+- `not_run`: PostgreSQL, vitest e SQLite inteiros desde o corte 63; prova real do ADR-090 no aparelho; prova de fora e versão do agente do notebook.
+
+## 2026-10-10 — Deploy 68 (ADR-089: a plataforma não esconde tela de ninguém)
+
+- **Implantado** às 02:16:41Z, sem tag e sem frontend: central `972633a7` → `9ad2907f`, backup `20261009-231605` (do ensaio), 32,2 s.
+- Prova `real`: `resultado: ok`; migração `133_egresso_igfarm` antes e depois.
+- Prova `simulated`: a do commit `9ad2907f` (entrada de 10/10 acima; funil reduzido).
+- `not_run`: suítes inteiras; prova real do ADR-089 no aparelho; prova de fora.
+
+## 2026-10-10 — Deploy 67 (egresso da ponte: aparelho da própria persona confirmado e pendente exposto; migração 133 já aplicada)
+
+- **Implantado** às 00:33:33Z, sem tag e sem frontend: central `7d187acb` → `972633a7`, backup `20261009-213213` (do ensaio), 72,7 s. `migracao_antes` já era `133_egresso_igfarm`.
+- Prova `real`: `resultado: ok`.
+- Prova `simulated`: a do commit `972633a7` (entrada de 10/10 acima; funil reduzido).
+- `not_run`: suítes inteiras; prova de fora.
 
 ## 2026-10-09 — Deploy 66 (ponte Android⇄igfarm: personas pendentes, registro de conta e e-mail do parque; migração 132; ADR-088)
 
