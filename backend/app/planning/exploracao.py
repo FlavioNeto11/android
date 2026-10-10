@@ -31,7 +31,7 @@ from enum import Enum
 
 from ..contracts.credencial_e_sessao import FORMAS_DE_CREDENCIAL, e_credencial
 from ..models import PlanStep, Postcondition
-from .capabilities import Capability
+from .capabilities import Capability, capability_sintetica_de_efeito
 
 PREFIXO = "explorar_"
 #: 31.297: a chave de política que vale para TODA exploração de efeito do app quando o perfil não escolheu uma específica.
@@ -204,10 +204,9 @@ def capability_da_exploracao(chave: str, *, titulo: str | None = None) -> Capabi
     do catálogo. Padrão `approval_required` e risco alto: sem o dono liberar, a etapa pede o sim antes de tocar no aparelho.
     Não tem texto gerado (o efeito é o da tela), nem balde de limite, nem contraparte: o que o perfil controla é a política."""
     frase = _frase_da_chave(chave)
-    return Capability(
-        key=chave, title=titulo or f"Explorar com efeito: {frase}", goal=f"Fazer pela interface: {frase}",
-        post_kind="model_judged", post_value=f"a tela mostra: {frase}", post_description=f"O pedido foi feito: {frase}.",
-        side_effect=True, risk="high", default_policy="approval_required", internal=True, timeout_s=300, max_attempts=1)
+    return capability_sintetica_de_efeito(
+        chave, titulo=titulo or f"Explorar com efeito: {frase}", objetivo=f"Fazer pela interface: {frase}",
+        pos_valor=f"a tela mostra: {frase}", pos_descricao=f"O pedido foi feito: {frase}.")
 
 
 def e_exploracao_de_efeito(passo_key: str, exploratoria: bool, side_effect: bool) -> bool:
