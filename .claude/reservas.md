@@ -876,3 +876,6 @@ orquestradora; ela anota aqui antes de responder.
 | próximos livres (atualização 10/10 15:05Z) | 31.313, 29.212, 28.78; ADR-092; migração 134; adendo v1.139 (v1.138 usado pelo 31.312); K-113 | |
 | 31.313 | Portal | gancho no painel do 31.312: botão "Ensinar a corrigir" na etapa exploratória que falhou/parou (GET ensino-sugerido, adendo v1.138); pedido de origem nunca no campo de intenção; ramo feat/31-313-ensinar-a-corrigir-exploracao | Portal | reservado 10/10 15:37Z (prometido 15:06Z) |
 | próximos livres (atualização 10/10 15:37Z) | 31.314, 29.212, 28.78; ADR-092; migração 134; adendo v1.139; K-113 | |
+| 31.314 | Jev | persona de TESTE formal: campo aditivo personas.teste (bool, migração 134) exposto no GET/POST/PATCH de personas (adendo v1.139); persona de teste fica fora da seleção automática, das operações em lote, das contagens do painel e dos avisos ao dono; a ig-d3n4tia1rHELrY10 ("TESTE Portal 31.283") é marcada na migração ou por PATCH | Jev | reservado 10/10 15:48Z |
+| 31.315 | Portal | selo "teste" na persona (lista, ficha, seletor), filtro "esconder testes" ligado por padrão, e criar persona com a marca; depende do 31.314 | Portal | reservado 10/10 15:48Z |
+| próximos livres (atualização 10/10 15:48Z) | 31.316, 29.212, 28.78; ADR-092; migração 135; adendo v1.140; K-113 | |
