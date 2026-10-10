@@ -37,6 +37,7 @@ from .planning.capabilities import (
     texto_a_gerar,
 )
 from .planning.catalog import capabilities_of, screen_reader_of
+from .planning.exploracao import capability_da_exploracao, e_exploracao_de_efeito
 from .social.approvals import (
     DICA_DA_RECUSA,
     Approval,
@@ -90,6 +91,12 @@ def _col_app(row: Any) -> str | None:
         return row["app_id"]
     except (KeyError, IndexError, TypeError):
         return None
+
+
+def _e_exploracao_de_efeito(srow: Row) -> bool:
+    """31.297: a linha da etapa é a exploração de efeito que o sistema montou (`exploracao.e_exploracao_de_efeito`)."""
+    return "exploratoria" in srow.keys() and e_exploracao_de_efeito(
+        str(srow["key"]), bool(srow["exploratoria"]), bool(srow["side_effect"]))
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,6 +218,9 @@ class Portoes:
                                          pacote=pacote, app_id=app_da_etapa_id)
             if parada is not None:
                 return parada
+        if _e_exploracao_de_efeito(srow):
+            self._avisar_exploracao_de_efeito(obj, srow, cap, profile_id, pacote, veredito, aprovada=bool(
+                veredito.needs_approval or pelo_teto or repetida or citada or objeto_ambiguo))
         if cap.side_effect:
             # 31.64 S1 (migração 110): a porta liberou o efeito. Na mesma passada sem `await` da regra do objeto na família
             # (acima): a irmã que chegar depois vê esta marca e é recusada, qualquer que seja a ordem das tomadas.
@@ -232,6 +242,12 @@ class Portoes:
         # Uma capability que o app DA ETAPA não tem conta como nenhuma. Antes, `cap is None` liberava a etapa com o
         # efeito que tivesse: uma chave inventada numa etapa do Instagram passava por fora de tudo abaixo.
         cap = capability_of(pacote, capability) if capability else None
+        # 31.297 (ADR-091): a etapa de exploração de EFEITO que o sistema montou não tem ação do catálogo; ganha a sintética,
+        # e a política do perfil a julga como as outras (aprovação por padrão, `explorar_efeito` ou a chave do pedido).
+        # Sem perfil ela não passa: não há política a consultar nem quem aprove.
+        sintetica = cap is None and _e_exploracao_de_efeito(srow)
+        if sintetica:
+            cap = capability_da_exploracao(str(srow["key"]))
         teto = run["teto_de_autonomia"] if "teto_de_autonomia" in run.keys() else None
         if teto == "preparar" and cap is None and (srow["side_effect"] or loads(srow["commit_guard"], [])):
             # 28.23: com o teto `preparar`, todo efeito pede aprovação; a etapa com efeito SEM ação do catálogo não tem
@@ -256,6 +272,12 @@ class Portoes:
                     hint="Refaça a habilidade escolhendo a ação do catálogo desta etapa (ou replaneje)."))
             return PortaDaEtapa.fim(None)
         profile_id = obj["profile_id"] or self._st.social_repo.perfil_unico_da_instancia(obj["instance_id"])
+        if not profile_id and sintetica:
+            return PortaDaEtapa.fim(Verdict(
+                allowed=False, policy="approval_required",
+                reason="a etapa explora um efeito neste aparelho, que não tem perfil vinculado: não há política do perfil "
+                       "para liberá-la nem quem a aprove",
+                hint="Vincule um perfil a este aparelho, ou faça esta parte você mesmo."))
         if not profile_id:
             # Sem perfil não há voz para escrever nem política para aprovar. Deixar passar seria pior do que
             # parecer: como o texto deixou de ser congelado no plano, a etapa chega ao ator SEM `content` e SEM a
@@ -627,6 +649,24 @@ class Portoes:
         if pacote and pacote not in arvore.packages:
             return None
         return arvore
+
+    def _avisar_exploracao_de_efeito(self, obj: Row, srow: Row, cap: Capability, profile_id: str, pacote: str | None,
+                                     veredito: Verdict, *, aprovada: bool) -> None:
+        """31.297: a porta LIBEROU uma exploração de efeito (a política deixou, o grupo dispensou a aprovação ou a pessoa
+        aprovou): o dono é avisado na hora, com o porquê. Só ids e códigos fechados: nem o pedido, nem o alvo, nem o texto da
+        tela. Falha ao avisar nunca segura o efeito que a política já liberou."""
+        try:
+            origem = self._st.policies.origin_for(profile_id, cap, pacote)
+            self._st.bus.emit(
+                "exploracao.efeito_liberado",
+                f"{obj['instance_id']}: a porta liberou uma exploração com efeito ({cap.key}); política {veredito.policy}"
+                f" ({origem}){', com a sua aprovação' if aprovada else ''}",
+                level="warn", run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=obj["id"],
+                data={"run_id": obj["run_id"], "step_id": srow["id"], "profile_id": profile_id, "chave": cap.key,
+                      "politica": veredito.policy, "origem": origem, "aprovada": aprovada,
+                      "dispensada_pelo_grupo": "grupo de política sem aprovação" in (veredito.reason or "")})
+        except Exception:  # noqa: BLE001 - o aviso nunca derruba a porta
+            log.exception("aviso da exploração de efeito não emitido (etapa %s)", srow["id"])
 
     def _approval_gate(self, obj: Any, srow: Any, cap: Any, profile_id: str, *, motivo: str = "",
                        excecao: str | None = None, pacote: str | None = None, app_id: str | None = None) -> Any:

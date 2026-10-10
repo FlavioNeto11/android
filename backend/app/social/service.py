@@ -29,6 +29,7 @@ from ..modules.identity.domain.persona import (CRENCAS_MINIMAS, MAIORIDADE, idad
 from ..modules.identity.domain.persona_generation import (PersonaEvitada, PersonaGenerationRequest,
                                                             preencher_vazios, problemas_do_rascunho, textos_de)
 from ..modules.identity.presentation.schemas import CredentialClone, PersonaGenerateBody
+from ..planning import exploracao
 from ..planning.capabilities import load_catalog
 from ..planning.catalog import capabilities_of, pacote_ancora, session_provider_of
 from ..planning.provider import AIError, SocialRequest, Usage
@@ -1264,8 +1265,14 @@ class SocialService:
         catalogo = load_catalog(pacote)
         acoes = catalogo.offered if catalogo else []
         engine = self.policies
-        efetivas = {c.key: engine.policy_for(profile_id, c, pacote) for c in acoes}
         proprio, do_grupo = engine._own(profile_id), engine._group(profile_id)
+        # 31.297: a política de exploração de efeito aparece quando o perfil ou o grupo a escolheu (sem escolha, o padrão é
+        # pedir aprovação e o painel não ganha linha nenhuma).
+        escolhidas = sorted({k for camada in (proprio, do_grupo)
+                             for k in politicas_do_app(camada.get("capabilities"), pacote)
+                             if exploracao.chave_de_politica_valida(k)})
+        acoes = [*acoes, *(exploracao.capability_da_exploracao(k) for k in escolhidas)]
+        efetivas = {c.key: engine.policy_for(profile_id, c, pacote) for c in acoes}
         return ProfilePolicyDTO(
             package=pacote,
             limits=engine.limits_for(profile_id),
@@ -1303,7 +1310,9 @@ class SocialService:
         catalogo = load_catalog(package)
         atual = dict(atual)
         if capabilities is not None:
-            desconhecidas = [k for k in capabilities if not (catalogo and catalogo.has(k))]
+            # 31.297: a política da exploração de EFEITO (`explorar_efeito` ou `explorar_<verbo>_<objeto>`) também é do perfil.
+            desconhecidas = [k for k in capabilities
+                             if not ((catalogo and catalogo.has(k)) or exploracao.chave_de_politica_valida(k))]
             if desconhecidas:
                 raise SocialError("unknown_capability", f"Ação desconhecida: {', '.join(desconhecidas)}.", 400)
             # Só o recorte do app pedido é lido e regravado (23.10); o dos outros apps passa intacto.
@@ -1312,7 +1321,9 @@ class SocialService:
                 if nova is None:
                     caps.pop(chave, None)
                     continue
-                cap = catalogo.get(chave) if catalogo else None
+                cap = catalogo.get(chave) if catalogo and catalogo.has(chave) else None
+                if cap is None and exploracao.chave_de_politica_valida(chave):
+                    cap = exploracao.capability_da_exploracao(chave)
                 if cap and cap.risk == "high" and self.policies.is_loosened(cap, nova):
                     self.bus.emit("log", f"{quem}: {chave} afrouxado para '{nova}' — abaixo do padrão "
                                          f"'{cap.default_policy}' do catálogo, em ação de risco alto",

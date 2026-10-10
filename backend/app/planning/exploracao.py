@@ -14,6 +14,10 @@ Três regras que moram aqui, todas de vocabulário FECHADO (nada do que o modelo
   mesma exploração pedida de outro jeito dá a mesma chave, e a chave pode ir ao prompt de todas as personas do app
   (`etapas_ensinadas.EtapaEnsinada.linha`). Sem objeto reconhecido a chave leva um sufixo de letras (hash do pedido),
   fica única e NUNCA é oferecida (o sufixo não é vocabulário).
+* **O efeito (31.297, ADR-091).** Com `limits.exploracao_efeito_ligada` o verbo de efeito também explora: a etapa leva
+  `side_effect=True`, a chave é `explorar_<verbo canônico>_<objeto…>` (sinônimos viram um verbo só) e a PORTA 13.2 a julga
+  como a ação do catálogo, por uma ação sintética (`capability_da_exploracao`) cuja política o dono configura no perfil pela
+  chave específica ou pela genérica `explorar_efeito`. Sem a política liberar, a etapa pede aprovação antes de agir.
 * **O molde.** O título e o objetivo da etapa de uma execução levam o pedido (a exploração precisa dele). O molde que
   vai a outras personas é refeito só com a chave (`molde_da_exploracao`): o pedido pode ter carregado um nome.
 """
@@ -26,8 +30,11 @@ from dataclasses import dataclass
 from enum import Enum
 
 from ..models import PlanStep, Postcondition
+from .capabilities import Capability
 
 PREFIXO = "explorar_"
+#: 31.297: a chave de política que vale para TODA exploração de efeito do app quando o perfil não escolheu uma específica.
+CHAVE_GENERICA_DE_EFEITO = "explorar_efeito"
 
 #: Verbo → forma da chave. O que o modelo diz em poucas palavras, no infinitivo ("ver a caixa de lixo eletrônico").
 _LEITURA: dict[str, str] = {
@@ -47,6 +54,18 @@ _EFEITO = frozenset({
     "atualizar", "sair", "entrar", "logar", "autenticar", "desfazer", "restaurar", "esvaziar", "limpar", "reiniciar",
     "resetar", "parar", "deixar",
 })
+#: 31.297: o sinônimo → o verbo canônico de efeito que vai na chave ("mandar" e "enviar" são a mesma política do dono). O que
+#: não está aqui fica como está (`_EFEITO` é a lista de quais verbos são de efeito; a tabela só junta os que dizem o mesmo).
+_EFEITO_CANONICO: dict[str, str] = {
+    "mandar": "enviar", "encaminhar": "enviar", "responder": "enviar", "postar": "publicar", "compartilhar": "publicar",
+    "excluir": "apagar", "deletar": "apagar", "remover": "apagar", "esvaziar": "apagar", "limpar": "apagar",
+    "mudar": "alterar", "editar": "alterar", "atualizar": "alterar", "trocar": "alterar", "configurar": "alterar",
+    "ativar": "alterar", "desativar": "alterar", "cadastrar": "criar", "registrar": "criar", "adicionar": "criar",
+    "assinar": "comprar", "pagar": "comprar", "arquivar": "mover", "reservar": "agendar", "aprovar": "aceitar",
+    "confirmar": "aceitar",
+}
+#: Os verbos canônicos que podem aparecer na chave de um efeito (os que a tabela não junta ficam como são).
+VERBOS_DE_EFEITO = frozenset(_EFEITO_CANONICO.get(v, v) for v in _EFEITO)
 #: Palavras de lugar e de coisa do app que podem entrar na chave. Sem acento, em minúsculas.
 OBJETOS = frozenset({
     "caixa", "entrada", "saida", "lixeira", "lixo", "spam", "eletronico", "configuracoes", "ajustes", "perfil", "perfis",
@@ -108,8 +127,13 @@ def classificar(pedido: str) -> Exploracao:
     verbo_cru = palavras[0] if palavras else ""
     resto = palavras[1:] if palavras else []
     objetos = tuple(dict.fromkeys(p for p in resto if p in OBJETOS))[:_MAX_OBJETOS]
-    if verbo_cru in _EFEITO or any(p in _EFEITO for p in palavras[:2]):
-        return Exploracao(Destino.EFEITO, "", objetos, PREFIXO + (verbo_cru or "efeito"), False)
+    de_efeito = next((p for p in palavras[:2] if p in _EFEITO), None)
+    if de_efeito is not None:
+        # 31.297: a chave do efeito tem a forma da de leitura (`explorar_<verbo>_<objeto…>`), com o verbo canônico: é por ela
+        # que a política do dono casa com o pedido. Sem objeto reconhecido leva o sufixo de letras (o dono usa a genérica).
+        verbo_efeito = _EFEITO_CANONICO.get(de_efeito, de_efeito)
+        corpo_efeito = [verbo_efeito, *(objetos or (_sufixo(pedido),))]
+        return Exploracao(Destino.EFEITO, verbo_efeito, objetos, (PREFIXO + "_".join(corpo_efeito))[:40].rstrip("_"), False)
     verbo = _LEITURA.get(verbo_cru, "")
     corpo = [verbo or "navegar", *(objetos or (_sufixo(pedido),))]
     chave = (PREFIXO + "_".join(corpo))[:40].rstrip("_")
@@ -132,6 +156,8 @@ def passo_da_exploracao(pedido: str, e: Exploracao, *, app_id: str | None, nome_
     pós-condição DESTA execução; o molde oferecido às outras personas sai de `molde_da_exploracao`."""
     pedido = " ".join(pedido.split())[:200]
     frase = _frase_da_chave(e.chave)
+    if e.destino is Destino.EFEITO:
+        return _passo_de_efeito(pedido, e, frase, app_id=app_id, nome_do_app=nome_do_app)
     ordem = ("Só leitura e navegação: não envie, publique, siga, curta, comente, apague, salve nem altere nada, e não "
              "digite senha. Se chegar a um ponto que exigiria isso, pare e diga o que viu.")
     return PlanStep(
@@ -146,12 +172,62 @@ def passo_da_exploracao(pedido: str, e: Exploracao, *, app_id: str | None, nome_
         side_effect=False, app_id=app_id, exploratoria=True, timeout_s=300, max_attempts=1)
 
 
+def _passo_de_efeito(pedido: str, e: Exploracao, frase: str, *, app_id: str | None, nome_do_app: str) -> PlanStep:
+    """31.297: a etapa de EFEITO. A porta 13.2 a julga antes de o aparelho ser tocado (`capability_da_exploracao`); o que o
+    executor faz depois é o do caminho livre com efeito (guarda do commit, não repetir, comprovar). A ordem no objetivo
+    limita o efeito ao pedido e mantém a regra da credencial (ADR-040): senha nunca é digitada aqui."""
+    ordem = ("Faça SÓ o que o pedido manda e mais nada: não toque em outro efeito, não envie nem publique o que não foi "
+             "pedido e não digite senha. Se a tela pedir a senha, um código ou uma confirmação de identidade, pare e diga o "
+             "que viu.")
+    return PlanStep(
+        key=e.chave, title=f"Explorar o {nome_do_app} (com efeito): {pedido}"[:200],
+        goal=(f"O catálogo de ações do {nome_do_app} não cobre este pedido: {pedido}. Descubra como fazê-lo pela "
+              f"interface e comprove na tela que foi feito. {ordem}"),
+        postcondition=Postcondition(kind="model_judged", value=f"a tela mostra: {frase}",
+                                    description=f"O pedido '{pedido}' foi feito: a tela mostra o resultado."),
+        side_effect=True, app_id=app_id, exploratoria=True, timeout_s=300, max_attempts=1)
+
+
+def capability_da_exploracao(chave: str, *, titulo: str | None = None) -> Capability:
+    """31.297: a ação SINTÉTICA da etapa exploratória de efeito, para a política do perfil e a aprovação a tratarem como as
+    do catálogo. Padrão `approval_required` e risco alto: sem o dono liberar, a etapa pede o sim antes de tocar no aparelho.
+    Não tem texto gerado (o efeito é o da tela), nem balde de limite, nem contraparte: o que o perfil controla é a política."""
+    frase = _frase_da_chave(chave)
+    return Capability(
+        key=chave, title=titulo or f"Explorar com efeito: {frase}", goal=f"Fazer pela interface: {frase}",
+        post_kind="model_judged", post_value=f"a tela mostra: {frase}", post_description=f"O pedido foi feito: {frase}.",
+        side_effect=True, risk="high", default_policy="approval_required", internal=True, timeout_s=300, max_attempts=1)
+
+
+def e_exploracao_de_efeito(passo_key: str, exploratoria: bool, side_effect: bool) -> bool:
+    """A etapa que o SISTEMA montou como exploração de efeito (31.297): marcada exploratória, com efeito e com a chave
+    `explorar_…`. O plano que o modelo escreve não ganha a porta sintética só por trazer `exploratoria`."""
+    return bool(exploratoria and side_effect and passo_key.startswith(PREFIXO))
+
+
+def chaves_da_politica(chave: str) -> tuple[str, ...]:
+    """Da mais específica à mais geral: a chave da exploração e, só para a exploração de efeito, a genérica."""
+    if chave.startswith(PREFIXO) and chave != CHAVE_GENERICA_DE_EFEITO and chave.split("_")[1] in VERBOS_DE_EFEITO:
+        return (chave, CHAVE_GENERICA_DE_EFEITO)
+    return (chave,)
+
+
+def chave_de_politica_valida(chave: str) -> bool:
+    """O que o dono pode configurar: a genérica ou `explorar_<verbo de efeito>[_<objeto do vocabulário>…]`. O sufixo de
+    letras do pedido sem objeto NÃO é configurável (ele não sabe qual é): para esse caso existe a genérica."""
+    if chave == CHAVE_GENERICA_DE_EFEITO:
+        return True
+    partes = chave.split("_")
+    return (len(partes) >= 2 and partes[0] == PREFIXO.rstrip("_") and partes[1] in VERBOS_DE_EFEITO
+            and len(partes) - 2 <= _MAX_OBJETOS and all(p in OBJETOS for p in partes[2:]) and bool(_ALVO_DO_NOME.match(chave)))
+
+
 def molde_da_exploracao(passo: PlanStep) -> PlanStep | None:
     """O molde da etapa descoberta para OUTRAS execuções, refeito só com a chave (vocabulário fechado): `None` se a
     chave não for oferecível. Mantém o `kind` da pós-condição e a chave, então a receita (que casa por chave e, nas
     `model_judged`, também pelo hash genérico sem o texto da pós-condição) continua sendo achada."""
-    if not chave_oferecivel(passo.key):
-        return None
+    if passo.side_effect or not chave_oferecivel(passo.key):
+        return None               # 31.297: o efeito descoberto nunca é oferecido a outra execução; a política julga cada vez
     frase = _frase_da_chave(passo.key)
     ordem = "Só leitura e navegação: não altere nada."
     return passo.model_copy(update={
@@ -161,5 +237,6 @@ def molde_da_exploracao(passo: PlanStep) -> PlanStep | None:
         "precondition": None, "commit_guard": [], "bindings": {}, "saidas": [], "variables": {}})
 
 
-__all__ = ["Destino", "Exploracao", "OBJETOS", "PREFIXO", "VOCABULARIO", "chave_oferecivel", "classificar",
+__all__ = ["CHAVE_GENERICA_DE_EFEITO", "Destino", "Exploracao", "OBJETOS", "PREFIXO", "VERBOS_DE_EFEITO", "VOCABULARIO",
+           "capability_da_exploracao", "chave_de_politica_valida", "e_exploracao_de_efeito", "chave_oferecivel", "chaves_da_politica", "classificar",
            "molde_da_exploracao", "passo_da_exploracao"]
