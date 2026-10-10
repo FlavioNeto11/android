@@ -12,6 +12,7 @@ Este módulo não importa `app.api` (ciclo): o estado é `request.app.state.poc`
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -158,9 +159,9 @@ async def preview_distribution_get_removido() -> None:
                                      "com o comando no corpo."}, headers={"Allow": "POST"})
 
 
-@router.get("/runs/{run_id}")
-async def get_run(request: Request, run_id: str) -> RunDetail:
-    s = _st(request)
+def _detalhe_da_execucao(s: AppState, run_id: str) -> RunDetail:
+    """Síncrono, com várias consultas ao banco: a rota o roda numa thread, porque na do laço uma espera pela trava do banco para o
+    laço inteiro (31.307, despejo das 18:31Z: `get_run` → `custo_por_passo.por_execucao` → `db.query`)."""
     detail = s.repo.run_detail(run_id)
     if detail is None:
         raise _err(404, "not_found", "Execução não encontrada.")
@@ -175,6 +176,11 @@ async def get_run(request: Request, run_id: str) -> RunDetail:
         estagios.update(definition_of(pacote).operation_stages)
     detail.custo_por_passo = custo_por_passo.por_execucao(s.db, s.cfg.file.ai.prices, [run_id], estagios).get(run_id)
     return detail
+
+
+@router.get("/runs/{run_id}")
+async def get_run(request: Request, run_id: str) -> RunDetail:
+    return await asyncio.to_thread(_detalhe_da_execucao, _st(request), run_id)
 
 
 @router.get("/runs/{run_id}/projection")

@@ -308,3 +308,60 @@ async def test_a_lista_de_operacoes_roda_fora_da_thread_do_laco(harness: Harness
         r = await c.get("/api/operacoes")
     assert r.status_code == 200
     assert vistas and all(t != laco for t in vistas), "a lista de operações rodou na thread do laço"
+
+
+# ===================================================================== o detalhe da execução fora do laço (7º ponto, 18:31Z)
+async def test_o_detalhe_da_execucao_roda_fora_da_thread_do_laco(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O despejo das 18:31Z: `GET /api/runs/{id}` → `custo_por_passo.por_execucao` → `db.query` na thread do laço. Toda a leitura
+    (detalhe, custo, estágios) agora roda numa thread do pool; o 404 de uma execução inexistente também."""
+    import httpx
+
+    from app.main import create_app
+
+    st = harness.state
+    assert st is not None
+    laco = threading.get_ident()
+    vistas: list[int] = []
+    classe = type(st.repo)
+    original = classe.run_detail
+
+    def espia(self, *a, **k):
+        vistas.append(threading.get_ident())
+        return original(self, *a, **k)
+    monkeypatch.setattr(classe, "run_detail", espia)
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 123)),
+                                 base_url="http://127.0.0.1") as c:
+        r = await c.get("/api/runs/run-que-nao-existe")
+    assert r.status_code == 404
+    assert vistas and all(t != laco for t in vistas), "o detalhe da execução rodou na thread do laço"
+
+
+# ===================================================================== a volta das decisões automáticas fora do laço (8º ponto, 18:50Z)
+async def test_a_volta_das_decisoes_automaticas_roda_fora_da_thread_do_laco() -> None:
+    """O despejo das 18:50Z: `ServicoDeDecisoes.laco` chamava `uma_volta()` síncrono (varre e grava no banco) na thread do laço, e
+    ficou na fila da trava do banco que a régua diária do curador segurava. A volta agora roda em thread."""
+    from types import SimpleNamespace
+
+    from app.modules.decisoes.infrastructure.servico import ServicoDeDecisoes
+
+    laco = threading.get_ident()
+    vistas: list[int] = []
+    cfg = SimpleNamespace(file=SimpleNamespace(avisos=SimpleNamespace(enabled=False, decisoes_automaticas=SimpleNamespace(intervalo_s=0))))
+
+    class Adaptador:
+        def varrer(self) -> int:
+            vistas.append(threading.get_ident())
+            return 0
+
+    servico = ServicoDeDecisoes(cfg, Adaptador(), None, lider=lambda _n: None)  # type: ignore[arg-type]
+    tarefa = asyncio.create_task(servico.laco())
+    for _ in range(200):
+        if vistas:
+            break
+        await asyncio.sleep(0.01)
+    tarefa.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await tarefa
+    assert vistas and all(t != laco for t in vistas), "a volta das decisões rodou na thread do laço"

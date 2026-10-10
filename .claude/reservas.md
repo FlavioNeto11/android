@@ -894,7 +894,7 @@ orquestradora; ela anota aqui antes de responder.
 | 31.324 | Jev | P-045: cadastro.yaml do Instagram com caixa IMAP no domínio do parque (12.3 parte 2 / 31.310): dado nascimento da persona, ação de data por rodas, código disparado antes do envio final; a partir da captura da Ponte | Jev | reservado 10/10 18:38Z |
 | 31.325 | Aprendizado | política por verbo na exploração de efeito: explorar_<verbo> entre a do pedido e a genérica; destrutivos (apagar, comprar, transferir, encerrar, desinstalar, resetar) = approval_required, demais = autonomous; pré-requisito do P-046; adendo v1.141; ramo feat/31-325-politica-por-verbo | Aprendizado | reservado 10/10 18:38Z |
 | 31.326 | Portal | painel mostra "bloqueada" (não "aguardando intervenção") e o motivo do bloqueio na ficha e na lista de contas bloqueadas (depende do v1.142) | Portal | reservado 10/10 18:38Z |
-| migração 135 | Jev | 135_indice_dos_eventos_por_instancia: índices events(instance_id, kind, id) e learning_signals(kind, created_at) (31.307) | Jev | reservado 10/10 18:38Z |
+| migração 135 | Jev | 135_indice_dos_eventos_por_instancia: índice events(instance_id, kind, id) (31.307; o de learning_signals saiu: 310 linhas, 0,1 ms) | Jev | reservado 10/10 18:38Z |
 | migração 136 | Ponte | contas_retiradas.motivo_do_bloqueio (31.322) | Ponte | reservado 10/10 18:38Z |
 | K-113 | Jev | suíte PG no mesmo disco estrangula o SQLite do central; farm-pg com fsync satura o disco mesmo ocioso; boot da adoção não cabe em 240 s sem índice (31.307) | Jev | reservado 10/10 18:38Z |
 | próximos livres (atualização 10/10 18:38Z) | 31.327, 29.212, 28.78; ADR-092; migração 137; adendo v1.143; K-114 | |

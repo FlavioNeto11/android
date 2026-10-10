@@ -45,7 +45,8 @@ class ServicoDeDecisoes:
         while True:
             try:
                 await asyncio.sleep(float(self.cfg.file.avisos.decisoes_automaticas.intervalo_s))
-                self.uma_volta()
+                # Em thread: a volta lê e grava no banco, e na do laço uma espera pela trava para o laço inteiro (31.307, despejo das 18:50Z).
+                await asyncio.to_thread(self.uma_volta)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - o laço nunca morre
