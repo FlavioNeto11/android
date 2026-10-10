@@ -267,16 +267,17 @@ def test_limpeza_desatribui_remove_perfil_e_apaga_segredo(harness, monkeypatch):
     from app.modules.identity.infrastructure import egresso
     eventos: list[tuple[object, ...]] = []
     monkeypatch.setattr(egresso, "atribuir",
-                        lambda st, body, quem: eventos.append(("unassign", list(body.instance_ids),
-                                                               body.proxy_profile_id,
-                                                               list(body.confirm_real_account))))
+                        lambda st, body, quem, **kw: eventos.append(("unassign", list(body.instance_ids),
+                                                                     body.proxy_profile_id,
+                                                                     list(body.confirm_real_account),
+                                                                     kw.get("durante_quarentena"))))
     monkeypatch.setattr(egresso, "remover_perfil", lambda st, pid: eventos.append(("remove", pid)))
     monkeypatch.setattr(harness.state.secrets, "delete_secret", lambda ref: eventos.append(("segredo", ref)))
     _semear_perfil_de_rede(harness)
     harness.state.db.execute(
         "INSERT INTO device_network(instance_id, proxy_profile_id, updated_at) VALUES ('android-01','np-1','2026-01-01')")
     egresso.limpar_egresso(harness.state, "p1", "acc-1", "ref-proxy")
-    assert eventos == [("unassign", ["android-01"], None, ["android-01"]),
+    assert eventos == [("unassign", ["android-01"], None, ["android-01"], True),
                        ("remove", "np-1"),
                        ("segredo", "ref-proxy")]
 

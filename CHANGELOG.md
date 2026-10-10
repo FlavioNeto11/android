@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — a limpeza do egresso funciona com o aparelho ainda em quarentena (31.317)
+
+- `devices/rede.py::atribuir` ganha `durante_quarentena` (padrão `False`): só a limpeza do egresso
+  (`identity/infrastructure/egresso.py::limpar_egresso`) o usa, para registrar o pedido de tirar o proxy da conta
+  retirada enquanto a quarentena dela ainda está aberta. A convergência segue sem tocar o aparelho em quarentena, e
+  `atribuir` comum continua recusando (`aparelho_em_quarentena`). O que ainda falhar na limpeza vira aviso `warn` com os
+  ids (perfil, conta, pendências), sem segredo. Origem: android-07 (10/10), onde o perfil da conta do Rafael ficou
+  pedido ao aparelho (`aparelho_em_quarentena` e `network_profile_in_use` só no log).
+- Prova **simulada**: `backend/tests/test_egresso_quarentena.py` (4 testes) e `test_egresso_igfarm.py` (stubs da
+  limpeza aceitam o argumento novo). **Real: não executada**; o android-07 real só se limpa depois do deploy e com a
+  autorização da orquestradora.
+
 ## 2026-10-10 — a persona de teste tem selo, fica escondida por padrão e nasce marcada (31.315, adendo v1.139 do 31.314)
 
 - `api/types.ts` (`InstagramProfile.teste`, `PersonaCreateRequest.teste`), `components/SeloDeTeste.tsx`,

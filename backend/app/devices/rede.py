@@ -986,7 +986,7 @@ def _desejo_atual(row: Row | None) -> _Desejo:
     return _Desejo(row["vpn_profile_id"], row["proxy_profile_id"], str(row["policy"]))
 
 
-def _julgar(st: AppState, item: _Item, confirmados: set[str], dry_run: bool) -> None:
+def _julgar(st: AppState, item: _Item, confirmados: set[str], dry_run: bool, *, durante_quarentena: bool = False) -> None:
     """Decide o desfecho de um aparelho do lote. A ordem importa: loja e quarentena recusam sempre (nada toca
     neles); depois a coerência do pedido; e a conta real só pesa quando a SAÍDA muda."""
     rt = st.devices.devices[item.id]
@@ -995,7 +995,7 @@ def _julgar(st: AppState, item: _Item, confirmados: set[str], dry_run: bool) -> 
     para = item.para
     if rt.store:
         item.recusar("store_instance", f"{item.id} é a loja (Play Store): não recebe rede gerenciada (ADR-056 §7)")
-    elif quarentena is not None:
+    elif quarentena is not None and not durante_quarentena:
         item.recusar("aparelho_em_quarentena", quarentena)
     elif para.policy != "livre" and not (para.vpn_profile_id or para.proxy_profile_id):
         item.recusar("policy_without_profile", f"política '{para.policy}' sem perfil: a tarefa esperaria para "
@@ -1069,10 +1069,15 @@ def _avisar_da_saida(st: AppState, previa: list[_Item]) -> None:
                            "aparelhos"})
 
 
-def atribuir(st: AppState, body: NetworkAssignBody, quem: str | None) -> dict[str, object]:
+def atribuir(st: AppState, body: NetworkAssignBody, quem: str | None, *,
+             durante_quarentena: bool = False) -> dict[str, object]:
     """Pede a rede para os aparelhos. Com `dry_run`, só a prévia; sem ele, tudo ou nada: uma recusa (loja,
     quarentena, conta real sem confirmação, política sem perfil) devolve 409 com a prévia inteira e nada é gravado.
-    Atribuir nunca AVANÇA o estado: quem muda a configuração do aparelho volta a `pendente` e ganha revisão nova."""
+    Atribuir nunca AVANÇA o estado: quem muda a configuração do aparelho volta a `pendente` e ganha revisão nova.
+
+    `durante_quarentena` (31.317): só registra o PEDIDO num aparelho em quarentena, que a convergência não toca enquanto
+    ela durar (`rede_convergencia` recusa o aparelho em quarentena). Existe para a limpeza do egresso de uma conta
+    retirada, que roda antes de a quarentena da conta resolver; fora disso a quarentena continua recusando (ADR-055)."""
     campos = body.model_fields_set
     if not ({"vpn_profile_id", "proxy_profile_id"} & campos) and body.policy is None:
         raise RedeError(400, "nothing_to_change", "Diga o que muda: `vpn_profile_id`, `proxy_profile_id` ou `policy`.")
@@ -1090,7 +1095,7 @@ def atribuir(st: AppState, body: NetworkAssignBody, quem: str | None) -> dict[st
                        body.proxy_profile_id if "proxy_profile_id" in campos else de.proxy_profile_id,
                        body.policy if body.policy is not None else de.policy)
         item = _Item(id=iid, de=de, para=para)
-        _julgar(st, item, set(body.confirm_real_account), body.dry_run)
+        _julgar(st, item, set(body.confirm_real_account), body.dry_run, durante_quarentena=durante_quarentena)
         previa.append(item)
     _avisar_da_saida(st, previa)
 

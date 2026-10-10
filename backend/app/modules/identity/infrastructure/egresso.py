@@ -62,21 +62,34 @@ def vincular_egresso(st: AppState, profile_id: str, instance_id: str) -> None:
 
 
 def limpar_egresso(st: AppState, profile_id: str, account_id: str, proxy_secret_ref: str | None) -> None:
-    """Desatribui o perfil dos devices que o pedem, remove o perfil e apaga o segredo de rastreio."""
+    """Desatribui o perfil dos devices que o pedem, remove o perfil e apaga o segredo de rastreio.
+
+    Roda antes de a quarentena da conta retirada resolver (a limpeza dos dados do app é em segundo plano), então o
+    pedido de desatribuição entra `durante_quarentena`: só registra o desejado, e a convergência não toca o aparelho
+    enquanto a quarentena durar (31.317; no android-07 o perfil da conta morta ficou por causa disso). O que ainda
+    falhar vira aviso `warn` no barramento, com os ids, em vez de só uma linha de log."""
     perfil_id = _perfil_da_conta(st, account_id)
+    pendencias: list[str] = []
     if perfil_id is not None:
         iids = [str(r["instance_id"]) for r in st.db.query(
             "SELECT instance_id FROM device_network WHERE proxy_profile_id=?", (perfil_id,))]
         for iid in iids:
             try:
                 atribuir(st, NetworkAssignBody(instance_ids=[iid], proxy_profile_id=None, policy="livre",
-                                               confirm_real_account=[iid]), quem="limpeza")
+                                               confirm_real_account=[iid]), quem="limpeza", durante_quarentena=True)
             except RedeError as exc:
                 log.warning("egresso: não desatribuí o perfil %s de %s (%s)", perfil_id, iid, exc.code)
+                pendencias.append(f"{iid}: não desatribuí ({exc.code})")
         try:
             remover_perfil(st, perfil_id)
         except RedeError as exc:
             log.warning("egresso: não removi o perfil %s (%s)", perfil_id, exc.code)
+            pendencias.append(f"perfil {perfil_id}: não removi ({exc.code})")
+        if pendencias:
+            st.bus.emit("log", f"Conta {account_id} retirada, mas o egresso dela ficou pela metade: "
+                               + "; ".join(pendencias) + ". Desatribua e remova o perfil de rede.",
+                        level="warn", data={"profile_id": profile_id, "account_id": account_id,
+                                            "network_profile_id": perfil_id, "pendencias": pendencias})
     if proxy_secret_ref:
         try:
             st.secrets.delete_secret(proxy_secret_ref)
