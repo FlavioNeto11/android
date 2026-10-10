@@ -1,4 +1,4 @@
-import { Clock, Eye, EyeOff, Hand, ImageOff, LoaderCircle, Moon, Pause, PowerOff, RefreshCw, TriangleAlert } from 'lucide-react';
+import { Clock, Eye, Hand, ImageOff, LoaderCircle, Moon, Pause, PowerOff, RefreshCw, TriangleAlert } from 'lucide-react';
 import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -14,7 +14,7 @@ import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { useFrameStale } from '../devices/DeviceCard';
 import { SELO_DESCONHECIDO } from '../devices/selos';
-import { PAUSED_LABEL, SENSITIVE_LABEL, isPreviewPaused, streamLabel } from '../devices/streamState';
+import { PAUSED_LABEL, isPreviewPaused, streamLabel } from '../devices/streamState';
 import styles from './Focus.module.css';
 
 /** Frame REALMENTE exibido: id/tamanho vêm dos cabeçalhos X-Frame-* da resposta que gerou a imagem. */
@@ -24,13 +24,6 @@ export interface ShownFrame {
   ts: string | null;
   width: number;
   height: number;
-  /** Marcador de tela sensível (C4): id e tamanho valem para o controle manual, mas não há imagem (`url` vazia). */
-  sensitive?: boolean;
-}
-
-/** O marcador vira o frame "exibido": tecla, texto e toque (às cegas) seguem referenciando a tela que está lá. */
-function markerShown(f: Pick<FrameInfo, 'id' | 'ts' | 'width' | 'height'>): ShownFrame {
-  return { url: '', id: f.id, ts: f.ts, width: f.width, height: f.height, sensitive: true };
 }
 
 export interface ScreenHandle {
@@ -81,8 +74,6 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
   const [loadError, setLoadError] = useState<{ message: string; hint: string } | null>(null);
   const [noFrame, setNoFrame] = useState(false);
   const [loading, setLoading] = useState(false);
-  /** Tela sensível: pelo marcador do evento `frame` ou por um 404 `sensitive_screen` que chegou antes dele. */
-  const [sensitive, setSensitive] = useState(false);
 
   const shownRef = useRef<ShownFrame | null>(null);
   const staleUrls = useRef<string[]>([]);
@@ -106,27 +97,7 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
   const again = useRef(false);
   const alive = useRef(true);
 
-  /** Tira a imagem da tela JÁ (ela pode mostrar justamente a tela que ficou sensível) e põe o marcador no lugar. */
-  const showSensitive = useCallback((marker: FrameInfo | null) => {
-    const prev = shownRef.current;
-    if (prev?.url) URL.revokeObjectURL(prev.url);
-    for (const u of staleUrls.current) URL.revokeObjectURL(u);
-    staleUrls.current = [];
-    const next = marker ? markerShown(marker) : null;
-    shownRef.current = next;
-    setShown(next);
-    setSensitive(true);
-    setLoadError(null);
-    setNoFrame(false);
-  }, []);
-
   const load = useCallback(async () => {
-    // Marcador de tela sensível: não há imagem a buscar — o GET só responderia 404 `sensitive_screen`.
-    const current = useAppStore.getState().instances[id]?.frame ?? null;
-    if (current?.sensitive) {
-      showSensitive(current);
-      return;
-    }
     if (inFlight.current) {
       again.current = true; // chegou frame novo durante o download: busca de novo ao terminar
       return;
@@ -139,11 +110,6 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
       // X-Frame-Id diz QUAL frame está na imagem. O tamanho do aparelho vem do FrameInfo desse mesmo frame
       // (pixels do aparelho, garantido pelo contrato); os cabeçalhos de tamanho são só plano B.
       const latest = useAppStore.getState().instances[id]?.frame ?? null;
-      if (latest?.sensitive) {
-        // A tela ficou sensível enquanto a imagem descia: ela é de antes do marcador e não entra na tela.
-        showSensitive(latest);
-        return;
-      }
       if (latest) rememberFrame(latest);
       const frameId = headers.id ?? latest?.id ?? null;
       const match = frameId ? knownFrames.current.get(frameId) ?? null : null;
@@ -156,24 +122,11 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
       if (shownRef.current) staleUrls.current.push(shownRef.current.url);
       shownRef.current = next;
       setShown(next);
-      setSensitive(false);
       setLoadError(null);
       setNoFrame(false);
     } catch (e) {
       if (!alive.current) return;
       const err = toApiError(e);
-      if (err.status === 404 && err.code === 'sensitive_screen') {
-        // O backend tirou a imagem do ar antes de o evento do marcador chegar: mesmo estado neutro, sem erro. O
-        // tamanho vem do último frame conhecido; o marcador, quando chegar, assume o lugar.
-        showSensitive(useAppStore.getState().instances[id]?.frame ?? null);
-        return;
-      }
-      if (shownRef.current?.sensitive) {
-        // Deixou de ser sensível, mas a imagem nova não veio: o marcador sai para o erro (ou a espera) aparecer.
-        shownRef.current = null;
-        setShown(null);
-      }
-      setSensitive(false);
       if (err.status === 404) {
         setNoFrame(true);
         setLoadError(null);
@@ -190,7 +143,7 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
         }
       }
     }
-  }, [id, rememberFrame, showSensitive]);
+  }, [id, rememberFrame]);
 
   // Busca quando o painel abre, quando a instância fica online e sempre que o id do frame mudar.
   useEffect(() => {
@@ -308,8 +261,6 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
   const staleInfo = streamLabel(instance, stale);
   // Com o foco aberto o interesse existe; `paused` aqui é o instante até a captura voltar (ou a aba oculta).
   const paused = isPreviewPaused(instance);
-  // Onde a tela do aparelho fica dentro da caixa: sem imagem, o contorno mostra onde o toque às cegas cai.
-  const outline = sensitive && shown && boxSize ? containedRect(boxSize, shown) : null;
   const hl = (() => {
     if (!highlight || !shown || !boxSize) return null;
     const rect = containedRect(boxSize, shown);
@@ -362,14 +313,14 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
           ref={boxRef}
           className={cx(styles.screenBox, canGesture && styles.screenBoxInteractive, interactive && busy && styles.screenBoxBusy)}
           role="img"
-          aria-label={`${sensitive ? `Tela sensível de ${id}, prévia oculta` : `Tela ao vivo de ${id}`}${interactive ? '. Clique para tocar, segure para toque longo, arraste para deslizar.' : '. Somente visualização.'}`}
+          aria-label={`Tela ao vivo de ${id}${interactive ? '. Clique para tocar, segure para toque longo, arraste para deslizar.' : '. Somente visualização.'}`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={(e) => finish(e, false)}
           onPointerCancel={(e) => finish(e, true)}
           onContextMenu={(e) => e.preventDefault()}
         >
-          {shown && !shown.sensitive ? (
+          {shown ? (
             <img
               className={cx(styles.screenImg, stale && styles.screenImgStale)}
               src={shown.url}
@@ -384,7 +335,6 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
           ) : null}
 
           <div className={styles.screenOverlay} aria-hidden>
-            {outline ? <span className={styles.sensitiveOutline} style={outline} /> : null}
             {hl ? <span className={styles.highlight} style={hl} /> : null}
             {drag ? (
               <svg className={styles.dragSvg}>
@@ -400,14 +350,7 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
           </div>
         </div>
 
-        {sensitive ? (
-          // Por cima da caixa, mas sem capturar o ponteiro: o controle manual continua funcionando embaixo.
-          <div className={cx(styles.screenState, styles.screenSensitive)} role="status" title={SENSITIVE_LABEL.hint}>
-            <EyeOff size={28} aria-hidden />
-            <p className={styles.screenStateTitle}>{SENSITIVE_LABEL.title}</p>
-            <p>{SENSITIVE_LABEL.hint}</p>
-          </div>
-        ) : !shown ? (
+        {!shown ? (
           <div className={styles.screenState}>
             {loadError ? (
               <>
@@ -435,7 +378,7 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
 
         {/* `aria-live="off"`: o "há N s" muda a cada segundo e, como `role=status` é polite por padrão, o leitor
             de tela anunciava a etiqueta em loop (P3.3). A informação continua legível ao focar ou navegar. */}
-        {shown && paused && !sensitive ? (
+        {shown && paused ? (
           <span className={styles.pausedTag} role="status" aria-live="off" title={PAUSED_LABEL.hint} data-stream="paused">
             <Pause size={13} aria-hidden /> {PAUSED_LABEL.title} — última imagem <FrameAge ts={instance.frame?.ts ?? shown.ts} />
           </span>

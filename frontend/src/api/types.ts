@@ -28,9 +28,6 @@ interface FrameInfo {
   height: number;
   orientation: 'portrait' | 'landscape';
   stale: boolean;        // true se mais antigo que o limite configurado
-  // v0.20 (C4) — tela sensível: frame MARCADOR, sem imagem (GET /frame responde 404 `sensitive_screen`), com id e
-  // tamanho da tela para o controle manual. Ausente = false (backend anterior ao adendo).
-  sensitive?: boolean;
 }
 
 /**

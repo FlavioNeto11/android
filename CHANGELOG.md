@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — o painel sai do tratamento de tela sensível (31.289, ADR-089)
+
+- `frontend/src/api/types.ts` (`FrameInfo`), `features/focus/Screen.tsx`, `features/devices/DeviceCard.tsx`,
+  `streamState.ts`, `Focus.module.css`: saem o campo `sensitive`, o marcador "Tela sensível — prévia oculta", o
+  tratamento do 404 `sensitive_screen` e o contorno do toque às cegas. A prévia mostra toda imagem que o servidor
+  entrega. `docs/dominios/parque.md` corrigido.
+- Prova `simulated`: tsc, build e 341 testes dirigidos. Prova `real` (10/10 13:15Z, central 2e5d22ca): foco do
+  android-08 com imagem 720x1280 e sem marcador. `not_run`: miniatura da grade (painel embutido oculto).
+
 ## 2026-10-10 — a saída esperada de um perfil só muda pelo app (31.291)
 
 - `PUT /api/network/profiles/{id}` (`devices/rede.py::atualizar_saida_esperada`, `fleet/presentation/rede.py`): troca
