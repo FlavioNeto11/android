@@ -8572,3 +8572,25 @@ na hora (ADR-055/068, como antes) e agora o MOTIVO fica registrado como dado. Tu
 **Prova:** `simulated` (`backend/tests/test_motivo_do_bloqueio.py`, 7 casos; catracas, arquitetura e mypy no teto). `real`: a H1 do teste de
 bifurcação (10/10 19:02Z, android-07) caiu na tela humana com o egresso casado e foi retirada antes do deploy desta migração; o motivo dela
 está só em `.claude/handoffs/ponte-bifurcacao-3-contas.json`.
+
+## Adendo v1.143 (10/10/2026; número da orquestradora; item 31.329) — o login mede o egresso DENTRO da janela e aborta se não casar
+
+Aditivo: nenhuma rota, coluna ou migração nova. A regra vale para aparelho com proxy pedido cujo perfil de rede declara `egress_esperado`
+(as contas do igfarm); nos demais o login segue como sempre.
+
+- **Regra.** Antes de digitar a senha (e antes de abrir a tentativa de login, então sem gastar o teto diário da conta), o motor de
+  sessão mede a saída do aparelho na hora (sonda de IP como uid 2000). Aborta quando a saída medida difere de `egress_esperado`, quando a
+  medição não obtém IP, ou quando a distância entre o fim da medição e a decisão passa de 30 s (`JANELA_DO_LOGIN_S`). Não toca na tela.
+- **Desfecho.** `UNCERTAIN` com o motivo `egresso não casou: …` (saída medida e esperada, ou "a medição não obteve IP", ou "ficou N s antes
+  do login"). Não grava a sessão, não põe a credencial em `review` e não para o login automático: a próxima chamada mede de novo. O
+  `ensure_session` devolve esse motivo em `AuthResult.detail`, que o `session.connect` e a conta mostram.
+- **Evento novo `session.egresso_na_janela`** (nível `info` se casou, `warn` se não; `instance_id` no envelope). `data`:
+  `{profile_id, account_id, esperado, medido (IPv4 ou null), medido_em (ISO 8601 UTC), distancia_s (número, segundos), casou (booleano),
+  medicao_id (número ou null), detalhe (texto, até 300 caracteres)}`. Sem segredo: só IPs públicos de saída. Um evento por tentativa
+  de login que chegou à conferência.
+- **`network_measurements`.** Cada medição da janela vira uma linha com `method = "sonda de IP na janela do login (uid 2000)"`,
+  `egress_ipv4`/`egress_ipv6` medidos e `detail`; sem `per_app`, `leak_blocked`, DNS nem UDP. É só leitura: não muda `device_network` (a
+  deriva de uma rede pedida segue sendo achado da convergência). `measurement_id` do evento aponta para esta linha.
+
+**Prova:** `simulated` (`backend/tests/test_egresso_na_janela.py`, 8 casos). `real`: `not_run`; a regra nasceu da ressalva da H2 de 10/10
+(login 10 min depois da última medição, sticky girou até a seguinte).
