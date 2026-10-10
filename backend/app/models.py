@@ -984,6 +984,15 @@ class PersonaImageDTO(BaseModel):
 
 
 
+class ContaRetiradaDTO(BaseModel):
+    """O que a lápide de uma conta retirada por bloqueio guarda (31.322): sem o @, só o app, quando saiu e o MOTIVO como dado
+    (`None` nas lápides anteriores à migração 136)."""
+
+    app_id: str
+    retirada_em: str
+    motivo_do_bloqueio: dict[str, object] | None = None
+
+
 class PersonaDTO(PersonaVoiceDTO):
     """A pessoa inteira (evolução 2, onda A): voz + biografia + visual + proveniência + o que o perfil sempre expôs
     (conta do Instagram de cadastro, credencial, sessão, aparelho, política). `InstagramProfileDTO` é este MESMO
@@ -1021,6 +1030,8 @@ class PersonaDTO(PersonaVoiceDTO):
     app_on_device: AppOnDevice | None = None
     session_actions: SessionActions | None = None
     accounts_count: int = 0
+    #: Contas desta persona retiradas por bloqueio, da mais recente para a mais antiga (31.322, contrato v1.142).
+    contas_retiradas: list[ContaRetiradaDTO] = Field(default_factory=list)
     images: list[PersonaImageDTO] = Field(default_factory=list)
     primary_image_id: str | None = None
     #: Há foto principal pronta (29.26): é o que `GET /instagram/profiles/{id}/avatar` serve. Sem ela o painel nem pede

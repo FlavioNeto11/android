@@ -97,3 +97,15 @@ def test_evento_da_fila_leva_o_rotulo():
                              anterior_status="unknown", detail="código por e-mail")
     assert [d["rotulo"] for _k, _m, d in b.eventos] == [ROTULO_BLOQUEADA, ROTULO_AGUARDANDO]
     assert "bloqueada" in b.eventos[0][1]
+
+
+def test_persona_expoe_a_lapide_com_o_motivo_sem_o_arroba(harness):
+    _semear(harness, medidas=[("2026-10-10T01:11:00.000Z", "38.211.146.161")])
+    harness.state.social.motivo_do_bloqueio = lambda pid, aid, ev: motivo_do_bloqueio(harness.state.db, pid, aid, ev)
+    harness.state.social.retirar_conta_bloqueada("p-bloq", "acc-bloq", origem="observado", autor="teste",
+                                                 evidencia="conta_travada: “Confirm you're human”")
+    dto = harness.state.social.get_profile("p-bloq")
+    assert len(dto.contas_retiradas) == 1                       # a âncora grava duas lápides; aparece uma só
+    c = dto.contas_retiradas[0]
+    assert c.app_id and c.retirada_em and c.motivo_do_bloqueio["egresso_divergente"] is True
+    assert "alvo.bloq" not in dto.model_dump_json().split('"contas_retiradas"')[1]
