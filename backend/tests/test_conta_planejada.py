@@ -480,3 +480,53 @@ async def test_conta_da_ponte_igfarm_nasce_confirmada_com_evidencia(harness: Har
     linha = harness.state.db.one("SELECT * FROM profile_accounts WHERE id=?", (conta,))
     assert linha["provisioning_state"] == "confirmada" and linha["desired_handle"] == "maria.souza94"
     assert json.loads(linha["confirmation_evidence"]) == {"kind": "igfarm", "ref": "ig-123"}
+
+
+async def test_authenticated_e_derivado_confirmada_mais_sessao_pronta_no_aparelho_vinculado(harness: Harness) -> None:
+    from app.models import PersonaDeviceBody
+
+    _outlook(harness)
+    pid = _persona(harness)
+    instance = next(iter(harness.state.devices.devices))
+    outro = [i for i in harness.state.devices.devices if i != instance][0]
+    harness.state.social.bind_device(pid, PersonaDeviceBody(instance_id=instance))
+    async with _api(harness) as c:
+        aid = await _ate(c, harness, pid, "aguardando_verificacao", desired_handle="maria.souza94")
+        harness.state.db.execute(
+            "INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at, updated_at)"
+            " VALUES (?,?,?,?,?,?)", (aid, instance, "session_ready", "maria.souza94", "2026-10-10T00:00:00Z",
+                                      "2026-10-10T00:00:00Z"))
+        # sessão pronta, mas a conta ainda não está confirmada: não é "autenticada"
+        antes = (await c.get(f"/api/instagram/profiles/{pid}/accounts")).json()[-1]
+        assert antes["provisioning"]["state"] == "aguardando_verificacao" and antes["provisioning"]["authenticated"] is False
+        conf = await _evento(c, pid, aid, "confirmar", "aguardando_verificacao",
+                             evidencia={"tipo": "sessao", "sessao_id": instance})
+        assert conf.json()["provisioning"]["authenticated"] is True
+        # a sessão pronta é de OUTRO aparelho: a vinculada não a tem
+        harness.state.db.execute("UPDATE account_sessions SET instance_id=? WHERE account_id=?", (outro, aid))
+        r = await c.get(f"/api/instagram/profiles/{pid}/accounts")
+        assert [a for a in r.json() if a["id"] == aid][0]["provisioning"]["authenticated"] is False
+
+
+async def test_app_de_login_gerenciado_expoe_a_senha_so_enquanto_a_conta_nao_esta_confirmada(harness: Harness) -> None:
+    """O Outlook real tem provedor de sessão (a conta Microsoft): confirmada, quem digita a senha é o provedor e o
+    `type_secret` não a recebe; planejada, não há login gerenciado a fazer e a senha é a que o cadastro dita."""
+    from app.modules.identity.domain.available_data import account_data, account_name, typable_secret_for
+
+    if not harness.state.db.scalar("SELECT id FROM apps WHERE id='outlook-real'"):
+        harness.state.db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES "
+                                 "('outlook-real','Outlook','com.microsoft.office.outlook','Main',0)")
+    pid = _persona(harness)
+    async with _api(harness) as c:
+        aid = (await c.post(f"/api/instagram/profiles/{pid}/accounts/planned",
+                            json={"app_id": "outlook-real", "desired_handle": "maria.souza94"})).json()["id"]
+        assert (await _preparar(c, pid, aid, modo="gerar")).status_code == 200
+    contas = list(harness.state.runs.dados.accounts_of_profile(pid))
+    planejada = next(x for x in contas if x.account_id == aid)
+    assert planejada.managed is False
+    assert typable_secret_for(contas, "com.microsoft.office.outlook").refusal is None
+    harness.state.db.execute("UPDATE profile_accounts SET provisioning_state='confirmada' WHERE id=?", (aid,))
+    contas = list(harness.state.runs.dados.accounts_of_profile(pid))
+    assert next(x for x in contas if x.account_id == aid).managed is True
+    assert typable_secret_for(contas, "com.microsoft.office.outlook").refusal is not None
+    assert account_name("outlook-real", None, "senha") not in {d.name for d in account_data(contas)}
