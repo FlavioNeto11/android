@@ -352,3 +352,58 @@ def test_memory_vira_arquivo_temporario_da_instancia_e_some_no_close() -> None:
     finally:
         db.close()
     assert not pasta.exists()
+
+
+# ===================================================================== etapa 2: apagar em fatias
+def test_apagar_em_fatias_apaga_so_o_que_casa_em_lotes_e_pausa_entre_eles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db = _banco(tmp_path)
+    try:
+        _preparar(db)
+        db.execute("CREATE TABLE IF NOT EXISTS t_fatias (id INTEGER PRIMARY KEY, ts TEXT)")
+        with db.tx():
+            for i in range(1, 26):
+                db.execute("INSERT INTO t_fatias(id, ts) VALUES (?, ?)", (i, "velho" if i <= 23 else "novo"))
+        pausas: list[float] = []
+        monkeypatch.setattr(db_mod.time, "sleep", lambda s: pausas.append(s))
+        total = db.apagar_em_fatias("t_fatias", "ts = ?", ("velho",), lote=5, pausa_s=0.07)
+        assert total == 23
+        assert pausas == [0.07] * 4, "23 linhas em lotes de 5 são 5 comandos e 4 pausas entre eles"
+        assert [r["id"] for r in db.query("SELECT id FROM t_fatias ORDER BY id")] == [24, 25]
+        pausas.clear()
+        assert db.apagar_em_fatias("t_fatias", "ts = ?", ("velho",), lote=5) == 0 and pausas == []      # nada a apagar: nenhuma pausa
+        with pytest.raises(TypeError):
+            db.apagar_em_fatias("t_fatias", "ts = :ts", {"ts": "novo"})
+    finally:
+        db.close()
+
+
+def test_outro_escritor_entra_entre_as_fatias(tmp_path: Path) -> None:
+    """A razão de existir da pausa: uma purga de 4000 linhas em lotes de 200 NÃO segura a trava do começo ao fim; uma escrita de outra thread
+    termina antes de a purga acabar."""
+    db = _banco(tmp_path)
+    try:
+        _preparar(db)
+        db.execute("CREATE TABLE IF NOT EXISTS t_fatias (id INTEGER PRIMARY KEY, ts TEXT)")
+        with db.tx():
+            for i in range(1, 4001):
+                db.execute("INSERT INTO t_fatias(id, ts) VALUES (?, 'velho')", (i,))
+        fim_da_purga: list[float] = []
+        comecou = threading.Event()
+
+        def purga() -> None:
+            comecou.set()
+            db.apagar_em_fatias("t_fatias", "ts = 'velho'", (), lote=200, pausa_s=0.02)
+            fim_da_purga.append(time.monotonic())
+
+        t = threading.Thread(target=purga)
+        t.start()
+        assert comecou.wait(5)
+        time.sleep(0.05)
+        db.execute("INSERT INTO t_conc(x) VALUES (1)")                       # escrita de outra thread, no meio da purga
+        fim_da_escrita = time.monotonic()
+        t.join(30)
+        assert fim_da_purga, "a purga não terminou"
+        assert fim_da_escrita < fim_da_purga[0], "a escrita só passou depois da purga inteira: a trava ficou presa de ponta a ponta"
+        assert db.scalar("SELECT COUNT(*) FROM t_fatias") == 0
+    finally:
+        db.close()

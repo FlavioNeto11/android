@@ -307,9 +307,13 @@ Não por preciosismo: cada uma quebraria no PostgreSQL.
 - **Quem segura.** A trava guarda `(thread, chamador, desde)`. O aviso de consulta lenta na thread do laço passou a dizer quem a SEGURAVA
   (`a trava de escrita estava com <thread> (<arquivo:linha em função>), presa há X s`), e uma posse acima de 2 s vira aviso à parte
   (`a trava de escrita do banco ficou presa X s por …`).
-- **Limite honesto.** Escrita contra escrita segue numa fila só (limite do SQLite): uma transação de escrita LONGA numa thread (a retenção a cada
-  6 h, `_purgar_demais_tabelas`; os saldos a cada 10 min) ainda faz o laço esperar a vez. O ganho cobre leitura lenta e escrita curta, que são os
-  quatro despejos de 10/10. Os escritores longos entram na etapa 2 do 31.320, em fatias curtas, guiados pelo aviso acima.
+- **Limite honesto.** Escrita contra escrita segue numa fila só (limite do SQLite): uma escrita LONGA numa thread ainda faz o laço esperar a vez. O ganho
+  cobre leitura lenta e escrita curta, que são os quatro despejos de 10/10.
+- **Etapa 2: apagar em fatias.** `Database.apagar_em_fatias(tabela, onde, params, lote, pausa_s)` apaga em comandos curtos (`DELETE … WHERE id IN (SELECT id … ORDER BY id LIMIT ?)`)
+  com uma pausa entre eles: sem a pausa, quem acabou de soltar a `threading.Lock` a pegaria de novo (ela não é justa), e a fatia não serviria de nada. Usada na purga de `events`
+  (2000 linhas, 50 ms) e nas de `commands`, `ai_calls` e `measurements` da retenção de 6 h. Chamar só de thread do pool. Medido em 10/10 (somente leitura, central): `measurements`
+  195.255 linhas (61.783 com mais de 7 dias), `events` 67.574, `commands` 1.483, `ai_calls` 4.079. Os saldos (`conciliacao.atualizar`, a cada 10 min) só leem `ai_calls`:
+  milissegundos, sem mudança.
 - **Teto de conexões.** Uma por thread viva que já falou com o banco: o executor padrão do `to_thread` (`min(32, CPU+4)`), o laço, o uvicorn e os
   laços de fundo. `LIMITE_DE_CONEXOES = 40` avisa no log (no máximo um por minuto). No PostgreSQL cada thread é uma conexão (`max_connections` padrão
   100); não há `psycopg_pool` de propósito (dependência e ciclo de vida novos sem ganho agora).

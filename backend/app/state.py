@@ -1890,17 +1890,17 @@ class AppState:
                 self.learning.antes_da_purga(corte)
         except Exception:  # noqa: BLE001 - a régua é do aprendizado; a retenção do resto segue
             log.exception("aprendizado: régua diária antes da purga")
-        total += self.db.execute(
-            "DELETE FROM commands WHERE state IN ({}) AND finished_at IS NOT NULL AND finished_at < ?".format(
+        total += self.db.apagar_em_fatias(
+            "commands", "state IN ({}) AND finished_at IS NOT NULL AND finished_at < ?".format(
                 ",".join("?" for _ in COMMAND_TERMINAL)),
-            (*[s.value for s in COMMAND_TERMINAL], cutoff)).rowcount
+            (*[s.value for s in COMMAND_TERMINAL], cutoff))
         # 28.6: a chamada de IA da execução de uma ocorrência de pedido AINDA ABERTA fica: o laço soma o custo dela em
         # `pedido_ocorrencias.custo_usd` no fechamento, e só depois disso a retenção pode levá-la (a ocorrência aberta
         # há mais que `log_retention_days` é rara, mas perder o custo dela seria perder o orçamento do pedido).
-        total += self.db.execute(
-            "DELETE FROM ai_calls WHERE ts < ? AND NOT EXISTS (SELECT 1 FROM pedido_ocorrencias o"
-            " WHERE o.run_id = ai_calls.run_id AND o.estado IN ('despachada','rodando'))", (cutoff,)).rowcount
-        total += self.db.execute("DELETE FROM measurements WHERE ts < ?", (cutoff,)).rowcount
+        total += self.db.apagar_em_fatias(
+            "ai_calls", "ts < ? AND NOT EXISTS (SELECT 1 FROM pedido_ocorrencias o"
+            " WHERE o.run_id = ai_calls.run_id AND o.estado IN ('despachada','rodando'))", (cutoff,))
+        total += self.db.apagar_em_fatias("measurements", "ts < ?", (cutoff,))
         enroll_cut = to_iso(now() - timedelta(days=7))
         total += self.db.execute(
             "DELETE FROM worker_enrollments WHERE created_at < ? AND (used_at IS NOT NULL OR expires_at < ?)",

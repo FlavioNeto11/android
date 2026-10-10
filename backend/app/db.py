@@ -683,6 +683,27 @@ class Database:
         row = self.one(sql, params)
         return next(iter(row.values())) if row else None
 
+    def apagar_em_fatias(self, tabela: str, onde: str, params: tuple | dict = (), *, lote: int = 1000, pausa_s: float = 0.05,
+                         chave: str = "id") -> int:
+        """Apaga as linhas de `tabela` que casam com `onde`, `lote` por comando, e devolve quantas saíram (31.320, etapa 2).
+
+        Por que existe: no SQLite há um escritor só, e um `DELETE` de dezenas de milhares de linhas segura a trava de escrita (e o laço de
+        eventos, se ele precisar escrever) do começo ao fim. Em fatias, cada comando é curto e quem espera entra ENTRE eles, o que só
+        acontece de verdade com a pausa: a `threading.Lock` não é justa, e quem acabou de soltá-la a pegaria de novo na hora. Chamar de
+        thread do pool (`to_thread`), nunca da do laço. `tabela`, `onde` e `chave` são texto do código, nunca entrada de fora.
+        Parâmetros só posicionais (`?`): o `LIMIT` entra como o último.
+        """
+        if not isinstance(params, tuple):
+            raise TypeError("apagar_em_fatias: params posicionais (tuple)")
+        total = 0
+        while True:
+            n = int(self.execute(f"DELETE FROM {tabela} WHERE {chave} IN (SELECT {chave} FROM {tabela} WHERE {onde}"    # noqa: S608
+                                 f" ORDER BY {chave} LIMIT ?)", (*params, lote)).rowcount or 0)
+            total += n
+            if n < lote:
+                return total
+            time.sleep(pausa_s)
+
     def inserted_id(self, sql: str, params: tuple | dict = (), *, column: str = "id") -> Any:
         """Insere e devolve a chave gerada.
 

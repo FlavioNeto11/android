@@ -41,6 +41,8 @@ TELEMETRIA_RETENCAO_H = 48
 #: Linhas por DELETE da purga. A de 02/10 levou 41 mil eventos num comando só, e no SQLite um DELETE desse tamanho segura
 #: a escrita do banco inteiro enquanto roda; em lotes, cada comando é curto e os outros escritores passam entre eles.
 PURGA_LOTE = 2000
+#: Pausa entre dois lotes da purga (31.320): é o intervalo em que outro escritor (o `emit` do laço) pega a trava de escrita.
+PURGA_PAUSA_S = 0.05
 
 
 #: De quanto em quanto tempo uma réplica olha o banco atrás do que as OUTRAS publicaram.
@@ -221,13 +223,7 @@ class EventBus:
             args += list(kinds)
         if so_sem_execucao:
             filtro += " AND run_id IS NULL"
-        total = 0
-        while True:
-            n = int(self.db.execute(f"DELETE FROM events WHERE id IN (SELECT id FROM events WHERE {filtro} ORDER BY id"
-                                    " LIMIT ?)", (*args, lote)).rowcount or 0)
-            total += n
-            if n < lote:
-                return total
+        return self.db.apagar_em_fatias("events", filtro, tuple(args), lote=lote, pausa_s=PURGA_PAUSA_S)
 
 
 def row_to_event(r: Any) -> EventRecord:
