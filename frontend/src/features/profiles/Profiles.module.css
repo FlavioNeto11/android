@@ -1016,3 +1016,22 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
 
 /* 29.30: a imagem que a publicação aprovada vai levar. */
 .aprovacaoImagem { display: block; max-width: min(240px, 100%); border-radius: var(--radius-md); border: 1px solid var(--border-1); }
+
+/* Conta planejada (ADR-087, 31.283): o ciclo, desejado x confirmado e a escolha da senha. */
+.provisionamento { display: flex; flex-direction: column; gap: var(--sp-3); }
+.passos { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
+.passo { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); font-size: var(--fs-sm); }
+.passoFeito { color: var(--success-text); }
+.passoAtual { color: var(--text-1); font-weight: 600; }
+.desejadoConfirmado { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); }
+.desejadoConfirmado dt { color: var(--text-3); font-size: var(--fs-xs); }
+.desejadoConfirmado dd { margin: 2px 0 0; display: flex; align-items: center; gap: var(--sp-2); overflow-wrap: anywhere; }
+.credModos { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.credModos legend { padding: 0; color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; margin-bottom: var(--sp-1); }
+.credModo { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }
+.sugestao {
+  border: 1px solid var(--border-2); border-radius: 999px; background: var(--surface-1); color: var(--text-2);
+  padding: 2px var(--sp-3); font-size: var(--fs-sm); cursor: pointer;
+}
+.sugestao:hover { background: var(--surface-3); }
+.sugestao[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }

@@ -4,7 +4,7 @@
  * handle, identificador de login, senha só de escrita com CONSENTIMENTO, sessão, Conectar/Verificar/Sair e as
  * tentativas — tudo pelas rotas POR CONTA (`…/accounts/{aid}/…`), com os botões gateados por `session_actions`.
  */
-import { AtSign, CheckCircle2, Globe, KeyRound, LogOut, Mail, PlugZap, Plus, ScanEye, ShieldCheck, Trash2 } from 'lucide-react';
+import { AtSign, CheckCircle2, ClipboardList, Globe, KeyRound, LogOut, Mail, PlugZap, Plus, ScanEye, ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { AppCatalogEntry, AppConfig, AuthAttempt, PersonaDevice, ProfileAccount } from '../../api/types';
@@ -21,11 +21,12 @@ import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
 import { tempoRelativo, formatDateTime, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
+import { PrepararConta, ProvisionamentoDaConta } from './ContaPlanejada';
+import { TEXTO_DO_CONSENTIMENTO, ehNavegador, emPreparo, provisionamentoDe } from './provisionamento';
 import { aparelhosDe, ehEndereco, handleDe, type Pessoa } from './pessoa';
 import { SESSION_PHASE_LABEL, accountGateReason } from './sessionGate';
 import styles from './Profiles.module.css';
 
-const TEXTO_DO_CONSENTIMENTO = 'Autorizo a automação a digitar esta senha, só no app/site desta conta';
 // Regra de usuário do app âncora (hoje sempre o Instagram: letras, números, ponto ou sublinhado, até 30). O NOME
 // do app não decide mais nada aqui (23.10): é `profile_anchor` (`GET /api/app-catalog`) que diz QUAL app é a
 // conta de cadastro da persona; a regra em si segue a do Instagram porque, por ora, é o único app que pode ser
@@ -36,11 +37,6 @@ const USUARIO_DA_CONTA_ANCORA = /^[A-Za-z0-9._]{1,30}$/;
  *  comparar nome ou pacote no cliente — antes era `ehInstagram` fixo em `com.instagram.android`). */
 function ehAncora(app: Pick<AppConfig, 'package'>, catalogo: readonly AppCatalogEntry[]): boolean {
   return catalogo.some((c) => c.package === app.package && c.profile_anchor);
-}
-
-/** App de navegador: a conta é de um SITE (`host`), e a mesma pessoa pode ter várias, uma por site. */
-function ehNavegador(app: Pick<AppConfig, 'id' | 'package' | 'name'>): boolean {
-  return app.id === 'chrome' || /chrome|browser|navegador/i.test(`${app.package} ${app.name}`);
 }
 
 function nomeDoApp(c: ProfileAccount): string {
@@ -68,6 +64,8 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
   abrirFormulario?: boolean;
 }) {
   const [adicionando, setAdicionando] = useState(!!abrirFormulario);
+  // Preparar uma conta que ainda NÃO existe no serviço (ADR-087): outro caminho, outro formulário.
+  const [preparando, setPreparando] = useState(false);
   // De que app é a conta de cadastro (23.10): o registro decide, o formulário só pergunta (`GET /api/app-catalog`).
   const [catalogo, setCatalogo] = useState<AppCatalogEntry[] | null>(null);
   // A falha do catálogo NÃO vira catálogo vazio: sem ele nenhum app seria o âncora, o Instagram de uma persona sem @
@@ -109,9 +107,14 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
                       + 'para o cofre, nunca volta, e só é digitada pela automação com a sua autorização — no app ou '
                       + 'no site daquela conta.'}
                     actions={
-                      <Button size="sm" icon={Plus} onClick={() => setAdicionando((v) => !v)}>
-                        {adicionando ? 'Fechar' : 'Adicionar conta'}
-                      </Button>
+                      <>
+                        <Button size="sm" variant="secondary" icon={ClipboardList} onClick={() => setPreparando((v) => !v)}>
+                          {preparando ? 'Fechar o preparo' : 'Preparar conta nova'}
+                        </Button>
+                        <Button size="sm" icon={Plus} onClick={() => setAdicionando((v) => !v)}>
+                          {adicionando ? 'Fechar' : 'Adicionar conta'}
+                        </Button>
+                      </>
                     } />
         <CardBody>
           {semCadastro ? (
@@ -119,6 +122,11 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
               Esta persona ainda não tem @ de cadastro. Para ganhar um, adicione a conta do
               {' '}{catalogo?.find((c) => c.profile_anchor)?.name ?? 'app âncora'} dela.
             </p>
+          ) : null}
+          {preparando ? (
+            <PrepararConta profileId={profile.id} contas={contas}
+                           onFeita={async () => { setPreparando(false); await mudou(); }}
+                           onFechar={() => setPreparando(false)} />
           ) : null}
           {adicionando ? (
             erroCatalogo ? (
@@ -324,6 +332,8 @@ function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal =
   const status = c.session?.status ?? c.session_status;
   const fase = c.session_actions ? SESSION_PHASE_LABEL[c.session_actions.phase] : null;
   const pronto = status === 'session_ready';
+  const preparo = emPreparo(c);
+  const desejado = provisionamentoDe(c).desired_handle;
   const observada = c.session?.observed_username ?? null;
   const detalhe = c.session?.detail ?? c.session_detail;
   const conferida = c.session?.verified_at ?? c.session_verified_at;
@@ -378,11 +388,12 @@ function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal =
         {/* O identificador de um app de e-mail É um endereço: o "@" de nome de usuário na frente dele lia-se
             "@ fulano@dominio" (cartão do Outlook, 30/09). Endereço ganha o ícone de carta; usuário, o arroba. */}
         <span className={styles.accountHandle}>
-          {ehEndereco(c.handle) ? <Mail size={12} aria-hidden /> : <AtSign size={12} aria-hidden />} {c.handle || '—'}
+          {ehEndereco(c.handle || desejado) ? <Mail size={12} aria-hidden /> : <AtSign size={12} aria-hidden />}
+          {' '}{c.handle || (preparo && desejado ? `${desejado} (desejado)` : '—')}
         </span>
         {c.host ? <span className={styles.accountHandle}><Globe size={12} aria-hidden /> {c.host}</span> : null}
         <div className={styles.accountBadges}>
-          <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, status)} size="sm" />
+          {preparo ? null : <StatusBadge meta={metaOf(ACCOUNT_SESSION_STATUS, status)} size="sm" />}
           {c.session?.stale ? <Badge size="sm" tone="warning">dado velho — relido antes da próxima tarefa</Badge> : null}
           <Badge size="sm" tone={c.automated_login ? 'info' : 'neutral'}>
             {c.automated_login ? 'login automático' : 'login pela pessoa (Foco)'}
@@ -411,7 +422,7 @@ function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal =
         {detalhe ? <p className={styles.detail}>{detalhe}</p> : null}
       </div>
       <div className={styles.accountActions}>
-        {c.automated_login ? (
+        {preparo ? null : c.automated_login ? (
           <>
             <Button size="sm" variant={pronto ? 'secondary' : 'primary'} icon={PlugZap} loading={busy}
                     disabledReason={portao('connect')} onClick={() => void sessao('connect')}>
@@ -444,8 +455,12 @@ function CartaoConta({ profileId, conta: c, onMudou, aparelhos = [], principal =
           </>
         )}
       </div>
-      <SenhaDaConta profileId={profileId} conta={c} onMudou={onMudou} origens={origens} />
-      {c.automated_login ? (
+      {preparo ? (
+        <ProvisionamentoDaConta profileId={profileId} conta={c} onMudou={onMudou} origens={origens} />
+      ) : (
+        <SenhaDaConta profileId={profileId} conta={c} onMudou={onMudou} origens={origens} />
+      )}
+      {c.automated_login && !preparo ? (
         <div className={styles.accountWide}>
           <Disclosure bare summary="Tentativas de entrar">
             {() => <Tentativas profileId={profileId} accountId={c.id} />}

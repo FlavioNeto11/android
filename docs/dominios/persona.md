@@ -499,6 +499,18 @@ e `consent_by`), `consent_at`, `session` (`SessionInfo`, com `stale`), `session_
 **Painel.** A guia "Contas e acesso" é da onda E. Até lá, o campo "Senha para a automação" da tela de Comando
 (`frontend/src/features/command/CommandPanel.tsx`) ainda aparece e quem digitar nele recebe 422 de `POST /api/runs`.
 
+### Conta planejada no painel (31.283, ADR-087, adendo v1.132)
+
+A guia "Contas e acesso" prepara uma conta que ainda NÃO existe no serviço ("Preparar conta nova", `ContaPlanejada.tsx`):
+app do catálogo, endereço **desejado** (sugerido pelos dados da pessoa, editável) e a senha, que é **gerada** pelo
+servidor (nunca exibida), **digitada** em campo seguro (esvazia depois de cada envio) ou **reaproveitada** de outra
+conta da MESMA pessoa (só se escolhida; nunca o padrão). A caixa de autorização é obrigatória. O cartão da conta mostra
+o ciclo (`provisioning.state`), desejado x confirmado e os eventos que o servidor aceita agora (`actions`); cada evento
+leva `estado_esperado`. Conta fora de `confirmada` não oferece Conectar, Verificar nem Sair (o servidor responde 409
+`conta_nao_confirmada`), e `confirmar` só com evidência declarada. Central sem `provisioning` vale como `confirmada`.
+O assistente do comando (`AcoesDeConta.tsx`) mostra `acoes_de_conta` em cartões (preparar, abrir Contas e acesso, usar
+existente, continuar) e conta cada um como pendência; nenhuma senha entra no corpo do refinamento.
+
 ## Geração por IA (`POST /api/personas/generate`)
 
 Chamada **paga**, pelo papel `persona` (item 17.8; sem `ai.roles.persona` herda o `social`), sem gravar nada: a resposta tem o formato de `PersonaCreate`, para a pessoa

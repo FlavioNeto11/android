@@ -156,6 +156,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   existe mais: os endereços ali são todos `@exemplo.com`.
 - Prova `simulated`: `store/metricas.test.ts::31.295` e 146 testes dirigidos (store e topbar). Real: não executada (painel do navegador embutido oculto, o contador não é desenhado).
 
+## 2026-10-10 — painel da conta planejada e ações de conta no assistente (31.283, ADR-087)
+
+- `features/profiles/ContaPlanejada.tsx`, `provisionamento.ts`, `GuiaContas.tsx`: "Preparar conta nova" (app, endereço
+  desejado com sugestões, senha gerada, digitada ou reaproveitada com autorização) e o cartão do ciclo de
+  provisionamento (desejado x confirmado, eventos com `estado_esperado`, sem Conectar/Verificar/Sair antes de confirmar).
+  `features/command/AcoesDeConta.tsx` e `AssistenteDoComando.tsx`: `acoes_de_conta` viram cartões com as ações
+  estruturadas e contam como pendência. `api/client.ts` e `api/types.ts` seguem o adendo v1.132. Persona: `docs/dominios/persona.md`.
+- Prova `simulated`: 12 testes novos (`ContaPlanejada.test.tsx`), 525 dirigidos de profiles, command e runs, tsc e build.
+  **Real: não executada** (o backend do 31.281 ainda não está no ar).
+
 ## 2026-10-10 — o painel sai do tratamento de tela sensível (31.289, ADR-089)
 
 - `frontend/src/api/types.ts` (`FrameInfo`), `features/focus/Screen.tsx`, `features/devices/DeviceCard.tsx`,

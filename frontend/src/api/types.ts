@@ -1955,9 +1955,85 @@ export interface ProfileAccount {
   /** v0.28: só metadados; a senha não tem campo. */
   credential?: CredentialInfo;
   consent_at?: string | null;
+  /** v1.132 (ADR-087): ciclo de provisionamento. Ausente (central anterior) = `confirmada`. */
+  provisioning?: ProvisioningInfo;
   notes: string;
   created_at: string;
   updated_at: string;
+}
+
+// ---------------------------------------------------------------- conta planejada (v1.132, ADR-087, 31.281/31.283)
+export type ProvisioningState = 'planejada' | 'credencial_preparada' | 'aguardando_cadastro_externo'
+  | 'aguardando_verificacao' | 'confirmada' | 'falha';
+export type ProvisioningEvent = 'iniciar_cadastro' | 'enviado' | 'confirmar' | 'falhar' | 'retomar' | 'cancelar';
+
+export interface ProvisioningInfo {
+  state: ProvisioningState;
+  /** Endereço DESEJADO (editável até confirmada). O `handle` da conta é o CONFIRMADO e fica vazio até lá. */
+  desired_handle: string | null;
+  detail: string | null;
+  resume_state: ProvisioningState | null;
+  confirmed_at: string | null;
+  evidence: { kind: 'sessao' | 'declarada' | 'igfarm'; ref: string } | null;
+  /** Os eventos que a rota de transição aceita AGORA neste estado. */
+  actions: ProvisioningEvent[];
+  /** Derivado e só de leitura: confirmada e com sessão pronta no aparelho vinculado. */
+  authenticated: boolean;
+}
+
+export interface PlannedAccountRequest {
+  app_id: string;
+  host?: string | null;
+  desired_handle?: string | null;
+}
+
+export interface HandleSuggestion {
+  handle: string;
+  source: 'persona_nome' | 'persona_dados' | 'alternativa';
+}
+
+/** `POST …/credential/prepare`. A senha só vai em `digitar`; `gerar` e `reutilizar` não a carregam nem a devolvem. */
+export interface CredentialPrepareRequest {
+  modo: 'gerar' | 'digitar' | 'reutilizar';
+  /** Obrigatório e `true`: a caixa marcada na tela vale como o consentimento do ADR-040 para ESTA conta. */
+  consent: boolean;
+  substituir?: boolean;
+  password?: string;
+  clonar_de?: string;
+  tamanho?: number;
+}
+
+export type ProvisioningEvidence =
+  | { tipo: 'sessao'; sessao_id: string }
+  | { tipo: 'declarada'; handle_confirmado: string };
+
+export interface ProvisioningTransitionRequest {
+  evento: ProvisioningEvent;
+  /** Comparar e trocar: o estado que a tela viu. */
+  estado_esperado: ProvisioningState;
+  motivo?: string;
+  evidencia?: ProvisioningEvidence;
+}
+
+/** `cancelar` apaga a conta: a resposta é esta, não a conta. */
+export interface ProvisioningCancelled {
+  removida: true;
+  credencial_removida: boolean;
+}
+
+export type AcaoDeConta = 'preparar_credencial' | 'abrir_contas_e_acesso' | 'usar_credencial_existente' | 'continuar';
+
+/** Um par (persona, app) do comando cuja credencial não está pronta. Sem texto livre: o painel age pelos ids. */
+export interface AcaoDeContaItem {
+  persona_id: string;
+  persona_nome: string;
+  app_id: string;
+  app_nome: string;
+  /** Site da conta (apps de navegador); nulo = o app inteiro. Sem host no item, o painel não inventa um. */
+  host?: string | null;
+  estado: 'sem_conta' | 'planejada' | 'falha';
+  acoes: AcaoDeConta[];
+  reutilizavel_de: { account_id: string; app_id: string; app_nome: string }[];
 }
 
 export interface ProfileAccountCreateRequest {
@@ -1982,6 +2058,8 @@ export interface ProfileAccountPatchRequest {
   handle?: string;
   host?: string | null;
   status?: 'active' | 'disabled';
+  /** v1.132: endereço DESEJADO da conta planejada (409 `conta_confirmada` depois de confirmada). */
+  desired_handle?: string | null;
   /** v0.28: `auth_required` é o antigo `logged_out` (que agora dá 422). */
   session_status?: 'unknown' | 'session_ready' | 'auth_required' | 'needs_person';
   notes?: string;
@@ -2869,6 +2947,8 @@ export interface CommandRefinement {
   questions: RefineQuestion[];
   ready: boolean;
   notes: string[];
+  /** v1.132: pares (persona, app) sem credencial pronta; `ready` é false enquanto houver item. Ausente = vazio. */
+  acoes_de_conta?: AcaoDeContaItem[];
 }
 
 /** `POST /api/runs/{id}/successor`: responde a uma execução em `needs_input` com o comando refinado. */

@@ -152,3 +152,12 @@
     text-align: center;
   }
 }
+
+/* Contas a preparar (31.283): cartão por par persona x app, com as ações estruturadas. */
+.contas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.conta { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border-1);
+         border-radius: var(--radius-md); background: var(--surface-2); }
+.contaTopo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.contaTexto { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
+.contaAcoes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.contaLink { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); color: var(--accent-text); }

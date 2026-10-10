@@ -94,6 +94,11 @@ import type {
   PolicyGroup,
   ProfileAccount,
   ProfileAccountCreateRequest,
+  PlannedAccountRequest,
+  HandleSuggestion,
+  CredentialPrepareRequest,
+  ProvisioningTransitionRequest,
+  ProvisioningCancelled,
   ProfileAccountPatchRequest,
   AppOverview,
   TrainingAnswer,
@@ -750,6 +755,16 @@ export const api = {
     request<void>('DELETE', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}`),
   setAccountCredential: (profileId: string, accountId: string, body: CredentialUpdateRequest) =>
     request<ProfileAccount>('PUT', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential`, { body }),
+  planAccount: (profileId: string, body: PlannedAccountRequest) =>
+    request<ProfileAccount>('POST', `/instagram/profiles/${enc(profileId)}/accounts/planned`, { body }),
+  handleSuggestions: (profileId: string, appId: string) =>
+    request<{ suggestions: HandleSuggestion[] }>('GET', `/instagram/profiles/${enc(profileId)}/accounts/handle-suggestions`,
+                                                 { query: { app_id: appId } }),
+  prepareAccountCredential: (profileId: string, accountId: string, body: CredentialPrepareRequest) =>
+    request<ProfileAccount>('POST', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential/prepare`, { body }),
+  provisionAccount: (profileId: string, accountId: string, body: ProvisioningTransitionRequest) =>
+    request<ProfileAccount | ProvisioningCancelled>('POST',
+      `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/provisioning`, { body }),
   deleteAccountCredential: (profileId: string, accountId: string) =>
     request<ProfileAccount>('DELETE', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/credential`),
   /** 23.9: o cofre clona a senha de outra conta DESTA persona para esta; o consentimento desta não muda. */

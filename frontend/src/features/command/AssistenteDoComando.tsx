@@ -7,6 +7,7 @@ import { Button } from '../../components/Button';
 import { TextArea, TextInput } from '../../components/Field';
 import ui from '../../components/ui.module.css';
 import { cx, plural } from '../../lib/format';
+import { AcoesDeConta } from './AcoesDeConta';
 import { pareceCredencial } from './history';
 import { NOME_DA_IA } from '../../lib/identidade';
 import styles from './AssistenteDoComando.module.css';
@@ -59,7 +60,9 @@ export function AssistenteDoComando({ comando, contexto, perguntasIniciais = [],
     return r ? [{ field: q.field, question: q.question, answer: r }] : [];
   });
   const comSenha = pareceCredencial(base) || respondidas.some((r) => pareceCredencial(r.answer));
-  const pronto = atual !== null && atual.ready && atual.questions.length === 0;
+  // Conta sem credencial pronta é pendência estruturada (v1.132): `ready` já vem false, mas a tela não depende disso.
+  const contasAPreparar = atual?.acoes_de_conta ?? [];
+  const pronto = atual !== null && atual.ready && atual.questions.length === 0 && contasAPreparar.length === 0;
 
   const refinar = async () => {
     if (carregando || comSenha) return;
@@ -103,8 +106,8 @@ export function AssistenteDoComando({ comando, contexto, perguntasIniciais = [],
     setErro(null);
   };
 
-  const pendentes = perguntas.length;
-  const faltaResponder = pendentes > 0 && respondidas.length === 0;
+  const pendentes = perguntas.length + contasAPreparar.length;
+  const faltaResponder = perguntas.length > 0 && respondidas.length === 0;
 
   return (
     <section className={styles.box} aria-label={titulo} aria-busy={carregando}>
@@ -134,7 +137,11 @@ export function AssistenteDoComando({ comando, contexto, perguntasIniciais = [],
         <p className={styles.resumo}>{NOME_DA_IA} está lendo o comando e o que o sistema sabe fazer…</p>
       ) : null}
 
-      {pendentes > 0 ? (
+      {contasAPreparar.length > 0 ? (
+        <AcoesDeConta itens={contasAPreparar} desabilitado={carregando} onContinuar={() => void refinar()} />
+      ) : null}
+
+      {perguntas.length > 0 ? (
         <ol className={styles.perguntas} aria-label="O que ainda falta">
           {perguntas.map((q, i) => {
             const k = chave(q, i);
@@ -173,13 +180,13 @@ export function AssistenteDoComando({ comando, contexto, perguntasIniciais = [],
       {erro ? <p className={cx(styles.aviso, styles.avisoPerigo)} role="alert">{erro}</p> : null}
 
       <footer className={styles.rodape}>
-        <Button size="sm" icon={atual || pendentes > 0 ? MessageSquareReply : Sparkles} loading={carregando}
+        <Button size="sm" icon={atual || perguntas.length > 0 ? MessageSquareReply : Sparkles} loading={carregando}
                 variant={atual && pronto ? undefined : 'primary'}
                 disabledReason={comSenha ? 'Tire a senha antes de continuar.'
                   : faltaResponder ? 'Responda a ao menos uma pergunta (ou ajuste o texto e refine de novo).'
                   : base.trim().length < 3 ? 'Escreva o comando primeiro.' : null}
                 onClick={() => void refinar()}>
-          {pendentes > 0 ? 'Responder e refinar' : atual ? 'Refinar de novo' : 'Refinar com IA'}
+          {perguntas.length > 0 ? 'Responder e refinar' : atual ? 'Refinar de novo' : 'Refinar com IA'}
         </Button>
         {rodadas.length > 0 ? (
           <Button size="sm" variant="ghost" icon={ArrowLeft} disabled={carregando} onClick={voltar}>
