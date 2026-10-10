@@ -1,0 +1,6 @@
+# Correio de Exemplo: app FICTÍCIO que só existe nos testes (ensaio de pacote, item 12.3). Nunca copie para app/conhecimento/apps.
+app: com.exemplo.email
+nome: Correio de Exemplo
+rotulo: Correio
+provedor_de_sessao: correio
+ancora_do_perfil: false

@@ -1,0 +1,44 @@
+# Correio de Exemplo: app FICTÍCIO que só existe nos testes (ensaio de pacote, item 12.3). Nunca copie para app/conhecimento/apps.
+app: com.exemplo.email
+versao: 1
+idioma_padrao: pt
+sinais:
+  pt:
+    entrar: ^\s*entrar\s*$
+    outra_conta: google
+    senha_errada: senha incorreta
+    desafio: confirme sua identidade
+    agora_nao: ^\s*agora n[ãa]o\s*$
+extracoes:
+  conta:
+    ids:
+    - account_name
+    padrao: ^@?([a-z0-9._]{1,30})$
+telas:
+- tela: desafio
+  tipo: desafio
+  sinal: desafio
+  razao: o correio pede confirmação
+- tela: entrada
+  tipo: login
+  formulario_de_senha: true
+  razao: formulário de entrada
+- tela: conta
+  tipo: autenticada
+  autenticada: true
+  extracao: conta
+  ids:
+  - account_header
+  razao: tela da conta
+- tela: caixa
+  tipo: autenticada
+  autenticada: true
+  ids:
+  - message_list
+  razao: caixa
+estado_conhecido:
+  telas:
+  - caixa
+  - conta
+  voltar_max: 2
+  reabrir: true

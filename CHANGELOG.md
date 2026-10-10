@@ -25,7 +25,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   login gerenciado no registro (`tem_provedor_de_sessao`), a conta dele não oferece o nome da senha ao ator, `type_secret` pelo nome é recusado, não há senha
   digitável por app, o bloco de dados do planejador não traz senha e a tela de senha no meio da tarefa é de pessoa. Vale também para um app novo só em
   arquivos de dado (o Correio de Exemplo, em pasta temporária) e recusa `sessao.yaml` sem `provedor_de_sessao`. Sem código de produção alterado.
-- Prova: `simulated` (`test_login_gerenciado_fora_do_ator.py`, 5 testes). `real`: `not_run`. Nenhum yaml de app real (D2, P-045 com o dono).
+- **Ensaio de pacote** (`tests/ensaio_de_app.py`, `test_ensaio_de_apps.py`, exemplo fictício `tests/apps_de_ensaio/com.exemplo.email/`): um `ensaio.yaml` descreve
+  o aparelho de mentira e os cenários, e o `SessaoDeclarada` REAL roda contra ele (banco, cofre e canal sensível de verdade). Um app novo prova o login sem
+  escrever Python. Seis cenários no exemplo (login feliz, já logado, senha recusada, desafio, conta errada, tela desconhecida: sessão `unknown`, senha nunca digitada).
+- **Coerência do pacote** (`conhecimento.sinais_sem_uso`, catraca `test_coerencia_do_pacote.py`): sinal de `telas.yaml` que ninguém cita é achado (o Outlook tem um,
+  `boas_vindas`, na dívida conhecida; só os novos travam). A carga passa a recusar `depois_do_envio` sem `conferir_conta`.
+- A catraca do login gerenciado passou a derivar `managed` pela produção (`SqlProfileDataStore` + `tem_provedor_de_sessao`, banco de verdade), inclusive para o app novo
+  registrado só por dado (achado da revisão da Aprendizado no 8b6d8480).
+- Prova: `simulated` (`test_login_gerenciado_fora_do_ator.py` 8, `test_ensaio_de_apps.py` 20, `test_coerencia_do_pacote.py` 6). `real`: `not_run`. Nenhum yaml de app real (D2, P-045 com o dono).
 
 ## 2026-10-10 — o cadastro guiado da conta planejada (31.310, ADR-087, adendo v1.137)
 

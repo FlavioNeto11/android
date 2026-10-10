@@ -35,7 +35,7 @@ import logging
 import re
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from string import Formatter
@@ -765,6 +765,10 @@ def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
                    for i, r in enumerate(_lista(raiz["depois_do_envio"], "depois_do_envio")))
     if not regras:
         raise SessaoInvalida("depois_do_envio: sem regra nenhuma, todo envio terminaria incerto")
+    if not any(r.desfecho == "conferir_conta" for r in regras):
+        # Sem ela nenhuma tela depois do envio levaria à leitura da conta: o app nunca teria sessão confirmada, e o erro só
+        # apareceria no aparelho, no primeiro login de verdade.
+        raise SessaoInvalida("depois_do_envio: nenhuma regra com `desfecho: conferir_conta`; o login nunca confirmaria a conta")
 
     return ConhecimentoDeSessao(app=app, versao=versao, rotulo=_texto(raiz["rotulo"], "rotulo").strip(), telas=telas,
                                 ajustes=_ajustes(raiz["ajustes"]), formulario=form, dispensa=dispensa, conta=conta,
@@ -773,6 +777,30 @@ def de_dados(dados: object, telas: ConhecimentoDeTelas) -> ConhecimentoDeSessao:
                                 troca=_troca(raiz["troca"], telas) if "troca" in raiz else None,
                                 codigo_por_email=_codigo_por_email(raiz["codigo_por_email"], telas)
                                 if "codigo_por_email" in raiz else None)
+
+
+def _sinais_citados(o: object, acc: set[str]) -> None:
+    """Todo nome de sinal que o conhecimento CITA: campos `sinal*` (regra de tela, formulário, dispensa, passos, código, desfechos)."""
+    if is_dataclass(o) and not isinstance(o, type):
+        for f in fields(o):
+            v = getattr(o, f.name)
+            if f.name.startswith("sinal") and isinstance(v, str):
+                acc.add(v)
+            else:
+                _sinais_citados(v, acc)
+    elif isinstance(o, (list, tuple)):
+        for x in o:
+            _sinais_citados(x, acc)
+
+
+def sinais_sem_uso(k: ConhecimentoDeSessao) -> dict[str, list[str]]:
+    """Idioma → sinais de `telas.yaml` que nenhuma regra de tela nem nenhum campo de `sessao.yaml` cita. É quase sempre erro de
+    digitação (o sinal certo existe e o errado ficou), e o motor nunca o usaria. Não é erro de carga: o Outlook tem um sinal
+    morto de antes desta conferência, então a catraca (`test_coerencia_do_pacote.py`) trava só os NOVOS."""
+    citados: set[str] = set()
+    _sinais_citados(k, citados)
+    return {idioma: sorted(set(tabela) - citados) for idioma, tabela in k.telas.sinais.items()
+            if set(tabela) - citados}
 
 
 def carregar(pasta: Path) -> ConhecimentoDeSessao:

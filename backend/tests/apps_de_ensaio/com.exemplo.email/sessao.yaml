@@ -1,0 +1,55 @@
+# Correio de Exemplo: app FICTÍCIO que só existe nos testes (ensaio de pacote, item 12.3). Nunca copie para app/conhecimento/apps.
+app: com.exemplo.email
+versao: 1
+rotulo: Correio de Exemplo
+ajustes:
+  max_auth_attempts: 3
+  auth_cooldown_s: 0
+  open_timeout_s: 0.5
+  settle_s: 0.01
+  submit_wait_s: 6.0
+  verify_timeout_s: 5.0
+  max_logins_per_day: 3
+formulario:
+  sinal_do_botao: entrar
+  sinal_de_exclusao: outra_conta
+dispensa:
+  intersticiais_max: 2
+  rotulos:
+  - ^\s*pular\s*$
+  ids:
+  - botao_negativo
+  sinal_de_salvar_login: agora_nao
+conta:
+  extracao: conta
+  tela_de_perfil: conta
+  aba:
+    prefixo_de_id: conta_tab
+    rotulos:
+    - conta
+    faixa_inferior: 0.88
+  passos_max: 3
+  espera_s: 0.01
+depois_do_envio:
+- sinal: senha_errada
+  desfecho: invalid_credential
+  detalhe: o correio recusou a senha
+- tipos:
+  - desafio
+  - dois_fatores
+  desfecho: auth_challenge
+  detalhe: o correio pediu confirmação de identidade
+- telas:
+  - caixa
+  - conta
+  desfecho: conferir_conta
+- tipos:
+  - login
+  desfecho: uncertain
+  detalhe: ficou na entrada do correio
+textos:
+  desafio: O Correio de Exemplo pediu confirmação. Assuma o controle do aparelho e
+    resolva na tela.
+  desafio_pendente: o Correio de Exemplo pediu confirmação
+  senha_recusada: a senha foi recusada pelo Correio de Exemplo; troque-a no portal
+  credencial_recusada: a senha de @{usuario} foi recusada pelo Correio de Exemplo

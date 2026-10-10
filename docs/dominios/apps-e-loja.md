@@ -80,6 +80,18 @@ perfil vêm de `links_de_perfil` do `app.yaml`.
 Arquivo errado falha na carga, com o caminho do campo, e derruba a descoberta inteira: um pacote pela metade seria
 pior que nenhum. `register_manifest(manifesto)` continua valendo para teste e extensão (o QA, abaixo).
 
+**Ensaio de pacote (item 12.3).** Quem declara o login de um app novo prova o `telas.yaml` + `sessao.yaml` SEM escrever Python: um
+`ensaio.yaml` na pasta do app descreve o aparelho de mentira (telas, o que cada toque faz, o que o envio da senha causa) e os
+cenários esperados (login feliz, já logado, senha recusada, desafio, conta errada, tela que ninguém conhece). `tests/ensaio_de_app.py`
+roda o `SessaoDeclarada` real contra ele (banco, cofre e canal sensível de verdade, em pasta temporária) e
+`tests/test_ensaio_de_apps.py` vira um teste por cenário; o formato está no docstring do módulo e o exemplo FICTÍCIO é
+`tests/apps_de_ensaio/com.exemplo.email/`. Rodar: `pytest tests/test_ensaio_de_apps.py -k <pacote>`. Coerência que a carga não vê:
+`sinais_sem_uso(k)` (sinal de `telas.yaml` que ninguém cita; catraca `test_coerencia_do_pacote.py`, só trava os novos) e a carga
+recusa `depois_do_envio` sem `conferir_conta`. Garantia de que o login nunca vai ao ator:
+`tests/test_login_gerenciado_fora_do_ator.py` (toda pasta com `sessao.yaml` é login gerenciado na derivação de produção, a conta dela não
+oferece a senha ao ator e a tela de senha no meio da tarefa é de pessoa). Nenhum `ensaio.yaml` de app real existe até a decisão do dono
+(P-045): o Outlook e o Instagram seguem só com os testes que já tinham.
+
 A versão do formato também é conferida na carga (RA-24). `catalogo.yaml` (`contract_version`), `telas.yaml` e
 `sessao.yaml` (`versao`) só aceitam 1. Subir a versão exige, no mesmo commit, o código que a lê
 (`VERSOES_DE_CONTRATO`, `VERSOES_DE_TELAS`, `VERSOES_DE_SESSAO`).

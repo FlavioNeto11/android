@@ -55,3 +55,4 @@ tests/test_identidade_do_backend.py::test_scripts_usam_o_mesmo_identificador_do_
 tests/test_avisos_objetivo_parado.py::test_toda_tela_de_link_de_aviso_existe_nas_rotas_do_painel
 tests/test_avisos_objetivo_parado.py::test_toda_chave_de_aviso_tem_familia_e_identidade
 tests/test_login_gerenciado_fora_do_ator.py
+tests/test_coerencia_do_pacote.py

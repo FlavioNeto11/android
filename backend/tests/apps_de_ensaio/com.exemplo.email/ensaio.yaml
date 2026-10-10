@@ -1,0 +1,50 @@
+# Ensaio de pacote do Correio de Exemplo (app FICTÍCIO; formato em tests/ensaio_de_app.py). A senha abaixo é inventada.
+app: com.exemplo.email
+usuario: ana.correio
+senha: senha-de-ensaio-7
+inicial: entrada
+inicial_logado: caixa
+telas:
+  entrada:
+    - {classe: EditText, id: campo_usuario, foco: usuario, clicavel: true}
+    - {classe: EditText, id: campo_senha, foco: senha, senha: true, clicavel: true}
+    - {classe: Button, texto: Entrar, id: botao_entrar, clicavel: true, ao_tocar: enviar}
+    - {classe: TextView, texto: Entrar com Google, clicavel: true}
+    - {classe: TextView, texto: Senha incorreta., se: erro}
+  caixa:
+    - {classe: TextView, texto: "{conta}", id: account_name}
+    - {classe: RecyclerView, id: message_list}
+    - {classe: ImageView, id: inbox_tab, desc: Caixa, clicavel: true, rodape: true}
+    - {classe: ImageView, id: conta_tab, desc: Conta, clicavel: true, ao_tocar: "abrir:conta", rodape: true}
+  conta:
+    - {classe: View, id: account_header}
+    - {classe: TextView, texto: "{conta}", id: account_name}
+    - {classe: ImageView, id: inbox_tab, desc: Caixa, clicavel: true, ao_tocar: "ir:caixa", rodape: true}
+  desafio:
+    - {classe: TextView, texto: Confirme sua identidade}
+    - {classe: Button, texto: Continuar, clicavel: true}
+  estranha:
+    - {classe: TextView, texto: Novidades do Correio de Exemplo}
+envio:
+  - {se: senha_errada, vai_para: entrada, erro: true}
+  - {se: senha_certa, vai_para: caixa, entra_na_conta: true}
+cenarios:
+  - nome: login feliz
+    espera: {desfecho: session_ready, usuario_observado: ana.correio, sessao: session_ready}
+  - nome: ja logado nao digita nada
+    aparelho: {conta: ana.correio}
+    espera: {desfecho: session_ready, usuario_observado: ana.correio, nunca_digitou_a_senha: true}
+  - nome: senha recusada para e nao insiste
+    aparelho: {senha_aceita: outra-senha}
+    espera: {desfecho: invalid_credential}
+  - nome: desafio depois do envio chama a pessoa
+    envio:
+      - {se: senha_errada, vai_para: entrada, erro: true}
+      - {se: senha_certa, vai_para: desafio}
+    espera: {desfecho: auth_challenge, digitou_a_senha: true}
+  - nome: conta errada aberta no app
+    aparelho: {conta: outra.pessoa}
+    espera: {desfecho: wrong_account, nunca_digitou_a_senha: true}
+  - nome: tela que ninguem conhece nunca recebe a senha
+    aparelho: {tela: estranha}
+    espera: {desfecho: uncertain, nunca_digitou_a_senha: true, sessao: unknown}
