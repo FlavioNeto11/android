@@ -1387,6 +1387,8 @@ do dono (31.8 em diante); o Jev não decide por persona (D-J5, só de decisão d
 | 31.326 | **Painel mostra "bloqueada" e o motivo do bloqueio** (não "aguardando intervenção") na ficha e na lista de contas bloqueadas; depende do v1.142 | portal | P |
 | 31.327 | **Receita da exploração guarda o caminho desde a tela de partida** (hoje só a última ação; replay por receita respondeu nao_aplicavel "tela de partida diferente" na prova real do P-043, 10/10) | aprendizado | M |
 | 31.328 | **Modo misto com caixa real sem falso positivo do guarda** (ADR-009/058 viu "formato de verificação da conta" no remetente e parou em waiting_user na prova real do P-043): guarda distingue remetente de assunto e a caixa de prova não começa por mensagem de verificação | aprendizado | P |
+| 31.329 | **Login automático mede o egresso na janela do login** (ressalva do H2 na bifurcação de 10/10): medição ≤ 30 s antes do connect, aborta UNCERTAIN com motivo se não casar com o egress_esperado, sem IP ou fora da janela; medição em network_measurements e evento session.egresso_na_janela; adendo v1.143 | ponte | P |
+| 31.330 | **Execução em modelo de foco** (brief do dono 10/10): FOCO / EM CURSO com estado por etiqueta / DÍVIDA DE PROVA / FEITO / PAUSADO; reconciliar e espelho em posição lógica; FOCO, DÍVIDA e PAUSADO só à mão | canais | M |
 
 **Fecha quando:** a porta existe com provedor nulo e privacidade fechada por padrão, a sombra do curador mediu concordância, aceite errado, latência e
 custo contra limiares pré-registrados, e o GO/NO-GO por consumidor está registrado.

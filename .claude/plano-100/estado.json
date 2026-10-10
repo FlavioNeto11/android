@@ -11857,21 +11857,14 @@
    "id": "28.64",
    "status": "implemented",
    "proof": "real",
-   "evidence": "06/10/2026 23:15Z, central: `.claude/trello/marco.py --deploy 57 --aplicar` criou o cartao do marco do deploy 57 em Programa > Marcos e deploys e atualizou M9 (suite 57: 12.538 backend, 790 scripts, 1.982 frontend) e M8 (GET /api/instances: 7 online de 15), sobre o CHANGELOG da main e2e4a9b8. Simulated: .claude/trello/test_marco.py (12 testes), 62 passed com test_reconciliar e test_redacao.",
-   "blocker": "A reconciliacao total do deploy 57 rodou separada (recon_t.py, falhas: nenhuma). Detalhe cosmetico: o titulo repete 'sem migracao' duas vezes quando o resumo do cabecalho ja diz isso.",
-   "arquivos": [
-    ".claude/trello/marco.py",
-    ".claude/trello/test_marco.py",
-    "docs/dominios/canais.md",
-    "CHANGELOG.md"
-   ],
-   "nota": "Sem backend e sem migracao.",
-   "grupo": "canais-28-64-real",
-   "modelo": "claude-sonnet-5-5",
-   "esforco": "high",
+   "commit": "f2482b182",
+   "evidence": "Real no Trello, 10/10/2026 (Canais): marcos dos deploys 67 a 71 gerados por .claude/trello/marco.py e conferidos nos cartões (70: JWP9b7a8; 71: 907ohvG8); parser corrigido para o formato do deploy 70 (hora com segundos, tag, migração com nome de arquivo, linha Entra); .claude/trello/test_marco.py 16 passed.",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-07T01:16:50+00:00"
+   "quando": "2026-10-10T20:12:18+00:00"
   },
   "31.175": {
    "id": "31.175",
@@ -12570,23 +12563,15 @@
   "28.67": {
    "id": "28.67",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": ".claude/trello/test_espelho_do_deploy.py::test_cartao_novo_nao_traz_aparelho_nem_handle, ::test_para_no_passo_com_erro_e_nao_roda_os_seguintes, ::test_linha_final_com_as_contagens, ::test_raiz_desatualizada_para_no_passo_zero_sem_tocar_o_trello, ::test_reconciliar_le_o_plano_da_raiz_que_recebe (18 passed); .claude/trello inteiro 81 passed; docs-check 0 erros",
-   "blocker": "real not_run: o fechamento do deploy 58 pela Canais com --aplicar (só o ensaio sem --aplicar foi feito, real, deploy 57)",
-   "arquivos": [
-    ".claude/trello/espelho_do_deploy.py",
-    ".claude/trello/test_espelho_do_deploy.py",
-    ".claude/trello/reconciliar.py",
-    ".claude/trello/marco.py",
-    "docs/dominios/canais.md",
-    "CHANGELOG.md"
-   ],
-   "grupo": "canais-28-67",
-   "modelo": "claude-sonnet-5-5",
-   "esforco": "high",
+   "proof": "real",
+   "commit": "8adc36d1d",
+   "evidence": "Real no Trello, 10/10/2026 18:5xZ (Canais): espelho do deploy 71 aplicado a partir de d2a95a816 — 13 cartões nasceram em EM CURSO com 'Estado · Próximas', 19 foram a FEITO, 2 só com a linha de prova, marco https://trello.com/c/907ohvG8, M8 5 de 15 e M9 1.272 conferidos; 0 falhas. simulated: .claude/trello/test_espelho_do_deploy.py (311 passed na pasta).",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-07T19:45:20+00:00"
+   "quando": "2026-10-10T20:12:18+00:00"
   },
   "28.68": {
    "id": "28.68",
@@ -13129,16 +13114,15 @@
   "31.273": {
    "id": "31.273",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Item do corte 61, no ar no deploy 61. Corte 61 (integ/suite-61, ponta 9df65300bd3e63 = main a9941a48 + Jev b42b5aab/7a45ec05 + Aprendizado 9dee3e37 + Venice aea4f873 + DevOps 3fe4a8bc/4b3157d5 + Portal 0c924c64 + correções 29.204, fcab681b e testes do auto-start; Windows, central WIN-7S2UASNLFOP, 07/10/2026 19:49Z-20:51Z, Idle, wrapper -Teto 25): backend das etapas inteiras medido em d19a02fa (depois só testes, funil.ps1 e frontend): scripts/tests 1261 passed (+1 test_com_teto_de_cpu, DevOps, conhecido; o portão do ensaio corrigido: 11 passed); SQLite inteiro 12562 passed, 59 skipped (4 falhas depois corrigidas e re-rodadas: 31 passed em SQLite e PostgreSQL); vitest na final 174 arquivos/2301 passed, typecheck e build ok; catracas backend 17 + scripts 9; docs-check 0/0; mypy 257 = teto; PostgreSQL dirigido (418 arquivos): parte 1 3631 passed, parte 2 2827 passed (3 falhas já corrigidas).",
-   "blocker": null,
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-61",
-   "modelo": "claude-sonnet-5-5",
-   "esforco": "high",
+   "proof": "real",
+   "commit": "6f525673",
+   "evidence": "Real PARCIAL no central 6f525673 (deploy 71), 10/10/2026 18:54-19:20Z, android-01, Outlook da persona Lucas Almeida, Aprendizado, .claude/handoffs/aprendizado-resultado-31-273-298-real.json: exploração A (r-20261010185405-78fc3f) planejada pelo modelo real (explorar_abrir_pasta_lixo_eletronico), IA abriu Junk, juiz comprovou, receita 227 candidate; US$ 0,2929 em 24 chamadas no total do P-043 (teto 2,30). Replay por receita NÃO provado (A2/A2b nao_aplicavel 'tela de partida diferente'; A4 sem veredito; A5 divergiu por element_id apesar da mesma ação) → 31.327. Real vale só para a exploração A.",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-07T20:54:29+00:00"
+   "quando": "2026-10-10T20:12:18+00:00"
   },
   "31.274": {
    "id": "31.274",
@@ -13904,15 +13888,15 @@
   "31.298": {
    "id": "31.298",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "d03cc814",
-   "evidence": "Commit d03cc814, no ar no deploy 70 (10/10 15:34:18Z, central em d0fbcc5d). backend/tests/test_aviso_exploracao.py (6), casos novos de test_exploracao_fora_do_catalogo (misto, recusa zera), bateria de 372 e 90 dirigidos verdes, catraca test_prompts_licoes com 3 hashes trocados de propósito, docs-check 0. Real: not_run (o prompt novo não foi validado com o modelo real; pedido misto real no Outlook e o Telegram real dependem do sim do dono para a API paga).",
-   "grupo": "janela79",
+   "proof": "real",
+   "commit": "6f525673",
+   "evidence": "Real PARCIAL (planejamento) no central 6f525673, 10/10/2026 18:55Z, r-20261010185557-094cfe, Aprendizado: o planejador real devolveu OPEN_MAIL_INBOX + COLLECT_MAIL_HEADERS com a etapa exploratória dependente da última (o prompt do 31.298 funciona com o modelo real). A EXECUÇÃO parou em open_inbox (waiting_user) pelo guarda ADR-009/058 ('formato de verificação da conta' no remetente lido) e foi cancelada: a etapa exploratória do misto não rodou → 31.328. Real vale só para o planejamento.",
+   "grupo": "janela81",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T15:46:27+00:00"
+   "quando": "2026-10-10T20:12:18+00:00"
   },
   "31.299": {
    "id": "31.299",
@@ -14125,15 +14109,15 @@
   "31.315": {
    "id": "31.315",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "332c04f6",
-   "evidence": "Selo, filtro e marca de persona de teste no painel, com marcar/desmarcar na ficha via PATCH: features/profiles/PersonaDeTeste.test.tsx (8 testes), 392 dirigidos (profiles, command, pedidos), tsc e build. Real: not_run (roteiro .claude/handoffs/portal-percurso-real-31315-pos-deploy-71.md; vira real na janela 81).",
-   "grupo": "janela80",
+   "proof": "real",
+   "commit": "6f525673",
+   "evidence": "Real no central 6f525673 (deploy 71), 10/10/2026 ~18:4xZ, Portal, .claude/handoffs/portal-resultado-percurso-real-deploy71.json: selo 'teste' no cartão, na linha, na ficha e nos seletores; lista esconde as de teste por padrão com 'Mostrar as de teste (N)' (testes=1); 'Persona de teste' nos dois formulários; marcar/desmarcar na ficha via PATCH (Teste Portal Um ig-P4F67DC5D6EdoNni e Teste Portal Dois ig-BsrbxlhOW17VhUUr marcadas; nova ig-hVI9XC4Y_Jk81Iqq). Achado: o seletor de grupo em Configurações ainda contava as de teste → corrigido no 31.326 (ramo).",
+   "grupo": "janela81",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T18:38:32+00:00"
+   "quando": "2026-10-10T20:12:18+00:00"
   },
   "31.316": {
    "id": "31.316",
@@ -14147,6 +14131,110 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-10T18:38:32+00:00"
+  },
+  "31.279": {
+   "id": "31.279",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "e9eee6992",
+   "evidence": "backend/tests/test_pergunta_so_ao_canal_de_origem.py + avisos, telegram, trello, exploração de efeito e catracas: 662 passed (Jev, 10/10, ramo rebaseado sobre d2a95a816; na main por fast-forward em e9eee6992). mypy 257 no teto; docs-check 0/0. Real not_run (pergunta real a um canal de origem depende de execução com pergunta após o deploy 72).",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T20:12:18+00:00"
+  },
+  "31.318": {
+   "id": "31.318",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "a5c1b9981",
+   "evidence": "scripts/tests/test_rascunho_de_telas.py: 14 passed (Jev, 10/10); api-contract com um só adendo v0.9 (o segundo virou v0.9b), InstanceState lista hibernated; rascunho-de-telas com --ignorar e testes de borda. docs-check 0/0.",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T20:12:18+00:00"
+  },
+  "31.307": {
+   "id": "31.307",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "8f09d85b1",
+   "evidence": "backend/tests/test_laco_sem_sql_sincrono.py: 14 casos (8 pontos: /health, desfechos, listar_operacoes, detalhe da execução, decisões, preload da adoção, consulta lenta, migração 135); regressão 393 passed. Medições somente leitura no SQLite do central (não contam como prova real do comportamento implantado): 3.541 linhas de instance.updated por aparelho (~137 MB por boot), índice (instance_id, kind, id) leva a consulta de 29,0 para 0,7 ms em cópia em memória, régua diária 21 ms em 14 dias. Ensaio real da migração 135 pela Android em cópia do backup 20261010-153335: 0,16 s, plano usa idx_events_instance_kind_id. Prova real do laço (episódios por hora com scripts/laco-por-hora.py, 71 × 72) fica not_run até horas de operação do 72.",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T20:12:18+00:00"
+  },
+  "31.317": {
+   "id": "31.317",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "1a2eef143",
+   "evidence": "34 testes dirigidos do egresso + catracas 103 verdes (Ponte, 10/10). Real not_run: a próxima conta retirada com o aparelho em quarentena prova o limpar_egresso durante a quarentena.",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T20:12:18+00:00"
+  },
+  "31.319": {
+   "id": "31.319",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "4b7eec876",
+   "evidence": "backend/tests/test_incertos_device_network.py: 23 casos + catracas (Ponte, 10/10); na PG dirigida do 72 o teste usava INSERT OR REPLACE (só SQLite) e foi corrigido para upsert portável em ac189b091 (verde em SQLite e PG). Real parcial não contado: o restart do android-01 (P-047) fechou sozinho pelo reconciliador no deploy 71, antes deste código.",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T20:12:18+00:00"
+  },
+  "31.325": {
+   "id": "31.325",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "0d2bff038",
+   "evidence": "política por verbo, exploração de efeito e catracas: 143 passed sobre 66dd17f98 (Aprendizado, 10/10); destrutivos (apagar, comprar, transferir, encerrar, desinstalar, resetar) = approval_required, demais = autonomous; adendo v1.141. Real not_run até o P-046 ligar após o deploy 72.",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T20:12:18+00:00"
+  },
+  "31.322": {
+   "id": "31.322",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "0409bfe0b",
+   "evidence": "184 testes (motivo na lápide e no evento, egresso x2, memória da conta retirada, limpeza ao retirar) + catracas 103 + arquitetura; mypy 257; migração 136 (contas_retiradas.motivo_do_bloqueio) ensaiada pela Android em cópia do backup (0,16 s, coluna criada); adendo v1.142 com rótulo bloqueada|aguardando em session.needs_person e contas_retiradas no PersonaDTO. Real not_run: a H1 da bifurcação (19:02:54Z) foi retirada pelo código anterior; a próxima conta_travada após o deploy 72 grava o motivo.",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T20:12:18+00:00"
+  },
+  "31.330": {
+   "id": "31.330",
+   "status": "implemented",
+   "proof": "real",
+   "commit": "8adc36d1d",
+   "evidence": "Real no Trello, 10/10/2026 17:5xZ-18:05Z, host central, ramo canais/em-curso-lista-unica (31a3406de → 8adc36d1d; skill em d2a95a816): passada única moveu 547 cartões + 9 do reconciliar, 0 falhas; contagens lidas da API do Trello (FOCO 6, EM CURSO 134, DÍVIDA 1, FEITO 413, PAUSADO 2 naquele momento); rodada do espelho do 71 provou que FOCO/DÍVIDA/PAUSADO não se movem. simulated: .claude/trello/test_reconciliar.py::test_estado_vem_da_etiqueta_na_lista_em_curso, ::test_foco_divida_e_pausado_sao_a_mao_e_nunca_se_movem, ::test_implantado_em_curso_vai_ao_feito_e_tira_o_estado, ::test_etiquetas_de_frente_sobrevivem_a_troca_de_estado; test_modelo_de_foco.py 7 testes.",
+   "grupo": "janela81",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T20:12:18+00:00"
   }
  },
  "rodadas": [
@@ -18072,6 +18160,27 @@
    ],
    "grupos": [
     "janela80"
+   ]
+  },
+  {
+   "quando": "2026-10-10T20:12:18+00:00",
+   "itens": [
+    "31.279",
+    "31.318",
+    "31.307",
+    "31.317",
+    "31.319",
+    "31.325",
+    "31.322",
+    "31.315",
+    "31.273",
+    "31.298",
+    "28.64",
+    "28.67",
+    "31.330"
+   ],
+   "grupos": [
+    "janela81"
    ]
   }
  ]
