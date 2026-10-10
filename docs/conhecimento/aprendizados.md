@@ -2957,12 +2957,14 @@ adoção faz um `SELECT` síncrono em `events` por aparelho (`DeviceManager._ult
 a consulta não coube nos 240 s que o supervisor espera antes de religar. Os três despejos do vigia (16:33:51Z, 16:34:21Z, 16:34:51Z, laço parado 10,9 → 40,9 → 71 s) mostram a mesma
 chamada, com as outras threads ociosas. A saída foi suspender os 16 processos do pytest (`NtSuspendProcess`) por 4 min 28 s: o backend subiu em cerca de 2 min.
 
-**O que funcionou.** Tirar a carga de disco da suíte enquanto o backend sobe (suspender, não matar: a suíte retoma), e depois a correção do 31.307: índice `events(instance_id, kind, id)`
+**Achado da Android, 17:10Z.** O contêiner `farm-pg` (fsync ligado, volume no vhdx do Docker) mantinha `% Disk Time` em 560 a 620 com I/O pequeno e aleatório MESMO ocioso (7 % de CPU, suíte PG já morta). Parado com `docker stop -t 120` às 17:10:41Z, o disco caiu para menos de 30 % e o backend subiu de primeira. Regra prática: o `farm-pg` só fica de pé durante a PG inteira; o PG dirigido usa o `farm-pg-rapido` (tmpfs).
+
+**O que funcionou.** Tirar a carga de disco da suíte enquanto o backend sobe (suspender, não matar: a suíte retoma), parar o `farm-pg` quando não há PG inteira, e depois a correção do 31.307: índice `events(instance_id, kind, id)`
 (migração 135), pré-leitura do último DTO dos aparelhos numa thread antes da adoção e o aviso do `Database` para consulta síncrona > 1 s na thread do laço.
 
 **O que não funcionou.** Esperar que a prioridade Idle da suíte bastasse: ela limita a CPU, não a fila do disco, e o `fsync` do Docker disputa o mesmo dispositivo do SQLite do central.
 
-**Mitigação sugerida (sem código aqui).** Não subir nem religar o backend do central durante a PG inteira; se for inevitável, suspender a suíte durante a subida. Pôr o `tmp` do pytest e o vhdx do Docker
+**Mitigação sugerida (sem código aqui).** Não subir nem religar o backend do central durante a PG inteira; se for inevitável, suspender a suíte durante a subida. Fora da PG inteira, o `farm-pg` fica parado (`docker stop -t 120`); o PG dirigido roda no `farm-pg-rapido`. Pôr o `tmp` do pytest e o vhdx do Docker
 em outro disco é decisão de ambiente (mexe no host) e pede o sim do dono. Nova consulta síncrona no laço aparece no log `poc.db` ("consulta síncrona no laço de eventos levou …").
 
 **Aplicabilidade.** Vigente até o deploy do 31.307 (ramo `feat/31-307-laco-sem-sql-sincrono`, prova `simulated`; a medida de EXPLAIN e de tempo no SQLite do central é `not_run` até a suíte PG acabar).
