@@ -280,7 +280,11 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                "outra_conta_no_aparelho",
                # 31.64: a marca de que a ETAPA passou pela porta (`steps.passou_a_porta`), gravada pelo id da etapa; não
                # lê nem grava conteúdo de perfil.
-               "marcar_passou_a_porta"}
+               "marcar_passou_a_porta",
+               # 31.281 (ADR-087): a unicidade do @ de uma conta PLANEJADA vale por app, entre todas as personas (dois
+               # cadastros externos não podem pedir o mesmo endereço). Devolve só um booleano, nunca linha nem conteúdo
+               # de perfil, e recebe o app, não o perfil.
+               "handle_ocupado"}
     # Categoria à parte, e não um nome a mais em `globais`: método que olha a FROTA INTEIRA de propósito. A regra
     # existe para conteúdo de um perfil não vazer para outro, e isto não devolve conteúdo — só agregado. Entrar
     # aqui custa duas condições, conferidas abaixo: precisa receber `exclude_profile_id` (a assinatura declara que
