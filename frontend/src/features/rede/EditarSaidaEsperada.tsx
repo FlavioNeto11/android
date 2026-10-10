@@ -68,7 +68,8 @@ function lerProtecao(detail: Record<string, unknown> | null, mensagem: string): 
 /** As trocas desta saída que o painel viu chegar nesta sessão (`network.updated` · `perfil_atualizado`), da mais nova à mais antiga. */
 function useTrocasDaSessao(profileId: string) {
   const eventos = useAppStore((s) => s.recentEvents);
-  return eventos.filter((e) => e.kind === 'network.updated' && e.data?.acao === 'perfil_atualizado' && e.data?.profile_id === profileId);
+  // O store guarda os eventos na ordem de chegada (a mais antiga primeiro): inverte, para a lista começar pela troca mais nova.
+  return eventos.filter((e) => e.kind === 'network.updated' && e.data?.acao === 'perfil_atualizado' && e.data?.profile_id === profileId).reverse();
 }
 
 function Antes({ d }: { d: unknown }) {

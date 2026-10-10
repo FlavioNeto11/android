@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — as trocas da saída esperada aparecem da mais nova para a mais antiga (31.301, ajuste)
+
+- `features/rede/EditarSaidaEsperada.tsx`: o painel guardava os eventos na ordem de chegada e listava as três MAIS ANTIGAS trocas do perfil;
+  agora inverte e mostra as três últimas, a mais nova primeiro. Achado no percurso real pós-deploy 70 (duas trocas seguidas apareceram
+  na ordem de chegada). Prova `simulated`: `features/rede/RedePage.test.tsx` (1 teste novo, 42 da Rede), tsc. Real: visto no percurso do
+  deploy 70; o ajuste só chega com o próximo deploy.
+
 ## 2026-10-10 — "Ensinar a corrigir" na etapa em que a exploração da IA parou (31.313, adendo v1.138)
 
 - `features/runs/EnsinarACorrigir.tsx`, `features/training/OrigemDoTreino.tsx`, `api/types.ts` (`EnsinoSugerido.exploracao`/`parou_no_teto`,

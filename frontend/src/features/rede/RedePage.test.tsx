@@ -868,6 +868,25 @@ it('31.301: 422 invalid_egress aparece no campo, sem toast de erro genérico, e 
   expect(useToastStore.getState().toasts.filter((t) => t.tone === 'danger')).toHaveLength(0);
 });
 
+it('31.301: com várias trocas, a lista começa pela mais nova e mostra só as três últimas', async () => {
+  const troca = (id: number, hora: string, de: string, para: string) => ({
+    id, ts: `2026-10-10T${hora}Z`, kind: 'network.updated', level: 'info' as const, run_id: null, instance_id: null, objective_id: null,
+    step_id: null, attempt_id: null, message: 'Rede: saída esperada mudou',
+    data: { acao: 'perfil_atualizado', profile_id: 'igfarm-1', antes: { egress_esperado: de, egress_esperado_ipv6: null },
+            depois: { egress_esperado: para, egress_esperado_ipv6: null }, motivo: null, quem: 'Flavio' },
+  });
+  useAppStore.setState({ recentEvents: [
+    troca(1, '10:00:00', '1.1.1.1', '2.2.2.2'), troca(2, '11:00:00', '2.2.2.2', '3.3.3.3'),
+    troca(3, '12:00:00', '3.3.3.3', '4.4.4.4'), troca(4, '13:00:00', '4.4.4.4', '5.5.5.5'),
+  ] });
+  await abrirEditor();
+  const itens = Array.from(container.querySelectorAll('ul[aria-label^="Trocas da saída esperada de igfarm-acc-1"] li')).map((l) => text(l as HTMLElement));
+  expect(itens).toHaveLength(3);
+  expect(itens[0]).toContain('4.4.4.4 → 5.5.5.5');
+  expect(itens[2]).toContain('2.2.2.2 → 3.3.3.3');
+  expect(itens.join(' ')).not.toContain('1.1.1.1 → 2.2.2.2');   // a mais antiga saiu do corte
+});
+
 it('31.301: a troca que chegou pelo evento network.updated aparece na linha do perfil, com antes, depois, motivo e quem', async () => {
   useAppStore.setState({ recentEvents: [{
     id: 501, ts: '2026-10-10T13:40:00Z', kind: 'network.updated', level: 'info', run_id: null, instance_id: null, objective_id: null,
