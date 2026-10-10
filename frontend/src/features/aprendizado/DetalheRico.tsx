@@ -4,6 +4,7 @@ import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
 import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { SeloEmProva } from '../../components/SeloEmProva';
+import { SeloNasceuDeExploracao } from '../../components/SeloDeExploracao';
 import { SeloEmUsoReal, SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
@@ -111,6 +112,7 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
           {rotuloDoEstado(item.state)}
           {item.kind === 'fluxo' && item.ensinado_em_prova ? <> <SeloEmProva ensinado={item.ensinado_em_prova} /></> : null}
           {item.kind === 'fluxo' && item.nascido_de_prova ? <> <SeloNascidoDeProva nascido={item.nascido_de_prova} /></> : null}
+          {item.kind === 'receita' && item.nasceu_de_exploracao ? <> <SeloNasceuDeExploracao nasceu={item.nasceu_de_exploracao} /></> : null}
           {item.kind === 'fluxo' && item.state !== 'disabled' ? <> <SeloEmUsoReal desde={item.em_uso_real_desde} /></> : null}
         </Fato>
         <Fato rotulo="Origem">{ORIGEM_LABEL[item.origin] ?? item.origin}</Fato>

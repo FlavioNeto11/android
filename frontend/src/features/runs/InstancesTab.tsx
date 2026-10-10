@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Action, Attempt, Objective, Resolution, RunDetail, Step } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
+import { SeloEtapaExploratoria } from '../../components/SeloDeExploracao';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
@@ -376,6 +377,7 @@ function StepTable({ detail, steps, attempts }: { detail: RunDetail; steps: Step
               <span className={styles.stepName}>
                 <span className="truncate">{s.title}</span>
                 <DrivenByBadge drivenBy={s.driven_by} />
+                <SeloEtapaExploratoria exploratoria={s.exploratoria} />
                 {outroApp ? <Badge size="sm" tone="info" title="Esta etapa roda em outro app, não no app do plano.">app: {outroApp}</Badge> : null}
                 {s.side_effect ? <SideEffectFlag /> : null}
               </span>

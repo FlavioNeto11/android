@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — selo de exploração no painel (31.299, adendo v1.130)
+
+- `components/SeloDeExploracao.tsx`, `features/runs/InstancesTab.tsx`, `features/runs/PlanTab.tsx`,
+  `features/aprendizado/ItemDoLivro.tsx`, `DetalheRico.tsx`: a etapa criada por exploração (`steps[].exploratoria`,
+  `PlanStep.exploratoria`) mostra "Descoberta pela IA" na execução e no plano, e a receita que nasceu dela
+  (`nasceu_de_exploracao`) mostra "Nasceu de exploração" na linha e no dossiê do Livro. Sem a marca, ou em backend anterior, nada aparece.
+- Prova `simulated`: `features/aprendizado/SeloDeExploracao.test.tsx` (3 testes), 532 dirigidos (aprendizado, runs, components),
+  tsc e build. **Real: não executada** (a 31.273 ainda não está no central).
+
 ## 2026-10-10 — a troca do grupo de política da persona deixa trilha (31.269; adendo v1.131)
 
 - `social/service.py::update_profile` emite `profile.policy_group` (`{profile_id, anterior, novo, autor}`, só ids) quando o

@@ -175,6 +175,8 @@ interface PlanStep {
   goal: string;               // objetivo em linguagem natural (nunca coordenadas)
   depends_on: string[];       // keys
   side_effect: boolean;       // true = repetição NÃO é segura (ex.: enviar)
+  /** 31.299 (adendo v1.130): a etapa foi criada por EXPLORAÇÃO (o catálogo do app não cobria o pedido). Fora da serialização quando falso. */
+  exploratoria?: boolean;
   precondition: string | null;
   postcondition: { kind: 'text_visible' | 'app_foreground' | 'element_present' | 'model_judged' | 'items_collected'; value: string; description: string };
   timeout_s: number;
@@ -286,6 +288,8 @@ interface Step {
   motivo_da_persona?: string | null;
   /** 31.129 (adendo v1.84): os pacotes, além do app da etapa, em que a tela também comprova a conclusão. Omitido quando vazio. */
   pacotes_aceitos?: string[];
+  /** 31.299 (adendo v1.130): a etapa foi criada por EXPLORAÇÃO, só proveniência. Ausente em backend anterior. */
+  exploratoria?: boolean;
 }
 
 interface Action {

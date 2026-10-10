@@ -2,6 +2,7 @@ import { Check, History, ListTree, TriangleAlert } from 'lucide-react';
 import { useMemo } from 'react';
 import type { AppConfig, PlanStep, RunDetail } from '../../api/types';
 import { Badge } from '../../components/Badge';
+import { SeloEtapaExploratoria } from '../../components/SeloDeExploracao';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { KvList, KvRow } from '../../components/JsonTree';
@@ -49,7 +50,7 @@ export function PlanStepList({ steps, planAppId = null, apps = [] }: {
               <p className={styles.planStepTitle}><span className="sr-only">Etapa {i + 1}: </span>{s.title}</p>
               <p className={styles.planStepGoal}>{s.goal}</p>
               <PacotesAceitos pacotes={s.pacotes_aceitos} />
-              {s.depends_on.length > 0 || s.side_effect || outroApp ? (
+              {s.depends_on.length > 0 || s.side_effect || s.exploratoria || outroApp ? (
                 <div className={styles.chips}>
                   {s.depends_on.length > 0 ? <span className={styles.muted}>depende de:</span> : null}
                   {s.depends_on.map((k) => (
@@ -61,6 +62,7 @@ export function PlanStepList({ steps, planAppId = null, apps = [] }: {
                     </Badge>
                   ) : null}
                   {s.side_effect ? <SideEffectFlag /> : null}
+                  <SeloEtapaExploratoria exploratoria={s.exploratoria} />
                 </div>
               ) : null}
               <Disclosure bare summary="Detalhes técnicos" className={styles.techWrap}>

@@ -6,6 +6,7 @@ import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { Checkbox } from '../../components/Field';
 import { SeloEmProva } from '../../components/SeloEmProva';
+import { SeloNasceuDeExploracao } from '../../components/SeloDeExploracao';
 import { SeloEmUsoReal, SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { StatusBadge } from '../../components/StatusBadge';
 import { explicacaoEmProva, textoDaEsperaDaPessoa } from '../../lib/emProva';
@@ -181,6 +182,7 @@ export function ItemDoLivro({ entrada: e, acoes: acoesDaLista, selecionado, onSe
         {/* 30.85: o ensinado ainda em prova segue "Publicado", mas só vale para a persona que ensinou; o selo é o do 30.81. */}
         {e.kind === 'fluxo' ? <SeloEmProva ensinado={e.ensinado_em_prova} /> : null}
         {e.kind === 'fluxo' ? <SeloNascidoDeProva nascido={e.nascido_de_prova} /> : null}
+        {e.kind === 'receita' ? <SeloNasceuDeExploracao nasceu={e.nasceu_de_exploracao} /> : null}
         {e.kind === 'fluxo' && e.state !== 'disabled' ? <SeloEmUsoReal desde={e.em_uso_real_desde} /> : null}
         {saude ? <Badge tone={saude.tone} size="sm" icon={saude.icon} title={saude.description} className={styles.seloDeSaude}><span className="sr-only">Saúde: </span>{saude.label}</Badge> : null}
       </div>
