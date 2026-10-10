@@ -69,7 +69,7 @@ def test_o_alvo_na_arvore_e_a_regua(harness: Harness) -> None:
     assert executor._motivo_da_imagem(rica, **base, alvo_fora=True) == "politica_nunca"
     harness.cfg.file.ai.image_policy = "auto"
     sensivel = SimpleNamespace(sensitive=True, elements=rica.elements)
-    assert executor._motivo_da_imagem(sensivel, **base, alvo_fora=True) == "sensivel"
+    assert executor._motivo_da_imagem(sensivel, **base, alvo_fora=True) == "alvo_fora_da_arvore"      # 31.323: a mesma régua
     harness.cfg.file.ai.imagem_quando_alvo_fora_da_arvore = False
     assert executor._motivo_da_imagem(rica, **base, alvo_fora=True) == "arvore_rica"
 

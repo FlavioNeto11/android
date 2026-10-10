@@ -35,8 +35,8 @@ def _sem_promessa_revogada(texto: str) -> None:
 def test_a_frase_unica_diz_o_que_o_adr_089_decidiu() -> None:
     _sem_promessa_revogada(AVISO_TELA_SENSIVEL)
     assert "ADR-089" in AVISO_TELA_SENSIVEL and "não esconde tela" in AVISO_TELA_SENSIVEL
-    # o que o código ainda faz: a decisão de rotina lê a tela sensível pela lista de elementos, sem a imagem
-    assert "lista de elementos" in AVISO_TELA_SENSIVEL
+    # 31.323: a decisão de rotina também leva a imagem da tela sensível (o aviso não diz mais "sem a imagem")
+    assert "lista de elementos" not in AVISO_TELA_SENSIVEL and "decisão de rotina" in AVISO_TELA_SENSIVEL
     # e o que continua garantido: o valor da credencial não vai no texto ao modelo
     assert "credencial" in AVISO_TELA_SENSIVEL and "cofre" in AVISO_TELA_SENSIVEL
 

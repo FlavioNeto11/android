@@ -293,7 +293,7 @@ def pede_intervencao_humana(tree: UiTree, *, tem_credencial: bool = False) -> bo
     Eram a mesma pergunta enquanto `sensitive` significava apenas "há campo de senha" (achado #127). Deixaram de
     ser: uma tela declarada em `config.yaml: sensitive_screens` é sensível, mas parar a etapa nela seria inventar
     uma falha de autenticação e marcar o perfil como `auth_required` toda vez que a IA passasse por ali. Nenhuma
-    imagem é omitida por isso (ADR-089); a decisão de rotina só deixa de levá-la (`_motivo_da_imagem`).
+    imagem é omitida por isso (ADR-089), nem na decisão de rotina (31.323: `_motivo_da_imagem` não separa mais a sensível).
 
     Função nomeada, e não uma condição embutida no laço, porque é a regra que separa as duas coisas: escondida no
     meio de 900 linhas ela voltaria a ser "sensível = pare", que é de onde ela veio.
@@ -1282,12 +1282,14 @@ class StepExecutor:
 
         Decide pela ÁRVORE, antes de a imagem existir (adendo v0.20, C1): o resto do que pesa aqui já se sabe antes
         de observar, então a imagem só é adquirida quando vai ser mandada. RA-10: devolve o MOTIVO (`ai_calls.
-        image_reason`), na ordem em que a regra decide; vai junto quando ele está em `_IMAGEM_VAI`.
+        image_reason`), na ordem em que a regra decide; vai junto quando ele está em `_IMAGEM_VAI`. O motivo `sensivel` já não
+        é produzido (31.323); só as linhas antigas de `ai_calls` o trazem.
         `ai`: o bloco da execução (17.14, `_ai_da_execucao`); vazio = o global. `alvo_fora` (31.232): esta chamada é do
         modelo forte que confere um efeito cujo alvo não está na árvore (`alvo_na_arvore`)."""
         ai = ai or self.cfg.file.ai
-        if tree.sensitive:
-            return "sensivel"
+        # 31.323 (P-044): a tela sensível segue a mesma régua das outras. Já foi `return "sensivel"` aqui, sem imagem; com o
+        # ADR-089 (a plataforma não esconde tela, e o Android mascara o campo de senha) isso só deixava a IA às cegas em
+        # login e verificação. `ai.image_policy = never` continua valendo para toda tela, a sensível inclusive.
         if ai.image_policy == "never":
             return "politica_nunca"
         if ai.image_policy == "always":
@@ -2643,8 +2645,8 @@ class StepExecutor:
             # significava campo de senha. Deixaram de ser (achado #127): uma tela declarada em
             # `sensitive_screens` é sensível, mas parar a etapa ali seria inventar uma falha de autenticação e
             # marcar o perfil como `auth_required` toda vez que a IA passasse por ela. Só o campo de senha e o
-            # desafio de verificação pedem gente. (Desde o ADR-089 nenhuma tela tem a imagem omitida da
-            # observação; a decisão de rotina é que não a leva, por `_motivo_da_imagem`.)
+            # desafio de verificação pedem gente. (Desde o ADR-089 e o 31.323 nenhuma tela tem a imagem omitida,
+            # nem da observação nem da decisão de rotina.)
             if pede_intervencao_humana(obs.tree, tem_credencial=senha_do_app.secret is not None):
                 porque = obs.tree.sensitive_reason
                 if porque == MOTIVO_DESAFIO:

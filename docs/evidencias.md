@@ -142,8 +142,9 @@ máquina, não prova de execução. A cauda que interessa ao operador já sobe n
 "Tela sensível" é uma **classificação para as decisões da automação** (não agir por receita numa tela de senha ou
 desafio, detectar conta travada). Ela **não esconde imagem de ninguém**: desde o ADR-089 (10/10/2026) a prévia, a
 evidência em `data/evidence` e a observação levam o JPEG de qualquer tela, e o provedor de IA pode recebê-lo. O que
-resta é uma escolha do executor: a decisão de rotina (`StepExecutor._motivo_da_imagem`, motivo `sensivel`) lê a tela
-sensível pela lista de elementos, sem a imagem; o julgamento da relação e o rejulgamento levam a imagem. A leitura
+resta de recusa é a leitura visual de valor. Até o 31.323 a decisão de rotina (`StepExecutor._motivo_da_imagem`, motivo `sensivel`) lia a tela
+sensível só pela lista de elementos; hoje ela segue a mesma régua de imagem das outras (política, árvore pobre, 1ª decisão julgada…), e o
+julgamento da relação e o rejulgamento sempre levaram a imagem. A leitura
 visual de um valor (12.5) continua recusando a árvore sensível. O aviso do painel (`AVISO_TELA_SENSIVEL`, em
 `/api/ai`) diz exatamente isso; já foi "telas sensíveis nunca são enviadas", e deixou de valer.
 

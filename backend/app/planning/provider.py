@@ -26,13 +26,13 @@ if TYPE_CHECKING:
 
 #: O que o painel DIZ ao operador sobre o que sai desta máquina. Uma frase só, usada por todo provedor. Já foi a
 #: promessa "telas sensíveis nunca são enviadas" (achado #127); o ADR-089 (10/10/2026) a revogou: a plataforma não
-#: esconde tela de ninguém. O que o código ainda faz é só isto: a decisão de rotina do executor
-#: (`_motivo_da_imagem`, motivo `sensivel`) lê a tela sensível pela lista de elementos, sem a imagem; os demais
-#: caminhos (julgamento, evidência, prévia) levam a imagem. Aviso que descreve outra coisa que não o código é pior
-#: do que aviso nenhum.
+#: esconde tela de ninguém. Desde o 31.323 (P-044) nem a decisão de rotina do executor separa a tela sensível: ela
+#: segue a mesma régua de imagem das outras (`_motivo_da_imagem`). O que o código ainda recusa é a leitura visual de
+#: valor numa árvore sensível (`saidas.ler_valor_visual`). Aviso que descreve outra coisa que não o código é pior do
+#: que aviso nenhum.
 AVISO_TELA_SENSIVEL = ("A plataforma não esconde tela de ninguém (ADR-089): a imagem de qualquer tela, inclusive de "
-                       "senha ou de verificação, pode ir ao provedor. A decisão de rotina ainda lê essas telas só "
-                       "pela lista de elementos, sem a imagem. O valor de uma credencial fica fora do texto enviado: "
+                       "senha ou de verificação, pode ir ao provedor, na decisão de rotina também (com o campo de "
+                       "senha mascarado pelo Android). O valor de uma credencial fica fora do texto enviado: "
                        "vai do cofre ao campo pelo canal sensível.")
 
 #: Rótulo de cada função na frase "Modelos por função" do aviso de `/api/ai`, na ordem de sempre.
@@ -174,7 +174,7 @@ MotivoDeEscalonamento = Literal["efeito", "nova_tentativa", "erros_seguidos", "p
 MotivoDaChamada = Literal["julgamento", "rejulgamento", "vazio", "decisao", "cascata", "plano", "refinamento",
                           "leitura"]
 #: RA-10: por que a imagem foi, ou não, junto (`ai_calls.image_reason`), na ordem de `StepExecutor._motivo_da_imagem`.
-#: Sem imagem: sensivel · politica_nunca · arvore_rica. Com imagem: politica_sempre · pedida · problema ·
+#: Sem imagem: politica_nunca · arvore_rica (`sensivel` só existe em linhas antigas: desde o 31.323 a tela sensível segue a régua). Com imagem: politica_sempre · pedida · problema ·
 #: primeira_julgada · arvore_pobre · alvo_fora_da_arvore (31.232: o forte que confere o efeito, com o alvo fora da
 #: árvore). A coluna `with_image` diz se ela de fato foi (a captura pode falhar).
 MotivoDaImagem = Literal["sensivel", "politica_nunca", "politica_sempre", "alvo_fora_da_arvore", "pedida", "problema",

@@ -29,6 +29,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Achado da varredura de UX 70/71: o filtro de exploração em Execuções, sem nenhuma execução descoberta, diz "Nenhuma execução tem etapa descoberta pela IA ainda".
 - Prova `simulated`: `ContaBloqueada.test.tsx` (13), `ProfileDetail.test.tsx` e `RunsPage.test.tsx` (1 cada); 872 dirigidos verdes, tsc limpo. `real`: `not_run`, no deploy seguinte ao da `main`.
 
+## 2026-10-10 — a decisão de rotina leva a imagem da tela sensível (31.323, P-044, ADR-089)
+
+- `taskqueue/executor.py::_motivo_da_imagem` deixa de devolver `sensivel` (sem imagem) para árvore sensível antes da política: a tela de senha ou de
+  verificação segue a régua das outras (`ai.image_policy`, árvore pobre, 1ª decisão julgada, problema, pedida); `never` ainda vale para ela. O login e a
+  verificação deixam de ser decididos às cegas. `AVISO_TELA_SENSIVEL` (`/api/ai`, `/api/health`) e os comentários dizem o novo comportamento; `sensivel`
+  fica no vocabulário só para as linhas antigas de `ai_calls.image_reason`. A leitura visual de valor segue recusando a árvore sensível. Fecha o aberto do 31.290.
+- Prova **simulada**: `tests/test_imagem_da_tela_sensivel_na_rotina.py` (novo) e os testes de imagem/aviso ajustados; 360 + 43 dirigidos passam. **Real: não executada**
+  (nenhuma chamada paga).
+
 ## 2026-10-10 — tela humana = bloqueio definitivo: motivo como dado e rótulo "bloqueada" (31.322, migração 136)
 
 - Migração 136 aditiva: `contas_retiradas.motivo_do_bloqueio` (JSON). `identity/infrastructure/motivo_bloqueio.py` monta o objeto ANTES da

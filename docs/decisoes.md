@@ -6081,3 +6081,12 @@ evento e leitura. Risco principal: o filtro de conta não confirmada nos consumi
   herda a genérica `explorar_efeito`; o comum roda sem pedir o sim e avisa.
 - **Efeito:** a decisão do 31.297 ("aprovação por padrão") vale agora só para o destrutivo. O interruptor `exploracao_efeito_ligada` segue desligado de fábrica.
 - **Prova:** `simulated`. Contrato: adendo v1.141.
+
+### Atualização 10/10/2026 (noite) — a decisão de rotina também leva a imagem da tela sensível (31.323, P-044)
+
+- **Decisão do dono (P-044, relatada pela orquestradora):** o que o ADR-089 permitia e não mandava passa a valer: a imagem da tela sensível vai à decisão de
+  rotina, com o campo de senha mascarado pelo Android. `StepExecutor._motivo_da_imagem` deixa de devolver `sensivel` antes da política: a tela sensível segue
+  a mesma régua das outras (`ai.image_policy`, árvore pobre, 1ª decisão julgada, problema, pedida). `never` continua valendo para toda tela.
+- **Não muda:** a leitura visual de valor recusa a árvore sensível (`saidas.ler_valor_visual`); o valor da credencial só vai pelo canal sensível; tela de
+  desafio e conta travada continuam parando a etapa (`pede_intervencao_humana`).
+- **Prova:** `simulated`, `tests/test_imagem_da_tela_sensivel_na_rotina.py`. `real`: `not_run` (nenhuma chamada paga).

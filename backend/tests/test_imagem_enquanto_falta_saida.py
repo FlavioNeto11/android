@@ -7,7 +7,8 @@ pediu `observe_screen`. Foram 4 dos 8 decides sem avançar a leitura. Por que o 
 4501 e o 4502) segue UNKNOWN: a leitura estática refutou "o prompt não avisa".
 
 A chave nasce desligada (como a do 31.56) e só vira padrão com o A/B (`.claude/handoffs/jev-roteiro-31-71-ab.md`).
-A política manda: `sensivel` e `politica_nunca` vêm antes, e `leitura_pendente` não força imagem que ela veta.
+A política manda: `politica_nunca` vem antes, e `leitura_pendente` não força imagem que ela veta (31.323: a tela sensível
+já não tem motivo próprio).
 
 Nível de prova: `simulated` (executor do harness na porta 5640; nenhuma IA). Nada real.
 """
@@ -63,8 +64,8 @@ def test_os_motivos_anteriores_continuam_com_o_mesmo_nome(harness: Harness) -> N
 def test_a_politica_manda_sobre_a_leitura_pendente(harness: Harness) -> None:
     assert _motivo(harness, ligada=True, falta_saida=True, policy="never") == "politica_nunca"
     assert "politica_nunca" not in _IMAGEM_VAI
-    assert _motivo(harness, ligada=True, falta_saida=True, tree=SENSIVEL) == "sensivel"
-    assert "sensivel" not in _IMAGEM_VAI
+    assert _motivo(harness, ligada=True, falta_saida=True, tree=SENSIVEL) == "leitura_pendente"         # 31.323
+    assert _motivo(harness, ligada=True, falta_saida=True, tree=SENSIVEL, policy="never") == "politica_nunca"
 
 
 def test_o_lembrete_tem_o_texto_exato_e_so_os_nomes() -> None:
