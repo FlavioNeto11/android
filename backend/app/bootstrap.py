@@ -63,6 +63,7 @@ from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.codigo_de_email import CodigoDoEmailDoParque
 from .modules.identity.infrastructure.persona_images import compor_servico_de_imagens, imagens_dto
 from .modules.identity.infrastructure.sessions import SessionDeps, SessionProviderFactory
+from .modules.identity.infrastructure.verificacao_periodica import VerificacaoPeriodica
 from .modules.learning import esquecer_conta
 from .modules.learning.application.falhas import ServicoDeFalhas
 from .modules.learning.infrastructure import ligar_intencao, ligar_validacao, ligar_voz
@@ -294,6 +295,8 @@ def montar(self: AppState, cfg: Config, *, provider: AIProvider | None, io_facto
     # e o livre do disco e avisa pela rotina. O leitor do disco é o da saúde (`devices.diagnostics.ler_disco`).
     self.vigia_do_host = VigiaDoHost(cfg, self.avisos.enfileirar_aviso, ler_disco=ler_disco_da_saude,
                                      pronto=lambda: self.avisos.ligado and self.avisos.canal() is not None)
+    # 31.302: a releitura periódica e leve da sessão da conta âncora (desligada de fábrica: `contas.verificacao_periodica_h`).
+    self.verificacao_periodica = VerificacaoPeriodica(self)
     # O contato do site institucional (29.77, ADR-075): grava antes de avisar e entrega pela Canais. Desligado de fábrica.
     self.portal = Portal(cfg, self.db, self.avisos)
     # O que a plataforma decide sozinha (28.25): `bootstrap.montar_decisoes`.

@@ -245,7 +245,8 @@ class ServicoDeFalhas:
         saude = Saude(itens_por_tipo=self._contagem_do_livro(), execucoes=s.execucoes,
                       execucoes_com_fluxo=s.execucoes_com_fluxo, fluxos_distintos=s.fluxos_distintos,
                       etapas_por_conducao=s.etapas_por_conducao, intervencoes=s.intervencoes,
-                      exploracoes_por_conducao=s.exploracoes_por_conducao)
+                      exploracoes_por_conducao=s.exploracoes_por_conducao,
+                      verificacoes_de_sessao=s.verificacoes_de_sessao)
         em_andamento = tuple(sorted((x for x in gravadas.values() if x.state in EM_ANDAMENTO),
                                     key=lambda x: (EM_ANDAMENTO.index(x.state), x.updated_at or "", x.id)))
         return RelatorioDeFalhas(

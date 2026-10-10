@@ -130,7 +130,9 @@ def relatorio_json(rel: RelatorioDeFalhas) -> JsonObject:
                   "intervencoes": s.intervencoes, "intervencoes_por_10_execucoes": s.intervencoes_por_10_execucoes,
                   # 31.273 (v1.130): as explorações que terminaram e quantas já entraram sem IA (receita ou atalho)
                   "exploracoes": {"por_conducao": dict(s.exploracoes_por_conducao),
-                                  "pct_sem_ia": _r(s.exploracoes_sem_ia_pct, 4)}},
+                                  "pct_sem_ia": _r(s.exploracoes_sem_ia_pct, 4)},
+                  # 31.302 (v1.135): as releituras periódicas da sessão da conta âncora, por desfecho
+                  "verificacoes_de_sessao": dict(s.verificacoes_de_sessao)},
         "em_andamento": [linha_json(x) for x in rel.em_andamento],
     }
 
@@ -242,12 +244,14 @@ def relatorio_md(rel: RelatorioDeFalhas) -> str:
                       for k, v in sorted(s.itens_por_tipo.items())) or "nenhum"
     conducao = ", ".join(f"{k} {n}" for k, n in sorted(s.etapas_por_conducao.items())) or "nenhuma etapa"
     explorou = ", ".join(f"{k} {n}" for k, n in sorted(s.exploracoes_por_conducao.items())) or "nenhuma"
+    verificou = ", ".join(f"{k} {n}" for k, n in sorted(s.verificacoes_de_sessao.items())) or "nenhuma (recurso desligado ou sem conta vencida)"
     por_10 = "—" if s.intervencoes_por_10_execucoes is None else f"{s.intervencoes_por_10_execucoes:.1f}"
     out += ["", "## 6. Saúde do aprendizado", "",
             f"- Itens do livro por tipo e estado: {itens}.",
             f"- Etapas por condução: {conducao} ({_pct(s.pct_por_receita)} só por receita, entre as que registraram "
             "quem conduziu; `-` = sem registro).",
             f"- Explorações (ADR-084): {explorou} ({_pct(s.exploracoes_sem_ia_pct)} já entraram sem IA, por receita ou atalho).",
+            f"- Releituras periódicas da sessão da conta âncora (31.302): {verificou}.",
             f"- Execuções: {s.execucoes}; com fluxo reaproveitado: {s.execucoes_com_fluxo} "
             f"({s.fluxos_distintos} fluxos distintos).",
             f"- Intervenções: {s.intervencoes} ({por_10} a cada 10 execuções)."]

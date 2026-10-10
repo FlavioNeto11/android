@@ -8369,3 +8369,31 @@ medida × esperada deixou de provar algo. Antes, nenhum código do app editava u
 - **Não faz:** não reavalia a rede do aparelho; a próxima medição (`POST …/verify`) compara com o valor novo.
 - **Compatibilidade:** aditivo. O `POST /api/network/profiles` e o `DELETE` seguem como estavam.
 - **Prova:** `simulated` (`backend/tests/test_rede_saida_esperada_edicao.py`, 7 testes). `real`: `not_run`.
+
+## Adendo v1.136 (10/10/2026; número da orquestradora; item 31.302) — a releitura periódica da sessão da conta âncora
+
+Sem rota nova. Um laço do central relê, a cada N horas e SEM IA, a tela da conta âncora de cada persona com sessão
+`session_ready` num aparelho ligado e livre (`ensure_session(observe_only=True)`: não digita, não autentica, não liga aparelho).
+Chaves de `config.yaml` (bloco `contas`, **desligado de fábrica**): `verificacao_periodica_h` (0 desliga; padrão 0),
+`verificacao_periodica_cpu_max_percent` (50), `verificacao_periodica_tique_s` (300). Só vale na subida do central.
+
+- **Comando:** cada releitura é o verbo `session.verify` com `requested_by: verificacao-periodica`, pelo mesmo despacho da rota
+  "Verificar conta" (aparece no histórico de comandos do aparelho). O desafio visto na tela cai no caminho de sempre do motor de
+  sessão (ADR-068): a persona vai a `blocked`, o aparelho a quarentena e `session.needs_person` avisa o dono.
+- **Evento novo `session.verificacao_periodica`** (nível `info`; `warn` quando a sessão mudou ou a releitura quebrou):
+  `data: {profile_id, account_id, instance_id, resultado, motivo?, anterior?, status?, perfil?}`. `resultado`:
+  `verificada` (segue pronta), `mudou` (`status` traz o novo; `perfil` traz o status da persona, `blocked` quando o desafio a
+  bloqueou), `erro` (a releitura não terminou; só uma nova tentativa depois de meia janela) ou `pulada` (`motivo` fechado:
+  `aparelho_fora_do_ar`, `controle_manual`, `aparelho_ocupado`, `quarentena`, `pausa_de_reparo`, `host_carregado`,
+  `worker_em_manutencao`, `portao_da_sessao`, `sem_provedor_de_sessao`, `nao_e_ancora`, `tentada_ha_pouco`). Só ids e códigos:
+  nunca o @, o nome da pessoa nem texto da tela. O pulo vira evento só quando o motivo MUDA para aquela conta e aparelho.
+  **Não entra nos avisos do Telegram**: `session.needs_person` já avisa o dono quando há o que fazer.
+- **Relatório:** `GET /api/learning/falhas` (e o markdown) ganha `saude.verificacoes_de_sessao`, um mapa `{resultado: n}` da
+  janela (mais `bloqueou`, as releituras que acharam a persona bloqueada). Campo aditivo; vazio com o recurso desligado.
+- **Limites, por desenho:** uma conta por volta e uma releitura por vez no parque; a mais antiga (ou sem leitura) primeiro. Não
+  há sinal dentro do processo para um funil ou uma suíte rodando por fora: o que protege é a CPU do host (aparelho da máquina do
+  central: a amostra do gerente de aparelhos, a mesma do reparo e do boot; aparelho de worker: a última batida dele; sem
+  medição recente, pula), a pausa de reparo do dono e o recurso desligado de fábrica.
+- **Prova:** `simulated` (`backend/tests/test_verificacao_periodica_de_sessao.py`: 20 casos, com o motor de sessão de verdade
+  sobre o Instagram de mentira para a cadeia do desafio). `real`: `not_run` (nada liga sozinho no deploy; ligar no central é
+  decisão de config).

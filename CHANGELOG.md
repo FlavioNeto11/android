@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — a conta âncora ociosa é relida de tempos em tempos, sem IA (31.302; adendo v1.136)
+
+- Laço novo `modules/identity/infrastructure/verificacao_periodica.py` (regras puras em `application/`): a cada
+  `contas.verificacao_periodica_h` horas (**0 = desligado, o padrão**) relê a tela da conta âncora `session_ready` mais antiga,
+  UMA por volta, só em aparelho ligado, livre (sem controle manual, trabalho, comando aberto, quarentena, pausa de reparo ou
+  worker em manutenção), com o portão do botão "Verificar conta" aberto e a CPU do host abaixo do limite. Despacha o verbo
+  `session.verify` (autor `verificacao-periodica`) com `observe_only`: o desafio visto cai no caminho do ADR-068, sem código
+  novo de bloqueio. Evento `session.verificacao_periodica` (ids e códigos) e a linha `saude.verificacoes_de_sessao` no relatório de
+  falhas. Nada liga no deploy. Prova **simulada**: `tests/test_verificacao_periodica_de_sessao.py` (20 casos). **Real: não
+  executada** — sem releitura numa conta real e sem medir o custo no aparelho.
 ## 2026-10-10 — os avisos de tela sensível deixam de prometer o que o ADR-089 revogou (31.290)
 
 - `planning/provider.py::AVISO_TELA_SENSIVEL` (frase única do `notice` de `GET /api/ai` e `/api/health`, nos provedores

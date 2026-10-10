@@ -473,7 +473,25 @@ class FontesDeFalhaSql:
             exploracoes[linhas.texto_ou_nulo(r, "driven_by") or SEM_CONDUCAO] = linhas.inteiro(r, "n")
         return SaudeDasExecucoes(execucoes=len(execucoes), execucoes_com_fluxo=sum(1 for f in fluxos if f),
                                  fluxos_distintos=len({f for f in fluxos if f}), etapas_por_conducao=conducao,
-                                 intervencoes=intervencoes, exploracoes_por_conducao=exploracoes)
+                                 intervencoes=intervencoes, exploracoes_por_conducao=exploracoes,
+                                 verificacoes_de_sessao=self._verificacoes_de_sessao(desde, ate))
+
+    def _verificacoes_de_sessao(self, desde: str, ate: str) -> dict[str, int]:
+        """31.302: o desfecho de cada evento `session.verificacao_periodica` da janela (só ids e códigos fechados);
+        `bloqueou` conta as releituras que acharam a persona bloqueada. Vazio com o recurso desligado."""
+        contagem: dict[str, int] = {}
+        for r in self._db.query("SELECT data FROM events WHERE kind = 'session.verificacao_periodica' AND ts >= ?"
+                                " AND ts < ?", (desde, ate)):
+            try:
+                dado = json.loads(linhas.texto(r, "data"))
+            except ValueError:
+                continue
+            if not isinstance(dado, dict) or not isinstance(dado.get("resultado"), str):
+                continue
+            contagem[dado["resultado"]] = contagem.get(dado["resultado"], 0) + 1
+            if dado["resultado"] == "mudou" and dado.get("perfil") == "blocked":
+                contagem["bloqueou"] = contagem.get("bloqueou", 0) + 1
+        return contagem
 
 
 def _comprovada(resultado: str | None) -> bool:

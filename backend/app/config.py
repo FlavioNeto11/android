@@ -964,6 +964,13 @@ class ContasCfg(BaseModel):
     # autenticar). Sem validade, o cache nunca expirava: havia perfis `session_ready` verificados três dias
     # antes, um deles de uma conta que o dono já tinha relatado presa num desafio. 0 desliga a reverificação.
     session_max_age_s: int = Field(43_200, ge=0, le=2_592_000)      # 12 h
+    # 31.302: a releitura PERIÓDICA e leve (`observe_only`, sem IA, sem digitar) da conta âncora de cada persona com
+    # sessão `session_ready` num aparelho ligado. A validade acima só reverifica ANTES de uma tarefa; uma conta que ninguém
+    # usa fica "pronta" para sempre mesmo que o app já mostre o desafio. Em horas; 0 DESLIGA (padrão: o dev decide).
+    verificacao_periodica_h: int = Field(0, ge=0, le=720)
+    # Com a CPU do host acima disto (a última batida), a volta não toca em aparelho: o funil e a suíte pesam aí.
+    verificacao_periodica_cpu_max_percent: float = Field(50.0, ge=1.0, le=100.0)
+    verificacao_periodica_tique_s: int = Field(300, ge=30, le=3600)  # de quanto em quanto tempo o laço olha (uma conta por volta)
     #: pacote → ajustes do motor de sessão daquele app (`contas.sessao.<pacote>.settle_s: 5`).
     sessao: dict[str, AjustesDeSessaoCfg] = {}
 
