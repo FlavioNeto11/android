@@ -163,8 +163,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   provisionamento (desejado x confirmado, eventos com `estado_esperado`, sem Conectar/Verificar/Sair antes de confirmar).
   `features/command/AcoesDeConta.tsx` e `AssistenteDoComando.tsx`: `acoes_de_conta` viram cartões com as ações
   estruturadas e contam como pendência. `api/client.ts` e `api/types.ts` seguem o adendo v1.132. Persona: `docs/dominios/persona.md`.
-- Prova `simulated`: 12 testes novos (`ContaPlanejada.test.tsx`), 525 dirigidos de profiles, command e runs, tsc e build.
-  **Real: não executada** (o backend do 31.281 ainda não está no ar).
+- Prova `simulated`: 15 testes novos (`ContaPlanejada.test.tsx`), 320 dirigidos de profiles, command e api depois do rebase
+  sobre a d363ae4e, tsc e build.
+- Prova de percurso (10/10, backend do worktree com o 31.281/31.282 reais e aparelhos falsos, não o central): sugestões de
+  endereço do servidor, plano da conta (`planejada`), senha gerada no cofre sem aparecer na tela (`credencial_preparada`),
+  `iniciar_cadastro`, `enviado` e `confirmar` com evidência declarada até `confirmada`, quando o cartão normal (Conectar,
+  Verificar) volta. **Real no central: não executada** (o 31.281 só chega com o deploy); o assistente com `acoes_de_conta`
+  e o cancelar ficam só na prova `simulated`.
 
 ## 2026-10-10 — o painel sai do tratamento de tela sensível (31.289, ADR-089)
 
