@@ -41,6 +41,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   SQL do `ponte_igfarm`/`egresso`/`reaquecer_da_conta`). mypy: 268 erros contra o teto de 257, nenhum no código desta
   mudança. **Real: não executada.**
 
+## 2026-10-10 — o egresso volta a respeitar a arquitetura e o mypy (31.292)
+
+- `identity/application/egresso.py` (gatilhos que tocam `AppState` e o subsistema de rede) passou para
+  `identity/infrastructure/egresso.py`; `bootstrap.py` e os testes importam de lá. A porta `RedeDaPonte` ganhou tipos
+  (`tuple[str, str, int, str | None, str | None]`, `protocol: str`, `policy: str`, `SecretStr | None`) e o adaptador
+  `RedeSocial` importa `app.devices.rede` no topo (sem import tardio) e converte para `NetworkProtocol`/`NetworkPolicy`.
+  `PonteIgfarm.registrar` não deixa mais `account_id` ser `None` nem desempacota `None`.
+- O pacote do Instagram deixou de ser texto em SQL (`rede.py::reaquecer_da_conta`, `ponte_igfarm.py`): vem de
+  `pacote_ancora()` do registro, como o resto do núcleo (catraca `test_texto_do_instagram_no_codigo_so_desce`).
+- Teste ajustado só no alvo do patch: `test_auto_assign_conta_real_fica_pendente` troca o `atribuir` onde ele agora é
+  usado. Nenhum teto subiu e nenhuma regra foi afrouxada.
+- Prova **simulada**: `tests/test_arquitetura.py` e `test_apps_fora_do_nucleo.py` verdes (eram 3 vermelhas), catracas
+  (`@tests/catracas.txt`, 89), 217 dirigidos de egresso, ponte, rotas e rede, e o mypy-catraca em 257 (teto 257, era
+  268). **Real: não executada** (muda estrutura, não comportamento).
+
 ## 2026-10-10 — o código do e-mail entra no login automático (ADR-090)
 
 - O motor de sessão (`integrations/app_declarado/sessao.py`) lê o código mais novo da caixa da conta (porta

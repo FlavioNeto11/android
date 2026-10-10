@@ -65,6 +65,7 @@ Quando a conta é retirada (`retirar_conta_bloqueada`), na ordem:
 | `backend/app/devices/rede.py` | `_parse_proxy`, `criar_perfil_de_conta`, `reaquecer_da_conta`, hook em `registrar_medicao` |
 | `backend/app/modules/identity/domain/ponte_igfarm.py` | `proxy_url` e `ip_criacao` em `ComandoDeRegistro` |
 | `backend/app/modules/identity/infrastructure/ponte_igfarm.py` | `gravar_egresso`, `RedeSocial` adaptador |
+| `backend/app/modules/identity/infrastructure/egresso.py` | gatilhos `vincular_egresso` e `limpar_egresso` (ligados em `bootstrap.py`) |
 | `backend/app/modules/identity/application/ponte_igfarm.py` | fluxo de egresso no `registrar()` + auto-assign |
 | `backend/app/modules/identity/presentation/schemas.py` | `ContaIgfarmBody` (+2 campos) |
 | `backend/app/modules/identity/presentation/instagram.py` | passar os campos |

@@ -105,10 +105,10 @@ class RedeError(RuntimeError):
 
 
 class RedeDaPonte(Protocol):
-    def parse_proxy(self, proxy_url: str) -> tuple: ...
-    def criar_perfil_de_conta(self, account_id: str, *, host: str, port: int, protocol, username: str | None,
-                              secret, ip_criacao: str | None, quem: str | None) -> str: ...
-    def atribuir(self, instance_ids: list[str], proxy_profile_id: str | None, policy, quem: str | None,
+    def parse_proxy(self, proxy_url: str) -> tuple[str, str, int, str | None, str | None]: ...
+    def criar_perfil_de_conta(self, account_id: str, *, host: str, port: int, protocol: str, username: str | None,
+                              secret: SecretStr | None, ip_criacao: str | None, quem: str | None) -> str: ...
+    def atribuir(self, instance_ids: list[str], proxy_profile_id: str | None, policy: str, quem: str | None,
                  confirm_real_account: list[str] | None = None) -> dict[str, object]: ...
     def pedido_atual(self, instance_id: str) -> tuple[str | None, str] | None: ...
 
@@ -281,16 +281,18 @@ class PonteIgfarm:
 
         # Egresso roda nos DOIS caminhos (a tx principal já fechou). Perfil é idempotente por nome;
         # o gravar_egresso tem guarda no SQL.
-        egresso = self._registrar_egresso(cmd, existente.account_id if existente is not None else account_id)
+        conta_id = existente.account_id if existente is not None else account_id
+        assert conta_id is not None                   # ou a conta já existia, ou o bloco acima a registrou
+        egresso = self._registrar_egresso(cmd, conta_id)
 
         if existente is not None:
             return replace(existente, egresso=egresso)
 
         self.barramento.emitir(
             "identity.conta.registrada", f"Conta @{username} registrada pela ponte do igfarm",
-            {"persona_id": cmd.persona_id, "account_id": account_id, "igfarm_account_id": cmd.igfarm_account_id,
+            {"persona_id": cmd.persona_id, "account_id": conta_id, "igfarm_account_id": cmd.igfarm_account_id,
              "username": username, "email": email})
-        return ContaRegistrada(persona_id=cmd.persona_id, account_id=account_id, igfarm_account_id=cmd.igfarm_account_id,
+        return ContaRegistrada(persona_id=cmd.persona_id, account_id=conta_id, igfarm_account_id=cmd.igfarm_account_id,
                                email=email, instagram_username=username, criada_em=cmd.criada_em, registrada_em=agora,
                                idempotente=False, egresso=egresso)
 
@@ -298,14 +300,12 @@ class PonteIgfarm:
         """Cria o perfil de proxy do egresso e atribui aos devices vinculados. Parse defensivo: proxy inválido não derruba."""
         if self.rede is None:
             return ()
-        scheme = host = port = username = password = None
-        if cmd.proxy_url and cmd.proxy_url.strip():
-            try:
-                scheme, host, port, username, password = self.rede.parse_proxy(cmd.proxy_url)
-            except ValueError:
-                log.warning("proxy_url inválido para conta %s", account_id)
-                host = None
-        if host is None:
+        if not (cmd.proxy_url and cmd.proxy_url.strip()):
+            return ()
+        try:
+            scheme, host, port, username, password = self.rede.parse_proxy(cmd.proxy_url)
+        except ValueError:
+            log.warning("proxy_url inválido para conta %s", account_id)
             return ()
         with self.armazem.tx():
             # Só na 1ª vez: re-POST não acumula segredo (a guarda do SQL também protege)

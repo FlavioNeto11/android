@@ -34,6 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 from ..db import Row, dumps, loads
 from ..models import (_CHAVE_DE_SEGREDO, DeviceNetworkDTO, NetworkMeasurementDTO, NetworkPolicy, NetworkProfileDTO,
                       NetworkProfileKind, NetworkProtocol, NetworkState)
+from ..planning.catalog import pacote_ancora
 from ..security.redaction import redact
 from ..security.secret_store import SecretStoreLocked, SecretStoreUnavailable
 from ..util import novo_id_de_app, now_iso, parse_iso
@@ -1608,7 +1609,7 @@ def reaquecer_da_conta(st: AppState, instance_id: str) -> None:
         "JOIN device_profile_bindings b ON b.profile_id = ci.profile_id "
         "LEFT JOIN apps a ON a.id = b.app_id "
         "WHERE b.instance_id=? AND b.active=1 AND ci.ip_criacao IS NOT NULL "
-        "AND (b.app_id IS NULL OR a.package='com.instagram.android') LIMIT 1", (instance_id,))
+        "AND (b.app_id IS NULL OR a.package=?) LIMIT 1", (instance_id, pacote_ancora()))
     if conta is None:
         return
     esperada = saida_esperada(st, dn["vpn_profile_id"], dn["proxy_profile_id"])

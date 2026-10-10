@@ -58,7 +58,7 @@ from .modules.decisoes.infrastructure.resumo_sql import ResumoDasDecisoes
 from .modules.decisoes.infrastructure.servico import ServicoDeDecisoes
 from .modules.applications.infrastructure.registry import pacote_ancora
 from .modules.email_do_parque.adapters.imap import construir_email_do_parque
-from .modules.identity.application.egresso import limpar_egresso, vincular_egresso
+from .modules.identity.infrastructure.egresso import limpar_egresso, vincular_egresso
 from .modules.identity.application.sessions import SessionProviders
 from .modules.identity.infrastructure.codigo_de_email import CodigoDoEmailDoParque
 from .modules.identity.infrastructure.persona_images import compor_servico_de_imagens, imagens_dto
