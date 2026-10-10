@@ -852,3 +852,6 @@ orquestradora; ela anota aqui antes de responder.
 | próximos livres (atualização 10/10 13:39Z) | 31.302, 29.212, 28.78; ADR-092; migração 134; adendo v1.135; K-112 | |
 | 31.302 | Aprendizado (Jev revisa) | verificação periódica leve de sessão nas contas âncora (handoff 10/10: a conta bloqueada só é detectada por observação; sem execução/verificação fica "session_ready"): observação sem IA, a cada N h por conta âncora, respeita controle manual (409 device_busy) e carga do host, gera session.needs_person/bloqueio pelo caminho do ADR-068; config com padrão desligado em dev; prova simulated | Aprendizado | reservado 10/10 13:47Z |
 | próximos livres (atualização 10/10 13:47Z) | 31.303, 29.212, 28.78; ADR-092; migração 134; adendo v1.135; K-112 | |
+| 31.303 | Portal | painel de rede: saída medida x esperada por aparelho com a divergência destacada e atalho para o editor do 31.301 (o caso do android-05 de 10/10 aparece sozinho); lê network_measurements/device_network já expostos | Portal | reservado 10/10 13:49Z |
+| 31.304 | Portal | Livro e Execuções: filtro "descoberta pela IA" (steps[].exploratoria / nasceu_de_exploracao) com contagem, para medir quanto da exploração vira receita | Portal | reservado 10/10 13:49Z |
+| próximos livres (atualização 10/10 13:49Z) | 31.305, 29.212, 28.78; ADR-092; migração 134; adendo v1.135; K-112 | |
