@@ -5,6 +5,7 @@ Montado em `main.py` junto dos outros routers de contexto. Este módulo não imp
 """
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlsplit
 
@@ -122,7 +123,9 @@ async def listar_operacoes(request: Request, limite: int = Query(50, ge=1, le=20
                            instance_id: str | None = Query(None, min_length=1, max_length=100)) -> object:
     """Com `profile_id` e/ou `instance_id` (31.213, adendo v1.116): só as operações com alvo deles, com o resumo desses
     alvos em `alvos`."""
-    return _servico(request).listar(limite, profile_id=profile_id, instance_id=instance_id)
+    # 31.307 (6º ponto, despejo das 17:34Z): a lista lê o banco (operações, alvos, custo por passo de cada execução). Na thread do laço, o
+    # disco lento parou o laço 10 s; numa thread do pool a espera é só desta chamada.
+    return await asyncio.to_thread(_servico(request).listar, limite, profile_id=profile_id, instance_id=instance_id)
 
 
 @router.get("/operacoes/elegiveis", response_model=None)

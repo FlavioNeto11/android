@@ -295,3 +295,32 @@ async def test_os_desfechos_da_conversa_sao_lidos_fora_da_thread_do_laco(harness
         repo.desfechos_parados, repo.esperando_desfecho = parados, esperando   # type: ignore[method-assign]
     assert vistas["parados"] and vistas["esperando"], "o teste não mediu: as leituras não rodaram"
     assert all(t != laco for ts in vistas.values() for t in ts), f"leitura de desfecho na thread do laço: {vistas}"
+
+
+# ===================================================================== a lista de operações fora do laço (6º ponto, 17:34Z)
+@pytest.mark.asyncio
+async def test_a_lista_de_operacoes_roda_fora_da_thread_do_laco(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O despejo das 17:34Z: `GET /api/operacoes` → `ServicoDeOperacoes.listar` → `custo_por_passo.por_execucao` → `db.query` na thread
+    do laço. A rota agora chama `listar` numa thread do pool."""
+    import httpx
+
+    from app.main import create_app
+    from app.modules.operacoes.infrastructure.servico import ServicoDeOperacoes
+
+    st = harness.state
+    assert st is not None
+    laco = threading.get_ident()
+    vistas: list[int] = []
+    original = ServicoDeOperacoes.listar
+
+    def espia(self, *a, **k):
+        vistas.append(threading.get_ident())
+        return original(self, *a, **k)
+    monkeypatch.setattr(ServicoDeOperacoes, "listar", espia)
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 123)),
+                                 base_url="http://127.0.0.1") as c:
+        r = await c.get("/api/operacoes")
+    assert r.status_code == 200
+    assert vistas and all(t != laco for t in vistas), "a lista de operações rodou na thread do laço"
