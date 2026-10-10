@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
+from app.contracts import persona_de_teste
 from app.contracts.origem import PREFIXO_OPERACAO
 from app.db import OPERATIONAL_ERRORS, Database, Row, coluna_ausente, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus, StepStatus
@@ -54,6 +55,7 @@ if TYPE_CHECKING:
 
 #: O motivo, frase curta e estável, que entra na contagem por motivo da capacidade.
 SEM_PERSONA = "persona inexistente"
+PERSONA_DE_TESTE = "persona de teste: fora das operações em lote (31.314)"
 SEM_CONTA = "sem conta"
 SEM_SESSAO = "sem sessão"
 #: A conta tem sessão em mais de um aparelho e nenhuma no vínculo principal da persona: qual age não se adivinha.
@@ -308,8 +310,11 @@ class ServicoDeOperacoes:
 
     def _conferir(self, alvo: AlvoPedido, app_id: str) -> tuple[str | None, str | None, str | None, str | None]:
         """Persona → conta → sessão → aparelho, na ordem do dono. Devolve (parada, motivo, conta, aparelho)."""
-        if self.social.persona_row(alvo.profile_id) is None:
+        persona = self.social.persona_row(alvo.profile_id)
+        if persona is None:
             return "persona", SEM_PERSONA, None, None
+        if persona_de_teste.e_de_teste(persona):
+            return "persona", PERSONA_DE_TESTE, None, None
         if alvo.account_id:
             conta = self.social.account_row(alvo.profile_id, alvo.account_id)
             if conta is not None and conta["app_id"] != app_id:
@@ -928,7 +933,7 @@ class ServicoDeOperacoes:
             raise OperacaoError("app_inexistente", f"O app {app_id!r} não está registrado.", 404)
         validade = int(getattr(self.social, "session_max_age_s", 0) or 0)
         itens: list[dict[str, object]] = []
-        for r in self.db.query("SELECT id FROM instagram_profiles ORDER BY id"):
+        for r in self.db.query(f"SELECT id FROM instagram_profiles WHERE {persona_de_teste.sem_teste()} ORDER BY id"):
             pid = str(r["id"])
             parada, motivo, conta, aparelho = self._conferir(AlvoPedido(pid), app_id)
             if parada is None and not self._aparelho_apto(aparelho):

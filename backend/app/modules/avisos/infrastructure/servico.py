@@ -25,6 +25,7 @@ from datetime import datetime
 
 from app.config import Config
 from app.db import loads
+from app.contracts import persona_de_teste
 from app.contracts.origem import PREFIXO_LOTE, PREFIXO_OPERACAO, e_execucao_do_sistema
 from app.events import EventBus
 from app.models import Problem
@@ -174,7 +175,7 @@ class ServicoDeAvisos:
             data = self._com_o_custo_da_exploracao(data)
         aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir,
                                 nomes=nomes, conversa=conversa)
-        if aviso is None or self._e_de_prova(kind, data):
+        if aviso is None or self._e_de_prova(kind, data) or self._e_de_persona_de_teste(kind, data):
             return False
         try:
             return self.fila.enfileirar(aviso)
@@ -426,6 +427,35 @@ class ServicoDeAvisos:
         contas = self.fila.db.query("SELECT id FROM profile_accounts WHERE profile_id=? AND app_id=? AND status='active'",
                                     (persona, etapa["app_id"]))
         return str(contas[0]["id"]) if len(contas) == 1 else None
+
+    def _e_de_persona_de_teste(self, kind: str, data: dict[str, object] | None) -> bool:
+        """31.314: o fato é SÓ de persona de teste? Então o dono não é avisado (a persona de teste existe para provar o produto,
+        e cada prova mandava aviso ao Telegram). Os perfis vêm de onde o evento os traz: `profile_id` do próprio dado
+        (`session.needs_person`), do `objective`/`approval` embutido, ou dos objetivos da execução (`run.updated`). Só se TODOS
+        os perfis achados são de teste: execução de uma persona de teste e de uma de verdade segue avisando. Sem perfil
+        achado, ou com falha na consulta, o aviso segue (o dono nunca perde um de pessoa)."""
+        if kind not in ("run.updated", "approval.pending", "objective.updated", "session.needs_person"):
+            return False
+        d = data or {}
+        perfis: set[str] = set()
+        for fonte in (d, d.get("objective"), d.get("approval")):
+            if isinstance(fonte, dict) and isinstance(fonte.get("profile_id"), str) and fonte["profile_id"]:
+                perfis.add(str(fonte["profile_id"]))
+        run = d.get("run")
+        run_id = run.get("id") if isinstance(run, dict) else None
+        try:
+            if isinstance(run_id, str) and run_id:
+                perfis.update(str(r["profile_id"]) for r in self.fila.db.query(
+                    "SELECT DISTINCT profile_id FROM objectives WHERE run_id=? AND profile_id IS NOT NULL", (run_id,)))
+            if not perfis:
+                return False
+            marcas = ",".join("?" for _ in perfis)
+            de_teste = {str(r["id"]) for r in self.fila.db.query(
+                f"SELECT id FROM instagram_profiles WHERE id IN ({marcas}) AND {persona_de_teste.so_teste()}", tuple(perfis))}
+        except Exception:  # noqa: BLE001 - na dúvida, avisa
+            log.exception("avisos: não foi possível conferir se o fato é de persona de teste")
+            return False
+        return perfis <= de_teste
 
     def _e_de_prova(self, kind: str, data: dict[str, object] | None) -> bool:
         """30.37 e 28.19: a execução do SISTEMA não é de uma pessoa: a pergunta dela (`run.updated` em `needs_input`)

@@ -364,6 +364,8 @@ class Orquestrador:
         Instagram"; app sem conta (Chrome) não tira ninguém."""
         saida: dict[str, list[str]] = {}
         for v in mundo.vinculos:
+            if v.profile_id in mundo.de_teste:
+                continue                      # 31.314: a persona de TESTE nunca é sugerida; só quem a cita pelo nome a usa
             if v.instance_id not in mundo.aptos or (apps and not mundo.serve(v.profile_id, v.instance_id, apps)):
                 continue
             lista = saida.setdefault(v.profile_id, [])

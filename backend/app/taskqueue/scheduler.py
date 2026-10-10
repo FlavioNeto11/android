@@ -14,6 +14,7 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from ..config import Config, LimitsCfg
 from ..shared.vinculos import aparelhos_com_vinculo_ativo
+from ..contracts import persona_de_teste
 from ..contracts.origem import eh_ensaio_de_leitura, eh_execucao_de_validacao
 from ..db import Row, dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
@@ -910,7 +911,8 @@ class Scheduler:
         exige_conta = self.app_exige_conta(app_id)
         com_perfil = {r["instance_id"] for r in db.query(
             "SELECT b.instance_id FROM device_profile_bindings b JOIN instagram_profiles p ON p.id=b.profile_id"
-            " WHERE b.active=1 AND COALESCE(p.status, 'active')='active'")} if exige_conta else set()
+            f" WHERE b.active=1 AND COALESCE(p.status, 'active')='active' AND {persona_de_teste.sem_teste('p')}"
+        )} if exige_conta else set()                      # 31.314: o aparelho só da persona de teste não é candidato
         return self.candidatos_de(
             [rt.id for rt in self.devices.devices.values() if not rt.store and vinculo.get(rt.id) == app_id
              and (not exige_conta or rt.id in com_perfil)], com_trabalho=com_trabalho)

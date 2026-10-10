@@ -10,6 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
+from ..contracts import persona_de_teste
 from ..db import Row, dumps, loads
 from .vez_do_plano import VezDoPlano
 from ..devices.compatibilidade import capacidades_de, motivo_incompativel, requisitos_de_release
@@ -483,7 +484,8 @@ class RunService:
                                or (f"@{r['username']}" if r["username"] else r["id"])))
             for r in db.query("SELECT id, username, first_name, last_name, display_name FROM instagram_profiles"))
         ligados = frozenset(iid for iid, rt in self.devices.devices.items() if rt.state == InstanceState.online)
-        return Mundo(vinculos, aptos, prontas, self._desempatar, nomes, sem_conta, ligados)
+        de_teste = frozenset(str(r["id"]) for r in db.query(persona_de_teste.SQL_IDS))
+        return Mundo(vinculos, aptos, prontas, self._desempatar, nomes, sem_conta, ligados, de_teste)
 
     def _desempatar(self, candidatos: Sequence[str]) -> str | None:
         """Entre aparelhos igualmente bons de uma persona: o balanceamento de sempre (carga do servidor, ligado
@@ -584,7 +586,8 @@ class RunService:
         exige_conta = any(self.scheduler.app_exige_conta(a) for a in apps)
         com_perfil = {str(r["instance_id"]) for r in db.query(
             "SELECT b.instance_id FROM device_profile_bindings b JOIN instagram_profiles p ON p.id=b.profile_id"
-            " WHERE b.active=1 AND COALESCE(p.status, 'active')='active'")} if exige_conta else set()
+            f" WHERE b.active=1 AND COALESCE(p.status, 'active')='active' AND {persona_de_teste.sem_teste('p')}"
+        )} if exige_conta else set()                      # 31.314: o aparelho só da persona de teste não é candidato
         fora = self._fora_de_pronto(apps)
         cortados: dict[str, int] = {}
         ids: list[str] = []

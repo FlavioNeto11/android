@@ -20,6 +20,7 @@ from collections.abc import Awaitable, Callable, Mapping
 
 from pydantic import ValidationError
 
+from app.contracts import persona_de_teste
 from app.db import Database, loads
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
 from app.modules.avisos.application.entrada import casar_ref
@@ -194,16 +195,26 @@ class PortasReais:
         vencida (28.26, revisão da suíte 31), e aí também é "outro item"."""
         return [str(a["id"]) for a in self.aprovacoes.list(status=None, limit=500)]
 
+    #: 31.314: a execução que SÓ tem objetivo de persona de teste (e ao menos um) não é pendência do dono: nem no Telegram
+    #: nem no espelho do Trello. A que mistura persona de verdade e de teste segue como pendência.
+    _RUN_SO_DE_TESTE = ("EXISTS (SELECT 1 FROM objectives o JOIN instagram_profiles p ON p.id = o.profile_id"
+                        " WHERE o.run_id = runs.id AND " + persona_de_teste.so_teste("p") + ")"
+                        " AND NOT EXISTS (SELECT 1 FROM objectives o JOIN instagram_profiles p ON p.id = o.profile_id"
+                        " WHERE o.run_id = runs.id AND " + persona_de_teste.sem_teste("p") + ")")
+
     def execucoes_esperando(self) -> list[str]:
         return [str(r["id"]) for r in self.db.query(
-            "SELECT id FROM runs WHERE status='needs_input' ORDER BY created_at DESC LIMIT 200")]
+            f"SELECT id FROM runs WHERE status='needs_input' AND NOT ({self._RUN_SO_DE_TESTE})"
+            " ORDER BY created_at DESC LIMIT 200")]
 
     def pendencias(self) -> list[Pendencia]:
+        de_teste = {str(r["id"]) for r in self.db.query(persona_de_teste.SQL_IDS)}
         itens = [Pendencia("aprovacao", str(a["id"]), _resumo_da_aprovacao(a))
-                 for a in self.aprovacoes.list(status="pending", limit=50)]
+                 for a in self.aprovacoes.list(status="pending", limit=50)
+                 if str(a.get("profile_id") or "") not in de_teste]
         itens += [Pendencia("pergunta", str(r["id"]), str(r["status_detail"] or "a execução espera uma resposta"))
                   for r in self.db.query("SELECT id, status_detail FROM runs WHERE status='needs_input'"
-                                         " ORDER BY created_at DESC LIMIT 50")]
+                                         f" AND NOT ({self._RUN_SO_DE_TESTE}) ORDER BY created_at DESC LIMIT 50")]
         return itens
 
     def online(self) -> list[str]:

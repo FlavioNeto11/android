@@ -157,6 +157,8 @@ class Mundo:
     #: 29.65: os aparelhos LIGADOS agora. É o que deixa o principal com sessão ganhar sem acordar um aparelho à toa:
     #: principal desligado e outro com sessão ligado, quem decide é o balanceamento (que prefere o ligado).
     ligados: frozenset[str] = frozenset()
+    #: 31.314: as personas de TESTE. Fora da sugestão automática de alvos; citadas pelo nome ou pelo id, servem como as outras.
+    de_teste: frozenset[str] = frozenset()
 
     def nome(self, profile_id: str) -> str:
         return dict(self.nomes).get(profile_id, profile_id)

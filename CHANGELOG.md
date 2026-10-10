@@ -42,6 +42,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   formulário e do título. **Real no central: não executada** (a 31.312 só chega com o deploy; o ensino de uma exploração real
   precisa do aparelho).
 
+## 2026-10-10 — a persona de TESTE formal (31.314, adendo v1.139, migração 134)
+
+- **Migração 134** (aditiva): `instagram_profiles.teste INTEGER NOT NULL DEFAULT 0`; marca por id a persona do Portal (`ig-d3n4tia1rHELrY10`).
+  **Campo aditivo `teste`** em `PersonaDTO` e no corpo de `POST`/`PATCH /api/personas`.
+- **Fora do automático e do em massa**, em UM lugar (`app/contracts/persona_de_teste.py`): a sugestão de alvos (31.274) e a distribuição por app não a escolhem; o pool e a
+  criação das operações em lote a recusam (etapa `persona`); a contagem de contas de `GET /api/apps-overview` não a soma; o evento só dela não avisa o dono (Telegram) e a pendência
+  dela não entra no espelho do Trello. Citada pelo nome ou pelo id, serve como qualquer outra. A execução que mistura persona de verdade e de teste segue avisando.
+- Prova: `simulated` (`test_persona_de_teste.py`, 11). `real`: `not_run`; PostgreSQL da 134: `not_run`. O selo e o filtro do painel são do Portal (31.315).
+
 ## 2026-10-10 — o login de app com `sessao.yaml` nunca vai ao ator (12.3, parte 1: a garantia)
 
 - **Catraca nova** `backend/tests/test_login_gerenciado_fora_do_ator.py` (entra em `tests/catracas.txt`): todo pacote declarado com `sessao.yaml` é

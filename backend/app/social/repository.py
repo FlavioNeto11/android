@@ -1333,7 +1333,7 @@ class SocialRepository:
             last_name=row["last_name"], birth_date=row["birth_date"], email=row["email"],
             # A persona é a própria pessoa: o painel de hoje acha "a persona do perfil" por estes dois campos.
             persona_id=row["id"], persona_name=pessoa["name"], status=row["status"],
-            accounts_count=self.accounts_count(profile_id), images=imagens, primary_image_id=principal, has_avatar=tem_foto,
+            teste=bool(row["teste"]), accounts_count=self.accounts_count(profile_id), images=imagens, primary_image_id=principal, has_avatar=tem_foto,
             policy_group_id=row["policy_group_id"],
             policy_group_name=(self.db.scalar("SELECT name FROM policy_groups WHERE id=?", (row["policy_group_id"],))
                                if row["policy_group_id"] else None),
@@ -1418,16 +1418,17 @@ class SocialRepository:
     def create_persona(self, *, name: str, summary: str | None, persona_prompt: str, traits: dict[str, object],
                        visual: dict[str, object], biography: dict[str, object], generation: dict[str, object],
                        first_name: str | None, last_name: str | None, display_name: str | None,
-                       birth_date: str | None, gender: str | None, locale: str | None) -> str:
+                       birth_date: str | None, gender: str | None, locale: str | None, teste: bool = False) -> str:
         """Uma pessoa nova, ainda sem conta em app nenhum (`username = ''`)."""
         persona_id = f"ig-{new_token()}"
         agora = now_iso()
         self.db.execute(
             "INSERT INTO instagram_profiles(id, username, display_name, first_name, last_name, birth_date, gender,"
-            " locale, summary, persona_prompt, traits, visual, biography, generation, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " locale, summary, persona_prompt, traits, visual, biography, generation, teste, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (persona_id, "", display_name or name, first_name, last_name, birth_date, gender, locale, summary,
-             persona_prompt, dumps(traits), dumps(visual), dumps(biography), dumps(generation), agora, agora))
+             persona_prompt, dumps(traits), dumps(visual), dumps(biography), dumps(generation), 1 if teste else 0,
+             agora, agora))
         return persona_id
 
     def persona_row(self, persona_id: str) -> Row | None:

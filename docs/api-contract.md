@@ -8481,3 +8481,24 @@ Sem rota nova e sem migração. A etapa exploratória (31.273, ADR-084) que term
 
 **Prova:** `simulated` (`backend/tests/test_ensino_da_exploracao_que_parou.py`, 6 casos). `real`: `not_run` (o ensino de uma
 exploração real e o painel, que é do Portal).
+
+## Adendo v1.139 (10/10/2026; número da orquestradora; item 31.314, migração 134) — persona de TESTE
+
+- **Campo aditivo `teste: bool`** (padrão `false`) em `PersonaDTO` (= `InstagramProfileDTO`), portanto em `GET /api/personas`,
+  `GET /api/personas/{id}`, e nas respostas de `POST /api/personas` e `PATCH /api/personas/{id}`. **Entrada:** `PersonaCreate.teste`
+  (padrão `false`) e `PersonaPatch.teste` (`null` ou ausente = não mexer; qualquer outra coisa que não seja booleano é 422). Sem rota
+  nova. A marca vive em `instagram_profiles.teste` (migração 134, aditiva, `DEFAULT 0`); a migração marca por id a persona
+  `ig-d3n4tia1rHELrY10` ("TESTE Portal 31.283"), e as demais se marcam por `PATCH`.
+- **O que a marca faz** (a persona de teste existe para provar o produto, nunca para trabalhar sozinha):
+  - **Fora do automático:** a sugestão automática de alvos (`POST /api/runs/targets/suggest`, 31.274; a persona nunca entra em
+    `escolhidas`) e a distribuição por app (`distribuir`: o aparelho vinculado SÓ a ela não é candidato de um app que exige conta).
+  - **Fora do em massa:** o pool elegível das operações em lote (`GET /api/operacoes/elegiveis`) não a lista, e criar uma operação
+    com ela como alvo para na etapa `persona` com o motivo "persona de teste: fora das operações em lote (31.314)". A contagem
+    `accounts` de `GET /api/apps-overview` não soma as contas dela.
+  - **Fora dos avisos ao dono:** o evento (`session.needs_person`, `objective.updated`, `approval.pending`, `run.updated`) cujos
+    perfis são SÓ de teste não vira aviso no Telegram, e a pendência dela (aprovação ou pergunta) não entra no espelho do Trello. A
+    execução que mistura persona de verdade e de teste segue avisando.
+  - **O que NÃO muda:** citada pelo nome ou pelo id, num comando ou numa execução avulsa, ela serve como qualquer outra (o teste é
+    feito de propósito, por uma pessoa). O painel (Portal, 31.315) faz o selo e o filtro a partir do campo.
+
+**Prova:** `simulated` (`backend/tests/test_persona_de_teste.py`, 11 casos). `real`: `not_run`; PostgreSQL da 134: `not_run`.

@@ -1028,6 +1028,9 @@ class PersonaDTO(PersonaVoiceDTO):
     has_avatar: bool = False
     last_verified_at: str | None = None
     last_activity_at: str | None = None
+    #: 31.314: persona de TESTE (`teste = 1`, migração 134). O painel a sela e a filtra; o servidor a deixa de fora do que é
+    #: automático ou em massa.
+    teste: bool = False
 
 
 #: O nome antigo do MESMO objeto (`is`): quem importa `InstagramProfileDTO` continua funcionando.
@@ -1091,6 +1094,8 @@ class PersonaCreate(BaseModel):
     visual: PersonaVisual = PersonaVisual()
     #: Preenchido pelo servidor em `POST /personas/generate`; quem cria à mão pode deixar vazio (`source=manual`).
     generation: PersonaGeneration | None = None
+    #: 31.314: persona de TESTE. Fora da seleção automática, das operações em lote, das contagens e dos avisos ao dono.
+    teste: bool = False
 
     @field_validator("traits", mode="before")
     @classmethod
@@ -1116,6 +1121,8 @@ class PersonaPatch(BaseModel):
     locale: str | None = Field(default=None, max_length=20)
     biography: PersonaBiography | None = None
     visual: PersonaVisual | None = None
+    #: 31.314: marca ou desmarca a persona de TESTE. `null` é "não mexer".
+    teste: bool | None = None
 
     @field_validator("traits", mode="before")
     @classmethod

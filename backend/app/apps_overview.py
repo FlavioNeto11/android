@@ -15,6 +15,7 @@ import json
 from collections import defaultdict
 from typing import Any
 
+from .contracts import persona_de_teste
 from .db import dumps, loads
 from .planning import costs
 from .planning.catalog import capabilities_of, session_provider_of
@@ -76,7 +77,9 @@ def apps_overview(state: Any, days: int = 7) -> list[dict[str, Any]]:
             "app_id": app["id"], "name": app["name"], "package": pkg,
             # Login automático = o app tem provedor de sessão no registro (conta gerenciada), não "é o Instagram".
             "has_catalog": bool(caps.has_catalog), "automated_login": session_provider_of(pkg) is not None,
-            "accounts": db.scalar("SELECT COUNT(*) FROM profile_accounts WHERE app_id=?", (app["id"],)) or 0,
+            # 31.314: a conta de persona de TESTE não conta para o painel.
+            "accounts": db.scalar("SELECT COUNT(*) FROM profile_accounts a JOIN instagram_profiles p ON p.id = a.profile_id"
+                                  f" WHERE a.app_id=? AND {persona_de_teste.sem_teste('p')}", (app["id"],)) or 0,
             # Pronta = a sessão da conta NO APARELHO VINCULADO ao perfil está `session_ready` (`account_sessions`,
             # 049). `profile_accounts.session_status` era cópia congelada da 037 e não é mais lida.
             "accounts_ready": db.scalar(

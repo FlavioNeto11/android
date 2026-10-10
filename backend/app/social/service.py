@@ -609,7 +609,7 @@ class SocialService:
         persona_id = self.repo.create_persona(
             name=body.name, summary=body.summary, persona_prompt=body.persona_prompt, traits=voz, visual=visual,
             biography=biografia, generation=origem, first_name=primeiro, last_name=ultimo, display_name=body.name,
-            birth_date=body.birth_date, gender=body.gender, locale=body.locale)
+            birth_date=body.birth_date, gender=body.gender, locale=body.locale, teste=body.teste)
         self.bus.emit("log", f"Persona {body.name} criada", data={"profile_id": persona_id})
         return self.get_persona(persona_id)
 
@@ -630,6 +630,8 @@ class SocialService:
                 campos["first_name"], campos["last_name"] = separar_nome(fields["name"])
         if fields.get("persona_prompt") is not None:
             campos["persona_prompt"] = fields["persona_prompt"]
+        if fields.get("teste") is not None:
+            campos["teste"] = 1 if fields["teste"] else 0
         visual_patch: dict[str, object] = {}
         if body.traits is not None:
             voz, visual_patch = separar_visual_legado(body.traits.model_dump(exclude_unset=True))

@@ -282,6 +282,14 @@ Fecha o ciclo `credencial_preparada` → `confirmada` sem IA e sem que a platafo
 - **Prova:** `simulated` (`tests/test_cadastro_guiado.py`: ciclo completo, as 8 paradas, retomada, código velho, recusas da rota,
   carga do yaml, varredura de vazamento). `real`: `not_run`, até o dono autorizar criar UMA conta de verdade num provedor.
 
+### Persona de teste (31.314, adendo v1.139, migração 134)
+
+`instagram_profiles.teste` marca a pessoa que existe só para provar o produto (`PersonaDTO.teste`; `PersonaCreate`/`PersonaPatch` o
+aceitam). Ela fica fora do que é automático ou em massa: a sugestão de alvos do comando e a distribuição por app (`Mundo.de_teste`,
+`candidatos_do_app`), as operações em lote (pool e criação), a contagem de contas do painel e os avisos ao dono (Telegram:
+`ServicoDeAvisos._e_de_persona_de_teste`; Trello: as pendências do espelho). Citada pelo nome ou pelo id, serve como qualquer outra. A
+regra mora em `app/contracts/persona_de_teste.py` (fragmentos de SQL e a leitura da linha), para existir em UM lugar.
+
 ### Sessão por conta (item 23.4)
 
 [ADR-057](../decisoes.md#adr-057--outlook-como-primeiro-app-novo-conta-por-app-sessão-por-conta-e-credencial-clonada-no-cofre).
