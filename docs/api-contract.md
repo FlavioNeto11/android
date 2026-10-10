@@ -8421,7 +8421,9 @@ que só ela resolve (CAPTCHA, "confirme que você é humano", telefone). Aditivo
   `estado_inesperado` (`details.estado_atual`; só parte de `credencial_preparada`, de `aguardando_cadastro_externo` e de
   `aguardando_verificacao`; de `falha`, `retomar` primeiro), **409** `sem_usuario_desejado`, **409** `sem_conhecimento_de_cadastro` (o app não
   declara `cadastro.yaml`), **409** `sem_caixa_de_email` (o app declara passo de código por e-mail e a conta não tem caixa),
-  **409** `sem_credencial` / `sem_consentimento` (as de `iniciar_cadastro`), **409** `cadastro_em_andamento` (outro
+  **409** `sem_credencial` / `sem_consentimento` (as de `iniciar_cadastro`), **409** `sem_nascimento` / `persona_menor_de_idade` (31.324,
+  aditivos: o app declara campo de data de nascimento e a persona não tem `birth_date` válido, ou tem menos de 18 anos; a conferência é
+  ANTES de tocar no aparelho e a mensagem nunca traz a data; adendo a numerar pela orquestradora), **409** `cadastro_em_andamento` (outro
   `session.cadastrar` aberto no parque: uma conta por vez), **409** `aparelho_ocupado` (trabalho, controle manual ou aparelho
   fora do ar; nunca liga o aparelho).
 - **O que o comando faz** (cada passo é uma transição do ciclo do v1.132 com `estado_esperado`; reiniciar no meio retoma pelo

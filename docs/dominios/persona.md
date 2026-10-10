@@ -254,16 +254,25 @@ Fecha o ciclo `credencial_preparada` → `confirmada` sem IA e sem que a platafo
 - **Dado do app:** `app/conhecimento/apps/<pacote>/cadastro.yaml`, ao lado do `sessao.yaml`
   (`integrations/app_declarado/cadastro_conhecimento.py`, validado na carga): telas reconhecidas por texto e por resource-id, e a ação de
   cada uma (`tocar`, `preencher`, `codigo`, `sucesso`, `parar`). O vocabulário do que um campo recebe é fechado (`usuario`, `nome`,
-  `primeiro_nome`, `sobrenome`, `email`, `senha`), e só a `senha` é segredo. Exatamente um formulário `envia: true`, exatamente uma tela de
-  `sucesso`. **Nenhum app real o declara ainda** (`test_nenhum_app_real_declara_cadastro_ainda`): D1 e D2 estão com o dono.
+  `primeiro_nome`, `sobrenome`, `email`, `nascimento_dia|mes|ano`, `senha`), e só a `senha` é segredo. Exatamente uma tela `envia: true`
+  (`preencher` ou `tocar`), exatamente uma tela de `sucesso`.
+  **31.324 (G1), para o app cujo conteúdo vem do servidor e cujo campo não tem id, texto nem descrição:** o `Alvo` (botão, campo, conta, código)
+  acha o elemento por critérios que valem juntos: `id`, `texto`, `classe`, `senha: true`, `abaixo_do_rotulo` (regex do rótulo; vale o
+  campo do filtro mais próximo logo abaixo dele, pelo CENTRO e com sobreposição horizontal; rótulo ausente, repetido ou empate = nenhum) e
+  `ordem` (o n-ésimo na ordem de leitura: de cima para baixo, em faixas de 24 px, e da esquerda para a direita; as rodas de uma data).
+  A data de nascimento é a `birth_date` da persona (dado, nunca chute): sem ela ou com menos de 18 anos o serviço recusa com 409 antes de
+  tocar no aparelho. O app que manda o código ANTES de criar a conta declara `dispara_codigo: true` na tela cujo botão o pede (uma vez por
+  execução; é o piso do `desde` do código) e `antes_do_envio: true` na tela do código; esse código não conta como envio da conta. A
+  `acao: data` do desenho virou `preencher` com `nascimento_*` e `ordem`; a roda que só rola (sem campo de texto) precisa de um gesto da
+  Mesa e fica para a captura da igfarm. **Nenhum app real o declara ainda** (`test_nenhum_app_real_declara_cadastro_ainda`): D1 e D2 estão com o dono.
 - **Motor** (`integrations/app_declarado/cadastro.py`, `MotorDeCadastro`): a TELA decide cada passo, não uma memória. Observa, reconhece, age:
   texto comum pelo caminho comum (conferindo o que ficou no campo), senha pelo canal sensível e só em campo que o Android diz ser de senha,
   código do e-mail pelo mesmo canal, um toque em enviar e um em continuar. Reiniciar no meio retoma pelo estado gravado e pela tela, e o
   formulário nunca é enviado duas vezes (só com a conta em `aguardando_cadastro_externo`, uma vez por execução, e a tela que volta ao
   formulário depois do envio é `tela_desconhecida`). O `enviado` é gravado ANTES do toque em enviar (queda ou cancelamento depois do toque não reabrem o formulário); toda
   parada depois dele guarda `resume_state: aguardando_verificacao`, exceto `usuario_indisponivel`, que volta ao cadastro. O campo do código não é
-  conferido como `password` (é texto do e-mail, mas entra pelo canal sensível); e no `cadastro.yaml` o `tocar` de uma tela nunca é
-  o envio (só `preencher` + `envia: true` conta como tal). Limites conhecidos: o e-mail, o @ e o nome vão por `type_text` comum (o log do
+  conferido como `password` (é texto do e-mail, mas entra pelo canal sensível); e o envio é a tela `envia: true` (31.324: pode ser um `tocar`, no app
+  de uma pergunta por tela; o toque que dispara o código não é envio). Limites conhecidos: o e-mail, o @ e o nome vão por `type_text` comum (o log do
   Appium pode mostrá-los; não são credencial); o campo do código normalmente não é de senha, então a hierarquia relida o traz em claro
   em `rt.last_tree` e na prévia ao vivo (nunca vira evidência); retomar com a tela do código ainda aberta digita o código de novo, a pedido
   da pessoa.

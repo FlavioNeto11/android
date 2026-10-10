@@ -13,7 +13,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from app.automation.driver import DriverError
@@ -25,6 +25,7 @@ from app.integrations.app_declarado.cadastro import (ESTADOS_QUE_COMECAM, Dados,
 from app.integrations.app_declarado.cadastro_conhecimento import CadastroInvalido, ConhecimentoDeCadastro
 from app.models import ConfirmationEvidence, InstanceState, ProvisioningEventBody, SessionStatus
 from app.modules.identity.domain.cadastro import Parada, Passo, detalhe_da_parada
+from app.modules.identity.domain.persona import MAIORIDADE, idade_em
 from app.modules.identity.domain.provisionamento import Estado
 from app.modules.identity.infrastructure.codigo_de_email import CodigoDoEmailDoParque
 from app.modules.identity.infrastructure.ponte_igfarm import ArmazemSql
@@ -165,10 +166,11 @@ class CadastroGuiado:
         if caixa is None and ("email" in k.dados_usados or k.pede_codigo):
             raise SocialError("sem_caixa_de_email", "Este app pede o e-mail ou o código por e-mail, e a conta não tem "
                                                     "caixa registrada.", 409)
+        nascimento = self._nascimento(profile_id) if k.pede_nascimento else None
         if any(c["verb"] == VERBO for c in s.commands.open_commands()):
             raise SocialError("cadastro_em_andamento", "Há outro cadastro guiado em andamento no parque: uma conta por vez.", 409)
         rt = self._aparelho(profile_id, instance_id)
-        dados = self._dados(profile_id, account_id, linha["desired_handle"], caixa, str(credencial["secret_ref"]))
+        dados = self._dados(profile_id, account_id, linha["desired_handle"], caixa, str(credencial["secret_ref"]), nascimento)
 
         async def comando() -> None:
             await self._rodar(rt, k, dados, profile_id, account_id, by)
@@ -210,7 +212,20 @@ class CadastroGuiado:
                               {"instance_id": rt.id})
         return rt
 
-    def _dados(self, profile_id: str, account_id: str, desejado: str, caixa: str | None, secret_ref: str) -> Dados:
+    def _nascimento(self, profile_id: str) -> date:
+        """A data de nascimento da persona, para o app que a pede (31.324). Sem ela ou menor de idade: 409 ANTES de tocar no aparelho
+        (o motor não inventa data: uma idade chutada vira a idade da conta). A data é dado pessoal: nada dela vai para a mensagem."""
+        linha = self.s.social_repo.profile_row(profile_id)
+        texto = str(linha["birth_date"] or "").strip() if linha is not None else ""
+        idade = idade_em(texto, datetime.now(UTC).date())
+        if idade is None:
+            raise SocialError("sem_nascimento", "Este app pede a data de nascimento e a persona não tem uma (AAAA-MM-DD).", 409)
+        if idade < MAIORIDADE:
+            raise SocialError("persona_menor_de_idade", f"A persona tem menos de {MAIORIDADE} anos: o cadastro não segue.", 409)
+        return date.fromisoformat(texto[:10])
+
+    def _dados(self, profile_id: str, account_id: str, desejado: str, caixa: str | None, secret_ref: str,
+               nascimento: date | None = None) -> Dados:
         s = self.s
         p = s.db.one("SELECT display_name, first_name, last_name, username FROM instagram_profiles WHERE id=?", (profile_id,))
         primeiro = str(p["first_name"] or "") if p is not None else ""
@@ -223,7 +238,7 @@ class CadastroGuiado:
             return await porta.codigo_depois_de(account_id, desde, espera_s=espera_s)
 
         return Dados(usuario=str(desejado).strip().lstrip("@"), nome=nome, primeiro_nome=primeiro, sobrenome=sobrenome,
-                     email=caixa, senha=lambda: s.secrets.get_secret(secret_ref), codigo=codigo)
+                     email=caixa, senha=lambda: s.secrets.get_secret(secret_ref), codigo=codigo, nascimento=nascimento)
 
     # ------------------------------------------------------------------ o comando
     async def _rodar(self, rt: DeviceRuntime, k: ConhecimentoDeCadastro, dados: Dados, profile_id: str, account_id: str,

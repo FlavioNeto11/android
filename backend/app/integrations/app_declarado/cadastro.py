@@ -20,7 +20,7 @@ import logging
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Protocol
 
 from ...automation.hierarchy import SUBTIPO_CONTA_TRAVADA, UiElement, UiTree, normalizar_texto_de_tela
@@ -89,8 +89,14 @@ class Dados:
     senha: Callable[[], str]
     #: `(desde, espera_s) → código` da caixa da conta; `None` se a conta não tem como ler.
     codigo: Callable[[datetime, float], Awaitable[str | None]] | None = None
+    #: A data de nascimento da persona (31.324). Dado pessoal: o motor só a digita, nunca a registra.
+    nascimento: date | None = None
 
     def valor(self, dado: str) -> str | None:
+        if dado.startswith("nascimento_"):
+            n = self.nascimento
+            numero = {"nascimento_dia": n.day, "nascimento_mes": n.month, "nascimento_ano": n.year}.get(dado) if n else None
+            return str(numero) if numero is not None else None
         texto = {"usuario": self.usuario, "nome": self.nome, "primeiro_nome": self.primeiro_nome,
                  "sobrenome": self.sobrenome, "email": self.email}.get(dado)
         return texto if texto and texto.strip() else None
@@ -98,6 +104,16 @@ class Dados:
 
 def _arrobas(texto: str) -> str:
     return texto.strip().lstrip("@").lower()
+
+
+def _comparavel(dado: str, texto: str) -> str:
+    """O texto do campo como se compara com o digitado: o @ sem arroba e sem caixa; a data só pelos números ("07" = "7")."""
+    if dado == "usuario":
+        return _arrobas(texto)
+    if dado.startswith("nascimento_"):
+        digitos = "".join(c for c in texto if c.isdigit())
+        return digitos.lstrip("0") or "0" if digitos else ""
+    return normalizar_texto_de_tela(texto)
 
 
 def _agora() -> datetime:
@@ -109,6 +125,9 @@ class MotorDeCadastro:
                  relogio: Callable[[], datetime] = _agora) -> None:
         self.k, self.mesa, self.ciclo, self.dados, self._relogio = k, mesa, ciclo, dados, relogio
         self._envios = 0                    # toques em "enviar" nesta execução (conta mesmo o que pode não ter chegado)
+        self._enviado_em: datetime | None = None
+        self._disparos = 0                  # toques que fazem o app mandar o código (31.324): no máximo um por execução
+        self._disparado_em: datetime | None = None
         self._passo = Passo.INICIO
 
     # ------------------------------------------------------------------ a execução
@@ -129,7 +148,6 @@ class MotorDeCadastro:
             return Desfecho(False, Parada.TELA_DESCONHECIDA, Passo.INICIO)
         if inicial is Estado.CREDENCIAL_PREPARADA:
             self.ciclo.iniciar()
-        enviado_em: datetime | None = None
         codigo_digitado = False
         repeticoes: Counter[str] = Counter()
         ultima: str | None = None
@@ -158,38 +176,33 @@ class MotorDeCadastro:
             if tela.acao == "parar":
                 assert tela.motivo is not None
                 return self._parar(tela.motivo, passo)
-            if tela.acao != "preencher" and self.ciclo.estado() is Estado.AGUARDANDO_CADASTRO_EXTERNO and self._envios:
+            if (tela.acao != "preencher" and not tela.envia
+                    and self.ciclo.estado() is Estado.AGUARDANDO_CADASTRO_EXTERNO and self._envios):
                 # O formulário saiu da tela sem erro declarado: o envio aconteceu.
                 self.ciclo.enviado(Passo.ENVIO)
-            elif (tela.acao in ("codigo", "sucesso") and self.ciclo.estado() is Estado.AGUARDANDO_CADASTRO_EXTERNO):
-                self.ciclo.enviado(Passo.ENVIO)         # retomada: o envio foi antes do reinício
+            elif (tela.acao in ("codigo", "sucesso") and not tela.antes_do_envio
+                  and self.ciclo.estado() is Estado.AGUARDANDO_CADASTRO_EXTERNO):
+                self.ciclo.enviado(Passo.ENVIO)         # retomada: o envio foi antes do reinício (o código ANTES do envio não conta)
 
-            if tela.acao == "tocar":
+            if tela.acao == "tocar" and not (tela.envia or tela.dispara_codigo):
                 passo = Passo.INICIO
                 if not await self._tocar(tela.botao, tree):
                     return self._parar(Parada.TELA_DESCONHECIDA, passo)
-            elif tela.acao == "preencher":
-                passo = Passo.FORMULARIO
-                if self.ciclo.estado() is not Estado.AGUARDANDO_CADASTRO_EXTERNO or (tela.envia and self._envios):
-                    # O formulário continua na tela depois do envio, sem tela de erro declarada: não reenvia.
+            elif tela.acao in ("tocar", "preencher"):
+                passo = Passo.FORMULARIO if tela.acao == "preencher" else Passo.INICIO
+                if (self.ciclo.estado() is not Estado.AGUARDANDO_CADASTRO_EXTERNO
+                        or (tela.envia and self._envios) or (tela.dispara_codigo and self._disparos)):
+                    # O formulário (ou o botão que envia ou que dispara o código) continua na tela depois do toque, sem tela de erro
+                    # declarada: não repete. O código foi pedido uma vez; o envio, uma vez.
                     return self._parar(Parada.TELA_DESCONHECIDA, passo)
-                motivo = await self._preencher(tela)
-                if motivo is not None:
-                    return self._parar(motivo, passo)
-                momento = self._relogio()
-
-                def marcar_o_envio() -> None:
-                    # Grava `enviado` ANTES do toque: se o processo cair ou a tarefa for cancelada entre o toque e a gravação, o
-                    # banco já diz `aguardando_verificacao` e nenhuma execução nova reabre o formulário (no máximo uma vez). Se a
-                    # gravação falhar, o toque não acontece.
-                    nonlocal enviado_em
-                    self.ciclo.enviado(Passo.ENVIO)
-                    enviado_em = momento
-                    self._envios += 1
-
+                if tela.acao == "preencher":
+                    motivo = await self._preencher(tela)
+                    if motivo is not None:
+                        return self._parar(motivo, passo)
                 if tela.envia:
                     passo = self._passo = Passo.ENVIO
-                motivo = await self._tocar_relido(tela.botao, marcar_o_envio if tela.envia else None)
+                antes_do_toque = self._marcar_o_envio if tela.envia else self._marcar_o_disparo if tela.dispara_codigo else None
+                motivo = await self._tocar_relido(tela.botao, antes_do_toque)
                 if motivo is not None:
                     return self._parar(motivo, passo)
                 if tela.envia:
@@ -198,7 +211,7 @@ class MotorDeCadastro:
                 passo = Passo.CODIGO
                 if codigo_digitado:
                     return self._parar(Parada.CODIGO_NAO_CHEGOU, passo)      # a tela do código voltou: foi recusado
-                motivo = await self._digitar_o_codigo(tela, enviado_em)
+                motivo = await self._digitar_o_codigo(tela)
                 if motivo is not None:
                     return self._parar(motivo, passo)
                 codigo_digitado = True
@@ -214,6 +227,21 @@ class MotorDeCadastro:
         return self._parar(Parada.TELA_DESCONHECIDA, passo)
 
     # ------------------------------------------------------------------ passos
+    def _marcar_o_envio(self) -> None:
+        """Grava `enviado` ANTES do toque: se o processo cair ou a tarefa for cancelada entre o toque e a gravação, o banco já diz
+        `aguardando_verificacao` e nenhuma execução nova reabre o formulário (no máximo uma vez). Se a gravação falhar, o toque não
+        acontece."""
+        momento = self._relogio()
+        self.ciclo.enviado(Passo.ENVIO)
+        self._enviado_em = momento
+        self._envios += 1
+
+    def _marcar_o_disparo(self) -> None:
+        """Conta o toque que faz o app mandar o código (31.324), ANTES dele: é o piso do `desde` (nenhum e-mail anterior serve). Não muda
+        o estado da conta: a conta só passa a `aguardando_verificacao` no envio final."""
+        self._disparado_em = self._relogio()
+        self._disparos += 1
+
     def _parar(self, parada: Parada, passo: Passo) -> Desfecho:
         log.info("cadastro guiado de %s parou: %s (%s)", self.k.rotulo, parada.value, passo.value)
         try:
@@ -278,7 +306,7 @@ class MotorDeCadastro:
         return None
 
     async def _campo(self, campo: Campo, valor: str) -> Parada | None:
-        esperado = _arrobas(valor) if campo.dado == "usuario" else normalizar_texto_de_tela(valor)
+        esperado = _comparavel(campo.dado, valor)
         for _ in range(TENTATIVAS_DO_CAMPO):
             parada = await self._tela_segura()
             if parada is not None:
@@ -300,7 +328,7 @@ class MotorDeCadastro:
             atual = campo.alvo.unico(tree, editavel=True)
             if atual is None:
                 return Parada.TELA_DESCONHECIDA
-            lido = _arrobas(atual.text or "") if campo.dado == "usuario" else normalizar_texto_de_tela(atual.text)
+            lido = _comparavel(campo.dado, atual.text or "")
             if lido == esperado:
                 return None
         return Parada.TELA_DESCONHECIDA                                # nada foi enviado: o campo não ficou com o valor
@@ -334,10 +362,13 @@ class MotorDeCadastro:
             if atual is None or atual.nome != tela.nome:
                 return
 
-    async def _digitar_o_codigo(self, tela: TelaDeCadastro, enviado_em: datetime | None) -> Parada | None:
+    async def _digitar_o_codigo(self, tela: TelaDeCadastro) -> Parada | None:
         if self.dados.codigo is None or tela.campo is None:
             return Parada.CODIGO_NAO_CHEGOU
-        desde = enviado_em or self.ciclo.desde_do_envio()
+        # O código que o app manda ANTES do envio final tem o piso no toque que o pediu; o de depois do envio, no envio. Sem o toque
+        # na memória (a execução reiniciou no meio), o piso é o começo do cadastro (`desde_do_envio`): nenhum e-mail mais velho serve.
+        pedido_em = self._disparado_em if tela.antes_do_envio else self._enviado_em
+        desde = pedido_em or self.ciclo.desde_do_envio()
         if desde is None:
             return Parada.CODIGO_NAO_CHEGOU
         codigo = await self.dados.codigo(desde, self.k.codigo_espera_s)

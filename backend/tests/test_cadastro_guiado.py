@@ -686,13 +686,14 @@ def _com(nome: str, **mudancas: object) -> list[dict[str, Any]]:
     (_com("sucesso", sinais=["("]), "expressão regular inválida"),
     (_com("captcha", motivo="codigo_nao_chegou"), "motivo"),
     (_com("inicio", motivo="captcha"), "`motivo` só vale em `parar`"),
-    (_com("inicio", envia=True), "`envia` só vale em `preencher`"),
+    (_com("sucesso", envia=True), "`envia` só vale em `preencher` ou `tocar`"),
+    (_com("inicio", envia=True), "exatamente UM formulário"),     # 31.324: o envio pode ser um toque, mas continua sendo UM só
     (_com("inicio", botao=None), "precisa de"),
     (_com("formulario", campos=[{"dado": "senha", "id": ":id/p"}]), "segredo: true"),
     (_com("formulario", campos=[{"dado": "usuario", "id": ":id/u", "segredo": True}]), "só `senha` é segredo"),
     (_com("formulario", campos=[{"dado": "cpf", "id": ":id/u"}]), "não está em"),
     (_com("formulario", campos=[{"dado": "nome", "id": ":id/u"}]), "precisa preencher o `usuario`"),
-    (_com("formulario", campos=[{"dado": "usuario"}]), "diga `id` ou `texto`"),
+    (_com("formulario", campos=[{"dado": "usuario"}]), "diga `id`, `texto`, `classe`"),
     (_com("formulario", acao="fazer"), "acao"),
 ])
 def test_yaml_invalido_nas_telas(telas: list[dict[str, Any]], trecho: str) -> None:

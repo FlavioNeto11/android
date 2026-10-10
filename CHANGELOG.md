@@ -55,6 +55,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova **simulada**: `tests/test_receita_da_exploracao_parte_do_estado_conhecido.py` (12) e 516 dirigidos de receita/exploração/sombra; mypy no teto (257). **Real: não executada**
   (o replay no Outlook real segue `not_run`).
 
+## 2026-10-10 — cadastro guiado para o app de campo sem id: critérios do Alvo, nascimento e código antes do envio (31.324 G1)
+
+- `cadastro_conhecimento.py`: o `Alvo` ganha `classe`, `abaixo_do_rotulo` (campo mais próximo logo abaixo do rótulo, pelo centro e com
+  sobreposição horizontal), `ordem` (ordem de leitura) e `senha`; dados `nascimento_dia|mes|ano`; `dispara_codigo`/`antes_do_envio` (andam
+  juntos); `envia` e `dispara_codigo` também em `tocar`. Fica recusado: só `ordem` sem outro critério, `ordem` fora de 1..20, rótulo inválido.
+- `cadastro.py`: o `desde` do código de antes do envio é o toque que o pediu (`_marcar_o_disparo`); esse código não marca `enviado`; o envio
+  por toque é marcado antes do toque e uma vez só; a data é conferida na tela só pelos números ("07" = "7"); sem data, para.
+- `cadastro_guiado.py`: 409 `sem_nascimento` / `persona_menor_de_idade` antes de tocar no aparelho (a mensagem nunca traz a data).
+- Nenhum app real declara o cadastro ainda: o `cadastro.yaml` do Instagram espera a captura da igfarm. Decisão a registrar em ADR quando a
+  regra "sem ADR novo até a prova final" for levantada (estende o ADR-087).
+- Prova `simulated`: `tests/test_cadastro_instagram_like.py` (48: árvore Bloks com a forma da captura, ponta a ponta, retomada, paradas,
+  carregador e serviço) + `tests/test_cadastro_guiado.py` (58, dois casos de mensagem ajustados), catracas 103, mypy 257 (teto). Mutação
+  conferida: tirar o `not tela.antes_do_envio` derruba 7 testes. `real`: `not_run`.
+
 ## 2026-10-10 — tela humana = bloqueio definitivo: motivo como dado e rótulo "bloqueada" (31.322, migração 136)
 
 - Migração 136 aditiva: `contas_retiradas.motivo_do_bloqueio` (JSON). `identity/infrastructure/motivo_bloqueio.py` monta o objeto ANTES da
