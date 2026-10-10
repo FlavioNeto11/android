@@ -868,3 +868,4 @@ orquestradora; ela anota aqui antes de responder.
 | próximos livres (atualização 10/10 14:15Z) | 31.310, 29.212, 28.78; ADR-092; migração 134; adendo v1.137; K-112 | |
 | 31.310 | Jev (Aprendizado revisa) | fecho do ciclo conta planejada → confirmada (ADR-087, ponto aberto do 31.284): cadastro externo guiado pela plataforma e leitura do código de e-mail da caixa da própria conta (ADR-090) pelo canal sensível e observação de sessão; sem tocar na decisão do dono sobre a evidência do igfarm; DESENHO primeiro (doc curto para a orquestradora) e só depois código | Jev | reservado 10/10 14:26Z |
 | próximos livres (atualização 10/10 14:26Z) | 31.311, 29.212, 28.78; ADR-092; migração 134; adendo v1.137; K-113 | |
+| adendo v1.137 | 31.310 (Jev): POST .../provisioning/signup (202) e campo fechado proximo_passo no ProvisioningInfo | Jev | concedido 10/10 14:28Z; próximo livre v1.138 |
