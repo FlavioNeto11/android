@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-878 de 967 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+886 de 970 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -946,17 +946,20 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.317 | implemented | simulated |  | — | 34 testes dirigidos do egresso + catracas 103 verdes (Ponte, 10/10). Real not_run: a próxima conta retirada com o aparelho em quarentena prova o limpar_egresso durante a quarentena. |  |
 | 31.318 | implemented | simulated |  | — | scripts/tests/test_rascunho_de_telas.py: 14 passed (Jev, 10/10); api-contract com um só adendo v0.9 (o segundo virou v0.9b), InstanceState lista hibernated; rascunho-de-telas com --ignorar e testes de borda. docs-check… |  |
 | 31.319 | implemented | simulated |  | — | backend/tests/test_incertos_device_network.py: 23 casos + catracas (Ponte, 10/10); na PG dirigida do 72 o teste usava INSERT OR REPLACE (só SQLite) e foi corrigido para upsert portável em ac189b091 (verde em SQLite e PG… |  |
-| 31.320 | pendente | — | — | — |  |  |
+| 31.320 | implemented | simulated |  | — | backend/tests/test_db_conexao_por_thread.py (31: 1º token, quem segura a trava, teto de conexões, conexão que some com a thread, reconexão por thread, :memory:, fatias e pausas da retenção, escritor de outra thread no m… |  |
 | 31.321 | pendente | — | — | — |  |  |
 | 31.322 | implemented | simulated |  | — | 184 testes (motivo na lápide e no evento, egresso x2, memória da conta retirada, limpeza ao retirar) + catracas 103 + arquitetura; mypy 257; migração 136 (contas_retiradas.motivo_do_bloqueio) ensaiada pela Android em có… |  |
-| 31.323 | pendente | — | — | — |  |  |
-| 31.324 | pendente | — | — | — |  |  |
+| 31.323 | implemented | simulated |  | — | backend/tests/test_imagem_da_tela_sensivel_na_rotina.py (todas as combinações de política, árvore e pedido; nenhuma produz 'sensivel') + 43 dirigidos de imagem/aviso + 360 de login, credencial, catracas e cadastro guiad… |  |
+| 31.324 | implemented | simulated |  | — | PARCIAL (G1, o que não depende da captura): backend/tests/test_cadastro_instagram_like.py (48) e test_cadastro_guiado.py (58), + catracas e test_arquitetura: 209 verdes (Jev, 10/10): Alvo com classe, abaixo_do_rotulo, o… |  |
 | 31.325 | implemented | simulated |  | — | política por verbo, exploração de efeito e catracas: 143 passed sobre 66dd17f98 (Aprendizado, 10/10); destrutivos (apagar, comprar, transferir, encerrar, desinstalar, resetar) = approval_required, demais = autonomous; a… |  |
-| 31.326 | pendente | — | — | — |  |  |
-| 31.327 | pendente | — | — | — |  |  |
+| 31.326 | implemented | simulated |  | — | frontend: tsc limpo e 872 testes dirigidos (ContaBloqueada.test.tsx 10 novos; profiles, pendencias, painel, store, lib) verdes (Portal, 10/10): rótulo 'bloqueada' no selo, cabeçalho, fila, pendências e aviso; cartão 'Co… |  |
+| 31.327 | implemented | simulated |  | — | backend/tests/test_receita_da_exploracao_parte_do_estado_conhecido.py (12, árvores sintéticas do Outlook) + 516 dirigidos de receita, exploração, sombra e catracas verdes (Aprendizado, 10/10): recipes.mesmo_alvo compara… |  |
 | 31.328 | pendente | — | — | — |  |  |
-| 31.329 | pendente | — | — | — |  |  |
+| 31.329 | implemented | simulated |  | — | backend/tests/test_egresso_na_janela.py (8) + test_instagram_auth, test_codigo_por_email, rede_por_aparelho + catracas: 189 verdes (Ponte, 10/10); mypy 257; adendo v1.143 (evento session.egresso_na_janela, linha em netw… |  |
 | 31.330 | implemented | real |  | — | Real no Trello, 10/10/2026 17:5xZ-18:05Z, host central, ramo canais/em-curso-lista-unica (31a3406de → 8adc36d1d; skill em d2a95a816): passada única moveu 547 cartões + 9 do reconciliar, 0 falhas; contagens lidas da API… |  |
+| 31.331 | implemented | simulated |  | — | backend/tests/test_teto_da_exploracao_31_331.py (6) + teto, aviso, custo por passo, exploração, arquitetura e catracas: 294 + 248 + 147 verdes (Aprendizado, 10/10); mypy 257: teto em US$ conta só as etapas exploratórias… |  |
+| 31.332 | implemented | simulated |  | — | backend/tests/test_conta_nao_encontrada.py (12: hierarquia real do retry do H2 com identificador trocado, máscara, motor contra o aparelho falso) + test_sessao_declarada, test_instagram_auth, test_aparelho_persona_sessa… |  |
+| 31.333 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -974,7 +977,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (89): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.156, 29.162, 29.166, 29.168, 29.172, 29.173, 29.174, 29.180, 29.182, 29.185, 29.186, 29.191, 29.200, 29.201, 29.202, 29.203, 29.204, 29.205, 29.206, 29.207, 29.208, 29.209, 29.210, 29.211, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.161, 31.162, 31.233, 31.245, 31.246, 31.247, 31.252, 31.254, 31.255, 31.256, 31.257, 31.261, 31.263, 31.264, 31.265, 31.266, 31.269, 31.320, 31.321, 31.323, 31.324, 31.326, 31.327, 31.328, 31.329, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (84): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.156, 29.162, 29.166, 29.168, 29.172, 29.173, 29.174, 29.180, 29.182, 29.185, 29.186, 29.191, 29.200, 29.201, 29.202, 29.203, 29.204, 29.205, 29.206, 29.207, 29.208, 29.209, 29.210, 29.211, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.161, 31.162, 31.233, 31.245, 31.246, 31.247, 31.252, 31.254, 31.255, 31.256, 31.257, 31.261, 31.263, 31.264, 31.265, 31.266, 31.269, 31.321, 31.328, 31.333, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

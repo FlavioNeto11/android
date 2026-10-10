@@ -14235,6 +14235,110 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-10T20:12:18+00:00"
+  },
+  "31.326": {
+   "id": "31.326",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "ad70b6c5f",
+   "evidence": "frontend: tsc limpo e 872 testes dirigidos (ContaBloqueada.test.tsx 10 novos; profiles, pendencias, painel, store, lib) verdes (Portal, 10/10): rótulo 'bloqueada' no selo, cabeçalho, fila, pendências e aviso; cartão 'Conta bloqueada' com o motivo lido de contas_retiradas (v1.142) e do evento; lista 'Contas retiradas por bloqueio'; grupo de acesso sem as de teste; + 2 achados da varredura de UX dos deploys 70/71 (frase de vazio do filtro de exploração; seletor de grupo sem as de teste). Percurso real no deploy 73: not_run até o Portal rodar.",
+   "grupo": "janela82",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T23:34:49+00:00"
+  },
+  "31.323": {
+   "id": "31.323",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "c5e174f19",
+   "evidence": "backend/tests/test_imagem_da_tela_sensivel_na_rotina.py (todas as combinações de política, árvore e pedido; nenhuma produz 'sensivel') + 43 dirigidos de imagem/aviso + 360 de login, credencial, catracas e cadastro guiado verdes (Aprendizado, 10/10); mypy 257. Interpretação registrada em docs/ia.md: decisão de rotina = mesma régua das outras telas; ler_valor_visual segue recusando a árvore sensível. Real not_run (sem chamada paga).",
+   "grupo": "janela82",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T23:34:49+00:00"
+  },
+  "31.327": {
+   "id": "31.327",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "51716f261",
+   "evidence": "backend/tests/test_receita_da_exploracao_parte_do_estado_conhecido.py (12, árvores sintéticas do Outlook) + 516 dirigidos de receita, exploração, sombra e catracas verdes (Aprendizado, 10/10): recipes.mesmo_alvo compara o menor clicável no centro (não element_id); divergência grava os dois alvos; _partir_do_estado_conhecido antes da 1ª decisão exploratória; distill exige partida do estado conhecido. Real: replay A→A2→A3 autorizado após o deploy 73 (teto US$ 0,20), not_run.",
+   "grupo": "janela82",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T23:34:49+00:00"
+  },
+  "31.329": {
+   "id": "31.329",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "9007f2f01",
+   "evidence": "backend/tests/test_egresso_na_janela.py (8) + test_instagram_auth, test_codigo_por_email, rede_por_aparelho + catracas: 189 verdes (Ponte, 10/10); mypy 257; adendo v1.143 (evento session.egresso_na_janela, linha em network_measurements). Real not_run até a próxima conta do igfarm com proxy vivo (na bifurcação a regra foi aplicada à mão: H1 medido 23 s antes).",
+   "grupo": "janela82",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T23:34:49+00:00"
+  },
+  "31.324": {
+   "id": "31.324",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "e079a325f",
+   "evidence": "PARCIAL (G1, o que não depende da captura): backend/tests/test_cadastro_instagram_like.py (48) e test_cadastro_guiado.py (58), + catracas e test_arquitetura: 209 verdes (Jev, 10/10): Alvo com classe, abaixo_do_rotulo, ordem e senha; nascimento_dia|mes|ano da birth_date da persona; dispara_codigo/antes_do_envio; 409 sem_nascimento e persona_menor_de_idade (adendo v1.144). Falta: declaração das telas do cadastro do Instagram (conteúdo do servidor; captura offline parcial em .claude/handoffs/captura-cadastro-instagram/ só com a tela deslogada e 'Create new account'); espera sessão sticky do igfarm (P-050).",
+   "grupo": "janela82",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T23:34:49+00:00"
+  },
+  "31.320": {
+   "id": "31.320",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "c3ac3e900",
+   "evidence": "backend/tests/test_db_conexao_por_thread.py (31: 1º token, quem segura a trava, teto de conexões, conexão que some com a thread, reconexão por thread, :memory:, fatias e pausas da retenção, escritor de outra thread no meio da purga) + test_db, test_laco_sem_sql_sincrono, test_operacoes, retenção: 238 verdes; regressão ampla 2805 passed/7 skipped (-n 4 Idle); PG dirigido farm-pg-rapido 52 arquivos 1115 passed (21:43-22:10Z); mypy 257; experimento do desenho: leitura de 5 s em thread, laço sem batida no máximo 102 ms (modelo antigo: 4,7 s). Medidas só leitura do central: measurements 195.255 linhas, events 67.574, régua diária 21 ms. /health expõe open_connections e slow_queries_in_loop. Real no central (laco-por-hora 71×72×73) not_run até horas de operação do 73. ADR-092 guardado, não escrito (regra do dono).",
+   "grupo": "janela82",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T23:34:49+00:00"
+  },
+  "31.332": {
+   "id": "31.332",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "9d788b065",
+   "evidence": "backend/tests/test_conta_nao_encontrada.py (12: hierarquia real do retry do H2 com identificador trocado, máscara, motor contra o aparelho falso) + test_sessao_declarada, test_instagram_auth, test_aparelho_persona_sessao, test_egresso_na_janela, test_arquitetura: 141 verdes + catracas 103 (Ponte, 10/10); mypy 257. Outcome CONTA_NAO_ENCONTRADA terminal; auth_required; credencial em review; conta não retirada; TRY AGAIN/SIGN UP nunca tocados. Real not_run (a tela real de 19:36Z foi classificada como incerta pelo código anterior).",
+   "grupo": "janela82",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T23:34:49+00:00"
+  },
+  "31.331": {
+   "id": "31.331",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "3599f1eb6",
+   "evidence": "backend/tests/test_teto_da_exploracao_31_331.py (6) + teto, aviso, custo por passo, exploração, arquitetura e catracas: 294 + 248 + 147 verdes (Aprendizado, 10/10); mypy 257: teto em US$ conta só as etapas exploratórias e olha a próxima chamada; sem step_budget na exploração; efeito_liberado 1x por execução/instância/chave. Real: 3ª prova do P-046 autorizada após o deploy 73 (mensagem não lida, teto US$ 0,25), not_run.",
+   "grupo": "janela82",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-10T23:34:49+00:00"
   }
  },
  "rodadas": [
@@ -18181,6 +18285,22 @@
    ],
    "grupos": [
     "janela81"
+   ]
+  },
+  {
+   "quando": "2026-10-10T23:34:49+00:00",
+   "itens": [
+    "31.326",
+    "31.323",
+    "31.327",
+    "31.329",
+    "31.324",
+    "31.320",
+    "31.332",
+    "31.331"
+   ],
+   "grupos": [
+    "janela82"
    ]
   }
  ]
