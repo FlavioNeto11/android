@@ -906,4 +906,12 @@ orquestradora; ela anota aqui antes de responder.
 | 31.332 | Ponte | diálogo "Can't find account" do login do Instagram declarado em telas.yaml/sessao.yaml a partir da hierarquia real de 10/10: desfecho conta_nao_encontrada (terminal, auth_required, credencial em review, conta não retirada, identificador mascarado), sem toque nos botões | Ponte | reservado 10/10 23:34Z |
 | adendo v1.144 | Jev | 409 sem_nascimento e persona_menor_de_idade da rota signup + vocabulário do cadastro.yaml (31.324 G1) | Jev | reservado 10/10 23:34Z |
 | 31.333 | Ponte | por que contas criadas pela API do igfarm morrem (pedido do dono 10/10, cartão COG65yCO): nascem created e somem; investigar o signup com senha/e-mail gravados contra o IP IPRoyal da criação, com os dados da bifurcação (B inexistente ~2 h após o registro) | Ponte | reservado 10/10 23:34Z |
-| próximos livres (atualização 10/10 23:34Z) | 31.334, 29.212, 28.78; ADR-093 (092 guardado p/ Jev); migração 137; adendo v1.145; K-114 | |
+| 31.334 | Jev | app signup é o caminho principal (virada do dono 11/10): o cadastro da conta Instagram é feito no app, no aparelho; o igfarm vira apoio (e-mail, código, SMS, proxy); desenho primeiro, ligado ao 31.324 | Jev | reservado 11/10 01:09Z |
+| 31.335 | Ponte | aposentar o signup pela API do igfarm (não apagar): caminho de criação via API desligado por config/flag; registro, consentimento, ciclo e proxy mantidos como apoio | Ponte | reservado 11/10 01:09Z |
+| 31.336 | Ponte | checagem do domínio nvit.com.br flagado antes de escalar (pré-condição do dono): só leitura, método e resultado como dado | Ponte | reservado 11/10 01:09Z |
+| adendo v1.145 | Ponte | GET /api/instagram/contas/{id}/ciclo (31.333) | Ponte | reservado 11/10 01:09Z |
+| adendo v1.146 | Ponte | flag contas.criacao_pela_api_do_igfarm e 409 criacao_pela_api_aposentada em personas-pendentes (31.335) | Ponte | reservado 11/10 01:09Z |
+| adendo v1.147 | Ponte | GET /api/instagram/contas/{id}/cabecalhos, só cabeçalhos da caixa catch-all (31.336) | Ponte | reservado 11/10 01:09Z |
+| adendo v1.148 | Ponte | POST /api/instagram/profiles/{id}/accounts/{aid}/proxy e a fase em session.egresso_na_janela (31.337) | Ponte | reservado 11/10 01:09Z |
+| 31.337 | Ponte | perfil de proxy sticky por conta planejada antes do primeiro toque do cadastro no app (igfarm só entrega o proxy_url); perfil nasce no planejamento, egresso medido na janela (31.329) | Ponte | reservado 11/10 01:09Z |
+| próximos livres (atualização 11/10 01:09Z) | 31.338, 29.212, 28.78; ADR-093 (092 guardado p/ Jev); migração 137; adendo v1.149; K-114 | |

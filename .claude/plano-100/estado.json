@@ -13993,14 +13993,14 @@
    "id": "31.306",
    "status": "implemented",
    "proof": "real",
-   "commit": "d0fbcc5d",
-   "evidence": "Real parcial no central d0fbcc5d, 10/10/2026 15:4xZ: GET /api/runs real traz etapas_exploratorias em todas as 200 lidas (v1.135); filtro 'Com etapa descoberta pela IA (0 nas carregadas)' aparece. not_run: execução com etapa descoberta de verdade (o central não tem exploração).",
-   "grupo": "janela80",
+   "commit": "a9853379e",
+   "evidence": "Real no central a9853379e (deploy 73), 10/10/2026 23:4xZ, Portal: o caso positivo existe: o filtro 'Com etapa descoberta pela IA (8)' lista as 8 execuções, cada uma com o selo; antes só havia o caso vazio (0 execuções exploratórias).",
+   "grupo": "janela83",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T18:38:32+00:00"
+   "quando": "2026-10-11T01:09:41+00:00"
   },
   "31.308": {
    "id": "31.308",
@@ -14070,15 +14070,15 @@
   "31.313": {
    "id": "31.313",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "0eed4e0a",
-   "evidence": "Commit 0eed4e0a, na main fora do deploy 70 (corte 71, não implantado). frontend/src/features/runs/EnsinarACorrigir.test.tsx (5 testes novos: intent e pergunta do servidor, pedido fora do campo de intenção) e features/training/OrigemDaExploracao.test.tsx. Real: not_run.",
-   "grupo": "janela79",
+   "proof": "real",
+   "commit": "a9853379e",
+   "evidence": "Real no central a9853379e (deploy 73), 10/10/2026 23:4xZ, Portal, .claude/handoffs/portal-resultado-percurso-real-deploy73.json: com exploração no central (P-046), a lista de Execuções mostra 'Com etapa descoberta pela IA (8)' e a execução r-20261010211521 exibe a etapa descoberta; diálogo do 31.313 aberto e cancelado sem efeito. not_run: o selo 'ensina onde a IA parou' no Treino (exige assumir o aparelho).",
+   "grupo": "janela83",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T15:46:27+00:00"
+   "quando": "2026-10-11T01:09:41+00:00"
   },
   "31.297": {
    "id": "31.297",
@@ -14240,14 +14240,14 @@
    "id": "31.326",
    "status": "implemented",
    "proof": "simulated",
-   "commit": "ad70b6c5f",
-   "evidence": "frontend: tsc limpo e 872 testes dirigidos (ContaBloqueada.test.tsx 10 novos; profiles, pendencias, painel, store, lib) verdes (Portal, 10/10): rótulo 'bloqueada' no selo, cabeçalho, fila, pendências e aviso; cartão 'Conta bloqueada' com o motivo lido de contas_retiradas (v1.142) e do evento; lista 'Contas retiradas por bloqueio'; grupo de acesso sem as de teste; + 2 achados da varredura de UX dos deploys 70/71 (frase de vazio do filtro de exploração; seletor de grupo sem as de teste). Percurso real no deploy 73: not_run até o Portal rodar.",
-   "grupo": "janela82",
+   "commit": "37ba0f896",
+   "evidence": "Percurso real pós-deploy 73 (a9853379e) PARCIAL (Portal, 10/10 23:4xZ): GET /api/personas devolve contas_retiradas em todas (10 personas com retirada, motivo_do_bloqueio nulo por serem anteriores à migração 136); seletor de grupo 'Liberado · 14 personas' sem as 2 de teste (real). DEFEITO achado e corrigido em 37ba0f896 (lista 'Contas retiradas por bloqueio' e grupo contavam só personas com @): tsc + 290 dirigidos de profiles verdes, simulated; no ar desde o deploy 74 (263e0815d, 11/10 01:04Z). not_run: lista corrigida ao vivo (percurso do Portal no 74 em curso), motivo preenchido e rótulo 'bloqueada' ao vivo (nenhuma conta_travada após a 136), frase de vazio de Execuções (há 8 descobertas).",
+   "grupo": "janela83",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T23:34:49+00:00"
+   "quando": "2026-10-11T01:09:41+00:00"
   },
   "31.323": {
    "id": "31.323",
@@ -14305,14 +14305,14 @@
    "id": "31.320",
    "status": "implemented",
    "proof": "simulated",
-   "commit": "c3ac3e900",
-   "evidence": "backend/tests/test_db_conexao_por_thread.py (31: 1º token, quem segura a trava, teto de conexões, conexão que some com a thread, reconexão por thread, :memory:, fatias e pausas da retenção, escritor de outra thread no meio da purga) + test_db, test_laco_sem_sql_sincrono, test_operacoes, retenção: 238 verdes; regressão ampla 2805 passed/7 skipped (-n 4 Idle); PG dirigido farm-pg-rapido 52 arquivos 1115 passed (21:43-22:10Z); mypy 257; experimento do desenho: leitura de 5 s em thread, laço sem batida no máximo 102 ms (modelo antigo: 4,7 s). Medidas só leitura do central: measurements 195.255 linhas, events 67.574, régua diária 21 ms. /health expõe open_connections e slow_queries_in_loop. Real no central (laco-por-hora 71×72×73) not_run até horas de operação do 73. ADR-092 guardado, não escrito (regra do dono).",
-   "grupo": "janela82",
+   "commit": "9de33fb83",
+   "evidence": "Etapa 1+2 (c3ac3e900, deploy 73) + ponto 9 (9de33fb83, deploy 74): _conferir_interrupcoes/_gravar_interrupcao async, só o INSERT de measurements(kind='irq') vai a asyncio.to_thread; tests/test_laco_sem_sql_sincrono.py::test_a_fracao_de_interrupcao_e_gravada_fora_da_thread_do_laco (mutação conferida) + 267 verdes; mypy 257 (Jev, 10/10). Medida real (scripts/laco-por-hora.py, período 72, 20:10Z–23:33Z): 0 episódios ≥ 10 s em 3,4 h (antes 0,36/h) e UMA consulta síncrona > 1 s (o INSERT do irq, 1,1 s, corrigido no ponto 9). Real parcial: PG inteira do 73 (13216 passed, 23:34–00:2xZ) rodou com o central saudável do início ao fim. Real completo (laco-por-hora 71×72×73×74 com horas do 74) not_run; etapa 3 (fila de escrita) fica só como desenho, a medida não a justifica.",
+   "grupo": "janela83",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T23:34:49+00:00"
+   "quando": "2026-10-11T01:09:41+00:00"
   },
   "31.332": {
    "id": "31.332",
@@ -14339,6 +14339,45 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-10T23:34:49+00:00"
+  },
+  "31.328": {
+   "id": "31.328",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "790952e58",
+   "evidence": "backend/tests/test_leitura_visual_conteudo_de_terceiros.py (13) + bateria de leitura visual verdes (Aprendizado, 10/10): a região da caixa do Outlook ganha conteudo_de_terceiros em telas.yaml e nela a frase de verificação humana não conta na triagem do recorte nem do valor (saidas._desafio_de_conta); código, token, senha e pedido de código seguem recusados; tela de desafio e conta travada continuam pela árvore. Real: o telas.yaml novo é carregado pelo código do deploy 74 (263e0815d, 11/10 01:04Z, saúde ok após o incidente do pull sem deploy); o pedido misto completo no Outlook segue not_run.",
+   "grupo": "janela83",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T01:09:41+00:00"
+  },
+  "31.333": {
+   "id": "31.333",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "99468a161",
+   "evidence": "GET /api/instagram/contas/{id}/ciclo (cb894bc9d + 99468a161; adendo v1.145): junta contas_igfarm, authentication_attempts e a lápide; estado ativa/retirada, minutos até o primeiro contato e por contato minutos desde a criação e desfecho; sem @, e-mail nem mascarado; dirigidos + catracas 103 + mypy 257 verdes (Ponte, 10/10); test_ordem_das_rotas consertado em 263e0815d. Análise (docs/dominios/perfis-e-instagram.md e .claude/handoffs/ponte-31-333-analise.md): hipóteses de por que as contas da API do igfarm somem (B: 'Can't find account' ~2 h após o registro) e 4+3 perguntas ao igfarm no cartão COG65yCO. Real not_run: depende das respostas do igfarm e da próxima conta (protocolo aprovado, após P-049/P-050).",
+   "grupo": "janela83",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T01:09:41+00:00"
+  },
+  "31.334": {
+   "id": "31.334",
+   "status": "partial",
+   "proof": "not_run",
+   "commit": "5b35297cd",
+   "evidence": "Desenho primeiro (Jev, 11/10, só docs, 5b35297cd): docs/dominios/persona.md ganha 'O cadastro no app é o caminho principal (31.334)': o que o G1 do 31.324 já cobre, lacunas L1 (caixa da conta planejada sem o igfarm) e L2 (proxy sticky por conta antes do primeiro toque, → 31.337), SMS sem rota, critérios de sucesso. Sem código, migração ou ADR. Bloqueio: captura das telas do cadastro com sessão sticky nova (P-050) para o cadastro.yaml do Instagram. Prova not_run.",
+   "grupo": "janela83",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T01:09:41+00:00"
   }
  },
  "rodadas": [
@@ -18301,6 +18340,21 @@
    ],
    "grupos": [
     "janela82"
+   ]
+  },
+  {
+   "quando": "2026-10-11T01:09:41+00:00",
+   "itens": [
+    "31.313",
+    "31.306",
+    "31.326",
+    "31.328",
+    "31.333",
+    "31.320",
+    "31.334"
+   ],
+   "grupos": [
+    "janela83"
    ]
   }
  ]
