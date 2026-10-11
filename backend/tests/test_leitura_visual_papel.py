@@ -462,9 +462,10 @@ def test_o_dado_do_outlook_declara_a_regiao_da_caixa_e_o_pacote_carrega() -> Non
     assert "com.microsoft.office.outlook" in manifestos            # a conferência contra o catálogo passou na carga
     from app.automation import conhecimento_de_telas as t
     k = t.da_pasta(CONHECIMENTO_DE_APPS / "com.microsoft.office.outlook")
-    [r] = k.regioes_visuais
-    assert (r.tela, r.dentro_de, r.saidas) == ("caixa_de_entrada", ("com.microsoft.office.outlook:id/conversation_list",),
-                                               ("remetente", "assunto"))
+    # 31.339: a caixa e as pastas de sistema (a lista e o mesmo componente) declaram a mesma região
+    assert [r.tela for r in k.regioes_visuais] == ["caixa_de_entrada", "pasta_de_email"]
+    for r in k.regioes_visuais:
+        assert (r.dentro_de, r.saidas) == (("com.microsoft.office.outlook:id/conversation_list",), ("remetente", "assunto"))
 
 
 # ====================================================================== migração 078
