@@ -72,7 +72,7 @@ def etapa_citada(detalhe: str | None) -> tuple[int, str] | None:
 
 # ------------------------------------------------------------------ o veredito da prova (a regra, só sobre dados)
 #: Ferramentas que não mexem no aparelho: quem só as usou não agiu (o ator observou e declarou pronto).
-SEM_ACAO = frozenset({"step_done", "step_blocked", "observe_screen", "find_element", "wait_for", "verify_state"})
+SEM_ACAO = frozenset({"step_done", "step_blocked", "observe_screen", "find_element", "find_row", "wait_for", "verify_state"})
 #: Ferramentas que podem disparar um efeito externo (`automation.tools.EFFECT_CAPABLE`).
 COM_EFEITO = frozenset({"tap", "long_press", "drag", "type_text"})
 

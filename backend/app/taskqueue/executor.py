@@ -28,7 +28,7 @@ from ..automation import tools as ferramentas
 from ..automation.driver import DriverBusy, DriverError, DriverTimeout, FalhaDeLeitura, sessao_perdida
 from ..automation.hierarchy import (MOTIVO_DESAFIO, MOTIVO_SENHA, SUBTIPO_CODIGO, SUBTIPO_CONTA_TRAVADA,
                                     SUBTIPO_VERIFICACAO, ContaTravada, UiElement, UiTree)
-from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, Drag, ReadValue, StepBlocked, StepDone,
+from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, Drag, FindRow, ReadValue, StepBlocked, StepDone,
                                 TelaDeContaTravada, ToolContext, ToolValidationError, esperar_foco, execute_tool,
                                 looks_like_commit, resolve_point, urls_do_texto, validate_call)
 from ..config import AiCfg, Config, LimitsCfg
@@ -84,11 +84,13 @@ from .dialogos import (FRACAO_DA_PAGINA, FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, L
                        MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha,
                        dialogo_sem_saida, e_navegador, rotulo_para_o_ator, texto_da_barra, tipo_do_elemento,
                        toque_que_aceita)
+from .linha_por_remetente import SAIDA as SAIDA_DA_LINHA
+from .linha_por_remetente import achar_linhas_por_remetente
 from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
-from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
-                     LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
-                     ler_valor_visual, nomes_citados, razao_sem_segredo, texto_da_tela, texto_do_elemento, triagem,
-                     variaveis_da_receita)
+from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto, LeituraVisual,
+                     LeituraVisualRecusada, ObterImagem, Transcrever, args_da_chamada_invalida, args_sem_valor,
+                     como_texto, ler_valor, ler_valor_visual, nomes_citados, razao_sem_segredo, texto_da_tela,
+                     texto_do_elemento, triagem, variaveis_da_receita)
 
 if TYPE_CHECKING:
     from ..modules.identity.application.persona_images import PersonaImageService
@@ -3092,6 +3094,47 @@ class StepExecutor:
                 forcar_tier_1 = True
                 continue
             rationale = getattr(args, "rationale", None)
+            if isinstance(args, FindRow):
+                # ---------- 31.340: a linha de uma lista cega pelo REMETENTE, lido da imagem às cegas (ADR-070). Só os
+                # element_id voltam ao ator: nem a transcrição, nem o remetente das outras linhas, nem o assunto.
+                conhecimento_f = telas_do_app.da_pasta(CONHECIMENTO_DE_APPS / (app.package or ""))
+                reconhecida_f = (telas_do_app.classificar(conhecimento_f, obs.tree, package=obs.package)
+                                 if conhecimento_f is not None else None)
+                tela_f = reconhecida_f.tela if reconhecida_f is not None else None
+                obter_f, transcrever_f = self._leitor_de_linhas(rt, obs, run_id=run_id, oid=oid, step=step,
+                                                                deadline=deadline, attempt_id=attempt_id,
+                                                                call_timeout=call_timeout, ai_cfg=ai_cfg)
+                fora_f = self._tela_fora_do_app(step, obs, app.package)
+
+                async def ler_linha(linha: UiElement) -> LeituraVisual:
+                    return await ler_valor_visual(
+                        habilitado=ai_cfg.leitura_visual.enabled, arvore=obs.tree, element_id=linha.id, nome=SAIDA_DA_LINHA,
+                        valor_do_ator=args.sender, conhecimento=conhecimento_f, tela=tela_f,
+                        image_policy=ai_cfg.image_policy, fora_do_app=fora_f, largura=obs.width, altura=obs.height,
+                        obter_imagem=obter_f, tentativas=tentativas_visuais,
+                        tipo_da_tela=reconhecida_f.tipo if reconhecida_f else None,
+                        transcrever=transcrever_f if self._tem_leitor() else None, recusas=recusas_visuais)
+
+                try:
+                    achadas = await achar_linhas_por_remetente(obs.tree, conhecimento_f, tela_f, ler=ler_linha)
+                except AIError as exc:
+                    return await desfecho_de_ia(exc, obs, "a busca da linha")
+                aid = intencao("find_row", {"sender_chars": len(args.sender)}, None, side_effect=False)
+                repo.finish_action(aid, ActionStatus.done,
+                                   result={"candidatas": achadas.candidatas, "lidas": achadas.lidas,
+                                           "puladas": achadas.puladas, "achadas": [e.id for e in achadas.linhas],
+                                           "indisponivel": achadas.indisponivel})
+                if achadas.indisponivel:
+                    history.append(f"find_row REJEITADA: {achadas.indisponivel}; leia a imagem e toque pelas coordenadas")
+                elif achadas.linhas:
+                    history.append("find_row → linha(s) do remetente pedido, de cima para baixo: "
+                                   + ", ".join(e.line(self._image_scale(obs, ai_cfg)) for e in achadas.linhas)
+                                   + f" ({achadas.lidas} de {achadas.candidatas} linhas lidas)")
+                else:
+                    history.append(f"find_row → nenhuma das {achadas.lidas} linhas lidas é desse remetente"
+                                   + (f" ({achadas.puladas} não puderam ser lidas)" if achadas.puladas else "")
+                                   + "; role a lista para ver outras linhas")
+                continue
             if isinstance(args, ReadValue):
                 # ---------- valor para as etapas seguintes (item 24.3): lido da árvore pelo executor, triado (D3). Só na
                 # tela cega que o app declara (item 12.5, ADR-070) o valor pode vir da IMAGEM, conferido às cegas.
@@ -4061,6 +4104,35 @@ class StepExecutor:
         if post.kind == "items_collected":         # só o resultado de collect_list comprova (tratado antes de verificar)
             return False, "os itens ainda não foram coletados (collect_list)"
         return True, ""
+
+    def _leitor_de_linhas(self, rt: DeviceRuntime, obs: Observation, *, run_id: str, oid: str, step: StepDTO, deadline: float,
+                          attempt_id: str, call_timeout: float, ai_cfg: AiCfg) -> tuple[ObterImagem, Transcrever]:
+        """31.340: a imagem e o leitor às cegas da `find_row`, os mesmos da `read_value` visual (mesmas recusas)."""
+        async def obter_imagem() -> tuple[UiTree, bytes | None, int, int] | None:
+            if obs.jpeg is not None:
+                return obs.tree, obs.jpeg, obs.width, obs.height
+            if obs.sensitive:
+                return None
+            try:
+                nova = await self.devices.observe(rt, timeout=call_timeout, imagem=True, lado_max=ai_cfg.screenshot_max_side)
+            except (DriverError, DriverTimeout):
+                return None
+            return nova.tree, nova.jpeg, nova.width, nova.height
+
+        async def transcrever(recorte: bytes, pedidas: dict[str, str]) -> Transcricao:
+            try:
+                return await self._ai(
+                    run_id, oid, lambda: self.provider.transcribe(
+                        LeituraRequest(recorte=recorte, saidas=pedidas, run_id=run_id)),
+                    step_id=step.id, role="leitura", deadline=deadline, attempt_id=attempt_id,
+                    marca=MarcaDaChamada(motivo="leitura"))
+            except AIError as exc:
+                if exc.kind in ("budget", "step_deadline", "billing", "balance", "refusal"):
+                    raise
+                raise LeituraVisualRecusada(
+                    "sem_leitor" if exc.kind == "not_configured" else "leitor_falhou") from None
+
+        return obter_imagem, transcrever
 
     @staticmethod
     def _tela_fora_do_app(step: StepDTO, obs: Observation, pacote: str | None) -> str | None:

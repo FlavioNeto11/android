@@ -92,6 +92,14 @@ class FindElement(_Args):
     description: str | None = None
 
 
+class FindRow(_Args):
+    """Só onde a lista não expõe texto na hierarquia (o executor diz no histórico): acha a LINHA de uma lista pelo REMETENTE
+    escrito na imagem. O executor lê o remetente de cada linha por você (às cegas, sem lhe mostrar o que leu) e devolve os
+    `element_id` das linhas cujo remetente é `sender`; aí você toca nelas com `tap(element_id=…)`. Uma busca por tela: se nenhuma
+    linha for dele, role a lista e procure de novo."""
+    sender: str = Field(description="O nome do remetente como aparece na lista, ex.: Bruno Ferreira.")
+
+
 class Tap(_Action):
     """Toca em um elemento (element_id da lista) ou, se não houver elemento adequado, em coordenadas x,y da imagem."""
     element_id: str | None = None
@@ -237,7 +245,7 @@ class StepBlocked(_Args):
 
 
 TOOLS: dict[str, type[_Args]] = {
-    "observe_screen": ObserveScreen, "find_element": FindElement, "tap": Tap, "long_press": LongPress,
+    "observe_screen": ObserveScreen, "find_element": FindElement, "find_row": FindRow, "tap": Tap, "long_press": LongPress,
     "drag": Drag, "scroll": Scroll, "type_text": TypeText, "press_back": PressBack, "press_home": PressHome,
     "open_app": OpenApp, "wait_for": WaitFor, "verify_state": VerifyState, "collect_list": CollectList,
     "step_done": StepDone, "step_blocked": StepBlocked, "type_secret": TypeSecret, "open_url": OpenUrl,
@@ -245,7 +253,7 @@ TOOLS: dict[str, type[_Args]] = {
 }
 CONTROL_TOOLS = {"step_done", "step_blocked"}
 EFFECT_CAPABLE = {"tap", "long_press", "drag", "type_text"}     # podem disparar um efeito externo
-READ_ONLY = {"observe_screen", "find_element", "wait_for", "verify_state"}
+READ_ONLY = {"observe_screen", "find_element", "find_row", "wait_for", "verify_state"}
 
 #: 31.74: o relógio que mede a leitura da árvore no `wait_for` (o teste injeta um falso, com leitura lenta).
 _relogio: Callable[[], float] = time.monotonic
@@ -726,6 +734,10 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         return ToolOutcome(result)
     if isinstance(args, CollectList):
         return await _collect(ctx, args)
+    if isinstance(args, FindRow):
+        # Quem lê o remetente é o executor (leitor às cegas, triagem do ADR-009): cair aqui é um caminho sem essa conferência.
+        raise DriverError("find_row é conferido pelo executor da etapa, não executado no aparelho.",
+                          effect_possible=False)
     if isinstance(args, ReadValue):
         # A leitura precisa dos nomes que a ETAPA declara e da triagem (D3), que só o executor conhece: ele a trata
         # antes de chegar aqui. Cair aqui é um caminho novo sem essa conferência — recusa, sem tocar o aparelho.

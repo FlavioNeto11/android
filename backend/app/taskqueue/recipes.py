@@ -37,7 +37,7 @@ from ..util import norm_text, now_iso
 from .flows import PREFIXO_DO_TREINO, SISTEMA
 
 SENSITIVE_PARAM = re.compile(r"pass|senha|pin\b|otp|token|secret|segredo|c[oó]digo|code", re.IGNORECASE)
-READ_ONLY = {"observe_screen", "find_element", "wait_for", "verify_state"}
+READ_ONLY = {"observe_screen", "find_element", "find_row", "wait_for", "verify_state"}
 TARGETED = {"tap", "long_press", "type_text", "collect_list"}                  # precisam de um elemento-alvo para serem repetíveis
 UNSAFE_TO_REPLAY = {"press_back", "press_home", "drag"}        # dependem do estado/coords de quem aprendeu
 # ADR-025: a credencial é DA execução (apagada quando ela termina) e o endereço é do comando — uma receita que os
