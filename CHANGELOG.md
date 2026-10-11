@@ -24,7 +24,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Decisão do dono: quem cria a conta é o igfarm, pela API dele. `contas.criacao_pela_api_do_igfarm` volta a `true` por padrão (`false`
   segue como chave) e `GET /api/instagram/personas-pendentes` volta a responder. Rota nova `POST /api/instagram/contas/{id}/consentimento`
   (consentimento da credencial da conta do igfarm, ADR-040, idempotente), no lugar do `POST /api/credential/consent`, que nunca existiu
-  (adendo v1.150, número a confirmar). Reverte a aposentadoria do 31.335 (v1.146).
+  (adendo v1.150). Reverte a aposentadoria do 31.335 (v1.146).
 - Prova `simulated`: `tests/test_criacao_pela_api_reaberta.py` (7). `real`: `not_run`.
 
 ## 2026-10-11 — a partida da exploração espera a tela, a Junk deixa de ser a caixa e o ator acha a linha pelo remetente (31.338, 31.339, 31.340)

@@ -8713,7 +8713,7 @@ Aditivo na resposta da rota do v1.145: nenhum campo some e a conta do igfarm res
 **Prova:** `simulated` (`backend/tests/test_ciclo_da_conta_do_app.py`, 5 casos, e os 5 de `test_ciclo_da_conta_igfarm.py` seguem iguais).
 `real`: `not_run`.
 
-## Adendo v1.150 (11/10/2026; número a confirmar pela orquestradora; item 31.342) — a criação pelo igfarm foi REABERTA e o consentimento da conta ganhou rota
+## Adendo v1.150 (11/10/2026; número da orquestradora; item 31.342) — a criação pelo igfarm foi REABERTA e o consentimento da conta ganhou rota
 
 Decisão do dono (11/10/2026): **quem cria a conta é o igfarm, pela API dele; o android hospeda e o app usa.** O v1.146 (31.335) tinha
 aposentado esse caminho e a ponte devolvia `409 criacao_pela_api_aposentada`; isso foi um excesso e está revertido. Aditivo: uma
