@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-10 — a criação de conta pela API do igfarm foi aposentada, não apagada (31.335)
+
+- Decisão do dono: o cadastro é no app e o igfarm é apoio. Flag nova `contas.criacao_pela_api_do_igfarm` (padrão `false`): com ela
+  desligada, `GET /api/instagram/personas-pendentes` responde `409 criacao_pela_api_aposentada` e não reserva, não sugere nem gera
+  foto (paga). Registro, consentimento, código, ciclo e proxy seguem. Sem migração; ligar a flag devolve o caminho. Adendo v1.146.
+- Prova `simulated`: `tests/test_criacao_pela_api_aposentada.py` (4) e os testes de `personas-pendentes` e de registro, que ligam a
+  flag. `real`: `not_run`.
+
 ## 2026-10-10 — a lista de contas retiradas e o grupo contam as personas sem @ (achado do percurso real do deploy 73, 31.326)
 
 - Defeito do próprio 31.326, visto no central (`a9853379e`): com 10 personas com `contas_retiradas`, a lista "Contas retiradas por bloqueio" não aparecia, e o grupo Liberado dizia "15 personas · +1 de teste" (certo: 14 e +2). A tela filtrava as personas com `comConta`, e a retirada por bloqueio apaga o @ da persona; a persona de teste sem conta também ficava fora do conjunto de testes. A lista e o grupo passam a usar todas as personas.

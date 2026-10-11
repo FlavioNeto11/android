@@ -22,6 +22,7 @@ DOM = "nvit.com.br"
 
 def _cliente(harness: Harness) -> httpx.AsyncClient:
     harness.state.email_parque = EmailDoParque(ConfigEmail(DOM, (DOM,), True), None)
+    harness.cfg.file.contas.criacao_pela_api_do_igfarm = True    # 31.335: o padrão é desligado
     app = create_app(harness.cfg, state=harness.state)
     app.state.poc = harness.state
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")

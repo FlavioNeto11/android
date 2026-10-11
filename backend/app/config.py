@@ -975,6 +975,11 @@ class ContasCfg(BaseModel):
     # Com a CPU do host acima disto (a última batida), a volta não toca em aparelho: o funil e a suíte pesam aí.
     verificacao_periodica_cpu_max_percent: float = Field(50.0, ge=1.0, le=100.0)
     verificacao_periodica_tique_s: int = Field(300, ge=30, le=3600)  # de quanto em quanto tempo o laço olha (uma conta por volta)
+    #: 31.335 (decisão do dono, 10/10/2026): a API do igfarm deixou de ser a fonte da conta (cria `is_active:false` e o login
+    #: para em 2FA sem contexto); o cadastro é NO APP e o igfarm é apoio (e-mail, código, SMS, proxy). Com `false` (padrão),
+    #: `GET /api/instagram/personas-pendentes` recusa com 409 `criacao_pela_api_aposentada` e não reserva, não sugere nem gera foto
+    #: (paga). Registro (`POST /instagram/contas`), consentimento, código, ciclo e proxy seguem valendo. Reversível: nada se apaga.
+    criacao_pela_api_do_igfarm: bool = False
     #: pacote → ajustes do motor de sessão daquele app (`contas.sessao.<pacote>.settle_s: 5`).
     sessao: dict[str, AjustesDeSessaoCfg] = {}
 

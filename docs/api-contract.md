@@ -8637,3 +8637,19 @@ Aditivo: uma rota de leitura nova na ponte android ⇄ igfarm. Nenhuma coluna, m
   contato → desfecho" só existia espalhado em `contas_igfarm`, `authentication_attempts` e `contas_retiradas`.
 
 **Prova:** `simulated` (`backend/tests/test_ciclo_da_conta_igfarm.py`, 5 casos). `real`: `not_run`.
+
+## Adendo v1.146 (10/10/2026; número a confirmar pela orquestradora; item 31.335) — a criação de conta pela API do igfarm foi aposentada
+
+Aditivo na configuração e restritivo em UMA rota; nenhuma coluna, migração nem evento novo. Decisão do dono (10/10/2026): a API do
+igfarm deixou de ser a fonte da conta (ela cria `is_active:false` e o login para em 2FA sem contexto); o cadastro é feito NO APP
+e o igfarm passa a ser apoio (e-mail, código, SMS, proxy).
+
+- **Config nova `contas.criacao_pela_api_do_igfarm`** (booleano, padrão `false`; `config.example.yaml` traz a chave). Reversível:
+  nada se apaga.
+- **`GET /api/instagram/personas-pendentes` com a flag desligada:** `409 criacao_pela_api_aposentada`, sem reservar a pessoa, sem
+  gravar sugestão e sem gerar foto (a foto é paga). Com a flag ligada, o comportamento é o de antes.
+- **Não mudam:** `POST /api/instagram/contas` (registro, consentimento, proxy), `GET /api/instagram/contas/{id}/codigo` e
+  `GET /api/instagram/contas/{id}/ciclo` (v1.145). Elas seguem como apoio.
+
+**Prova:** `simulated` (`backend/tests/test_criacao_pela_api_aposentada.py`, 4 casos; os testes de `personas-pendentes` e de
+registro ligam a flag). `real`: `not_run`.

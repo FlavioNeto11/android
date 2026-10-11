@@ -119,7 +119,7 @@ class PonteIgfarm:
                  imagens: ImagensDaPonte, contas: ContasDaPonte, cofre: CofreDaPonte, email: EmailDoParque,
                  barramento: BarramentoDaPonte, rede: RedeDaPonte | None = None,
                  agora: Callable[[], datetime] | None = None,
-                 ttl_reserva_horas: int = TTL_RESERVA_HORAS) -> None:
+                 ttl_reserva_horas: int = TTL_RESERVA_HORAS, criacao_pela_api: bool = True) -> None:
         self.armazem = armazem
         self.pessoas = pessoas
         self.textos = textos
@@ -131,10 +131,16 @@ class PonteIgfarm:
         self.rede = rede
         self._agora = agora or (lambda: datetime.now(timezone.utc))
         self.ttl_reserva_horas = ttl_reserva_horas
+        #: 31.335: com `False`, a ponte não entrega personas para o igfarm criar por API (o cadastro é no app).
+        self.criacao_pela_api = criacao_pela_api
 
     # ------------------------------------------------------------------ API 1: personas pendentes
     async def pendentes(self, *, dominio: str, limite: int, locale: str | None, com_imagem: bool,
                         reservar: bool) -> list[PersonaPendente]:
+        if not self.criacao_pela_api:
+            raise ErroDaPonte("criacao_pela_api_aposentada",
+                              "A criação de conta pela API do igfarm foi aposentada: o cadastro é feito no app e o igfarm "
+                              "serve de apoio (e-mail, código, SMS, proxy).", 409)
         dom = self._dominio(dominio)
         agora = self._agora()
         agora_iso, expira_iso = to_iso(agora), to_iso(agora + timedelta(hours=self.ttl_reserva_horas))

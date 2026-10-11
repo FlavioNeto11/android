@@ -316,7 +316,8 @@ def compor_ponte_igfarm(s: AppState) -> PonteIgfarm:
     return PonteIgfarm(
         armazem=ArmazemSql(s.db), pessoas=PessoasSocial(s.social), textos=TextosSocial(s.social),
         imagens=ImagensSocial(s.persona_images, s.social), contas=ContasSocial(s.social), cofre=CofreSocial(s.social),
-        email=email, barramento=BarramentoSocial(s.bus), rede=RedeSocial(s))
+        email=email, barramento=BarramentoSocial(s.bus), rede=RedeSocial(s),
+        criacao_pela_api=bool(s.cfg.file.contas.criacao_pela_api_do_igfarm))
 
 
 class RedeSocial:

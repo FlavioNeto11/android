@@ -876,3 +876,15 @@ conclusão). Contas só por A, B e C: os valores crus ficam no JSON de referênc
 - **Protocolo da próxima conta** (aprovado pela orquestradora; só roda com conta e sessão entregues pelo dono/igfarm e
   depois do deploy 73): `account_info` do igfarm a T+5/15/30/60/120 min sem login; assuntos da caixa de e-mail; UM login pelo
   usuário (antes do e-mail), com a janela de 30 s do 31.329; só observação. Com N≥3 contas por rodada o desfecho ganha taxa.
+
+## A criação de conta pela API do igfarm foi aposentada; o cadastro é no app (31.335)
+
+- **Decisão do dono (10/10/2026).** A API CAA do igfarm cria a conta com `is_active:false` e o login por ela para em 2FA sem
+  contexto; as contas nascidas por ali morrem (31.333). O cadastro passa a ser NO APP (o cadastro guiado, 31.324) e o igfarm vira
+  apoio: e-mail, código, SMS e proxy.
+- **O que mudou.** A flag `contas.criacao_pela_api_do_igfarm` (padrão `false`) desliga o caminho que ENTREGA personas para o
+  igfarm criar por API: `GET /api/instagram/personas-pendentes` responde `409 criacao_pela_api_aposentada` e não reserva,
+  não sugere e não gera foto paga. Nada foi apagado: `true` reabre o caminho como era.
+- **O que fica como apoio.** O registro (`POST /api/instagram/contas`), o consentimento da credencial, o código do e-mail, o
+  ciclo da conta (`/ciclo`, 31.333) e o proxy por conta (`igfarm-{account_id}`, 31.317/31.329) seguem valendo para a conta que
+  já foi criada e para a que o app criar com apoio do igfarm.
