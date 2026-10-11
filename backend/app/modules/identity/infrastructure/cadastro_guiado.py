@@ -27,6 +27,7 @@ from app.models import ConfirmationEvidence, InstanceState, ProvisioningEventBod
 from app.modules.identity.domain.cadastro import Parada, Passo, detalhe_da_parada
 from app.modules.identity.domain.persona import MAIORIDADE, idade_em
 from app.modules.identity.domain.provisionamento import Estado
+from app.modules.identity.infrastructure.caixa_planejada import CaixaDaContaPlanejada
 from app.modules.identity.infrastructure.codigo_de_email import CodigoDoEmailDoParque
 from app.modules.identity.infrastructure.ponte_igfarm import ArmazemSql
 from app.security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
@@ -164,8 +165,9 @@ class CadastroGuiado:
             raise SocialError("sem_usuario_desejado", "Defina o @ desejado da conta antes do cadastro guiado.", 409)
         caixa = ArmazemSql(s.db).endereco_da_conta(account_id)
         if caixa is None and ("email" in k.dados_usados or k.pede_codigo):
-            raise SocialError("sem_caixa_de_email", "Este app pede o e-mail ou o código por e-mail, e a conta não tem "
-                                                    "caixa registrada.", 409)
+            # 31.334 (L1): o cadastro feito no app não passa pelo registro do igfarm; a conta planejada ganha a caixa do parque
+            # (catch-all, sem provisionar nada) aqui, antes de tocar no aparelho. Sem domínio permitido, o 409 de sempre.
+            caixa = CaixaDaContaPlanejada(s).garantir(profile_id, account_id)
         nascimento = self._nascimento(profile_id) if k.pede_nascimento else None
         if any(c["verb"] == VERBO for c in s.commands.open_commands()):
             raise SocialError("cadastro_em_andamento", "Há outro cadastro guiado em andamento no parque: uma conta por vez.", 409)

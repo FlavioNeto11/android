@@ -8613,6 +8613,8 @@ nascimento da persona quando o `cadastro.yaml` do app a pede, e a recusar ANTES 
   esquerda; a conferência na tela compara só os dígitos); critérios do alvo `classe`, `abaixo_do_rotulo`, `ordem` e `senha`; telas
   `dispara_codigo` e `antes_do_envio` (o código que o app manda antes de criar a conta); `envia` também em `tocar`. Ver
   `docs/dominios/persona.md` (cadastro guiado).
+- **31.334 (L1, 11/10), aditivo:** quando o app declara e-mail ou código por e-mail e a conta planejada não tem caixa, a rota CRIA a caixa do
+  parque (catch-all, só uma linha de banco) em vez de recusar; o 409 `sem_caixa_de_email` fica para o parque sem domínio de e-mail permitido.
 - **Nada mais muda no contrato:** estados, eventos (`identity.conta.provisionamento`, `identity.cadastro`) e paradas (`Parada`) são os do v1.137.
   A data de nascimento é dado pessoal e não entra em evento, log, evidência nem mensagem.
 

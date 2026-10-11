@@ -302,7 +302,10 @@ deixa de ser a fonte da conta e vira APOIO (e-mail, código, SMS, proxy). O que 
   senha pelo canal sensível, confirmação só pela sessão observada.
 - **L1, caixa da conta planejada:** o e-mail do parque é catch-all (`docs/email-do-parque.md`), então não há caixa por persona a provisionar; mas
   a linha `caixas_email` só nasce hoje no registro do igfarm (`ponte_igfarm.py`). Falta criá-la para a conta PLANEJADA, sem o igfarm
-  (o cadastro exige a linha: 409 `sem_caixa_de_email`). Sem migração; dentro do 31.334 (decisão de 11/10).
+  (o cadastro exige a linha: 409 `sem_caixa_de_email`). Sem migração; dentro do 31.334 (decisão de 11/10). **Feita (L1):**
+  `CadastroGuiado.iniciar` cria a linha da conta planejada (`identity/infrastructure/caixa_planejada.py`: o e-mail do perfil ou a sugestão da ponte
+  se forem do parque e livres, senão o endereço gerado sobre o domínio do parque; `secret_ref` = marcador, sem segredo) antes de despachar; o 409
+  `sem_caixa_de_email` passa a significar "o parque não tem domínio permitido".
 - **L2, proxy sticky por conta antes do primeiro toque (item 31.337, da Ponte):** hoje o perfil `igfarm-<conta>` (`docs/egresso-por-proxy.md`) nasce quando o igfarm
   REGISTRA a conta. No app signup o perfil nasce na conta planejada, é atribuído ao aparelho antes do cadastro, e o `egress_esperado` é o
   primeiro egresso medido DENTRO da janela (31.329). O igfarm só entrega o `proxy_url`.

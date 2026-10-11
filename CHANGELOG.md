@@ -191,6 +191,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Achados para itens próprios:** (1) a receita da exploração precisa do caminho desde uma tela de partida conhecida (hoje só a última ação) para o replay valer fora de uma tela
   específica; (2) o misto precisa de caixa cuja primeira mensagem não pareça verificação, ou de um teste melhor no guarda.
 
+## 2026-10-11 — a conta planejada ganha a caixa do parque sem o igfarm (31.334, L1)
+
+- Novo `identity/infrastructure/caixa_planejada.py` (`CaixaDaContaPlanejada.garantir`): escolhe o e-mail da conta (o do perfil ou a sugestão da ponte, se forem
+  do domínio do parque e livres; senão o gerado por `EmailDoParque.gerar_endereco`), grava a linha de `caixas_email` com um marcador no `secret_ref`
+  (a senha é a da caixa compartilhada, que mora no ambiente) e é idempotente. Sem migração, sem segredo, sem leitura de IMAP.
+- `CadastroGuiado.iniciar` chama `garantir` antes de despachar quando o app declara e-mail ou código por e-mail. O 409 `sem_caixa_de_email` passa
+  a valer só para o parque sem domínio permitido (api-contract, v1.144).
+- Prova `simulated`: `tests/test_caixa_da_conta_planejada.py` (7 casos) + cadastro guiado 58 + cadastro Bloks 48; catracas 103, arquitetura, mypy 257.
+  `real`: `not_run`.
+
 ## 2026-10-11 — o cadastro no app vira o caminho principal: desenho do 31.334 (só docs)
 
 - Decisão do dono (11/10): a conta do Instagram é criada no app; o igfarm vira apoio (e-mail, código, SMS, proxy). `docs/dominios/persona.md`
