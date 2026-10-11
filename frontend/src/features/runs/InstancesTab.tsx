@@ -159,18 +159,24 @@ function ObjectiveRow({ detail, objective: o, attempts, voto, open, onToggle }: 
         {/* Achado #61 / E5: de uma tarefa não dava para descobrir em que máquina ela roda. */}
         <ServerBadge server={server} estatico />
         <StatusBadge meta={meta} size="sm" />
-        <span className={cx(styles.objStep, 'truncate', (slotWait || waitMeta || pendingWait) && styles.objWait)}
+        {/* 31.350 (B): o estado do passo tem trecho PRÓPRIO, que não encolhe: só o título trunca. No celular o "Falhou" ficava no
+            mesmo trecho truncado do título e saía da área visível. */}
+        <span className={cx(styles.objStep, headline && !slotWait && !pendingWait ? styles.objStepDuo : 'truncate', (slotWait || waitMeta || pendingWait) && styles.objWait)}
               title={slotWait ?? pendingWait?.description ?? waitMeta?.description ?? undefined}>
           {slotWait ? (
             <><Hourglass size={12} aria-hidden /> {slotWait}</>
           ) : pendingWait ? (
             <><pendingWait.icon size={12} aria-hidden /> {pendingWait.label}</>
           ) : headline ? (
-            <>{headline.title} · <span className={styles.muted}>
-              {waitMeta ? (
-                <><waitMeta.icon size={12} aria-hidden style={{ verticalAlign: '-2px' }} /> {waitMeta.label}</>
-              ) : metaOf(STEP_STATUS, headline.status).label}
-            </span></>
+            <>
+              <span className={cx('truncate', styles.objStepTitulo)}>{headline.title}</span>
+              <span className={cx(styles.muted, styles.objStepEstado)}>
+                {'· '}
+                {waitMeta ? (
+                  <><waitMeta.icon size={12} aria-hidden style={{ verticalAlign: '-2px' }} /> {waitMeta.label}</>
+                ) : metaOf(STEP_STATUS, headline.status).label}
+              </span>
+            </>
           ) : 'Sem etapas'}
         </span>
         <ProgressBar value={ratio(o.steps_done, o.steps_total)} label={`Etapas concluídas em ${o.instance_id}`} text={`${o.steps_done}/${o.steps_total}`} />

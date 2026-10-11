@@ -676,3 +676,27 @@ describe('FocusPanel — painel do Modo treinamento (31.80, 31.84, 31.85, 31.86)
     expect(el.querySelector('section[aria-label="Modo treinamento"]')).toBeNull();
   });
 });
+
+describe('FocusPanel — aparelho sem frame (31.350, C)', () => {
+  const frameDe = (id: string): FrameInfo => ({ id, ts: new Date().toISOString(), width: 1080, height: 2400, orientation: 'portrait', stale: false });
+
+  it('sem frame no servidor (instance.frame nulo) não pede GET /frame: o 404 esperado vira erro no console; a tela diz que ainda não há imagem', async () => {
+    backend.on('GET', /\/frame$/, () => new Response('', { status: 404 }));
+    const el = await renderFocus(makeInstance(1, { state: 'online', frame: null }));
+    await waitFor(() => expect(text(el)).toContain('Ainda não há imagem deste aparelho'));
+    expect(backend.callsTo('GET', /\/frame$/)).toHaveLength(0);
+  });
+
+  it('quando o primeiro frame chega, a imagem é buscada', async () => {
+    const ts = new Date().toISOString();
+    backend.on('GET', /\/frame$/, () => new Response(new TextEncoder().encode('jpeg'), {
+      status: 200,
+      headers: { 'Content-Type': 'image/jpeg', 'X-Frame-Id': 'f1', 'X-Frame-Ts': ts, 'X-Frame-Width': '1080', 'X-Frame-Height': '2400', 'X-Frame-Orientation': 'portrait' },
+    }));
+    const el = await renderFocus(makeInstance(1, { state: 'online', frame: null }));
+    await waitFor(() => expect(text(el)).toContain('Ainda não há imagem deste aparelho'));
+    await act(async () => { useAppStore.setState({ instances: { 'android-01': makeInstance(1, { state: 'online', frame: frameDe('f1') }) } }); });
+    await waitFor(() => expect(el.querySelector('img')).not.toBeNull());
+    expect(backend.callsTo('GET', /\/frame$/)).toHaveLength(1);
+  });
+});

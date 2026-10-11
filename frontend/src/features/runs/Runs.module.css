@@ -281,15 +281,16 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 21px;
-  padding: 0 8px;
+  min-height: 21px;
+  max-width: 100%;            /* 31.350 (A): quebra de linha em 375 px, em vez de passar da margem da tela */
+  padding: 2px 8px;
   border: 1px solid var(--warning-border);
   border-radius: var(--radius-pill);
   background: var(--warning-soft);
   color: var(--warning-text);
   font-size: var(--fs-xs);
   font-weight: 600;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .techWrap {
@@ -382,6 +383,11 @@
   color: var(--text-2);
   font-size: var(--fs-sm);
 }
+
+/* 31.350 (B): título (trunca) e estado (não encolhe) lado a lado; sem isso o estado saía da linha no celular. */
+.objStepDuo { display: flex; gap: 4px; align-items: baseline; }
+.objStepTitulo { min-width: 0; flex: 0 1 auto; }
+.objStepEstado { flex: none; white-space: nowrap; }
 
 /* Rodízio: "aguardando vaga (k/K ligados)" no lugar da etapa atual. */
 .objWait {

@@ -73,6 +73,22 @@ describe('Por aparelho — selos de receita e rodízio', () => {
     expect(text(byRole('button', /android-01/, el))).toContain('Enviar a mensagem');
   });
 
+  it('31.350 (B): o estado da etapa tem trecho próprio que não trunca; só o título trunca (no celular o "Falhou" saía da linha)', async () => {
+    const el = await render(<InstancesTab detail={detailWithRecipes()} />);
+    const row = byRole('button', /android-01/, el);
+    const estado = row.querySelector('[class*="objStepEstado"]') as HTMLElement;
+    const titulo = row.querySelector('[class*="objStepTitulo"]') as HTMLElement;
+    expect(estado).not.toBeNull();
+    expect(titulo).not.toBeNull();
+    expect(text(titulo)).toContain('Enviar a mensagem');
+    expect(text(estado)).toMatch(/^· \S+/);                    // o estado fica fora do título
+    expect(titulo.classList.contains('truncate')).toBe(true);
+    expect(estado.closest('.truncate')).toBeNull();            // e fora de qualquer trecho truncado
+    expect(text(estado)).not.toContain('Enviar a mensagem');
+    // o objetivo que espera vaga não tem etapa na linha: segue como antes
+    expect(byRole('button', /android-02/, el).querySelector('[class*="objStepEstado"]')).toBeNull();
+  });
+
   it('cada etapa ganha o selo de driven_by: "Receita", "Receita + IA", "IA" — e nenhum quando nulo', async () => {
     const el = await render(<InstancesTab detail={detailWithRecipes()} />);
     await click(byRole('button', /android-01/, el));

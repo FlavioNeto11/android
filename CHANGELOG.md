@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-11 — três ajustes de UX achados na rodada 3 do percurso real (31.350)
+
+- B (média) Execução > Por aparelho: o estado do passo ("Falhou") ficava no mesmo trecho truncado do título e saía da área visível no celular; passa a ter trecho próprio que não encolhe, e só o título trunca (`InstancesTab.tsx`, `Runs.module.css`).
+- A (baixa) Execução > Plano: o selo "efeito externo — sem repetição automática" passava ~5 px da margem em 375 px; agora quebra de linha dentro da largura (`.sideFlag`).
+- C (baixa) Foco de aparelho recém-ligado: o `GET /frame` dava 404 (ainda sem imagem), tratado na tela mas registrado como erro no console; sem `instance.frame` o painel não pede o frame (a tela continua "Ainda não há imagem deste aparelho") e a busca sai quando o primeiro frame chega ou na hora do "Atualizar imagem".
+- Prova `simulated`: `execution.test.tsx` (B), `FocusPanel.test.tsx` (C, 2 casos); o A é CSS (o jsdom não mede). `real`: `not_run`, percurso no deploy que o levar.
+
 ## 2026-10-11 — o cancelamento do agente do worker e da entrega NATS não é mais engolido enquanto o aviso de vida morre (31.347, flake da PG inteira do 75)
 
 - O flake `test_worker_agent::test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela` (CancelledError/TimeoutError só na PG inteira sob carga, 3/3 verde

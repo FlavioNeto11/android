@@ -148,7 +148,14 @@ export const Screen = forwardRef<ScreenHandle, ScreenProps>(function Screen(
   // Busca quando o painel abre, quando a instância fica online e sempre que o id do frame mudar.
   useEffect(() => {
     if (!online) return;
-    if (latestId && shownRef.current?.id === latestId) return;
+    // 31.350 (C): o servidor ainda não tem frame deste aparelho (`instance.frame` nulo): `GET /frame` daria 404, que o navegador
+    // registra como erro vermelho no console mesmo tratado. Nada a buscar: a tela diz "Ainda não há imagem" e a busca sai
+    // quando o primeiro frame chega (o `latestId` muda) ou quando a pessoa pede ("Atualizar imagem").
+    if (!latestId) {
+      if (!shownRef.current) setNoFrame(true);
+      return;
+    }
+    if (shownRef.current?.id === latestId) return;
     void load();
   }, [online, latestId, load]);
 
