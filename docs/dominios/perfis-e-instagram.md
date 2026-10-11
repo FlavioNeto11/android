@@ -957,3 +957,8 @@ depois; o JSON de prova fora do Git. Limite do que ela prova: n=1 (uma conta), e
   `POST /api/credential/consent`, rota que nunca existiu.
 - **O que segue.** O caminho do app (cadastro guiado 31.324, proxy 31.337, ciclo 31.341) continua para a conta que o app criar; os dois
   caminhos convivem.
+
+## Rastro de cada chamada ao consentimento (31.344)
+
+Cada `POST /api/instagram/contas/{id}/consentimento` emite `identity.consentimento_igfarm` (consentida, já consentida ou recusada, com ids
+e código; sem segredo; adendo v1.151). É a prova observável de que o igfarm chegou à rota, inclusive quando a chamada é idempotente.

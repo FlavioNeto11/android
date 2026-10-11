@@ -35,6 +35,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: 211 verdes entre scheduler, posse, vagas de IA, avisos, hospedeiro, rodízio, catracas e arquitetura; mypy 257 (teto). `real`: `not_run`;
   a medida de 11/10 em diante (`laco-por-hora`, Android) diz se ainda há laço parado.
 
+## 2026-10-11 — cada chamada ao consentimento do igfarm deixa evento (31.344)
+
+- `identity.consentimento_igfarm` por chamada (`consentida`, `ja_consentida`, `recusada`, com ids e código; sem segredo), para que a primeira
+  chamada real do igfarm à rota do 31.342 seja observável (adendo v1.151). Sem rota, coluna nem migração novas.
+- Prova `simulated`: `tests/test_criacao_pela_api_reaberta.py` (8). `real`: `not_run`.
+
 ## 2026-10-11 — a criação pelo igfarm foi reaberta e o consentimento da conta ganhou rota (31.342)
 
 - Decisão do dono: quem cria a conta é o igfarm, pela API dele. `contas.criacao_pela_api_do_igfarm` volta a `true` por padrão (`false`

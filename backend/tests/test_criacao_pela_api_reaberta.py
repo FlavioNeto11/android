@@ -120,3 +120,25 @@ async def test_consentimento_sem_senha_guardada_e_409(harness: Harness) -> None:
         harness.state.db.execute("DELETE FROM account_credentials WHERE account_id=?", (conta,))
         r = await c.post(f"/api/instagram/contas/{conta}/consentimento")
         assert r.status_code == 409, r.text
+
+
+@pytest.mark.asyncio
+async def test_toda_chamada_do_consentimento_deixa_evento_sem_segredo(harness: Harness) -> None:
+    """31.344: a prova real do 31.342 é a 1ª chamada do igfarm; a idempotente e a recusada também deixam rastro."""
+    pid = _persona(harness)
+    db = harness.state.db
+    async with _cliente(harness) as c:
+        conta = (await c.post("/api/instagram/contas", json=_corpo(pid))).json()["account_id"]
+        assert (await c.post(f"/api/instagram/contas/{conta}/consentimento")).status_code == 200      # já consentida pelo registro
+        db.execute("UPDATE account_credentials SET consent_at=NULL, consent_by=NULL WHERE account_id=?", (conta,))
+        assert (await c.post("/api/instagram/contas/ig-1/consentimento")).status_code == 200          # refeita
+        assert (await c.post("/api/instagram/contas/acc-desconhecida/consentimento")).status_code == 404
+    linhas = db.query("SELECT ts, message, data FROM events WHERE kind='identity.consentimento_igfarm' ORDER BY id")
+    assert len(linhas) == 3
+    dados = [__import__("json").loads(r["data"]) for r in linhas]
+    assert [d["resultado"] for d in dados] == ["ja_consentida", "consentida", "recusada"]
+    assert dados[0]["account_id"] == conta and dados[0]["igfarm_account_id"] == "ig-1" and dados[0]["ja_consentida"] is True
+    assert dados[1]["conta_id"] == "ig-1" and dados[1]["account_id"] == conta and dados[1]["ja_consentida"] is False
+    assert dados[2]["codigo"] == "not_found" and all(r["ts"] for r in linhas)
+    todo = " ".join(str(dict(r)) for r in linhas)
+    assert "Senha-do" not in todo and f"@{DOM}" not in todo and "ana.ceramica" not in todo

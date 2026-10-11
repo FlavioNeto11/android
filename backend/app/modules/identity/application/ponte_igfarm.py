@@ -389,11 +389,22 @@ class PonteIgfarm:
         """O igfarm consente a credencial da conta que ELE criou (ADR-040: o consentimento é por conta). Só vale para conta
         registrada pela ponte (`contas_igfarm`): conta do painel ou de outra origem não é consentida por aqui. Idempotente: a conta
         que já consentiu devolve o consentimento que tinha, sem regravá-lo. 409 `no_credential` sem senha guardada."""
-        ids = self.armazem.ids_da_conta_igfarm(conta_id)
-        if ids is None:
-            raise ErroDaPonte("not_found", "Conta não registrada pelo igfarm.", 404)
-        persona_id, account_id, igfarm_id = ids
-        em, por, ja = self.contas.consentir(persona_id, account_id, por="igfarm")
+        try:
+            ids = self.armazem.ids_da_conta_igfarm(conta_id)
+            if ids is None:
+                raise ErroDaPonte("not_found", "Conta não registrada pelo igfarm.", 404)
+            persona_id, account_id, igfarm_id = ids
+            em, por, ja = self.contas.consentir(persona_id, account_id, por="igfarm")
+        except ErroDaPonte as exc:
+            # 31.344: toda chamada deixa rastro, inclusive a recusada (é a prova de que o igfarm chegou à rota). Só ids, nunca senha.
+            self.barramento.emitir("identity.consentimento_igfarm", f"Consentimento pelo igfarm recusado ({exc.code})",
+                                   {"conta_id": conta_id[:80], "resultado": "recusada", "codigo": exc.code})
+            raise
+        self.barramento.emitir(
+            "identity.consentimento_igfarm",
+            "Consentimento pelo igfarm já existia" if ja else "Consentimento pelo igfarm registrado",
+            {"conta_id": conta_id[:80], "account_id": account_id, "igfarm_account_id": igfarm_id,
+             "resultado": "ja_consentida" if ja else "consentida", "ja_consentida": ja})
         return ConsentimentoDaConta(account_id=account_id, igfarm_account_id=igfarm_id, consent_at=em, consent_by=por,
                                     ja_consentida=ja)
 

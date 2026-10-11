@@ -8753,3 +8753,18 @@ da conta planejada, ciclo da conta do app) seguem como estão.
 
 **Prova:** `simulated` (`backend/tests/test_criacao_pela_api_reaberta.py`, 7 casos, no lugar de `test_criacao_pela_api_aposentada.py`).
 `real`: `not_run`.
+
+## Adendo v1.151 (11/10/2026; número da orquestradora; item 31.344) — toda chamada à rota de consentimento deixa o evento `identity.consentimento_igfarm`
+
+Aditivo: nenhum campo de resposta, rota, coluna ou migração muda. Antes, a chamada idempotente (`ja_consentida`) e a recusada não deixavam
+rastro, e o registro (`POST /api/instagram/contas`) já consente, então o igfarm podia chamar `POST /api/instagram/contas/{id}/consentimento`
+sem que nada provasse (v1.150).
+
+- **Evento `identity.consentimento_igfarm`, um por chamada,** com a hora do evento (`ts`) e `data`: `conta_id` (o id recebido, cortado em 80),
+  `resultado` (`consentida` | `ja_consentida` | `recusada`) e, quando a conta existe, `account_id`, `igfarm_account_id` e `ja_consentida`;
+  na recusa, `codigo` (`not_found`, `no_credential`).
+- **Sem segredo:** só ids, resultado e código; nunca senha, @ nem e-mail.
+- A prova `real` do 31.342 é a primeira linha desse evento vinda do igfarm.
+
+**Prova:** `simulated` (`backend/tests/test_criacao_pela_api_reaberta.py::test_toda_chamada_do_consentimento_deixa_evento_sem_segredo`).
+`real`: `not_run`.
