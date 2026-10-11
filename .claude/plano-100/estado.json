@@ -14486,15 +14486,15 @@
   "31.343": {
    "id": "31.343",
    "status": "implemented",
-   "proof": "simulated",
+   "proof": "real",
    "commit": "ad703bf80",
-   "evidence": "Achado real (11/10 02:06–02:07Z, PG inteira do 75 no mesmo host): laço 52 s sem batida; dump laco-travado-20261011T020732Z com a thread do laço em Scheduler._tick → _manter_posse → adotar_abandonadas → abandoned_steps (SQL síncrono); 10 s antes a mesma thread segurou a trava de escrita 3,4 s em Lideranca.tomar (disco estrangulado). Contraste: PG do 73 sem queda; PG do 75 com uma. Correção (Jev, 11/10): Scheduler._loop roda _manter_posse em asyncio.to_thread quando a renovação vence; VagasDeIA.renovar fotografa a lista antes de iterar; entregar_uma_vez do avisos faz _vencer_pessoais em thread. Novo tests/test_laco_sem_sql_exaustivo.py espia o Database inteiro por thread com o scheduler girando (falha com o _tick antigo, conferido por mutação) e trava a dívida do tick ocioso (6 leituras por volta; só encolhe); inventário do que sobra em docs/banco.md. 211 verdes (scheduler, posse, vagas de IA, avisos, hospedeiro, rodízio, catracas, arquitetura); mypy 257. 2ª ocorrência real do mesmo ponto ANTES da correção: 11/10 03:43:52Z (laço 10,8 s, queda de 3 s, dump laco-travado-20261011T034355Z-1.txt, durante a PG inteira do 76 no central em 950b8af24), confirmando o diagnóstico. No ar no deploy 77. Real not_run: a próxima PG inteira sob carga e o laco-por-hora 71..77 dizem se o ponto 10 era o último.",
-   "grupo": "janela86",
+   "evidence": "Simulated anterior mantido (ad703bf80: posse do scheduler e faxina dos avisos fora do laço; test_laco_sem_sql_exaustivo.py; 211 verdes; 4 ocorrências reais do ponto 10 antes da correção: 02:06Z 52 s, 03:43Z 10,8 s, 03:50Z 18,8 s, 03:55Z 19,3 s, todas sob PG inteira). REAL no central fad85d7d6 (deploy 77), 11/10/2026 05:01–06:08:51Z, Android: PG inteira do 77 (13322 passed, 69 skipped, 0 failed, -n 6 Idle, 50 min 54 s) rodou no mesmo host, mesma carga das PGs do 75 (1 queda) e do 76 (3 quedas), com ZERO arquivo laco-travado/dump criado após 05:01Z e zero queda da 8000 (Vigia). Ressalva: contagem pela pasta data/logs; backend.log não lido linha a linha. slow_queries_in_loop=1 na saúde após a corrida, a conferir no laco-por-hora 71..78.",
+   "grupo": "janela87",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-11T04:50:48+00:00"
+   "quando": "2026-10-11T06:10:18+00:00"
   },
   "31.344": {
    "id": "31.344",
@@ -14508,6 +14508,71 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-11T04:50:48+00:00"
+  },
+  "31.347": {
+   "id": "31.347",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "aa5e85299",
+   "evidence": "Flake real da PG inteira do 75 (test_worker_agent::test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela, CancelledError/TimeoutError só sob carga, 3/3 verde isolado) era CORRIDA do código: Agent._sessao esperava a batida com suppress(CancelledError) e um cancel() do próprio agente nessa janela era engolido (reconexão para sempre; em produção o stop do serviço podia não parar o processo). Correção: await asyncio.gather(batida, return_exceptions=True). Mesmo padrão em commands/transport.py (NatsJetStreamTransport._entregar, aviso de vida; transporte desligado por padrão): cancelamento engolido deixava o ack confirmar a mensagem de um consumidor derrubado; mesma correção. Provas (Jev, 11/10): tests/test_worker_agent.py::test_cancelar_o_agente_enquanto_a_batida_morre_nao_e_engolido (janela alargada; falha sem a correção, conferido por mutação; 24 do arquivo) e tests/test_transporte_nats.py::test_cancelar_a_entrega_enquanto_o_aviso_de_vida_morre_nao_confirma (8 do arquivo); 209 dirigidos, mypy 257, docs-check 0/0. Real not_run (a PG inteira do 77 em diante é a observação).",
+   "grupo": "janela87",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T06:10:18+00:00"
+  },
+  "31.349": {
+   "id": "31.349",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "d01a397f9",
+   "evidence": "test_pergunta_vence::test_a_retomada_no_meio_da_varredura_ganha_do_vencimento contava eventos com data LIKE '%31.43%' e, na PG dirigida do 77 (04:34:31.43xZ), casou um carimbo de hora (5 eventos em vez de 4; verde isolado). Agora casa só a chave da regra (Jev, 11/10; o arquivo verde). Lição registrada: filtro de teste nunca casa fragmento que uma hora possa conter.",
+   "grupo": "janela87",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T06:10:18+00:00"
+  },
+  "31.346": {
+   "id": "31.346",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "7d90140ae",
+   "evidence": "Em Contas e acesso, a conta do app âncora ganha a seção recolhida 'Ciclo da conta' (lê GET /api/instagram/contas/{id}/ciclo só ao abrir): origem (igfarm|app), referência dos minutos (criação|planejamento), minutos até o 1º contato, contatos com desfecho e a retirada; só leitura, sem @, e-mail, senha nem IP (o painel mostra ids, horas, minutos e desfechos); features/profiles/CicloDaConta.tsx + tipo + cliente + montagem em GuiaContas.tsx. Prova simulated (Portal, 11/10): CicloDaConta.test.tsx (9) + 1 caso em ProfileDetail.test.tsx, 300 dirigidos de profiles, tsc limpo. Real not_run: percurso no deploy 78 (375 px sem rolagem).",
+   "grupo": "janela87",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T06:10:18+00:00"
+  },
+  "31.348": {
+   "id": "31.348",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "85a0456cb",
+   "evidence": "Scheduler._loop tira uma foto das leituras da volta numa thread (_tirar_a_foto_do_tick: contas bloqueadas, execuções ativas, capacidade e limites do worker por máquina, settings.get aquecido) e _tick(foto=…) decide sobre ela; sem execução ativa a volta ociosa não pergunta; com execução ativa a leitura do despacho segue ao vivo (o promote da própria volta precisa ser visto); a foto vale só para aquela volta e só para a thread do laço. MEDIDO com o exame exaustivo (tests/test_laco_sem_sql_exaustivo.py, 3 s de tick ocioso, 1 aparelho): antes 728 chamadas ao banco na thread do laço em 121 voltas (6 por volta) + 2 de _ler; depois 0 em 142 voltas; DIVIDA_DO_TICK vazia e o teste exige lista vazia (Jev, 11/10; dirigidos + catracas, mypy 257). No ar no deploy 78. Real not_run: laco-por-hora de uma janela com disco estrangulado após o deploy.",
+   "grupo": "janela87",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T06:10:18+00:00"
+  },
+  "31.350": {
+   "id": "31.350",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "40381ac98",
+   "evidence": "Rodada 3 do percurso real do 76 (Portal, 11/10, android-01 online, só leitura): B (média) Execução > Por aparelho: o estado do passo ('Falhou') ficava no mesmo trecho truncado do título e saía da área visível em 375 px (x=639); passa a ter trecho próprio que não encolhe (InstancesTab.tsx, Runs.module.css). A (baixa) Execução > Plano: o selo 'efeito externo — sem repetição automática' passava ~5 px da margem; agora quebra de linha (.sideFlag). C (baixa) Foco de aparelho recém-ligado: GET /frame 404 era registrado como erro no console; sem instance.frame o painel não pede o frame (Screen.tsx). Prova simulated: execution.test.tsx (B), FocusPanel.test.tsx (C, 2 casos); A é CSS. tsc + dirigidos + docs-check 0/0. Real not_run: percurso no deploy 78.",
+   "grupo": "janela87",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T06:10:18+00:00"
   }
  },
  "rodadas": [
@@ -18527,6 +18592,20 @@
    ],
    "grupos": [
     "janela86"
+   ]
+  },
+  {
+   "quando": "2026-10-11T06:10:18+00:00",
+   "itens": [
+    "31.347",
+    "31.349",
+    "31.346",
+    "31.348",
+    "31.350",
+    "31.343"
+   ],
+   "grupos": [
+    "janela87"
    ]
   }
  ]

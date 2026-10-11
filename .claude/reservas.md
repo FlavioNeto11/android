@@ -929,4 +929,5 @@ orquestradora; ela anota aqui antes de responder.
 | 31.347 | Jev | corrida no encerramento do agente do worker: Agent._sessao engolia o cancel() na janela da reconexão (flake real da PG inteira do 75); gather(return_exceptions) + teste determinístico; mesmo padrão em commands/transport.py | Jev | reservado 11/10 04:50Z |
 | 31.348 | Jev | tick ocioso do scheduler sem as 6 leituras por volta (dívida trancada pelo test_laco_sem_sql_exaustivo do 31.343) | Jev | reservado 11/10 04:50Z |
 | 31.349 | Jev | test_pergunta_vence: LIKE %31.43% casa carimbo de hora (bomba-relógio da PG dirigida do 77); casar só a regra | Jev | reservado 11/10 04:50Z |
-| próximos livres (atualização 11/10 04:50Z) | 31.350, 29.212, 28.78; ADR-093 (092 guardado p/ Jev); migração 137; adendo v1.152; K-114 | |
+| 31.350 | Portal | detalhe da execução no celular (rodada 3 do percurso real do 76): estado do passo visível em Por aparelho (B, média), selo "efeito externo" sem corte (A), frame 404 de aparelho recém-ligado sem erro no console (C) | Portal | reservado 11/10 06:10Z |
+| próximos livres (atualização 11/10 06:10Z) | 31.351, 29.212, 28.78; ADR-093 (092 guardado p/ Jev); migração 137; adendo v1.152; K-114 | |

@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-898 de 986 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+903 de 987 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -969,13 +969,14 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.340 | implemented | simulated |  | — | Ferramenta find_row(sender), só leitura, tratada no executor (taskqueue/linha_por_remetente.py): lê o remetente de cada linha candidata da lista cega (clicável, sem texto, larga e alta como linha, dentro do contêiner da… |  |
 | 31.341 | implemented | simulated |  | — | GET /api/instagram/contas/{id}/ciclo cobre a conta planejada/criada no app: fonte = linha da conta + authentication_attempts + eventos identity.cadastro (contato 'cadastro' com confirmada\|parada) + profile.account_reti… |  |
 | 31.342 | implemented | simulated |  | — | Pedido direto do dono (bloco colado na janela da Ponte, 11/10 ~02:0xZ): 'quem cria a conta é o IGFARM (via API). O android hospeda; o app usa. A ponte over-pivotou.' criacao_pela_api_do_igfarm volta a true por padrão (c… |  |
-| 31.343 | implemented | simulated |  | — | Achado real (11/10 02:06–02:07Z, PG inteira do 75 no mesmo host): laço 52 s sem batida; dump laco-travado-20261011T020732Z com a thread do laço em Scheduler._tick → _manter_posse → adotar_abandonadas → abandoned_steps (… |  |
+| 31.343 | implemented | real |  | — | Simulated anterior mantido (ad703bf80: posse do scheduler e faxina dos avisos fora do laço; test_laco_sem_sql_exaustivo.py; 211 verdes; 4 ocorrências reais do ponto 10 antes da correção: 02:06Z 52 s, 03:43Z 10,8 s, 03:5… |  |
 | 31.344 | implemented | simulated |  | — | Cada POST /api/instagram/contas/{id}/consentimento emite identity.consentimento_igfarm (ts, conta_id recebido, resultado consentida\|ja_consentida\|recusada, account_id, igfarm_account_id, ja_consentida; na recusa o cód… |  |
 | 31.345 | pendente | — | — | — |  |  |
-| 31.346 | pendente | — | — | — |  |  |
-| 31.347 | pendente | — | — | — |  |  |
-| 31.348 | pendente | — | — | — |  |  |
-| 31.349 | pendente | — | — | — |  |  |
+| 31.346 | implemented | simulated |  | — | Em Contas e acesso, a conta do app âncora ganha a seção recolhida 'Ciclo da conta' (lê GET /api/instagram/contas/{id}/ciclo só ao abrir): origem (igfarm\|app), referência dos minutos (criação\|planejamento), minutos até… |  |
+| 31.347 | implemented | simulated |  | — | Flake real da PG inteira do 75 (test_worker_agent::test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela, CancelledError/TimeoutError só sob carga, 3/3 verde isolado) era CORRIDA do código: Agent._sessao esperava a ba… |  |
+| 31.348 | implemented | simulated |  | — | Scheduler._loop tira uma foto das leituras da volta numa thread (_tirar_a_foto_do_tick: contas bloqueadas, execuções ativas, capacidade e limites do worker por máquina, settings.get aquecido) e _tick(foto=…) decide sobr… |  |
+| 31.349 | implemented | simulated |  | — | test_pergunta_vence::test_a_retomada_no_meio_da_varredura_ganha_do_vencimento contava eventos com data LIKE '%31.43%' e, na PG dirigida do 77 (04:34:31.43xZ), casou um carimbo de hora (5 eventos em vez de 4; verde isola… |  |
+| 31.350 | implemented | simulated |  | — | Rodada 3 do percurso real do 76 (Portal, 11/10, android-01 online, só leitura): B (média) Execução > Por aparelho: o estado do passo ('Falhou') ficava no mesmo trecho truncado do título e saía da área visível em 375 px… |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -993,7 +994,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (88): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.156, 29.162, 29.166, 29.168, 29.172, 29.173, 29.174, 29.180, 29.182, 29.185, 29.186, 29.191, 29.200, 29.201, 29.202, 29.203, 29.204, 29.205, 29.206, 29.207, 29.208, 29.209, 29.210, 29.211, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.161, 31.162, 31.233, 31.245, 31.246, 31.247, 31.252, 31.254, 31.255, 31.256, 31.257, 31.261, 31.263, 31.264, 31.265, 31.266, 31.269, 31.321, 31.334, 31.345, 31.346, 31.347, 31.348, 31.349, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (84): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.156, 29.162, 29.166, 29.168, 29.172, 29.173, 29.174, 29.180, 29.182, 29.185, 29.186, 29.191, 29.200, 29.201, 29.202, 29.203, 29.204, 29.205, 29.206, 29.207, 29.208, 29.209, 29.210, 29.211, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.161, 31.162, 31.233, 31.245, 31.246, 31.247, 31.252, 31.254, 31.255, 31.256, 31.257, 31.261, 31.263, 31.264, 31.265, 31.266, 31.269, 31.321, 31.334, 31.345, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
