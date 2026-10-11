@@ -55,6 +55,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`tests/test_laco_sem_sql_exaustivo.py::test_o_tick_do_laco_so_deve_ao_que_esta_na_divida_conhecida` e
   `::test_a_foto_do_tick_e_tirada_numa_thread_e_o_tick_a_consome_no_laco`); o efeito sobre o laço parado do central é `not_run` até o `laco-por-hora` de
   uma janela com disco estrangulado depois do deploy.
+- **Segunda ocorrência real do ponto 10, ANTES da correção do 31.343** (relato da orquestradora, `real`; ainda sem os ids de execução): 11/10 03:43:52Z, laço
+  parado 10,8 s e queda de 3 s, durante a PG inteira do corte 76 no central em `950b8af24`; dump `data/logs/laco-travado-20261011T034355Z-1.txt`. A thread do
+  laço estava em `_tick` → `_manter_posse` → `adotar_abandonadas` → `abandoned_steps` → `db.query` (a mesma pilha do 02:07Z); a thread do health estava em
+  `costs.spent_usd`, já fora do laço. Confirma o diagnóstico do 31.343. A leitura do `laco-por-hora` 71..76 (31.320) entra aqui quando a Android mandar.
 - Validação: os 94 arquivos de teste que passam pelo scheduler + as catracas (1456 passed; as 10 de `tests/_skip_test_capabilities.py`, que a coleta
   normal não roda, falham igual na `main`), `tests/test_arquitetura.py`, mypy 257/257, `docs-check`. Doc: `docs/banco.md`, "O que ainda roda SQL na thread do laço".
 
