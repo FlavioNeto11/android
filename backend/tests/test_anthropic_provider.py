@@ -125,7 +125,7 @@ async def test_decisao_envia_imagem_e_respeita_strict_declarado(tmp_path: Path) 
     assert not [t["name"] for t in call["tools"] if t.get("strict")]      # declarado false: nenhuma vai estrita
     # 15 + type_secret e open_url (ADR-025) + read_value (T20, item 24.3): a leitura do valor que a etapa entrega às
     # seguintes é uma ferramenta do ator, de propósito; não é estrita porque não tem efeito nem encerra a etapa.
-    assert len(call["tools"]) == 18 and "format" not in call["output_config"]
+    assert len(call["tools"]) == 19 and "format" not in call["output_config"]
     assert decision.tool == "tap" and decision.args["is_commit_action"] is True
 
     # E o contrário: um modelo que DECLARA aceitar gramática estrita recebe as 6 de efeito/controle estritas.

@@ -7,6 +7,7 @@ Nível de prova: `simulated` (app e aparelho falsos do `test_cadastro_guiado`).
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,11 @@ async def test_cadastro_parado_aparece_com_o_codigo_fechado(harness: Harness, tm
     assert d["criada_em"] is None and d["referencia"] == "planejamento"
 
 
+def _depois(segundos: int) -> str:
+    """Instante relativo a agora: data fixa em teste é bomba-relógio (a ordem dos contatos depende do relógio)."""
+    return (datetime.now(timezone.utc) + timedelta(seconds=segundos)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
 async def test_conta_retirada_sem_linha_ainda_tem_ciclo_e_a_resposta_nao_traz_arroba_nem_email(
         harness: Harness, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cen = await _cenario(harness, tmp_path, monkeypatch)
@@ -66,7 +72,7 @@ async def test_conta_retirada_sem_linha_ainda_tem_ciclo_e_a_resposta_nao_traz_ar
     assert await cen.rodar() is None
     harness.state.db.execute("INSERT INTO authentication_attempts(profile_id, instance_id, started_at, finished_at, outcome,"
                              " stage, detail, account_id) VALUES (?,?,?,?,?,?,?,?)",
-                             (cen.pid, "android-01", "2026-10-11T03:00:00.000Z", "2026-10-11T03:00:40.000Z", "auth_challenge",
+                             (cen.pid, "android-01", _depois(3600), _depois(3640), "auth_challenge",
                               "classified", "o app exige confirmação em fulano@exemplo.com", cen.aid))
     harness.state.bus.emit("profile.account_retired", "Conta retirada por bloqueio confirmado", level="warn",
                            data={"profile_id": cen.pid, "account_id": cen.aid})
