@@ -424,8 +424,11 @@ class Agent:
                     await self._receber(json.loads(bruto))
             finally:
                 batida.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await batida
+                # `gather(return_exceptions=True)` e não `suppress(CancelledError)`: este deixa o cancelamento do PRÓPRIO agente, se chegar
+                # enquanto espera a batida morrer (a sessão acabou de cair), ser engolido, e o agente seguia reconectando para sempre
+                # (a suíte inteira sob carga, 11/10: `_encerrar` estourou os 10 s). Aqui o cancelamento de fora sobe; o da batida, que é
+                # o esperado, vira só um valor.
+                await asyncio.gather(batida, return_exceptions=True)
                 # As TAREFAS NÃO SÃO CANCELADAS. Era isto que fazia a queda do canal virar falha de execução: um
                 # `reset` parava entre o stop e o start, um `start` abandonava a espera de boot sem
                 # `prepare_for_automation`. Agora o verbo termina, o desfecho vai para o diário, e sai na

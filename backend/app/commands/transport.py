@@ -172,8 +172,9 @@ class NatsJetStreamTransport:
                 return
             finally:
                 vivo.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await vivo
+                # Não `suppress(CancelledError)`: ele engolia o cancelamento da PRÓPRIA entrega se chegasse enquanto o aviso de vida morria, e o
+                # `ack` abaixo confirmava uma mensagem cujo consumidor estava sendo derrubado (31.347; mesma corrida do `Agent._sessao`).
+                await asyncio.gather(vivo, return_exceptions=True)
             await msg.ack()
 
         # Consumidor durável que JÁ existe no servidor não é reconfigurado por `subscribe`: mudar o `ack_wait` de

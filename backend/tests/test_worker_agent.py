@@ -152,6 +152,46 @@ async def test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela(tmp_path: Path
     assert agente.settings.read_credential() == "credencial-permanente-de-teste"
 
 
+async def test_cancelar_o_agente_enquanto_a_batida_morre_nao_e_engolido(tmp_path: Path,
+                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """A corrida por trás do flake de 11/10 (`test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela`, 3/3 verde isolado e vermelho na PG
+    inteira): a sessão acaba e o agente espera a tarefa da batida morrer; um `cancel()` do agente que chega NESSA janela era engolido
+    pelo `suppress(CancelledError)` que cercava a espera, e o agente reconectava para sempre (o teste estourava os 10 s de `_encerrar`).
+    Aqui a janela é alargada de propósito: a batida demora 0,3 s para morrer e o cancelamento chega no meio."""
+    monkeypatch.setattr(agent_mod, "RECONEXAO_MIN_S", 0.02)
+    morrendo = asyncio.Event()
+    lenta = {"ligada": True}
+
+    async def batida_lenta_para_morrer(_intervalo: float) -> None:
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            morrendo.set()
+            if lenta["ligada"]:
+                await asyncio.sleep(0.3)          # a janela: o agente está em `await batida`
+            raise
+
+    async with CentralFalso(fechar_apos_welcome=True) as central:
+        agente = Agent(_settings(tmp_path, central.url), enrollment="token-de-inscricao-de-teste")
+        monkeypatch.setattr(agente.executor, "estado", lambda _spec: ("stopped", None))
+        monkeypatch.setattr(agente, "_bater", batida_lenta_para_morrer)
+        tarefa = asyncio.create_task(agente.run_forever())
+        try:
+            await asyncio.wait_for(morrendo.wait(), timeout=5)
+            tarefa.cancel()                       # chega com o agente esperando a batida morrer
+            # `asyncio.wait` e não `wait_for`: este cancelaria a tarefa de novo, e com o defeito esse segundo cancel também seria engolido.
+            await asyncio.wait({tarefa}, timeout=3)
+            assert tarefa.done(), "o cancelamento do agente foi engolido enquanto a batida morria (o agente seguiu reconectando)"
+            assert tarefa.cancelled()
+        finally:
+            lenta["ligada"] = False               # com o defeito, desfaz o estrago: a janela fecha e o cancel passa
+            for _ in range(50):
+                if tarefa.done():
+                    break
+                tarefa.cancel()
+                await asyncio.wait({tarefa}, timeout=0.2)
+
+
 async def test_recusa_explicada_para_o_agente_em_vez_de_martelar_o_central(tmp_path: Path,
                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
     """Credencial errada ou worker não inscrito não se resolve insistindo: o agente para e deixa o texto para

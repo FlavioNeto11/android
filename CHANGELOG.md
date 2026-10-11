@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-11 — o cancelamento do agente do worker e da entrega NATS não é mais engolido enquanto o aviso de vida morre (31.347, flake da PG inteira do 75)
+
+- O flake `test_worker_agent::test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela` (CancelledError/TimeoutError só na PG inteira sob carga, 3/3 verde
+  isolado) NÃO era timeout curto: era uma corrida do código. `Agent._sessao` esperava a tarefa da batida com `suppress(asyncio.CancelledError)`; um
+  `cancel()` do próprio agente que chegasse nessa janela (a sessão acabou de cair) era engolido, e o agente seguia reconectando para sempre. O teste via
+  isso como os 10 s de `_encerrar` estourados, com a tarefa parada em `asyncio.sleep(0.02)` da escada de reconexão.
+- Correção: `await asyncio.gather(batida, return_exceptions=True)` (o cancelamento de fora sobe; o da batida vira um valor). Em produção, a mesma janela
+  fazia o `stop` do serviço do agente poder falhar em parar o processo.
+- O mesmo padrão em `commands/transport.py` (`NatsJetStreamTransport._entregar`, o aviso de vida `vivo`; transporte desligado por padrão): o cancelamento
+  da entrega que chegasse enquanto o aviso morria era engolido e o `ack` seguinte confirmava a mensagem de um consumidor sendo derrubado. Mesma correção
+  (`gather(..., return_exceptions=True)`), com o teste `tests/test_transporte_nats.py::test_cancelar_a_entrega_enquanto_o_aviso_de_vida_morre_nao_confirma`
+  (falha sem a correção, conferido por mutação; os 8 do arquivo).
+- Prova `simulated`: `tests/test_worker_agent.py::test_cancelar_o_agente_enquanto_a_batida_morre_nao_e_engolido` alarga a janela (a batida leva 0,3 s para
+  morrer e o cancelamento chega no meio): falha sem a correção (conferido por mutação) e passa com ela; os 24 do arquivo. `real`: `not_run`.
+
 ## 2026-10-11 — a posse do scheduler e a faxina do avisos saem do laço; o exame passa a ser exaustivo (31.343, ponto 10 do 31.307)
 
 - Dado de contraste: a PG inteira do 73 (23:34–00:2xZ) rodou SEM queda do laço; a do 75 (01:35–02:33Z) teve UMA, de 56 s.

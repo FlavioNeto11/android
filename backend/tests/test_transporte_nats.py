@@ -239,6 +239,43 @@ async def test_handler_que_quebra_nao_confirma_e_para_de_avisar(broker: JetStrea
     await t.close()
 
 
+async def test_cancelar_a_entrega_enquanto_o_aviso_de_vida_morre_nao_confirma(broker: JetStreamFalso,
+                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    """31.347: o `suppress(CancelledError)` que cercava a espera do aviso de vida engolia o cancelamento da própria entrega se ele chegasse
+    NESSA janela, e o `ack` seguinte confirmava a mensagem de um consumidor que estava sendo derrubado. A janela é alargada: o `in_progress`
+    leva 0,3 s para morrer e o cancelamento da entrega chega no meio."""
+    morrendo = asyncio.Event()
+    liberar = asyncio.Event()
+
+    async def in_progress_que_demora_para_morrer(self: MensagemFalsa) -> None:
+        self.em_andamento += 1
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            morrendo.set()
+            await asyncio.sleep(0.3)
+            raise
+
+    monkeypatch.setattr(MensagemFalsa, "in_progress", in_progress_que_demora_para_morrer)
+
+    async def handler(_envelope: dict[str, Any]) -> None:
+        await liberar.wait()
+
+    t = NatsJetStreamTransport("nats://falso:4222", owner_id="central", ack_wait_s=0.06)
+    await t.start(handler)
+    await t.publish({"command_id": "c-5", "instance_id": "android-01", "hosted_by": "central"})
+    await _ate(lambda: broker.entregues and broker.entregues[0].em_andamento >= 1, "o primeiro aviso de vida preso")
+    entrega = next(iter(broker._tarefas))
+    liberar.set()                                  # o handler termina; o `finally` cancela o aviso de vida, que demora para morrer
+    await asyncio.wait_for(morrendo.wait(), timeout=2)
+    entrega.cancel()                               # chega com a entrega esperando o aviso de vida morrer
+    await asyncio.wait({entrega}, timeout=3)
+    msg = broker.entregues[0]
+    assert msg.acks == 0, "a entrega cancelada confirmou a mensagem (o cancelamento foi engolido)"
+    assert entrega.cancelled()
+    await t.close()
+
+
 # ---------------------------------------------------------------- de ponta a ponta, pelo central
 async def test_comando_de_aparelho_do_worker_atravessa_o_broker_e_fecha(tmp_path: Path,
                                                                          broker: JetStreamFalso) -> None:
