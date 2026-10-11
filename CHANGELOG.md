@@ -58,7 +58,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Segunda ocorrência real do ponto 10, ANTES da correção do 31.343** (relato da orquestradora, `real`; ainda sem os ids de execução): 11/10 03:43:52Z, laço
   parado 10,8 s e queda de 3 s, durante a PG inteira do corte 76 no central em `950b8af24`; dump `data/logs/laco-travado-20261011T034355Z-1.txt`. A thread do
   laço estava em `_tick` → `_manter_posse` → `adotar_abandonadas` → `abandoned_steps` → `db.query` (a mesma pilha do 02:07Z); a thread do health estava em
-  `costs.spent_usd`, já fora do laço. Confirma o diagnóstico do 31.343. A leitura do `laco-por-hora` 71..76 (31.320) entra aqui quando a Android mandar.
+  `costs.spent_usd`, já fora do laço. Confirma o diagnóstico do 31.343.
+- **A série do dia (três, todas sob a PG inteira, mesma pilha, relato da orquestradora):** 02:06Z (52 s), 03:43Z (10,8 s) e 03:50:37Z (18,8 s; dump
+  `data/logs/laco-travado-20261011T035050Z-1.txt`). O 31.343 encerra a série; a prova `real` é a PG inteira do corte 77: sem laço parado ≥10 s com
+  `_manter_posse` na pilha. Até lá, `not_run`. A leitura do `laco-por-hora` 71..76 (31.320) entra aqui quando a Android mandar.
 - Validação: os 94 arquivos de teste que passam pelo scheduler + as catracas (1456 passed; as 10 de `tests/_skip_test_capabilities.py`, que a coleta
   normal não roda, falham igual na `main`), `tests/test_arquitetura.py`, mypy 257/257, `docs-check`. Doc: `docs/banco.md`, "O que ainda roda SQL na thread do laço".
 
