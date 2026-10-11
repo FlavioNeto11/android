@@ -29,7 +29,7 @@ from app.modules.email_do_parque.application.ports import CabecalhoDeMensagem
 from app.modules.email_do_parque.application.servico import EmailDoParque, ErroEmailDoParque
 from app.modules.identity.domain.persona import MAIORIDADE
 from app.modules.identity.domain.ponte_igfarm import (SYSTEM_DO_USERNAME, TENTATIVAS_DE_USERNAME, TTL_RESERVA_HORAS,
-                                                       CicloDaConta, CodigoDaConta, ComandoDeRegistro, ContaRegistrada,
+                                                       CicloDaConta, CodigoDaConta, ConsentimentoDaConta, ComandoDeRegistro, ContaRegistrada,
                                                        EgressoDoDevice, FichaDaPessoa, ImagemDaPessoa, PersonaPendente, Sugestao,
                                                        normalizar_username, pedido_do_username, username_do_modelo,
                                                        username_valido)
@@ -69,6 +69,7 @@ class ArmazemDaPonte(Protocol):
     def perfis_vinculados(self, instance_id: str) -> list[str]: ...
     def endereco_da_conta(self, conta_id: str) -> str | None: ...
     def ciclo_da_conta(self, conta_id: str) -> CicloDaConta | None: ...
+    def ids_da_conta_igfarm(self, conta_id: str) -> tuple[str, str, str] | None: ...
 
 
 class PessoasDaPonte(Protocol):
@@ -89,6 +90,7 @@ class ContasDaPonte(Protocol):
     def eh_nossa(self, handle: str) -> bool: ...
     def foi_retirada(self, handle: str) -> bool: ...
     def registrar(self, persona_id: str, *, username: str, email: str, senha: str, por: str) -> str: ...
+    def consentir(self, persona_id: str, account_id: str, *, por: str) -> tuple[str | None, str | None, bool]: ...
 
 
 class CofreDaPonte(Protocol):
@@ -383,6 +385,18 @@ class PonteIgfarm:
         return perfil_id, self._auto_assign(persona_id, perfil_id, account_id)
 
     # ------------------------------------------------------------------ código de confirmação
+    def consentir(self, conta_id: str) -> ConsentimentoDaConta:
+        """O igfarm consente a credencial da conta que ELE criou (ADR-040: o consentimento é por conta). Só vale para conta
+        registrada pela ponte (`contas_igfarm`): conta do painel ou de outra origem não é consentida por aqui. Idempotente: a conta
+        que já consentiu devolve o consentimento que tinha, sem regravá-lo. 409 `no_credential` sem senha guardada."""
+        ids = self.armazem.ids_da_conta_igfarm(conta_id)
+        if ids is None:
+            raise ErroDaPonte("not_found", "Conta não registrada pelo igfarm.", 404)
+        persona_id, account_id, igfarm_id = ids
+        em, por, ja = self.contas.consentir(persona_id, account_id, por="igfarm")
+        return ConsentimentoDaConta(account_id=account_id, igfarm_account_id=igfarm_id, consent_at=em, consent_by=por,
+                                    ja_consentida=ja)
+
     def ciclo(self, conta_id: str) -> CicloDaConta:
         """31.333: o que aconteceu com a conta do igfarm (criada, contatos com o app, retirada), só leitura."""
         achado = self.armazem.ciclo_da_conta(conta_id)

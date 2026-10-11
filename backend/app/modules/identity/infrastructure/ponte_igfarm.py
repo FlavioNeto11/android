@@ -157,6 +157,13 @@ class ArmazemSql:
                         " (SELECT account_id FROM contas_igfarm WHERE igfarm_account_id=?)", (conta_id, conta_id))
         return str(r["endereco"]) if r is not None else None
 
+    def ids_da_conta_igfarm(self, conta_id: str) -> tuple[str, str, str] | None:
+        g = self.db.one("SELECT profile_id, account_id, igfarm_account_id FROM contas_igfarm"
+                        " WHERE account_id=? OR igfarm_account_id=?", (conta_id, conta_id))
+        if g is None:
+            return None
+        return str(g["profile_id"]), str(g["account_id"]), str(g["igfarm_account_id"])
+
     def ciclo_da_conta(self, conta_id: str) -> CicloDaConta | None:
         g = self.db.one("SELECT * FROM contas_igfarm WHERE account_id=? OR igfarm_account_id=?", (conta_id, conta_id))
         if g is None:
@@ -329,6 +336,17 @@ class ContasSocial:
                                                        password=SecretStr(senha), by=por)
         except SocialError as exc:
             raise _erro(exc) from None
+
+    def consentir(self, persona_id: str, account_id: str, *, por: str) -> tuple[str | None, str | None, bool]:
+        """(consent_at, consent_by, já_consentida). Não regrava o consentimento que a conta já tem."""
+        try:
+            antes = self.social.get_account(persona_id, account_id)
+            if antes.consent_at:
+                return antes.consent_at, antes.credential.consent_by, True
+            depois = self.social.consent_account_credential(persona_id, account_id, by=por)
+        except SocialError as exc:
+            raise _erro(exc) from None
+        return depois.consent_at, depois.credential.consent_by, False
 
 
 class CofreSocial:

@@ -8712,3 +8712,44 @@ Aditivo na resposta da rota do v1.145: nenhum campo some e a conta do igfarm res
 
 **Prova:** `simulated` (`backend/tests/test_ciclo_da_conta_do_app.py`, 5 casos, e os 5 de `test_ciclo_da_conta_igfarm.py` seguem iguais).
 `real`: `not_run`.
+
+## Adendo v1.150 (11/10/2026; número a confirmar pela orquestradora; item 31.342) — a criação pelo igfarm foi REABERTA e o consentimento da conta ganhou rota
+
+Decisão do dono (11/10/2026): **quem cria a conta é o igfarm, pela API dele; o android hospeda e o app usa.** O v1.146 (31.335) tinha
+aposentado esse caminho e a ponte devolvia `409 criacao_pela_api_aposentada`; isso foi um excesso e está revertido. Aditivo: uma
+rota nova, um padrão de configuração que muda e nenhuma coluna, migração nem evento novo. Os acréscimos v1.147 a v1.149 (cabeçalhos, proxy
+da conta planejada, ciclo da conta do app) seguem como estão.
+
+**O que existe (ponte android ⇄ igfarm, todas com o token de serviço):**
+
+| Rota | Papel | Estado |
+|---|---|---|
+| `GET /api/instagram/personas-pendentes` | pessoas sem conta, com sugestão e foto, para o igfarm criar | **reaberta** (v1.146 revogado) |
+| `POST /api/instagram/contas` | registra a conta que o igfarm criou (senhas, caixa, marca do igfarm) | inalterada |
+| `POST /api/instagram/contas/{id}/consentimento` | consente a credencial da conta que o igfarm criou (ADR-040) | **NOVA** |
+| `GET /api/instagram/contas/{id}/codigo` | código do e-mail da conta | inalterada |
+| `GET /api/instagram/contas/{id}/ciclo` | ciclo da conta (v1.145, v1.149) | inalterada |
+| `GET /api/instagram/contas/{id}/cabecalhos` | cabeçalhos da caixa, sem corpo (v1.147) | inalterada |
+| `POST /api/instagram/profiles/{pid}/accounts/{aid}/proxy` | proxy sticky da conta planejada (v1.148) | inalterada |
+
+- **`contas.criacao_pela_api_do_igfarm` volta a `true` por padrão** (`config.example.yaml` também). `false` continua existindo como
+  chave para desligar: `GET /api/instagram/personas-pendentes` responde `409 criacao_pela_api_aposentada`, sem reservar, sem sugerir
+  e sem gerar foto paga. Registro, consentimento, código, ciclo, cabeçalhos e proxy não dependem dela.
+- **Rota de consentimento (nova).** O igfarm chamava `POST /api/credential/consent`, que **nunca existiu** (404/405: a central não
+  tem rota `/api/credential/*`; o consentimento é por conta, ADR-040, e ficava na rota do painel
+  `POST /api/instagram/profiles/{pid}/accounts/{aid}/credential/consent`, que exige conhecer o `profile_id`). A rota correta para o
+  igfarm é **`POST /api/instagram/contas/{conta_id}/consentimento`**, sem corpo:
+  - `conta_id` aceita o `account_id` da central ou o `igfarm_account_id` que o igfarm mandou no registro.
+  - Só vale para conta registrada pela ponte (`contas_igfarm`): outra conta responde `404 not_found`.
+  - **Idempotente.** Conta que já consentiu devolve o consentimento que tem (`ja_consentida: true`) sem regravá-lo. Conta cujo
+    consentimento foi limpo é consentida de novo, como `consent_by: "igfarm"` (`ja_consentida: false`). Sem senha guardada: `409 no_credential`.
+  - **Resposta `200`:** `{account_id, igfarm_account_id, consent: true, consent_at, consent_by, ja_consentida}`. Nunca traz senha.
+  - O registro (`POST /api/instagram/contas`) já guarda a senha COM o consentimento de quem registra; a rota é a confirmação explícita
+    (e o reparo), não uma etapa obrigatória depois do registro.
+- **Não houve alias `/api/credential/consent`.** Se o igfarm preferir manter o caminho antigo, é uma linha na ponte; o contrato oficial
+  é a rota acima.
+
+**O v1.146 fica SUPERADO** quanto à aposentadoria (a flag e o 409 existem, só que desligados por padrão); o texto dele fica como histórico.
+
+**Prova:** `simulated` (`backend/tests/test_criacao_pela_api_reaberta.py`, 7 casos, no lugar de `test_criacao_pela_api_aposentada.py`).
+`real`: `not_run`.

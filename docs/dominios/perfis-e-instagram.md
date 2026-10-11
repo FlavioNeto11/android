@@ -946,3 +946,14 @@ depois; o JSON de prova fora do Git. Limite do que ela prova: n=1 (uma conta), e
 **Lacuna conhecida do acompanhamento:** `GET /api/instagram/contas/{id}/ciclo` (31.333) só conhece conta registrada pelo igfarm
 (`contas_igfarm`); a conta criada no app não tem essa linha, então o intervalo "criada → 1º login → desfecho" dela só se lê hoje pelas
 `authentication_attempts` e pelos eventos. Estender o `/ciclo` à conta planejada é o próximo ganho pequeno.
+
+## A criação pelo igfarm foi reaberta e o consentimento da conta ganhou rota (31.342)
+
+- **Decisão do dono (11/10/2026), que reverte a do 31.335.** Quem cria a conta é o igfarm, pela API dele; o android hospeda e o app usa.
+  `contas.criacao_pela_api_do_igfarm` volta a `true` por padrão e `GET /api/instagram/personas-pendentes` volta a entregar as pessoas
+  sem conta. `false` fica como chave para desligar (409 `criacao_pela_api_aposentada`).
+- **Consentimento.** `POST /api/instagram/contas/{conta_id}/consentimento` (adendo v1.150) consente a credencial da conta que o igfarm
+  criou, pelo `account_id` ou pelo `igfarm_account_id`; só conta da ponte; idempotente; sem senha vira 409. É o que o igfarm tentava em
+  `POST /api/credential/consent`, rota que nunca existiu.
+- **O que segue.** O caminho do app (cadastro guiado 31.324, proxy 31.337, ciclo 31.341) continua para a conta que o app criar; os dois
+  caminhos convivem.

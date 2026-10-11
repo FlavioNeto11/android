@@ -192,6 +192,7 @@ def test_as_quarenta_e_nove_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_vez(
         ("GET", "/api/instagram/personas-pendentes"),
         ("POST", "/api/instagram/contas"),
         ("GET", "/api/instagram/contas/{conta_id}/cabecalhos"),
+        ("POST", "/api/instagram/contas/{conta_id}/consentimento"),
         ("GET", "/api/instagram/contas/{conta_id}/ciclo"),
         ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/proxy"),
         ("GET", "/api/instagram/contas/{conta_id}/codigo"),

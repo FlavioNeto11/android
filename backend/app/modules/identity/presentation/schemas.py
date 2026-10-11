@@ -362,6 +362,18 @@ class ContaRegistradaDTO(BaseModel):
     egresso: list[EgressoDoDeviceDTO] = []
 
 
+class ConsentimentoDaContaDTO(BaseModel):
+    """`POST /api/instagram/contas/{id}/consentimento`: o consentimento da credencial da conta que o igfarm criou (ADR-040)."""
+
+    account_id: str
+    igfarm_account_id: str
+    consent: bool = True
+    consent_at: str | None = None
+    consent_by: str | None = None
+    #: `true` quando a conta já tinha o consentimento (a chamada é idempotente e não o regravou).
+    ja_consentida: bool = False
+
+
 class CabecalhoDaCaixaDTO(BaseModel):
     recebida_em: str
     remetente: str

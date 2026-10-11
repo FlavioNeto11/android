@@ -206,3 +206,15 @@ def minutos_entre(inicio: str | None, fim: str | None) -> float | None:
     if b.tzinfo is None:
         b = b.replace(tzinfo=timezone.utc)
     return round((b - a).total_seconds() / 60.0, 1)
+
+
+@dataclass(frozen=True)
+class ConsentimentoDaConta:
+    """O consentimento da credencial de uma conta que o igfarm criou (ADR-040), como o igfarm o vê."""
+
+    account_id: str
+    igfarm_account_id: str
+    consent_at: str | None
+    consent_by: str | None
+    #: `True` quando a conta já tinha o consentimento (a chamada não o regravou).
+    ja_consentida: bool

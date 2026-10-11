@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-11 — a criação pelo igfarm foi reaberta e o consentimento da conta ganhou rota (31.342)
+
+- Decisão do dono: quem cria a conta é o igfarm, pela API dele. `contas.criacao_pela_api_do_igfarm` volta a `true` por padrão (`false`
+  segue como chave) e `GET /api/instagram/personas-pendentes` volta a responder. Rota nova `POST /api/instagram/contas/{id}/consentimento`
+  (consentimento da credencial da conta do igfarm, ADR-040, idempotente), no lugar do `POST /api/credential/consent`, que nunca existiu
+  (adendo v1.150, número a confirmar). Reverte a aposentadoria do 31.335 (v1.146).
+- Prova `simulated`: `tests/test_criacao_pela_api_reaberta.py` (7). `real`: `not_run`.
+
 ## 2026-10-11 — a partida da exploração espera a tela, a Junk deixa de ser a caixa e o ator acha a linha pelo remetente (31.338, 31.339, 31.340)
 
 - **Real (11/10/2026, deploy 74 `263e0815d`, `android-01`, Outlook do Lucas Almeida):** o replay por receita foi provado (receita 228 candidata, ativa por concordância e reproduzida

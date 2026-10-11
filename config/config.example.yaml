@@ -528,7 +528,7 @@ contas:                           # contas gerenciadas de qualquer app com login
   verificacao_periodica_h: 0      # 31.302: a cada N h relê (sem IA, sem digitar) a conta âncora "pronta" de cada persona num aparelho ligado e livre; 0 desliga
   verificacao_periodica_cpu_max_percent: 50   # com a CPU do host acima disto (funil/suíte) a volta não toca em aparelho
   verificacao_periodica_tique_s: 300          # de quanto em quanto tempo o laço olha; no máximo UMA conta por volta
-  criacao_pela_api_do_igfarm: false           # 31.335: (false) a API do igfarm não é mais a fonte da conta; o cadastro é no app. true reabre GET /api/instagram/personas-pendentes. Registro, código, ciclo e proxy não dependem dele
+  criacao_pela_api_do_igfarm: true            # (true) o igfarm cria a conta pela API dele e consome GET /api/instagram/personas-pendentes. false é a chave que o desliga (409 criacao_pela_api_aposentada). Registro, consentimento, código, ciclo e proxy não dependem dele
   # Ajustes do login por PACOTE, por cima do `sessao.yaml` do app (app/conhecimento/apps/<pacote>/). Só o que
   # for escrito vale; o resto vem do dado do app. (Era o bloco `instagram:`, que não é mais aceito.)
   # sessao:

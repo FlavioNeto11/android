@@ -46,7 +46,7 @@ from app.modules.identity.infrastructure.cadastro_guiado import CadastroGuiado
 from app.modules.identity.infrastructure.ponte_igfarm import compor_ponte_igfarm
 from app.modules.identity.infrastructure.proxy_da_conta import planejar_proxy_da_conta
 from app.modules.identity.presentation.schemas import (CabecalhoDaCaixaDTO, CabecalhosDaContaDTO, CicloDaContaDTO,
-                                                       CodigoDaContaDTO, ContatoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
+                                                       CodigoDaContaDTO, ConsentimentoDaContaDTO, ContatoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
                                                        EgressoDoDeviceDTO, PersonaPendenteDTO, ProxyDaContaBody, ProxyDaContaDTO,
                                                        SignupBody)
 from app.modules.identity.presentation.comum import device, mime_da_chave, quem, servir_do_storage, social_error
@@ -722,6 +722,20 @@ async def registrar_conta_igfarm(request: Request, body: ContaIgfarmBody) -> JSO
                              egresso=[EgressoDoDeviceDTO(instance_id=e.instance_id, estado=e.estado, motivo=e.motivo)
                                       for e in r.egresso])
     return JSONResponse(status_code=200 if r.idempotente else 201, content=dto.model_dump())
+
+
+@router.post("/instagram/contas/{conta_id}/consentimento", response_model=None)
+async def consentir_conta_igfarm(request: Request, conta_id: str) -> ConsentimentoDaContaDTO:
+    """O igfarm consente a credencial da conta que ELE criou (ADR-040: consentimento por conta; o `POST /instagram/contas` já
+    registra a senha com o consentimento de quem registra, e esta rota o confirma ou o completa depois, por exemplo numa conta
+    que o painel limpou). `conta_id` é o `account_id` da central ou o `igfarm_account_id`. Só conta registrada pela ponte (404);
+    idempotente; 409 `no_credential` sem senha guardada. Substitui o `POST /api/credential/consent`, que nunca existiu."""
+    try:
+        c = compor_ponte_igfarm(_st(request)).consentir(conta_id)
+    except ErroDaPonte as exc:
+        raise _erro_da_ponte(exc) from exc
+    return ConsentimentoDaContaDTO(account_id=c.account_id, igfarm_account_id=c.igfarm_account_id, consent_at=c.consent_at,
+                                   consent_by=c.consent_by, ja_consentida=c.ja_consentida)
 
 
 @router.get("/instagram/contas/{conta_id}/ciclo", response_model=None)
