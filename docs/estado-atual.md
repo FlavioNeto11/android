@@ -1,10 +1,12 @@
 # Estado atual — handoff
 
-**Revisado em 10/10/2026: runtime do backend em `a9853379e9f74d` (migração 136; deploy 73); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 10/10/2026: runtime do backend em `263e0815de46ce` (migração 136; deploy 74); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 74 no ar (11/10/2026, 01:04:26Z, central `263e0815de46ce`, sem migração; tag `deploy-20261011-0104`).** Alinha código e conhecimento do Outlook (o checkout central tinha andado sem deploy e o `telas.yaml` novo quebrava a exploração; ver o CHANGELOG), traz o ciclo da conta da ponte (31.333) e a fração de interrupção em thread (31.320 ponto 9). **Regra: o checkout central só se move no deploy.**
+  - `real`: deploy rc=0 em 75,0 s, backup `20261010-220311`, saúde ok com `problems` vazio (`open_connections` 9, `slow_queries_in_loop` 0), prova de fora como esperado, agente do notebook em `0.1.0+263e081` e online. `simulated`: funil dirigido (SQLite 5677 passed, PG 5675 passed, catracas 103, mypy 257, vitest 2366) com o único vermelho real (`test_ordem_das_rotas`) consertado pela Ponte. `not_run`: SQLite inteiro e PG inteira na ponta.
 - **Deploy 73 no ar (10/10/2026, 23:33:18Z, central `a9853379e9f74d`, sem migração nova; tag `deploy-20261010-2333`).** O banco passa a ter uma conexão por thread (31.320), o `/health` mostra `open_connections` e `slow_queries_in_loop`, o login mede o egresso na janela (31.329) e o cadastro guiado ganha o app de campo sem id (31.324 G1).
   - `real`: deploy rc=0 em 70,7 s, backup `20261010-203207`, saúde ok com `problems` vazio (`open_connections` 9, `slow_queries_in_loop` 0), prova de fora como esperado, agente do notebook em `0.1.0+a985337` e online. `simulated`: funil em `a9853379e` (SQLite inteiro 13225 passed, scripts 1283, catracas 103, mypy 257, vitest 2365, PG dirigido 3250 passed). `real` também: a PG inteira em `31affa1f8` deu 13216 passed, 69 skipped e 0 failed (51 min 46 s). `not_run`: a prova real do 31.320 sob carga.
 - **Deploy 72 no ar (10/10/2026, 20:10:12Z, central `ac189b091ed3ae`, migrações 135 e 136; tag `deploy-20261010-2010`).** O laço de eventos deixa de esperar consulta síncrona (31.307, índice em `events`), o motivo do bloqueio vira dado na lápide (31.322) e a exploração de efeito tem padrão por verbo (31.325); o interruptor `limits.exploracao_efeito_ligada` segue DESLIGADO.
