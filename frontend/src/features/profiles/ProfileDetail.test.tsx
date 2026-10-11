@@ -1697,3 +1697,21 @@ it('achado da varredura 70/71: o seletor de grupo conta as personas SEM as de te
   const opcoes = [...(byRole('combobox', /^Grupo$/) as HTMLSelectElement).options].map((o) => o.textContent);
   expect(opcoes.find((o) => o?.startsWith('Liberados'))).toContain('2 personas');
 });
+
+it('31.346: o ciclo da conta do app âncora fica recolhido e só lê a API ao abrir; a conta de outro app não tem a seção', async () => {
+  backend.on('GET', /\/instagram\/contas\/acc-1\/ciclo$/, () => json({
+    account_id: 'acc-1', igfarm_account_id: null, origem: 'app', referencia: 'planejamento', criada_em: null,
+    registrada_em: '2026-10-11T10:00:00Z', estado: 'ativa', retirada_em: null, minutos_ate_o_primeiro_contato: 12.4,
+    ultimo_desfecho: 'parada', contatos: [{ iniciado_em: '2026-10-11T10:12:00Z', minutos_desde_a_criacao: 12.4, desfecho: 'parada', etapa: 'cadastro', detalhe: 'codigo_nao_chegou' }],
+  }));
+  await abrirContas([conta(), conta({ id: 'acc-2', app_id: 'outlook', app_name: 'Outlook', package: 'com.microsoft.office.outlook', handle: 'x' })]);
+  expect(Array.from(container.querySelectorAll('summary')).filter((s) => s.textContent === 'Ciclo da conta')).toHaveLength(1);
+  expect(backend.callsTo('GET', /\/ciclo$/)).toHaveLength(0);
+  await click(Array.from(container.querySelectorAll('summary')).find((s) => s.textContent === 'Ciclo da conta') as HTMLElement);
+  await waitFor(() => text().includes('Criada no app (cadastro guiado)'));
+  expect(text()).toContain('Cadastro parado');
+  expect(text()).toContain('12 min');
+  expect(text()).toContain('desde o planejamento');
+  expect(text()).toContain('codigo_nao_chegou');
+  expect(backend.callsTo('GET', /\/ciclo$/)).toHaveLength(1);
+});

@@ -1960,6 +1960,35 @@ export interface ProfileCapabilities {
 
 
 // ---------------------------------------------------------------- perfil com contas em vários apps (item 12.1)
+/** 31.346 (adendos v1.145 e v1.149): uma tentativa de contato da conta com o app; só ids, horas, minutos e desfechos (sem @ nem e-mail). */
+export interface ContatoDaConta {
+  iniciado_em: string | null;
+  minutos_desde_a_criacao: number | null;
+  /** `session_ready`, `auth_challenge`, `uncertain`, `conta_nao_encontrada`, `confirmada`, `parada`, … (aberto: o motor pode ganhar desfechos). */
+  desfecho: string;
+  /** `cadastro` nos contatos do cadastro guiado; ausente/nulo nas tentativas de login. */
+  etapa?: string | null;
+  /** O que o motor gravou (até 200 caracteres), já sem identificador. */
+  detalhe?: string | null;
+}
+
+/** `GET /api/instagram/contas/{id}/ciclo`: o que aconteceu com uma conta do Instagram, da criação à retirada. */
+export interface CicloDaConta {
+  account_id: string;
+  igfarm_account_id: string | null;
+  /** v1.149: quem criou a conta. Ausente (central anterior) vale `igfarm`. */
+  origem?: 'igfarm' | 'app';
+  /** v1.149: de onde contam os minutos dos contatos. Ausente vale `criacao`. */
+  referencia?: 'criacao' | 'planejamento';
+  criada_em: string | null;
+  registrada_em: string | null;
+  estado: 'ativa' | 'retirada' | string;
+  retirada_em: string | null;
+  minutos_ate_o_primeiro_contato: number | null;
+  ultimo_desfecho: string | null;
+  contatos: ContatoDaConta[];
+}
+
 export interface ProfileAccount {
   id: string;
   profile_id: string;

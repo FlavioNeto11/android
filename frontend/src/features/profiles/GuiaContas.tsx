@@ -5,9 +5,9 @@
  * tentativas — tudo pelas rotas POR CONTA (`…/accounts/{aid}/…`), com os botões gateados por `session_actions`.
  */
 import { AtSign, CheckCircle2, ClipboardList, Globe, KeyRound, LogOut, Mail, PlugZap, Plus, ScanEye, ShieldCheck, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import type { AppCatalogEntry, AppConfig, AuthAttempt, PersonaDevice, ProfileAccount } from '../../api/types';
+import type { AppCatalogEntry, AuthAttempt, PersonaDevice, ProfileAccount } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
@@ -25,6 +25,7 @@ import { PrepararConta, ProvisionamentoDaConta } from './ContaPlanejada';
 import { TEXTO_DO_CONSENTIMENTO, ehNavegador, emPreparo, provisionamentoDe } from './provisionamento';
 import { aparelhosDe, ehEndereco, handleDe, type Pessoa } from './pessoa';
 import { SESSION_PHASE_LABEL, accountGateReason } from './sessionGate';
+import { CicloDaConta } from './CicloDaConta';
 import { MotivoDoBloqueio } from './MotivoDoBloqueio';
 import styles from './Profiles.module.css';
 
@@ -36,7 +37,7 @@ const USUARIO_DA_CONTA_ANCORA = /^[A-Za-z0-9._]{1,30}$/;
 
 /** O app da conta de CADASTRO da persona: o que o registro do backend declara `profile_anchor` (23.10, sem
  *  comparar nome ou pacote no cliente — antes era `ehInstagram` fixo em `com.instagram.android`). */
-function ehAncora(app: Pick<AppConfig, 'package'>, catalogo: readonly AppCatalogEntry[]): boolean {
+function ehAncora(app: { package?: string | null }, catalogo: readonly AppCatalogEntry[]): boolean {
   return catalogo.some((c) => c.package === app.package && c.profile_anchor);
 }
 
@@ -146,9 +147,13 @@ export function AbaContasEAcesso({ profile, contas, erro = null, recarregar, onC
           ) : (
             <ul className={styles.accountList}>
               {contas.map((c) => (
-                <CartaoConta key={c.id} profileId={profile.id} conta={c} onMudou={mudou}
-                             aparelhos={aparelhosDe(profile)} principal={profile.instance_id}
-                             origens={contas.filter((o) => o.id !== c.id && temSenha(o))} />
+                <Fragment key={c.id}>
+                  <CartaoConta profileId={profile.id} conta={c} onMudou={mudou}
+                               aparelhos={aparelhosDe(profile)} principal={profile.instance_id}
+                               origens={contas.filter((o) => o.id !== c.id && temSenha(o))} />
+                  {/* 31.346: o ciclo só existe para a conta do app âncora (Instagram); o servidor responde 404 às demais. */}
+                  {ehAncora(c, catalogo ?? []) ? <li className={styles.cicloDaConta}><CicloDaConta accountId={c.id} /></li> : null}
+                </Fragment>
               ))}
             </ul>
           )}

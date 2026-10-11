@@ -37,6 +37,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_worker_agent.py::test_cancelar_o_agente_enquanto_a_batida_morre_nao_e_engolido` alarga a janela (a batida leva 0,3 s para
   morrer e o cancelamento chega no meio): falha sem a correção (conferido por mutação) e passa com ela; os 24 do arquivo. `real`: `not_run`.
 
+## 2026-10-11 — a ficha da persona mostra o ciclo da conta Instagram (31.346, v1.145 e v1.149)
+
+- Em Contas e acesso, a conta do app âncora ganha a seção recolhida "Ciclo da conta" (só lê `GET /api/instagram/contas/{id}/ciclo` ao abrir): origem (igfarm ou app), de onde contam os minutos (criação ou planejamento), minutos até o primeiro contato, a lista de contatos com o desfecho (`session_ready`, `auth_challenge`, `uncertain`, `conta_nao_encontrada`, `confirmada`, `parada`; desfecho novo aparece com o código do servidor) e a retirada com a hora. Carregando, vazio, erro com "Tentar de novo".
+- Só leitura, sem @, e-mail, senha nem IP (a API não os devolve; o painel só mostra ids, horas, minutos e desfechos). Só `features/profiles/CicloDaConta.tsx`, o tipo, o cliente e a montagem em `GuiaContas.tsx`.
+- Prova `simulated`: `CicloDaConta.test.tsx` (9) e 1 caso em `ProfileDetail.test.tsx`, 300 dirigidos de profiles, tsc limpo. `real`: `not_run` (percurso no deploy que o levar; 375 px sem rolagem só se mede lá).
+
 ## 2026-10-11 — a posse do scheduler e a faxina do avisos saem do laço; o exame passa a ser exaustivo (31.343, ponto 10 do 31.307)
 
 - Dado de contraste: a PG inteira do 73 (23:34–00:2xZ) rodou SEM queda do laço; a do 75 (01:35–02:33Z) teve UMA, de 56 s.

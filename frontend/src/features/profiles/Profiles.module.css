@@ -48,6 +48,7 @@
 }
 .filaInfo { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .filaPerfil { margin: 0; display: flex; align-items: center; gap: var(--sp-2); font-weight: 600; }
+.filaPerfilQuebra { flex-wrap: wrap; row-gap: var(--sp-1); }
 .filaUsuario { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filaDetalhe {
   margin: 0; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
@@ -308,6 +309,8 @@ details[open] > .disclosure svg { transform: rotate(90deg); }
                padding-bottom: var(--sp-4); margin-bottom: var(--sp-4); border-bottom: 1px solid var(--border-1); }
 .accountFormActions { display: flex; gap: var(--sp-2); }
 .accountList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+/* 31.346: o ciclo da conta, logo abaixo do cartão dela, recuado para ler como parte dele (a lista tem gap de --sp-3). */
+.cicloDaConta { margin-top: calc(var(--sp-3) * -1 + var(--sp-1)); padding: 0 var(--sp-3); }
 .accountRow {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-3); align-items: start;
   padding: var(--sp-3); border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-2);

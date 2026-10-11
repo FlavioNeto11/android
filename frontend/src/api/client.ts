@@ -82,6 +82,7 @@ import type {
   PersonaImage,
   PersonaImagesAccepted,
   PersonaInput,
+  CicloDaConta,
   PersonaPatchRequest,
   PersonaPreviewRequest,
   InstanceProvisionAccepted,
@@ -745,6 +746,9 @@ export const api = {
     request<void>('DELETE', `/instagram/profiles/${enc(profileId)}/memory/${enc(memoryId)}`),
   listInteractions: (profileId: string, limit = 30, appId?: string | null) =>
     request<SocialInteraction[]>('GET', `/instagram/profiles/${enc(profileId)}/interactions`, { query: { limit, app_id: appId ?? undefined } }),
+  /** 31.346 (v1.145/v1.149): só leitura; `{id}` é o `account_id` da conta (ou o do igfarm). */
+  getCicloDaConta: (accountId: string) =>
+    request<CicloDaConta>('GET', `/instagram/contas/${enc(accountId)}/ciclo`),
   listAccounts: (profileId: string) =>
     request<ProfileAccount[]>('GET', `/instagram/profiles/${enc(profileId)}/accounts`),
   addAccount: (profileId: string, body: ProfileAccountCreateRequest) =>
