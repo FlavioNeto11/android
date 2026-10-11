@@ -365,6 +365,23 @@ class PonteIgfarm:
             resultado.append(EgressoDoDevice(iid, "atribuido"))
         return tuple(resultado)
 
+    def planejar_proxy(self, persona_id: str, account_id: str, proxy_url: str) -> tuple[str, tuple[EgressoDoDevice, ...]]:
+        """31.337: o perfil de proxy sticky da conta PLANEJADA (`igfarm-<conta>`), criado no planejamento e atribuído aos
+        aparelhos da persona ANTES do primeiro toque do cadastro no app. O igfarm só entrega o `proxy_url`; não cria a conta.
+        Sem `egress_esperado`: o IP de criação é a primeira medição dentro da janela do cadastro (`medir_para_o_cadastro`).
+        Idempotente pelo nome do perfil (repetir devolve o mesmo e reatribui o que faltar)."""
+        if self.rede is None:
+            raise ErroDaPonte("rede_indisponivel", "O subsistema de rede não está disponível.", 503)
+        try:
+            scheme, host, port, username, password = self.rede.parse_proxy(proxy_url)
+        except ValueError:
+            raise ErroDaPonte("proxy_invalido", "O proxy_url não é um endereço de proxy válido.", 422) from None
+        with self.armazem.tx():
+            perfil_id = self.rede.criar_perfil_de_conta(
+                account_id, host=host, port=port, protocol=scheme, username=username,
+                secret=SecretStr(password) if password else None, ip_criacao=None, quem="cadastro")
+        return perfil_id, self._auto_assign(persona_id, perfil_id, account_id)
+
     # ------------------------------------------------------------------ código de confirmação
     def ciclo(self, conta_id: str) -> CicloDaConta:
         """31.333: o que aconteceu com a conta do igfarm (criada, contatos com o app, retirada), só leitura."""

@@ -44,8 +44,11 @@ from app.modules.identity.application.ponte_igfarm import ErroDaPonte
 from app.modules.identity.domain.ponte_igfarm import SENHAS_MASCARADAS, ComandoDeRegistro, PersonaPendente
 from app.modules.identity.infrastructure.cadastro_guiado import CadastroGuiado
 from app.modules.identity.infrastructure.ponte_igfarm import compor_ponte_igfarm
-from app.modules.identity.presentation.schemas import (CabecalhoDaCaixaDTO, CabecalhosDaContaDTO, CicloDaContaDTO, CodigoDaContaDTO, ContatoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
-                                                       EgressoDoDeviceDTO, PersonaPendenteDTO, SignupBody)
+from app.modules.identity.infrastructure.proxy_da_conta import planejar_proxy_da_conta
+from app.modules.identity.presentation.schemas import (CabecalhoDaCaixaDTO, CabecalhosDaContaDTO, CicloDaContaDTO,
+                                                       CodigoDaContaDTO, ContatoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
+                                                       EgressoDoDeviceDTO, PersonaPendenteDTO, ProxyDaContaBody, ProxyDaContaDTO,
+                                                       SignupBody)
 from app.modules.identity.presentation.comum import device, mime_da_chave, quem, servir_do_storage, social_error
 from app.social.capacidades import capacidades_do_perfil
 from app.social.policy import DEFAULT_LIMITS
@@ -540,6 +543,21 @@ async def signup_account(request: Request, profile_id: str, account_id: str, bod
                                                     instance_id=body.instance_id if body else None, by=quem(request))
     except SocialError as exc:
         raise social_error(exc) from exc
+
+
+@router.post("/instagram/profiles/{profile_id}/accounts/{account_id}/proxy", response_model=None)
+async def planejar_proxy_da_conta_rota(request: Request, profile_id: str, account_id: str,
+                                       body: ProxyDaContaBody) -> ProxyDaContaDTO:
+    """31.337: cria (idempotente) o perfil de proxy sticky da conta PLANEJADA e o atribui aos aparelhos da persona, antes do
+    primeiro toque do cadastro no app. O igfarm só entrega o `proxy_url`; o IP de criação é a primeira medição dentro da janela
+    do cadastro. Só para conta que ainda vai se cadastrar (409 `estado_inesperado` depois)."""
+    try:
+        perfil_id, egresso = planejar_proxy_da_conta(_st(request), profile_id, account_id, body.proxy_url.get_secret_value())
+    except SocialError as exc:
+        raise social_error(exc) from exc
+    return ProxyDaContaDTO(profile_id=profile_id, account_id=account_id, network_profile_id=perfil_id,
+                           egresso=[EgressoDoDeviceDTO(instance_id=e.instance_id, estado=e.estado, motivo=e.motivo)
+                                    for e in egresso])
 
 
 @router.patch("/instagram/profiles/{profile_id}/accounts/{account_id}", response_model=None)

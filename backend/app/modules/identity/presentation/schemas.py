@@ -202,6 +202,25 @@ class SignupBody(BaseModel):
     instance_id: str | None = Field(default=None, min_length=1, max_length=80)
 
 
+class ProxyDaContaBody(BaseModel):
+    """`POST …/accounts/{id}/proxy` (31.337): o proxy sticky da conta planejada. A URL pode trazer a senha do proxy: `SecretStr`
+    (nunca volta, nem em log, evento ou resposta)."""
+
+    model_config = ConfigDict(extra="forbid")
+    proxy_url: SecretStr = Field(min_length=3, max_length=500)
+
+
+class ProxyDaContaDTO(BaseModel):
+    profile_id: str
+    account_id: str
+    #: O perfil de rede `igfarm-<conta>`.
+    network_profile_id: str
+    #: Um item por aparelho da persona: `atribuido` | `ja_atribuido` | `pendente_confirmacao`.
+    egresso: list[EgressoDoDeviceDTO] = Field(default_factory=list)
+    #: Sempre `null` aqui: o IP de criação é a primeira medição dentro da janela do cadastro.
+    egress_esperado: str | None = None
+
+
 class PolicyGroupCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=80)

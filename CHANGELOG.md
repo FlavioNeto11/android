@@ -34,6 +34,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   Sem migração, sem evento novo (adendo v1.147). Seção do domínio `nvit.com.br` (DNS, RDAP, DBLs sem listagem) em
   `docs/email-do-parque.md`.
 - Prova `simulated`: `tests/test_cabecalhos_da_caixa.py` (8). `real`: `not_run` para a rota; as consultas de DNS/RDAP foram `real`.
+
+## 2026-10-11 — o proxy sticky da conta planejada e o egresso medido na janela do cadastro (31.337)
+
+- `POST /api/instagram/profiles/{id}/accounts/{aid}/proxy` cria (idempotente) o perfil `igfarm-<conta>` sem `egress_esperado` e o atribui
+  aos aparelhos da persona; o cadastro guiado mede o egresso na janela ANTES do primeiro toque: a primeira medição pública fixa o esperado
+  (com rastro), as seguintes comparam; não casou, parada `egresso_nao_casou` e nada é tocado. `session.egresso_na_janela` ganha `fase`.
+  Sem migração (adendo v1.148).
+- Prova `simulated`: `tests/test_proxy_da_conta_planejada.py` (8). `real`: `not_run` (depende da resposta do igfarm e do sim do dono).
 ## 2026-10-10 — a lista de contas retiradas e o grupo contam as personas sem @ (achado do percurso real do deploy 73, 31.326)
 
 - Defeito do próprio 31.326, visto no central (`a9853379e`): com 10 personas com `contas_retiradas`, a lista "Contas retiradas por bloqueio" não aparecia, e o grupo Liberado dizia "15 personas · +1 de teste" (certo: 14 e +2). A tela filtrava as personas com `comConta`, e a retirada por bloqueio apaga o @ da persona; a persona de teste sem conta também ficava fora do conjunto de testes. A lista e o grupo passam a usar todas as personas.

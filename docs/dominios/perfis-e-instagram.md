@@ -888,3 +888,17 @@ conclusão). Contas só por A, B e C: os valores crus ficam no JSON de referênc
 - **O que fica como apoio.** O registro (`POST /api/instagram/contas`), o consentimento da credencial, o código do e-mail, o
   ciclo da conta (`/ciclo`, 31.333) e o proxy por conta (`igfarm-{account_id}`, 31.317/31.329) seguem valendo para a conta que
   já foi criada e para a que o app criar com apoio do igfarm.
+
+## O proxy sticky da conta planejada e o egresso na janela do cadastro (31.337)
+
+- **Por quê.** No cadastro no app (decisão do dono, 10/10/2026) o IP tem de estar no aparelho ANTES do primeiro toque em "Create new
+  account", e o IP de criação é o primeiro medido dentro da janela do cadastro. O perfil `igfarm-<conta>` deixa de nascer no registro do
+  igfarm (conta já criada pela API) e passa a nascer no planejamento.
+- **O planejamento.** `POST …/accounts/{id}/proxy` recebe o `proxy_url` que o igfarm entregou, cria o perfil sem `egress_esperado` e o
+  atribui aos aparelhos da persona. Idempotente; só antes do cadastro.
+- **A janela.** O cadastro guiado mede a saída do aparelho (`ConvergenciaDeRede.medir_para_o_cadastro`) antes de abrir o app:
+  primeira medição com IPv4 público fixa o `egress_esperado` (com rastro); as seguintes comparam, como no login (31.329). Não casou:
+  parada `egresso_nao_casou`, nada tocado. Medição sem IP nunca conta como "casou".
+- **O que falta para a prova real.** Uma sessão sticky nova por conta, entregue pelo igfarm SEM criar a conta (pergunta 6 do cartão
+  COG65yCO), o `cadastro.yaml` do Instagram declarado da captura (P-050) e o sim do dono para criar uma conta real. Ciclo de vida do
+  perfil (a sessão do IPRoyal gira): criar, usar e aposentar ainda não está desenhado além do perfil por conta.

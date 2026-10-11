@@ -8671,3 +8671,24 @@ Aditivo: uma rota de leitura nova na ponte android ⇄ igfarm. Nenhuma coluna, m
   servidor de entrada autenticou (31.333/31.336).
 
 **Prova:** `simulated` (`backend/tests/test_cabecalhos_da_caixa.py`, 8 casos). `real`: `not_run` (nenhuma IMAP real nesta entrega).
+
+## Adendo v1.148 (11/10/2026; número da orquestradora; item 31.337) — o proxy sticky da conta PLANEJADA e o egresso medido na janela do cadastro
+
+Aditivo: uma rota nova, um campo novo num evento existente e um código de parada novo. Nenhuma coluna, migração nem enum novo.
+
+- **`POST /api/instagram/profiles/{profile_id}/accounts/{account_id}/proxy`**, corpo `{proxy_url}` (`extra="forbid"`, `SecretStr`: a senha do
+  proxy nunca volta, nem em log, evento ou resposta). Cria (idempotente pelo nome) o perfil de rede `igfarm-<account_id>` SEM
+  `egress_esperado` e o atribui aos aparelhos da persona (mesma regra de atribuição do registro do igfarm: política `exigida`,
+  `pendente_confirmacao` quando o aparelho tem conta real de OUTRA persona). Resposta `{profile_id, account_id, network_profile_id,
+  egresso: [{instance_id, estado, motivo}], egress_esperado: null}`. Só para conta que ainda vai se cadastrar (os estados de partida do
+  cadastro guiado); depois, `409 estado_inesperado`. Erros: `404` conta inexistente, `422 proxy_invalido`, `503 rede_indisponivel`.
+  O igfarm só ENTREGA a URL do proxy; ele não cria a conta.
+- **`POST …/provisioning/signup` mede o egresso na janela ANTES do primeiro toque** quando o aparelho tem o proxy planejado DESTA conta
+  (`igfarm-<conta>`). Sem `egress_esperado`, a primeira medição com IPv4 público vira o esperado (o IP de criação), gravado pelo
+  caminho com rastro (`network.updated`); com ele, vale a regra do login (31.329: casar e estar dentro de 30 s). Se não casar, ou a
+  medição não obtiver IP, o cadastro nem começa: nada é tocado, a conta continua no estado de partida e o comando termina `failed`
+  com a parada **`egresso_nao_casou`** (evento `identity.cadastro`, `resultado: parada`). Sem o proxy desta conta no aparelho, nada muda.
+- **`session.egresso_na_janela`** ganha o campo `fase` em `data` (`"cadastro"` quando vem do cadastro guiado; ausente no login, como antes).
+
+**Prova:** `simulated` (`backend/tests/test_proxy_da_conta_planejada.py`, 8 casos; sonda de IP, app e aparelho falsos). `real`: `not_run`
+(depende de o igfarm entregar uma sessão sticky por conta sem criar a conta, pergunta 6 do cartão COG65yCO, e do sim do dono para uma conta real).

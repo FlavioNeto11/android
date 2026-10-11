@@ -246,6 +246,11 @@ class CadastroGuiado:
         s = self.s
         ciclo = CicloNoBanco(s, rt, profile_id, account_id, by=by)
         inicio = time.monotonic()
+        # 31.337: com o proxy sticky planejado DESTA conta no aparelho, o egresso é medido na janela ANTES do primeiro toque; se
+        # não casar com o esperado (ou a medição não obteve IP), o cadastro nem começa. Sem proxy planejado, segue como sempre.
+        if not await self._egresso_confere(rt, profile_id, account_id):
+            self._emitir(rt, profile_id, account_id, "parada", "egresso_nao_casou", inicio)
+            raise RuntimeError("cadastro guiado parado: egresso_nao_casou")
         try:
             desfecho: Desfecho = await MotorDeCadastro(k, MesaDoAparelho(s, rt), ciclo, dados).executar()
         except Exception as exc:  # noqa: BLE001 - o motor não levanta; isto cobre só a montagem (mesa, ciclo)
@@ -258,6 +263,22 @@ class CadastroGuiado:
         if not desfecho.confirmada:
             # O comando termina `failed` (a pessoa assume); a mensagem é só o código fechado.
             raise RuntimeError(f"cadastro guiado parado: {desfecho.parada.value if desfecho.parada else 'desconhecido'}")
+
+    async def _egresso_confere(self, rt: DeviceRuntime, profile_id: str, account_id: str) -> bool:
+        s = self.s
+        try:
+            janela = await s.rede_convergencia.medir_para_o_cadastro(rt, account_id)
+        except Exception as exc:  # noqa: BLE001 - conferir é leitura; se a própria conferência quebrou, o cadastro segue como antes
+            log.warning("cadastro guiado de %s: a medição do egresso falhou (%s); o cadastro seguiu", account_id,
+                        type(exc).__name__)
+            return True
+        if janela is None:
+            return True
+        s.bus.emit("session.egresso_na_janela",
+                   f"{rt.id}: egresso na janela do cadastro — {'casou' if janela.casou else janela.motivo()}",
+                   level="info" if janela.casou else "warn", instance_id=rt.id,
+                   data={"profile_id": profile_id, "account_id": account_id, "fase": "cadastro", **janela.como_dado()})
+        return janela.casou
 
     def _emitir(self, rt: DeviceRuntime, profile_id: str, account_id: str, resultado: str, motivo: str | None,
                 inicio: float) -> None:

@@ -372,6 +372,46 @@ class ConvergenciaDeRede:
                                casou=bool(ipv4) and ipv4 == esperado and distancia <= JANELA_DO_LOGIN_S,
                                medicao_id=mid, detalhe=detalhe[:300])
 
+    async def medir_para_o_cadastro(self, rt: DeviceRuntime, account_id: str) -> EgressoNaJanela | None:
+        """31.337: a saída do aparelho AGORA, antes do primeiro toque do cadastro no app. `None` quando o aparelho não tem o
+        proxy planejado DESTA conta (perfil `igfarm-<conta>`): o cadastro segue como sempre. Com o perfil e sem
+        `egress_esperado` ainda, a primeira medição com IPv4 público vira o esperado (é o IP de criação da conta, medido
+        dentro da janela e gravado com rastro); com `egress_esperado`, vale a mesma regra do login (31.329): casar e estar
+        dentro dos 30 s. Medição sem IP NÃO é "casou". Nunca levanta."""
+        row = self._linha(rt.id)
+        if row is None or not row["proxy_profile_id"]:
+            return None
+        perfil = self.st.db.one("SELECT id, name, params FROM network_profiles WHERE id=?", (row["proxy_profile_id"],))
+        if perfil is None or str(perfil["name"]) != f"igfarm-{account_id}":
+            return None
+        esperado = (loads(perfil["params"], {}) or {}).get("egress_esperado")
+        try:
+            ipv4, ipv6, detalhe = await medir_saida(self._aparelho(self.st, rt), self.cfg.sonda)
+        except Exception as exc:  # noqa: BLE001 - leitura: falha vira "não casou", nunca derruba o cadastro
+            ipv4, ipv6, detalhe = None, None, f"a sonda não concluiu ({str(exc)[:200]})"
+        fim = time.monotonic()
+        medido_em = now_iso()
+        mid = rede.registrar_saida_do_login(self.st, rt.id, ipv4, ipv6, detalhe)
+        distancia = max(0.0, time.monotonic() - fim)
+        if not esperado:
+            if not ipv4:
+                return EgressoNaJanela(esperado="(a fixar na primeira medição)", medido=None, medido_em=medido_em,
+                                       distancia_s=round(distancia, 3), casou=False, medicao_id=mid, detalhe=detalhe[:300])
+            try:
+                rede.atualizar_saida_esperada(
+                    self.st, str(perfil["id"]), rede.NetworkProfileSaidaBody(egress_esperado=ipv4), "cadastro")
+            except rede.RedeError as exc:       # IP não público (ex.: 10.x): não vira esperado, e o cadastro não segue
+                return EgressoNaJanela(esperado="(a fixar na primeira medição)", medido=ipv4, medido_em=medido_em,
+                                       distancia_s=round(distancia, 3), casou=False, medicao_id=mid,
+                                       detalhe=f"saída {ipv4} não pôde ser fixada: {exc.message}"[:300])
+            return EgressoNaJanela(esperado=ipv4, medido=ipv4, medido_em=medido_em, distancia_s=round(distancia, 3),
+                                   casou=True, medicao_id=mid,
+                                   detalhe="primeira medição na janela do cadastro: fixada como egress_esperado")
+        esperado = str(esperado)
+        return EgressoNaJanela(esperado=esperado, medido=ipv4, medido_em=medido_em, distancia_s=round(distancia, 3),
+                               casou=bool(ipv4) and ipv4 == esperado and distancia <= JANELA_DO_LOGIN_S,
+                               medicao_id=mid, detalhe=detalhe[:300])
+
     async def executar(self, rt: DeviceRuntime, *, motivo: Motivo) -> None:
         """Roda o passo que a linha pede AGORA (relida: entre a pergunta e o trabalho, a atribuição pode ter mudado).
         Falha fica registrada no comando e na linha; aqui só não derruba quem chamou (o trabalho de ligar segue para
