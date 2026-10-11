@@ -13115,14 +13115,14 @@
    "id": "31.273",
    "status": "implemented",
    "proof": "real",
-   "commit": "6f525673",
-   "evidence": "Real PARCIAL no central 6f525673 (deploy 71), 10/10/2026 18:54-19:20Z, android-01, Outlook da persona Lucas Almeida, Aprendizado, .claude/handoffs/aprendizado-resultado-31-273-298-real.json: exploração A (r-20261010185405-78fc3f) planejada pelo modelo real (explorar_abrir_pasta_lixo_eletronico), IA abriu Junk, juiz comprovou, receita 227 candidate; US$ 0,2929 em 24 chamadas no total do P-043 (teto 2,30). Replay por receita NÃO provado (A2/A2b nao_aplicavel 'tela de partida diferente'; A4 sem veredito; A5 divergiu por element_id apesar da mesma ação) → 31.327. Real vale só para a exploração A.",
-   "grupo": "janela81",
+   "commit": "263e0815d",
+   "evidence": "Completa o real PARCIAL de 10/10 (6f525673, deploy 71). Real no central 263e0815d (deploy 74), 11/10/2026 01:08-01:11Z, android-01, Outlook da persona de teste, Aprendizado, .claude/handoffs/aprendizado-resultado-31-273-298-real.json: receita 228 nasceu candidate com 2 ações e âncora estado_conhecido (r-20261011010841-a99ac5, US$ 0,0257); A2 r-20261011010940-da54d8 (US$ 0,0255) fez o mesmo caminho e promoveu a 228 a active por concordância (shadow 1/1, mesmo_alvo); A3 r-20261011011040-13031c (US$ 0,0049, só a verificação Haiku): receita v1 reproduzida pela chave genérica com 0 decisões de IA, replay_ok 1. Custo do replay US$ 0,1435 em 17 chamadas (teto 0,20), incluindo 3 execuções de diagnóstico. Achados → 31.338 e 31.339.",
+   "grupo": "janela84",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T20:12:18+00:00"
+   "quando": "2026-10-11T01:34:59+00:00"
   },
   "31.274": {
    "id": "31.274",
@@ -14083,15 +14083,15 @@
   "31.297": {
    "id": "31.297",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "e8901622",
-   "evidence": "Exploração de EFEITO pela política (ADR-091, adendo v1.140): f74b1d64, 37dd0522, 50cb5b07, aacecbe9 e correções da revisão da Jev 95a3f551, 0f417c27, 9ff44754, e8901622 (lista única de credencial/sessão em contracts/credencial_e_sessao.py valendo para leitura e efeito, 'entre' e 'código' só por contexto; capability sintética montada no carregador). limits.exploracao_efeito_ligada nasce desligado; ligar só com P-046. tests/test_exploracao_de_efeito.py 99 casos + tabela de credencial; 148 dirigidos; test_catalogo_como_dado 45 (conferido pela orquestradora em worktree); catracas; docs-check 0. Real: not_run (roteiro .claude/handoffs/aprendizado-prova-real-exploracao-de-efeito.md, ≈US$ 1,50, só com o sim do dono).",
-   "grupo": "janela80",
+   "proof": "real",
+   "commit": "263e0815d",
+   "evidence": "Simulated anterior mantido (e8901622: exploração de efeito pela política, ADR-091, adendo v1.140, testes dirigidos). Real no central 263e0815d (deploy 74), 11/10/2026 01:11Z, android-01, r-20261011011110-b2c281, Aprendizado, .claude/handoffs/aprendizado-resultado-p046.json (3ª prova do P-046): planejador real devolveu 1 etapa explorar_marcar_lida_mensagem_caixa com efeito; exploracao.efeito_liberado UMA vez (autonomous/default) mesmo com a v2 da recuperação; o teto parou ANTES de cruzar (US$ 0,17 gastos, próxima ~0,02, limite 0,18); a etapa exploratória não sofreu o orçamento de 16 chamadas (31.331 provado real). Efeito NÃO consumado: a IA não localizou a linha do remetente (lista ComposeView sem texto) → 31.340 e P-052 (https://trello.com/c/mu0qaPgG). Custo US$ 0,2106 em 15 chamadas (teto 0,25); total do P-046 em 3 provas US$ 0,5796/49 chamadas. Nenhuma mensagem alterada.",
+   "grupo": "janela84",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T18:38:32+00:00"
+   "quando": "2026-10-11T01:34:59+00:00"
   },
   "31.314": {
    "id": "31.314",
@@ -14239,15 +14239,15 @@
   "31.326": {
    "id": "31.326",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "37ba0f896",
-   "evidence": "Percurso real pós-deploy 73 (a9853379e) PARCIAL (Portal, 10/10 23:4xZ): GET /api/personas devolve contas_retiradas em todas (10 personas com retirada, motivo_do_bloqueio nulo por serem anteriores à migração 136); seletor de grupo 'Liberado · 14 personas' sem as 2 de teste (real). DEFEITO achado e corrigido em 37ba0f896 (lista 'Contas retiradas por bloqueio' e grupo contavam só personas com @): tsc + 290 dirigidos de profiles verdes, simulated; no ar desde o deploy 74 (263e0815d, 11/10 01:04Z). not_run: lista corrigida ao vivo (percurso do Portal no 74 em curso), motivo preenchido e rótulo 'bloqueada' ao vivo (nenhuma conta_travada após a 136), frase de vazio de Execuções (há 8 descobertas).",
-   "grupo": "janela83",
+   "proof": "real",
+   "commit": "263e0815d",
+   "evidence": "Real PARCIAL no central 263e0815d (deploy 74), 11/10/2026 01:1xZ, Portal, .claude/handoffs/portal-resultado-percurso-real-deploy74.json: tela Personas mostra 'Contas retiradas por bloqueio 10' com as 10 personas que têm retirada; persona bloqueada com 'bloqueada · instagram · há 6 h · Sem motivo registrado para este bloqueio', clique no nome abre a ficha; grupo Liberado '14 personas · +2 de teste' (antes 15 e +1); 375 px sem rolagem horizontal. not_run: motivo preenchido e rótulo 'bloqueada' ao vivo (nenhuma lápide gravada pelo código novo; não se provoca bloqueio em conta real), frase de vazio do filtro de exploração (há 8 execuções descobertas). Achado UX baixo: selos do Livro com 22 px no celular.",
+   "grupo": "janela84",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-11T01:09:41+00:00"
+   "quando": "2026-10-11T01:34:59+00:00"
   },
   "31.323": {
    "id": "31.323",
@@ -14330,15 +14330,15 @@
   "31.331": {
    "id": "31.331",
    "status": "implemented",
-   "proof": "simulated",
-   "commit": "3599f1eb6",
-   "evidence": "backend/tests/test_teto_da_exploracao_31_331.py (6) + teto, aviso, custo por passo, exploração, arquitetura e catracas: 294 + 248 + 147 verdes (Aprendizado, 10/10); mypy 257: teto em US$ conta só as etapas exploratórias e olha a próxima chamada; sem step_budget na exploração; efeito_liberado 1x por execução/instância/chave. Real: 3ª prova do P-046 autorizada após o deploy 73 (mensagem não lida, teto US$ 0,25), not_run.",
-   "grupo": "janela82",
+   "proof": "real",
+   "commit": "263e0815d",
+   "evidence": "Simulated anterior mantido (3599f1eb6: test_teto_da_exploracao_31_331.py (6) + 294/248/147 dirigidos, mypy 257). Real no central 263e0815d (deploy 74), 11/10/2026 01:11Z, r-20261011011110-b2c281 (3ª prova do P-046, Aprendizado): o teto em US$ contou só as etapas exploratórias e olhou a próxima chamada (parou com US$ 0,17 gastos e próxima ~0,02 contra o limite 0,18, sem cruzar); a etapa exploratória não sofreu o orçamento de 16 chamadas; efeito_liberado emitido uma vez por execução/instância/chave.",
+   "grupo": "janela84",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-10T23:34:49+00:00"
+   "quando": "2026-10-11T01:34:59+00:00"
   },
   "31.328": {
    "id": "31.328",
@@ -14378,6 +14378,45 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-11T01:09:41+00:00"
+  },
+  "31.335": {
+   "id": "31.335",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "b2507da80",
+   "evidence": "config.criacao_pela_api_do_igfarm (padrão false): GET /api/instagram/personas-pendentes responde 409 criacao_pela_api_aposentada e não reserva, sugere nem gera foto; registro (POST /instagram/contas), consentimento, código, ciclo e proxy seguem valendo; reversível, nada apagado; adendo v1.146. 44 dirigidos + 103 catracas, mypy 257, docs-check 0/0 (Ponte, 11/10). No ar no deploy 75. Real not_run (caminho aposentado por decisão do dono de 11/10).",
+   "grupo": "janela84",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T01:34:59+00:00"
+  },
+  "31.336": {
+   "id": "31.336",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "6e99cb564",
+   "evidence": "GET /api/instagram/contas/{id}/cabecalhos: só cabeçalhos da caixa catch-all por IMAP em somente leitura (BODY.PEEK[HEADER.FIELDS], nunca corpo nem destinatário), assunto com 6 dígitos mascarados, SPF/DKIM/DMARC anotados e flag de devolução; adendo v1.147; 8 testes + 70 dirigidos + 103 catracas, mypy 257 (Ponte, 11/10). Seção do domínio nvit.com.br em docs/email-do-parque.md (.claude/handoffs/ponte-31-336-dominio-nvit.md): consultas de DNS/RDAP reais em 11/10, recomendação do DMARC. Real da rota (IMAP real) not_run.",
+   "grupo": "janela84",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T01:34:59+00:00"
+  },
+  "31.337": {
+   "id": "31.337",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "b2d22ab2e",
+   "evidence": "POST /api/instagram/profiles/{id}/accounts/{aid}/proxy cria (idempotente) o perfil igfarm-<conta> SEM egress_esperado e o atribui aos aparelhos da persona; o cadastro guiado mede o egresso na janela (31.329) ANTES do primeiro toque (ConvergenciaDeRede.medir_para_o_cadastro): a 1ª medição com IPv4 público fixa o esperado, as seguintes comparam; não casou ou sem IP: parada egresso_nao_casou, nada tocado; session.egresso_na_janela ganha fase; adendo v1.148. 8 testes + 142 dirigidos + 103 catracas, mypy 257 (Ponte, 11/10). Roteiro real em ramo docs/31-337-roteiro-real (7 passos, condições P-049/P-050 + pergunta 6 ao igfarm + cadastro.yaml). Real not_run.",
+   "grupo": "janela84",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T01:34:59+00:00"
   }
  },
  "rodadas": [
@@ -18355,6 +18394,21 @@
    ],
    "grupos": [
     "janela83"
+   ]
+  },
+  {
+   "quando": "2026-10-11T01:34:59+00:00",
+   "itens": [
+    "31.335",
+    "31.336",
+    "31.337",
+    "31.326",
+    "31.273",
+    "31.297",
+    "31.331"
+   ],
+   "grupos": [
+    "janela84"
    ]
   }
  ]

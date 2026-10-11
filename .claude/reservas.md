@@ -914,4 +914,9 @@ orquestradora; ela anota aqui antes de responder.
 | adendo v1.147 | Ponte | GET /api/instagram/contas/{id}/cabecalhos, só cabeçalhos da caixa catch-all (31.336) | Ponte | reservado 11/10 01:09Z |
 | adendo v1.148 | Ponte | POST /api/instagram/profiles/{id}/accounts/{aid}/proxy e a fase em session.egresso_na_janela (31.337) | Ponte | reservado 11/10 01:09Z |
 | 31.337 | Ponte | perfil de proxy sticky por conta planejada antes do primeiro toque do cadastro no app (igfarm só entrega o proxy_url); perfil nasce no planejamento, egresso medido na janela (31.329) | Ponte | reservado 11/10 01:09Z |
-| próximos livres (atualização 11/10 01:09Z) | 31.338, 29.212, 28.78; ADR-093 (092 guardado p/ Jev); migração 137; adendo v1.149; K-114 | |
+| 31.338 | Aprendizado | esperar a tela estabilizar depois do reabrir no preparo do 31.327 (A0 real de 11/10: o voltar saiu do Outlook) | Aprendizado | reservado 11/10 01:34Z |
+| 31.339 | Aprendizado | âncora da receita distingue pasta de e-mail (Junk, Sent…) da caixa de entrada; pasta não é estado conhecido | Aprendizado | reservado 11/10 01:34Z |
+| 31.340 | Aprendizado | ferramenta find_row(sender): tocar a linha pelo remetente lido da região visual, só os element_id que concordam | Aprendizado | reservado 11/10 01:34Z |
+| 31.341 | Ponte | GET /ciclo cobre a conta planejada/criada no app (authentication_attempts + eventos + lápide), sem @ nem e-mail | Ponte | reservado 11/10 01:34Z |
+| adendo v1.149 | Ponte | campos origem (igfarm|app) e referencia (criacao|planejamento) no GET /api/instagram/contas/{id}/ciclo (31.341) | Ponte | reservado 11/10 01:34Z |
+| próximos livres (atualização 11/10 01:34Z) | 31.342, 29.212, 28.78; ADR-093 (092 guardado p/ Jev); migração 137; adendo v1.150; K-114 | |
