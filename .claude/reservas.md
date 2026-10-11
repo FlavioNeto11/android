@@ -919,4 +919,9 @@ orquestradora; ela anota aqui antes de responder.
 | 31.340 | Aprendizado | ferramenta find_row(sender): tocar a linha pelo remetente lido da região visual, só os element_id que concordam | Aprendizado | reservado 11/10 01:34Z |
 | 31.341 | Ponte | GET /ciclo cobre a conta planejada/criada no app (authentication_attempts + eventos + lápide), sem @ nem e-mail | Ponte | reservado 11/10 01:34Z |
 | adendo v1.149 | Ponte | campos origem (igfarm|app) e referencia (criacao|planejamento) no GET /api/instagram/contas/{id}/ciclo (31.341) | Ponte | reservado 11/10 01:34Z |
-| próximos livres (atualização 11/10 01:34Z) | 31.342, 29.212, 28.78; ADR-093 (092 guardado p/ Jev); migração 137; adendo v1.150; K-114 | |
+| 31.342 | Ponte | reabrir a criação de conta pelo igfarm via API (pedido direto do dono 11/10: "quem cria a conta é o igfarm; o android hospeda; o app usa"); flag true por padrão; rota de consentimento | Ponte | reservado 11/10 03:00Z |
+| adendo v1.150 | Ponte | criacao_pela_api_do_igfarm volta a true; POST /api/instagram/contas/{conta_id}/consentimento; substitui o v1.146 (31.342) | Ponte | reservado 11/10 03:00Z |
+| 31.343 | Jev | adotar_abandonadas/_manter_posse fora do laço (ponto 10; dump 11/10 02:07Z sob a PG inteira) + varredura do _tick + guarda exaustiva em test_laco_sem_sql_sincrono | Jev | reservado 11/10 03:00Z |
+| 31.344 | Ponte | evento identity.consentimento_igfarm por chamada da rota de consentimento (account_id, igfarm_account_id, ja_consentida, hora; sem segredo): prova real do 31.342 por evento | Ponte | reservado 11/10 03:00Z |
+| adendo v1.151 | Ponte | evento identity.consentimento_igfarm (31.344) | Ponte | reservado 11/10 03:00Z |
+| próximos livres (atualização 11/10 03:00Z) | 31.345, 29.212, 28.78; ADR-093 (092 guardado p/ Jev); migração 137; adendo v1.152; K-114 | |

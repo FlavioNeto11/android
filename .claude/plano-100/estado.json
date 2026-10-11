@@ -14369,28 +14369,28 @@
   "31.334": {
    "id": "31.334",
    "status": "partial",
-   "proof": "not_run",
-   "commit": "5b35297cd",
-   "evidence": "Desenho primeiro (Jev, 11/10, só docs, 5b35297cd): docs/dominios/persona.md ganha 'O cadastro no app é o caminho principal (31.334)': o que o G1 do 31.324 já cobre, lacunas L1 (caixa da conta planejada sem o igfarm) e L2 (proxy sticky por conta antes do primeiro toque, → 31.337), SMS sem rota, critérios de sucesso. Sem código, migração ou ADR. Bloqueio: captura das telas do cadastro com sessão sticky nova (P-050) para o cadastro.yaml do Instagram. Prova not_run.",
-   "grupo": "janela83",
+   "proof": "simulated",
+   "commit": "f06546cdc",
+   "evidence": "L1 (Jev, 11/10, f06546cdc): a conta planejada ganha a caixa do parque sem o igfarm, criada em CadastroGuiado.iniciar; o 409 sem_caixa_de_email vale só para o parque sem domínio de e-mail permitido; docs em persona.md, api-contract.md e CHANGELOG. 216 dirigidos (caixa da conta planejada, cadastro guiado, cadastro Bloks, catracas, arquitetura), mypy 257, docs-check 0/0. Desenho anterior (5b35297cd) mantido. REVERSÃO DO DONO em 11/10 ~02:0xZ (31.342): o cadastro no app deixa de ser o caminho principal e vira alternativa/apoio; a criação pelo igfarm via API é o principal. Falta: cadastro.yaml do Instagram e o teste de guarda (dependem da captura, P-050) e o texto do desenho ajustado para 'alternativa'. Real not_run.",
+   "grupo": "janela85",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-11T01:09:41+00:00"
+   "quando": "2026-10-11T03:00:24+00:00"
   },
   "31.335": {
    "id": "31.335",
    "status": "implemented",
    "proof": "simulated",
-   "commit": "b2507da80",
-   "evidence": "config.criacao_pela_api_do_igfarm (padrão false): GET /api/instagram/personas-pendentes responde 409 criacao_pela_api_aposentada e não reserva, sugere nem gera foto; registro (POST /instagram/contas), consentimento, código, ciclo e proxy seguem valendo; reversível, nada apagado; adendo v1.146. 44 dirigidos + 103 catracas, mypy 257, docs-check 0/0 (Ponte, 11/10). No ar no deploy 75. Real not_run (caminho aposentado por decisão do dono de 11/10).",
-   "grupo": "janela84",
+   "commit": "950b8af24",
+   "evidence": "Simulated anterior mantido (b2507da80: flag criacao_pela_api_do_igfarm, 409 criacao_pela_api_aposentada, v1.146, 44 dirigidos). REVERTIDO pelo dono em 11/10 (31.342, v1.150): o padrão volta a true; a chave continua existindo para desligar. Item fechado como mecanismo (a flag), não como política.",
+   "grupo": "janela85",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-11T01:34:59+00:00"
+   "quando": "2026-10-11T03:00:24+00:00"
   },
   "31.336": {
    "id": "31.336",
@@ -14409,14 +14409,79 @@
    "id": "31.337",
    "status": "implemented",
    "proof": "simulated",
-   "commit": "b2d22ab2e",
-   "evidence": "POST /api/instagram/profiles/{id}/accounts/{aid}/proxy cria (idempotente) o perfil igfarm-<conta> SEM egress_esperado e o atribui aos aparelhos da persona; o cadastro guiado mede o egresso na janela (31.329) ANTES do primeiro toque (ConvergenciaDeRede.medir_para_o_cadastro): a 1ª medição com IPv4 público fixa o esperado, as seguintes comparam; não casou ou sem IP: parada egresso_nao_casou, nada tocado; session.egresso_na_janela ganha fase; adendo v1.148. 8 testes + 142 dirigidos + 103 catracas, mypy 257 (Ponte, 11/10). Roteiro real em ramo docs/31-337-roteiro-real (7 passos, condições P-049/P-050 + pergunta 6 ao igfarm + cadastro.yaml). Real not_run.",
-   "grupo": "janela84",
+   "commit": "15edd6f78",
+   "evidence": "Simulated anterior mantido (b2d22ab2e: POST …/proxy + egresso na janela antes do cadastro, v1.148, 8 testes + 142 dirigidos). Roteiro real publicado em docs/dominios/perfis-e-instagram.md (15edd6f78, +37 linhas, Ponte, 11/10): condições (P-049/P-050, cadastro.yaml declarado, SIM do igfarm à pergunta 6, caixa da conta, deploy ≥ 75, host livre), 7 passos (planejar conta e senha com consentimento → POST …/proxy → apply/verify sem fixar IP → signup com a medição na janela fixando o egress_esperado → acompanhar identity.cadastro → egresso_nao_casou não se repete com a mesma sessão → tela humana = bloqueio definitivo), evidência para fechar como real. Após a reversão do dono (31.342) o roteiro vale para o caminho alternativo (cadastro no app). Real not_run.",
+   "grupo": "janela85",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-11T01:34:59+00:00"
+   "quando": "2026-10-11T03:00:24+00:00"
+  },
+  "31.338": {
+   "id": "31.338",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "9b171f0b6",
+   "evidence": "conhecimento_de_telas.voltar_ao_estado_conhecido: depois de cada reabrir relê a tela até 3x (1,5 s) enquanto o app está na frente e a tela é desconhecida, antes de decidir voltar; só leitura; vale para o motor de sessão. Causa: A0 real de 11/10 (r-…7c3959) em que o voltar caiu na tela de abertura do app de frio e saiu do Outlook. tests/test_voltar_ao_estado_conhecido_espera_31_338.py (6) + 446 dirigidos após o rebase, mypy 257, docs-check 0/0 (Aprendizado, 11/10). No ar no deploy 76. Real not_run.",
+   "grupo": "janela85",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T03:00:24+00:00"
+  },
+  "31.339": {
+   "id": "31.339",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "5cda64245",
+   "evidence": "telas.yaml do Outlook ganha o sinal pasta_de_email (título da barra: Junk, Sent, Drafts, Archive, Deleted, Outbox + pt) e a tela pasta_de_email, que NÃO é estado conhecido (dela o preparo dá 1 voltar, que leva à Inbox); título que não casa segue caixa_de_entrada (errar nunca aperta voltar na Inbox); sessao.yaml lista a tela nova; região de leitura visual duplicada. Causa: a Junk contava como caixa_de_entrada (mesmo conversation_list) e a receita ancorada divergia no 2º toque. tests/test_pasta_de_email_nao_e_estado_conhecido_31_339.py (25) + dirigidos, mypy 257 (Aprendizado, 11/10). Compatibilidade provada com o loader antigo de b2d22ab2e (git archive + YAMLs novos: sem ConhecimentoInvalido). No ar no deploy 76. Real not_run.",
+   "grupo": "janela85",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T03:00:24+00:00"
+  },
+  "31.340": {
+   "id": "31.340",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "02ea37392",
+   "evidence": "Ferramenta find_row(sender), só leitura, tratada no executor (taskqueue/linha_por_remetente.py): lê o remetente de cada linha candidata da lista cega (clicável, sem texto, larga e alta como linha, dentro do contêiner da região, máx. 8) pelo caminho da leitura visual (recorte, leitor às cegas, concordância, triagem ADR-009, mesma linha 1x por tela) e devolve ao ator SÓ os element_id que concordam; transcrição, remetentes das outras linhas e assunto nunca voltam; a ação grava só o tamanho do nome; linha com código/ilegível pulada e contada; barreira de tela inteira encerra com o motivo. Entra no schema de todos os atores (prefixo de cache muda uma vez). tests/test_find_row_por_remetente_31_340.py (13, incl. 3 no executor com QA Messenger) + 446 dirigidos, mypy 257 (Aprendizado, 11/10). No ar no deploy 76. Real not_run: a 4ª prova do P-046 (P-052, https://trello.com/c/mu0qaPgG) é quem mede se find_row basta dentro do teto.",
+   "grupo": "janela85",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T03:00:24+00:00"
+  },
+  "31.341": {
+   "id": "31.341",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "a5d4a370d",
+   "evidence": "GET /api/instagram/contas/{id}/ciclo cobre a conta planejada/criada no app: fonte = linha da conta + authentication_attempts + eventos identity.cadastro (contato 'cadastro' com confirmada|parada) + profile.account_retired; campos novos origem (igfarm|app) e referencia (criacao|planejamento); igfarm_account_id/criada_em/registrada_em podem ser null; a conta do igfarm responde igual; sem @ nem e-mail; adendo v1.149. 103 dirigidos (ciclo app 5 + igfarm 5, cabecalhos, contas_igfarm_api, cadastro_guiado, ordem_das_rotas, cobertura, arquitetura) + 103 catracas, mypy 257, docs-check 0/0 (Ponte, 11/10). No ar no deploy 76. Real not_run.",
+   "grupo": "janela85",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T03:00:24+00:00"
+  },
+  "31.342": {
+   "id": "31.342",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "950b8af24",
+   "evidence": "Pedido direto do dono (bloco colado na janela da Ponte, 11/10 ~02:0xZ): 'quem cria a conta é o IGFARM (via API). O android hospeda; o app usa. A ponte over-pivotou.' criacao_pela_api_do_igfarm volta a true por padrão (config.py, config.example.yaml; false segue como chave com 409 criacao_pela_api_aposentada); GET /api/instagram/personas-pendentes volta a responder; POST /api/instagram/contas inalterado; rota nova POST /api/instagram/contas/{conta_id}/consentimento (account_id ou igfarm_account_id; só conta registrada pela ponte, senão 404; idempotente ja_consentida; 409 no_credential; consent_by igfarm; resposta sem senha); sem alias /api/credential/consent (o igfarm atualiza a URL; consta no contrato); adendo v1.150 substitui o v1.146 (31.335 revertido). tests/test_criacao_pela_api_reaberta.py (7, substitui o _aposentada) + 31 dirigidos + 37 correlatos, catracas 103, mypy 257, docs-check 0/0 (Ponte, 11/10; 21424fbd8 + 950b8af24). O igfarm recebeu 409 em personas-pendentes do deploy 75 (01:32Z) até o deploy 76. Real not_run até o igfarm chamar a rota nova.",
+   "grupo": "janela85",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T03:00:24+00:00"
   }
  },
  "rodadas": [
@@ -18409,6 +18474,22 @@
    ],
    "grupos": [
     "janela84"
+   ]
+  },
+  {
+   "quando": "2026-10-11T03:00:24+00:00",
+   "itens": [
+    "31.338",
+    "31.339",
+    "31.340",
+    "31.341",
+    "31.337",
+    "31.334",
+    "31.342",
+    "31.335"
+   ],
+   "grupos": [
+    "janela85"
    ]
   }
  ]

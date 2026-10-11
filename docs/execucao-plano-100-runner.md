@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-891 de 978 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+896 de 981 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -960,14 +960,17 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.331 | implemented | real |  | — | Simulated anterior mantido (3599f1eb6: test_teto_da_exploracao_31_331.py (6) + 294/248/147 dirigidos, mypy 257). Real no central 263e0815d (deploy 74), 11/10/2026 01:11Z, r-20261011011110-b2c281 (3ª prova do P-046, Apre… |  |
 | 31.332 | implemented | simulated |  | — | backend/tests/test_conta_nao_encontrada.py (12: hierarquia real do retry do H2 com identificador trocado, máscara, motor contra o aparelho falso) + test_sessao_declarada, test_instagram_auth, test_aparelho_persona_sessa… |  |
 | 31.333 | implemented | simulated |  | — | GET /api/instagram/contas/{id}/ciclo (cb894bc9d + 99468a161; adendo v1.145): junta contas_igfarm, authentication_attempts e a lápide; estado ativa/retirada, minutos até o primeiro contato e por contato minutos desde a c… |  |
-| 31.334 | partial | not_run |  | — | Desenho primeiro (Jev, 11/10, só docs, 5b35297cd): docs/dominios/persona.md ganha 'O cadastro no app é o caminho principal (31.334)': o que o G1 do 31.324 já cobre, lacunas L1 (caixa da conta planejada sem o igfarm) e L… |  |
-| 31.335 | implemented | simulated |  | — | config.criacao_pela_api_do_igfarm (padrão false): GET /api/instagram/personas-pendentes responde 409 criacao_pela_api_aposentada e não reserva, sugere nem gera foto; registro (POST /instagram/contas), consentimento, cód… |  |
+| 31.334 | partial | simulated |  | — | L1 (Jev, 11/10, f06546cdc): a conta planejada ganha a caixa do parque sem o igfarm, criada em CadastroGuiado.iniciar; o 409 sem_caixa_de_email vale só para o parque sem domínio de e-mail permitido; docs em persona.md, a… |  |
+| 31.335 | implemented | simulated |  | — | Simulated anterior mantido (b2507da80: flag criacao_pela_api_do_igfarm, 409 criacao_pela_api_aposentada, v1.146, 44 dirigidos). REVERTIDO pelo dono em 11/10 (31.342, v1.150): o padrão volta a true; a chave continua exis… |  |
 | 31.336 | implemented | simulated |  | — | GET /api/instagram/contas/{id}/cabecalhos: só cabeçalhos da caixa catch-all por IMAP em somente leitura (BODY.PEEK[HEADER.FIELDS], nunca corpo nem destinatário), assunto com 6 dígitos mascarados, SPF/DKIM/DMARC anotados… |  |
-| 31.337 | implemented | simulated |  | — | POST /api/instagram/profiles/{id}/accounts/{aid}/proxy cria (idempotente) o perfil igfarm-<conta> SEM egress_esperado e o atribui aos aparelhos da persona; o cadastro guiado mede o egresso na janela (31.329) ANTES do pr… |  |
-| 31.338 | pendente | — | — | — |  |  |
-| 31.339 | pendente | — | — | — |  |  |
-| 31.340 | pendente | — | — | — |  |  |
-| 31.341 | pendente | — | — | — |  |  |
+| 31.337 | implemented | simulated |  | — | Simulated anterior mantido (b2d22ab2e: POST …/proxy + egresso na janela antes do cadastro, v1.148, 8 testes + 142 dirigidos). Roteiro real publicado em docs/dominios/perfis-e-instagram.md (15edd6f78, +37 linhas, Ponte,… |  |
+| 31.338 | implemented | simulated |  | — | conhecimento_de_telas.voltar_ao_estado_conhecido: depois de cada reabrir relê a tela até 3x (1,5 s) enquanto o app está na frente e a tela é desconhecida, antes de decidir voltar; só leitura; vale para o motor de sessão… |  |
+| 31.339 | implemented | simulated |  | — | telas.yaml do Outlook ganha o sinal pasta_de_email (título da barra: Junk, Sent, Drafts, Archive, Deleted, Outbox + pt) e a tela pasta_de_email, que NÃO é estado conhecido (dela o preparo dá 1 voltar, que leva à Inbox);… |  |
+| 31.340 | implemented | simulated |  | — | Ferramenta find_row(sender), só leitura, tratada no executor (taskqueue/linha_por_remetente.py): lê o remetente de cada linha candidata da lista cega (clicável, sem texto, larga e alta como linha, dentro do contêiner da… |  |
+| 31.341 | implemented | simulated |  | — | GET /api/instagram/contas/{id}/ciclo cobre a conta planejada/criada no app: fonte = linha da conta + authentication_attempts + eventos identity.cadastro (contato 'cadastro' com confirmada\|parada) + profile.account_reti… |  |
+| 31.342 | implemented | simulated |  | — | Pedido direto do dono (bloco colado na janela da Ponte, 11/10 ~02:0xZ): 'quem cria a conta é o IGFARM (via API). O android hospeda; o app usa. A ponte over-pivotou.' criacao_pela_api_do_igfarm volta a true por padrão (c… |  |
+| 31.343 | pendente | — | — | — |  |  |
+| 31.344 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -985,7 +988,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (87): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.156, 29.162, 29.166, 29.168, 29.172, 29.173, 29.174, 29.180, 29.182, 29.185, 29.186, 29.191, 29.200, 29.201, 29.202, 29.203, 29.204, 29.205, 29.206, 29.207, 29.208, 29.209, 29.210, 29.211, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.161, 31.162, 31.233, 31.245, 31.246, 31.247, 31.252, 31.254, 31.255, 31.256, 31.257, 31.261, 31.263, 31.264, 31.265, 31.266, 31.269, 31.321, 31.334, 31.338, 31.339, 31.340, 31.341, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (85): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.59, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.156, 29.162, 29.166, 29.168, 29.172, 29.173, 29.174, 29.180, 29.182, 29.185, 29.186, 29.191, 29.200, 29.201, 29.202, 29.203, 29.204, 29.205, 29.206, 29.207, 29.208, 29.209, 29.210, 29.211, 31.11, 31.12, 31.26, 31.81, 31.115, 31.147, 31.161, 31.162, 31.233, 31.245, 31.246, 31.247, 31.252, 31.254, 31.255, 31.256, 31.257, 31.261, 31.263, 31.264, 31.265, 31.266, 31.269, 31.321, 31.334, 31.343, 31.344, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
