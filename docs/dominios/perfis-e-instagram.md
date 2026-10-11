@@ -909,3 +909,40 @@ conclusão). Contas só por A, B e C: os valores crus ficam no JSON de referênc
 ele junta a linha da conta, as tentativas de login, os eventos do cadastro guiado e a retirada. `criada_em` é a confirmação do
 cadastro; até lá os minutos contam do planejamento (`referencia: planejamento`). É a visão para medir "criada → 1º login → desfecho" das
 contas do caminho principal (31.334/31.337) no mesmo formato das do igfarm, sem @ nem e-mail.
+
+## Roteiro real do 31.337: a próxima conta, com proxy sticky planejado e egresso na janela
+
+Procedimento para a PRIMEIRA prova `real` do perfil por conta planejada. Nada abaixo foi executado: prova `not_run`. Cada passo que toca
+conta real ou aparelho só roda com o sim do dono em chat; este roteiro não autoriza nada por si.
+
+**Condições para começar (todas):**
+1. P-049 e P-050 respondidas pelo dono (conta e sessão entregues; captura do cadastro feita) e o `cadastro.yaml` do Instagram declarado
+   a partir dela (31.334). Sem ele, `POST …/provisioning/signup` devolve `sem_conhecimento_de_cadastro`.
+2. A resposta do igfarm à pergunta 6 (cartão COG65yCO) diz SIM: entrega uma sessão sticky NOVA por conta, sem criar a conta.
+3. A caixa da conta existe (linha em `caixas_email`): hoje só nasce no registro do igfarm; o cadastro guiado devolve
+   `409 sem_caixa_de_email` sem ela. A lacuna L1 do desenho do 31.334 (caixa da conta planejada sem o igfarm) fecha antes.
+4. Deploy com o 31.337 no ar (corte 75 em diante), host sem suíte nem funil rodando e um aparelho online, livre e sem conta real de
+   outra persona. Painel fechado durante as medições.
+
+**Roteiro (uma conta, uma tentativa por sessão sticky):**
+1. Escolher persona e aparelho; conferir `ai_calls` antes (a conta nasce pelo motor declarado, sem IA: esperado 0 chamadas novas).
+2. Planejar: `POST /api/instagram/profiles/{id}/accounts/planned` com `app_id` e `desired_handle`; preparar a senha com consentimento:
+   `POST …/accounts/{aid}/credential/prepare` (`consent: true`, `modo: gerar`). A senha nunca aparece em resposta, log nem evento.
+3. Proxy: `POST …/accounts/{aid}/proxy` com o `proxy_url` que o igfarm entregou. Esperado: `200`, `egress_esperado: null`, um item de
+   `egresso` por aparelho da persona (`atribuido`; `pendente_confirmacao` pede confirmação da conta real do aparelho).
+4. Conferir a rede SEM fixar o IP: `POST /api/network/devices/{id}/apply` se faltar aplicar, depois `…/verify`. Medição com IP de saída
+   e tráfego do app pelo proxy; sem IP, parar aqui (sessão morta ou DNS mudo) e pedir outra sessão ao igfarm.
+5. Disparar `POST …/accounts/{aid}/provisioning/signup`. O primeiro passo do comando é a medição na janela: evento
+   `session.egresso_na_janela` com `fase: cadastro`, o IP fixado como `egress_esperado` (e `network.updated` com o rastro). Anotar
+   `medicao_id`, hora e IP (valores crus só no JSON de prova local, nunca no cartão).
+6. Acompanhar `identity.cadastro`: `confirmada` (conta lida pela sessão e @ igual ao desejado) ou `parada` com o código fechado.
+   `egresso_nao_casou`: nada foi tocado; NÃO repetir com a mesma sessão (a sticky gira); pedir outra ao igfarm.
+7. Qualquer tela humana ("Confirm you're human", CAPTCHA) é bloqueio definitivo: não resolver, não tocar, rotular `bloqueada` e
+   registrar o motivo (31.322).
+
+**Evidência para fechar como `real`:** data, máquina, commit, ids de comando, `medicao_id` e o desfecho da conta; `ai_calls` antes e
+depois; o JSON de prova fora do Git. Limite do que ela prova: n=1 (uma conta), e a taxa de bloqueio depende de N≥3 por rodada.
+
+**Lacuna conhecida do acompanhamento:** `GET /api/instagram/contas/{id}/ciclo` (31.333) só conhece conta registrada pelo igfarm
+(`contas_igfarm`); a conta criada no app não tem essa linha, então o intervalo "criada → 1º login → desfecho" dela só se lê hoje pelas
+`authentication_attempts` e pelos eventos. Estender o `/ciclo` à conta planejada é o próximo ganho pequeno.
