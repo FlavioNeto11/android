@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-11 — a partida da exploração espera a tela, a Junk deixa de ser a caixa e o ator acha a linha pelo remetente (31.338, 31.339, 31.340)
+
+- **Real (11/10/2026, deploy 74 `263e0815d`, `android-01`, Outlook do Lucas Almeida):** o replay por receita foi provado (receita 228 candidata, ativa por concordância e reproduzida
+  com 0 decisões de IA, US$ 0,1435 em 17 chamadas) e a 3ª prova do P-046 (`r-20261011011110-b2c281`, US$ 0,2106) liberou o efeito sem pedir, avisou uma vez e parou no teto
+  antes de cruzá-lo, sem achar a linha de Bruno Ferreira. Os três defeitos achados viram estes itens.
+- **31.338:** `voltar_ao_estado_conhecido` relê a tela (3 leituras, 1,5 s) depois de reabrir enquanto ela é desconhecida, antes de decidir; o "voltar" na tela de abertura tirava o
+  Outlook da frente.
+- **31.339:** `pasta_de_email` (Junk, Sent, Drafts, Archive, Deleted, Outbox e os nomes em português, pelo título da barra) não é estado conhecido; título que não casa segue
+  `caixa_de_entrada`. A região de leitura visual e o `sessao.yaml` cobrem a tela nova.
+- **31.340:** ferramenta `find_row(sender)`: o executor lê o remetente de cada linha candidata da lista cega pelo caminho da leitura visual (leitor às cegas, triagem) e devolve ao
+  ator só os `element_id`; nada do que foi lido volta.
+- **Prova:** `simulated` (`test_voltar_ao_estado_conhecido_espera_31_338.py`, `test_pasta_de_email_nao_e_estado_conhecido_31_339.py`, `test_find_row_por_remetente_31_340.py`);
+  `real`: `not_run` para os três itens. Detalhe em [`docs/dominios/aprendizado.md`](docs/dominios/aprendizado.md).
+
 ## 2026-10-10 — a criação de conta pela API do igfarm foi aposentada, não apagada (31.335)
 
 - Decisão do dono: o cadastro é no app e o igfarm é apoio. Flag nova `contas.criacao_pela_api_do_igfarm` (padrão `false`): com ela

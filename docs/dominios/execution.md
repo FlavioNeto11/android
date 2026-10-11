@@ -866,6 +866,9 @@ nenhuma ação do catálogo entrega.
   ÁRVORE primeiro: se há texto, grava com `origem=arvore` (mesmo com `source=visual`); só a falha "sem texto nem descrição"
   (`LeituraSemTexto`) abre o caminho visual, e qualquer outra falha é recusa comum.
 - `fora_do_app` recebe o valor real (`_tela_fora_do_app`), como defesa em profundidade.
+- **`find_row(sender)` (31.340):** o ator acha a linha de uma lista cega pelo remetente sem escrever o valor de nenhuma outra: o executor lê cada linha candidata pelo mesmo
+  caminho (`taskqueue/linha_por_remetente.py` + `ler_valor_visual`) e devolve só os `element_id` das que concordam. Detalhe em
+  [`aprendizado.md`](aprendizado.md#a-partida-da-exploracao-a-pasta-que-nao-e-a-caixa-e-a-linha-pelo-remetente-31338-31339-31340).
 - **Triagem visual:** valor com forma de código (4 a 8 dígitos) ou linha do recorte com número de código e palavra de código
   (`saidas.codigo_na_linha`) é recusado, e a recusa leva a etapa a `waiting_user` (sem nova tentativa do ator e sem lhe dizer que a
   linha tem código), como no caminho da árvore. Orçamento, prazo, crédito e recusa por política do leitor seguem o desfecho do ator

@@ -2901,3 +2901,26 @@ etapa livre de exploração por pedido, com `PlanStep.exploratoria` (coluna `ste
   chamada já feita não cabe no teto (a 1ª chamada não tem média e passa). `_ai` não aplica `_conferir_orcamento_da_etapa` à etapa exploratória: ela tem o teto próprio
   (chamadas, US$ e ações). `gates._avisar_exploracao_de_efeito` avisa uma vez por execução, instância e chave (a recuperação do plano refaz a etapa e a porta passa de novo).
 - **Prova:** `simulated`, `backend/tests/test_teto_da_exploracao_31_331.py`. `real`: `not_run` (a 3ª prova do P-046 precisa de mensagem não lida e do sim do dono).
+
+## A partida da exploração, a pasta que não é a caixa e a linha pelo remetente (31.338, 31.339, 31.340)
+
+Achados da prova real do 11/10/2026 (deploy 74, Outlook do `android-01`): o replay por receita foi provado (receita 228: candidata, ativa por concordância, reproduzida com 0
+decisões de IA), e a 3ª prova do P-046 não achou a linha de Bruno Ferreira. Três defeitos, três itens, todos `simulated` (`real`: `not_run`):
+
+- **31.338, esperar a tela depois do reabrir.** Com o app de frio, `voltar_ao_estado_conhecido` dava `[reabrir, voltar]`: a tela de abertura ainda era desconhecida e o "voltar"
+  tirou o Outlook da frente (a IA começou pela tela inicial do Android e a destilação recusou a partida desconhecida, 31.327). Agora, depois de cada reabrir, a tela é relida
+  (`leituras_apos_reabrir`=3, `espera_apos_reabrir_s`=1,5; só leitura) enquanto o app está na frente e a tela é desconhecida. O resto não muda (voltar até `voltar_max`, nada de
+  voltar em login/desafio). Também vale para o motor de sessão, que usa a mesma função. Teste: `test_voltar_ao_estado_conhecido_espera_31_338.py`.
+- **31.339, a Junk não é a caixa de entrada.** A lista é o mesmo `conversation_list` em toda pasta, então a Junk contava como `caixa_de_entrada`: o preparo não saía dela (a IA via a
+  pasta aberta e nada era ensinado) e a receita ancorada partia dela e divergia no 2º toque. O `telas.yaml` do Outlook ganha o sinal `pasta_de_email` (título da barra: Junk, Sent,
+  Drafts, Archive, Deleted, Outbox e os nomes em português) e a tela `pasta_de_email`, que NÃO é estado conhecido: dela o preparo volta uma vez (o "voltar" do Outlook leva à
+  Inbox) antes de explorar. Título que não casa (pasta própria, outro idioma) segue `caixa_de_entrada`, o comportamento de antes: errar nunca faz o preparo apertar "voltar" na
+  Inbox. A região visual (`conteudo_de_terceiros`) e o `sessao.yaml` cobrem a tela nova. Teste: `test_pasta_de_email_nao_e_estado_conhecido_31_339.py`.
+- **31.340, `find_row(sender)`.** A lista da caixa é um `ComposeView` sem texto na árvore; na 3ª prova o ator gastou 5 imagens e um `find_element` sem ligar a mensagem ao
+  `element_id` (US$ 0,17). Ferramenta só de leitura, tratada no executor (`taskqueue/linha_por_remetente.py`): cada linha candidata (clicável, sem texto em toda a subárvore,
+  larga e alta como uma linha, dentro do contêiner da região declarada para `remetente`, no máximo 8) é lida pelo caminho da `read_value` visual (`ler_valor_visual`: recorte,
+  leitor às cegas que não conhece o nome, concordância, triagem do ADR-009, a mesma linha uma vez por tela) e o ator recebe SÓ os `element_id` das que concordam. A transcrição,
+  o remetente das outras linhas e o assunto nunca voltam; a ação grava só o tamanho do nome. Linha com código ou ilegível é pulada e contada; barreira de tela inteira (leitura
+  visual desligada, tela sensível, sem leitor) encerra a busca com o motivo. Custo: uma leitura barata por linha (4 a 5 na caixa observada). Testes:
+  `test_find_row_por_remetente_31_340.py`.
+- **Limites:** nada disto foi exercido em aparelho real; a 4ª prova do P-046 (P-052) é do dono e é quem mede se `find_row` basta para achar a mensagem dentro do teto.
