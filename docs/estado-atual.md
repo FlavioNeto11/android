@@ -1,10 +1,13 @@
 # Estado atual — handoff
 
-**Revisado em 10/10/2026: runtime do backend em `b2d22ab2e007487` (migração 136; deploy 75); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 10/10/2026: runtime do backend em `950b8af242c6892` (migração 136; deploy 76); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 76 no ar (11/10/2026, 02:57:49Z, central `950b8af242c6892`, sem migração; tag `deploy-20261011-0257`).** Traz 31.338 a 31.341, a caixa da conta planejada (31.334) e reabre a criação pelo igfarm (31.342; `criacao_pela_api_do_igfarm` volta a `true`). O igfarm teve 409 em `personas-pendentes` do deploy 75 (01:32:53Z) até este.
+  - `real`: deploy rc=0 em 68,9 s, backup `20261010-235641`, saúde ok (`open_connections` 9, `slow_queries_in_loop` 0), prova de fora ok, agente do notebook `0.1.0+950b8af` online. PG inteira do 75: 13259 passed, 1 failed (`test_worker_agent`, flake sob carga provável, passa isolado).
+  - `simulated`: docs-check 0/0, catracas 103, mypy 257, vitest 2366, scripts/tests 1283, SQLite 4782 e PG 4777 dirigidos de 183 arquivos. `not_run`: SQLite e PG inteiras na ponta do 76.
 - **Deploy 75 no ar (11/10/2026, 01:32:53Z, central `b2d22ab2e007487`, sem migração; tag `deploy-20261011-0132`).** Aposenta a criação de conta pela API do igfarm (31.335, chave `criacao_pela_api_do_igfarm` padrão `false`), lista cabeçalhos da caixa sem corpo (31.336) e traz o proxy sticky da conta planejada (31.337).
   - `real`: deploy rc=0 em 81,6 s, backup `20261010-223131`, saúde ok (`open_connections` 9, `slow_queries_in_loop` 0), prova de fora ok, agente do notebook `0.1.0+b2d22ab` online.
   - `simulated`: docs-check 0/0, catracas 103, mypy 257, scripts/tests 1283, SQLite e PG dirigidos de 61 arquivos, 1363 passed cada. `not_run`: PG inteira do 75.
