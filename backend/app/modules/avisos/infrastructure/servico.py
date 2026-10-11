@@ -529,7 +529,8 @@ class ServicoDeAvisos:
         """Uma volta de entrega, só no líder e com canal pronto. `None` quando pulou."""
         canal = self.canal()
         if canal is None:
-            self._vencer_pessoais()
+            # 31.343: o UPDATE da faxina dos contatos sai da thread do laço (a leitura de 3 s do exame exaustivo o flagrou com o canal desligado).
+            await asyncio.to_thread(self._vencer_pessoais)
             return None
         if time.monotonic() < self._esperar_ate:
             return None

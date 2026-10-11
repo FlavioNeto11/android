@@ -97,12 +97,15 @@ class VagasDeIA:
 
     def renovar(self) -> int:
         """Renova o vencimento das vagas que este processo tem. Enquanto ele respira, ninguém as toma."""
-        if not self._minhas:
+        # 31.343: roda numa thread (o `_manter_posse` saiu do laço), enquanto o laço toma e solta vagas: a fotografia da lista
+        # evita iterar uma lista que muda no meio. Uma vaga solta entre a foto e o UPDATE não é renovada à toa (o WHERE tem o dono).
+        minhas = tuple(self._minhas)
+        if not minhas:
             return 0
-        marcas = ",".join("?" for _ in self._minhas)
+        marcas = ",".join("?" for _ in minhas)
         cur = self.db.execute(
             f"UPDATE ai_slots SET expires_at=? WHERE holder=? AND slot IN ({marcas})",   # noqa: S608 - marcadores
-            (self.db.prazo_iso(self.ttl_s), self.holder, *self._minhas))
+            (self.db.prazo_iso(self.ttl_s), self.holder, *minhas))
         return int(cur.rowcount or 0)
 
     def soltar_todas(self) -> int:

@@ -306,7 +306,8 @@ class Scheduler:
     async def _loop(self) -> None:
         while True:
             try:
-                self._tick()
+                await self._manter_posse_fora_do_laco()
+                self._tick(posse=False)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - o scheduler nunca morre por um erro isolado
@@ -318,11 +319,14 @@ class Scheduler:
                 pass
             self._wake.clear()
 
-    def _tick(self) -> None:
+    def _tick(self, *, posse: bool = True) -> None:
+        """Uma volta. `posse=False`: quem chama (o `_loop`) já cuidou da posse numa thread (31.343); os testes que giram o tick à mão
+        mantêm o comportamento de sempre."""
         s = self.get_settings()
         self.ai_limiter.set_limit(s.max_ai_concurrency)
         self.devices.boot_limiter.set_limit(s.boot_parallelism)
-        self._manter_posse()
+        if posse:
+            self._manter_posse()
         # Antes de promover e despachar: uma execução que o disjuntor pausa agora não recebe trabalho nesta volta.
         self._vigiar_contas_bloqueadas()
         for run in self.repo.active_runs():
@@ -2483,6 +2487,14 @@ class Scheduler:
                                                             if effects else "Nenhuma ação com efeito externo foi realizada."))
             self._expirar_aprovacoes(o["id"], "execução cancelada")
         self.repo.recompute_run(run_id)
+
+    async def _manter_posse_fora_do_laco(self) -> None:
+        """31.343 (ponto 10 do 31.307): a renovação da posse e a adoção das etapas abandonadas fazem SQL (um UPDATE de cada vez e a leitura
+        de `abandoned_steps`) e rodavam na thread do laço. Com o disco estrangulado (02:06Z de 11/10, a PG inteira no mesmo host) uma delas
+        segurou o laço 52 s. Só vai para a thread quando a renovação está vencida (a cada `RENOVAR_POSSE_S`), então a maioria das voltas
+        não paga o salto."""
+        if time.monotonic() - self._posse_renovada >= RENOVAR_POSSE_S:
+            await asyncio.to_thread(self._manter_posse)
 
     def _manter_posse(self) -> None:
         """Renova a posse do que é meu e adota o que outro backend abandonou.

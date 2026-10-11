@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-11 — a posse do scheduler e a faxina do avisos saem do laço; o exame passa a ser exaustivo (31.343, ponto 10 do 31.307)
+
+- Dado de contraste: a PG inteira do 73 (23:34–00:2xZ) rodou SEM queda do laço; a do 75 (01:35–02:33Z) teve UMA, de 56 s.
+- Achado real (02:06Z–02:07Z, a PG inteira do 75 no mesmo host): o laço de eventos ficou 52 s sem batida; o despejo pegou a thread do laço em
+  `Scheduler._tick` → `_manter_posse` → `adotar_abandonadas` → `abandoned_steps` (SQL síncrono). Dez segundos antes, a mesma thread segurou a trava de escrita por 3,4 s em
+  `Lideranca.tomar` (disco estrangulado). A causa de fundo é o disco engasgado; o laço não pode ficar exposto a ele.
+- `Scheduler._loop` roda `_manter_posse` em `asyncio.to_thread` quando a renovação vence (`_tick(posse=False)`; os testes que giram `_tick()` à mão
+  mantêm o comportamento). `VagasDeIA.renovar` tira uma fotografia da lista antes de iterar (agora outra thread a lê enquanto o laço toma e solta vagas).
+  `entregar_uma_vez` do avisos faz o `_vencer_pessoais` (UPDATE) em thread com o canal desligado.
+- Novo `tests/test_laco_sem_sql_exaustivo.py`: espia o `Database` inteiro, por thread, com o scheduler girando de verdade. Prova que a posse e a adoção
+  rodam fora do laço (falha com o `_tick()` antigo, conferido por mutação) e trava a DÍVIDA conhecida do tick ocioso (6 leituras por volta; só encolhe).
+  Por que o ponto 10 escapou: os testes anteriores provavam um chamador de cada vez, depois de o vigia flagrá-lo; nenhum girava o scheduler com a posse
+  VENCIDA olhando a thread. Inventário do que sobra: `docs/banco.md` ("O que ainda roda SQL na thread do laço").
+- Prova `simulated`: 211 verdes entre scheduler, posse, vagas de IA, avisos, hospedeiro, rodízio, catracas e arquitetura; mypy 257 (teto). `real`: `not_run`;
+  a medida de 11/10 em diante (`laco-por-hora`, Android) diz se ainda há laço parado.
+
 ## 2026-10-11 — a criação pelo igfarm foi reaberta e o consentimento da conta ganhou rota (31.342)
 
 - Decisão do dono: quem cria a conta é o igfarm, pela API dele. `contas.criacao_pela_api_do_igfarm` volta a `true` por padrão (`false`

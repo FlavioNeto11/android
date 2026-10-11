@@ -324,6 +324,27 @@ Não por preciosismo: cada uma quebraria no PostgreSQL.
   PostgreSQL: `pg_sleep`) com a thread do laço fazendo `query`, `INSERT` e `tx()` a cada 100 ms: o maior intervalo sem batida cai de ~4,7 s (modelo
   antigo, medido no mesmo teste) para ~0,1 s e nenhuma escrita se perde. `real` (central) e PG inteiro: `not_run`.
 
+### O que ainda roda SQL na thread do laço (31.343, 11/10/2026)
+
+O modelo acima tirou a espera de LEITURA atrás de outra thread, mas a chamada síncrona ao banco feita da thread do laço ainda é o gargalo quando o
+disco engasga: o despejo de 11/10 02:07Z (a PG inteira rodando no mesmo host) pegou o `Scheduler._tick` na leitura `abandoned_steps` por 52 s
+(`_manter_posse` → `adotar_abandonadas`, o ponto 10 do 31.307). O que mudou e o que sobra:
+
+- **Pago:** a posse das etapas e das vagas de IA (`_manter_posse`: `renew_claims`, `ai_slots.renovar`, `adotar_abandonadas`) e a faxina dos contatos do
+  avisos com o canal desligado (`_vencer_pessoais`) rodam em `asyncio.to_thread`. O `_loop` só salta para a thread quando a renovação vence.
+- **Dívida do `_tick` ocioso, MEDIDA** (`tests/test_laco_sem_sql_exaustivo.py`, 1 aparelho, scheduler girando; ≈6 leituras por volta, ≈6 por segundo
+  em produção): `_vigiar_contas_bloqueadas`, `active_runs`, `dispatchable_objectives` (duas por volta: `_tick` e `_rotate`),
+  `WorkerRegistry.capacidade` e `limites_definidos` (via `_capacidade`), e a leitura da configuração viva quando o cache vence. Com trabalho na fila
+  entram `promote`, `note_waiting`, `_portas_do_app` e o resto do despacho (por inspeção do código, ainda não medidas).
+- **Fora do alcance do exame atual** (varredura estática de 10/10, `scratchpad/varredura.txt`, e leitura do código): `EventBus.emit` (INSERT
+  síncrono, ~245 chamadores), `Lideranca.tomar` (um UPDATE por volta dos laços com mandato), o laço do `avisos` com o canal ligado (`enfileirar_evento`,
+  `_lider`, `_faxina`), o `DeviceManager` periódico (`_monitor_loop`, `_metrics_loop`) e as sondas de saúde.
+- **A catraca:** o exame espia o `Database` INTEIRO e registra toda chamada vinda da thread do laço, com a pilha. Chamada nova quebra o teste; dívida
+  paga também (a lista `DIVIDA_DO_TICK` só encolhe). Cobre o que o harness gira (canais desligados, 1 aparelho): um laço que só existe com o canal
+  ligado ou com trabalho na fila precisa do seu cenário no mesmo arquivo.
+- **Próxima fatia:** uma foto das leituras do tick tirada numa thread antes do `_tick` (ele decide sobre a foto; as escritas, raras, ficam no laço) e o laço
+  do avisos em thread. Só vale o custo se o `laco-por-hora` ainda mostrar o laço parado.
+
 ## Rodar a suíte contra o PostgreSQL
 
 Prova o aplicativo **inteiro** no outro banco, não só as peças conferidas à mão. Cada teste ganha um schema
