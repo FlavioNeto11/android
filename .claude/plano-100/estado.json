@@ -14370,14 +14370,14 @@
    "id": "31.334",
    "status": "partial",
    "proof": "simulated",
-   "commit": "f06546cdc",
-   "evidence": "L1 (Jev, 11/10, f06546cdc): a conta planejada ganha a caixa do parque sem o igfarm, criada em CadastroGuiado.iniciar; o 409 sem_caixa_de_email vale só para o parque sem domínio de e-mail permitido; docs em persona.md, api-contract.md e CHANGELOG. 216 dirigidos (caixa da conta planejada, cadastro guiado, cadastro Bloks, catracas, arquitetura), mypy 257, docs-check 0/0. Desenho anterior (5b35297cd) mantido. REVERSÃO DO DONO em 11/10 ~02:0xZ (31.342): o cadastro no app deixa de ser o caminho principal e vira alternativa/apoio; a criação pelo igfarm via API é o principal. Falta: cadastro.yaml do Instagram e o teste de guarda (dependem da captura, P-050) e o texto do desenho ajustado para 'alternativa'. Real not_run.",
-   "grupo": "janela85",
+   "commit": "658f35f16",
+   "evidence": "Simulated anterior mantido (f06546cdc: L1, caixa da conta planejada sem o igfarm, 216 dirigidos). 658f35f16 (Jev, 11/10): docs/dominios/persona.md diz que o cadastro no app é o caminho ALTERNATIVO e o principal é a criação pelo igfarm via API (correção de rumo do dono, 31.342/v1.150). Falta: cadastro.yaml do Instagram e o teste de guarda (dependem da captura, P-050). Real not_run.",
+   "grupo": "janela86",
    "modelo": "",
    "esforco": "",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-11T03:00:24+00:00"
+   "quando": "2026-10-11T04:50:48+00:00"
   },
   "31.335": {
    "id": "31.335",
@@ -14482,6 +14482,32 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-11T03:00:24+00:00"
+  },
+  "31.343": {
+   "id": "31.343",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "ad703bf80",
+   "evidence": "Achado real (11/10 02:06–02:07Z, PG inteira do 75 no mesmo host): laço 52 s sem batida; dump laco-travado-20261011T020732Z com a thread do laço em Scheduler._tick → _manter_posse → adotar_abandonadas → abandoned_steps (SQL síncrono); 10 s antes a mesma thread segurou a trava de escrita 3,4 s em Lideranca.tomar (disco estrangulado). Contraste: PG do 73 sem queda; PG do 75 com uma. Correção (Jev, 11/10): Scheduler._loop roda _manter_posse em asyncio.to_thread quando a renovação vence; VagasDeIA.renovar fotografa a lista antes de iterar; entregar_uma_vez do avisos faz _vencer_pessoais em thread. Novo tests/test_laco_sem_sql_exaustivo.py espia o Database inteiro por thread com o scheduler girando (falha com o _tick antigo, conferido por mutação) e trava a dívida do tick ocioso (6 leituras por volta; só encolhe); inventário do que sobra em docs/banco.md. 211 verdes (scheduler, posse, vagas de IA, avisos, hospedeiro, rodízio, catracas, arquitetura); mypy 257. 2ª ocorrência real do mesmo ponto ANTES da correção: 11/10 03:43:52Z (laço 10,8 s, queda de 3 s, dump laco-travado-20261011T034355Z-1.txt, durante a PG inteira do 76 no central em 950b8af24), confirmando o diagnóstico. No ar no deploy 77. Real not_run: a próxima PG inteira sob carga e o laco-por-hora 71..77 dizem se o ponto 10 era o último.",
+   "grupo": "janela86",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T04:50:48+00:00"
+  },
+  "31.344": {
+   "id": "31.344",
+   "status": "implemented",
+   "proof": "simulated",
+   "commit": "d592ebd7c",
+   "evidence": "Cada POST /api/instagram/contas/{id}/consentimento emite identity.consentimento_igfarm (ts, conta_id recebido, resultado consentida|ja_consentida|recusada, account_id, igfarm_account_id, ja_consentida; na recusa o código); só ids, sem senha, @ ou e-mail; rota, resposta e banco inalterados; adendo v1.151. test_toda_chamada_do_consentimento_deixa_evento_sem_segredo + 35 dirigidos (reaberta, contas_igfarm, ordem_das_rotas, cobertura_de_rotas, arquitetura), catracas 105, mypy 257, docs-check 0/0 (Ponte, 11/10). No ar no deploy 77. Real not_run até a 1ª chamada do igfarm (nenhuma até 03:1xZ; nem linha de acesso).",
+   "grupo": "janela86",
+   "modelo": "",
+   "esforco": "",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-11T04:50:48+00:00"
   }
  },
  "rodadas": [
@@ -18490,6 +18516,17 @@
    ],
    "grupos": [
     "janela85"
+   ]
+  },
+  {
+   "quando": "2026-10-11T04:50:48+00:00",
+   "itens": [
+    "31.343",
+    "31.344",
+    "31.334"
+   ],
+   "grupos": [
+    "janela86"
    ]
   }
  ]

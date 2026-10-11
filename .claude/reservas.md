@@ -924,4 +924,9 @@ orquestradora; ela anota aqui antes de responder.
 | 31.343 | Jev | adotar_abandonadas/_manter_posse fora do laço (ponto 10; dump 11/10 02:07Z sob a PG inteira) + varredura do _tick + guarda exaustiva em test_laco_sem_sql_sincrono | Jev | reservado 11/10 03:00Z |
 | 31.344 | Ponte | evento identity.consentimento_igfarm por chamada da rota de consentimento (account_id, igfarm_account_id, ja_consentida, hora; sem segredo): prova real do 31.342 por evento | Ponte | reservado 11/10 03:00Z |
 | adendo v1.151 | Ponte | evento identity.consentimento_igfarm (31.344) | Ponte | reservado 11/10 03:00Z |
-| próximos livres (atualização 11/10 03:00Z) | 31.345, 29.212, 28.78; ADR-093 (092 guardado p/ Jev); migração 137; adendo v1.152; K-114 | |
+| 31.345 | Android | escada/sonda ADB tolerante durante suíte inteira (android-01 parado pela escada 11/10 02:15Z sob a PG do 75: 3 sondas sem resposta → stop 3º degrau): pausa da escada no período ou folga da sonda com disco disputado | Android | reservado 11/10 04:50Z |
+| 31.346 | Portal | ficha da persona mostra o ciclo da conta Instagram (GET /api/instagram/contas/{id}/ciclo: origem igfarm|app, contatos com o app e desfechos, retirada), só leitura, sem @ nem e-mail | Portal | reservado 11/10 04:50Z |
+| 31.347 | Jev | corrida no encerramento do agente do worker: Agent._sessao engolia o cancel() na janela da reconexão (flake real da PG inteira do 75); gather(return_exceptions) + teste determinístico; mesmo padrão em commands/transport.py | Jev | reservado 11/10 04:50Z |
+| 31.348 | Jev | tick ocioso do scheduler sem as 6 leituras por volta (dívida trancada pelo test_laco_sem_sql_exaustivo do 31.343) | Jev | reservado 11/10 04:50Z |
+| 31.349 | Jev | test_pergunta_vence: LIKE %31.43% casa carimbo de hora (bomba-relógio da PG dirigida do 77); casar só a regra | Jev | reservado 11/10 04:50Z |
+| próximos livres (atualização 11/10 04:50Z) | 31.350, 29.212, 28.78; ADR-093 (092 guardado p/ Jev); migração 137; adendo v1.152; K-114 | |
