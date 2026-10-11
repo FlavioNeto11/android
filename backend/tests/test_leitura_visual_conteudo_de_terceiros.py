@@ -126,4 +126,5 @@ def test_o_outlook_declara_a_linha_da_caixa_como_conteudo_de_terceiros() -> None
     from app.planning.capabilities import CONHECIMENTO_DE_APPS
 
     k = carregar(CONHECIMENTO_DE_APPS / "com.microsoft.office.outlook" / "telas.yaml")
-    assert [r.conteudo_de_terceiros for r in k.regioes_visuais] == [True]
+    # a caixa e, desde o 31.339, as pastas de sistema (mesma lista)
+    assert {r.tela: r.conteudo_de_terceiros for r in k.regioes_visuais} == {"caixa_de_entrada": True, "pasta_de_email": True}

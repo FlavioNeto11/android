@@ -101,7 +101,7 @@ depois_do_envio:
   - {tipos: [desafio, dois_fatores], desfecho: auth_challenge,
      detalhe: 'a Microsoft exige verificação adicional; só uma pessoa pode resolver'}
   # O "Stay signed in?" e a caixa não mostram a conta (os ids da extração são os da gaveta): o motor lê pelo acesso.
-  - {telas: [conta_aberta, caixa_de_entrada, manter_conectado], desfecho: conferir_conta}
+  - {telas: [conta_aberta, caixa_de_entrada, pasta_de_email, manter_conectado], desfecho: conferir_conta}
   - {tipos: [login], desfecho: uncertain, detalhe: 'continuou na entrada da Microsoft, sem mensagem de erro'}
 
 textos:

@@ -68,6 +68,11 @@ sinais:
     # 7. Informativo das experiências conectadas, "CONTINUE TO OUTLOOK".
     experiencias: '(?m)^\s*powering your experiences\s*$'
     continuar_no_outlook: '^\s*continue to outlook\s*$'
+    # 31.339: o título da barra é o nome da pasta. A lista é a MESMA (`conversation_list`) na Inbox, na Junk, em Sent...: sem este
+    # sinal a Junk contava como estado conhecido e a receita ancorada partia dela (prova real do P-043, 11/10). Só as pastas de
+    # sistema nomeadas aqui são `pasta_de_email`; título que não casar (pasta própria, outro idioma) segue `caixa_de_entrada`,
+    # que é o comportamento de antes: errar para este lado nunca faz o preparo apertar "voltar" na Inbox.
+    pasta_de_email: '(?m)^\s*(junk( email)?|spam|sent( items)?|drafts|archive|deleted( items)?|trash|outbox|lixo eletr[oô]nico|itens enviados|enviados|rascunhos|arquivo( morto)?|itens exclu[ií]dos|exclu[ií]dos|lixeira|caixa de sa[ií]da)\s*$'
   # Toda a tabela `pt` é SUPOSIÇÃO: os aparelhos observados rodam em inglês. Os ids (estrutura) valem nos dois idiomas;
   # o que o texto pt não casar fica desconhecido e para o login para a pessoa.
   pt:
@@ -96,6 +101,7 @@ sinais:
     recusar: '^\s*recusar\s*$'
     experiencias: '(?m)^\s*(potencializando|impulsionando) suas experi[êe]ncias\s*$'
     continuar_no_outlook: '^\s*continuar (no|para o) outlook\s*$'
+    pasta_de_email: '(?m)^\s*(junk( email)?|spam|sent( items)?|drafts|archive|deleted( items)?|trash|outbox|lixo eletr[oô]nico|itens enviados|enviados|rascunhos|arquivo( morto)?|itens exclu[ií]dos|exclu[ií]dos|lixeira|caixa de sa[ií]da)\s*$'
 
 # Quem está logado: o e-mail da conta, com UM valor na tela (observado 30/09 android-06). Na gaveta, o endereço é um
 # TextView SEM id logo abaixo de "Outlook.com", dentro do ComposeView `drawer_folder_composable`: a extração vale só
@@ -148,6 +154,10 @@ telas:
   # A gaveta vem antes da caixa: aberta, ela fica por cima da lista, que continua na árvore.
   - {tela: conta_aberta, tipo: autenticada, autenticada: true, ids: [drawer_folder_composable],
      razao: a gaveta com a conta aberta}
+  # 31.339: a mesma lista de mensagens, mas numa pasta de sistema que não é a Inbox (título pelo sinal `pasta_de_email`).
+  # Não é estado conhecido: dela o preparo volta (uma vez, o "voltar" do Outlook leva à Inbox) antes de explorar.
+  - {tela: pasta_de_email, tipo: autenticada, autenticada: true, sinal: pasta_de_email, ids: [conversation_list],
+     razao: lista de uma pasta que não é a caixa de entrada}
   - {tela: caixa_de_entrada, tipo: autenticada, autenticada: true, ids: [conversation_list], razao: caixa de entrada}
 
 # Onde a conta pode ser lida (a caixa, de onde a gaveta abre) e como chegar lá sem efeito externo: voltar do Android e,
@@ -170,6 +180,11 @@ leitura_visual:
       # 31.328: a linha da caixa é conteúdo de quem escreveu o e-mail. "Confirm you're human" na prévia de uma mensagem do
       # Instagram não é a tela de desafio do app (essa o detector da árvore pega, fora daqui) e parava a leitura em
       # `waiting_user` (P-043, 10/10). A triagem do recorte segue recusando código, senha e token.
+      conteudo_de_terceiros: true
+    # 31.339: a lista das pastas de sistema é o mesmo componente; a leitura de uma linha (Junk, Sent...) vale igual.
+    - tela: pasta_de_email
+      dentro_de: [com.microsoft.office.outlook:id/conversation_list]
+      saidas: [remetente, assunto]
       conteudo_de_terceiros: true
 
 # Dicas ao juiz (item 31.46). OBSERVADO (r-…-e7bc42, 01/10): a etapa livre `verify_sent` foi recusada porque "a lista de
