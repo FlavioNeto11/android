@@ -18,6 +18,7 @@ repositório: só ele declara tipo diferente de `autenticada`, sinal de texto, e
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import logging
 import re
@@ -39,6 +40,9 @@ TIPOS = frozenset({"desafio", "dois_fatores", "intersticial", "login", "carregan
 #: Tipos de onde nunca se "volta": cada um tem tratamento próprio (pessoa, login, dispensa, espera).
 NAO_SE_VOLTA = frozenset({"desafio", "dois_fatores", "login", "intersticial", "carregando"})
 DESCONHECIDA = "desconhecida"
+#: 31.338: quanto esperar uma tela conhecida depois de reabrir o app de frio (3 leituras, 1,5 s entre elas).
+ESPERA_APOS_REABRIR_S = 1.5
+LEITURAS_APOS_REABRIR = 3
 #: Tipos que só o detector de conta travada decide (ADR-055), e o subtipo de cada um.
 TIPOS_DE_TRAVA = {"desafio": SUBTIPO_CONTA_TRAVADA, "dois_fatores": SUBTIPO_CODIGO}
 
@@ -385,6 +389,8 @@ async def voltar_ao_estado_conhecido(
         reabrir: Callable[[], Awaitable[None]],
         reconhecer: Callable[[UiTree, str | None], TelaReconhecida],
         nao_reabrir_sobre: Callable[[UiTree], bool] | None = None,
+        espera_apos_reabrir_s: float = ESPERA_APOS_REABRIR_S,
+        leituras_apos_reabrir: int = LEITURAS_APOS_REABRIR,
 ) -> tuple[UiTree, str | None, TelaReconhecida, list[str]]:
     """Leva o app ao estado conhecido declarado, só com "voltar" do Android e, no máximo uma vez, reabrir o app.
 
@@ -394,6 +400,12 @@ async def voltar_ao_estado_conhecido(
 
     `nao_reabrir_sobre` (29.92): com outro app na frente e esta pergunta dizendo sim, nada é reaberto por cima e a tela
     volta como está (`outro_app`), para quem chama decidir. O motor de sessão a usa no aparelho com conta real.
+
+    31.338: depois de reabrir, o app de frio mostra uma tela de passagem (abertura, animação) que o motor não conhece, e um
+    "voltar" nela TIRA o app da frente (prova real do P-043 no Outlook, 11/10: [reabrir, voltar] terminou na tela inicial
+    do Android e a exploração não ancorou). Por isso, depois de cada reabrir, a tela é relida (até
+    `leituras_apos_reabrir` vezes, `espera_apos_reabrir_s` entre elas) enquanto o app está na frente mas a tela segue
+    desconhecida; só então se decide entre estado conhecido, "voltar" ou desistir.
     """
     passos: list[str] = []
     tree, pacote = await observar()
@@ -408,6 +420,9 @@ async def voltar_ao_estado_conhecido(
             await reabrir()
             reaberto = True
             passos.append("reabrir")
+            tree, pacote, atual = await _esperar_a_tela_conhecida(observar, reconhecer, espera_apos_reabrir_s,
+                                                                  leituras_apos_reabrir)
+            continue
         elif len([p for p in passos if p == "voltar"]) < k.estado_conhecido.voltar_max:
             await voltar()
             passos.append("voltar")
@@ -418,9 +433,26 @@ async def voltar_ao_estado_conhecido(
     if not k.em_casa(atual.tela) and atual.tipo not in NAO_SE_VOLTA and k.estado_conhecido.reabrir and not reaberto:
         await reabrir()
         passos.append("reabrir")
+        tree, pacote, atual = await _esperar_a_tela_conhecida(observar, reconhecer, espera_apos_reabrir_s,
+                                                              leituras_apos_reabrir)
+    return tree, pacote, atual, passos
+
+
+async def _esperar_a_tela_conhecida(
+        observar: Callable[[], Awaitable[tuple[UiTree, str | None]]],
+        reconhecer: Callable[[UiTree, str | None], TelaReconhecida],
+        espera_s: float, leituras: int) -> tuple[UiTree, str | None, TelaReconhecida]:
+    """31.338: observa; se o app está na frente mas a tela é desconhecida (abertura de frio), espera e relê, até `leituras`
+    vezes. Só leitura: nenhum toque, nenhum voltar."""
+    tree, pacote = await observar()
+    atual = reconhecer(tree, pacote)
+    for _ in range(max(0, leituras)):
+        if atual.tela != DESCONHECIDA or atual.outro_app:
+            break
+        await asyncio.sleep(max(0.0, espera_s))
         tree, pacote = await observar()
         atual = reconhecer(tree, pacote)
-    return tree, pacote, atual, passos
+    return tree, pacote, atual
 
 
 # ---------------------------------------------------------------------------------------------------- carga
