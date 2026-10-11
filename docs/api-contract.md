@@ -8638,7 +8638,7 @@ Aditivo: uma rota de leitura nova na ponte android ⇄ igfarm. Nenhuma coluna, m
 
 **Prova:** `simulated` (`backend/tests/test_ciclo_da_conta_igfarm.py`, 5 casos). `real`: `not_run`.
 
-## Adendo v1.146 (10/10/2026; número a confirmar pela orquestradora; item 31.335) — a criação de conta pela API do igfarm foi aposentada
+## Adendo v1.146 (10/10/2026; número da orquestradora; item 31.335) — a criação de conta pela API do igfarm foi aposentada
 
 Aditivo na configuração e restritivo em UMA rota; nenhuma coluna, migração nem evento novo. Decisão do dono (10/10/2026): a API do
 igfarm deixou de ser a fonte da conta (ela cria `is_active:false` e o login para em 2FA sem contexto); o cadastro é feito NO APP
