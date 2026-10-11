@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -159,6 +160,16 @@ def _sem_o_motivo(draft_meta: str | None) -> str | None:
     resto = {k: v for k, v in meta.items() if k != MOTIVO_DA_RECUSA}
     return dumps(resto) if resto else None
 
+
+@dataclass(slots=True)
+class _FotoDoTick:
+    """31.348: o que o `_tick` ocioso lia do banco (um SELECT por vez, na thread do laço), tirado numa thread antes da volta. Com o disco
+    estrangulado cada uma dessas leituras parava o laço; agora a thread espera e o laço só consome a foto. Vale só para a volta que a pediu."""
+    bloqueadas: set[str]                       # `instagram_profiles.status='blocked'`
+    execucoes: list[Row]                       # `Repository.active_runs()`
+    capacidades: dict[str, object]             # `worker_capacity(id)` das máquinas que esta volta pode consultar
+    laco: int = 0                              # a thread que consome (o `_tick` a grava); outras threads leem ao vivo
+
 class Scheduler:
     def __init__(self, cfg: Config, repo: Repository, devices: DeviceManager, provider: AIProvider,
                  settings_getter: Callable[[], Any]):
@@ -274,6 +285,7 @@ class Scheduler:
         # Disjuntor de conta (ADR-055): os perfis `blocked` já vistos. `None` até a primeira volta, que só tira a
         # linha de base — o que já estava bloqueado ao subir não dispara de novo a cada reinício.
         self._bloqueadas_vistas: set[str] | None = None
+        self._foto: _FotoDoTick | None = None    # 31.348: só existe durante um `_tick` pedido pelo `_loop`
         devices.on_device_free = self.wake
 
     # ------------------------------------------------------------------ ciclo
@@ -307,7 +319,8 @@ class Scheduler:
         while True:
             try:
                 await self._manter_posse_fora_do_laco()
-                self._tick(posse=False)
+                foto = await asyncio.to_thread(self._tirar_a_foto_do_tick, self._maquinas_do_tick())
+                self._tick(posse=False, foto=foto)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - o scheduler nunca morre por um erro isolado
@@ -319,9 +332,41 @@ class Scheduler:
                 pass
             self._wake.clear()
 
-    def _tick(self, *, posse: bool = True) -> None:
+    def _maquinas_do_tick(self) -> list[str]:
+        """Os workers cuja capacidade a volta pode consultar: este servidor e as máquinas dos aparelhos. Lido NA thread do laço (memória
+        pura) e passado à thread da foto, que não pode iterar `devices.devices` enquanto o laço o muda."""
+        ids = {self.cfg.owner_id}
+        ids.update(str(rt.worker_id) for rt in list(self.devices.devices.values()) if rt.worker_id)
+        return sorted(ids)
+
+    def _tirar_a_foto_do_tick(self, maquinas: list[str]) -> _FotoDoTick:
+        """31.348 (ponto 10 do 31.307, etapa 3): as leituras da volta ociosa, numa thread. Também aquece o cache dos limites vivos
+        (`settings.get`, 2 s), que relia o banco no laço quando vencia."""
+        self.get_settings()
+        bloqueadas = {str(r["id"]) for r in self.repo.db.query("SELECT id FROM instagram_profiles WHERE status='blocked'")}
+        capacidades = {w: self._capacidade(w) for w in maquinas}          # `None` também vale: máquina que não está inscrita
+        return _FotoDoTick(bloqueadas, self.repo.active_runs(), capacidades)
+
+    def _objetivos_despachaveis(self) -> list[Row]:
+        """Com foto e nenhuma execução ativa não há objetivo despachável (todo objetivo vive numa execução `running`): a volta ociosa não
+        pergunta. Com execução ativa (ou sem foto: o teste que gira o tick à mão), lê ao vivo — o `promote` acabou de abrir etapa nesta
+        mesma volta e a leitura precisa vê-la."""
+        if (foto := self._foto) is not None and not foto.execucoes:
+            return []
+        return self.repo.dispatchable_objectives()
+
+    def _tick(self, *, posse: bool = True, foto: _FotoDoTick | None = None) -> None:
         """Uma volta. `posse=False`: quem chama (o `_loop`) já cuidou da posse numa thread (31.343); os testes que giram o tick à mão
-        mantêm o comportamento de sempre."""
+        mantêm o comportamento de sempre. `foto`: as leituras da volta ociosa tiradas numa thread (31.348); sem ela, lê ao vivo."""
+        if foto is not None:
+            foto.laco = threading.get_ident()
+        self._foto = foto
+        try:
+            self._volta(posse=posse)
+        finally:
+            self._foto = None
+
+    def _volta(self, *, posse: bool) -> None:
         s = self.get_settings()
         self.ai_limiter.set_limit(s.max_ai_concurrency)
         self.devices.boot_limiter.set_limit(s.boot_parallelism)
@@ -329,7 +374,7 @@ class Scheduler:
             self._manter_posse()
         # Antes de promover e despachar: uma execução que o disjuntor pausa agora não recebe trabalho nesta volta.
         self._vigiar_contas_bloqueadas()
-        for run in self.repo.active_runs():
+        for run in (self._foto.execucoes if self._foto is not None else self.repo.active_runs()):
             if run["cancel_requested"]:
                 self._finish_cancel(run)
                 continue
@@ -345,7 +390,7 @@ class Scheduler:
         if self._esperas:
             self._varrer_esperas()
         taken: set[str] = set()
-        for obj in self.repo.dispatchable_objectives():
+        for obj in self._objetivos_despachaveis():
             iid = obj["instance_id"]
             if iid in taken:
                 continue
@@ -943,6 +988,8 @@ class Scheduler:
 
     # ------------------------------------------------------------------ aparelho que mora em outra máquina
     def _capacidade(self, worker_id: str | None) -> Any:
+        if (foto := self._foto) is not None and worker_id in foto.capacidades and threading.get_ident() == foto.laco:
+            return foto.capacidades[worker_id]
         return self.worker_capacity(worker_id) if (worker_id and self.worker_capacity) else None
 
     def _vagas_do_host(self, s: LimitsCfg) -> int:
@@ -1033,7 +1080,7 @@ class Scheduler:
             return d.worker_id if d.external else None
 
         demand: list[tuple[DeviceRuntime, Any]] = []
-        for obj in (self.repo.dispatchable_objectives() if tarefas else []):
+        for obj in (self._objetivos_despachaveis() if tarefas else []):
             rt = devs.devices.get(obj["instance_id"])
             if (rt is not None and rodiziavel(rt) and rt.state in WAKEABLE
                     and all(rt is not d for d, _ in demand)):
@@ -1186,7 +1233,8 @@ class Scheduler:
         Olhar o banco a cada volta, e não ser chamado por quem bloqueia: o perfil vira `blocked` por mais de um
         caminho (o desafio visto no login, a tela desmentindo a sessão no meio de uma execução, o dono no painel), e
         todos passam por esta tabela. É uma leitura de poucas linhas por volta."""
-        atuais = {str(r["id"]) for r in self.repo.db.query("SELECT id FROM instagram_profiles WHERE status='blocked'")}
+        atuais = (set(self._foto.bloqueadas) if self._foto is not None
+                  else {str(r["id"]) for r in self.repo.db.query("SELECT id FROM instagram_profiles WHERE status='blocked'")})
         if self._bloqueadas_vistas is None:
             self._bloqueadas_vistas = atuais
             return

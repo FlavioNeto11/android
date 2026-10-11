@@ -332,18 +332,23 @@ disco engasga: o despejo de 11/10 02:07Z (a PG inteira rodando no mesmo host) pe
 
 - **Pago:** a posse das etapas e das vagas de IA (`_manter_posse`: `renew_claims`, `ai_slots.renovar`, `adotar_abandonadas`) e a faxina dos contatos do
   avisos com o canal desligado (`_vencer_pessoais`) rodam em `asyncio.to_thread`. O `_loop` só salta para a thread quando a renovação vence.
-- **Dívida do `_tick` ocioso, MEDIDA** (`tests/test_laco_sem_sql_exaustivo.py`, 1 aparelho, scheduler girando; ≈6 leituras por volta, ≈6 por segundo
-  em produção): `_vigiar_contas_bloqueadas`, `active_runs`, `dispatchable_objectives` (duas por volta: `_tick` e `_rotate`),
-  `WorkerRegistry.capacidade` e `limites_definidos` (via `_capacidade`), e a leitura da configuração viva quando o cache vence. Com trabalho na fila
-  entram `promote`, `note_waiting`, `_portas_do_app` e o resto do despacho (por inspeção do código, ainda não medidas).
+- **Pago no 31.348 — o `_tick` ocioso não lê mais o banco na thread do laço.** Medido no exame (`tests/test_laco_sem_sql_exaustivo.py`, 1 aparelho,
+  scheduler girando, 3 s): **728 chamadas em 121 voltas (6 por volta) antes, 0 depois** (`DIVIDA_DO_TICK` ficou vazia). As seis leituras
+  (`_vigiar_contas_bloqueadas`, `active_runs`, `dispatchable_objectives` duas vezes, `WorkerRegistry.capacidade` + `limites_definidos` via `_capacidade`, e
+  `settings.get` quando o cache vence) viram uma foto (`_FotoDoTick`) tirada por `Scheduler._tirar_a_foto_do_tick` em `asyncio.to_thread` logo antes do
+  `_tick`; o tick decide sobre ela. A foto vale só para a volta que a pediu e só para a thread que a consome (`_capacidade` de outra thread lê ao vivo).
+  Sem execução ativa na foto não há objetivo despachável, então a volta ociosa nem pergunta; **com execução ativa** o `_tick` lê `dispatchable_objectives`
+  ao vivo (o `promote` acabou de abrir etapa nesta volta e a leitura tem de vê-la) — o que sobra no laço com trabalho na fila é `promote`,
+  `dispatchable_objectives`, `note_waiting`, `_portas_do_app` e o resto do despacho (por inspeção do código, ainda não medido). Quem gira `_tick()` à mão
+  (testes) continua lendo ao vivo, sem foto. Custo: um salto de thread por volta (1 s em produção).
 - **Fora do alcance do exame atual** (varredura estática de 10/10, `scratchpad/varredura.txt`, e leitura do código): `EventBus.emit` (INSERT
   síncrono, ~245 chamadores), `Lideranca.tomar` (um UPDATE por volta dos laços com mandato), o laço do `avisos` com o canal ligado (`enfileirar_evento`,
   `_lider`, `_faxina`), o `DeviceManager` periódico (`_monitor_loop`, `_metrics_loop`) e as sondas de saúde.
 - **A catraca:** o exame espia o `Database` INTEIRO e registra toda chamada vinda da thread do laço, com a pilha. Chamada nova quebra o teste; dívida
   paga também (a lista `DIVIDA_DO_TICK` só encolhe). Cobre o que o harness gira (canais desligados, 1 aparelho): um laço que só existe com o canal
   ligado ou com trabalho na fila precisa do seu cenário no mesmo arquivo.
-- **Próxima fatia:** uma foto das leituras do tick tirada numa thread antes do `_tick` (ele decide sobre a foto; as escritas, raras, ficam no laço) e o laço
-  do avisos em thread. Só vale o custo se o `laco-por-hora` ainda mostrar o laço parado.
+- **Próxima fatia:** o laço do avisos em thread, e a leitura do despacho COM trabalho na fila (hoje ao vivo no laço). Só vale o custo se o `laco-por-hora`
+  ainda mostrar o laço parado.
 
 ## Rodar a suíte contra o PostgreSQL
 

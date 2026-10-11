@@ -43,6 +43,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Só leitura, sem @, e-mail, senha nem IP (a API não os devolve; o painel só mostra ids, horas, minutos e desfechos). Só `features/profiles/CicloDaConta.tsx`, o tipo, o cliente e a montagem em `GuiaContas.tsx`.
 - Prova `simulated`: `CicloDaConta.test.tsx` (9) e 1 caso em `ProfileDetail.test.tsx`, 300 dirigidos de profiles, tsc limpo. `real`: `not_run` (percurso no deploy que o levar; 375 px sem rolagem só se mede lá).
 
+## 2026-10-11 — o tick ocioso do scheduler não lê mais o banco na thread do laço (31.348, ponto 10 do 31.307, etapa 2)
+
+- `Scheduler._loop` tira uma foto das leituras da volta numa thread (`_tirar_a_foto_do_tick`: contas bloqueadas, execuções ativas, capacidade e limites do
+  worker de cada máquina, `settings.get` aquecido) e o `_tick(foto=…)` decide sobre ela. Sem execução ativa não há objetivo despachável, então a volta
+  ociosa não pergunta (eram duas leituras, `_tick` e `_rotate`); com execução ativa a leitura do despacho segue ao vivo, porque o `promote` da própria volta
+  precisa ser visto. A foto vale só para aquela volta e só para a thread do laço; o teste que gira `_tick()` à mão lê ao vivo, como sempre.
+- **Medido** com o exame exaustivo (`tests/test_laco_sem_sql_exaustivo.py`, 3 s de tick ocioso no harness, 1 aparelho): **antes 728 chamadas ao banco na thread
+  do laço em 121 voltas (6 por volta: `_vigiar_contas_bloqueadas`, `active_runs`, `dispatchable_objectives` ×2, `capacidade`, `limites_definidos`) e 2 de
+  `_ler`; depois 0 em 142 voltas.** `DIVIDA_DO_TICK` ficou vazia e o teste passou a exigir lista vazia. Prova `simulated`
+  (`tests/test_laco_sem_sql_exaustivo.py::test_o_tick_do_laco_so_deve_ao_que_esta_na_divida_conhecida` e
+  `::test_a_foto_do_tick_e_tirada_numa_thread_e_o_tick_a_consome_no_laco`); o efeito sobre o laço parado do central é `not_run` até o `laco-por-hora` de
+  uma janela com disco estrangulado depois do deploy.
+- Validação: os 94 arquivos de teste que passam pelo scheduler + as catracas (1456 passed; as 10 de `tests/_skip_test_capabilities.py`, que a coleta
+  normal não roda, falham igual na `main`), `tests/test_arquitetura.py`, mypy 257/257, `docs-check`. Doc: `docs/banco.md`, "O que ainda roda SQL na thread do laço".
+
 ## 2026-10-11 — a posse do scheduler e a faxina do avisos saem do laço; o exame passa a ser exaustivo (31.343, ponto 10 do 31.307)
 
 - Dado de contraste: a PG inteira do 73 (23:34–00:2xZ) rodou SEM queda do laço; a do 75 (01:35–02:33Z) teve UMA, de 56 s.
