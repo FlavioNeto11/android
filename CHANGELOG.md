@@ -62,6 +62,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (com rastro), as seguintes comparam; não casou, parada `egresso_nao_casou` e nada é tocado. `session.egresso_na_janela` ganha `fase`.
   Sem migração (adendo v1.148).
 - Prova `simulated`: `tests/test_proxy_da_conta_planejada.py` (8). `real`: `not_run` (depende da resposta do igfarm e do sim do dono).
+
+## 2026-10-11 — os selos de filtro do Livro ganham alvo de toque de 32 px (achado da varredura de UX 70/71)
+
+- No celular os botões "N de prova" e "N descoberta(s) pela IA" do resumo do Livro tinham 22 px de altura; passam a `min-height: 32px` (só CSS, `Aprendizado.module.css`). Prova `simulated`: tsc limpo e dirigidos do Livro verdes (o jsdom não mede CSS); `real`: `not_run`, a medida no celular fica para o próximo percurso.
+
 ## 2026-10-10 — a lista de contas retiradas e o grupo contam as personas sem @ (achado do percurso real do deploy 73, 31.326)
 
 - Defeito do próprio 31.326, visto no central (`a9853379e`): com 10 personas com `contas_retiradas`, a lista "Contas retiradas por bloqueio" não aparecia, e o grupo Liberado dizia "15 personas · +1 de teste" (certo: 14 e +2). A tela filtrava as personas com `comConta`, e a retirada por bloqueio apaga o @ da persona; a persona de teste sem conta também ficava fora do conjunto de testes. A lista e o grupo passam a usar todas as personas.

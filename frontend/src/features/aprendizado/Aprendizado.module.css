@@ -181,6 +181,10 @@
 .resumoChip strong { color: var(--text-1); }
 
 .resumoBotao {
+  /* Alvo de toque de 32 px (varredura de UX 70/71: no celular o selo tinha 22 px). */
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
   padding: 0 8px;
   border: 1px solid var(--border-2, var(--border-1));
   border-radius: var(--radius-md);
