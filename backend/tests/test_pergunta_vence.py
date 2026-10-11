@@ -224,7 +224,8 @@ async def test_a_retomada_no_meio_da_varredura_ganha_do_vencimento(harness: Harn
     objetivo, run, _ = _status(harness, run_id, oid)
     assert objetivo == ("pending" if corrida == "objetivo_retomado" else "waiting_user")
     assert run == ("completed_with_issues" if corrida == "objetivo_retomado" else "running")
-    assert st.db.scalar("SELECT COUNT(*) FROM events WHERE objective_id=? AND data LIKE '%31.43%'", (oid,)) == 0
+    # Casa só a chave da regra: `LIKE '%31.43%'` casou o carimbo de hora 04:34:31.43x de um evento qualquer (31.349).
+    assert st.db.scalar("SELECT COUNT(*) FROM events WHERE objective_id=? AND data LIKE '%\"vencimento\"%'", (oid,)) == 0
 
 
 async def test_a_volta_do_laco_vence_os_dois_com_o_relogio_de_verdade(harness: Harness) -> None:
@@ -280,9 +281,9 @@ def test_31_50c_o_prazo_tem_piso_de_uma_hora() -> None:
     from app.config import ExecucaoCfg
     with pytest.raises(ValidationError):
         ExecucaoCfg(pergunta_vence_h=0.05)
-    assert ExecucaoCfg(pergunta_vence_h=1).pergunta_vence_h == 1
-
-
+    assert ExecucaoCfg(pergunta_vence_h=1).pergunta_vence_h == 1
+
+
 async def test_31_50_ao_ligar_o_que_ja_esperava_ganha_a_carencia(harness: Harness) -> None:
     """31.50, carência: ligar o vencimento não vence de uma vez o que já estava parado (os 21 da primeira volta do
     deploy 30). O prazo conta do mais tardio entre a espera e a marca de quando foi ligado; desligar apaga a marca."""

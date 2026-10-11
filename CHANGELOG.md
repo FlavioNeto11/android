@@ -31,6 +31,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   da entrega que chegasse enquanto o aviso morria era engolido e o `ack` seguinte confirmava a mensagem de um consumidor sendo derrubado. Mesma correção
   (`gather(..., return_exceptions=True)`), com o teste `tests/test_transporte_nats.py::test_cancelar_a_entrega_enquanto_o_aviso_de_vida_morre_nao_confirma`
   (falha sem a correção, conferido por mutação; os 8 do arquivo).
+- **31.349:** `test_pergunta_vence::test_a_retomada_no_meio_da_varredura_ganha_do_vencimento` contava eventos com `data LIKE '%31.43%'` e, na PG dirigida
+  do 77, casou um carimbo de hora (`04:34:31.43x`): 5 eventos no lugar de 4 (verde isolado). Passou a casar só a chave da regra (`'%"vencimento"%'`).
+  `simulated`: `tests/test_pergunta_vence.py` (21 passed).
 - Prova `simulated`: `tests/test_worker_agent.py::test_cancelar_o_agente_enquanto_a_batida_morre_nao_e_engolido` alarga a janela (a batida leva 0,3 s para
   morrer e o cancelamento chega no meio): falha sem a correção (conferido por mutação) e passa com ela; os 24 do arquivo. `real`: `not_run`.
 
