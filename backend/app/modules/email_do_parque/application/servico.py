@@ -5,13 +5,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 from ..domain import endereco as dominio_endereco
-from .ports import LeitorCaixa, Mensagem
+from .ports import CabecalhoDeMensagem, LeitorCaixa, LeitorDeCabecalhos, Mensagem
 
 _CODIGO = re.compile(r"\b(\d{6})\b")
+#: Um código de confirmação pode vir no assunto ("123456 é seu código"): a lista de cabeçalhos nunca o mostra.
+_SEIS_DIGITOS = re.compile(r"\d{6}")
 
 
 class ErroEmailDoParque(RuntimeError):
@@ -101,6 +103,21 @@ class EmailDoParque:
             if codigo:
                 return CodigoRecente(codigo=codigo, recebido_em=_utc(msg.recebida_em), remetente=msg.remetente)
         return None
+
+
+    async def cabecalhos(self, endereco: str, *, horas: int = 48, limite: int = 20) -> list[CabecalhoDeMensagem]:
+        """31.336: os cabeçalhos (sem corpo) das mensagens para `endereco` nas últimas `horas`, da mais recente para a mais
+        antiga. Só leitura. Serve para ver se o app mandou e-mail à caixa da conta (confirmação), se alguém devolveu e como o
+        servidor de entrada autenticou. Seis dígitos seguidos no assunto viram `######` (podem ser o código)."""
+        leitor = self.leitor
+        if leitor is None or not self.config.imap_configurado or not isinstance(leitor, LeitorDeCabecalhos):
+            raise ErroEmailDoParque("email_indisponivel", "Leitura de e-mail não configurada.", 503)
+        alvo = endereco.strip().lower()
+        desde = _utc(self._agora()) - timedelta(hours=max(1, min(int(horas), 24 * 14)))
+        achadas = await leitor.listar_cabecalhos(destinatario=alvo, desde=desde, limite=max(1, min(int(limite), 50)))
+        limpas = [replace(c, recebida_em=_utc(c.recebida_em), assunto=_SEIS_DIGITOS.sub("######", c.assunto or ""))
+                  for c in achadas if _utc(c.recebida_em) >= desde]
+        return sorted(limpas, key=lambda c: c.recebida_em, reverse=True)
 
 
 def _extrair_codigo(msg: Mensagem) -> str | None:

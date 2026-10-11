@@ -25,6 +25,7 @@ import logging
 
 from pydantic import SecretStr
 
+from app.modules.email_do_parque.application.ports import CabecalhoDeMensagem
 from app.modules.email_do_parque.application.servico import EmailDoParque, ErroEmailDoParque
 from app.modules.identity.domain.persona import MAIORIDADE
 from app.modules.identity.domain.ponte_igfarm import (SYSTEM_DO_USERNAME, TENTATIVAS_DE_USERNAME, TTL_RESERVA_HORAS,
@@ -371,6 +372,16 @@ class PonteIgfarm:
         if achado is None:
             raise ErroDaPonte("not_found", "Conta não registrada pela ponte.", 404)
         return achado
+
+    async def cabecalhos(self, conta_id: str, *, horas: int, limite: int) -> list[CabecalhoDeMensagem]:
+        """31.336: os cabeçalhos (sem corpo) das mensagens que chegaram à caixa da conta; só leitura."""
+        endereco = self.armazem.endereco_da_conta(conta_id)
+        if endereco is None:
+            raise ErroDaPonte("not_found", "Conta sem caixa de e-mail registrada pela ponte.", 404)
+        try:
+            return await self.email.cabecalhos(endereco, horas=horas, limite=limite)
+        except ErroEmailDoParque as exc:
+            raise ErroDaPonte(exc.code, exc.message, exc.status) from None
 
     async def codigo(self, conta_id: str) -> CodigoDaConta:
         endereco = self.armazem.endereco_da_conta(conta_id)

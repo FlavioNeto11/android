@@ -14,7 +14,7 @@ from email.header import decode_header, make_header
 from email.message import Message
 from email.utils import getaddresses, parsedate_to_datetime
 
-from ..application.ports import Mensagem
+from ..application.ports import CabecalhoDeMensagem, Mensagem
 from ..application.servico import ConfigEmail, EmailDoParque, ErroEmailDoParque
 
 TIMEOUT_S = 15
@@ -77,6 +77,35 @@ def mensagem_de_bytes(bruto: bytes) -> Mensagem | None:
                     assunto=_decodificar(msg.get("Subject")), corpo=_texto(msg), recebida_em=quando)
 
 
+#: Só estes campos saem do servidor, e nunca o corpo: `BODY.PEEK[HEADER.FIELDS (...)]`.
+CAMPOS_DO_CABECALHO = "FROM SUBJECT DATE AUTHENTICATION-RESULTS"
+_AUTENTICACAO = re.compile(r"\b(spf|dkim|dmarc)\s*=\s*([a-z]+)", re.IGNORECASE)
+_DEVOLUCAO_ASSUNTO = re.compile(r"(undeliver|delivery status|delivery failure|failure notice|returned mail|n[ãa]o entregue)",
+                                re.IGNORECASE)
+
+
+def cabecalho_de_bytes(bruto: bytes) -> CabecalhoDeMensagem | None:
+    """Bytes de CABEÇALHO RFC822 → `CabecalhoDeMensagem`. `None` quando a data não dá para provar."""
+    msg = email.message_from_bytes(bruto)
+    try:
+        quando = parsedate_to_datetime(msg.get("Date", ""))
+    except (TypeError, ValueError):
+        return None
+    if quando is None:
+        return None
+    quando = quando.replace(tzinfo=timezone.utc) if quando.tzinfo is None else quando.astimezone(timezone.utc)
+    remetentes = getaddresses([_decodificar(h) for h in msg.get_all("From", [])])
+    remetente = (remetentes[0][1] if remetentes else "").lower()
+    assunto = _decodificar(msg.get("Subject"))
+    resultados: dict[str, str] = {}
+    for h in msg.get_all("Authentication-Results", []):
+        for metodo, valor in _AUTENTICACAO.findall(_decodificar(h)):
+            resultados.setdefault(metodo.lower(), valor.lower())
+    devolucao = remetente.split("@")[0] in ("mailer-daemon", "postmaster") or bool(_DEVOLUCAO_ASSUNTO.search(assunto))
+    return CabecalhoDeMensagem(remetente=remetente, assunto=assunto, recebida_em=quando,
+                               autenticacao=tuple(sorted(resultados.items())), devolucao=devolucao)
+
+
 class LeitorImap:
     def __init__(self, host: str, porta: int, usuario: str, senha: str) -> None:
         self._host, self._porta, self._usuario, self._senha = host, porta, usuario, senha
@@ -88,6 +117,44 @@ class LeitorImap:
         if _PERIGOSO.search(destinatario) or _PERIGOSO.search(remetente):
             raise ErroEmailDoParque("email_invalido", "Critério de busca inválido.", 422)
         return await asyncio.to_thread(self._buscar_sincrono, destinatario, remetente, desde)
+
+    async def listar_cabecalhos(self, *, destinatario: str, desde: datetime, limite: int) -> list[CabecalhoDeMensagem]:
+        if _PERIGOSO.search(destinatario):
+            raise ErroEmailDoParque("email_invalido", "Critério de busca inválido.", 422)
+        return await asyncio.to_thread(self._cabecalhos_sincrono, destinatario, desde, limite)
+
+    def _cabecalhos_sincrono(self, destinatario: str, desde: datetime, limite: int) -> list[CabecalhoDeMensagem]:
+        dia = desde.astimezone(timezone.utc)
+        data = f"{dia.day:02d}-{_MESES[dia.month - 1]}-{dia.year}"
+        conn: imaplib.IMAP4_SSL | None = None
+        try:
+            conn = imaplib.IMAP4_SSL(self._host, self._porta, timeout=TIMEOUT_S)
+            conn.login(self._usuario, self._senha)
+            conn.select("INBOX", readonly=True)
+            tipo, achados = conn.search(None, "SINCE", data, "TO", f'"{destinatario}"')
+            if tipo != "OK":
+                raise _indisponivel()
+            saida: list[CabecalhoDeMensagem] = []
+            for numero in (achados[0] or b"").split()[-max(1, limite):]:
+                tipo, partes = conn.fetch(numero.decode("ascii"), f"(BODY.PEEK[HEADER.FIELDS ({CAMPOS_DO_CABECALHO})])")
+                if tipo != "OK":
+                    continue
+                for parte in partes:
+                    if isinstance(parte, tuple) and isinstance(parte[1], bytes):
+                        achado = cabecalho_de_bytes(parte[1])
+                        if achado is not None:
+                            saida.append(achado)
+            return sorted(saida, key=lambda c: c.recebida_em, reverse=True)
+        except ErroEmailDoParque:
+            raise
+        except (imaplib.IMAP4.error, OSError, socket.timeout):
+            raise _indisponivel() from None
+        finally:
+            if conn is not None:
+                try:
+                    conn.logout()
+                except (imaplib.IMAP4.error, OSError):
+                    pass
 
     def _buscar_sincrono(self, destinatario: str, remetente: str, desde: datetime) -> list[Mensagem]:
         dia = desde.astimezone(timezone.utc)

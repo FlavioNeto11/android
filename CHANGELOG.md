@@ -27,6 +27,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_criacao_pela_api_aposentada.py` (4) e os testes de `personas-pendentes` e de registro, que ligam a
   flag. `real`: `not_run`.
 
+## 2026-10-11 — listar os cabeçalhos da caixa da conta, sem corpo (31.336)
+
+- `GET /api/instagram/contas/{id}/cabecalhos` lê a caixa catch-all em somente leitura (`BODY.PEEK[HEADER.FIELDS ...]`) e devolve
+  remetente, assunto (seis dígitos mascarados), data, SPF/DKIM/DMARC anotados e se é devolução; nunca o corpo nem o destinatário.
+  Sem migração, sem evento novo (adendo v1.147). Seção do domínio `nvit.com.br` (DNS, RDAP, DBLs sem listagem) em
+  `docs/email-do-parque.md`.
+- Prova `simulated`: `tests/test_cabecalhos_da_caixa.py` (8). `real`: `not_run` para a rota; as consultas de DNS/RDAP foram `real`.
 ## 2026-10-10 — a lista de contas retiradas e o grupo contam as personas sem @ (achado do percurso real do deploy 73, 31.326)
 
 - Defeito do próprio 31.326, visto no central (`a9853379e`): com 10 personas com `contas_retiradas`, a lista "Contas retiradas por bloqueio" não aparecia, e o grupo Liberado dizia "15 personas · +1 de teste" (certo: 14 e +2). A tela filtrava as personas com `comConta`, e a retirada por bloqueio apaga o @ da persona; a persona de teste sem conta também ficava fora do conjunto de testes. A lista e o grupo passam a usar todas as personas.

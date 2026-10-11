@@ -140,3 +140,18 @@ Código em `backend/app/modules/identity/{domain,application,infrastructure}/pon
   | Verificação no app (checkpoint) | `not_run` | ver [`verificacao-no-app.md`](verificacao-no-app.md) |
 - A caixa é compartilhada: quem tem a senha lê o e-mail de todas as personas. Por isso a senha da caixa nunca sai em
   resposta de API, evento, log ou evidência, e a leitura é sempre filtrada pelo destinatário.
+
+## Cabeçalhos da caixa e a checagem do domínio (31.336)
+
+- **Cabeçalhos, sem corpo.** `GET /api/instagram/contas/{id}/cabecalhos` (adendo v1.147) lista remetente, assunto (seis dígitos
+  mascarados), data, SPF/DKIM/DMARC anotados pelo servidor de entrada e se é aviso de devolução, lendo a caixa catch-all em
+  somente leitura (`BODY.PEEK[HEADER.FIELDS ...]`). Serve para ver se o Instagram mandou e-mail à conta e se alguém o devolveu.
+- **O que se mediu do domínio `nvit.com.br`** (prova `real`, leitura de DNS público, RDAP do Registro.br e do `poc.sqlite3`; 11/10/2026):
+  registrado em 21/07/2025; MX Hostinger; SPF válido (`~all`); DKIM por CNAME da Hostinger; DMARC `p=none` (sem `rua`); sem MTA-STS;
+  Spamhaus DBL, SURBL e URIBL **sem listagem**. Ausência em lista pública não prova que o Instagram não use uma reputação própria.
+- **Hipóteses que ficam como hipótese:** domínio relativamente novo, todas as personas num só domínio, caixa catch-all e nomes
+  numerados são o tipo de padrão que antiabuso correlaciona. Com n=2 contas (A e B da bifurcação) não se separa domínio de IP/
+  comportamento. Recomendação aceita: não escalar volume em `@nvit.com.br` antes de ler os cabeçalhos da caixa e de o igfarm dizer o
+  que o Instagram devolveu nos signups. DMARC `p=none` é DNS do dono: recomendação a ele, não ação nossa.
+- **Fora do escopo (decisão da orquestradora):** nenhum envio de e-mail, nenhum signup de teste; o grupo de controle por domínio fica
+  para o próximo lote, condicionado a conta e sessão entregues (P-049/P-050).

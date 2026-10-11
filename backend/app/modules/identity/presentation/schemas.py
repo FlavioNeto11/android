@@ -343,6 +343,25 @@ class ContaRegistradaDTO(BaseModel):
     egresso: list[EgressoDoDeviceDTO] = []
 
 
+class CabecalhoDaCaixaDTO(BaseModel):
+    recebida_em: str
+    remetente: str
+    #: Assunto com qualquer sequência de seis dígitos trocada por `######` (pode ser o código).
+    assunto: str
+    #: `spf`/`dkim`/`dmarc` → resultado anotado pelo servidor de entrada (`pass`, `fail`, `softfail`, `none`...).
+    autenticacao: dict[str, str] = Field(default_factory=dict)
+    devolucao: bool = False
+
+
+class CabecalhosDaContaDTO(BaseModel):
+    """`GET /api/instagram/contas/{id}/cabecalhos` (31.336): só os cabeçalhos da caixa da conta, nunca o corpo."""
+
+    account_id: str
+    horas: int
+    total: int
+    mensagens: list[CabecalhoDaCaixaDTO] = Field(default_factory=list)
+
+
 class ContatoDaContaDTO(BaseModel):
     iniciado_em: str
     minutos_desde_a_criacao: float | None = None

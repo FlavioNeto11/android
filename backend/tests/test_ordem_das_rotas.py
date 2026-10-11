@@ -191,6 +191,7 @@ def test_as_quarenta_e_nove_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_vez(
         # Ponte android <-> igfarm (ADR-088, migração 132, adendo v1.133).
         ("GET", "/api/instagram/personas-pendentes"),
         ("POST", "/api/instagram/contas"),
+        ("GET", "/api/instagram/contas/{conta_id}/cabecalhos"),
         ("GET", "/api/instagram/contas/{conta_id}/ciclo"),
         ("GET", "/api/instagram/contas/{conta_id}/codigo"),
         # Conta planejada (31.281, ADR-087, adendo v1.132).

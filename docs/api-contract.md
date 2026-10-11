@@ -8653,3 +8653,21 @@ e o igfarm passa a ser apoio (e-mail, código, SMS, proxy).
 
 **Prova:** `simulated` (`backend/tests/test_criacao_pela_api_aposentada.py`, 4 casos; os testes de `personas-pendentes` e de
 registro ligam a flag). `real`: `not_run`.
+
+## Adendo v1.147 (11/10/2026; número da orquestradora; item 31.336) — `GET /api/instagram/contas/{id}/cabecalhos`
+
+Aditivo: uma rota de leitura nova na ponte android ⇄ igfarm. Nenhuma coluna, migração, evento nem enum novo.
+
+- **`GET /api/instagram/contas/{id}/cabecalhos?horas=48&limite=20`** (`horas` 1–336, `limite` 1–50; `{id}` é o `account_id` da central
+  ou o `igfarm_account_id`): só os CABEÇALHOS das mensagens que chegaram à caixa da conta. Resposta `{account_id, horas, total,
+  mensagens: [{recebida_em, remetente, assunto, autenticacao, devolucao}]}`, da mais recente para a mais antiga.
+  `autenticacao` é `{spf, dkim, dmarc}` → o resultado que o servidor de entrada anotou em `Authentication-Results` (`pass`, `fail`,
+  `softfail`, `none`...; chave ausente = não anotado). `devolucao` é `true` para aviso de falha de entrega (`mailer-daemon`/
+  `postmaster` ou assunto de devolução).
+- **Nunca o corpo, nunca o destinatário:** o adaptador IMAP pede só `BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE
+  AUTHENTICATION-RESULTS)]` com `INBOX` em somente leitura; seis dígitos seguidos no assunto viram `######` (podem ser o código).
+- **Erros:** `not_found` (404) conta sem caixa registrada; `email_indisponivel` (503) sem IMAP configurado.
+- **Por quê:** responde, sem abrir mensagem, se o app mandou e-mail de confirmação à caixa da conta, se alguém devolveu e como o
+  servidor de entrada autenticou (31.333/31.336).
+
+**Prova:** `simulated` (`backend/tests/test_cabecalhos_da_caixa.py`, 8 casos). `real`: `not_run` (nenhuma IMAP real nesta entrega).

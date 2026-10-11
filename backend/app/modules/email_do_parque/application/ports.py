@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,26 @@ class Mensagem:
     assunto: str
     corpo: str
     recebida_em: datetime
+
+
+@dataclass(frozen=True)
+class CabecalhoDeMensagem:
+    """Só o cabeçalho de uma mensagem (31.336): nunca o corpo. `autenticacao` é o resultado SPF/DKIM/DMARC que o servidor de
+    entrada anotou em `Authentication-Results` (`pass`, `fail`, `softfail`, `none`...), ou vazio quando ele não anotou."""
+    remetente: str
+    assunto: str
+    recebida_em: datetime
+    autenticacao: tuple[tuple[str, str], ...] = ()
+    #: `True` para o aviso de falha de entrega (remetente `mailer-daemon`/`postmaster` ou assunto de devolução).
+    devolucao: bool = False
+
+
+@runtime_checkable
+class LeitorDeCabecalhos(Protocol):
+    """Lista só os cabeçalhos (`BODY.PEEK[HEADER.FIELDS ...]`) das mensagens para `destinatario`, da mais recente para a
+    mais antiga. Porta à parte da `LeitorCaixa` para não obrigar quem só lê código."""
+
+    async def listar_cabecalhos(self, *, destinatario: str, desde: datetime, limite: int) -> list[CabecalhoDeMensagem]: ...
 
 
 class LeitorCaixa(Protocol):

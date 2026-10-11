@@ -44,7 +44,7 @@ from app.modules.identity.application.ponte_igfarm import ErroDaPonte
 from app.modules.identity.domain.ponte_igfarm import SENHAS_MASCARADAS, ComandoDeRegistro, PersonaPendente
 from app.modules.identity.infrastructure.cadastro_guiado import CadastroGuiado
 from app.modules.identity.infrastructure.ponte_igfarm import compor_ponte_igfarm
-from app.modules.identity.presentation.schemas import (CicloDaContaDTO, CodigoDaContaDTO, ContatoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
+from app.modules.identity.presentation.schemas import (CabecalhoDaCaixaDTO, CabecalhosDaContaDTO, CicloDaContaDTO, CodigoDaContaDTO, ContatoDaContaDTO, ContaIgfarmBody, ContaRegistradaDTO,
                                                        EgressoDoDeviceDTO, PersonaPendenteDTO, SignupBody)
 from app.modules.identity.presentation.comum import device, mime_da_chave, quem, servir_do_storage, social_error
 from app.social.capacidades import capacidades_do_perfil
@@ -720,6 +720,23 @@ async def ciclo_da_conta(request: Request, conta_id: str) -> CicloDaContaDTO:
         minutos_ate_o_primeiro_contato=c.minutos_ate_o_primeiro_contato, ultimo_desfecho=c.ultimo_desfecho,
         contatos=[ContatoDaContaDTO(iniciado_em=t.iniciado_em, minutos_desde_a_criacao=t.minutos_desde_a_criacao,
                                     desfecho=t.desfecho, etapa=t.etapa, detalhe=t.detalhe) for t in c.contatos])
+
+
+@router.get("/instagram/contas/{conta_id}/cabecalhos", response_model=None)
+async def cabecalhos_da_conta(request: Request, conta_id: str, horas: int = Query(48, ge=1, le=336),
+                              limite: int = Query(20, ge=1, le=50)) -> CabecalhosDaContaDTO:
+    """31.336: os cabeçalhos (SEM corpo) das mensagens que chegaram à caixa da conta nas últimas `horas`: remetente, assunto
+    (seis dígitos mascarados), data, SPF/DKIM/DMARC anotados pelo servidor e se é aviso de devolução. Só leitura de e-mail
+    real: 503 `email_indisponivel` sem IMAP."""
+    try:
+        achadas = await compor_ponte_igfarm(_st(request)).cabecalhos(conta_id, horas=horas, limite=limite)
+        conta = compor_ponte_igfarm(_st(request)).ciclo(conta_id)
+    except ErroDaPonte as exc:
+        raise _erro_da_ponte(exc) from exc
+    return CabecalhosDaContaDTO(
+        account_id=conta.account_id, horas=horas, total=len(achadas),
+        mensagens=[CabecalhoDaCaixaDTO(recebida_em=c.recebida_em.isoformat(), remetente=c.remetente, assunto=c.assunto,
+                                       autenticacao=dict(c.autenticacao), devolucao=c.devolucao) for c in achadas])
 
 
 @router.get("/instagram/contas/{conta_id}/codigo", response_model=None)
