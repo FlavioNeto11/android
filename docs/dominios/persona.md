@@ -291,10 +291,13 @@ Fecha o ciclo `credencial_preparada` → `confirmada` sem IA e sem que a platafo
 - **Prova:** `simulated` (`tests/test_cadastro_guiado.py`: ciclo completo, as 8 paradas, retomada, código velho, recusas da rota,
   carga do yaml, varredura de vazamento). `real`: `not_run`, até o dono autorizar criar UMA conta de verdade num provedor.
 
-### O cadastro no app é o caminho principal (31.334, desenho; sem código até a captura)
+### O cadastro no app é o caminho ALTERNATIVO (31.334, desenho; sem código até a captura)
 
-Decisão do dono (11/10/2026): a conta do Instagram é criada NO APP, no aparelho (o motor do 31.310 com o `cadastro.yaml` do app). A API do igfarm
-deixa de ser a fonte da conta e vira APOIO (e-mail, código, SMS, proxy). O que o app signup precisa e de onde vem:
+**Correção de rumo do dono (11/10/2026, depois do desenho):** quem cria a conta é o IGFARM, pela API dele; o android hospeda e o app usa. O cadastro no
+app (o motor do 31.310 com o `cadastro.yaml` do app) fica como caminho ALTERNATIVO/apoio, não o principal; o principal é a criação pelo igfarm via
+API (31.335 revertido pelo adendo v1.150). A decisão anterior do mesmo dia (app como principal, igfarm só como apoio de e-mail, código, SMS e
+proxy) foi superada. Nada do que foi codificado se reverte: a caixa da conta planejada sem o igfarm (L1) e o G1 do motor continuam úteis para o
+caminho alternativo. O que o app signup precisa e de onde vem:
 
 - **Telas do cadastro:** conteúdo do servidor, só com rede. A captura offline de 10/10 tem só a entrada ("Create new account"). **Bloqueio: a
   captura com sessão sticky nova** (P-050), parando antes do envio. Só com ela entra o `cadastro.yaml` do Instagram.

@@ -230,7 +230,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_caixa_da_conta_planejada.py` (7 casos) + cadastro guiado 58 + cadastro Bloks 48; catracas 103, arquitetura, mypy 257.
   `real`: `not_run`.
 
-## 2026-10-11 — o cadastro no app vira o caminho principal: desenho do 31.334 (só docs)
+## 2026-10-11 — correção de rumo do dono: o cadastro no app é o caminho ALTERNATIVO, o principal é a criação pelo igfarm (31.334, só docs)
+
+- O dono corrigiu o rumo: quem cria a conta é o igfarm, pela API dele; o android hospeda e o app usa (31.335 revertido pelo adendo v1.150). A seção do
+  `docs/dominios/persona.md` do desenho do 31.334 passa a se chamar "O cadastro no app é o caminho ALTERNATIVO" e diz isso. Nada a reverter no
+  código: a L1 (caixa da conta planejada sem o igfarm) e o G1 (critérios do `Alvo`, nascimento, código antes do envio) servem ao caminho alternativo.
+- Sem código, sem migração, sem ADR. Prova: `not_run`.
+
+## 2026-10-11 — o cadastro no app vira o caminho principal: desenho do 31.334 (só docs; SUPERADO pela correção acima)
 
 - Decisão do dono (11/10): a conta do Instagram é criada no app; o igfarm vira apoio (e-mail, código, SMS, proxy). `docs/dominios/persona.md`
   ganha a seção "O cadastro no app é o caminho principal (31.334)" com o que já está coberto (G1 do 31.324), as lacunas L1 (caixa da conta
