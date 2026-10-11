@@ -291,6 +291,28 @@ Fecha o ciclo `credencial_preparada` → `confirmada` sem IA e sem que a platafo
 - **Prova:** `simulated` (`tests/test_cadastro_guiado.py`: ciclo completo, as 8 paradas, retomada, código velho, recusas da rota,
   carga do yaml, varredura de vazamento). `real`: `not_run`, até o dono autorizar criar UMA conta de verdade num provedor.
 
+### O cadastro no app é o caminho principal (31.334, desenho; sem código até a captura)
+
+Decisão do dono (11/10/2026): a conta do Instagram é criada NO APP, no aparelho (o motor do 31.310 com o `cadastro.yaml` do app). A API do igfarm
+deixa de ser a fonte da conta e vira APOIO (e-mail, código, SMS, proxy). O que o app signup precisa e de onde vem:
+
+- **Telas do cadastro:** conteúdo do servidor, só com rede. A captura offline de 10/10 tem só a entrada ("Create new account"). **Bloqueio: a
+  captura com sessão sticky nova** (P-050), parando antes do envio. Só com ela entra o `cadastro.yaml` do Instagram.
+- **Já coberto (G1, 31.324):** nascimento da persona, código por e-mail com o piso no toque que o pediu (`dispara_codigo`/`antes_do_envio`),
+  senha pelo canal sensível, confirmação só pela sessão observada.
+- **L1, caixa da conta planejada:** o e-mail do parque é catch-all (`docs/email-do-parque.md`), então não há caixa por persona a provisionar; mas
+  a linha `caixas_email` só nasce hoje no registro do igfarm (`ponte_igfarm.py`). Falta criá-la para a conta PLANEJADA, sem o igfarm
+  (o cadastro exige a linha: 409 `sem_caixa_de_email`). Sem migração; dentro do 31.334 (decisão de 11/10).
+- **L2, proxy sticky por conta antes do primeiro toque (item 31.337, da Ponte):** hoje o perfil `igfarm-<conta>` (`docs/egresso-por-proxy.md`) nasce quando o igfarm
+  REGISTRA a conta. No app signup o perfil nasce na conta planejada, é atribuído ao aparelho antes do cadastro, e o `egress_esperado` é o
+  primeiro egresso medido DENTRO da janela (31.329). O igfarm só entrega o `proxy_url`.
+- **SMS:** sem rota nossa nem do igfarm no repositório. Sem API de SMS, a tela de telefone segue sendo a parada `telefone` (a pessoa assume).
+- **Critérios de sucesso:** (1) conta criada no app, `confirmada` por sessão observada, @ lido igual ao desejado; (2) login limpo, medido por
+  criada → 1º login → desfecho (`GET /api/instagram/contas/{id}/ciclo`, 31.333); (3) 1 post. A prova `real` exige o sim do dono em chat (conta
+  nova no Instagram). Antes disso, tudo é `simulated`/`not_run`.
+- **Risco declarado:** no teste de bifurcação de 10/10, IP casado não evitou o bloqueio no único caso com desfecho (n=1); nada garante que o
+  app signup escape do mesmo.
+
 ### Persona de teste (31.314, adendo v1.139, migração 134)
 
 `instagram_profiles.teste` marca a pessoa que existe só para provar o produto (`PersonaDTO.teste`; `PersonaCreate`/`PersonaPatch` o

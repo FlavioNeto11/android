@@ -148,6 +148,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Achados para itens próprios:** (1) a receita da exploração precisa do caminho desde uma tela de partida conhecida (hoje só a última ação) para o replay valer fora de uma tela
   específica; (2) o misto precisa de caixa cuja primeira mensagem não pareça verificação, ou de um teste melhor no guarda.
 
+## 2026-10-11 — o cadastro no app vira o caminho principal: desenho do 31.334 (só docs)
+
+- Decisão do dono (11/10): a conta do Instagram é criada no app; o igfarm vira apoio (e-mail, código, SMS, proxy). `docs/dominios/persona.md`
+  ganha a seção "O cadastro no app é o caminho principal (31.334)" com o que já está coberto (G1 do 31.324), as lacunas L1 (caixa da conta
+  planejada sem o igfarm) e L2 (proxy sticky por conta antes do primeiro toque), o SMS sem rota e os critérios de sucesso.
+- Sem código, sem migração, sem ADR (regra "sem ADR novo até a prova final"). Bloqueio: a captura com sessão sticky nova (P-050) para o
+  `cadastro.yaml` do Instagram. Prova: `not_run`.
+
 ## 2026-10-10 — a fração de interrupção é gravada fora do laço (31.320, ponto 9 do 31.307)
 
 - Medida do período 72 (`scripts/laco-por-hora.py`, 20:10Z–23:33Z): zero episódios de laço parado ≥ 10 s em 3,4 h (contra 0,36/h antes) e UMA
