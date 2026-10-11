@@ -1,10 +1,13 @@
 # Estado atual — handoff
 
-**Revisado em 10/10/2026: runtime do backend em `263e0815de46ce` (migração 136; deploy 74); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 10/10/2026: runtime do backend em `b2d22ab2e007487` (migração 136; deploy 75); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 75 no ar (11/10/2026, 01:32:53Z, central `b2d22ab2e007487`, sem migração; tag `deploy-20261011-0132`).** Aposenta a criação de conta pela API do igfarm (31.335, chave `criacao_pela_api_do_igfarm` padrão `false`), lista cabeçalhos da caixa sem corpo (31.336) e traz o proxy sticky da conta planejada (31.337).
+  - `real`: deploy rc=0 em 81,6 s, backup `20261010-223131`, saúde ok (`open_connections` 9, `slow_queries_in_loop` 0), prova de fora ok, agente do notebook `0.1.0+b2d22ab` online.
+  - `simulated`: docs-check 0/0, catracas 103, mypy 257, scripts/tests 1283, SQLite e PG dirigidos de 61 arquivos, 1363 passed cada. `not_run`: PG inteira do 75.
 - **Deploy 74 no ar (11/10/2026, 01:04:26Z, central `263e0815de46ce`, sem migração; tag `deploy-20261011-0104`).** Alinha código e conhecimento do Outlook (o checkout central tinha andado sem deploy e o `telas.yaml` novo quebrava a exploração; ver o CHANGELOG), traz o ciclo da conta da ponte (31.333) e a fração de interrupção em thread (31.320 ponto 9). **Regra: o checkout central só se move no deploy.**
   - `real`: deploy rc=0 em 75,0 s, backup `20261010-220311`, saúde ok com `problems` vazio (`open_connections` 9, `slow_queries_in_loop` 0), prova de fora como esperado, agente do notebook em `0.1.0+263e081` e online. `simulated`: funil dirigido (SQLite 5677 passed, PG 5675 passed, catracas 103, mypy 257, vitest 2366) com o único vermelho real (`test_ordem_das_rotas`) consertado pela Ponte. `not_run`: SQLite inteiro e PG inteira na ponta.
 - **Deploy 73 no ar (10/10/2026, 23:33:18Z, central `a9853379e9f74d`, sem migração nova; tag `deploy-20261010-2333`).** O banco passa a ter uma conexão por thread (31.320), o `/health` mostra `open_connections` e `slow_queries_in_loop`, o login mede o egresso na janela (31.329) e o cadastro guiado ganha o app de campo sem id (31.324 G1).

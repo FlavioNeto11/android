@@ -2178,6 +2178,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O node falso do teste saía 1,5 s depois de nascer; sob carga o `pwsh` demorava mais que isso para listá-lo e a linha de comando vinha vazia (`linha de comando ilegível`), e o teste falhava em `"saiu sozinho da porta 4723"`. Agora o node vive 6 s e a carência do teste é 20 s; as afirmações não mudaram (sai sozinho, sem `Stop-Process`, sem a palavra "Encerrando"). Causa mais provável por tempo, não reproduzida de novo: a falha apareceu uma vez, com a máquina ocupada, e o teste passou em 6 corridas seguintes (3 soltas, 1 do arquivo, 2 antes do ajuste).
 - Prova **simulated** (10/10/2026): `scripts/tests/test_stop_appium_orfao.py` 24 passed; o teste solto 3 vezes passou (6,3 s cada). **Real**: `not_run`.
 
+## 2026-10-11 — Deploy 75 (criação de conta pela API do igfarm aposentada, cabeçalhos da caixa, proxy sticky da conta planejada; sem migração; ponta `b2d22ab2e`)
+
+- **Implantado** às 01:32:53Z: central em `b2d22ab2e007487f0f410ef55f62bb66fe93bf7a`, de `263e0815d`. Sem migração (continua `136_motivo_do_bloqueio`). Backup `20261010-223131`, tag `deploy-20261011-0132`, 81,6 s, sem opções. `config.yaml` intacto: a chave nova `criacao_pela_api_do_igfarm` tem padrão `false`, que já aposenta a criação.
+- Entra (desde `263e0815d`): 31.335 (a criação de conta pela API do igfarm recusa com 409 `criacao_pela_api_aposentada`; nada apagado, reversível pela chave), 31.336 (listar os cabeçalhos da caixa da conta, sem corpo, e a checagem do domínio nvit.com.br) e 31.337 (proxy sticky da conta planejada e egresso medido na janela do cadastro).
+- Prova `real` (11/10/2026): `deploy.ps1` rc=0; `GET /api/health` ok, commit `b2d22ab2e`, migração 136, `open_connections` 9 e `slow_queries_in_loop` 0; prova de fora "tudo como esperado" com `SITE`, `CONTATO` e `WEBHOOK_DO_TRELLO` ligados; agente do notebook em `0.1.0+b2d22ab`, online, sem desatualização, pausas de reparo retiradas.
+- Prova `simulated` (funil em `b2d22ab2e`, Idle, 01:20Z a 01:31Z): `docs-check` 0/0; catracas 103; mypy 257 (teto 257); `scripts/tests` 1283 passed; SQLite dirigido de 61 arquivos 1363 passed; PG dirigida (`farm-pg-rapido`) dos mesmos 61 arquivos 1363 passed.
+- `not_run`: vitest e typecheck (o frontend não mudou neste corte), SQLite inteiro e PG inteira na ponta (a do 73 é a última completa, em `31affa1f8`: 13216 passed, 0 failed).
+
 ## 2026-10-11 — Deploy 74 (conserto do Outlook, ciclo da conta da ponte, fração de interrupção em thread; sem migração; ponta `263e0815d`)
 
 - **Implantado** às 01:04:26Z: central em `263e0815de46ceb494f78cdf8847a98929692f6c`, de `a9853379e`. Sem migração (continua `136_motivo_do_bloqueio`). Backup `20261010-220311`, tag `deploy-20261011-0104`, 75,0 s, sem opções. `config.yaml` intacto.
