@@ -902,3 +902,10 @@ conclusão). Contas só por A, B e C: os valores crus ficam no JSON de referênc
 - **O que falta para a prova real.** Uma sessão sticky nova por conta, entregue pelo igfarm SEM criar a conta (pergunta 6 do cartão
   COG65yCO), o `cadastro.yaml` do Instagram declarado da captura (P-050) e o sim do dono para criar uma conta real. Ciclo de vida do
   perfil (a sessão do IPRoyal gira): criar, usar e aposentar ainda não está desenhado além do perfil por conta.
+
+## O ciclo da conta criada no app (31.341)
+
+`GET /api/instagram/contas/{id}/ciclo` (adendo v1.149) deixou de depender de `contas_igfarm`: para a conta planejada e cadastrada no app
+ele junta a linha da conta, as tentativas de login, os eventos do cadastro guiado e a retirada. `criada_em` é a confirmação do
+cadastro; até lá os minutos contam do planejamento (`referencia: planejamento`). É a visão para medir "criada → 1º login → desfecho" das
+contas do caminho principal (31.334/31.337) no mesmo formato das do igfarm, sem @ nem e-mail.

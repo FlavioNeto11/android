@@ -33,6 +33,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Prova:** `simulated` (`test_voltar_ao_estado_conhecido_espera_31_338.py`, `test_pasta_de_email_nao_e_estado_conhecido_31_339.py`, `test_find_row_por_remetente_31_340.py`);
   `real`: `not_run` para os três itens. Detalhe em [`docs/dominios/aprendizado.md`](docs/dominios/aprendizado.md).
 
+## 2026-10-11 — o ciclo da conta cobre a conta criada no app (31.341)
+
+- `GET /api/instagram/contas/{id}/ciclo` passa a responder também pela conta planejada e cadastrada no app: `origem`, `referencia`, e
+  `criada_em` = a confirmação do cadastro; contatos = tentativas de login + eventos do cadastro guiado; retirada pelo evento (a conta
+  retirada some de `profile_accounts` e ainda tem ciclo). A conta do igfarm responde igual. Sem migração, sem segredo (adendo v1.149).
+- Prova `simulated`: `tests/test_ciclo_da_conta_do_app.py` (5) e `test_ciclo_da_conta_igfarm.py` (5, inalterados). `real`: `not_run`.
 ## 2026-10-10 — a criação de conta pela API do igfarm foi aposentada, não apagada (31.335)
 
 - Decisão do dono: o cadastro é no app e o igfarm é apoio. Flag nova `contas.criacao_pela_api_do_igfarm` (padrão `false`): com ela

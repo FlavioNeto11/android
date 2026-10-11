@@ -394,9 +394,14 @@ class CicloDaContaDTO(BaseModel):
     minutos e desfechos: nunca e-mail, senha, proxy nem @."""
 
     account_id: str
-    igfarm_account_id: str
-    criada_em: str
-    registrada_em: str
+    #: `null` na conta criada no app (31.341).
+    igfarm_account_id: str | None = None
+    criada_em: str | None = None
+    registrada_em: str | None = None
+    #: `igfarm` | `app`.
+    origem: str = "igfarm"
+    #: De onde contam os minutos: `criacao` | `planejamento` (conta do app ainda não confirmada).
+    referencia: str = "criacao"
     #: `ativa` (segue na persona) | `retirada` (o @ está na lápide).
     estado: str
     retirada_em: str | None = None

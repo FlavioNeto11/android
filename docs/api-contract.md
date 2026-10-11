@@ -8692,3 +8692,21 @@ Aditivo: uma rota nova, um campo novo num evento existente e um código de parad
 
 **Prova:** `simulated` (`backend/tests/test_proxy_da_conta_planejada.py`, 8 casos; sonda de IP, app e aparelho falsos). `real`: `not_run`
 (depende de o igfarm entregar uma sessão sticky por conta sem criar a conta, pergunta 6 do cartão COG65yCO, e do sim do dono para uma conta real).
+
+## Adendo v1.149 (11/10/2026; número da orquestradora; item 31.341) — `GET /api/instagram/contas/{id}/ciclo` cobre a conta criada no app
+
+Aditivo na resposta da rota do v1.145: nenhum campo some e a conta do igfarm responde igual. Nenhuma coluna, migração nem evento novo.
+
+- **Campos novos:** `origem` (`igfarm` | `app`) e `referencia` (`criacao` | `planejamento`: de onde contam os minutos dos contatos; `planejamento`
+  enquanto a conta do app não foi confirmada). `igfarm_account_id`, `criada_em` e `registrada_em` passam a poder ser `null`: na
+  conta do app o igfarm não a conhece (`igfarm_account_id: null`), `criada_em` é a CONFIRMAÇÃO do cadastro (`null` até lá) e
+  `registrada_em` é o planejamento da conta (`null` quando só restam os rastros).
+- **Fonte da conta do app** (sem `contas_igfarm`): a linha da conta (planejamento, confirmação), as tentativas de login
+  (`authentication_attempts`), os eventos do cadastro guiado (`identity.cadastro`, que viram um contato com `etapa: "cadastro"` e
+  `desfecho` = `confirmada` ou `parada`, `detalhe` = o código fechado da parada) e a retirada (`profile.account_retired`). A conta
+  retirada, que some de `profile_accounts`, ainda tem ciclo: `estado: "retirada"` e `retirada_em` vêm do evento.
+- **Continua sem segredo nem identificador:** só ids, horas, minutos e desfechos; nenhum @ nem e-mail (o `detalhe` troca qualquer trecho
+  com `@` por `<e-mail omitido>`). `404 not_found` só para conta sem nenhum rastro.
+
+**Prova:** `simulated` (`backend/tests/test_ciclo_da_conta_do_app.py`, 5 casos, e os 5 de `test_ciclo_da_conta_igfarm.py` seguem iguais).
+`real`: `not_run`.

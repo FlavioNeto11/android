@@ -172,9 +172,13 @@ class CicloDaConta:
     Só dado que a ponte já tinha; nenhum segredo (sem senha, proxy nem IP)."""
 
     account_id: str
-    igfarm_account_id: str
-    criada_em: str
-    registrada_em: str
+    #: `None` na conta criada no app (o igfarm não a conhece).
+    igfarm_account_id: str | None
+    #: Quando a conta passou a existir: a criação no igfarm, ou a confirmação do cadastro no app. `None` enquanto a conta do app
+    #: ainda não foi confirmada.
+    criada_em: str | None
+    #: O registro da ponte (conta do igfarm) ou o planejamento da conta (conta do app); `None` quando só restam os rastros.
+    registrada_em: str | None
     #: A conta segue na persona (`ativa`) ou o @ está na lápide (`retirada`, 29.23).
     estado: str
     retirada_em: str | None
@@ -183,6 +187,10 @@ class CicloDaConta:
     minutos_ate_o_primeiro_contato: float | None = None
     #: Desfecho do último contato; `None` sem contato.
     ultimo_desfecho: str | None = None
+    #: `igfarm` (criada pela API do igfarm e registrada pela ponte) ou `app` (planejada e cadastrada no app, 31.341).
+    origem: str = "igfarm"
+    #: De onde contam os minutos dos contatos: `criacao` (a conta existe) ou `planejamento` (a conta do app ainda não foi confirmada).
+    referencia: str = "criacao"
 
 
 def minutos_entre(inicio: str | None, fim: str | None) -> float | None:

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 from pydantic import SecretStr
 
-from app.db import Database
+from app.db import Database, loads
 from app.devices.rede import NetworkAssignBody, _parse_proxy, atribuir, criar_perfil_de_conta
 from app.devices.rede import RedeError as RedeErrorDoDevice
 from app.events import EventBus
@@ -160,7 +160,7 @@ class ArmazemSql:
     def ciclo_da_conta(self, conta_id: str) -> CicloDaConta | None:
         g = self.db.one("SELECT * FROM contas_igfarm WHERE account_id=? OR igfarm_account_id=?", (conta_id, conta_id))
         if g is None:
-            return None
+            return self._ciclo_da_conta_do_app(conta_id)
         criada = str(g["criada_em_igfarm"])
         username = str(g["username_registrado"])
         # A tentativa é da conta e sobrevive à retirada dela (a lápide guarda só o hash do @).
@@ -180,6 +180,52 @@ class ArmazemSql:
             retirada_em=str(lapide["retirada_em"]) if lapide is not None else None, contatos=contatos,
             minutos_ate_o_primeiro_contato=contatos[0].minutos_desde_a_criacao if contatos else None,
             ultimo_desfecho=contatos[-1].desfecho if contatos else None)
+
+    def _ciclo_da_conta_do_app(self, conta_id: str) -> CicloDaConta | None:
+        """31.341: o ciclo da conta que NÃO veio do igfarm (planejada e cadastrada no app). As fontes são o que já existe: a linha da
+        conta (planejamento e confirmação), as tentativas de login, os eventos do cadastro guiado (`identity.cadastro`) e a
+        retirada (`profile.account_retired`, que sobrevive à conta). Conta retirada some de `profile_accounts` e ainda tem ciclo."""
+        conta = self.db.one("SELECT id, created_at, provisioning_state, confirmed_at FROM profile_accounts WHERE id=?", (conta_id,))
+        marca = f'%"account_id":"{conta_id}"%'
+        cadastros = self.db.query("SELECT ts, data FROM events WHERE kind='identity.cadastro' AND data LIKE ? ORDER BY id", (marca,))
+        retirada = self.db.one("SELECT ts FROM events WHERE kind='profile.account_retired' AND data LIKE ? ORDER BY id LIMIT 1",
+                               (marca,))
+        tentativas = self.db.query("SELECT started_at, outcome, stage, detail FROM authentication_attempts WHERE account_id=?"
+                                   " ORDER BY started_at, id", (conta_id,))
+        if conta is None and not (cadastros or tentativas or retirada):
+            return None
+        confirmada_em: str | None = None
+        if conta is not None and conta["confirmed_at"]:
+            confirmada_em = str(conta["confirmed_at"])
+        else:
+            for c in cadastros:
+                if '"resultado":"confirmada"' in str(c["data"]):
+                    confirmada_em = str(c["ts"])
+                    break
+        planejada_em = str(conta["created_at"]) if conta is not None and conta["created_at"] else None
+        base = confirmada_em or planejada_em
+        brutos: list[tuple[str, ContatoDaConta]] = []
+        for t in tentativas:
+            quando = str(t["started_at"])
+            brutos.append((quando, ContatoDaConta(
+                iniciado_em=quando, minutos_desde_a_criacao=minutos_entre(base, quando),
+                desfecho=str(t["outcome"] or "sem_desfecho"), etapa=str(t["stage"] or ""),
+                detalhe=_sem_email(str(t["detail"] or ""))[:200])))
+        for c in cadastros:
+            quando = str(c["ts"])
+            dado = loads(c["data"], {}) or {}
+            brutos.append((quando, ContatoDaConta(
+                iniciado_em=quando, minutos_desde_a_criacao=minutos_entre(base, quando),
+                desfecho=str(dado.get("resultado") or "sem_desfecho"), etapa="cadastro",
+                detalhe=_sem_email(str(dado.get("motivo") or ""))[:200])))
+        contatos = tuple(c for _, c in sorted(brutos, key=lambda x: x[0]))
+        return CicloDaConta(
+            account_id=conta_id, igfarm_account_id=None, criada_em=confirmada_em, registrada_em=planejada_em,
+            estado="retirada" if retirada is not None else "ativa",
+            retirada_em=str(retirada["ts"]) if retirada is not None else None, contatos=contatos,
+            minutos_ate_o_primeiro_contato=contatos[0].minutos_desde_a_criacao if contatos else None,
+            ultimo_desfecho=contatos[-1].desfecho if contatos else None, origem="app",
+            referencia="criacao" if confirmada_em else "planejamento")
 
 
 _EMAIL = re.compile(r"\S*@\S+")

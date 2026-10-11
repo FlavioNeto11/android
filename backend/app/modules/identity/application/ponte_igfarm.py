@@ -387,7 +387,7 @@ class PonteIgfarm:
         """31.333: o que aconteceu com a conta do igfarm (criada, contatos com o app, retirada), só leitura."""
         achado = self.armazem.ciclo_da_conta(conta_id)
         if achado is None:
-            raise ErroDaPonte("not_found", "Conta não registrada pela ponte.", 404)
+            raise ErroDaPonte("not_found", "Conta sem ciclo conhecido (nem do igfarm nem do cadastro no app).", 404)
         return achado
 
     async def cabecalhos(self, conta_id: str, *, horas: int, limite: int) -> list[CabecalhoDeMensagem]:
